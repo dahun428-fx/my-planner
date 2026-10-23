@@ -42,7 +42,7 @@ def build_preamble(
     paused_until: datetime | None = None,
     merged: list[str] | None = None,
 ) -> str:
-    """새 세션의 앞머리. 빈 섹션은 뺀다. 멈춤(10)은 그 티켓에서 채운다."""
+    """새 세션의 앞머리. 빈 섹션은 뺀다. `paused_until`이 지금 뒤면 `## 멈춤`(한국 시간)을 붙인다."""
     today = logical_date(now, tz, boundary)
     lt = local(now, tz)
     sections = [
@@ -91,4 +91,11 @@ def build_preamble(
         else:
             line = f"{y.score}/5" + (f" (메모: {y.note})" if y.note else "")
         sections.append(f"## 어제 컨디션\n{line}")
+
+    if paused_until is not None and now < paused_until:
+        pt = local(paused_until, tz)
+        sections.append(
+            f"## 멈춤\n{pt.month}월 {pt.day}일 {pt:%H:%M}까지 사용자가 쉬기로 했어요. "
+            "그때까지 비서가 먼저 연락하지 않아요(묻는 말에는 답합니다)."
+        )
     return "\n\n".join(sections)

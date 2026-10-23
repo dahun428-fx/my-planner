@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import time, timedelta
 
 import pytest
 from test_dispatcher_messages import kst
@@ -139,8 +139,8 @@ async def test_command_from_other_user_ignored(cenv):
     assert cenv.dispatcher.got == []
     # 소유자의 일반 글과 모르는 명령은 두뇌로 간다
     assert await cenv.send("안녕") == "accept"
-    assert await cenv.send("/pause 2") == "accept"
-    assert [m.text for m in cenv.dispatcher.got] == ["안녕", "/pause 2"]
+    assert await cenv.send("/plan 운동") == "accept"
+    assert [m.text for m in cenv.dispatcher.got] == ["안녕", "/plan 운동"]
 
 
 async def test_commands_use_logical_date_before_boundary(cenv):
@@ -169,3 +169,37 @@ async def test_command_transcript_failure_does_not_resend_on_redelivery(cenv, mo
     assert len(cenv.bot.sent) == 1 and cenv.state.is_seen_update(500)
     assert await handle_update(upd, **kw) == "duplicate"
     assert len(cenv.bot.sent) == 1
+
+
+async def test_pause_sets_until_and_rejects_15(cenv):
+    from my_planner.bot.commands import PAUSE_USAGE
+    from my_planner.clock import from_iso
+
+    for bad in ("/pause", "/pause 15", "/pause 0", "/pause -1", "/pause 이틀", "/pause 2.5"):
+        assert await cenv.send(bad) == "command"
+        assert cenv.last == PAUSE_USAGE
+        assert cenv.state.get("pause_until") is None
+    assert await cenv.send("/pause 3") == "command"
+    assert from_iso(cenv.state.get("pause_until")) == NOW + timedelta(days=3)
+    assert cenv.last == (
+        "10월 27일 10:30까지 먼저 연락하지 않을게요. 그동안에도 말씀하시면 답해요. "
+        "다시 시작하려면 /unpause를 보내 주세요."
+    )
+    assert await cenv.send("/pause 14") == "command"
+    assert from_iso(cenv.state.get("pause_until")) == NOW + timedelta(days=14)
+    assert cenv.dispatcher.got == []
+
+
+async def test_unpause(cenv):
+    from my_planner.bot.commands import NOT_PAUSED_REPLY, UNPAUSE_REPLY
+
+    await cenv.send("/pause 2")
+    assert cenv.state.get("pause_until") is not None
+    assert await cenv.send("/unpause") == "command"
+    assert cenv.last == UNPAUSE_REPLY
+    assert cenv.state.get("pause_until") is None
+    assert await cenv.send("/unpause") == "command"
+    assert cenv.last == NOT_PAUSED_REPLY
+    day = cenv.day_file()
+    assert "### 10:30 사용자 [-]\n\n/unpause\n" in day and UNPAUSE_REPLY in day
+    assert cenv.dispatcher.got == []

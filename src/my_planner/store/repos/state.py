@@ -9,6 +9,12 @@ from typing import Literal
 
 from my_planner.clock import Clock, SystemClock, to_iso
 
+# app_state 키 (티켓 10). 시각은 UTC ISO, 날짜는 논리적 날짜 ISO.
+PAUSE_UNTIL_KEY = "pause_until"  # /pause가 정한 멈춤 끝 시각
+LIMITED_UNTIL_KEY = "limited_until"  # 사용 한도가 풀리는 시각
+LAST_AUTH_NOTICE_KEY = "last_auth_notice_date"  # 로그인·결제 안내를 보낸 논리적 날짜(하루 한 번)
+LAST_RATE_LIMIT_NOTICE_KEY = "last_rate_limit_notice_until"  # 안내를 보낸 한도 구간(limited_until 값)
+
 UsageField = Literal["brain_calls", "proactive_messages"]
 _USAGE_FIELDS = ("brain_calls", "proactive_messages")
 

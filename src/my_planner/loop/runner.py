@@ -12,6 +12,7 @@ from my_planner.clock import Clock, from_iso, logical_date, to_iso
 from my_planner.domain import LoopKey, RunStatus
 from my_planner.loop.catchup import decide
 from my_planner.loop.schedule import ENABLED_LOOPS, Due, due_between, window_start
+from my_planner.store.repos.state import LIMITED_UNTIL_KEY, PAUSE_UNTIL_KEY
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -129,9 +130,13 @@ class Runner:
         # 넘겨 받은 회고(R1)는 pending이지만 판정에서 빼고 따로 넘긴다
         carried = self._carried_review()
         carried_due = _due(carried) if carried is not None else None
+        usage = self.state.usage(logical_date(now, tz, boundary))
         decision = decide(
             now, judged_from, [d for d in by_due if d != carried_due], carried_review=carried_due,
-            proactive_today=self.state.usage(logical_date(now, tz, boundary)).proactive_messages,
+            paused_until=self._get_time(PAUSE_UNTIL_KEY),
+            limited_until=self._get_time(LIMITED_UNTIL_KEY),
+            brain_calls_today=usage.brain_calls,
+            proactive_today=usage.proactive_messages,
             cfg=s, tz=tz, boundary=boundary,
         )
         if decision.clock_backwards and last_seen is not None:  # 공백은 0으로 봤다. 차이만 남긴다
