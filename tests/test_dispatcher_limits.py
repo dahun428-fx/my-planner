@@ -70,29 +70,47 @@ BILLING_COPY = "Claude 계정이나 결제 상태를 확인해야 해요. PC에�
 
 
 async def test_auth_error_notice_once_per_day(tmp_path, conn, state):
-    env = _env(tmp_path, conn, state, [_auth(), _auth(), _auth()])
+    # 사용자 메시지에는 매번 답한다(침묵 없음). 하루 한 번 제한은 회차가 보내는 안내에만 걸린다
+    from my_planner.domain import LoopKey
+
+    env = _env(tmp_path, conn, state, [_auth(), _auth(), _auth(), _auth(), _auth(), _auth()])
     await env.process(env.inbound("안녕", update_id=1))
     env.clock.advance(timedelta(minutes=10))
     await env.process(env.inbound("계속 안 되네", update_id=2))
-
-    assert [o.text for o in env.sender.sent] == [LOGIN_COPY]  # 같은 날 두 번째는 안내하지 않는다
-    assert state.get("last_auth_notice_date") == "2026-10-26"
+    assert [o.text for o in env.sender.sent] == [LOGIN_COPY, LOGIN_COPY]
+    assert state.get("last_auth_notice_date") is None  # 답장은 하루 한 번 몫을 쓰지 않는다
     assert state.is_seen_update(1) and state.is_seen_update(2)
-    assert state.usage(MON).proactive_messages == 0
     day = env.day_file("2026-10-26").read_text(encoding="utf-8")
     assert f"비서 [-]\n\n{LOGIN_COPY}" in day
 
-    env.clock.set(kst(2026, 10, 27, 9, 0))  # 다음 논리적 날짜
-    await env.process(env.inbound("오늘은?", update_id=3))
-    assert [o.text for o in env.sender.sent] == [LOGIN_COPY, LOGIN_COPY]
+    await env.process_run(_queued(env))  # 회차의 안내: 그날 첫 번째라 보낸다
+    assert [o.text for o in env.sender.sent] == [LOGIN_COPY] * 3
+    assert state.get("last_auth_notice_date") == "2026-10-26"
+    env.clock.set(kst(2026, 10, 26, 17, 31))
+    await env.process_run(_queued(env, LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30)))
+    assert len(env.sender.sent) == 3  # 같은 날 회차 안내는 다시 보내지 않는다
+    await env.process(env.inbound("아직?", update_id=3))
+    assert len(env.sender.sent) == 4  # 메시지에는 그래도 답한다
+    assert state.usage(MON).proactive_messages == 0
+
+    env.clock.set(kst(2026, 10, 27, 9, 30))  # 다음 논리적 날짜: 회차 안내를 다시 보낸다
+    await env.process_run(_queued(env, LoopKey.morning_brief, kst(2026, 10, 27, 9, 0)))
+    assert [o.text for o in env.sender.sent] == [LOGIN_COPY] * 5
     assert state.get("last_auth_notice_date") == "2026-10-27"
 
 
 async def test_billing_error_uses_billing_copy(tmp_path, conn, state):
-    env = _env(tmp_path, conn, state, [_auth("billing"), _auth("billing"), _auth("login")])
-    for i in (1, 2, 3):  # 결제든 로그인이든 로그인·결제 안내는 하루 한 번
+    from my_planner.domain import LoopKey
+
+    env = _env(tmp_path, conn, state, [_auth("billing"), _auth("billing"), _auth("billing"), _auth("login")])
+    for i in (1, 2):
         await env.process(env.inbound(f"메시지 {i}", update_id=i))
-    assert [o.text for o in env.sender.sent] == [BILLING_COPY]
+    assert [o.text for o in env.sender.sent] == [BILLING_COPY, BILLING_COPY]
+    await env.process_run(_queued(env))
+    env.clock.set(kst(2026, 10, 26, 17, 31))
+    await env.process_run(_queued(env, LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30)))
+    # 회차 안내는 결제든 로그인이든 하루 한 번
+    assert [o.text for o in env.sender.sent] == [BILLING_COPY] * 3
     assert state.usage(MON).proactive_messages == 0
 
 
@@ -106,26 +124,38 @@ def _rate_copy(when):
 
 async def test_rate_limited_notice_once_per_window(tmp_path, conn, state):
     from my_planner.clock import from_iso
+    from my_planner.domain import LoopKey
 
     reset = kst(2026, 10, 26, 21, 30)
-    env = _env(tmp_path, conn, state, [_limited(reset), FakeTurn([], "다시 이야기해요.")])
+    env = _env(
+        tmp_path, conn, state,
+        [_limited(reset), _limited(reset), _limited(reset), FakeTurn([], "다시 이야기해요.")],
+    )
     await env.process(env.inbound("안녕", update_id=1))
     assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")]
     assert from_iso(state.get("limited_until")) == reset
-    assert from_iso(state.get("last_rate_limit_notice_until")) == reset
+    assert state.get("last_rate_limit_notice_until") is None  # 답장은 구간 한 번 몫을 쓰지 않는다
 
-    # 같은 구간 안: 두뇌를 부르지 않고, 안내도 다시 보내지 않는다
+    # 같은 구간 안의 메시지: 두뇌를 부르지 않고, 기록된 재개 시각으로 매번 답한다
     env.clock.set(kst(2026, 10, 26, 15, 0))
     await env.process(env.inbound("아직이야?", update_id=2))
     assert len(env.brain.calls) == 1
-    assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")]
+    assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")] * 2
     assert state.is_seen_update(1) and state.is_seen_update(2)
+
+    # 회차의 안내는 구간마다 한 번
+    env.clock.set(kst(2026, 10, 26, 17, 31))
+    await env.process_run(_queued(env, LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30)))
+    assert len(env.sender.sent) == 3
+    assert from_iso(state.get("last_rate_limit_notice_until")) == reset
+    await env.process_run(_queued(env, LoopKey.review, kst(2026, 10, 25, 18, 0)))
+    assert len(env.sender.sent) == 3
     assert state.usage(MON).proactive_messages == 0
 
     # 풀린 뒤에는 다시 두뇌로 간다
     env.clock.set(kst(2026, 10, 26, 21, 31))
     await env.process(env.inbound("이제 될까", update_id=3))
-    assert len(env.brain.calls) == 2
+    assert len(env.brain.calls) == 4
     assert env.sender.sent[-1].text == "다시 이야기해요."
 
 
@@ -263,3 +293,18 @@ async def test_run_auth_error_marked_skipped_not_rerun(tmp_path, conn, state):
     assert env.sender.sent[-1].text == _rate_copy("21:30")
     assert state.usage(MON).proactive_messages == 0  # 고정 안내는 하루 3회에 세지 않는다
     assert state.usage(MON).brain_calls == 2
+
+
+async def test_backoff_stops_at_daily_cap(tmp_path, conn, state):
+    # 다시 부르기 전마다 상한을 본다. 60회에 닿으면 멈추고 하루 상한 문구로 답한다
+    from my_planner.harness.dispatcher import DAILY_CAP_REPLY
+
+    env = _env(tmp_path, conn, state, [_error(), _error(), _error(), _error()])
+    _use_brain_calls(state, 58)
+    slept = _record_sleeps(env)
+    await env.process(env.inbound("안녕"))
+
+    assert len(env.brain.calls) == 2 and slept == [2]
+    assert state.usage(MON).brain_calls == 60
+    assert [o.text for o in env.sender.sent] == [DAILY_CAP_REPLY]
+    assert state.is_seen_update(1)

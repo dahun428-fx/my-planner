@@ -253,7 +253,7 @@ class Dispatcher:
     async def _handle_messages(self, batch: list[Inbound]) -> None:
         """쌓인 메시지를 두뇌 호출 한 번으로 처리한다. 본문은 두 줄 바꿈으로 잇고 update_id는 모두 기록한다."""
         update_ids = [i for m in batch for i in m.update_ids]
-        if self.state.usage(self._today()).brain_calls >= self.settings.limits.daily_brain_calls:
+        if self._capped():
             # 하루 두뇌 호출 상한: 두뇌를 부르지 않고 고정 문구로 답한다(스펙 7)
             await self._fixed_reply(batch, DAILY_CAP_REPLY)
             self.state.mark_updates_done(update_ids)
@@ -264,7 +264,8 @@ class Dispatcher:
             # 사용 한도 구간 안: 두뇌를 부르지 않는다. 이 구간에 아직 안내하지 않았으면 안내한다
             for m in batch:
                 self.transcripts.append(m.at, "사용자", None, None, redact(m.text)[0])
-            await self._notice_rate_limit(limited)
+            # 사용자 메시지에는 매번 답한다. 기록된 재개 시각을 쓰고, 회차 안내의 구간 한 번 몫은 쓰지 않는다
+            await self._send_notice(rate_limit_notice(self._resume_text(limited)))
             self.state.mark_updates_done(update_ids)
             log.info("message_rate_limited_window", extra={"update_ids": update_ids})
             return
@@ -318,8 +319,12 @@ class Dispatcher:
                 run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
+            capped = False
             for delay in MESSAGE_RETRY_DELAYS_S:
                 if result.status != "error":
+                    break
+                if self._capped():  # 다시 부르기 전마다 하루 상한을 본다
+                    capped = True
                     break
                 await self._sleep(delay)
                 run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
@@ -330,17 +335,19 @@ class Dispatcher:
                 self.convs.set_session(conv.id, result.session_id)
             self.convs.touch(conv.id)
 
+            # 로그인·결제와 사용 한도: 사용자 메시지에는 매번 고정 문구로 답한다(하루·구간 한 번은 회차 안내에만)
             if result.status == "rate_limited":
-                await self._limited(result.retry_at)
+                until = self._set_limited(result.retry_at)
+                await self._send_notice(rate_limit_notice(self._resume_text(until)))
                 self.state.mark_updates_done(update_ids)
                 log.info("message_rate_limited", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if result.status == "auth_error":
-                await self._notice_auth(result.error)
+                await self._send_notice(_auth_copy(result.error))
                 self.state.mark_updates_done(update_ids)
                 log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
-            reply = _reply_for(result)
+            reply = DAILY_CAP_REPLY if capped else _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
                 reply = f"{reply}\n\n{confirmations}"
@@ -366,23 +373,27 @@ class Dispatcher:
         await self.sender.send(Outbound(text=text))
         self.transcripts.append(self.clock.now(), "비서", None, None, text)
 
-    async def _notice_auth(self, error: str | None) -> None:
-        """로그인·결제 안내. 논리적 날짜마다 한 번만 보낸다(스펙 5.3)."""
+    def _capped(self) -> bool:
+        return self.state.usage(self._today()).brain_calls >= self.settings.limits.daily_brain_calls
+
+    async def _run_notice_auth(self, error: str | None) -> None:
+        """회차가 보내는 로그인·결제 안내. 논리적 날짜마다 한 번만(스펙 5.3)."""
         today = self._today().isoformat()
         if self.state.get(LAST_AUTH_NOTICE_KEY) == today:
             return
-        if await self._send_notice(BILLING_NOTICE if error == "billing" else LOGIN_NOTICE):
+        if await self._send_notice(_auth_copy(error)):
             self.state.set(LAST_AUTH_NOTICE_KEY, today)
 
-    async def _limited(self, retry_at: datetime | None) -> None:
-        """사용 한도: `limited_until`을 기록하고 이 구간에 한 번 안내한다."""
+    def _set_limited(self, retry_at: datetime | None) -> datetime:
+        """`limited_until`을 기록하고 돌려준다. 없거나 이미 지난 재개 시각은 지금 + 1시간."""
         now = self.clock.now()
-        if retry_at is None or retry_at <= now:  # 없거나 이미 지난 재개 시각은 없는 것으로 본다
+        if retry_at is None or retry_at <= now:
             retry_at = now + RATE_LIMIT_FALLBACK
         self.state.set(LIMITED_UNTIL_KEY, to_iso(retry_at))
-        await self._notice_rate_limit(retry_at)
+        return retry_at
 
-    async def _notice_rate_limit(self, until: datetime) -> None:
+    async def _run_notice_rate_limit(self, until: datetime) -> None:
+        """회차가 보내는 사용 한도 안내. 구간(`limited_until` 값)마다 한 번만."""
         key = to_iso(until)
         if self.state.get(LAST_RATE_LIMIT_NOTICE_KEY) == key:
             return
@@ -477,9 +488,9 @@ class Dispatcher:
             self.convs.close(conv.id)
             log.warning("run_brain_skipped", extra={"run_id": run.id, "status": result.status})
             if result.status == "auth_error":
-                await self._notice_auth(result.error)
+                await self._run_notice_auth(result.error)
             else:
-                await self._limited(result.retry_at)
+                await self._run_notice_rate_limit(self._set_limited(result.retry_at))
             return None
         if not _run_ok(result):
             # 사용자에게는 아무것도 보내지 않는다(스펙 5.4 재실행 규칙 4). 로그만 남긴다.
@@ -778,6 +789,10 @@ def _week_label(monday: date) -> str:
 
 def _join(*parts: str) -> str:
     return "\n\n".join(p for p in parts if p)
+
+
+def _auth_copy(error: str | None) -> str:
+    return BILLING_NOTICE if error == "billing" else LOGIN_NOTICE
 
 
 def _run_ok(result: BrainResult) -> bool:
