@@ -180,3 +180,150 @@ def test_expire_drafts_after_3_days(tmp_path, conn, state):
     assert env.dispatcher.submitted == []  # 조용히: 아무것도 보내지 않는다
     tick_at(kst(2026, 10, 30, 4, 0))
     assert repo.get(almost.id).status is TaskStatus.dropped
+
+
+# --- 티켓 09: 따라잡기(R1, 넘겨 받은 회고, 하루 3회 상한, 시계 이상) ---
+
+
+def _gap_env(tmp_path, conn, state, last_seen, woke):
+    return Env(tmp_path, conn, state, woke, installed=last_seen - timedelta(days=30), last_seen=last_seen)
+
+
+def test_tick_after_25h_gap_creates_single_return_run(tmp_path, conn, state):
+    from my_planner.domain import SkipReason
+
+    woke = kst(2026, 10, 25, 18, 30)  # 토 17:00 → 일 18:30
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 24, 17, 0), woke)
+    env.runner.tick()
+
+    assert len(env.dispatcher.submitted) == 1
+    run, merged = env.dispatcher.submitted[0]
+    assert (run.loop, run.scheduled_for, merged) == (LoopKey.return_, woke, [])
+    assert env.runs.get(run.id).status is RunStatus.queued
+    others = [r for r in env.runs.between(kst(2026, 10, 24, 0, 0), woke) if r.id != run.id]
+    assert [r.loop for r in others if r.status is RunStatus.pending] == [LoopKey.review]
+    assert {(r.loop, r.skip_reason) for r in others if r.status is RunStatus.skipped} == {
+        (LoopKey.evening_checkin, SkipReason.merged_into_return),
+        (LoopKey.morning_brief, SkipReason.merged_into_return),
+    }
+    assert len(others) == 4
+
+
+def _tick_at(env, at):
+    """1분 전에도 tick이 돌았던 것처럼(공백 없이) tick한다."""
+    env.state.set("last_seen_at", to_iso(at - timedelta(minutes=1)))
+    env.clock.set(at)
+    env.runner.tick()
+
+
+def test_r1_carried_review_merges_into_next_contact(tmp_path, conn, state):
+    woke = kst(2026, 10, 25, 18, 30)  # 토 17:00 → 일 18:30: 일 회고를 넘겨 받는다
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 24, 17, 0), woke)
+    env.runner.tick()
+    ret, _ = env.dispatcher.submitted[0]
+    env.runs.mark_done(ret.id)
+    review = next(r for r in env.runs.pending() if r.loop is LoopKey.review)
+    assert state.get("carry_review_run_id") == str(review.id)
+
+    _tick_at(env, kst(2026, 10, 25, 18, 31))  # 다음 정규 연락 전: 회고는 혼자 나가지 않는다
+    _tick_at(env, kst(2026, 10, 26, 3, 0))
+    assert len(env.dispatcher.submitted) == 1
+    assert env.runs.get(review.id).status is RunStatus.pending
+
+    _tick_at(env, kst(2026, 10, 26, 9, 0) + timedelta(seconds=30))  # 월 아침 브리핑에 합친다
+    run, merged = env.dispatcher.submitted[1]
+    assert run.loop is LoopKey.morning_brief
+    assert [m.id for m in merged] == [review.id]
+    assert env.runs.get(review.id).status is RunStatus.queued
+    assert state.get("carry_review_run_id") is None
+
+
+def test_r1_carried_review_late_clears_mark(tmp_path, conn, state):
+    from my_planner.domain import SkipReason
+
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 24, 17, 0), kst(2026, 10, 25, 18, 30))
+    env.runner.tick()
+    review = next(r for r in env.runs.pending() if r.loop is LoopKey.review)
+    _tick_at(env, kst(2026, 10, 28, 18, 1))  # 정규 연락 없이 +3일이 지났다(그 사이 회차는 따로 다루지 않는다)
+    assert env.runs.get(review.id).skip_reason is SkipReason.late
+    assert state.get("carry_review_run_id") is None
+
+
+def test_deferred_run_reconsidered_next_tick(tmp_path, conn, state):
+    from datetime import date
+
+    from my_planner.domain import SkipReason
+
+    at = kst(2026, 10, 25, 18, 0) + timedelta(seconds=30)  # 일 18:00:30, 오늘 이미 3번 먼저 보냈다
+    env = Env(tmp_path, conn, state, at, installed=at - timedelta(days=7), last_seen=at - timedelta(minutes=1))
+    for _ in range(3):
+        state.incr_usage(date(2026, 10, 25), "proactive_messages")
+    env.runner.tick()
+    _tick_at(env, at + timedelta(minutes=1))
+    assert env.dispatcher.submitted == []
+    pend = env.runs.pending()
+    assert sorted(r.loop for r in pend) == [LoopKey.evening_checkin, LoopKey.review]
+    eve = next(r for r in pend if r.loop is LoopKey.evening_checkin)
+    rev = next(r for r in pend if r.loop is LoopKey.review)
+
+    _tick_at(env, kst(2026, 10, 26, 9, 0) + timedelta(seconds=30))  # 새 날(0회): 한계 안은 합치고, 밖은 late
+    run, merged = env.dispatcher.submitted[0]
+    assert run.loop is LoopKey.morning_brief and [m.id for m in merged] == [rev.id]
+    assert env.runs.get(eve.id).skip_reason is SkipReason.late
+
+
+def test_return_before_morning_skips_that_morning(tmp_path, conn, state):
+    # 금 22:00 → 화 08:00 복귀(스펙 표 6행). 화 09:00 tick에는 제출이 없다(월요일 컨디션 버튼을 붙일 아침 브리핑도 없다).
+    # 넘겨 받은 일요일 회고는 화 17:30 저녁 체크인에 합친다
+    from my_planner.domain import SkipReason
+
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 23, 22, 0), kst(2026, 10, 27, 8, 0))
+    env.runner.tick()
+    assert [r.loop for r, _ in env.dispatcher.submitted] == [LoopKey.return_]
+    morning = env.runs.between(kst(2026, 10, 27, 8, 59), kst(2026, 10, 27, 9, 0))
+    assert [(r.loop, r.status, r.skip_reason) for r in morning] == [
+        (LoopKey.morning_brief, RunStatus.skipped, SkipReason.merged_into_return)
+    ]
+
+    _tick_at(env, kst(2026, 10, 27, 9, 0) + timedelta(seconds=30))
+    assert len(env.dispatcher.submitted) == 1
+
+    _tick_at(env, kst(2026, 10, 27, 17, 30) + timedelta(seconds=30))
+    run, merged = env.dispatcher.submitted[1]
+    assert run.loop is LoopKey.evening_checkin
+    assert [m.loop for m in merged] == [LoopKey.review]
+
+
+_STD_ATTRS = set(vars(__import__("logging").makeLogRecord({})))
+
+
+def test_clock_backwards_logs_warning(mon_morning, caplog):
+    import logging
+
+    env = mon_morning
+    env.state.set("last_seen_at", to_iso(env.clock.now() + timedelta(hours=2)))  # 시계가 2시간 뒤로 갔다
+    with caplog.at_level(logging.INFO, logger="my_planner"):
+        env.runner.tick()
+    recs = [r for r in caplog.records if r.getMessage() == "clock_went_backwards"]
+    assert len(recs) == 1 and recs[0].levelno == logging.WARNING
+    assert {k: v for k, v in vars(recs[0]).items() if k not in _STD_ATTRS and k != "message"} == {"gap_seconds": 7200}
+    assert from_iso(env.state.get("last_seen_at")) == env.clock.now()  # 하트비트는 지금 시각으로
+    assert env.dispatcher.submitted == []  # 창이 비어 회차를 쏟아내지 않는다
+
+
+def test_clock_backwards_then_forward_does_not_rerun_done_runs(mon_morning):
+    # 월 09:00:30에 아침 브리핑을 보냈다(done). 시계가 08:30으로 돌아갔다가 다시 09:01이 된다.
+    # 창 (08:30, 09:01]에 09:00 아침 브리핑이 다시 들지만 ensure는 있는 회차를 그대로 돌려주므로 다시 내지 않는다
+    env = mon_morning
+    env.runner.tick()
+    run, _ = env.dispatcher.submitted[0]
+    env.runs.mark_done(run.id)
+
+    env.clock.set(kst(2026, 10, 26, 8, 30))
+    env.runner.tick()
+    env.clock.set(kst(2026, 10, 26, 9, 1))
+    env.runner.tick()
+
+    assert len(env.dispatcher.submitted) == 1
+    mornings = [r for r in env.runs.between(kst(2026, 10, 26, 0, 0), env.clock.now()) if r.loop is LoopKey.morning_brief]
+    assert [(r.id, r.status) for r in mornings] == [(run.id, RunStatus.done)]

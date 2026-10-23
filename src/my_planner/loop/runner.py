@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, logical_date, to_iso
-from my_planner.domain import LoopKey
+from my_planner.domain import LoopKey, RunStatus
 from my_planner.loop.catchup import decide
 from my_planner.loop.schedule import ENABLED_LOOPS, Due, due_between, window_start
 
@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DRAFT_EXPIRE_DAYS = 3
+CARRY_REVIEW_KEY = "carry_review_run_id"
+
+
+def _due(run: Run) -> Due:
+    return Due(run.loop, run.scheduled_for, run.cadence)
 
 
 def expire_drafts(tasks: TasksRepo, clock: Clock, *, days: int = DRAFT_EXPIRE_DAYS) -> Callable[[date], None]:
@@ -68,6 +73,12 @@ class Runner:
         v = self.state.get(key)
         return from_iso(v) if v else None
 
+    def _carried_review(self) -> Run | None:
+        """`app_state.carry_review_run_id`가 가리키는, 아직 pending인 회고 회차."""
+        v = self.state.get(CARRY_REVIEW_KEY)
+        run = self.runs.get(int(v)) if v else None
+        return run if run is not None and run.status is RunStatus.pending else None
+
     def ensure_installed(self) -> None:
         """첫 실행이면(`installed_at`이 없으면) 지금 시각을 기록한다(스펙 5.1 5단계)."""
         if self.state.get("installed_at") is None:
@@ -94,10 +105,35 @@ class Runner:
         for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops):
             self.runs.ensure(due.loop, due.scheduled_for, due.cadence)
         # 3. 따라잡기 판정과 적용
-        by_due = {Due(r.loop, r.scheduled_for, r.cadence): r for r in self.runs.pending()}
-        decision = decide(now, last_seen, list(by_due), cfg=s, tz=tz, boundary=boundary)
+        by_due = {_due(r): r for r in self.runs.pending()}
+        # 넘겨 받은 회고(R1)는 pending이지만 판정에서 빼고 따로 넘긴다
+        carried = self._carried_review()
+        carried_due = _due(carried) if carried is not None else None
+        decision = decide(
+            now, last_seen, [d for d in by_due if d != carried_due], carried_review=carried_due,
+            proactive_today=self.state.usage(logical_date(now, tz, boundary)).proactive_messages,
+            cfg=s, tz=tz, boundary=boundary,
+        )
+        if decision.clock_backwards and last_seen is not None:  # 공백은 0으로 봤다. 차이만 남긴다
+            log.warning("clock_went_backwards", extra={"gap_seconds": int((last_seen - now).total_seconds())})
+        if carried is not None:
+            by_due[_due(carried)] = carried
+        if decision.create_return:  # R1: 복귀 인사 회차 하나
+            ret = self.runs.ensure(LoopKey.return_, now)
+            by_due[_due(ret)] = ret
         for due, reason in decision.skipped:
-            self.runs.mark_skipped(by_due[due].id, reason)
+            run = by_due.get(due)
+            if run is None:  # 아직 오지 않은 회차(R1의 그날 아침 브리핑): 만들어 두고 skip을 기록한다
+                run = self.runs.ensure(due.loop, due.scheduled_for, due.cadence)
+                if run.status is not RunStatus.pending:
+                    continue
+            self.runs.mark_skipped(run.id, reason)
+        if carried_due is not None and (
+            carried_due in decision.merged or any(d == carried_due for d, _ in decision.skipped)
+        ):
+            self.state.set(CARRY_REVIEW_KEY, None)  # 합쳐졌거나 late가 됐다
+        if decision.carry_review is not None:
+            self.state.set(CARRY_REVIEW_KEY, str(by_due[decision.carry_review].id))
         if decision.primary is not None:
             primary = by_due[decision.primary]
             merged = [by_due[d] for d in decision.merged]
