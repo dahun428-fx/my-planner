@@ -57,6 +57,7 @@ class Env:
             router=ConversationRouter(self.convs, self.runs, clock=self.clock, settings=self.settings),
             tools=self.tools,
             runs=self.runs,
+            data_dir=self.settings.paths.data_dir,
             sleep=fake_sleep(self.clock),
             **extra,
         )

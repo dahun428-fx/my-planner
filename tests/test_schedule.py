@@ -108,3 +108,15 @@ def test_reply_window_reads_config(tmp_path):
     review = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
     assert reply_window_end(morning, cfg.timezone, cfg.day_boundary, cfg=cfg) == kst(2026, 10, 26, 11, 0)
     assert reply_window_end(review, cfg.timezone, cfg.day_boundary, cfg=cfg) == kst(2026, 10, 26, 0, 0)
+
+
+def test_sunday_has_review_at_1800(cfg):
+    # 앱이 켜는 루프(ENABLED_LOOPS)에 회고가 든다. 2026-10-25(일): 아침 10:00, 저녁 18:00, 회고(week) 18:00
+    from my_planner.loop.schedule import ENABLED_LOOPS
+
+    got = due_between(kst(2026, 10, 25, 4, 0), kst(2026, 10, 26, 4, 0), cfg, cfg.timezone, ENABLED_LOOPS)
+    assert got == [
+        Due(LoopKey.morning_brief, kst(2026, 10, 25, 10, 0)),
+        Due(LoopKey.evening_checkin, kst(2026, 10, 25, 18, 0)),
+        Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week),
+    ]

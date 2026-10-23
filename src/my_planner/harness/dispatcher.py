@@ -11,11 +11,13 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, logical_date
+from my_planner.clock import Clock, logical_date, period_of
 from my_planner.domain import (
+    Cadence,
     ConversationKind,
     LoopKey,
     RunContext,
@@ -26,7 +28,9 @@ from my_planner.harness import prompts
 from my_planner.harness.brain import Brain, BrainResult
 from my_planner.harness.context import build_notices, build_preamble
 from my_planner.harness.redact import redact
+from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
+from my_planner.store.reviews import save_weekly_review
 from my_planner.tools.confirmations import render_confirmations
 
 if TYPE_CHECKING:
@@ -121,6 +125,7 @@ class Dispatcher:
         tools: Tools | None = None,
         runs: RunsRepo | None = None,
         conditions: ConditionsRepo | None = None,
+        data_dir: Path | None = None,
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -135,6 +140,7 @@ class Dispatcher:
         self.tools = tools
         self.runs = runs
         self.conditions = conditions
+        self.data_dir = data_dir
         self._keep_awake = keep_awake
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
@@ -304,12 +310,21 @@ class Dispatcher:
     async def _handle_run(self, run: Run, merged: list[Run]) -> None:
         assert self.runs is not None, "회차를 실행하려면 runs가 있어야 한다"
         runs = self.runs
-        if self._past_limit(run):
-            # 대기하는 동안 한계가 지났다(스펙 5.4 R5). 합친 회차도 함께 건너뛴다.
-            for r in (run, *merged):
+        # 대기하는 동안 한계가 지난 회차는 저마다 따로 건너뛴다(스펙 5.4 R5). 남은 회차끼리 합쳐 실행한다.
+        live: list[Run] = []
+        for r in (run, *merged):
+            if self._past_limit(r):
                 runs.mark_skipped(r.id, SkipReason.late)
-            log.info("run_skipped_late_at_start", extra={"run_id": run.id})
+                log.info("run_skipped_late_at_start", extra={"run_id": r.id})
+            else:
+                live.append(r)
+        if not live:
             return
+        if live[0] is not run:  # primary가 늦었으면 남은 회차 중 합치기 우선순위가 가장 높은 것이 primary
+            live.sort(key=lambda r: merge_order(r.loop))
+        run, merged = live[0], live[1:]
+        if merged:  # 합쳐진 회차는 실행된 회차의 merged_run_ids에 기록한다(스펙 5.4 "합치기")
+            runs.add_merged(run.id, [r.id for r in merged])
         with self._keep_awake():
             # (a) 두뇌 호출 → 보낼 본문을 outbound_text에 저장. 예외가 나도 회차를 running에 두지 않는다.
             try:
@@ -377,8 +392,24 @@ class Dispatcher:
             *(prompts.load(LOOP_PROMPTS[r.loop]) for r in (run, *merged)),
             self._preamble(False, merged=[m.loop.value for m in merged] or None),
             _condition_buttons_note(ask),
+            self._review_week_note(run, merged),
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
+
+    def _review_week_note(self, run: Run, merged: list[Run]) -> str:
+        """회고가 함께 있으면 회고 주와 다음 주를 알린다. 다음 주는 `set_priorities(week, ...)`에 쓴다."""
+        review = _review_of(run, merged)
+        if review is None:
+            return ""
+        s = self.settings
+        d = logical_date(review.scheduled_for, s.timezone, s.day_boundary)
+        mon = d - timedelta(days=d.weekday())
+        nxt = mon + timedelta(days=7)
+        return (
+            "## 회고 주\n"
+            f"- 이번 회고: {_week_label(mon)}\n"
+            f"- 다음 주: {_week_label(nxt)}"
+        )
 
     def _ask_condition_for(self, run: Run, merged: list[Run] | None = None) -> date | None:
         """컨디션 버튼의 날짜(스펙 5.4). 저녁 체크인은 그 회차의 논리적 날짜다.
@@ -493,7 +524,7 @@ class Dispatcher:
     def _run_delivered(
         self, run: Run, merged: list[Run], conv: Conversation, text: str, tool_names: list[str]
     ) -> None:
-        """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1, 그다음 원문 기록과 대화 갱신."""
+        """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1, 그다음 원문 기록, 대화 갱신, 회고 저장."""
         assert self.runs is not None
         # 사용자는 이미 받았다. 상태와 카운터를 먼저 기록해 다음 시작 때 다시 보내지 않게 한다.
         for r in (run, *merged):
@@ -509,7 +540,25 @@ class Dispatcher:
             self.convs.touch(conv.id)
         except Exception:
             log.exception("run_touch_error", extra={"run_id": run.id})
+        self._save_review(run, merged, text)
         log.info("run_done", extra={"run_id": run.id, "loop": run.loop.value, "conversation_id": conv.id})
+
+    def _save_review(self, run: Run, merged: list[Run], text: str) -> None:
+        """회고가 primary이거나 merged에 있으면 보낸 답(가린 뒤)을 그 주의 파일에 쓴다.
+
+        주는 회고 회차 `scheduled_for`의 논리적 날짜로 정한다. 저장이 안 돼도 회차 상태는 그대로 둔다.
+        """
+        if self.data_dir is None:
+            return
+        review = _review_of(run, merged)
+        if review is None:
+            return
+        s = self.settings
+        period = period_of(Cadence.week, logical_date(review.scheduled_for, s.timezone, s.day_boundary))
+        try:
+            save_weekly_review(self.data_dir, period, redact(text)[0])
+        except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
+            log.warning("review_save_error", extra={"run_id": review.id, "error_type": type(e).__name__})
 
     def _today(self) -> date:
         return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
@@ -588,6 +637,18 @@ def _condition_buttons_note(d: date | None) -> str:
 
 
 _WEEKDAY = "월화수목금토일"
+
+
+def _review_of(run: Run, merged: list[Run]) -> Run | None:
+    return next((r for r in (run, *merged) if r.loop is LoopKey.review), None)
+
+
+def _week_label(monday: date) -> str:
+    sunday = monday + timedelta(days=6)
+    return (
+        f"{period_of(Cadence.week, monday)} "
+        f"({monday.month}/{monday.day}~{sunday.month}/{sunday.day})"
+    )
 
 
 def _join(*parts: str) -> str:

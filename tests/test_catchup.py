@@ -56,3 +56,38 @@ def test_spec_table_row_4(cfg):
     d = _decide(cfg, kst(2026, 10, 26, 17, 0), kst(2026, 10, 27, 5, 0), ENABLED_LOOPS)
     assert d.primary is None
     assert d.skipped == [(Due(LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30)), SkipReason.late)]
+
+
+def test_spec_table_row_9(cfg):
+    # 일 17:00 → 일 18:10: 저녁 체크인이 primary, 회고는 merged(한 메시지로 합쳐 실행)
+    from my_planner.domain import Cadence
+
+    d = _decide(cfg, kst(2026, 10, 25, 17, 0), kst(2026, 10, 25, 18, 10), ENABLED_LOOPS)
+    assert d.primary == Due(LoopKey.evening_checkin, kst(2026, 10, 25, 18, 0))
+    assert d.merged == [Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)]
+    assert d.skipped == []
+
+
+def test_merge_morning_beats_earlier_review(cfg):
+    # 일 17:00 → 월 10:00(17시간, R1 아님): 일 저녁은 한계(월 04:00) 밖이라 late,
+    # 일 회고(+3일 안)와 월 아침이 남는다. 회고가 더 이르지만 아침이 primary, 회고는 merged
+    from my_planner.domain import Cadence
+
+    d = _decide(cfg, kst(2026, 10, 25, 17, 0), kst(2026, 10, 26, 10, 0), ENABLED_LOOPS)
+    assert d.primary == Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    assert d.merged == [Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)]
+    assert d.skipped == [(Due(LoopKey.evening_checkin, kst(2026, 10, 25, 18, 0)), SkipReason.late)]
+
+
+def test_merge_priority_order(cfg):
+    # return_ > evening_checkin > morning_brief > review. 넣는 순서와 상관없이 같은 결과
+    from my_planner.domain import Cadence
+
+    now = kst(2026, 10, 26, 10, 0)
+    ret = Due(LoopKey.return_, kst(2026, 10, 26, 9, 50))
+    eve = Due(LoopKey.evening_checkin, kst(2026, 10, 26, 9, 55))  # 판정만 보려고 시각은 한계 안에 둔다
+    mor = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    rev = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    for pending in ([rev, mor, eve, ret], [ret, eve, mor, rev], [mor, rev, ret, eve]):
+        d = decide(now, now, pending, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary)
+        assert (d.primary, d.merged) == (ret, [eve, mor, rev])

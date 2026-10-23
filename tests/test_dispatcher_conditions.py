@@ -231,12 +231,10 @@ async def test_morning_asks_when_only_an_older_evening_is_done(tmp_path, conn, s
     assert [o.ask_condition_for for o in env.sender.sent] == [MON]
 
 
-async def test_evening_merged_into_review_still_gets_buttons(tmp_path, conn, state, monkeypatch):
+async def test_evening_merged_into_review_still_gets_buttons(tmp_path, conn, state):
     # 일 18:00 회고와 저녁 체크인을 합쳐 회고가 primary여도 저녁 체크인 날짜의 버튼을 붙인다
     from my_planner.domain import Cadence
 
-    real_load = prompts.load
-    monkeypatch.setattr(prompts, "load", lambda n: "## 회고(임시)" if n == "review_week.md" else real_load(n))
     sun_1800 = kst(2026, 10, 25, 18, 0)
     env = _env(tmp_path, conn, state, [FakeTurn([], "한 주 돌아보기와 체크인")], start=sun_1800)
     review = env.runs.ensure(LoopKey.review, sun_1800, Cadence.week)
