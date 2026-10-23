@@ -60,6 +60,8 @@ INTEGRITY_NOTICE = "데이터베이스에 문제가 있어요. 최신 백업으�
 BACKUPS_DIR = "backups"
 SHUTDOWN_TIMEOUT_S = 30
 
+ALLOWED_UPDATES = ["message", "callback_query"]
+
 EXIT_OK = 0
 EXIT_FATAL = 1
 EXIT_BAD_SETTINGS = 2
@@ -208,8 +210,29 @@ async def _serve(settings: Settings) -> None:
             data_dir=paths.data_dir,
             keep_awake=keep_awake,
         )
+
+        restarting: list[asyncio.Task[None]] = []  # 진행 중인 폴링 재시작(종료가 끝날 때까지 기다린다)
+
+        async def _restart() -> None:
+            # 지난 재시작이 안 됐으면 이미 멈춰 있다. 멈춘 Updater를 다시 멈추면 RuntimeError라 가드한다
+            if application.updater.running:
+                await application.updater.stop()
+            await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
+            log.info("polling_restarted")
+
+        async def restart_polling() -> None:
+            # 절전 복귀(직전 tick과 3분 넘게 차이, S5): 롱폴링을 다시 시작한다. 공백(초)은 러너가 로그에 남긴다.
+            # 안 되면 예외를 그대로 올린다: 러너가 polling_down으로 두고 tick마다 다시 부른다.
+            # 종료가 tick 루프를 취소해도 재시작은 끝까지 마친다(shield). 종료 쪽이 그것을 기다린 뒤 멈춘다.
+            # `application`은 아래에서 만든다. 러너는 폴링을 시작한 뒤의 tick에서만 이 함수를 부른다
+            task = asyncio.create_task(_restart(), name="polling-restart")
+            restarting.append(task)
+            task.add_done_callback(restarting.remove)
+            await asyncio.shield(task)
+
         runner = Runner(
-            clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router
+            clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
+            on_resume=restart_polling,
         )
         runner.register_daily(expire_drafts(tasks, clock))  # 3일 지난 초안은 조용히 dropped
         runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
@@ -245,9 +268,7 @@ async def _serve(settings: Settings) -> None:
                 runner.tick()
             except Exception:  # 첫 tick이 안 돼도 폴링과 1분 tick은 시작한다
                 log.exception("tick_error")
-            await application.updater.start_polling(
-                allowed_updates=["message", "callback_query"], drop_pending_updates=False
-            )
+            await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
             log.info("polling_started")
             ticking = asyncio.create_task(runner.run_forever(), name="runner")
             try:
@@ -257,7 +278,12 @@ async def _serve(settings: Settings) -> None:
                 ticking.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await ticking
-                await application.updater.stop()
+                # 진행 중인 폴링 재시작은 끝나기를 기다린다(안 됐어도 종료는 계속). 끝나면 목록에서 빠지므로 복사한다
+                for task in list(restarting):  # noqa: PERF101
+                    with contextlib.suppress(Exception):
+                        await task
+                if application.updater.running:
+                    await application.updater.stop()
                 await application.stop()
                 await dispatcher.stop(SHUTDOWN_TIMEOUT_S)
     finally:

@@ -572,3 +572,111 @@ def test_backup_clears_leftover_tmp_files(tmp_path, conn, state):
     copy = sqlite3.connect(backups / "planner-2026-10-23.db")
     assert copy.execute("PRAGMA quick_check").fetchone() == ("ok",)
     copy.close()
+
+
+def _resume_runner(tmp_path, conn, state, clock, sleeps, *, fail_resumes=0):
+    """`sleeps`초씩 차례로 잔다(시계를 그만큼 움직인다). 목록이 끝나면 멈춘다.
+
+    `on_resume`은 부른 시각을 적는다. 처음 `fail_resumes`번은 예외를 낸다(폴링을 다시 시작하지 못함).
+    """
+
+    class Stop(Exception):
+        pass
+
+    left = list(sleeps)
+
+    async def sleep(s):
+        if not left:
+            raise Stop
+        clock.advance(seconds=left.pop(0))
+
+    resumed = []
+    fails = [fail_resumes]
+
+    async def on_resume():
+        resumed.append(clock.now())
+        if fails[0]:
+            fails[0] -= 1
+            raise ConnectionError("network down")
+
+    runner = Runner(
+        clock=clock, settings=make_settings(tmp_path), runs=RunsRepo(conn, clock), state=state,
+        dispatcher=FakeDispatcher(), sleep=sleep, on_resume=on_resume,
+    )
+    return runner, resumed, Stop
+
+
+async def test_resume_detected_after_gap_calls_on_resume(tmp_path, conn, state, caplog):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    # 1분 tick 한 번, 절전 40분 뒤 복귀, 다시 1분 tick
+    runner, resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [60, 40 * 60, 60])
+    runner.tick()  # 시작 순서의 첫 tick
+    with caplog.at_level("INFO"), pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+
+    assert resumed == [kst(2026, 10, 26, 14, 41)]  # 공백이 3분을 넘은 tick에서 한 번만
+    assert from_iso(state.get("last_seen_at")) == kst(2026, 10, 26, 14, 42)  # tick은 그대로 돈다
+    records = [r for r in caplog.records if r.message == "resume_detected"]
+    assert [r.gap_seconds for r in records] == [40 * 60]
+
+
+async def test_first_tick_after_start_does_not_call_on_resume(tmp_path, conn, state):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    state.set("installed_at", to_iso(kst(2026, 10, 20, 12, 0)))
+    state.set("last_seen_at", to_iso(kst(2026, 10, 26, 12, 0)))  # 꺼져 있던 2시간
+    # 시작 순서의 첫 tick이 따로 불리지 않아도, 이 프로세스의 첫 tick은 따라잡기만 한다
+    runner, resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [60, 60])
+    with pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+
+    assert resumed == []
+    assert from_iso(state.get("last_seen_at")) == kst(2026, 10, 26, 14, 2)
+
+
+async def test_failed_resume_marks_polling_down_and_retries_every_tick(tmp_path, conn, state, caplog):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    # 절전 40분 → 복귀(재시작 안 됨) → 1분 tick(또 안 됨) → 1분 tick(됨) → 1분 tick(부르지 않음)
+    runner, resumed, Stop = _resume_runner(
+        tmp_path, conn, state, clock, [40 * 60, 60, 60, 60], fail_resumes=2
+    )
+    runner.tick()
+    with caplog.at_level("INFO"), pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+
+    assert resumed == [kst(2026, 10, 26, 14, 40), kst(2026, 10, 26, 14, 41), kst(2026, 10, 26, 14, 42)]
+    downs = [r for r in caplog.records if r.message == "polling_down"]
+    assert [r.error_type for r in downs] == ["ConnectionError", "ConnectionError"]
+    assert [r.message for r in caplog.records if r.message == "polling_recovered"] == ["polling_recovered"]
+    assert from_iso(state.get("last_seen_at")) == kst(2026, 10, 26, 14, 43)  # tick은 그동안에도 돈다
+
+
+async def test_resume_check_error_does_not_stop_ticking(tmp_path, conn, state, caplog):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    runner, _resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [60, 60])
+    runner.tick()
+
+    async def broken():  # 복귀 판정 중 DB 읽기가 안 된다
+        raise RuntimeError("db locked")
+
+    runner._resume_if_slept = broken
+    with pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+    assert from_iso(state.get("last_seen_at")) == kst(2026, 10, 26, 14, 2)  # tick은 계속 돈다
+
+
+async def test_gap_of_exactly_3_minutes_is_not_a_resume(tmp_path, conn, state):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    runner, resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [180, 181])
+    runner.tick()
+    with pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+    assert resumed == [kst(2026, 10, 26, 14, 3) + timedelta(seconds=181)]  # 3분 정각은 아니고, 3분 1초는 복귀
+
+
+async def test_clock_backwards_is_not_a_resume(tmp_path, conn, state):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    runner, resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [-40 * 60])
+    runner.tick()
+    with pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+    assert resumed == []
