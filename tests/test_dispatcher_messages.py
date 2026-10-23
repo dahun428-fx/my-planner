@@ -14,7 +14,8 @@ from my_planner.tools.core import Tools
 
 class Env:
     def __init__(
-        self, tmp_path, conn, state, *, script, start, sender=None, with_tools=False, with_conditions=False
+        self, tmp_path, conn, state, *, script, start, sender=None, with_tools=False, with_conditions=False,
+        keep_awake=None,
     ):
         self.settings = make_settings(tmp_path)
         self.clock = FakeClock(start)
@@ -28,6 +29,8 @@ class Env:
         self.tools = None
         self.conditions = None
         extra = {}
+        if keep_awake is not None:
+            extra["keep_awake"] = keep_awake
         if with_conditions:
             from my_planner.store.repos.conditions import ConditionsRepo
 

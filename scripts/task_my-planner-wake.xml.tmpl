@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  my-planner-wake: wakes the laptop 5 minutes before each run time (spec 5.1, S4) and does nothing.
+  scripts/register_task.ps1 fills the placeholders. The trigger list is one
+  task_my-planner-wake_trigger.xml.tmpl per line of `python -m my_planner.wake_times`.
+  S4: wake timers worked on AC power only; on battery the power plan's "Allow wake timers" decides.
+  Keep this file ASCII.
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>{{USER}}</Author>
+    <Description>my-planner wake timer (no-op)</Description>
+  </RegistrationInfo>
+  <Triggers>
+{{WAKE_TRIGGERS}}
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{{USER}}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>true</WakeToRun>
+    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{{PYTHONW}}</Command>
+      <Arguments>-c pass</Arguments>
+    </Exec>
+  </Actions>
+</Task>

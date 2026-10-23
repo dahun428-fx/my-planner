@@ -572,3 +572,55 @@ def test_backup_clears_leftover_tmp_files(tmp_path, conn, state):
     copy = sqlite3.connect(backups / "planner-2026-10-23.db")
     assert copy.execute("PRAGMA quick_check").fetchone() == ("ok",)
     copy.close()
+
+
+def _resume_runner(tmp_path, conn, state, clock, sleeps):
+    """`sleeps`초씩 차례로 잔다(시계를 그만큼 움직인다). 목록이 끝나면 멈춘다."""
+
+    class Stop(Exception):
+        pass
+
+    left = list(sleeps)
+
+    async def sleep(s):
+        if not left:
+            raise Stop
+        clock.advance(seconds=left.pop(0))
+
+    resumed = []
+
+    async def on_resume():
+        resumed.append(clock.now())
+
+    runner = Runner(
+        clock=clock, settings=make_settings(tmp_path), runs=RunsRepo(conn, clock), state=state,
+        dispatcher=FakeDispatcher(), sleep=sleep, on_resume=on_resume,
+    )
+    return runner, resumed, Stop
+
+
+async def test_resume_detected_after_gap_calls_on_resume(tmp_path, conn, state, caplog):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    # 1분 tick 한 번, 절전 40분 뒤 복귀, 다시 1분 tick
+    runner, resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [60, 40 * 60, 60])
+    runner.tick()  # 시작 순서의 첫 tick
+    with caplog.at_level("INFO"), pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+
+    assert resumed == [kst(2026, 10, 26, 14, 41)]  # 공백이 3분을 넘은 tick에서 한 번만
+    assert from_iso(state.get("last_seen_at")) == kst(2026, 10, 26, 14, 42)  # tick은 그대로 돈다
+    records = [r for r in caplog.records if r.message == "resume_detected"]
+    assert [r.gap_seconds for r in records] == [40 * 60]
+
+
+async def test_first_tick_after_start_does_not_call_on_resume(tmp_path, conn, state):
+    clock = FakeClock(kst(2026, 10, 26, 14, 0))
+    state.set("installed_at", to_iso(kst(2026, 10, 20, 12, 0)))
+    state.set("last_seen_at", to_iso(kst(2026, 10, 26, 12, 0)))  # 꺼져 있던 2시간
+    # 시작 순서의 첫 tick이 따로 불리지 않아도, 이 프로세스의 첫 tick은 따라잡기만 한다
+    runner, resumed, Stop = _resume_runner(tmp_path, conn, state, clock, [60, 60])
+    with pytest.raises(Stop):
+        await runner.run_forever(interval=60)
+
+    assert resumed == []
+    assert from_iso(state.get("last_seen_at")) == kst(2026, 10, 26, 14, 2)

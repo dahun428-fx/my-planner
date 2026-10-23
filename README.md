@@ -66,6 +66,39 @@ OWNER_TELEGRAM_ID=...
 
 설정값(회차 시각, 상한, 보관 기간)은 `config.toml`에 있습니다. 개인값은 넣지 않습니다.
 
+## 늘 켜 두기 (작업 스케줄러)
+
+콘솔 없이 늘 돌게 하려면 작업 스케줄러에 등록합니다. 관리자 권한은 필요 없습니다. 등록 스크립트와 점검 스크립트는 `.env`를 읽거나 비밀값을 출력하지 않습니다.
+
+**등록**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
+```
+
+- 상시 작업 `my-planner`: 로그온할 때, 절전에서 깨어날 때, 그리고 5분마다(워치독) `pythonw -m my_planner`를 띄웁니다. 이미 실행 중이면 아무 일도 하지 않으니 중복으로 뜨지 않습니다. 프로세스가 죽으면 5분 안에 워치독이 다시 띄웁니다. 배터리에서도 돌고, 시간 제한이 없습니다.
+- 깨우기 작업 `my-planner-wake`: 회차 시각 5분 전(기본값이면 평일 08:55·17:25, 주말 09:55·17:55)에 노트북을 절전에서 깨웁니다. 하는 일은 없습니다(`pythonw -c pass`). 시각은 `config.toml`에서 계산합니다. **회차 시각을 바꾸면 등록 스크립트를 다시 실행합니다.**
+- 저장소가 다른 폴더에 있으면 `-Root D:\my-planner`, 깨우기 작업 없이 등록하려면 `-NoWake`를 붙입니다.
+- 등록한 XML은 `state\tasks\`에 남습니다.
+
+**깨우기는 AC 전원에서만 확인했습니다(S4).** 이 노트북의 전원 옵션은 배터리에서 "절전 모드 해제 타이머 허용"이 꺼져 있어서, 전원 케이블을 뽑아 두면 깨우지 못합니다. 그래도 다음에 켜질 때 따라잡기로 알맞게 보냅니다. 배터리에서도 깨우려면 제어판 > 전원 옵션 > 설정 변경 > 고급 전원 관리 옵션 변경 > 절전 > 절전 모드 해제 타이머 허용 > 배터리 사용을 "사용"으로 바꿉니다(비서는 이 설정을 바꾸지 않습니다). 덮개를 닫은 상태는 아직 확인하지 않았습니다.
+
+**점검**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1
+```
+
+설정마다 한 줄씩 `OK` 또는 `FAIL`이 나옵니다. `FAIL`이 하나라도 있으면 종료 코드가 1입니다. `-NoWake`로 등록했으면 점검에도 `-NoWake`를 붙입니다. 시작·절전 복귀 기록은 `state\logs\my-planner.jsonl`의 `starting`, `resume_detected`, `polling_restarted`에서 볼 수 있습니다.
+
+**지우기**
+
+```powershell
+Stop-ScheduledTask -TaskName my-planner
+Unregister-ScheduledTask -TaskName my-planner -Confirm:$false
+Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
+```
+
 ## 데이터는 어디에 남나요
 
 | 위치 | 내용 |

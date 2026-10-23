@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DRAFT_EXPIRE_DAYS = 3
+RESUME_GAP = timedelta(minutes=3)  # 직전 tick과 이보다 멀면 절전에서 깨어난 것으로 본다(스펙 7, S5)
 
 
 def _due(run: Run) -> Due:
@@ -212,6 +213,7 @@ class Runner:
         router: ConversationRouter | None = None,
         loops: frozenset[LoopKey] = ENABLED_LOOPS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        on_resume: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.clock = clock
         self.router = router
@@ -222,6 +224,8 @@ class Runner:
         self.loops = loops
         self._daily: list[Callable[[date], None]] = []
         self._sleep = sleep
+        self._on_resume = on_resume
+        self._ticked = False  # 이 프로세스에서 tick을 한 번이라도 했는가
 
     def register_daily(self, job: Callable[[date], None]) -> None:
         """하루 한 번 작업. 논리적 날짜가 바뀐 뒤 첫 tick 끝에서 등록 순서대로 부른다."""
@@ -270,12 +274,34 @@ class Runner:
         """`interval`초마다 tick한다. 첫 tick은 시작 순서(스펙 5.1 6단계)에서 따로 부른다."""
         while True:
             await self._sleep(interval)
+            await self._resume_if_slept()
             try:
                 self.tick()
             except Exception:  # tick 하나가 안 돼도 루프는 계속 돈다
                 log.exception("tick_error")
 
+    async def _resume_if_slept(self) -> None:
+        """tick을 시작할 때 이전 `last_seen_at`과 지금의 차이가 3분을 넘으면 `on_resume`을 부른다(폴링 재시작).
+
+        프로세스를 시작한 뒤 첫 tick에는 부르지 않는다(첫 tick은 따라잡기만 한다). R1(24시간 이상)과 따로다:
+        따라잡기 판정은 tick이 그대로 한다. 시계가 뒤로 갔으면(차이가 음수) 부르지 않는다.
+        """
+        if self._on_resume is None or not self._ticked:
+            return
+        last_seen = self._get_time("last_seen_at")
+        if last_seen is None:
+            return
+        gap = self.clock.now() - last_seen
+        if gap <= RESUME_GAP:
+            return
+        log.info("resume_detected", extra={"gap_seconds": int(gap.total_seconds())})
+        try:
+            await self._on_resume()
+        except Exception:  # 폴링을 다시 시작하지 못해도 tick은 돈다. 다음 복귀 때 다시 해 본다
+            log.exception("resume_error")
+
     def tick(self) -> None:
+        self._ticked = True
         s = self.settings
         tz, boundary = s.timezone, s.day_boundary
         # 1. 지금과 이전 last_seen_at

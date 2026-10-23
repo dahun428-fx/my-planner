@@ -457,3 +457,26 @@ def test_damaged_pages_fail_quick_check_and_enter_safe_mode(started, monkeypatch
     assert bot.sent == [(42, INTEGRITY_NOTICE)]
     assert calls == [("serving", None)]
     assert "db_integrity_failed" in [e["msg"] for e in _log_entries(root)]
+
+
+def test_resume_restarts_polling(started, monkeypatch):
+    app, root, calls = started
+    runners = []
+    real_init = app.Runner.__init__
+
+    def spy_init(self, **kw):
+        real_init(self, **kw)
+        runners.append(self)
+
+    async def resume_then_stop():  # 폴링 중에 러너가 절전 복귀를 알린다
+        await runners[0]._on_resume()
+
+    monkeypatch.setattr(app.Runner, "__init__", spy_init)
+    monkeypatch.setattr(app, "_wait_for_shutdown", resume_then_stop)
+    assert app.main() == 0
+
+    names = [c[0] for c in calls]
+    assert names[:6] == ["app.initialize", "app.start", "start_polling", "updater.stop", "start_polling", "updater.stop"]
+    polling = {"allowed_updates": ["message", "callback_query"], "drop_pending_updates": False}
+    assert calls[2][1] == polling and calls[4][1] == polling
+    assert any(e["msg"] == "polling_restarted" for e in _log_entries(root))

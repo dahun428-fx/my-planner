@@ -60,6 +60,8 @@ INTEGRITY_NOTICE = "데이터베이스에 문제가 있어요. 최신 백업으�
 BACKUPS_DIR = "backups"
 SHUTDOWN_TIMEOUT_S = 30
 
+ALLOWED_UPDATES = ["message", "callback_query"]
+
 EXIT_OK = 0
 EXIT_FATAL = 1
 EXIT_BAD_SETTINGS = 2
@@ -208,8 +210,17 @@ async def _serve(settings: Settings) -> None:
             data_dir=paths.data_dir,
             keep_awake=keep_awake,
         )
+
+        async def restart_polling() -> None:
+            # 절전 복귀(직전 tick과 3분 넘게 차이, S5): 롱폴링을 다시 시작한다. 공백(초)은 러너가 로그에 남긴다.
+            # `application`은 아래에서 만든다. 러너는 폴링을 시작한 뒤의 tick에서만 이 함수를 부른다
+            await application.updater.stop()
+            await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
+            log.info("polling_restarted")
+
         runner = Runner(
-            clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router
+            clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
+            on_resume=restart_polling,
         )
         runner.register_daily(expire_drafts(tasks, clock))  # 3일 지난 초안은 조용히 dropped
         runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
@@ -245,9 +256,7 @@ async def _serve(settings: Settings) -> None:
                 runner.tick()
             except Exception:  # 첫 tick이 안 돼도 폴링과 1분 tick은 시작한다
                 log.exception("tick_error")
-            await application.updater.start_polling(
-                allowed_updates=["message", "callback_query"], drop_pending_updates=False
-            )
+            await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
             log.info("polling_started")
             ticking = asyncio.create_task(runner.run_forever(), name="runner")
             try:

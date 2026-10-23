@@ -7,8 +7,8 @@ import contextlib
 import itertools
 import logging
 import time
-from collections.abc import Awaitable, Callable, Iterable
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -132,6 +132,40 @@ def rate_limit_notice(resume: str) -> str:
     return f"지금은 Claude 사용 한도에 닿았어요. {resume}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요."
 
 
+class _AwakeRefs:
+    """주입받은 `keep_awake`를 참조 카운트로 잡는다(스펙 5.1 "절전 방지").
+
+    0→1에서 한 번 잡고, 마지막 holder가 놓을 때 한 번 푼다. 그때 큐에 일이 남아 있으면(회차를 처리하는 동안
+    메시지가 들어왔으면) 바로 풀지 않고 이어 잡아 두었다가, 큐가 비면 작업자가 `settle()`로 푼다.
+    """
+
+    def __init__(self, factory: Callable[[], AbstractContextManager[Any]], more_work: Callable[[], bool]) -> None:
+        self._factory = factory
+        self._more_work = more_work
+        self._refs = 0
+        self._held: AbstractContextManager[Any] | None = None
+
+    @contextmanager
+    def hold(self) -> Iterator[None]:
+        if self._held is None:
+            cm = self._factory()
+            cm.__enter__()
+            self._held = cm
+        self._refs += 1
+        try:
+            yield
+        finally:
+            self._refs -= 1
+            if self._refs == 0 and not self._more_work():
+                self.settle()
+
+    def settle(self) -> None:
+        """아무도 잡고 있지 않으면 푼다."""
+        if self._refs == 0 and self._held is not None:
+            cm, self._held = self._held, None
+            cm.__exit__(None, None, None)
+
+
 class Dispatcher:
     """작업자 하나가 `asyncio.PriorityQueue`에서 하나씩 꺼내 직렬로 처리한다."""
 
@@ -165,9 +199,9 @@ class Dispatcher:
         self.runs = runs
         self.conditions = conditions
         self.data_dir = data_dir
-        self._keep_awake = keep_awake
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
+        self._awake = _AwakeRefs(keep_awake, lambda: not self._queue.empty())
         self._seq = itertools.count()
         self._worker: asyncio.Task[None] | None = None
         self._timers: set[asyncio.Task[None]] = set()
@@ -238,7 +272,15 @@ class Dispatcher:
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:
+        try:
+            await self._work_loop()
+        finally:
+            self._awake.settle()  # 멈출 때 이어 잡아 둔 절전 방지를 푼다
+
+    async def _work_loop(self) -> None:
         while True:
+            if self._queue.empty():
+                self._awake.settle()  # 이어 잡아 둔 것은 큐가 비면 푼다
             _, _, item = await self._queue.get()
             if item is None:
                 return
@@ -315,7 +357,7 @@ class Dispatcher:
 
         run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
         body = _join(self._recorded_condition(), f"## 메시지\n{text}")
-        with self._keep_awake():
+        with self._awake.hold():
             fell_back = False
             for m in batch:
                 self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
@@ -501,7 +543,7 @@ class Dispatcher:
         run, merged = live[0], live[1:]
         if merged:  # 합쳐진 회차는 실행된 회차의 merged_run_ids에 기록한다(스펙 5.4 "합치기")
             runs.add_merged(run.id, [r.id for r in merged])
-        with self._keep_awake():
+        with self._awake.hold():
             # (a) 두뇌 호출 → 보낼 본문을 outbound_text에 저장. 예외가 나도 회차를 running에 두지 않는다.
             try:
                 prepared = await self._prepare_run(run, merged)
@@ -720,7 +762,7 @@ class Dispatcher:
             log.info("resend_skipped_outside_reply_window", extra={"run_id": run.id})
             return
         conv = self.convs.get(run.conversation_id) if run.conversation_id is not None else None
-        with self._keep_awake():
+        with self._awake.hold():
             out = Outbound(
                 text=run.outbound_text,
                 draft_conversation_id=run.conversation_id if job.draft_task_ids else None,
