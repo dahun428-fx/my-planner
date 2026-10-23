@@ -120,3 +120,16 @@ def test_sunday_has_review_at_1800(cfg):
         Due(LoopKey.evening_checkin, kst(2026, 10, 25, 18, 0)),
         Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week),
     ]
+
+
+def test_review_week_day_must_be_sunday(tmp_path):
+    # 회고 주 계산(이번 회고 주 = 회고 날짜가 든 ISO 주, 다음 주 = 그다음 주)은 일요일 회고만 맞다
+    from datetime import time
+
+    from pydantic import ValidationError
+
+    from my_planner.config import ReviewSchedule, ScheduleConfig, WeeklyTime
+
+    with pytest.raises(ValidationError):
+        make_settings(tmp_path, schedule=ScheduleConfig(review=ReviewSchedule(week=WeeklyTime(day="mon", time=time(18, 0)))))
+    assert make_settings(tmp_path).schedule.review.week.day == "sun"

@@ -1,5 +1,7 @@
 """디스패처: 일요일 주간 회고를 저녁 체크인에 합쳐 실행, 회고 저장 (스펙 5.3, 5.4)."""
 
+from datetime import timedelta
+
 from fakes import FakeTurn
 from test_dispatcher_messages import Env, kst
 
@@ -196,3 +198,54 @@ def test_review_prompt_covers_week_without_banned_words():
         assert must in text, must
     for word in ("놓쳤어요", "밀렸어요", "늦었지만", "실패"):
         assert word not in text, word
+
+
+async def test_reply_monday_morning_continues_merged_review_conversation(tmp_path, conn, state):
+    # 일 18:10 저녁+회고 합쳐 보냄 → 월 09:00 답장. 저녁 창(월 04:00)은 지났지만 회고 창(24시간, 월 18:00) 안이라
+    # 같은 run 대화로 잇는다. 창은 primary와 merged_run_ids 가운데 가장 늦은 끝이다
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], REVIEW_REPLY, session_id="rev-s"), FakeTurn([], "좋아요, 그걸로 정할게요.", session_id="rev-s"),
+         FakeTurn([], "새 대화", session_id="chat-s")],
+        start=kst(2026, 10, 25, 18, 10),
+    )
+    eve, review = _queued_sunday(env)
+    await env.process_run(eve, [review])
+    run_conv = env.runs.get(eve.id).conversation_id
+
+    env.clock.set(kst(2026, 10, 26, 9, 0))
+    await env.process(env.inbound("이걸로 해", update_id=1))
+    assert env.brain.session_ids[1] == "rev-s"
+    assert env.brain.calls[1]["run_ctx"].conversation_id == run_conv
+
+    env.clock.set(kst(2026, 10, 25, 18, 0) + timedelta(hours=24, minutes=1))  # 회고 창 밖
+    await env.process(env.inbound("다른 얘기", update_id=2))
+    assert env.brain.session_ids[2] is None
+
+
+def _review_at(env, at):
+    review = env.runs.ensure(LoopKey.review, at, Cadence.week)
+    env.runs.mark_queued(review.id)
+    return env.runs.get(review.id)
+
+
+async def test_review_week_at_iso_year_start(tmp_path, conn, state):
+    # 2026-01-04(일)은 ISO 2026-W01(2025-12-29~2026-01-04)
+    at = kst(2026, 1, 4, 18, 0)
+    env = _env(tmp_path, conn, state, [FakeTurn([], REVIEW_REPLY)], start=at + timedelta(minutes=10))
+    await env.process_run(_review_at(env, at))
+
+    note = env.brain.prompts[0][env.brain.prompts[0].index("## 회고 주\n"):]
+    assert "2026-W01 (12/29~1/4)" in note and "2026-W02 (1/5~1/11)" in note
+    assert _review_file(env, "2026-W01").exists()
+
+
+async def test_review_week_53(tmp_path, conn, state):
+    # 2027-01-03(일)은 ISO 2026-W53. 다음 주는 2027-W01
+    at = kst(2027, 1, 3, 18, 0)
+    env = _env(tmp_path, conn, state, [FakeTurn([], REVIEW_REPLY)], start=at + timedelta(minutes=10))
+    await env.process_run(_review_at(env, at))
+
+    note = env.brain.prompts[0][env.brain.prompts[0].index("## 회고 주\n"):]
+    assert "2026-W53 (12/28~1/3)" in note and "2027-W01 (1/4~1/10)" in note
+    assert _review_file(env, "2026-W53").exists()
