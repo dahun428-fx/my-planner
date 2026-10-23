@@ -462,7 +462,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_add_task_creates_open_task_and_exports`: 결과에 id가 있고, `tasks.md`에 제목이 있고, `tool_events_log`에 행이 있다
 - [ ] `test_add_task_bad_area_returns_error_dict`, `test_add_task_requires_area`, `test_title_length_limits` (빈 문자열, 201자)
 - [ ] `test_complete_then_reopen_clears_completed_at`: `list_tasks(status=done)` 결과로 확인한다
-- [ ] `test_move_task_to_no_date`: `planned_for=None` → 결과의 `planned_for`가 null, 확인 문구는 `✓ 옮김: 운동 → 날짜 없음`
+- [ ] `test_move_task_to_no_date`: `planned_for=None` → 결과의 `planned_for`가 null
 - [ ] `test_list_tasks_limit_capped_at_50`, `test_list_excludes_soft_deleted`, `test_parent_must_exist`
 - [ ] `test_read_transcript_more_than_7_days_returns_error`
 - [ ] `test_two_servers_keep_separate_contexts`
@@ -470,6 +470,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 확인 문구 (디스패처 경계, FakeClock 2026-10-24, Sender가 받은 본문으로 확인)
 - [ ] `test_confirmation_add_with_schedule`: FakeBrain이 10/25 14:00 치과를 `add_task` → `✓ 추가: 치과 (10/25 14:00)`
 - [ ] `test_confirmation_move_to_tomorrow`: `✓ 옮김: 운동 → 내일`
+- [ ] `test_confirmation_move_to_no_date`: `✓ 옮김: 운동 → 날짜 없음`
 - [ ] `test_no_tool_calls_no_confirmation_block`: 도구 호출이 없으면 답 뒤에 빈 줄도 붙지 않는다
 - [ ] `test_confirmations_have_no_banned_words`: 이벤트 종류마다 하나씩 부르고 본문에 금지어가 없다
 
@@ -554,7 +555,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 
 `schedule.py`
 - `@dataclass(frozen=True) Due(loop, scheduled_for, cadence=Cadence.day)`
-- `due_between(start, end, cfg, tz) -> list[Due]`: `(start, end]` 구간, 시간순.
+- `due_between(start, end, cfg, tz, loops: set[LoopKey]) -> list[Due]`: `(start, end]` 구간, 시간순, `loops`에 든 루프만. 앱이 켜는 루프는 05에서 `{morning_brief}`, 07에서 `evening_checkin`, 08에서 `review`를 더한다(`ENABLED_LOOPS` 상수). 프롬프트가 없는 루프가 실행되지 않게 하려는 것이다. 테스트는 모든 루프를 켜고 부른다.
 - `window_start(now, last_seen_at, installed_at) = min(now, max(last_seen_at, installed_at, now - 7일))`
 - `limit_for(due, cfg, tz, boundary)`, `reply_window_end(due, tz, boundary)`
 
@@ -914,7 +915,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_backup_name_and_keeps_14`: 15일 연속 tick → 14개가 남고, 이름은 `planner-2026-10-23.db` 형식
 
 앱 시작과 운영 산출물
-- [ ] `test_logging_rotates_and_keeps_30_days`: FakeClock으로 31일 → 로그 파일 30개
+- [ ] `test_log_cleanup_keeps_30_days`: 날짜별 로그 파일 31개를 만들어 두고 `register_daily`에 등록한 로그 정리 작업을 한 번 돌리면 최근 30개가 남는다(회전 자체는 표준 핸들러에 맡긴다)
 
 디스패처
 - [ ] `test_startup_marks_queued_and_running_as_interrupted`
