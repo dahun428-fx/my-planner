@@ -80,7 +80,8 @@ class _CrashAfterTool:
     async def run(self, prompt, *, session_id, run_ctx):
         import asyncio
 
-        self.tools.add_task(run_ctx, title="보고서 목차 쓰기", areas=["career"])
+        if self.tools is not None:
+            self.tools.add_task(run_ctx, title="보고서 목차 쓰기", areas=["career"])
         self.called = True
         await asyncio.Event().wait()
 
@@ -367,3 +368,80 @@ async def test_resend_on_start_skips_drafts_already_confirmed(tmp_path, conn, st
 
     assert [o.draft_task_ids for o in second.sender.sent] == [[ids[1]]]
     assert second.runs.get(run.id).status is RunStatus.done
+
+
+# --- 넘겨 받은 회고는 크래시 뒤에도 혼자 실행하지 않는다 ---
+
+
+async def test_carried_review_never_runs_alone_after_crash(tmp_path, conn, state):
+    # 화 17:30 저녁 체크인에 넘겨 받은 회고(일 18:00)를 합쳐 실행하다 멈췄다. 수 05:00에 다시 시작하면
+    # 저녁 체크인은 한계(04:00) 밖, 회고는 +3일(수 18:00) 안이다
+    from test_dispatcher_runs import _wait_for
+
+    from my_planner.loop.runner import CARRY_REVIEW_KEY, Runner
+
+    tue_1730 = kst(2026, 10, 27, 17, 30)
+    first = _env(tmp_path, conn, state, start=tue_1730 + timedelta(minutes=1))
+    first.dispatcher.brain = crashing = _CrashAfterTool(first.tools)
+    crashing.tools = None  # 도구는 부르지 않고 멈춘다
+    state.set("installed_at", to_iso(tue_1730 - timedelta(days=30)))
+    state.set("last_seen_at", to_iso(tue_1730 - timedelta(minutes=1)))
+    review = first.runs.ensure(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    state.set(CARRY_REVIEW_KEY, str(review.id))
+
+    runner = Runner(clock=first.clock, settings=first.settings, runs=first.runs, state=state, dispatcher=first.dispatcher)
+    runner.tick()  # 저녁 체크인 + 넘겨 받은 회고
+    first.dispatcher.start()
+    await _wait_for(lambda: crashing.called)
+    await first.dispatcher.stop(timeout=0.01)
+    evening = next(r for r in first.runs.with_status(RunStatus.running))
+    assert evening.loop is LoopKey.evening_checkin and evening.merged_run_ids == [review.id]
+
+    second = _env(tmp_path, conn, state, start=kst(2026, 10, 28, 5, 0))
+    _recover(second)
+    assert second.runs.get(review.id).status is RunStatus.pending
+    assert state.get(CARRY_REVIEW_KEY) == str(review.id)
+
+    capture = _Capture()
+    _tick(second, capture)
+    assert capture.submitted == []  # 혼자 실행하지 않는다
+    second.clock.set(kst(2026, 10, 28, 9, 0) + timedelta(seconds=30))
+    state.set("last_seen_at", to_iso(second.clock.now() - timedelta(minutes=1)))
+    _tick(second, capture)
+    assert capture.submitted == [(LoopKey.morning_brief, [LoopKey.review], [review.id])]  # 다음 연락에 합친다
+
+
+async def test_carry_mark_cleared_when_merged_job_done(tmp_path, conn, state):
+    from my_planner.loop.runner import CARRY_REVIEW_KEY
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], CHECKIN)], start=kst(2026, 10, 27, 17, 31))
+    evening = env.runs.ensure(LoopKey.evening_checkin, kst(2026, 10, 27, 17, 30))
+    review = env.runs.ensure(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    for r in (evening, review):
+        env.runs.mark_queued(r.id)
+    state.set(CARRY_REVIEW_KEY, str(review.id))
+    env.dispatcher.start()
+    env.dispatcher.submit_run(env.runs.get(evening.id), [env.runs.get(review.id)], carried_ids=[review.id])
+    await env.dispatcher.stop(timeout=5)
+
+    assert env.runs.get(review.id).status is RunStatus.done
+    assert state.get(CARRY_REVIEW_KEY) is None
+
+
+async def test_carry_mark_cleared_when_skipped_with_late_primary(tmp_path, conn, state):
+    from my_planner.domain import SkipReason
+    from my_planner.loop.runner import CARRY_REVIEW_KEY
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], CHECKIN)], start=kst(2026, 10, 28, 4, 1))  # 저녁 한계가 지났다
+    evening = env.runs.ensure(LoopKey.evening_checkin, kst(2026, 10, 27, 17, 30))
+    review = env.runs.ensure(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    for r in (evening, review):
+        env.runs.mark_queued(r.id)
+    state.set(CARRY_REVIEW_KEY, str(review.id))
+    env.dispatcher.start()
+    env.dispatcher.submit_run(env.runs.get(evening.id), [env.runs.get(review.id)], carried_ids=[review.id])
+    await env.dispatcher.stop(timeout=5)
+
+    assert env.runs.get(review.id).skip_reason is SkipReason.late  # 승격하지 않고 같이 late
+    assert env.brain.calls == []
+    assert state.get(CARRY_REVIEW_KEY) is None

@@ -237,7 +237,7 @@ def test_r1_carried_review_merges_into_next_contact(tmp_path, conn, state):
     assert run.loop is LoopKey.morning_brief
     assert [m.id for m in merged] == [review.id]
     assert env.runs.get(review.id).status is RunStatus.queued
-    assert state.get("carry_review_run_id") is None
+    assert state.get("carry_review_run_id") == str(review.id)  # 합친 작업이 끝날 때까지 표시를 둔다
     assert env.dispatcher.carried == [[], [review.id]]  # 디스패처가 승격하지 않도록 표시해 넘긴다
 
 

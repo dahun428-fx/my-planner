@@ -152,10 +152,14 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
     # 그렇지 않으면 표시를 지운다
     carried = dispatcher.state.get(CARRY_REVIEW_KEY)
     carried_id = int(carried) if carried else None
+    # 합쳐진 멤버여도 같다(러너는 합칠 때 표시를 지우지 않는다). primary를 다시 실행하든 아니든 회고는 빼서
+    # pending으로 되돌린다. primary 본문을 다시 보내는 경우(resend)는 회고도 그 본문에 들어 있으니 따라가고,
+    # 보내면 디스패처가 표시를 지운다
     if carried_id in fate:
-        if fate[carried_id] in ("rerun", "pending"):
+        f = fate[carried_id]
+        if f in ("rerun", "pending"):
             fate[carried_id] = "carry"
-        else:
+        elif f != "resend":
             dispatcher.state.set(CARRY_REVIEW_KEY, None)
 
     reruns: list[Run] = []
@@ -314,10 +318,10 @@ class Runner:
                 if run.status is not RunStatus.pending:
                     continue
             self.runs.mark_skipped(run.id, reason)
-        if carried_due is not None and (
-            carried_due in decision.merged or any(d == carried_due for d, _ in decision.skipped)
-        ):
-            self.state.set(CARRY_REVIEW_KEY, None)  # 합쳐졌거나 late가 됐다
+        if carried_due is not None and any(d == carried_due for d, _ in decision.skipped):
+            self.state.set(CARRY_REVIEW_KEY, None)  # late가 됐다
+        # 합쳐졌으면 표시를 둔다: 그 작업이 끝날 때(보냄, 같이 건너뜀) 디스패처가 지운다. 도중에 멈춰도
+        # 시작 시 복구가 표시를 보고 회고를 넘겨 받은 회고로 되돌린다(혼자 실행하지 않는다)
         if decision.carry_review is not None:
             self.state.set(CARRY_REVIEW_KEY, str(by_due[decision.carry_review].id))
         if decision.primary is not None:
