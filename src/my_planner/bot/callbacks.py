@@ -1,11 +1,14 @@
 """인라인 버튼 누름 (스펙 5.7). 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다.
 
-콜백 데이터: `d:c:<task_id>`(추가), `d:x:<task_id>`(빼기), `d:all:<conversation_id>`(전부 추가).
+콜백 데이터: `d:c:<task_id>`(추가), `d:x:<task_id>`(빼기), `d:all:<conversation_id>`(전부 추가),
+`c:<YYYY-MM-DD>:<1-5>`(그 날짜의 컨디션. 지난 날짜의 버튼도 그 날짜에 기록한다).
 """
 
 from __future__ import annotations
 
 import logging
+import re
+from datetime import date
 from typing import Literal
 
 from telegram import CallbackQuery
@@ -18,9 +21,10 @@ from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
 
-CallbackResult = Literal["confirmed", "dropped", "stale", "ignored", "unknown"]
+CallbackResult = Literal["confirmed", "dropped", "recorded", "stale", "ignored", "unknown"]
 
 STALE_REPLY = "이미 정리된 할 일이에요."
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def _parse(data: str | None) -> tuple[str, int] | None:
@@ -29,6 +33,23 @@ def _parse(data: str | None) -> tuple[str, int] | None:
     if len(parts) == 3 and parts[0] == "d" and parts[1] in ("c", "x", "all") and parts[2].isdigit():
         return parts[1], int(parts[2])
     return None
+
+
+def _parse_condition(data: str | None) -> tuple[date, int] | None:
+    """`c:2026-10-23:4` → (date(2026, 10, 23), 4). 모르는 모양이면 None."""
+    parts = (data or "").split(":")
+    if len(parts) != 3 or parts[0] != "c" or parts[2] not in ("1", "2", "3", "4", "5"):
+        return None
+    if not _ISO_DATE.fullmatch(parts[1]):  # fromisoformat은 20261023, 2026-W43-5도 받는다
+        return None
+    try:
+        return date.fromisoformat(parts[1]), int(parts[2])
+    except ValueError:
+        return None
+
+
+def condition_reply(score: int) -> str:
+    return f"컨디션 {score} 기록했어요."
 
 
 async def handle_callback(
@@ -50,6 +71,15 @@ async def handle_callback(
             # 사용자가 아니면 아무것도 바꾸지 않는다. 발신자 ID만 남긴다(본문, 이름 없이).
             log.info("callback_ignored", extra={"from_id": query.from_user.id if query.from_user else None})
             return "ignored"
+        if (cond := _parse_condition(query.data)) is not None:
+            d, score = cond
+            out = tools.record_condition(RunContext(conversation_id=None, run_id=None), score=score, date=d.isoformat())
+            if "error" in out:
+                log.info("callback_condition_error")
+                return "unknown"
+            _transcript(transcripts, clock, f"[버튼] 컨디션 {score}")
+            reply = condition_reply(score)
+            return "recorded"
         parsed = _parse(query.data)
         if parsed is None:
             log.info("callback_unknown")
@@ -79,13 +109,18 @@ async def handle_callback(
             reply = render_confirmations(ctx.events, tools.today()) or None
         log.info("callback_handled", extra={"action": action, "task_ids": ids})
         if lines:
-            try:
-                transcripts.append(clock.now(), "사용자", None, None, "\n".join(lines))
-            except OSError as e:
-                log.warning("callback_transcript_failed", extra={"error_type": type(e).__name__})
+            _transcript(transcripts, clock, "\n".join(lines))
         return result
     finally:
         await _answer(query, reply)
+
+
+def _transcript(transcripts: TranscriptStore, clock: Clock, text: str) -> None:
+    """버튼은 대화 밖이라 `[-]`로 남긴다. 기록이 안 돼도 상태는 이미 바뀌었으니 넘어간다."""
+    try:
+        transcripts.append(clock.now(), "사용자", None, None, text)
+    except OSError as e:
+        log.warning("callback_transcript_failed", extra={"error_type": type(e).__name__})
 
 
 async def _answer(query: CallbackQuery, text: str | None) -> None:

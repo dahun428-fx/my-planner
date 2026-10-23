@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import date
 from typing import Literal, Protocol
 
 from telegram import (
@@ -225,6 +226,20 @@ def draft_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
+def condition_keyboard(d: date | None) -> list[list[InlineKeyboardButton]]:
+    """그날 컨디션 버튼 `1 2 3 4 5` 한 줄. 콜백 데이터 `c:<YYYY-MM-DD>:<1-5>`(그 날짜에 기록한다)."""
+    if d is None:
+        return []
+    return [[InlineKeyboardButton(str(n), callback_data=f"c:{d.isoformat()}:{n}") for n in range(1, 6)]]
+
+
+def message_keyboard(out: Outbound, titles: dict[int, str]) -> InlineKeyboardMarkup | None:
+    """메시지 아래 버튼: 초안 줄이 먼저, 그다음 컨디션 1~5 줄. 둘 다 없으면 None."""
+    drafts = draft_keyboard(out.draft_task_ids, out.draft_conversation_id, titles)
+    rows = [*(drafts.inline_keyboard if drafts else ()), *condition_keyboard(out.ask_condition_for)]
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
 class TelegramSender:
     """디스패처의 Sender. 앱보다 먼저 `telegram.Bot(token)`으로 만든 봇을 받는다.
 
@@ -243,7 +258,7 @@ class TelegramSender:
         return {t.id: t.title for t in found if t is not None}
 
     async def send(self, out: Outbound) -> None:
-        markup = draft_keyboard(out.draft_task_ids, out.draft_conversation_id, self._titles(out.draft_task_ids))
+        markup = message_keyboard(out, self._titles(out.draft_task_ids))
         parts = split_message(out.text)
         for n, part in enumerate(parts, start=1):
             last = n == len(parts)  # 버튼은 마지막 조각 아래에만

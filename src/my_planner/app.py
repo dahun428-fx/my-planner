@@ -35,6 +35,7 @@ from my_planner.platform.windows import (
     keep_awake,
 )
 from my_planner.store.db import migrate, open_db
+from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
@@ -109,6 +110,7 @@ async def _serve(settings: Settings) -> None:
         state = StateRepo(conn, clock)
         convs = ConversationsRepo(conn, clock)
         runs = RunsRepo(conn, clock)
+        conditions = ConditionsRepo(conn, clock)
         transcripts = TranscriptStore(paths.data_dir, settings.timezone, settings.day_boundary)
 
         # 4. Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
@@ -122,6 +124,7 @@ async def _serve(settings: Settings) -> None:
             clock=clock,
             tz=settings.timezone,
             boundary=settings.day_boundary,
+            conditions=conditions,
         )
         brain = ClaudeBrain(
             tools_factory=lambda: tools,
@@ -139,6 +142,7 @@ async def _serve(settings: Settings) -> None:
             router=ConversationRouter(convs, runs, clock=clock, settings=settings),
             tools=tools,
             runs=runs,
+            conditions=conditions,
             keep_awake=keep_awake,
         )
         runner = Runner(clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher)

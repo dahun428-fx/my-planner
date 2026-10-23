@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 MAX_WINDOW = timedelta(days=7)
 
 # 앱이 켜는 루프. 프롬프트가 있는 루프만 넣는다: 05 morning_brief, 07 evening_checkin, 08 review.
-ENABLED_LOOPS: frozenset[LoopKey] = frozenset({LoopKey.morning_brief})
+ENABLED_LOOPS: frozenset[LoopKey] = frozenset({LoopKey.morning_brief, LoopKey.evening_checkin})
 
 
 @dataclass(frozen=True)

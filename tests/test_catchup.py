@@ -6,7 +6,7 @@ from test_dispatcher_messages import kst
 
 from my_planner.domain import LoopKey, SkipReason
 from my_planner.loop.catchup import decide
-from my_planner.loop.schedule import Due, due_between, window_start
+from my_planner.loop.schedule import ENABLED_LOOPS, Due, due_between, window_start
 
 ALL_LOOPS = set(LoopKey)
 
@@ -16,9 +16,9 @@ def cfg(tmp_path):
     return make_settings(tmp_path)
 
 
-def _decide(cfg, last_tick, woke):
+def _decide(cfg, last_tick, woke, loops=ALL_LOOPS):
     start = window_start(woke, last_tick, last_tick)
-    pending = due_between(start, woke, cfg, cfg.timezone, ALL_LOOPS)
+    pending = due_between(start, woke, cfg, cfg.timezone, loops)
     return decide(woke, last_tick, pending, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary)
 
 
@@ -42,3 +42,17 @@ def test_limit_boundary_12_00_included(cfg):
     d = _decide(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 12, 0))
     assert d.primary == Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
     assert d.skipped == []
+
+
+def test_spec_table_row_3(cfg):
+    # 월 17:00 → 화 01:00: evening_checkin(월) 실행. 앱이 켜는 루프(ENABLED_LOOPS)로 판정한다
+    d = _decide(cfg, kst(2026, 10, 26, 17, 0), kst(2026, 10, 27, 1, 0), ENABLED_LOOPS)
+    assert d.primary == Due(LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30))
+    assert d.merged == [] and d.skipped == []
+
+
+def test_spec_table_row_4(cfg):
+    # 월 17:00 → 화 05:00: evening_checkin(월) skipped(late). 화 아침 브리핑은 09:00이라 아직 예정 전
+    d = _decide(cfg, kst(2026, 10, 26, 17, 0), kst(2026, 10, 27, 5, 0), ENABLED_LOOPS)
+    assert d.primary is None
+    assert d.skipped == [(Due(LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30)), SkipReason.late)]

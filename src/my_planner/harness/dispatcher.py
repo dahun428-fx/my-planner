@@ -10,11 +10,18 @@ import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Protocol
+from zoneinfo import ZoneInfo
 
 from my_planner.clock import Clock, logical_date
-from my_planner.domain import ConversationKind, LoopKey, RunContext, SkipReason
+from my_planner.domain import (
+    ConversationKind,
+    LoopKey,
+    RunContext,
+    RunStatus,
+    SkipReason,
+)
 from my_planner.harness import prompts
 from my_planner.harness.brain import Brain, BrainResult
 from my_planner.harness.context import build_notices, build_preamble
@@ -25,6 +32,7 @@ from my_planner.tools.confirmations import render_confirmations
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import Conversation, ConversationsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
@@ -70,6 +78,7 @@ class _ResendJob:
     merged: list[Run]
     tool_names: list[str]
     draft_task_ids: list[int] = field(default_factory=list)
+    ask_condition_for: date | None = None
 
 
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
@@ -111,6 +120,7 @@ class Dispatcher:
         router: ConversationRouter,
         tools: Tools | None = None,
         runs: RunsRepo | None = None,
+        conditions: ConditionsRepo | None = None,
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -124,6 +134,7 @@ class Dispatcher:
         self.router = router
         self.tools = tools
         self.runs = runs
+        self.conditions = conditions
         self._keep_awake = keep_awake
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
@@ -232,7 +243,7 @@ class Dispatcher:
         conv = self.router.for_user_message(batch[0].at)
 
         run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
-        body = f"## 메시지\n{text}"
+        body = _join(self._recorded_condition(), f"## 메시지\n{text}")
         with self._keep_awake():
             fell_back = False
             for m in batch:
@@ -317,7 +328,10 @@ class Dispatcher:
                 return
             for r in (run, *merged):
                 runs.mark_failed(r.id, "send")
-            self._later(RESEND_DELAY_S, _ResendJob(run, merged, tool_names, list(out.draft_task_ids)))
+            self._later(
+                RESEND_DELAY_S,
+                _ResendJob(run, merged, tool_names, list(out.draft_task_ids), out.ask_condition_for),
+            )
 
     async def _prepare_run(
         self, run: Run, merged: list[Run]
@@ -328,10 +342,11 @@ class Dispatcher:
         runs.mark_running(run.id)
         conv = self.router.for_run(run)
         runs.set_conversation(run.id, conv.id)
-        result, run_ctx = await self._run_brain(run, merged, conv)
+        ask = self._ask_condition_for(run, merged)
+        result, run_ctx = await self._run_brain(run, merged, conv, ask)
         if not _run_ok(result) and self._may_rerun(run, result):
             runs.mark_running(run.id)
-            result, run_ctx = await self._run_brain(run, merged, conv)
+            result, run_ctx = await self._run_brain(run, merged, conv, ask)
         if not _run_ok(result):
             # 사용자에게는 아무것도 보내지 않는다(스펙 5.4 재실행 규칙 4). 로그만 남긴다.
             for r in (run, *merged):
@@ -346,18 +361,68 @@ class Dispatcher:
         if confirmations:
             text = f"{text}\n\n{confirmations}"
         runs.save_outbound(run.id, text)
-        return conv, _outbound(text, run_ctx), list(run_ctx.tool_names)
+        out = _outbound(text, run_ctx)
+        out.ask_condition_for = ask
+        return conv, out, list(run_ctx.tool_names)
 
     async def _run_brain(
-        self, run: Run, merged: list[Run], conv: Conversation
+        self, run: Run, merged: list[Run], conv: Conversation, ask: date | None = None
     ) -> tuple[BrainResult, RunContext]:
-        """루프 지시문(합친 회차의 지시문을 뒤에 이어 붙임)과 앞머리로 새 세션을 연다."""
+        """루프 지시문(합친 회차의 지시문을 뒤에 이어 붙임)과 앞머리로 새 세션을 연다.
+
+        컨디션 버튼을 붙이는 회차면 두뇌가 알고 쓰도록 `## 컨디션 버튼`을 덧붙인다.
+        """
         run_ctx = RunContext(conversation_id=conv.id, run_id=run.id, events=[])
         prompt = _join(
             *(prompts.load(LOOP_PROMPTS[r.loop]) for r in (run, *merged)),
             self._preamble(False, merged=[m.loop.value for m in merged] or None),
+            _condition_buttons_note(ask),
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
+
+    def _ask_condition_for(self, run: Run, merged: list[Run] | None = None) -> date | None:
+        """컨디션 버튼의 날짜(스펙 5.4). 저녁 체크인은 그 회차의 논리적 날짜다.
+
+        저녁 체크인이 다른 회차(예: 일요일 회고)에 합쳐졌어도 그 저녁 체크인의 날짜를 쓴다.
+        """
+        if self.conditions is None:
+            return None
+        s = self.settings
+        for r in (run, *(merged or [])):
+            if r.loop is LoopKey.evening_checkin:
+                return logical_date(r.scheduled_for, s.timezone, s.day_boundary)
+        today = logical_date(run.scheduled_for, s.timezone, s.day_boundary)
+        if run.loop is LoopKey.morning_brief:
+            # 어제 기록이 없고 어제 저녁 체크인이 done이 아니면(늦음, 복귀 인사, 멈춤 등 이유와 상관없이) 어제를 묻는다
+            yesterday = today - timedelta(days=1)
+            if self.conditions.get(yesterday) is None and not self._evening_done(yesterday):
+                return yesterday
+        return None
+
+    def _recorded_condition(self) -> str:
+        """오늘과 어제(논리적 날짜) 기록된 컨디션. 버튼은 두뇌를 거치지 않으니 매 호출 메시지 앞에 알린다."""
+        if self.conditions is None:
+            return ""
+        today = self._today()
+        lines = []
+        for label, d in (("어제", today - timedelta(days=1)), ("오늘", today)):
+            c = self.conditions.get(d)
+            if c is not None:
+                lines.append(f"- {label}({d.month}/{d.day}): {c.score}/5")
+        return "## 기록된 컨디션\n" + "\n".join(lines) if lines else ""
+
+    def _evening_done(self, d: date) -> bool:
+        """그 논리적 날짜의 저녁 체크인 회차가 done인지. 회차가 없으면 done이 아니다."""
+        assert self.runs is not None
+        s = self.settings
+        start = datetime.combine(d, s.day_boundary, ZoneInfo(s.timezone))
+        runs = self.runs.between(start - timedelta(microseconds=1), start + timedelta(days=1))
+        return any(
+            r.loop is LoopKey.evening_checkin
+            and r.status is RunStatus.done
+            and logical_date(r.scheduled_for, s.timezone, s.day_boundary) == d
+            for r in runs
+        )
 
     def _may_rerun(self, run: Run, result: BrainResult) -> bool:
         """두뇌 단계 오류는 도구 이벤트가 하나도 없고 한계 안일 때만 한 번 다시 실행한다.
@@ -420,6 +485,7 @@ class Dispatcher:
                 text=run.outbound_text,
                 draft_conversation_id=run.conversation_id if job.draft_task_ids else None,
                 draft_task_ids=list(job.draft_task_ids),
+                ask_condition_for=job.ask_condition_for,
             )
             if await self._send_run(out, run.id, attempts=1) and conv is not None:
                 self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names)
@@ -513,6 +579,15 @@ def _outbound(text: str, run_ctx: RunContext) -> Outbound:
         draft_conversation_id=run_ctx.conversation_id if ids else None,
         draft_task_ids=ids,
     )
+
+
+def _condition_buttons_note(d: date | None) -> str:
+    if d is None:
+        return ""
+    return f"## 컨디션 버튼\n이 메시지 아래에 {d.month}/{d.day}({_WEEKDAY[d.weekday()]}) 컨디션 버튼(1~5)이 붙습니다."
+
+
+_WEEKDAY = "월화수목금토일"
 
 
 def _join(*parts: str) -> str:

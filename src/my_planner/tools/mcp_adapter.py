@@ -23,6 +23,7 @@ TOOL_NAMES: list[str] = [
     "drop_task",
     "set_priorities",
     "list_tasks",
+    "record_condition",
     "read_transcript",
 ]
 
@@ -138,6 +139,20 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50},
             },
             [],
+        ),
+    ),
+    "record_condition": (
+        (
+            "그날 컨디션을 1~5로 기록합니다. date를 안 주면 오늘(논리적 날짜)입니다. 같은 날 다시 기록하면 덮어씁니다. "
+            "사용자가 한 줄 메모를 말하면 note에 넣습니다. note를 안 주면 전에 남긴 메모는 그대로 둡니다."
+        ),
+        _schema(
+            {
+                "score": {"type": "integer", "minimum": 1, "maximum": 5},
+                "date": _DATE,
+                "note": {"type": ["string", "null"], "description": "한 줄 메모"},
+            },
+            ["score"],
         ),
     ),
     "read_transcript": (

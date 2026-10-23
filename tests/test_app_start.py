@@ -242,3 +242,21 @@ def test_app_wires_draft_buttons_and_daily_expiry(started, monkeypatch):
     assert callable(seen["callbacks"]) and seen["callbacks"].keywords["owner_id"] == 42
     assert "expire_drafts" in jobs
     assert senders[0].tasks is not None  # 초안 버튼에 제목을 붙인다
+
+
+def test_app_wires_conditions(started, monkeypatch):
+    from my_planner.store.repos.conditions import ConditionsRepo
+
+    app, _root, _calls = started
+    seen = {}
+    real_dispatcher = app.Dispatcher
+
+    def spy_dispatcher(**kw):
+        seen.update(kw)
+        return real_dispatcher(**kw)
+
+    monkeypatch.setattr(app, "Dispatcher", spy_dispatcher)
+    assert app.main() == 0
+
+    assert isinstance(seen["conditions"], ConditionsRepo)
+    assert seen["tools"].conditions is seen["conditions"]  # 도구(버튼)와 디스패처가 같은 표를 본다

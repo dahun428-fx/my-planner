@@ -13,7 +13,9 @@ from my_planner.tools.core import Tools
 
 
 class Env:
-    def __init__(self, tmp_path, conn, state, *, script, start, sender=None, with_tools=False):
+    def __init__(
+        self, tmp_path, conn, state, *, script, start, sender=None, with_tools=False, with_conditions=False
+    ):
         self.settings = make_settings(tmp_path)
         self.clock = FakeClock(start)
         self.sender = sender or FakeSender()
@@ -24,6 +26,13 @@ class Env:
             self.settings.paths.data_dir, self.settings.timezone, self.settings.day_boundary
         )
         self.tools = None
+        self.conditions = None
+        extra = {}
+        if with_conditions:
+            from my_planner.store.repos.conditions import ConditionsRepo
+
+            self.conditions = ConditionsRepo(conn, self.clock)
+            extra["conditions"] = self.conditions
         if with_tools:
             self.tools = Tools(
                 tasks=TasksRepo(
@@ -34,6 +43,7 @@ class Env:
                 clock=self.clock,
                 tz=self.settings.timezone,
                 boundary=self.settings.day_boundary,
+                conditions=self.conditions,
             )
         self.brain = FakeBrain(script, tools=self.tools, clock=self.clock)
         self.dispatcher = Dispatcher(
@@ -48,6 +58,7 @@ class Env:
             tools=self.tools,
             runs=self.runs,
             sleep=fake_sleep(self.clock),
+            **extra,
         )
 
     def inbound(self, text, update_id=1):
