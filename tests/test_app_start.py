@@ -260,3 +260,200 @@ def test_app_wires_conditions(started, monkeypatch):
 
     assert isinstance(seen["conditions"], ConditionsRepo)
     assert seen["tools"].conditions is seen["conditions"]  # 도구(버튼)와 디스패처가 같은 표를 본다
+
+
+def _daily_jobs(monkeypatch):
+    from my_planner.loop import runner as runner_mod
+
+    jobs = {}
+    real_register = runner_mod.Runner.register_daily
+
+    def spy_register(self, job):
+        jobs[getattr(job, "__name__", "")] = job
+        real_register(self, job)
+
+    monkeypatch.setattr(runner_mod.Runner, "register_daily", spy_register)
+    return jobs
+
+
+def test_log_cleanup_keeps_30_days(started, monkeypatch):
+    from datetime import date, timedelta
+
+    app, root, _calls = started
+    jobs = _daily_jobs(monkeypatch)
+    assert app.main() == 0
+    assert {"daily_backup", "prune_updates", "cleanup_logs"} <= set(jobs)
+
+    logs = root / "state" / "logs"
+    first = date(2026, 9, 22)
+    for i in range(31):  # 표준 핸들러가 회전해 둔 날짜별 파일 31개(9/22 ~ 10/22)
+        (logs / f"my-planner.jsonl.{(first + timedelta(days=i)).isoformat()}").write_text("{}\n", encoding="utf-8")
+    (logs / "keep-me.txt").write_text("로그가 아니다", encoding="utf-8")
+
+    jobs["cleanup_logs"](date(2026, 10, 23))
+
+    rotated = sorted(p.name for p in logs.glob("my-planner.jsonl.*"))
+    assert len(rotated) == 30
+    assert rotated[0] == "my-planner.jsonl.2026-09-23"  # 가장 오래된 하루만 지웠다
+    assert (logs / "my-planner.jsonl").exists() and (logs / "keep-me.txt").exists()
+
+
+class FakeBot:
+    """안전 모드에서 TelegramSender가 쓰는 봇. 보낸 글을 적는다."""
+
+    def __init__(self, fail=False):
+        self.sent = []
+        self.fail = fail
+
+    async def send_message(self, chat_id, text, reply_markup=None):
+        if self.fail:
+            raise ConnectionError("fake send failure")
+        self.sent.append((chat_id, text))
+
+
+INTEGRITY_NOTICE = "데이터베이스에 문제가 있어요. 최신 백업으로 복구해야 해요. PC에서 README의 복구 절차를 따라 주세요."
+
+
+def _corrupt_db(root):
+    db = root / "state" / "planner.db"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    db.write_bytes(b"this is not a sqlite database" * 200)
+    return db
+
+
+def test_integrity_failure_notifies_once_and_idles(started, monkeypatch):
+    app, root, calls = started
+    bot = FakeBot()
+    monkeypatch.setattr(app, "Bot", lambda token: bot)
+    db = _corrupt_db(root)
+    before = db.read_bytes()
+
+    assert app.main() == 0
+    assert app.main() == 0  # 두 번 시작해도
+
+    assert bot.sent == [(42, INTEGRITY_NOTICE)]  # 알림은 한 번
+    assert (root / "state" / "integrity_notice_sent").exists()
+    assert calls == [("serving", None), ("serving", None)]  # 폴링 없이 기다리기만 했다
+    assert db.read_bytes() == before  # 자동 복구하지 않는다
+    entries = _log_entries(root)
+    assert [e["msg"] for e in entries].count("safe_mode") == 2
+
+
+def test_integrity_notice_retried_when_send_fails(started, monkeypatch):
+    app, root, calls = started
+    bot = FakeBot(fail=True)
+    monkeypatch.setattr(app, "Bot", lambda token: bot)
+    _corrupt_db(root)
+
+    assert app.main() == 0
+    assert not (root / "state" / "integrity_notice_sent").exists()  # 안 갔으니 표식도 없다
+    raw = (root / "state" / "logs" / "my-planner.jsonl").read_text(encoding="utf-8")
+    assert "데이터베이스에 문제가" not in raw  # 알림 본문은 로그에 남기지 않는다
+
+    bot.fail = False
+    assert app.main() == 0  # 다음 시작에서 다시 보낸다
+    assert bot.sent == [(42, INTEGRITY_NOTICE)]
+    assert (root / "state" / "integrity_notice_sent").exists()
+    assert calls == [("serving", None), ("serving", None)]
+
+
+def test_main_recovers_left_runs_before_first_tick(started, monkeypatch):
+    import sqlite3
+    from datetime import UTC, datetime
+
+    from my_planner.clock import FakeClock
+    from my_planner.domain import LoopKey
+    from my_planner.loop import runner as runner_mod
+    from my_planner.store.db import migrate, open_db
+    from my_planner.store.repos.runs import RunsRepo
+
+    app, root, calls = started
+    conn = open_db(root / "state" / "planner.db")
+    migrate(conn)
+    runs = RunsRepo(conn, FakeClock(datetime(2026, 10, 1, tzinfo=UTC)))
+    old = runs.ensure(LoopKey.morning_brief, datetime(2026, 10, 1, 0, 0, tzinfo=UTC))  # 한계가 한참 지났다
+    runs.mark_queued(old.id)
+    conn.close()
+
+    real_tick = runner_mod.Runner.tick
+
+    def spy_tick(self):
+        calls.append(("tick", self.runs.get(old.id).status.value))
+        real_tick(self)
+
+    monkeypatch.setattr(runner_mod.Runner, "tick", spy_tick)
+    assert app.main() == 0
+
+    assert ("tick", "interrupted") in calls  # 첫 tick 전에 복구했다
+    check = sqlite3.connect(root / "state" / "planner.db")
+    assert check.execute("SELECT status FROM runs WHERE id = ?", (old.id,)).fetchone() == ("interrupted",)
+    check.close()
+
+
+def test_recovery_error_does_not_stop_start(started, monkeypatch):
+    app, root, calls = started
+
+    def broken(*a, **kw):
+        raise ValueError("이상한 행")
+
+    monkeypatch.setattr(app, "recover_on_start", broken)
+    assert app.main() == 0  # 시작할 때마다 죽어 워치독이 되살리는 반복에 빠지지 않는다
+    assert "start_polling" in [c[0] for c in calls]
+    errors = [e for e in _log_entries(root) if e["msg"] == "recovery_error"]
+    assert len(errors) == 1 and errors[0]["exc_type"] == "ValueError"
+
+
+def test_operational_error_exits_without_safe_mode(started, monkeypatch):
+    # 디스크 I/O, 잠금, 열기 오류는 손상이 아니다: 안전 모드에 들어가지 않고 끝나서 워치독이 다시 띄운다
+    import sqlite3
+
+    from my_planner.store.db import migrate, open_db
+
+    app, root, calls = started
+    bot = FakeBot()
+    monkeypatch.setattr(app, "Bot", lambda token: bot)
+    conn = open_db(root / "state" / "planner.db")
+    migrate(conn)
+    conn.close()
+
+    def io_error(path):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(app, "open_db", io_error)
+    assert app.main() == app.EXIT_FATAL
+
+    assert bot.sent == [] and calls == []
+    assert not (root / "state" / "integrity_notice_sent").exists()
+    entries = _log_entries(root)
+    assert "safe_mode" not in [e["msg"] for e in entries]
+    assert any(e.get("exc_type") == "OperationalError" for e in entries)
+
+
+def test_damaged_pages_fail_quick_check_and_enter_safe_mode(started, monkeypatch):
+    # 머리말은 멀쩡해 열리지만 b-tree 페이지가 망가진 DB: quick_check가 "ok"가 아니다
+    from my_planner.store.db import migrate, open_db
+
+    app, root, calls = started
+    bot = FakeBot()
+    monkeypatch.setattr(app, "Bot", lambda token: bot)
+    db = root / "state" / "planner.db"
+    conn = open_db(db)
+    migrate(conn)
+    with conn:
+        conn.executemany("INSERT INTO app_state (key, value) VALUES (?, ?)", [(f"k{i}", "v" * 50) for i in range(2000)])
+    root_page = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = 'app_state'").fetchone()[0]
+    page = conn.execute("PRAGMA page_size").fetchone()[0]
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
+    data = bytearray(db.read_bytes())
+    root_at = (root_page - 1) * page
+    assert data[root_at] == 0x05  # app_state의 뿌리는 내부 페이지다. 머리 8~11바이트가 맨 오른쪽 자식 페이지 번호
+    leaf = int.from_bytes(data[root_at + 8 : root_at + 12], "big")
+    end = leaf * page  # 잎 페이지 끝의 셀 내용을 지운다(머리나 뿌리를 망가뜨리면 quick_check가 예외를 낸다)
+    data[end - 96 : end] = b"\x00" * 96
+    db.write_bytes(bytes(data))
+
+    assert app.main() == 0
+    assert bot.sent == [(42, INTEGRITY_NOTICE)]
+    assert calls == [("serving", None)]
+    assert "db_integrity_failed" in [e["msg"] for e in _log_entries(root)]

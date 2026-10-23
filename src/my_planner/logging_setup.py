@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import traceback
 from datetime import UTC, datetime
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Any
 
 LOG_FILE_NAME = "my-planner.jsonl"
+# TimedRotatingFileHandler(when="midnight")가 회전한 파일: my-planner.jsonl.YYYY-MM-DD
+_ROTATED_RE = re.compile(r"^" + re.escape(LOG_FILE_NAME) + r"\.\d{4}-\d{2}-\d{2}$")
 DROPPED_KEYS = frozenset({"text", "args", "input"})
 
 _STANDARD_ATTRS = frozenset(logging.makeLogRecord({}).__dict__) | {"message", "asctime", "taskName"}
@@ -106,3 +109,19 @@ def setup_logging(state_dir: Path, keep_days: int) -> Path:
     for name in _QUIET_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
     return path
+
+
+def cleanup_logs(log_dir: Path, keep: int) -> int:
+    """회전된 날짜별 로그 파일을 날짜순으로 가장 최근 `keep`개만 남기고, 지운 개수를 돌려준다.
+
+    회전 자체는 표준 핸들러가 맡는다. 핸들러는 회전할 때만 오래된 파일을 지우므로(재시작이 잦으면 놓친다)
+    하루 한 번 따로 정리한다. 지금 쓰는 파일과 다른 파일은 건드리지 않는다.
+    """
+    log_dir = Path(log_dir)
+    if not log_dir.is_dir():
+        return 0
+    rotated = sorted(p for p in log_dir.iterdir() if _ROTATED_RE.match(p.name))
+    old = rotated[: max(len(rotated) - keep, 0)]
+    for p in old:
+        p.unlink()
+    return len(old)

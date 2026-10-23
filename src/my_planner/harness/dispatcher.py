@@ -23,6 +23,7 @@ from my_planner.domain import (
     RunContext,
     RunStatus,
     SkipReason,
+    TaskStatus,
 )
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
@@ -215,6 +216,25 @@ class Dispatcher:
         `carried_ids`는 merged 가운데 넘겨 받은 회고다. primary가 늦으면 승격하지 않고 같이 건너뛴다.
         """
         job = _RunJob(run, list(merged), frozenset(carried_ids))
+        self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
+
+    def submit_resend(self, run: Run) -> None:
+        """시작 시 복구: 전송이 끝내 안 된 회차(`failed`, `outbound_text` 있음)를 전송만 한 번 다시 한다.
+
+        5분 뒤 재전송과 같은 길로 간다(답장 창, `resent` 확인). 버튼은 DB에서 다시 만든다: 그 대화에서 제안해
+        아직 초안인 할 일, 그리고 그 회차의 컨디션 버튼 날짜.
+        """
+        assert self.runs is not None
+        merged = [m for m in (self.runs.get(i) for i in run.merged_run_ids) if m is not None]
+        drafts: list[int] = []
+        if self.tools is not None and run.conversation_id is not None:
+            tasks = self.tools.tasks
+            drafts = [
+                i
+                for i in tasks.proposed_task_ids(run.conversation_id)
+                if (t := tasks.get(i)) is not None and t.status is TaskStatus.draft
+            ]
+        job = _ResendJob(run, merged, [], drafts, self._ask_condition_for(run, merged))
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:
@@ -454,10 +474,12 @@ class Dispatcher:
         for r in (run, *merged):
             if self._past_limit(r) or (primary_late and r.id in carried_ids):
                 runs.mark_skipped(r.id, SkipReason.late)
+                self._release_carry([r])
                 log.info("run_skipped_late_at_start", extra={"run_id": r.id})
             elif (blocked := self._run_blocked(r)) is not None:
                 # 큐에 든 뒤에 생긴 멈춤, 하루 상한, 사용 한도도 다시 본다(판정은 tick 때 했다)
                 runs.mark_skipped(r.id, blocked)
+                self._release_carry([r])
                 log.info("run_skipped_at_start", extra={"run_id": r.id, "reason": blocked.value})
             else:
                 live.append(r)
@@ -518,6 +540,7 @@ class Dispatcher:
             if blocked is not None:  # 두 번째 호출 전에도 멈춤, 하루 상한, 사용 한도를 본다
                 for r in (run, *merged):
                     runs.mark_skipped(r.id, blocked)
+                self._release_carry([run, *merged])
                 self.convs.close(conv.id)
                 log.info("run_rerun_skipped", extra={"run_id": run.id, "reason": blocked.value})
                 return None
@@ -528,6 +551,7 @@ class Dispatcher:
             reason = SkipReason.auth if result.status == "auth_error" else SkipReason.rate_limit
             for r in (run, *merged):
                 runs.mark_skipped(r.id, reason)
+            self._release_carry([run, *merged])
             self.convs.close(conv.id)
             log.warning("run_brain_skipped", extra={"run_id": run.id, "status": result.status})
             if result.status == "auth_error":
@@ -706,6 +730,12 @@ class Dispatcher:
             if await self._send_run(out, run.id, attempts=1) and conv is not None:
                 self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names)
 
+    def _release_carry(self, runs: Iterable[Run]) -> None:
+        """넘겨 받은 회고가 끝났으면(보냄, 건너뜀) `carry_review_run_id`를 지운다. 러너는 합칠 때 지우지 않는다."""
+        mark = self.state.get(CARRY_REVIEW_KEY)
+        if mark is not None and mark in {str(r.id) for r in runs}:
+            self.state.set(CARRY_REVIEW_KEY, None)
+
     def _run_delivered(
         self, run: Run, merged: list[Run], conv: Conversation, text: str, tool_names: list[str]
     ) -> None:
@@ -714,6 +744,7 @@ class Dispatcher:
         # 사용자는 이미 받았다. 상태와 카운터를 먼저 기록해 다음 시작 때 다시 보내지 않게 한다.
         for r in (run, *merged):
             self.runs.mark_done(r.id)
+        self._release_carry([run, *merged])
         self.state.incr_usage(self._today(), "proactive_messages")
         try:
             self.transcripts.append(

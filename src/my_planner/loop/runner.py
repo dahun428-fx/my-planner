@@ -4,14 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 from collections.abc import Awaitable, Callable, Iterable
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, logical_date, to_iso
-from my_planner.domain import LoopKey, RunStatus
-from my_planner.loop.catchup import decide
-from my_planner.loop.schedule import ENABLED_LOOPS, Due, due_between, window_start
+from my_planner.domain import LoopKey, RunStatus, SkipReason
+from my_planner.harness.dispatcher import MAX_RUN_ATTEMPTS
+from my_planner.logging_setup import cleanup_logs
+from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
+from my_planner.loop.schedule import (
+    ENABLED_LOOPS,
+    Due,
+    due_between,
+    limit_for,
+    window_start,
+)
+from my_planner.store.backup import daily_backup
 from my_planner.store.repos.state import (
     CARRY_REVIEW_KEY,
     LIMITED_UNTIL_KEY,
@@ -45,8 +56,148 @@ def expire_drafts(tasks: TasksRepo, clock: Clock, *, days: int = DRAFT_EXPIRE_DA
     return job
 
 
+def backup_daily(conn: sqlite3.Connection, backups_dir: Path, *, keep: int) -> Callable[[date], None]:
+    """하루 한 번 작업: DB 백업(스펙 7). 백업이 안 돼도 예외 종류만 남기고 tick은 그대로 간다."""
+
+    def job(today: date) -> None:
+        try:
+            made = daily_backup(conn, backups_dir, today, keep)
+        except Exception as e:  # noqa: BLE001 - 경로와 메시지 없이 종류만 남긴다
+            log.warning("backup_error", extra={"error_type": type(e).__name__})
+            return
+        log.info("backup_done" if made is not None else "backup_exists", extra={"date": today.isoformat()})
+
+    job.__name__ = "daily_backup"
+    return job
+
+
+def cleanup_logs_daily(log_dir: Path, *, keep: int) -> Callable[[date], None]:
+    """하루 한 번 작업: 회전된 로그는 최근 `keep`일 치만 남긴다(스펙 7, 30일 보관)."""
+
+    def job(today: date) -> None:
+        log.info("logs_cleaned", extra={"count": cleanup_logs(log_dir, keep)})
+
+    job.__name__ = "cleanup_logs"
+    return job
+
+
+UPDATE_KEEP_DAYS = 2
+
+
+def prune_updates_daily(
+    state: StateRepo, clock: Clock, *, days: int = UPDATE_KEEP_DAYS
+) -> Callable[[date], None]:
+    """하루 한 번 작업: 처리한 지 `days`일이 지난 `update_id`를 지운다(`received_at` 기준)."""
+
+    def job(today: date) -> None:
+        count = state.prune_updates(clock.now() - timedelta(days=days))
+        log.info("updates_pruned", extra={"count": count})
+
+    job.__name__ = "prune_updates"
+    return job
+
+
+def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, settings: Settings) -> None:
+    """시작 시 복구(스펙 5.1 4단계). 디스패처를 시작하기 전, 첫 tick 전에 부른다.
+
+    `queued`나 `running`으로 남은 회차는 `interrupted`로 바꾸고 재실행 규칙(스펙 5.4-3)을 적용한다.
+    합쳐진 회차(primary의 `merged_run_ids`)는 primary를 따른다. 도구 이벤트도 primary에 붙는다.
+    - 본문(`outbound_text`)이 이미 저장됐으면 두뇌 단계는 끝났다: `failed`로 두고 전송만 다시 한다(아래).
+    - 도구 이벤트가 있으면 다시 실행하지 않고 `failed`(로그만).
+    - 한계 밖이거나 두뇌 실행이 이미 2회면 `interrupted`로 둔다.
+    - 그 밖에는 한 번 다시 실행한다. 멈출 때 함께 처리하던 회차라 같은 tick의 회차처럼 하나로 합친다.
+      큐에서 꺼낼 때 디스패처가 한계, 멈춤, 하루 상한, 사용 한도를 다시 본다.
+    `failed`이면서 본문이 있고 아직 다시 보내지 않은 회차는 전송만 한 번 다시 한다(답장 창은 디스패처가 본다).
+    """
+    tz, boundary = settings.timezone, settings.day_boundary
+    now = clock.now()
+    left = runs.with_status(RunStatus.queued, RunStatus.running)
+    left_ids = {r.id for r in left}
+    owner = {m: r.id for r in left for m in r.merged_run_ids if m in left_ids and m != r.id}
+    for run in left:
+        runs.mark_interrupted(run.id)
+        log.info("run_interrupted", extra={"run_id": run.id, "was": run.status.value})
+
+    def past_limit(run: Run) -> bool:
+        return now > limit_for(_due(run), settings, tz, boundary)
+
+    fate: dict[int, str] = {}
+    for run in left:
+        if run.id in owner:
+            continue
+        if run.outbound_text:
+            fate[run.id] = "resend"
+        elif runs.has_tool_events(run.id):  # 도구가 이미 데이터를 바꿨다(중복 쓰기 방지)
+            fate[run.id] = "failed"
+            log.warning("run_interrupted_with_tool_events", extra={"run_id": run.id})
+        elif run.attempt >= MAX_RUN_ATTEMPTS or past_limit(run):
+            fate[run.id] = "keep"
+        else:
+            fate[run.id] = "rerun"
+    by_id = {r.id: r for r in left}
+    for member, primary in owner.items():
+        if fate[primary] == "keep":
+            # primary를 다시 실행하지 않으면 멤버는 따로 본다: 자기 한계 안이면 pending으로 되돌려 첫 tick이
+            # 다시 판정하고(R1, 합치기), 한계 밖이면 skipped(late)
+            fate[member] = "late" if past_limit(by_id[member]) else "pending"
+        else:
+            fate[member] = fate[primary]
+    # 공백이 24시간 이상이면 바로 다시 실행하지 않고 pending으로 되돌린다. 첫 tick이 R1로 판정해
+    # 복귀 인사 하나만 보내고 회고는 다음 정규 연락에 넘긴다(연달아 두 통 보내지 않는다)
+    last_seen = dispatcher.state.get("last_seen_at")
+    if last_seen is not None and now - from_iso(last_seen) >= RETURN_GAP:
+        fate = {i: ("pending" if f == "rerun" else f) for i, f in fate.items()}
+    # 넘겨 받은 회고(R1)는 혼자 실행하지 않는다. 표시가 남은 채 큐에 있었으면(계획 모드 되돌리기 도중 멈춤)
+    # 다시 실행할 수 있을 때 pending으로 되돌리고 표시를 둔다: 다음 tick이 다음 정규 연락에 다시 합친다.
+    # 그렇지 않으면 표시를 지운다
+    carried = dispatcher.state.get(CARRY_REVIEW_KEY)
+    carried_id = int(carried) if carried else None
+    # 합쳐진 멤버여도 같다(러너는 합칠 때 표시를 지우지 않는다). primary를 다시 실행하든 아니든 회고는 빼서
+    # pending으로 되돌린다. primary 본문을 다시 보내는 경우(resend)는 회고도 그 본문에 들어 있으니 따라가고,
+    # 보내면 디스패처가 표시를 지운다
+    if carried_id in fate:
+        f = fate[carried_id]
+        if f in ("rerun", "pending"):
+            fate[carried_id] = "carry"
+        elif f != "resend":
+            dispatcher.state.set(CARRY_REVIEW_KEY, None)
+
+    reruns: list[Run] = []
+    for run in left:
+        f = fate[run.id]
+        if f in ("resend", "failed"):
+            runs.mark_failed(run.id, "interrupted")
+        elif f == "keep":
+            log.info("run_interrupted_not_rerun", extra={"run_id": run.id})
+        elif f == "carry":
+            runs.mark_pending(run.id)
+            log.info("carried_review_back_to_pending", extra={"run_id": run.id})
+        elif f == "pending":
+            runs.mark_pending(run.id)
+            log.info("run_back_to_pending", extra={"run_id": run.id})
+        elif f == "late":
+            runs.mark_skipped(run.id, SkipReason.late)
+            log.info("run_skipped_late_on_start", extra={"run_id": run.id})
+        else:
+            reruns.append(run)
+    if reruns:
+        reruns.sort(key=lambda r: merge_order(r.loop))
+        dispatcher.submit_run(runs.get(reruns[0].id), [runs.get(r.id) for r in reruns[1:]])
+        log.info("runs_rerun_on_start", extra={"run_ids": [r.id for r in reruns]})
+    for run in runs.with_status(RunStatus.failed):
+        if run.outbound_text and not run.resent:
+            dispatcher.submit_resend(run)
+            log.info("run_resend_on_start", extra={"run_id": run.id})
+
+
 class RunSubmitter(Protocol):
     def submit_run(self, run: Run, merged: list[Run], *, carried_ids: Iterable[int] = ()) -> None: ...
+
+
+class RecoveryTarget(RunSubmitter, Protocol):
+    state: StateRepo
+
+    def submit_resend(self, run: Run) -> None: ...
 
 
 class Runner:
@@ -167,10 +318,10 @@ class Runner:
                 if run.status is not RunStatus.pending:
                     continue
             self.runs.mark_skipped(run.id, reason)
-        if carried_due is not None and (
-            carried_due in decision.merged or any(d == carried_due for d, _ in decision.skipped)
-        ):
-            self.state.set(CARRY_REVIEW_KEY, None)  # 합쳐졌거나 late가 됐다
+        if carried_due is not None and any(d == carried_due for d, _ in decision.skipped):
+            self.state.set(CARRY_REVIEW_KEY, None)  # late가 됐다
+        # 합쳐졌으면 표시를 둔다: 그 작업이 끝날 때(보냄, 같이 건너뜀) 디스패처가 지운다. 도중에 멈춰도
+        # 시작 시 복구가 표시를 보고 회고를 넘겨 받은 회고로 되돌린다(혼자 실행하지 않는다)
         if decision.carry_review is not None:
             self.state.set(CARRY_REVIEW_KEY, str(by_due[decision.carry_review].id))
         if decision.primary is not None:

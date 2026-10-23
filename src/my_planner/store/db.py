@@ -51,5 +51,6 @@ def migrate(conn: sqlite3.Connection) -> int:
 
 
 def integrity_ok(conn: sqlite3.Connection) -> bool:
-    row = conn.execute("PRAGMA integrity_check").fetchone()
+    """시작할 때의 무결성 검사. `quick_check`는 색인 대조를 빼서 빠르다. 결과가 "ok"이면 건강하다."""
+    row = conn.execute("PRAGMA quick_check").fetchone()
     return row is not None and row[0] == "ok"
