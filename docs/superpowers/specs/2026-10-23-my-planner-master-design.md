@@ -2,7 +2,7 @@
 
 - 상태: 초안 v2 (리뷰 1회 반영), Dahun 검토 대기
 - 작성일: 2026-10-23
-- 용어: [`docs/glossary.md`](../../glossary.md)의 뜻으로만 쓴다.
+- 용어: [`GLOSSARY.md`](../../../GLOSSARY.md)의 뜻으로만 쓴다. 되돌리기 어려운 결정은 [`docs/adr/`](../../adr/)에 기록한다.
 - 범위: 전체 비전, 하위 프로젝트 4개의 경계, 모두가 공유하는 인터페이스. 각 하위 프로젝트의 상세 설계는 별도 스펙에서 다룬다.
 
 ## 1. 목적
@@ -104,7 +104,8 @@
 
 ```
 my-planner/
-├── docs/                       # 스펙, 계획, 용어집 (Git 관리)
+├── GLOSSARY.md                 # 용어집
+├── docs/                       # 스펙, 계획, ADR (Git 관리)
 ├── src/my_planner/
 │   ├── bot/                    # 텔레그램 입출력
 │   ├── harness/                # 세션 실행, 프롬프트, 권한, 훅
@@ -116,13 +117,16 @@ my-planner/
 ├── data/                       # 원본 데이터 (.gitignore)
 │   ├── transcripts/YYYY/MM/YYYY-MM-DD.md
 │   ├── memory/cards/<card_kind>/<slug>.md
-│   ├── reviews/<cadence>/<period>.md     # 예: weekly/2026-W43.md, monthly/2026-10.md
+│   ├── reviews/<cadence>/<period>.md     # 예: week/2026-W43.md, month/2026-10.md
 │   ├── curve/                  # SQLite에서 생성한 곡선 내보내기 (사람용)
 │   └── exports/tasks.md        # SQLite에서 생성한 사람용 보기
 ├── state/                      # (.gitignore)
 │   ├── planner.db              # SQLite 원본: 할 일, 회차, 컨디션, 점수, 사건, 상태창 원장
 │   ├── index.db                # SQLite 색인: FTS5, sqlite-vec (다시 만들 수 있음, 백업 안 함)
-│   └── logs/
+│   ├── logs/
+│   ├── backups/                # planner-YYYY-MM-DD.db, 14개
+│   ├── brain-workdir/          # 두뇌 세션의 빈 작업 폴더
+│   └── my-planner.lock         # 단일 실행 잠금
 └── .env                        # 텔레그램 토큰, 사용자 ID (.gitignore)
 ```
 
@@ -179,7 +183,7 @@ SQLite가 원본인 데이터는 백업 대상이다. 백업 방식은 SP1 스�
 ### 5.6 인증과 비밀값
 
 - 두뇌는 노트북의 Claude Code에 로그인된 사용자 본인 구독으로 실행한다. 단일 사용자 개인용이므로 허용 범위로 판단했다(참고: Claude Code Legal and compliance 문서). 다만 근거가 명확하지 않은 영역이라, 아래 중 하나가 생기면 API 키 인증으로 바꾼다: 다른 사람이 쓰게 될 때, 구독 사용량이 사용자의 Claude Code 사용을 방해할 때, Anthropic 정책이 바뀔 때.
-- 인증이 실패하면(토큰 만료 등) 조용히 실패하지 않고 텔레그램으로 한 번 알리며, 그 사이 회차는 `skipped(auth)`로 기록하고 다시 보내지 않는다(다시 로그인한 뒤 다음 정규 연락부터 이어진다). 따라잡기도 하루 두뇌 호출 상한에 포함한다.
+- 인증이 실패하면(토큰 만료 등) 조용히 실패하지 않고 텔레그램으로 하루 한 번 알리며, 그 사이 회차는 `skipped(auth)`로 기록하고 다시 보내지 않는다(다시 로그인한 뒤 다음 정규 연락부터 이어진다). 따라잡기도 하루 두뇌 호출 상한에 포함한다.
 - 텔레그램 봇 토큰과 사용자 텔레그램 ID는 `.env`에 사용자가 직접 넣는다. 코드와 Git에는 들어가지 않는다.
 - 봇은 `.env`의 사용자 ID와 다른 발신자의 메시지를 읽지 않고 버린다.
 

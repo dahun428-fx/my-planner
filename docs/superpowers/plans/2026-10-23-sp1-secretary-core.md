@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, `python-telegram-bot` (v21 이상, 비동기), `claude-agent-sdk`, `pydantic` v2, `pydantic-settings`, 표준 `sqlite3`, `zoneinfo`, `pytest`, `pytest-asyncio`. Windows: `msvcrt`, `ctypes`(SetThreadExecutionState), PowerShell, 작업 스케줄러.
 
-**Spec:** [`docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md`](../specs/2026-10-23-sp1-secretary-core-design.md) (상위: [마스터 설계](../specs/2026-10-23-my-planner-master-design.md), 용어: [`docs/glossary.md`](../../glossary.md))
+**Spec:** [`docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md`](../specs/2026-10-23-sp1-secretary-core-design.md) (상위: [마스터 설계](../specs/2026-10-23-my-planner-master-design.md), 용어: [`GLOSSARY.md`](../../../GLOSSARY.md))
 
 ## Global Constraints
 
