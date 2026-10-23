@@ -351,7 +351,8 @@ class Dispatcher:
             stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
             truncated_to=limits.input_max_chars if truncated else None,
         )
-        conv = self.router.for_user_message(batch[0].at)
+        # 답장 창은 보낸 시각으로 고른다(스펙 갭 7 결정). 묶음의 첫 메시지 기준
+        conv = self.router.for_user_message(batch[0].at, sent_at=batch[0].sent_at)
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
         self.convs.touch(conv.id)
 

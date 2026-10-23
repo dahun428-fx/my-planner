@@ -433,3 +433,26 @@ async def test_run_past_limit_when_dequeued_is_skipped_late(tmp_path, conn, stat
     after = env.runs.get(run.id)
     assert after.status is RunStatus.skipped and after.skip_reason is SkipReason.late
     assert env.brain.calls == [] and env.sender.sent == []
+
+
+async def test_reply_window_routed_by_sent_time(tmp_path, conn, state):
+    # 저녁 체크인 답을 03:00에 보냈고(노트북은 잠듦) 09:30에 처리한다: 보낸 시각으로 저녁 대화에 잇는다(스펙 갭 7 결정)
+    from my_planner.harness.dispatcher import Inbound
+
+    evening_at = kst(2026, 10, 26, 17, 30)
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], "오늘 하루 어땠어요?", session_id="eve-s"), FakeTurn([], "푹 쉬세요.", session_id="eve-s")],
+        start=evening_at + timedelta(seconds=30),
+    )
+    run = env.runs.ensure(LoopKey.evening_checkin, evening_at)
+    env.runs.mark_queued(run.id)
+    await env.process_run(env.runs.get(run.id))
+    eve_conv = env.runs.get(run.id).conversation_id
+
+    env.clock.set(kst(2026, 10, 27, 9, 30))  # 답장 창(다음 날 04:00) 밖에서 처리한다
+    sent = kst(2026, 10, 27, 3, 0)  # 보낸 시각은 답장 창 안
+    await env.process(Inbound(text="괜찮았어요", at=env.clock.now(), sent_at=sent, update_ids=[1]))
+
+    assert env.brain.session_ids[1] == "eve-s"
+    assert env.brain.calls[1]["run_ctx"].conversation_id == eve_conv

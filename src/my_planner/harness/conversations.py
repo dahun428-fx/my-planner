@@ -83,16 +83,17 @@ class ConversationRouter:
         if plan is not None and plan.id == conversation_id:
             self.convs.touch(plan.id)
 
-    def for_user_message(self, at: datetime) -> Conversation:
+    def for_user_message(self, at: datetime, *, sent_at: datetime | None = None) -> Conversation:
         """2시간 이내의 열린 `plan` 대화가 있으면 그것을 잇는다(가장 먼저).
 
         아니면 가장 최근 `run` 대화가 그 회차의 답장 창 안이면 잇는다(30분 규칙보다 먼저).
-        아니면 30분 이내의 `chat` 대화를 잇고, 그것도 없으면 새 `chat`을 연다.
+        답장 창은 텔레그램이 기록한 보낸 시각 `sent_at`으로 본다(노트북이 잠든 동안 보낸 답도 그 회차에 잇는다).
+        아니면 30분 이내의 `chat` 대화를 잇고, 그것도 없으면 새 `chat`을 연다. 이 둘은 받은 시각 `at`으로 본다.
         """
         plan = self._open_plan(at)
         if plan is not None:
             return plan
-        run_conv = self._run_conversation_in_window(at)
+        run_conv = self._run_conversation_in_window(sent_at if sent_at is not None else at)
         if run_conv is not None:
             return run_conv
         cur = self.convs.latest_open(ConversationKind.chat)
