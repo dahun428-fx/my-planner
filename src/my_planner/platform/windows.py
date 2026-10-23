@@ -12,7 +12,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO, Any, Literal
+from typing import IO, Any, Literal, Self
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -61,7 +61,7 @@ class SingleInstanceLock:
         finally:
             f.close()
 
-    def __enter__(self) -> SingleInstanceLock:
+    def __enter__(self) -> Self:
         self.acquire()
         return self
 

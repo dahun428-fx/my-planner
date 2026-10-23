@@ -188,7 +188,7 @@ class ClaudeBrain:
         try:
             async for message in query(prompt=prompt, options=options):
                 messages.append(message)
-        except Exception as e:  # ResultError/ProcessError 등. CancelledError는 그대로 올린다.
+        except Exception as e:  # noqa: BLE001 - ResultError/ProcessError 등을 classify가 판정한다. CancelledError는 그대로 올린다.
             exc = e
 
         status, error, retry_at = classify(messages, exc, datetime.now(UTC))

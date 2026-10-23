@@ -107,7 +107,7 @@ def test_classify_auth_error():
 def test_classify_rate_limited():
     resets_at = 1792780200  # 2026-10-23 18:30 UTC (S1 실제 이벤트 값)
     msgs = [_rate("rejected", resets_at=resets_at), _result(is_error=True)]
-    status, error, retry_at = classify(msgs, _result_error(subtype="success"), NOW)
+    status, _error, retry_at = classify(msgs, _result_error(subtype="success"), NOW)
     assert status == "rate_limited"
     assert retry_at == datetime(2026, 10, 23, 18, 30, tzinfo=UTC)
     assert retry_at.tzinfo is not None and retry_at.utcoffset() == timedelta(0)
