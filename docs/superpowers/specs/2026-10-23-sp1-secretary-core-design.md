@@ -1,0 +1,403 @@
+# SP1 비서 코어 상세 설계
+
+- 상태: 초안 v2 (리뷰 1회 반영), Dahun 검토 대기
+- 작성일: 2026-10-23
+- 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md)
+- 용어: [`docs/glossary.md`](../../glossary.md)
+
+## 1. 목표와 완료 조건
+
+텔레그램으로 먼저 말을 걸고, 할 일을 함께 정리하는 비서의 뼈대를 만든다. SP2~SP4는 이 위에 도구, 표, 루프를 더하는 방식으로만 확장한다.
+
+**완료 조건 (수용 기준)**
+
+1. 연속 7일 동안 `runs` 표에서 `morning_brief`, `evening_checkin`, `review(week)`의 예정 회차가 모두 `done`이거나, 5.4 따라잡기 규칙에 맞는 `skip_reason`을 가진 `skipped`다.
+2. 비서가 제안한 할 일은 사용자가 확정하기 전까지 목록에 오르지 않는다. 텔레그램 자연어로 할 일을 추가, 완료, 날짜 이동, 내려놓기, 우선순위 지정할 수 있고, 각 변경 뒤 하네스가 만든 확인 문구를 받는다.
+3. 사용자 외 계정의 메시지, 그룹 채팅의 메시지에는 아무 반응도 하지 않는다.
+4. 재부팅 후 로그인, 절전 복귀, 전원 케이블 분리 후에도 사용자가 아무것도 하지 않아 하네스가 다시 동작한다.
+5. 모든 대화가 원문 기록에 남고, 인증·식별 정보 패턴은 가려져 있다.
+6. 8장의 자동 테스트가 모두 통과한다.
+
+## 2. 범위
+
+| 포함 | 제외 (담당) |
+|---|---|
+| 텔레그램 봇, 사용자 잠금 | 기억 카드, 의미 회상 (SP2) |
+| harness core, 대화와 두뇌 세션 관리 | 월·분기·연 회고, 인생 곡선, 상태창 (SP3) |
+| loop: 아침 브리핑, 저녁 체크인, 주간 회고, 따라잡기 | 웹 대시보드 (SP4) |
+| 할 일, 우선순위, 첫 걸음, 일정 시각 | 반복 할 일 (사용자와 의논해 나중에 결정) |
+| 초안 할 일과 계획 모드 (5.7) | |
+| 컨디션 기록 | 컨디션의 HP/MP 계산 (SP3) |
+| 원문 기록과 가리기 필터 | 다른 캘린더 연동 |
+| 시스템 로그, 백업, 사용량 상한 | 클라우드 백업 (금지, 마스터 6장) |
+| 작업 스케줄러 등록 스크립트 | |
+
+## 3. 착수 전 검증 (스파이크)
+
+구현 계획의 첫 작업이다. 노트북에서 직접 확인하고 결과를 `docs/spikes/2026-10-sp1.md`에 남긴다. 실패한 항목은 이 스펙의 해당 절을 먼저 고친다.
+
+| # | 확인할 것 | 실패 시 대안 |
+|---|---|---|
+| S0 | Python 배포판: Microsoft Store판 3.12에서 `sqlite3.Connection.enable_load_extension`과 sqlite-vec 로드가 되는지. venv 경로가 `%LOCALAPPDATA%` 가상화에 걸리지 않는지 | python.org 설치판 3.12로 venv를 만든다 (SP1부터) |
+| S1 | 작업 스케줄러가 로그인 시 `pythonw.exe`로 띄운 프로세스에서 Agent SDK가 사용자 구독 로그인으로 호출된다. 호출마다 콘솔 창이 뜨지 않는다. PATH에 `claude`가 없어도 동작하도록 CLI 경로를 정한다(SDK 번들 CLI 또는 `cli_path` 고정) | 터미널에서 시작하는 바로가기, 창 숨김 래퍼 |
+| S2 | 아래 5.3의 **두뇌 실행 설정**으로 기본 도구가 하나도 보이지 않고, `mcp__planner__*` 도구 12개는 모두 호출된다(도구 지연 로드 포함) | `tools=[]` 대신 기본 도구 이름을 `disallowed_tools`에 나열, PreToolUse 훅으로 `mcp__planner__` 외 전부 거부 |
+| S3 | 격리: 사용자 `~/.claude`의 설정·스킬·플러그인·CLAUDE.md, claude.ai MCP 커넥터, auto memory가 비서 세션에 나타나지 않는다. SDK 최소 버전을 이 검증으로 고정한다 | `CLAUDE_CONFIG_DIR`로 전용 설정 폴더 지정 |
+| S4 | 전원: `powercfg /a` 결과(S3 대기 vs Modern Standby)를 기록한다. 깨우기 타이머가 AC와 배터리, 덮개 닫힘에서 동작하는지 확인한다 | 깨우기 없이 따라잡기만 사용 (기본 경로이므로 기능 손실 없음) |
+| S5 | 텔레그램 롱폴링이 절전 복귀 후 다시 연결된다 | 복귀 이벤트 수신 시 폴링 재시작 |
+
+## 4. 구성 요소와 경계
+
+```
+src/my_planner/
+├── app.py            # 진입점: 설정 로드, 단일 실행 잠금, 조립, 종료 처리
+├── config.py         # .env와 config.toml 읽기, 검증 (pydantic)
+├── clock.py          # Clock 프로토콜, 논리적 날짜 계산
+├── bot/              # Telegram 입출력. Update → InboundMessage, 전송, 명령
+├── harness/
+│   ├── brain.py      # Brain 프로토콜 + Agent SDK 구현
+│   ├── conversations.py # 대화 열기·잇기·닫기 규칙
+│   ├── context.py    # 새 세션의 앞머리 컨텍스트 조립
+│   ├── redact.py     # 인증·식별 정보 가리기
+│   ├── prompts/      # system.md, morning_brief.md, evening_checkin.md, review_week.md
+│   └── dispatcher.py # 직렬 큐: 메시지와 회차 → 두뇌 → 응답
+├── loop/
+│   ├── schedule.py   # 회차 정의 → 예정 시각 목록 (순수 함수)
+│   ├── catchup.py    # 깨어났을 때 각 회차의 처리 결정 (순수 함수)
+│   └── runner.py     # 1분 tick, 하트비트, 회차 실행
+├── tools/
+│   ├── tasks.py, condition.py, transcript.py   # 순수 Python 함수 + ToolEvent 반환
+│   └── mcp_adapter.py  # 위 함수를 Agent SDK in-process MCP 서버 `planner`로 노출
+├── store/
+│   ├── db.py         # 연결(WAL), 마이그레이션 (PRAGMA user_version + migrations/NNN_*.sql)
+│   ├── repos/        # tasks, priorities, runs, conversations, conditions, app_state, updates
+│   ├── transcripts.py, exports.py, backup.py
+└── platform/
+    └── windows.py    # 단일 실행 잠금(msvcrt.locking), SetThreadExecutionState, 절전 복귀 감지
+```
+
+**경계 규칙** (마스터 5.4를 따름)
+
+- `store`는 하네스 내부 누구나 쓴다. 두뇌만 도구를 거친다.
+- 도구 함수는 `(입력) → (결과, list[ToolEvent])`를 돌려준다. `ToolEvent`는 확인 문구를 만들 재료다(5.5).
+- `schedule.py`, `catchup.py`, `context.py`, `redact.py`는 부작용이 없다. 시계는 `Clock`으로 주입한다.
+- `Brain` 프로토콜:
+  ```python
+  class Brain(Protocol):
+      async def run(self, prompt: str, *, session_id: str | None,
+                    run_ctx: RunContext) -> BrainResult: ...
+  # BrainResult: text, session_id, turns, tool_events: list[ToolEvent],
+  #              status: ok | max_turns | auth_error | rate_limited | error
+  ```
+  테스트는 시나리오를 재생하는 `FakeBrain`을 쓴다.
+
+## 5. 동작
+
+### 5.1 프로세스 수명
+
+**작업 스케줄러 작업 `my-planner`** (등록 스크립트 `scripts/register_task.ps1`이 XML로 만든다)
+
+| 항목 | 값 |
+|---|---|
+| 트리거 | 사용자 로그온, 절전 복귀(이벤트 로그 System, Power-Troubleshooter, ID 1) |
+| 실행 계정 | 사용자 본인, "사용자가 로그온한 경우에만 실행" (구독 자격 증명 접근 때문) |
+| 동작 | venv의 `pythonw.exe -m my_planner` |
+| 조건 | `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false`, 유휴 조건 없음 |
+| 설정 | `ExecutionTimeLimit=PT0S`(무제한), `MultipleInstancesPolicy=IgnoreNew`, 실패 시 1분 간격으로 최대 999회 재시작 |
+
+**깨우기 작업 `my-planner-wake`**: 고정 작업 하나에 트리거 여러 개(각 회차 기본 시각 5분 전). "이 작업을 실행하기 위해 절전 모드 해제"를 켠다. 하는 일은 없다(예: `cmd /c exit 0`). S4가 실패하면 등록하지 않는다. 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.
+
+**시작 순서**
+
+1. `msvcrt.locking`으로 `state/my-planner.lock`을 잠근다. 실패하면 이미 실행 중이므로 종료한다. 크래시하면 OS가 잠금을 푼다.
+2. 로그 설정. `pythonw`에서는 `sys.stdout/stderr`가 `None`이므로 파일 핸들러만 쓰고, 둘을 `os.devnull`로 바꿔 둔다.
+3. DB 열기, 무결성 검사, 마이그레이션.
+4. `running` 상태로 남은 회차를 `interrupted`로 바꾼다(5.4 재실행 규칙).
+5. 따라잡기 판정 실행 → 봇 폴링 시작 → tick 시작.
+
+**저장소 위치 제약**: 저장소 폴더는 OneDrive 같은 동기화 폴더 밖에 둔다(SQLite WAL 손상 위험). 기본 위치는 `E:\my-planner`.
+
+**종료**: 종료 신호를 받으면 진행 중 두뇌 호출을 최대 30초 기다리고, 끝나지 않으면 해당 회차를 `interrupted`로 기록한다.
+
+**절전 방지**: 두뇌 호출과 전송이 진행되는 동안 `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`를 걸고, 끝나면 푼다. 깨우기 직후 무인 절전 타임아웃에 호출이 끊기는 것을 막는다.
+
+### 5.2 텔레그램 수신
+
+- `getUpdates` 롱폴링(python-telegram-bot).
+- 처리한 `update_id`를 `telegram_updates` 표에 기록하고, 이미 있는 ID는 건너뛴다(크래시 뒤 중복 실행 방지).
+- 시작할 때 쌓여 있던 업데이트는 **처리한다.** 다만 받은 시각이 6시간보다 오래된 메시지는 두뇌에 "몇 시간 전에 보낸 메시지"라고 표시해서 넘긴다. 텔레그램은 받아 가지 않은 업데이트를 최대 24시간만 보관하므로, 그보다 오래 꺼져 있었다면 그 사이 메시지는 사라질 수 있다(사용자 안내 문서에 적는다).
+- 받는 조건: 발신자 ID = `OWNER_TELEGRAM_ID` **그리고** 채팅 종류 = 개인 채팅. 나머지는 버리고 로그에 발신자 ID만 남긴다.
+
+### 5.3 대화와 두뇌 세션
+
+**논리적 날짜**: 시간대 `Asia/Seoul`, 하루 경계 04:00. 00:00~03:59의 활동은 전날로 기록한다(마스터 5.5). 모든 "오늘"은 논리적 날짜다.
+
+**대화 규칙** (`harness/conversations.py`)
+
+| 상황 | 동작 |
+|---|---|
+| 회차 실행 | 새 대화를 연다. 대화 종류 `run`, 회차 ID를 연결한다 |
+| 사용자 메시지, 열린 회차 대화가 있고 그 회차의 **답장 창** 안 | 그 대화를 잇는다 |
+| 사용자 메시지, 마지막 메시지 후 30분 이내인 `chat` 대화가 있음 | 그 대화를 잇는다 |
+| 그 밖 | 새 `chat` 대화를 연다 |
+
+답장 창: `morning_brief`는 당일 12:00까지, `evening_checkin`은 논리적 날짜가 끝나는 다음 날 04:00까지, `review(week)`는 24시간. 답장 창 규칙이 30분 규칙보다 먼저다.
+
+대화 하나는 두뇌 세션 하나를 쓴다. 대화를 이을 때 `resume=session_id`로 호출한다. resume이 실패하면(세션 파일 없음 등) 새 세션을 열고 컨텍스트를 다시 조립한 뒤, 그 대화의 원문 기록 최근 20개 메시지를 함께 붙인다.
+
+SDK는 세션 기록을 `~/.claude/projects/` 아래에 따로 남긴다. 이는 원문 기록의 사본이며, 원본은 `data/transcripts/`다. 사용자 안내 문서에 이 사실을 적는다.
+
+**두뇌 실행 설정** (S2, S3로 검증, 마스터 5.3 계약)
+
+```python
+ClaudeAgentOptions(
+    tools=[],                                  # 기본 도구 전부 제거
+    mcp_servers={"planner": planner_server},   # in-process MCP 서버
+    allowed_tools=["mcp__planner__*"],
+    permission_mode="dontAsk",                 # 허용 목록 밖은 묻지 않고 거부
+    strict_mcp_config=True,                    # 다른 MCP 설정 무시
+    setting_sources=[],                        # user/project/local 설정 안 읽음
+    cwd="state/brain-workdir",                 # 빈 전용 폴더
+    max_turns=10,
+    system_prompt=load("prompts/system.md"),
+    resume=session_id_or_none,
+    env={
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
+    },
+)
+```
+
+근거: `allowed_tools`는 도구를 자동 승인할 뿐 제한하지 않으며, 목록 밖 도구도 그대로 존재한다. claude.ai 커넥터와 auto memory는 `setting_sources`와 상관없이 로드된다. ([Permissions](https://code.claude.com/docs/en/agent-sdk/permissions), [Claude Code features in the SDK](https://code.claude.com/docs/en/agent-sdk/claude-code-features))
+
+**새 세션의 앞머리 컨텍스트** (`harness/context.py`)
+
+- 현재 시각, 요일, 논리적 날짜
+- 오늘과 이번 주의 우선순위, 열린 할 일 요약 (최대 30개, 오늘 → 이번 주 → 나머지 순)
+- 오늘의 일정 시각이 있는 할 일
+- 어제 컨디션(없으면 "기록 없음")
+- 이 회차가 묶어서 처리하는 회차가 있으면 그 목록(5.4)
+- 잠시 멈춤 상태(5.6)
+
+**호출 결과 처리**
+
+| `BrainResult.status` | 사용자에게 |
+|---|---|
+| `ok` | 두뇌 답변 + 확인 문구(5.5) |
+| `max_turns` | 확인 문구만 보내고 "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요." |
+| `auth_error` | 하루 한 번만: "Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요." 회차는 `skipped(auth)` |
+| `rate_limited` | 한도 구간당 한 번만 알림. `usage_state.limited_until`을 기록하고 그때까지 회차는 `skipped(rate_limit)`, 명령은 계속 동작 |
+| `error` | 지수 백오프로 최대 3회, 그래도 실패하면 "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요." |
+
+`auth_error`와 `rate_limited`를 구분하는 방법(SDK 예외 종류, 결과 메시지의 오류 하위 유형)은 S1에서 실제 오류를 확인해 정한다. 확인 전에는 둘 다 `error`로 처리한다.
+
+### 5.4 루프와 회차
+
+**회차 정의** (`config.toml`, 기본값. 시각은 평일/주말을 따로 둔다. 주말 = 토, 일)
+
+| 루프 | 키 | 주기 | 기본 시각 (평일 / 주말) | 하는 일 |
+|---|---|---|---|---|
+| 아침 브리핑 | `morning_brief` | 매일 | 09:00 / 10:00 | 오늘 우선순위 1~3개와 첫 걸음 제안, 오늘 일정 알림 |
+| 저녁 체크인 | `evening_checkin` | 매일 | 17:30 / 18:00 | 컨디션을 인라인 버튼 1~5로 받고(버튼은 하네스가 `record_condition`을 직접 부른다), 한 줄 메모와 오늘 한 일, 내일로 옮길 일 제안 |
+| 주간 회고 | `review` (cadence=`week`) | 매주 일요일 | 18:00 (일요일 저녁 체크인과 합쳐 한 메시지로 보낸다) | 지난주 돌아보기, 다음 주 우선순위 1~3개 초안. 결과를 `data/reviews/weekly/<YYYY-Www>.md`에 저장 |
+| 복귀 인사 | `return` | 조건부 | 깨어난 시각 | 5.4 규칙 R1 |
+
+**회차 만들기**: tick은 회차를 미리 만들지 않는다. 매 tick에서 `schedule.py`가 `(창 시작, 지금]` 구간의 예정 시각 목록을 계산하고, `runs`에 없는 것만 새로 만든다. 창 시작은 `max(app_state.last_seen_at, app_state.installed_at, 지금 - 7일)`.
+
+**회차 상태**: `pending` → `running` → `done` | `failed` | `skipped` | `interrupted`. `skipped`에는 `skip_reason`이 있다: `late`, `merged_into_return`, `paused`, `auth`, `rate_limit`, `daily_cap`.
+
+**하트비트**: tick마다 `app_state.last_seen_at = 지금`. 깨어난 뒤 첫 tick에서 `공백 = 지금 - last_seen_at`을 계산한다.
+
+**따라잡기 규칙** (`loop/catchup.py`, 위에서부터 먼저 적용)
+
+| # | 조건 | 결정 |
+|---|---|---|
+| R1 | 공백 ≥ 24시간 | 공백 동안의 모든 회차를 `skipped(merged_into_return)`로 기록하고, `return` 회차 하나를 만든다. `return`은 "다시 이어서 해 볼까요"와 오늘 할 것만 담는다. 공백 중 `review(week)`가 있었고 지금이 그 회차 + 3일 이내면, `return` 다음 정규 연락(아침 브리핑 또는 저녁 체크인)에 주간 회고를 합쳐 보낸다 |
+| R2 | 멈춤 기간 안 | `skipped(paused)` |
+| R3 | 하루 두뇌 호출 상한 도달 | `skipped(daily_cap)` |
+| R4 | 루프별 한계 안 | 늦게라도 실행한다 |
+| R5 | 루프별 한계 밖 | `skipped(late)` |
+
+루프별 한계: `morning_brief`는 당일 12:00, `evening_checkin`은 다음 날 04:00(논리적 날짜 끝), `review(week)`는 예정 시각 + 3일.
+
+**합치기**: 같은 tick에서 실행할 회차가 둘 이상이면 하나로 합친다. 우선순위는 `return` > `evening_checkin` > `morning_brief` > `review(week)`이고, 합쳐진 회차는 `skipped(merged_into_return)`가 아니라 실행된 회차의 `merged_run_ids`에 기록한다. 이로써 비서가 먼저 보내는 메시지는 하루 최대 3회(마스터 5.5)를 넘지 않는다. 하루 4번째가 되면 다음 정규 연락에 합친다.
+
+**문구 규칙**: 따라잡기 메시지에 "놓쳤어요", "밀렸어요", "늦었지만" 같은 지연 표현을 쓰지 않는다(P2). 프롬프트와 테스트로 확인한다.
+
+**재시도와 재실행 (중복 쓰기 방지)**
+
+1. 회차 실행은 두 단계다: (a) 두뇌 호출 → 보낼 본문을 `runs.outbound_text`에 저장, (b) 전송.
+2. 전송 실패는 `failed`, 5분 뒤 **전송만** 한 번 다시 시도한다. 두뇌를 다시 부르지 않는다.
+3. (a) 도중 실패한 회차와 시작 시 `interrupted`가 된 회차: 그 회차의 도구 이벤트가 하나도 없으면 한계 안일 때 한 번 다시 실행한다. 도구 이벤트가 있으면 다시 실행하지 않고 `failed`로 둔다(로그만).
+4. 사용자에게 실패를 알리지 않는다.
+
+### 5.5 할 일과 컨디션
+
+**표** (모든 시각은 UTC ISO 8601 문자열, 날짜는 논리적 날짜 `YYYY-MM-DD`)
+
+`tasks`
+
+| 열 | 형식 | 제약 |
+|---|---|---|
+| `id` | INTEGER PK | |
+| `title` | TEXT | NOT NULL, 1~200자 |
+| `status` | TEXT | `draft` / `open` / `done` / `dropped`. `draft`는 비서가 제안하고 사용자가 아직 확정하지 않은 할 일 (5.7) |
+| `planned_for` | TEXT 날짜, NULL 가능 | 하려는 날. 마감일이 아니다(P2) |
+| `scheduled_at` | TEXT 시각, NULL 가능 | 시각이 정해진 일 (예: 치과 14:00) |
+| `parent_id` | INTEGER FK tasks, NULL 가능 | 값이 있으면 첫 걸음이다 (`is_first_step` 열은 두지 않는다) |
+| `note` | TEXT | |
+| `created_at`, `updated_at` | TEXT | NOT NULL |
+| `completed_at` | TEXT, NULL 가능 | `status='done'`일 때만 값 (CHECK) |
+| `deleted_at` | TEXT, NULL 가능 | 소프트 삭제. 도구로는 쓰지 않음(관리용) |
+
+`task_areas(task_id, area)`: PK `(task_id, area)`, `area` CHECK 6개 값. 할 일마다 최소 1개(도구가 검증).
+
+`task_events(id, task_id, kind, payload_json, at)`: `kind` ∈ `proposed`, `confirmed`, `created`, `updated`, `completed`, `moved`, `dropped`, `reopened`. SP3 경험치 원장의 근거.
+
+`priorities(cadence, period, rank, task_id)`: PK `(cadence, period, rank)`, UNIQUE `(cadence, period, task_id)`, `rank` CHECK 1~3. 할 일이 `dropped`가 되면 해당 우선순위 행을 지운다. `period` 형식: 일 `2026-10-23`, 주 `2026-W43`(ISO 주), 월 `2026-10`, 분기 `2026-Q4`, 년 `2026`. 목표(월·분기·년 우선순위)도 이 표에 들어간다.
+
+`conditions(date, score, note, recorded_at)`: PK `date`, `score` CHECK 1~5. 같은 날 다시 기록하면 덮어쓴다.
+
+**도구** (MCP 서버 `planner`)
+
+| 도구 | 입력 | 하는 일 | ToolEvent |
+|---|---|---|---|
+| `add_task` | title, areas, planned_for?, scheduled_at?, parent_id?, note? | 추가. **사용자가 직접 추가해 달라고 한 할 일에만** 쓴다 | `task_added` |
+| `propose_tasks` | 할 일 목록(add_task와 같은 필드) | 비서가 제안하는 할 일을 `draft`로 저장 | `tasks_proposed` |
+| `confirm_tasks` | ids | 초안을 `open`으로 확정 | `tasks_confirmed` |
+| `update_task` | id, title?, areas?, note?, scheduled_at? | 바꾸기 (날짜는 `move_task`) | `task_updated` |
+| `move_task` | id, planned_for (NULL 가능) | 하려는 날만 바꾼다 | `task_moved` |
+| `complete_task` | id | 완료 | `task_completed` |
+| `reopen_task` | id | 완료·내려놓음을 되돌림 | `task_reopened` |
+| `drop_task` | id | 내려놓기 | `task_dropped` |
+| `list_tasks` | status?, from?, to?, area?, limit≤50 | 조회 | 없음 |
+| `set_priorities` | cadence, period, task_ids(≤3, 순서가 순위) | 해당 기간 우선순위를 통째로 교체. 4개 이상이면 거절 | `priorities_set` |
+| `record_condition` | date?(기본 오늘), score 1~5, note? | 기록 | 없음 |
+| `read_transcript` | from, to (최대 7일) | 원문 기록 읽기 | 없음 |
+
+**확인 문구**: 도구 함수가 돌려준 `ToolEvent`를 호출 단위 컨텍스트(`RunContext`)에 쌓는다. 두뇌 호출이 끝나면 하네스가 이벤트를 문구로 바꿔 **두뇌 답변 아래에 한 메시지로 붙여** 보낸다. 예: `✓ 추가: 치과 (10/25 14:00)`, `✓ 옮김: 운동 → 내일`. 두뇌가 답변에서 같은 내용을 말해도 확인 문구는 항상 붙인다.
+
+변경 도구 호출 뒤마다 `data/exports/tasks.md`를 다시 만든다.
+
+### 5.6 텔레그램 명령
+
+명령은 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다(마스터 5.5).
+
+| 명령 | 동작 |
+|---|---|
+| `/today` | 오늘 우선순위, 일정, 열린 할 일 |
+| `/week` | 이번 주 우선순위와 할 일 |
+| `/pause <일수>` | 지금부터 N×24시간 동안 `morning_brief`, `evening_checkin`, `review(week)`를 멈춘다(1~14). 끝 시각을 `app_state.pause_until`에 저장. 멈춘 회차는 `skipped(paused)`. 사용자 메시지에는 계속 답한다. 쉬는 것도 정당하다(P3) |
+| `/unpause` | 멈춤 해제 |
+| `/plan [주제]` | 계획 모드 시작 (5.7) |
+| `/done` | 계획 모드 끝내기 |
+| `/help` | 명령 목록 |
+
+`/status`(SP3), `/memory`(SP2)는 해당 하위 프로젝트에서 추가한다.
+
+### 5.7 초안 할 일과 계획 모드
+
+**원칙**: 할 일 목록에는 사용자가 동의한 것만 올라간다(결정은 사용자가 한다).
+
+| 누가 꺼냈나 | 저장 방식 |
+|---|---|
+| 사용자가 "치과 추가해 줘"처럼 직접 말함 | `add_task`로 바로 `open` |
+| 비서가 브리핑, 체크인, 회고, 계획 모드에서 제안함 | `propose_tasks`로 `draft`. 메시지 아래에 초안마다 `✓ 추가` `✗ 빼기` 인라인 버튼을 붙이고, "전부 추가"도 둔다 |
+
+- 버튼은 두뇌를 거치지 않고 하네스가 `confirm_tasks`나 `drop_task`를 직접 부른다. 자연어로 "좋아, 그거 다 넣어"라고 해도 두뇌가 `confirm_tasks`를 부른다.
+- 초안은 우선순위에 올릴 수 없다. `set_priorities`는 `open` 할 일만 받는다.
+- 3일 동안 확정하지 않은 초안은 조용히 `dropped`로 바꾼다(알리지 않음). `/today`와 아침 브리핑은 초안을 보여 주지 않는다.
+
+**계획 모드 (`/plan [주제]`)**
+
+사용자와 비서가 할 일이나 목표를 함께 의논하는 대화다. 비서가 일방적으로 목록을 만들지 않는다.
+
+1. `/plan` 또는 "같이 계획 세우자"로 시작한다. 대화 종류 `plan`을 연다.
+2. 비서는 **질문을 한 번에 하나씩** 하며 무엇을, 왜, 언제쯤 할지 좁힌다. 목표가 크면 우선순위와 15~30분짜리 첫 걸음으로 쪼갠다.
+3. 의논이 모이면 초안 목록을 `propose_tasks`로 보여 주고 버튼으로 확정받는다. 우선순위 지정도 사용자 확인 후에 한다.
+4. `/done`이나 "여기까지"로 끝나고, 마지막 메시지 뒤 2시간이 지나면 저절로 닫힌다(30분 규칙을 쓰지 않는다).
+5. 계획 모드 동안 시작되는 회차는 계획 대화가 닫힐 때까지 미룬다(한계를 넘으면 5.4 규칙대로 처리).
+
+반복 할 일(매일 운동 등)은 SP1에서 만들지 않는다. 필요해지면 계획 모드에서 사용자와 의논해 별도 설계로 추가한다.
+
+### 5.8 원문 기록
+
+- 하네스가 쓴다. 두뇌에게는 읽기 도구만 있다.
+- 파일: `data/transcripts/YYYY/MM/YYYY-MM-DD.md` (논리적 날짜 기준)
+- 형식: 메시지마다 `### HH:MM 사용자|비서 [대화 ID] (회차 키)` 머리글과 본문. 도구 호출은 `> 도구: add_task` 한 줄(인자 없이)로 남긴다.
+- 덧붙이기만 한다. 수정하지 않는다.
+- **가리기**: 사용자 메시지를 원문 기록에 쓰기 **전에**, 그리고 두뇌에 넘기기 **전에** `redact.py`를 적용한다. 대상: 주민등록번호 형식, 계좌번호로 보이는 10~14자리 숫자열, "비밀번호/비번/password/PIN" 뒤의 값. 가린 자리는 `[가림]`으로 바꾼다. 가린 일이 있으면 두뇌 컨텍스트에 "인증·식별 정보를 가렸음"을 알린다.
+
+## 6. 시스템 프롬프트 원칙
+
+`harness/prompts/system.md`에 담는다. 문구는 구현 단계에서 다듬되 이 원칙은 바꾸지 않는다.
+
+1. 한국어 존댓말, 짧게. 한 메시지는 휴대폰 한 화면 안.
+2. 우선순위는 최대 3개, 첫 걸음은 15~30분 크기로 제안한다.
+3. 마감, 나이, 남은 시간으로 압박하지 않는다. "밀렸다", "놓쳤다", "실패" 같은 말을 쓰지 않는다.
+4. 컨디션이 2 이하면 할 일을 줄이자고 먼저 제안한다.
+5. 휴식은 할 일과 같은 무게로 다룬다.
+6. 결정은 사용자가 한다. 비서는 초안과 선택지를 낸다.
+7. 데이터 변경은 반드시 도구로 한다. 도구 없이 "저장했어요"라고 말하지 않는다.
+8. `[가림]`으로 바뀐 정보는 저장되지 않았다고 짧게 알린다.
+
+## 7. 운영
+
+| 항목 | 규칙 |
+|---|---|
+| 하루 두뇌 호출 상한 | 60회 (설정 가능). 카운터는 `usage_state(date, brain_calls)`에 저장해 재시작 뒤에도 유지. 넘으면 명령만 동작하고, 대화에는 "오늘은 여기까지 생각을 아껴 둘게요. 명령(/today)은 계속 쓸 수 있어요." 회차는 `skipped(daily_cap)` |
+| 텔레그램 전송 실패 | 3회 재시도 후 회차 `failed` (5.4 재시도 규칙) |
+| 롱폴링 끊김 | 라이브러리 재연결, 절전 복귀 감지 시 폴링 재시작 (S5) |
+| DB | WAL 모드. 시작 시 `PRAGMA integrity_check`. 실패하면 자동 복구하지 않고 텔레그램으로 "최신 백업으로 복구할까요?"를 알린다 |
+| 로그 | `state/logs/my-planner.jsonl`, 하루 단위 회전, 30일 보관. 메시지 본문과 도구 인자는 남기지 않는다. 두뇌 호출마다 소요 시간, 턴 수, 도구 이름 목록, 결과 상태를 남긴다 |
+| 백업 | 매일 첫 tick에 SQLite 백업 API로 `state/backups/planner-YYYY-MM-DD.db`, 14개 보관. 로컬 디스크만. `data/`는 사용자가 원하는 로컬·외장 백업 도구로 복사 |
+
+## 8. 테스트
+
+**단위 테스트**
+
+| 대상 | 경우 |
+|---|---|
+| `schedule` | 창 계산, 일요일 걸침, 7일 상한, 첫 실행 |
+| `catchup` (표 기반, 아래 표) | R1~R5 우선순위, 합치기, 하루 3회 상한 |
+| 논리적 날짜 | 03:59 → 전날, 04:00 → 당일, 자정 넘긴 체크인 답장 |
+| 시계 역행 | `last_seen_at`이 미래인 경우(수동 시각 변경): 공백 0으로 보고 경고 로그 |
+| `conversations` | 답장 창 > 30분 규칙, 계획 모드 2시간 규칙, resume 실패 대체 경로 |
+| 초안 | 3일 만료, 초안은 우선순위 불가, 버튼 확정, `/today`에 안 보임 |
+| `redact` | 주민번호, 계좌, 비밀번호 문맥, 오탐 예시(전화번호, 날짜) |
+| 저장소 | 우선순위 3개 상한, UNIQUE, `dropped` 시 우선순위 삭제, `completed_at` CHECK, 마이그레이션 0→최신 |
+| 확인 문구 | ToolEvent → 문구 |
+| 멈춤 | 경계 시각 직전·직후 |
+| 사용자 잠금 | 다른 ID, 그룹 채팅, 중복 `update_id` |
+
+**따라잡기 기대 결과표 (일부, 전체는 구현 계획에서 확장)**
+
+| 마지막 tick | 깨어난 시각 | 기대 |
+|---|---|---|
+| 월 08:00 | 월 10:30 | `morning_brief` 실행 |
+| 월 08:00 | 월 13:00 | `morning_brief` `skipped(late)` |
+| 월 17:00 | 화 01:00 | `evening_checkin`(월) 실행 |
+| 월 17:00 | 화 05:00 | `evening_checkin`(월) `skipped(late)`, 화 아침 브리핑이 어제 컨디션을 묻는다 |
+| 토 17:00 | 일 18:30 (25.5시간) | R1: `return` 하나, 일요일 회고는 다음 정규 연락에 합침 |
+| 금 22:00 | 화 08:00 (4일) | R1: `return` 하나, 일요일 회고는 3일 초과라 `skipped(merged_into_return)` |
+| 일 17:00 | 일 18:10 | `review(week)`와 `evening_checkin`을 하나로 합쳐 실행 |
+| 금 18:00 | 토 09:30 | 아직 보낼 회차 없음. 토요일 아침 브리핑은 10:00(주말 시각)에 실행 |
+
+**통합 테스트**: 가짜 봇 + `FakeBrain`(도구 호출 시나리오 재생) + 임시 SQLite로 다음을 확인한다.
+- 메시지 처리 전체 흐름
+- 회차와 사용자 메시지가 겹칠 때 직렬 처리 순서
+- 전송 실패 후 재시도에서 도구가 다시 실행되지 않음
+- 크래시 후 `running` 회차 복구
+
+**반자동 점검**: 작업 스케줄러 XML 스키마 검증, 등록 후 `schtasks /query /xml` 결과 비교.
+
+**수동 수용 테스트**: 1장의 완료 조건 1~5를 노트북에서 7일 동안 확인하고 체크리스트로 남긴다. 실제 Claude를 부르는 것은 스파이크와 수동 수용 테스트뿐이다.
+
+## 9. 설정과 비밀값
+
+- `.env` (Git 제외, 사용자가 직접 입력): `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`
+- `config.toml` (Git 포함, 개인값 없음): 시간대, 하루 경계, 회차 시각, 답장 창, 따라잡기 한계, 호출 상한, 로그·백업 보관 기간
+- 의존성: `python-telegram-bot`(비동기), `claude-agent-sdk`(최소 버전은 S3에서 고정), `pydantic`, `pytest`, `pytest-asyncio`. 스케줄러는 직접 구현한다. 정확한 버전은 구현 계획에서 고정한다.
+
+## 10. 미결 사항
+
+없음. (회차 시각은 2026-10-23 Dahun 확정: 평일 09:00 / 17:30, 주말 10:00 / 18:00. 컨디션은 버튼. 반복 할 일은 나중에 의논.)
