@@ -13,16 +13,29 @@ from telegram import Bot
 
 from my_planner.bot.telegram_io import TelegramSender, build_application
 from my_planner.clock import SystemClock
-from my_planner.config import PathsConfig, RetentionConfig, Settings, load_settings, resolve_root
+from my_planner.config import (
+    PathsConfig,
+    RetentionConfig,
+    Settings,
+    load_settings,
+    resolve_root,
+)
 from my_planner.harness.brain import ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher
 from my_planner.logging_setup import setup_logging
-from my_planner.platform.windows import AlreadyRunning, SingleInstanceLock, hide_console, keep_awake
+from my_planner.platform.windows import (
+    AlreadyRunning,
+    SingleInstanceLock,
+    hide_console,
+    keep_awake,
+)
 from my_planner.store.db import migrate, open_db
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.state import StateRepo
+from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
+from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
 
@@ -95,8 +108,16 @@ async def _serve(settings: Settings) -> None:
         # 4. Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
         bot = Bot(settings.telegram_bot_token.get_secret_value())
         sender = TelegramSender(bot, settings.owner_telegram_id)
+        tools = Tools(
+            tasks=TasksRepo(conn, clock, tz=settings.timezone, boundary=settings.day_boundary),
+            transcripts=transcripts,
+            export_path=paths.data_dir / "exports" / "tasks.md",
+            clock=clock,
+            tz=settings.timezone,
+            boundary=settings.day_boundary,
+        )
         brain = ClaudeBrain(
-            tools_factory=_no_tools,
+            tools_factory=lambda: tools,
             workdir=paths.state_dir / "brain-workdir",
             max_turns=settings.limits.max_turns,
         )
@@ -109,6 +130,7 @@ async def _serve(settings: Settings) -> None:
             clock=clock,
             settings=settings,
             router=ConversationRouter(convs, clock=clock, settings=settings),
+            tools=tools,
             keep_awake=keep_awake,
         )
         application = build_application(settings, dispatcher, state, transcripts, bot=bot, clock=clock)
@@ -130,11 +152,6 @@ async def _serve(settings: Settings) -> None:
                 await dispatcher.stop(SHUTDOWN_TIMEOUT_S)
     finally:
         conn.close()
-
-
-def _no_tools() -> None:
-    """티켓 01에는 도구가 없다. 티켓 03에서 Tools를 돌려준다."""
-    return None
 
 
 async def _wait_for_shutdown() -> None:

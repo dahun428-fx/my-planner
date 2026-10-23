@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, time, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from pathlib import Path
 from typing import Literal
 
@@ -45,6 +45,17 @@ class TranscriptStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines))
+
+    def read_range(self, start: date, end: date, *, max_chars: int = 20000) -> str:
+        """논리적 날짜 `start`~`end`(포함)의 원문 기록. 없는 날은 건너뛴다. 너무 길면 앞부분만."""
+        parts: list[str] = []
+        d = start
+        while d <= end:
+            path = self.root / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.isoformat()}.md"
+            if path.exists():
+                parts.append(f"# {d.isoformat()}\n\n" + path.read_text(encoding="utf-8"))
+            d += timedelta(days=1)
+        return "\n".join(parts)[:max_chars]
 
     def recent(self, conversation_id: int, n: int = 20, *, skip_last: int = 0) -> str:
         """그 대화의 최근 n개 메시지를 시간순으로 `[HH:MM] 사용자: 본문` 형태로 돌려준다. 없으면 `""`.

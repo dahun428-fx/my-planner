@@ -301,6 +301,8 @@ ClaudeAgentOptions(
 | `record_condition` | date?(기본 오늘), score 1~5, note? | 기록 | 없음 |
 | `read_transcript` | from, to (최대 7일) | 원문 기록 읽기 | 없음 |
 
+**날짜와 시각 규칙**: `move_task`는 `scheduled_at`이 있는 할 일의 날짜를 새 날로 옮기고 한국 시간 시각은 그대로 둔다. 날짜를 NULL로 옮기면 `planned_for`와 `scheduled_at`을 모두 지운다. `scheduled_at`을 바꾸는 `update_task`는 `planned_for`를 새 시각의 논리적 날짜(04:00 경계)로 다시 정한다.
+
 **확인 문구**: 도구 함수가 돌려준 `ToolEvent`를 호출 단위 컨텍스트(`RunContext`)에 쌓는다. 두뇌 호출이 끝나면 하네스가 이벤트를 문구로 바꿔 **두뇌 답변 아래에 한 메시지로 붙여** 보낸다. 예: `✓ 추가: 치과 (10/25 14:00)`, `✓ 옮김: 운동 → 내일`. 두뇌가 답변에서 같은 내용을 말해도 확인 문구는 항상 붙인다.
 
 변경 도구 호출 뒤마다 `data/exports/tasks.md`를 다시 만든다.
