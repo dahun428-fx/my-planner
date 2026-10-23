@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, time, tzinfo
 from pathlib import Path
 from typing import Literal
@@ -44,3 +45,44 @@ class TranscriptStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines))
+
+    def recent(self, conversation_id: int, n: int = 20, *, skip_last: int = 0) -> str:
+        """그 대화의 최근 n개 메시지를 시간순으로 `[HH:MM] 사용자: 본문` 형태로 돌려준다. 없으면 `""`.
+
+        `skip_last`: 가장 최근 몇 개를 뺀다(방금 기록한 현재 메시지를 중복해 넣지 않으려고).
+        """
+        want = n + skip_last
+        found: list[str] = []  # 최신 것부터
+        for path in sorted(self.root.rglob("*.md"), reverse=True):
+            if len(found) >= want:
+                break
+            for hhmm, speaker, body in reversed(_entries(path, conversation_id)):
+                found.append(f"[{hhmm}] {speaker}: {body}")
+                if len(found) >= want:
+                    break
+        return "\n".join(reversed(found[skip_last:]))
+
+
+_HEADER = re.compile(r"^### (\d{2}:\d{2}) (사용자|비서) \[(\d+|-)\](?: \(.*\))?$")
+
+
+def _entries(path: Path, conversation_id: int) -> list[tuple[str, str, str]]:
+    """파일의 (시각, 화자, 본문) 목록. 해당 대화의 것만, 도구 줄은 뺀다."""
+    out: list[tuple[str, str, str]] = []
+    cur: tuple[str, str, str] | None = None
+    lines: list[str] = []
+
+    def flush() -> None:
+        if cur is not None and cur[2] == str(conversation_id):
+            body = "\n".join(line for line in lines if not line.startswith("> 도구: ")).strip()
+            out.append((cur[0], cur[1], body))
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = _HEADER.match(line)
+        if m:
+            flush()
+            cur, lines = (m.group(1), m.group(2), m.group(3)), []
+        else:
+            lines.append(line)
+    flush()
+    return out

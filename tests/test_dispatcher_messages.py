@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fakes import FakeBrain, FakeSender, FakeTurn, fake_sleep, make_settings
 
 from my_planner.clock import FakeClock
+from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher, Inbound
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -27,6 +28,7 @@ class Env:
             transcripts=self.transcripts,
             clock=self.clock,
             settings=self.settings,
+            router=ConversationRouter(convs=self.convs, clock=self.clock, settings=self.settings),
             sleep=fake_sleep(self.clock),
         )
 
@@ -80,6 +82,7 @@ async def test_logical_date_boundary_in_transcript(tmp_path, conn, state):
     await env.dispatcher.stop(timeout=5)
 
     env.clock.set(kst(2026, 10, 23, 4, 0))
+    env.convs.close(1)  # 경계 확인을 위해 앞 대화를 닫아 새 대화로 시작한다
     env.dispatcher.start()
     env.dispatcher.submit_message(env.inbound("네 시 정각", update_id=2))
     await env.dispatcher.stop(timeout=5)

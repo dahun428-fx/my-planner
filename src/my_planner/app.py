@@ -15,6 +15,7 @@ from my_planner.bot.telegram_io import TelegramSender, build_application
 from my_planner.clock import SystemClock
 from my_planner.config import PathsConfig, RetentionConfig, Settings, load_settings, resolve_root
 from my_planner.harness.brain import ClaudeBrain
+from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher
 from my_planner.logging_setup import setup_logging
 from my_planner.platform.windows import AlreadyRunning, SingleInstanceLock, hide_console, keep_awake
@@ -107,6 +108,7 @@ async def _serve(settings: Settings) -> None:
             transcripts=transcripts,
             clock=clock,
             settings=settings,
+            router=ConversationRouter(convs, clock=clock, settings=settings),
             keep_awake=keep_awake,
         )
         application = build_application(settings, dispatcher, state, transcripts, bot=bot, clock=clock)
