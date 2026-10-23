@@ -111,10 +111,19 @@ def test_migrate_to_5_inbound_pending(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
     assert migrate(conn) >= 5
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(inbound_pending)")]
-    assert cols == ["update_id", "text_redacted", "sent_at", "received_at"]
+    assert cols == [
+        "update_id", "text_redacted", "sent_at", "received_at",
+        "user_logged", "brain_done", "reply_text", "conversation_id", "attempts",
+    ]
     now = "2026-10-23T09:00:00+00:00"
-    conn.execute("INSERT INTO inbound_pending VALUES (7, '비번은 [가림]', ?, ?)", (now, now))
+    ins = "INSERT INTO inbound_pending (update_id, text_redacted, sent_at, received_at) VALUES (?, ?, ?, ?)"
+    conn.execute(ins, (7, "비번은 [가림]", now, now))
+    row = conn.execute("SELECT * FROM inbound_pending").fetchone()
+    assert (row["user_logged"], row["brain_done"], row["reply_text"], row["attempts"]) == (0, 0, None, 0)
     with pytest.raises(sqlite3.IntegrityError):  # update_id PK
-        conn.execute("INSERT INTO inbound_pending VALUES (7, '다른 글', ?, ?)", (now, now))
+        conn.execute(ins, (7, "다른 글", now, now))
+    # 도구 호출 기록은 받은 메시지(inbound_id)에도 이어지고, 확인 문구를 다시 만들 데이터를 둔다
+    log_cols = {r["name"] for r in conn.execute("PRAGMA table_info(tool_events_log)")}
+    assert {"inbound_id", "data_json"} <= log_cols
     with pytest.raises(sqlite3.IntegrityError):  # 시각은 NOT NULL
         conn.execute("INSERT INTO inbound_pending (update_id, text_redacted) VALUES (8, '글')")

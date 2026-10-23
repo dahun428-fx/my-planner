@@ -191,20 +191,34 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
             log.info("run_resend_on_start", extra={"run_id": run.id})
 
 
+INBOUND_MAX_ATTEMPTS = 3  # 시작 때 다시 넣는 횟수 상한. 넘으면 inbound_dropped
+
+
 def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
     """시작 시 복구 다음 단계: 받았지만 답하지 못한 메시지(`inbound_pending`)를 받은 순서대로 다시 넣는다.
 
     본문은 저장해 둔 가린 글이다(가린 정보는 두뇌도 다시 받지 못한다). 받은 시각과 보낸 시각은 처음 그대로라,
     6시간보다 오래된 메시지는 "몇 시간 전" 알림을 붙여 넘긴다. 답을 보내면 처리 완료로 기록하면서 행을 지운다.
+    넣을 때마다 `attempts`를 1 올리고, 이미 3회 넣은 행은 버린다(`inbound_dropped`). 다시 넣은 것만 센다.
     """
-    rows = state.pending_inbound()
-    for row in rows:
+    submitted: list[int] = []
+    for row in state.pending_inbound():
+        if row.attempts >= INBOUND_MAX_ATTEMPTS:
+            # 시작할 때마다 다시 넣어도 끝내 답하지 못했다. 버리고 이유만 남긴다(본문 없이)
+            state.drop_pending_inbound(row.update_id)
+            log.warning(
+                "inbound_dropped",
+                extra={"update_id": row.update_id, "reason": "max_attempts", "attempts": row.attempts},
+            )
+            continue
+        state.bump_inbound_attempts(row.update_id)
         dispatcher.submit_message(
             Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)
         )
-    if rows:
-        log.info("inbound_resubmitted_on_start", extra={"update_ids": [r.update_id for r in rows]})
-    return len(rows)
+        submitted.append(row.update_id)
+    if submitted:
+        log.info("inbound_resubmitted_on_start", extra={"update_ids": submitted})
+    return len(submitted)
 
 
 class MessageSubmitter(Protocol):

@@ -149,7 +149,9 @@ class Tools:
 
     def _finish(self, ctx: RunContext, kind: str, t: Task) -> dict[str, Any]:
         """트랜잭션 안에서 부른다: 호출 기록. 끝난 뒤 `_after`를 부른다."""
-        self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, kind)
+        self.tasks.log_tool_event(
+            ctx.run_id, ctx.conversation_id, t.id, kind, inbound_id=ctx.inbound_id, data=self._event_data(t)
+        )
         return self._task_dict(t)
 
     def _after(self, ctx: RunContext, kind: str, t: Task) -> None:
@@ -240,7 +242,10 @@ class Tools:
         with self.tasks.transaction():
             for new in checked:
                 t = self.tasks.create(status=TaskStatus.draft, **new)
-                self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, "tasks_proposed")
+                self.tasks.log_tool_event(
+                    ctx.run_id, ctx.conversation_id, t.id, "tasks_proposed",
+                    inbound_id=ctx.inbound_id, data={"ids": [t.id], "titles": [t.title]},
+                )
                 made.append(t)
         ids = [t.id for t in made]
         ctx.events.append(
@@ -263,7 +268,10 @@ class Tools:
                     skipped.append(i)
                     continue
                 t = self.tasks.set_status(t.id, TaskStatus.open)
-                self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, "tasks_confirmed")
+                self.tasks.log_tool_event(
+                    ctx.run_id, ctx.conversation_id, t.id, "tasks_confirmed",
+                    inbound_id=ctx.inbound_id, data=self._event_data(t),
+                )
                 confirmed.append(t)
         for t in confirmed:
             ctx.events.append(ToolEvent(kind="tasks_confirmed", task_id=t.id, data=self._event_data(t)))
@@ -429,8 +437,11 @@ class Tools:
         ids: list[int] = list(task_ids)
         with self.tasks.transaction():
             self.tasks.set_priorities(c, period, ids)
-            self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, "priorities_set")
             picked = self.tasks.priorities(c, period)
+            self.tasks.log_tool_event(
+                ctx.run_id, ctx.conversation_id, None, "priorities_set", inbound_id=ctx.inbound_id,
+                data={"cadence": c.value, "period": period, "titles": [t.title for t in picked]},
+            )
         ctx.events.append(
             ToolEvent(
                 kind="priorities_set",

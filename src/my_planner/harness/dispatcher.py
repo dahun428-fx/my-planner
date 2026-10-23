@@ -24,6 +24,7 @@ from my_planner.domain import (
     RunStatus,
     SkipReason,
     TaskStatus,
+    ToolEvent,
 )
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
@@ -47,7 +48,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import Conversation, ConversationsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
-    from my_planner.store.repos.state import StateRepo
+    from my_planner.store.repos.state import PendingInbound, StateRepo
     from my_planner.store.transcripts import TranscriptStore
     from my_planner.tools.core import Tools
 
@@ -297,7 +298,8 @@ class Dispatcher:
                 except Exception:
                     log.exception("run_resend_error", extra={"run_id": item.run.id})
                 continue
-            batch = [item, *self._drain_messages()]
+            # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다)
+            batch = [item] if item.recovered else [item, *self._drain_messages()]
             try:
                 await self._handle_messages(batch)
             except Exception:
@@ -314,7 +316,7 @@ class Dispatcher:
                 break
         msgs: list[Inbound] = []
         for entry in taken:
-            if isinstance(entry[2], Inbound):
+            if isinstance(entry[2], Inbound) and not entry[2].recovered:
                 msgs.append(entry[2])
             else:
                 self._queue.put_nowait(entry)
@@ -325,6 +327,18 @@ class Dispatcher:
     async def _handle_messages(self, batch: list[Inbound]) -> None:
         """쌓인 메시지를 두뇌 호출 한 번으로 처리한다. 본문은 두 줄 바꿈으로 잇고 update_id는 모두 기록한다."""
         update_ids = [i for m in batch for i in m.update_ids]
+        # 다시 넣어도 같은 일을 두 번 하지 않는다(회차의 두 단계 실행과 같다, 스펙 5.4-3). 묶음은 첫 행 하나로 합친다
+        lead = update_ids[0]
+        self.state.merge_pending_inbound(update_ids)
+        pending = self.state.get_pending_inbound(lead)
+        if pending is not None and pending.brain_done:
+            # 두뇌 답을 저장한 뒤 보내지 못했다: 그 답만 다시 보낸다
+            await self._resend_saved_reply(batch, pending, update_ids)
+            return
+        if pending is not None and (logged := self.tools is not None and self.tools.tasks.inbound_tool_events(lead)):
+            # 두뇌 호출 도중 멈췄고 도구가 이미 썼다: 다시 부르지 않고 확인 문구와 일반 문구로 마친다
+            await self._finish_after_logged_tools(batch, pending, update_ids, logged)
+            return
         if self._capped():
             # 하루 두뇌 호출 상한: 두뇌를 부르지 않고 고정 문구로 답한다(스펙 7)
             if await self._fixed_reply(batch, DAILY_CAP_REPLY, update_ids):
@@ -356,12 +370,11 @@ class Dispatcher:
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
         self.convs.touch(conv.id)
 
-        run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
+        run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[], inbound_id=lead)
         body = _join(self._recorded_condition(), f"## 메시지\n{text}")
         with self._awake.hold():
             fell_back = False
-            for m in batch:
-                self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
+            self._log_user_lines(batch, conv.id, pending, lead)
             resumed = conv.session_id is not None
             # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택").
             instructions = "" if conv.kind is ConversationKind.run else prompts.load(CONVERSATION_PROMPTS[conv.kind])
@@ -388,7 +401,7 @@ class Dispatcher:
                     body,
                 )
                 fell_back = True
-                run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
+                run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[], inbound_id=lead)
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
             capped = False
@@ -412,23 +425,25 @@ class Dispatcher:
             # 로그인·결제와 사용 한도: 사용자 메시지에는 매번 고정 문구로 답한다(하루·구간 한 번은 회차 안내에만)
             if result.status == "rate_limited":
                 until = self._set_limited(result.retry_at)
-                if await self._fixed_reply([], rate_limit_notice(self._resume_text(until)), update_ids):
+                if await self._fixed_reply([], rate_limit_notice(self._resume_text(until)), update_ids, save=True):
                     log.info("message_rate_limited", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if result.status == "auth_error":
-                if await self._fixed_reply([], _auth_copy(result.error), update_ids):
+                if await self._fixed_reply([], _auth_copy(result.error), update_ids, save=True):
                     log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if capped:  # 백오프 중 하루 상한: 고정 안내로(대화 밖 `[-]`), 모인 확인 문구를 붙여 답한다
                 confirmations = render_confirmations(run_ctx.events, self._today())
-                if await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations), update_ids):
+                if await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations), update_ids, save=True):
                     log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
                 return
             reply = _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
                 reply = f"{reply}\n\n{confirmations}"
-            # 바로 3회까지 보낸다. 끝내 안 되면 처리 완료로 두지 않는다(다음 시작 때 다시 처리한다)
+            # 두 단계: 보내기 전에 답을 저장한다(brain_done). 바로 3회까지 보내고, 끝내 안 되면 처리 완료로 두지
+            # 않는다. 다음 시작 때 저장한 답만 다시 보낸다(두뇌는 다시 부르지 않는다)
+            self.state.save_inbound_reply(lead, redact(reply)[0], conv.id)
             if not await self._send_reply(_outbound(reply, run_ctx), update_ids, conv.id):
                 return
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
@@ -443,19 +458,83 @@ class Dispatcher:
             },
         )
 
-    async def _fixed_reply(self, batch: list[Inbound], text: str, update_ids: list[int]) -> bool:
+    async def _fixed_reply(
+        self, batch: list[Inbound], text: str, update_ids: list[int], *, save: bool = False
+    ) -> bool:
         """사용자 메시지에 고정 안내로 답한다. 원문 기록에는 대화 밖(`[-]`)으로 남긴다.
 
         `batch`의 메시지도 `[-]`로 기록한다(이미 대화에 기록했으면 빈 목록). 바로 3회까지 보내고, 보낸 뒤에만
         `update_ids`를 처리 완료로 기록하고 비서 줄을 남긴다. 끝내 안 보냈으면 False.
+        `save`: 두뇌를 부른 뒤의 안내다. 보내기 전에 저장해 다음 시작 때 두뇌를 다시 부르지 않게 한다.
         """
-        for m in batch:
-            self.transcripts.append(m.at, "사용자", None, None, redact(m.text)[0])
+        lead = update_ids[0] if update_ids else None
+        if batch and lead is not None:
+            self._log_user_lines(batch, None, self.state.get_pending_inbound(lead), lead)
+        if save and lead is not None:
+            self.state.save_inbound_reply(lead, redact(text)[0], None)
         if not await self._send_reply(Outbound(text=text), update_ids, None):
             return False
         self._messages_done(update_ids)
         self._transcribe_reply(None, text, [])
         return True
+
+    def _log_user_lines(
+        self, batch: list[Inbound], conversation_id: int | None, pending: PendingInbound | None, lead: int
+    ) -> None:
+        """사용자 줄을 원문 기록에 쓴다(가린 뒤). 다시 넣은 메시지가 이미 썼으면(`user_logged`) 건너뛴다."""
+        if pending is not None and pending.user_logged:
+            return
+        for m in batch:
+            self.transcripts.append(m.at, "사용자", conversation_id, None, redact(m.text)[0])
+        self.state.mark_inbound_user_logged(lead)
+
+    async def _resend_saved_reply(self, batch: list[Inbound], pending: PendingInbound, update_ids: list[int]) -> None:
+        """저장해 둔 답(`reply_text`)만 다시 보낸다. 초안 버튼은 이 메시지의 도구 기록에서 다시 만든다."""
+        self._log_user_lines(batch, pending.conversation_id, pending, pending.update_id)
+        text = pending.reply_text or ""
+        if not text:  # 답이 없는 행은 처리 완료로만 둔다
+            self._messages_done(update_ids)
+            return
+        ctx = self._logged_context(pending.update_id, pending.conversation_id)
+        with self._awake.hold():
+            if not await self._send_reply(_outbound(text, ctx), update_ids, pending.conversation_id):
+                return
+            self._messages_done(update_ids)
+            self._transcribe_reply(pending.conversation_id, text, [])
+        if pending.conversation_id is not None:
+            self.convs.touch(pending.conversation_id)
+        log.info("inbound_reply_resent", extra={"update_ids": update_ids, "conversation_id": pending.conversation_id})
+
+    async def _finish_after_logged_tools(
+        self,
+        batch: list[Inbound],
+        pending: PendingInbound,
+        update_ids: list[int],
+        logged: list[tuple[str, int | None, dict[str, Any], int | None]],
+    ) -> None:
+        """도구가 이미 쓴 메시지: 기록된 도구 호출의 확인 문구와 일반 문구로 답하고 마친다(두뇌는 부르지 않는다)."""
+        conv_id = next((c for *_, c in logged if c is not None), None)
+        self._log_user_lines(batch, conv_id, pending, pending.update_id)
+        ctx = self._logged_context(pending.update_id, conv_id)
+        text = _join(FALLBACK_REPLY, render_confirmations(ctx.events, self._today()))
+        self.state.save_inbound_reply(pending.update_id, redact(text)[0], conv_id)  # 두 단계: 저장 뒤 보낸다
+        log.warning("inbound_tools_already_ran", extra={"update_ids": update_ids, "conversation_id": conv_id})
+        with self._awake.hold():
+            if not await self._send_reply(_outbound(text, ctx), update_ids, conv_id):
+                return
+            self._messages_done(update_ids)
+            self._transcribe_reply(conv_id, text, [])
+        if conv_id is not None:
+            self.convs.touch(conv_id)
+
+    def _logged_context(self, inbound_id: int, conversation_id: int | None) -> RunContext:
+        """도구 호출 기록에서 이 메시지의 이벤트를 다시 만든다(확인 문구, 초안 버튼)."""
+        events = (
+            [ToolEvent(kind=k, task_id=t, data=d) for k, t, d, _ in self.tools.tasks.inbound_tool_events(inbound_id)]
+            if self.tools is not None
+            else []
+        )
+        return RunContext(conversation_id=conversation_id, run_id=None, events=events, inbound_id=inbound_id)
 
     async def _send_reply(self, out: Outbound, update_ids: list[int], conversation_id: int | None) -> bool:
         """사용자 메시지에 답하는 전송. 바로 3회까지(1초, 2초 간격). 끝내 안 되면 `message_send_failed`."""

@@ -310,14 +310,36 @@ class TasksRepo:
     # --- 도구 호출 기록 ---
 
     def log_tool_event(
-        self, run_id: int | None, conversation_id: int | None, task_id: int | None, kind: str
+        self,
+        run_id: int | None,
+        conversation_id: int | None,
+        task_id: int | None,
+        kind: str,
+        *,
+        inbound_id: int | None = None,
+        data: dict[str, object] | None = None,
     ) -> None:
+        """`data`는 확인 문구와 초안 버튼을 다시 만들 ToolEvent 데이터다(DB에만 둔다, 로그 파일에는 없다)."""
         with self.transaction():
             self.conn.execute(
-                "INSERT INTO tool_events_log (run_id, conversation_id, task_id, kind, at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (run_id, conversation_id, task_id, kind, to_iso(self.clock.now())),
+                "INSERT INTO tool_events_log (run_id, conversation_id, task_id, kind, at, inbound_id, data_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    run_id, conversation_id, task_id, kind, to_iso(self.clock.now()), inbound_id,
+                    json.dumps(data, ensure_ascii=False) if data is not None else None,
+                ),
             )
+
+    def inbound_tool_events(self, inbound_id: int) -> list[tuple[str, int | None, dict[str, object], int | None]]:
+        """그 사용자 메시지를 처리하는 동안 남은 도구 호출: (종류, 할 일 번호, 데이터, 대화 ID), 기록한 순서."""
+        rows = self.conn.execute(
+            "SELECT kind, task_id, data_json, conversation_id FROM tool_events_log WHERE inbound_id = ? ORDER BY id",
+            (inbound_id,),
+        ).fetchall()
+        return [
+            (r["kind"], r["task_id"], json.loads(r["data_json"]) if r["data_json"] else {}, r["conversation_id"])
+            for r in rows
+        ]
 
     def proposed_task_ids(self, conversation_id: int) -> list[int]:
         """그 대화에서 `propose_tasks`로 제안한 할 일 번호(제안한 순서). 상태는 거르지 않는다."""
