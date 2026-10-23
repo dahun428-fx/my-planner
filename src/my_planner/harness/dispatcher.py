@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, logical_date, period_of
+from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import (
     Cadence,
     ConversationKind,
@@ -25,11 +25,17 @@ from my_planner.domain import (
     SkipReason,
 )
 from my_planner.harness import prompts
-from my_planner.harness.brain import Brain, BrainResult
+from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
 from my_planner.harness.context import build_notices, build_preamble
 from my_planner.harness.redact import redact
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
+from my_planner.store.repos.state import (
+    LAST_AUTH_NOTICE_KEY,
+    LAST_RATE_LIMIT_NOTICE_KEY,
+    LIMITED_UNTIL_KEY,
+    PAUSE_UNTIL_KEY,
+)
 from my_planner.store.reviews import save_weekly_review
 from my_planner.tools.confirmations import render_confirmations
 
@@ -104,9 +110,18 @@ SEND_ATTEMPTS = 3  # 회차 전송은 바로 3회까지(스펙 5.4, 7)
 SEND_RETRY_DELAYS_S = (1, 2, 4)  # 시도 사이 간격. 3회라 앞의 두 값(1, 2초)만 쓰인다
 RESEND_DELAY_S = 5 * 60
 MAX_RUN_ATTEMPTS = 2  # 회차당 두뇌 호출 최대 2회
+MESSAGE_RETRY_DELAYS_S = (2, 4, 8)  # 사용자 메시지 오류: 지수 백오프로 3회 더(스펙 5.3)
 
 FALLBACK_REPLY = "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요."
 MAX_TURNS_REPLY = "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
+# 고정 안내(스펙 5.3, 7). 비서가 먼저 보내는 하루 3회에 세지 않는다.
+DAILY_CAP_REPLY = "오늘은 여기까지 생각을 아껴 둘게요. 명령(/today)은 계속 쓸 수 있어요."
+LOGIN_NOTICE = "Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요."
+BILLING_NOTICE = "Claude 계정이나 결제 상태를 확인해야 해요. PC에서 Claude 계정을 살펴봐 주세요."
+
+
+def rate_limit_notice(resume: str) -> str:
+    return f"지금은 Claude 사용 한도에 닿았어요. {resume}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요."
 
 
 class Dispatcher:
@@ -238,6 +253,20 @@ class Dispatcher:
     async def _handle_messages(self, batch: list[Inbound]) -> None:
         """쌓인 메시지를 두뇌 호출 한 번으로 처리한다. 본문은 두 줄 바꿈으로 잇고 update_id는 모두 기록한다."""
         update_ids = [i for m in batch for i in m.update_ids]
+        if self._capped():
+            # 하루 두뇌 호출 상한: 두뇌를 부르지 않고 고정 문구로 답한다(스펙 7)
+            await self._fixed_reply(batch, DAILY_CAP_REPLY)
+            self.state.mark_updates_done(update_ids)
+            log.info("message_daily_cap", extra={"update_ids": update_ids})
+            return
+        limited = self._state_time(LIMITED_UNTIL_KEY)
+        if limited is not None and self.clock.now() < limited:
+            # 사용 한도 구간 안: 두뇌를 부르지 않고 매번 답한다. 기록된 재개 시각을 쓰고,
+            # 회차 안내의 구간 한 번 몫은 쓰지 않는다
+            await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)))
+            self.state.mark_updates_done(update_ids)
+            log.info("message_rate_limited_window", extra={"update_ids": update_ids})
+            return
         redacted_parts = [redact(m.text) for m in batch]
         text = "\n\n".join(t for t, _ in redacted_parts)
         limits = self.settings.limits
@@ -287,10 +316,43 @@ class Dispatcher:
                 fell_back = True
                 run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
+            # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
+            capped = False
+            for delay in MESSAGE_RETRY_DELAYS_S:
+                if result.status != "error":
+                    break
+                if run_ctx.events:  # 도구가 이미 데이터를 바꿨다: 다시 부르지 않는다(중복 쓰기 방지, 스펙 5.4-3)
+                    break
+                if self._capped():  # 다시 부르기 전마다 하루 상한을 본다
+                    capped = True
+                    break
+                await self._sleep(delay)
+                # run_ctx는 그대로 쓴다(여기까지 온 호출들은 도구 이벤트가 없다)
+                result = await self._call_brain(
+                    prompt, session_id=None if fell_back else conv.session_id, run_ctx=run_ctx
+                )
             if result.session_id or fell_back:  # 대체 경로가 세션을 못 얻었으면 깨진 세션 ID를 지운다
                 self.convs.set_session(conv.id, result.session_id)
             self.convs.touch(conv.id)
 
+            # 로그인·결제와 사용 한도: 사용자 메시지에는 매번 고정 문구로 답한다(하루·구간 한 번은 회차 안내에만)
+            if result.status == "rate_limited":
+                until = self._set_limited(result.retry_at)
+                await self._fixed_reply([], rate_limit_notice(self._resume_text(until)))
+                self.state.mark_updates_done(update_ids)
+                log.info("message_rate_limited", extra={"conversation_id": conv.id, "update_ids": update_ids})
+                return
+            if result.status == "auth_error":
+                await self._fixed_reply([], _auth_copy(result.error))
+                self.state.mark_updates_done(update_ids)
+                log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
+                return
+            if capped:  # 백오프 중 하루 상한: 고정 안내로(대화 밖 `[-]`), 모인 확인 문구를 붙여 답한다
+                confirmations = render_confirmations(run_ctx.events, self._today())
+                await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations))
+                self.state.mark_updates_done(update_ids)
+                log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
+                return
             reply = _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
@@ -310,6 +372,65 @@ class Dispatcher:
             },
         )
 
+    async def _fixed_reply(self, batch: list[Inbound], text: str) -> None:
+        """사용자 메시지에 고정 안내로 답한다. 원문 기록에는 대화 밖(`[-]`)으로 남긴다.
+
+        `batch`의 메시지도 `[-]`로 기록한다(이미 대화에 기록했으면 빈 목록). 전송 오류는 그대로 올린다:
+        호출한 쪽은 전송이 된 뒤에만 처리 완료로 기록한다.
+        """
+        for m in batch:
+            self.transcripts.append(m.at, "사용자", None, None, redact(m.text)[0])
+        await self.sender.send(Outbound(text=text))
+        self.transcripts.append(self.clock.now(), "비서", None, None, text)
+
+    def _capped(self) -> bool:
+        return self.state.usage(self._today()).brain_calls >= self.settings.limits.daily_brain_calls
+
+    async def _run_notice_auth(self, error: str | None) -> None:
+        """회차가 보내는 로그인·결제 안내. 논리적 날짜마다 한 번만(스펙 5.3)."""
+        today = self._today().isoformat()
+        if self.state.get(LAST_AUTH_NOTICE_KEY) == today:
+            return
+        if await self._send_notice(_auth_copy(error)):
+            self.state.set(LAST_AUTH_NOTICE_KEY, today)
+
+    def _set_limited(self, retry_at: datetime | None) -> datetime:
+        """`limited_until`을 기록하고 돌려준다. 없거나 이미 지난 재개 시각은 지금 + 1시간."""
+        now = self.clock.now()
+        if retry_at is None or retry_at <= now:
+            retry_at = now + RATE_LIMIT_FALLBACK
+        self.state.set(LIMITED_UNTIL_KEY, to_iso(retry_at))
+        return retry_at
+
+    async def _run_notice_rate_limit(self, until: datetime) -> None:
+        """회차가 보내는 사용 한도 안내. 구간(`limited_until` 값)마다 한 번만."""
+        key = to_iso(until)
+        if self.state.get(LAST_RATE_LIMIT_NOTICE_KEY) == key:
+            return
+        if await self._send_notice(rate_limit_notice(self._resume_text(until))):
+            self.state.set(LAST_RATE_LIMIT_NOTICE_KEY, key)
+
+    def _resume_text(self, until: datetime) -> str:
+        """`{재개}`: 오늘(논리적 날짜)이면 `HH:MM`, 아니면 `M월 D일 HH:MM` (한국 시간)."""
+        s = self.settings
+        lt = local(until, s.timezone)
+        if logical_date(until, s.timezone, s.day_boundary) == self._today():
+            return f"{lt:%H:%M}"
+        return f"{lt.month}월 {lt.day}일 {lt:%H:%M}"
+
+    async def _send_notice(self, text: str) -> bool:
+        """고정 안내 전송. 원문 기록은 대화 밖(`[-]`). 먼저 보낸 메시지 수에는 세지 않는다."""
+        try:
+            await self.sender.send(Outbound(text=text))
+        except Exception as e:  # noqa: BLE001 - 안내가 안 가도 다음 기회에 다시 보낸다
+            log.warning("notice_send_error", extra={"error_type": type(e).__name__})
+            return False
+        try:
+            self.transcripts.append(self.clock.now(), "비서", None, None, text)
+        except Exception:
+            log.exception("notice_transcript_error")
+        return True
+
     # --- 회차 실행 (스펙 5.4: 두 단계) ---
 
     async def _handle_run(self, run: Run, merged: list[Run], carried_ids: frozenset[int] = frozenset()) -> None:
@@ -323,6 +444,10 @@ class Dispatcher:
             if self._past_limit(r) or (primary_late and r.id in carried_ids):
                 runs.mark_skipped(r.id, SkipReason.late)
                 log.info("run_skipped_late_at_start", extra={"run_id": r.id})
+            elif (blocked := self._run_blocked(r)) is not None:
+                # 큐에 든 뒤에 생긴 멈춤, 하루 상한, 사용 한도도 다시 본다(판정은 tick 때 했다)
+                runs.mark_skipped(r.id, blocked)
+                log.info("run_skipped_at_start", extra={"run_id": r.id, "reason": blocked.value})
             else:
                 live.append(r)
         if not live:
@@ -367,8 +492,27 @@ class Dispatcher:
         ask = self._ask_condition_for(run, merged)
         result, run_ctx = await self._run_brain(run, merged, conv, ask)
         if not _run_ok(result) and self._may_rerun(run, result):
+            blocked = self._run_blocked(run)
+            if blocked is not None:  # 두 번째 호출 전에도 멈춤, 하루 상한, 사용 한도를 본다
+                for r in (run, *merged):
+                    runs.mark_skipped(r.id, blocked)
+                self.convs.close(conv.id)
+                log.info("run_rerun_skipped", extra={"run_id": run.id, "reason": blocked.value})
+                return None
             runs.mark_running(run.id)
             result, run_ctx = await self._run_brain(run, merged, conv, ask)
+        if result.status in ("auth_error", "rate_limited"):
+            # 로그인·결제는 skipped(auth), 사용 한도는 skipped(rate_limit). 다시 실행하지 않고 고정 안내만(스펙 5.3)
+            reason = SkipReason.auth if result.status == "auth_error" else SkipReason.rate_limit
+            for r in (run, *merged):
+                runs.mark_skipped(r.id, reason)
+            self.convs.close(conv.id)
+            log.warning("run_brain_skipped", extra={"run_id": run.id, "status": result.status})
+            if result.status == "auth_error":
+                await self._run_notice_auth(result.error)
+            else:
+                await self._run_notice_rate_limit(self._set_limited(result.retry_at))
+            return None
         if not _run_ok(result):
             # 사용자에게는 아무것도 보내지 않는다(스펙 5.4 재실행 규칙 4). 로그만 남긴다.
             for r in (run, *merged):
@@ -475,6 +619,18 @@ class Dispatcher:
             return False
         return not self._past_limit(run)
 
+    def _run_blocked(self, run: Run) -> SkipReason | None:
+        """지금 이 회차가 두뇌를 부를 수 없는 이유(R2 멈춤, R3 하루 상한, 사용 한도). 없으면 None."""
+        paused_until = self._state_time(PAUSE_UNTIL_KEY)
+        if paused_until is not None and run.scheduled_for < paused_until:
+            return SkipReason.paused
+        if self._capped():
+            return SkipReason.daily_cap
+        limited = self._state_time(LIMITED_UNTIL_KEY)
+        if limited is not None and self.clock.now() < limited:
+            return SkipReason.rate_limit
+        return None
+
     def _past_limit(self, run: Run) -> bool:
         s = self.settings
         due = Due(run.loop, run.scheduled_for, run.cadence)
@@ -580,13 +736,19 @@ class Dispatcher:
             boundary=self.settings.day_boundary,
             tasks=self.tools.tasks,
             conditions=self.tools.conditions,
+            paused_until=self._state_time(PAUSE_UNTIL_KEY),
             merged=merged,
         )
+
+    def _state_time(self, key: str) -> datetime | None:
+        v = self.state.get(key)
+        return from_iso(v) if v else None
 
     async def _call_brain(
         self, prompt: str, *, session_id: str | None, run_ctx: RunContext
     ) -> BrainResult:
         """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다."""
+        self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7)
         typing = asyncio.create_task(self._typing_loop(), name="typing")
         started = time.monotonic()
         try:
@@ -662,12 +824,16 @@ def _join(*parts: str) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+def _auth_copy(error: str | None) -> str:
+    return BILLING_NOTICE if error == "billing" else LOGIN_NOTICE
+
+
 def _run_ok(result: BrainResult) -> bool:
     return result.status == "ok" and bool(result.text.strip())
 
 
 def _reply_for(result: BrainResult) -> str:
-    """티켓 01은 정상 답과 턴 상한만 구분한다. 로그인·한도 문구는 티켓 10에서 붙인다."""
+    """정상 답, 턴 상한, 그 밖(오류 백오프 뒤). 로그인·결제와 사용 한도는 고정 안내로 따로 처리한다."""
     if result.status == "ok" and result.text.strip():
         return result.text
     if result.status == "max_turns":

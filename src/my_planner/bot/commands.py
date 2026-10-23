@@ -1,6 +1,6 @@
-"""텔레그램 명령 /today /week /help (스펙 5.6). 두뇌를 거치지 않고 하네스가 바로 답한다.
+"""텔레그램 명령 /today /week /help /pause /unpause (스펙 5.6). 두뇌를 거치지 않고 하네스가 바로 답한다.
 
-문구는 모두 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
+/today /week는 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
 """
 
 from __future__ import annotations
@@ -19,12 +19,19 @@ HELP_TEXT = (
     "쓸 수 있는 명령이에요.\n"
     "/today  오늘 우선순위, 일정, 열린 할 일\n"
     "/week  이번 주 우선순위와 할 일\n"
+    "/pause 3  사흘 동안 먼저 연락하지 않기(1~14일)\n"
+    "/unpause  멈춤 풀기\n"
     "/help  이 안내\n"
     "\n"
     "그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요."
 )
 
-COMMANDS = ("/today", "/week", "/help")
+COMMANDS = ("/today", "/week", "/help", "/pause", "/unpause")
+
+PAUSE_MIN_DAYS, PAUSE_MAX_DAYS = 1, 14
+PAUSE_USAGE = "쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3"
+UNPAUSE_REPLY = "멈춤을 풀었어요. 다시 정해진 시각에 연락할게요."
+NOT_PAUSED_REPLY = "지금은 멈춤 중이 아니에요."
 
 
 def command_of(text: str) -> str | None:
@@ -34,6 +41,23 @@ def command_of(text: str) -> str | None:
         return None
     name = words[0].split("@", 1)[0].lower()
     return name if name in COMMANDS else None
+
+
+def pause_days(text: str) -> int | None:
+    """`/pause <일수>`의 일수. 정수가 아니거나 1~14 밖이면 None."""
+    words = text.strip().split()
+    if len(words) != 2 or not (words[1].isascii() and words[1].isdecimal()):
+        return None
+    n = int(words[1])
+    return n if PAUSE_MIN_DAYS <= n <= PAUSE_MAX_DAYS else None
+
+
+def pause_reply(until: _datetime, tz: str | tzinfo) -> str:
+    lt = local(until, tz)
+    return (
+        f"{lt.month}월 {lt.day}일 {lt:%H:%M}까지 먼저 연락하지 않을게요. 그동안에도 말씀하시면 답해요. "
+        "다시 시작하려면 /unpause를 보내 주세요."
+    )
 
 
 def _md(d: date) -> str:

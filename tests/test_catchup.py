@@ -294,3 +294,86 @@ def test_carried_review_not_merged_into_return_primary(cfg):
     d = decide(now, now - timedelta(minutes=1), [ret], carried_review=_review_sun(),
                cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary)
     assert (d.primary, d.merged, d.skipped) == (ret, [], [])
+
+
+# --- 티켓 10: R2(멈춤), R3(하루 두뇌 호출 상한), 사용 한도 ---
+
+
+def _decide10(cfg, last_tick, woke, loops=ENABLED_LOOPS, **kw):
+    start = window_start(woke, last_tick, last_tick)
+    pending = due_between(start, woke, cfg, cfg.timezone, loops)
+    return decide(woke, last_tick, pending, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary, **kw)
+
+
+def test_paused_skips_with_reason(cfg):
+    # 월 08:00 → 월 10:30, 수요일까지 멈춤: 아침 브리핑은 실행하지 않고 skipped(paused)
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 10, 30), paused_until=kst(2026, 10, 28, 8, 0))
+    assert d.primary is None and d.merged == []
+    assert d.skipped == [(Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0)), SkipReason.paused)]
+    assert d.create_return is False
+
+
+def test_spec_table_row_8(cfg):
+    # 금 22:00 (멈춤 ~월 12:00) → 일 12:00 (38시간): R2가 먼저. 공백 동안의 회차 모두 skipped(paused), return 없음
+    d = _decide10(cfg, kst(2026, 10, 23, 22, 0), kst(2026, 10, 25, 12, 0), paused_until=kst(2026, 10, 26, 12, 0))
+    assert d.primary is None and d.merged == []
+    assert d.create_return is False and d.carry_review is None
+    assert d.skipped == [
+        (Due(LoopKey.morning_brief, kst(2026, 10, 24, 10, 0)), SkipReason.paused),
+        (Due(LoopKey.evening_checkin, kst(2026, 10, 24, 18, 0)), SkipReason.paused),
+        (Due(LoopKey.morning_brief, kst(2026, 10, 25, 10, 0)), SkipReason.paused),
+    ]
+
+
+def test_daily_cap_skips_with_reason(cfg):
+    # 오늘 두뇌 호출이 60회에 닿았다: 한계 안의 아침 브리핑도 skipped(daily_cap). 59회면 그대로 실행
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 10, 30), brain_calls_today=60)
+    assert d.primary is None
+    assert d.skipped == [(morning, SkipReason.daily_cap)]
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 10, 30), brain_calls_today=59)
+    assert d.primary == morning and d.skipped == []
+
+
+def test_rate_limited_until_skips_with_reason(cfg):
+    # 사용 한도가 10:00까지: 그 전의 판정은 skipped(rate_limit), 풀린 뒤에는 실행
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 9, 30), limited_until=kst(2026, 10, 26, 10, 0))
+    assert d.primary is None
+    assert d.skipped == [(morning, SkipReason.rate_limit)]
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 10, 0), limited_until=kst(2026, 10, 26, 10, 0))
+    assert d.primary == morning and d.skipped == []
+
+
+def test_pause_boundary(cfg):
+    # 멈춤이 끝나기 1분 전 회차는 paused, 끝나고 1분 뒤 회차는 실행
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 9, 30), paused_until=kst(2026, 10, 26, 9, 1))
+    assert d.primary is None and d.skipped == [(morning, SkipReason.paused)]
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 9, 30), paused_until=kst(2026, 10, 26, 8, 59))
+    assert d.primary == morning and d.skipped == []
+
+
+def test_pause_ended_during_gap_counts_gap_from_pause_end(cfg):
+    # 금 22:00에 꺼지고 월 08:00까지 멈춤, 월 09:30에 켜짐(59.5시간): 멈춤 동안 쉰 것은 공백이 아니다.
+    # 멈춤 끝 뒤 1.5시간뿐이라 R1 없이 월 아침 브리핑을 그대로 실행한다
+    d = _decide10(cfg, kst(2026, 10, 23, 22, 0), kst(2026, 10, 26, 9, 30), paused_until=kst(2026, 10, 26, 8, 0))
+    assert d.create_return is False
+    assert d.primary == Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    assert all(reason is SkipReason.paused for _, reason in d.skipped) and len(d.skipped) == 5  # 토·일 아침·저녁 + 일요일 회고
+
+
+def test_pause_boundary_equal_runs(cfg):
+    # 멈춤 끝 시각과 예정 시각이 같으면(09:00 == 09:00) 멈춤이 끝났다고 보고 실행한다
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 9, 30), paused_until=kst(2026, 10, 26, 9, 0))
+    assert d.primary == morning and d.skipped == []
+
+
+def test_daily_cap_and_rate_limit_win_over_late(cfg):
+    # R3과 사용 한도는 R4·R5보다 먼저다: 한계를 넘은 회차도 late가 아니라 daily_cap / rate_limit
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    last, woke = kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 13, 0)  # 아침 한계(12:00) 뒤
+    assert _decide10(cfg, last, woke, brain_calls_today=60).skipped == [(morning, SkipReason.daily_cap)]
+    d = _decide10(cfg, last, woke, limited_until=kst(2026, 10, 26, 14, 0))
+    assert d.skipped == [(morning, SkipReason.rate_limit)]

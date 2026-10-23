@@ -2,7 +2,9 @@
 
 티켓 05는 R4(한계 안이면 늦게라도 실행)와 R5(한계 밖이면 `skipped(late)`)를, 08은 합치기를 둔다.
 09는 R1(복귀 인사), 넘겨 받은 회고, 하루 3회 상한(`proactive_today`), 시계 이상을 둔다.
-R2·R3과 `limited_until`은 10, 계획 모드는 11이 채운다.
+10은 R2(멈춤: 멈춤 끝 전에 예정된 회차는 `paused`, 멈춤 중에는 R1 없음, 공백은 멈춤 끝부터 센다),
+R3(하루 두뇌 호출 상한, `daily_cap`)과 사용 한도(`limited_until`까지 `rate_limit`)를 둔다.
+R3과 사용 한도 중에는 두뇌를 부를 수 없으니 복귀 인사도 만들지 않는다. 계획 모드는 11이 채운다.
 """
 
 from __future__ import annotations
@@ -73,11 +75,31 @@ def decide(
     pending = [d for d in pending if d.scheduled_for <= now]
     if carried_review is not None and carried_review.scheduled_for > now:
         carried_review = None
-    if gap >= RETURN_GAP:  # R1
+    # R2: 멈춤 기간 안에 예정된 회차는 skipped(paused)
+    paused: list[tuple[Due, SkipReason]] = []
+    if paused_until is not None:
+        paused = [(d, SkipReason.paused) for d in pending if d.scheduled_for < paused_until]
+        pending = [d for d in pending if d.scheduled_for >= paused_until]
+    paused_now = paused_until is not None and now < paused_until
+    # R3(하루 두뇌 호출 상한)과 사용 한도(`limited_until`까지): 두뇌를 부를 수 없으니 복귀 인사(R1)도 만들지 않는다
+    blocked_reason = None
+    if brain_calls_today >= cfg.limits.daily_brain_calls:
+        blocked_reason = SkipReason.daily_cap
+    elif limited_until is not None and now < limited_until:
+        blocked_reason = SkipReason.rate_limit
+    if blocked_reason is not None:
+        blocked = [(d, blocked_reason) for d in sorted(pending, key=lambda d: d.scheduled_for)]
+        return Decision(primary=None, skipped=[*paused, *blocked], clock_backwards=clock_backwards)
+    if paused_until is not None and last_seen_at is not None and last_seen_at < paused_until <= now:
+        gap = now - paused_until  # 멈춤 동안 쉰 것은 공백이 아니다. 멈춤이 끝난 뒤부터 센다
+    if gap >= RETURN_GAP and not paused_now:  # R1: 멈춤 중이면 복귀 인사를 만들지 않는다
         # 이미 넘겨 받은 회고가 있으면 그것도 공백의 회차로 다시 판정한다
         gap_runs = [*pending, *([carried_review] if carried_review else [])]
-        return _return(now, last_seen_at, gap_runs, cfg, tz, boundary)
+        d = _return(now, last_seen_at, gap_runs, cfg, tz, boundary)
+        d.skipped = [*paused, *d.skipped]
+        return d
     d = _regular(now, pending, carried_review, proactive_today, cfg, tz, boundary)
+    d.skipped = [*paused, *d.skipped]
     d.clock_backwards = clock_backwards
     return d
 

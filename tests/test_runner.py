@@ -1,6 +1,6 @@
 """러너 tick: 가짜 시계와 가짜 디스패처 (스펙 5.4)."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from fakes import make_settings
@@ -404,3 +404,22 @@ def test_tick_after_30_day_jump_sends_single_return_within_7_days(tmp_path, conn
     env.clock.advance(minutes=1)
     env.runner.tick()
     assert len(env.dispatcher.submitted) == 1
+
+
+@pytest.mark.parametrize(
+    ("setup", "reason"),
+    [
+        (lambda env: env.state.set("pause_until", to_iso(kst(2026, 10, 27, 9, 0))), "paused"),
+        (lambda env: env.state.set("limited_until", to_iso(kst(2026, 10, 26, 10, 0))), "rate_limit"),
+        (lambda env: [env.state.incr_usage(date(2026, 10, 26), "brain_calls") for _ in range(60)],
+         "daily_cap"),
+    ],
+)
+def test_tick_applies_pause_rate_limit_and_daily_cap(mon_morning, setup, reason):
+    # app_state.pause_until, limited_until, usage_state.brain_calls를 판정에 넘긴다
+    env = mon_morning
+    setup(env)
+    env.runner.tick()
+    assert env.dispatcher.submitted == []
+    (run,) = env.runs.between(kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 10, 0))
+    assert run.status is RunStatus.skipped and run.skip_reason == reason

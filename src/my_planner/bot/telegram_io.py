@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal, Protocol
 
 from telegram import (
@@ -17,12 +17,22 @@ from telegram import (
 from telegram.constants import ChatAction, ChatType
 from telegram.ext import Application, ContextTypes, TypeHandler
 
-from my_planner.bot.commands import HELP_TEXT, command_of, today_text, week_text
-from my_planner.clock import Clock, SystemClock
+from my_planner.bot.commands import (
+    HELP_TEXT,
+    NOT_PAUSED_REPLY,
+    PAUSE_USAGE,
+    UNPAUSE_REPLY,
+    command_of,
+    pause_days,
+    pause_reply,
+    today_text,
+    week_text,
+)
+from my_planner.clock import Clock, SystemClock, from_iso, to_iso
 from my_planner.config import Settings
 from my_planner.harness.dispatcher import Inbound, Outbound
 from my_planner.harness.redact import redact
-from my_planner.store.repos.state import StateRepo
+from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
@@ -106,7 +116,8 @@ async def handle_update(
             assert tools is not None
             done = [update.update_id]
             await _answer_command(
-                msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, lambda: state.mark_updates_done(done)
+                msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, state,
+                lambda: state.mark_updates_done(done),
             )
             return "command"
         dispatcher.submit_message(
@@ -133,12 +144,25 @@ async def _answer_command(
     tools: Tools,
     transcripts: TranscriptStore,
     clock: Clock,
+    state: StateRepo,
     on_sent: Callable[[], None],
 ) -> None:
     """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
     now = clock.now()
     if cmd == "/help":
         reply = HELP_TEXT
+    elif cmd == "/pause":
+        days = pause_days(text)
+        if days is None:
+            reply = PAUSE_USAGE
+        else:
+            until = now + timedelta(days=days)  # 지금부터 N×24시간(스펙 5.6)
+            state.set(PAUSE_UNTIL_KEY, to_iso(until))
+            reply = pause_reply(until, tools.tz)
+    elif cmd == "/unpause":
+        v = state.get(PAUSE_UNTIL_KEY)
+        state.set(PAUSE_UNTIL_KEY, None)
+        reply = UNPAUSE_REPLY if v and from_iso(v) > now else NOT_PAUSED_REPLY
     else:
         render = today_text if cmd == "/today" else week_text
         reply = render(tools.tasks, now, tools.tz, tools.boundary)
