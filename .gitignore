@@ -1,0 +1,6 @@
+﻿.venv/
+spikes/
+.env
+data/
+state/
+__pycache__/
