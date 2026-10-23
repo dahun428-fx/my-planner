@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import os
 from contextlib import ExitStack
@@ -12,6 +13,7 @@ from pathlib import Path
 from pydantic import ValidationError
 from telegram import Bot
 
+from my_planner.bot.callbacks import handle_callback
 from my_planner.bot.telegram_io import TelegramSender, build_application
 from my_planner.clock import SystemClock
 from my_planner.config import (
@@ -25,7 +27,7 @@ from my_planner.harness.brain import ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher
 from my_planner.logging_setup import setup_logging
-from my_planner.loop.runner import Runner
+from my_planner.loop.runner import Runner, expire_drafts
 from my_planner.platform.windows import (
     AlreadyRunning,
     SingleInstanceLock,
@@ -111,9 +113,10 @@ async def _serve(settings: Settings) -> None:
 
         # 4. Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
         bot = Bot(settings.telegram_bot_token.get_secret_value())
-        sender = TelegramSender(bot, settings.owner_telegram_id)
+        tasks = TasksRepo(conn, clock, tz=settings.timezone, boundary=settings.day_boundary)
+        sender = TelegramSender(bot, settings.owner_telegram_id, tasks=tasks)
         tools = Tools(
-            tasks=TasksRepo(conn, clock, tz=settings.timezone, boundary=settings.day_boundary),
+            tasks=tasks,
             transcripts=transcripts,
             export_path=paths.data_dir / "exports" / "tasks.md",
             clock=clock,
@@ -139,11 +142,20 @@ async def _serve(settings: Settings) -> None:
             keep_awake=keep_awake,
         )
         runner = Runner(clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher)
+        runner.register_daily(expire_drafts(tasks, clock))  # 3일 지난 초안은 조용히 dropped
         # (티켓 12: queued/running 회차 복구가 여기 들어온다)
         # 5. 첫 실행이면 installed_at 기록
         runner.ensure_installed()
+        # 버튼 누름: 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다(스펙 5.7)
+        callbacks = functools.partial(
+            handle_callback,
+            owner_id=settings.owner_telegram_id,
+            tools=tools,
+            transcripts=transcripts,
+            clock=clock,
+        )
         application = build_application(
-            settings, dispatcher, state, transcripts, bot=bot, clock=clock, tools=tools
+            settings, dispatcher, state, transcripts, bot=bot, clock=clock, tools=tools, callbacks=callbacks
         )
 
         # 6. 첫 tick 판정 → 폴링 시작 → 1분 tick

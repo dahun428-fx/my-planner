@@ -27,6 +27,8 @@ LIST_LIMIT_MAX = 50
 LIST_LIMIT_DEFAULT = 20
 TRANSCRIPT_MAX_DAYS = 7
 PRIORITY_MAX = 3
+PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
+_NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
 PERIOD_EXAMPLE = {
     Cadence.day: "2026-10-23",
     Cadence.week: "2026-W43",
@@ -149,6 +151,9 @@ class Tools:
 
     def _after(self, ctx: RunContext, kind: str, t: Task) -> None:
         ctx.events.append(ToolEvent(kind=kind, task_id=t.id, data=self._event_data(t)))
+        self._export()
+
+    def _export(self) -> None:
         try:
             export_tasks(self.tasks, self.export_path, self.today())
         except OSError as e:  # 데이터는 이미 저장됐다. 내보내기는 다음 변경 때 다시 만든다.
@@ -160,47 +165,108 @@ class Tools:
 
     # --- 변경 도구 ---
 
-    @_tool
-    def add_task(
+    def _check_new(
         self,
-        ctx: RunContext,
         title: Any = None,
         areas: Any = None,
         planned_for: Any = None,
         scheduled_at: Any = None,
         parent_id: Any = None,
         note: Any = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | str:
+        """새 할 일 입력 검증(add_task, propose_tasks 공용). 맞으면 `TasksRepo.create` 인자, 아니면 오류 문구."""
         if (m := self._check_title(title)) is not None:
-            return _err(m)
+            return m
         checked_areas = self._check_areas(areas)
         if isinstance(checked_areas, str):
-            return _err(checked_areas)
+            return checked_areas
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
-            return _err(pf)
+            return pf
         sa = self._parse_dt(scheduled_at)
         if isinstance(sa, str):
-            return _err(sa)
+            return sa
         if parent_id is not None and (
             not isinstance(parent_id, int) or self.tasks.get(parent_id) is None
         ):
-            return _err(f"{parent_id}번 할 일이 없어서 첫 걸음으로 붙일 수 없어요.")
+            return f"{parent_id}번 할 일이 없어서 첫 걸음으로 붙일 수 없어요."
         if pf is None and sa is not None:  # 시각만 주면 그 날이 하려는 날이다
             pf = logical_date(sa, self.tz, self.boundary)
+        return {
+            "title": title.strip(),
+            "areas": checked_areas,
+            "planned_for": pf,
+            "scheduled_at": sa,
+            "parent_id": parent_id,
+            "note": note if isinstance(note, str) else "",
+        }
+
+    @_tool
+    def add_task(self, ctx: RunContext, **inputs: Any) -> dict[str, Any]:
+        unknown = set(inputs) - _NEW_FIELDS
+        if unknown:
+            return _err(f"알 수 없는 항목이 있어요: {', '.join(sorted(unknown))}")
+        new = self._check_new(**inputs)
+        if isinstance(new, str):
+            return _err(new)
         with self.tasks.transaction():
-            t = self.tasks.create(
-                title.strip(),
-                checked_areas,
-                TaskStatus.open,
-                pf,
-                sa,
-                parent_id,
-                note if isinstance(note, str) else "",
-            )
+            t = self.tasks.create(status=TaskStatus.open, **new)
             out = self._finish(ctx, "task_added", t)
         self._after(ctx, "task_added", t)
         return out
+
+    @_tool
+    def propose_tasks(self, ctx: RunContext, tasks: Any = None) -> dict[str, Any]:
+        """비서가 제안하는 할 일을 `draft`로 저장한다. 하나라도 잘못되면 아무것도 만들지 않는다."""
+        if not isinstance(tasks, list) or not tasks:
+            return _err("제안할 할 일 목록을 하나 이상 알려 주세요.")
+        if len(tasks) > PROPOSE_MAX:
+            return _err(f"한 번에 {PROPOSE_MAX}개까지 제안할 수 있어요.")
+        checked: list[dict[str, Any]] = []
+        for i, item in enumerate(tasks, start=1):
+            if not isinstance(item, dict):
+                return _err(f"{i}번째 제안이 할 일 형식이 아니에요.")
+            unknown = set(item) - _NEW_FIELDS
+            if unknown:
+                return _err(f"{i}번째 제안에 알 수 없는 항목이 있어요: {', '.join(sorted(unknown))}")
+            new = self._check_new(**item)
+            if isinstance(new, str):
+                return _err(f"{i}번째 제안: {new}")
+            checked.append(new)
+        made: list[Task] = []
+        with self.tasks.transaction():
+            for new in checked:
+                t = self.tasks.create(status=TaskStatus.draft, **new)
+                self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, "tasks_proposed")
+                made.append(t)
+        ids = [t.id for t in made]
+        ctx.events.append(
+            ToolEvent(kind="tasks_proposed", task_id=None, data={"ids": ids, "titles": [t.title for t in made]})
+        )
+        self._export()
+        return {"proposed": [self._task_dict(t) for t in made]}
+
+    @_tool
+    def confirm_tasks(self, ctx: RunContext, ids: Any = None) -> dict[str, Any]:
+        """초안을 `open`으로 확정한다. 초안이 아니거나 없는 번호는 바꾸지 않고 `skipped_ids`에 둔다."""
+        if not isinstance(ids, list) or any(not isinstance(i, int) or isinstance(i, bool) for i in ids):
+            return _err("ids는 할 일 번호(숫자) 목록이에요.")
+        confirmed: list[Task] = []
+        skipped: list[int] = []
+        with self.tasks.transaction():
+            for i in dict.fromkeys(ids):
+                t = self.tasks.get(i)
+                if t is None or t.status is not TaskStatus.draft:
+                    skipped.append(i)
+                    continue
+                t = self.tasks.set_status(t.id, TaskStatus.open)
+                self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, "tasks_confirmed")
+                confirmed.append(t)
+        for t in confirmed:
+            ctx.events.append(ToolEvent(kind="tasks_confirmed", task_id=t.id, data=self._event_data(t)))
+        if confirmed:
+            self._export()
+        return {"confirmed": [self._task_dict(t) for t in confirmed], "skipped_ids": skipped}
 
     @_tool
     def update_task(self, ctx: RunContext, id: Any = None, **fields: Any) -> dict[str, Any]:
@@ -284,9 +350,18 @@ class Tools:
 
     @_tool
     def reopen_task(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
+        """전에 열려 있던 할 일만 다시 연다: 완료한 것, 열린 채로 내려놓은 것.
+
+        초안이었다가 빠지거나 만료된 것은 열지 않는다(사용자가 확정한 적이 없다).
+        """
+        t = self._get(id)
+        if isinstance(t, str):
+            return _err(t)
+        if t.status is TaskStatus.dropped and self.tasks.dropped_from(t.id) is not TaskStatus.open:
+            return _err("확정하지 않은 초안이라 되돌릴 수 없어요. 필요하면 새로 추가해 드릴게요.")
         return self._set_status(
             ctx,
-            id,
+            t.id,
             TaskStatus.open,
             "task_reopened",
             {TaskStatus.done, TaskStatus.dropped},
@@ -380,9 +455,9 @@ class Tools:
             from_ = extra.pop("from")
         if extra:
             return _err(f"알 수 없는 조건이에요: {', '.join(sorted(extra))}")
-        statuses: list[TaskStatus] | None = None  # 기본: 열린 것과 초안
-        if status is None:
-            statuses = [TaskStatus.open, TaskStatus.draft]
+        statuses: list[TaskStatus] | None = None
+        if status is None:  # 기본: 열린 것만. 초안은 status="draft"로 따로 물을 때만 보인다
+            statuses = [TaskStatus.open]
         else:
             try:
                 statuses = [TaskStatus(status)]

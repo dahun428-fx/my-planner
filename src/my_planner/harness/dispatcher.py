@@ -69,6 +69,7 @@ class _ResendJob:
     run: Run
     merged: list[Run]
     tool_names: list[str]
+    draft_task_ids: list[int] = field(default_factory=list)
 
 
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
@@ -275,7 +276,7 @@ class Dispatcher:
             self.transcripts.append(
                 self.clock.now(), "비서", conv.id, None, redact(reply)[0], tools=list(run_ctx.tool_names)
             )
-            await self.sender.send(Outbound(text=reply))
+            await self.sender.send(_outbound(reply, run_ctx))
         # 전송까지 끝난 뒤에만 처리 완료로 기록한다(전송 전에 죽으면 다시 처리될 수 있다).
         self.state.mark_updates_done(update_ids)
         log.info(
@@ -309,18 +310,18 @@ class Dispatcher:
                 return
             if prepared is None:
                 return
-            conv, text, tool_names = prepared
+            conv, out, tool_names = prepared
             # (b) 전송: 바로 3회까지. 그래도 안 되면 failed로 두고 5분 뒤 전송만 한 번 더
-            if await self._send_run(text, run.id, attempts=SEND_ATTEMPTS):
-                self._run_delivered(run, merged, conv, text, tool_names)
+            if await self._send_run(out, run.id, attempts=SEND_ATTEMPTS):
+                self._run_delivered(run, merged, conv, out.text, tool_names)
                 return
             for r in (run, *merged):
                 runs.mark_failed(r.id, "send")
-            self._later(RESEND_DELAY_S, _ResendJob(run, merged, tool_names))
+            self._later(RESEND_DELAY_S, _ResendJob(run, merged, tool_names, list(out.draft_task_ids)))
 
     async def _prepare_run(
         self, run: Run, merged: list[Run]
-    ) -> tuple[Conversation, str, list[str]] | None:
+    ) -> tuple[Conversation, Outbound, list[str]] | None:
         """두뇌 단계. 보낼 것이 없으면(두뇌 실패) 회차를 failed로 두고 None."""
         assert self.runs is not None
         runs = self.runs
@@ -345,7 +346,7 @@ class Dispatcher:
         if confirmations:
             text = f"{text}\n\n{confirmations}"
         runs.save_outbound(run.id, text)
-        return conv, text, list(run_ctx.tool_names)
+        return conv, _outbound(text, run_ctx), list(run_ctx.tool_names)
 
     async def _run_brain(
         self, run: Run, merged: list[Run], conv: Conversation
@@ -376,10 +377,10 @@ class Dispatcher:
         due = Due(run.loop, run.scheduled_for, run.cadence)
         return self.clock.now() > limit_for(due, s, s.timezone, s.day_boundary)
 
-    async def _send_run(self, text: str, run_id: int, *, attempts: int) -> bool:
+    async def _send_run(self, out: Outbound, run_id: int, *, attempts: int) -> bool:
         for i in range(attempts):
             try:
-                await self.sender.send(Outbound(text=text))
+                await self.sender.send(out)
                 return True
             except Exception as e:  # noqa: BLE001 - 어떤 전송 오류든 다시 시도한다. 본문 없이 종류만 남긴다
                 log.warning(
@@ -415,7 +416,12 @@ class Dispatcher:
             return
         conv = self.convs.get(run.conversation_id) if run.conversation_id is not None else None
         with self._keep_awake():
-            if await self._send_run(run.outbound_text, run.id, attempts=1) and conv is not None:
+            out = Outbound(
+                text=run.outbound_text,
+                draft_conversation_id=run.conversation_id if job.draft_task_ids else None,
+                draft_task_ids=list(job.draft_task_ids),
+            )
+            if await self._send_run(out, run.id, attempts=1) and conv is not None:
                 self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names)
 
     def _run_delivered(
@@ -490,6 +496,16 @@ class Dispatcher:
             except Exception as e:  # noqa: BLE001 - 입력 중 표시는 없어도 된다
                 log.warning("typing_error", extra={"error_type": type(e).__name__})
             await self._sleep(TYPING_INTERVAL_S)
+
+
+def _outbound(text: str, run_ctx: RunContext) -> Outbound:
+    """이번 호출에서 제안한 초안이 있으면 버튼을 붙이도록 id와 대화를 싣는다(스펙 5.7)."""
+    ids = [i for e in run_ctx.events if e.kind == "tasks_proposed" for i in e.data.get("ids", [])]
+    return Outbound(
+        text=text,
+        draft_conversation_id=run_ctx.conversation_id if ids else None,
+        draft_task_ids=ids,
+    )
 
 
 def _join(*parts: str) -> str:

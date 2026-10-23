@@ -143,3 +143,34 @@ async def test_run_forever_ticks_each_interval_and_survives_errors(tmp_path, con
         await runner.run_forever(interval=60)
     assert slept == [60, 60, 60]
     assert len(ticks) == 2  # 첫 tick은 시작 순서에서 따로 부르고, 이후 interval마다 한 번
+
+
+def test_expire_drafts_after_3_days(tmp_path, conn, state):
+    from my_planner.domain import Area, TaskStatus
+    from my_planner.loop.runner import expire_drafts
+    from my_planner.store.repos.tasks import TasksRepo
+
+    mon_0400 = kst(2026, 10, 26, 4, 0)
+    env = Env(tmp_path, conn, state, mon_0400, installed=mon_0400 - timedelta(days=7), last_seen=mon_0400)
+    repo = TasksRepo(conn, env.clock)
+    env.runner.register_daily(expire_drafts(repo, env.clock))
+    three_days = repo.create("사흘 된 초안", [Area.career], TaskStatus.draft)
+    env.clock.set(kst(2026, 10, 26, 5, 0))
+    almost = repo.create("2일 23시간 된 초안", [Area.career], TaskStatus.draft)
+    opened = repo.create("열린 일", [Area.career], TaskStatus.open)
+
+    env.clock.set(kst(2026, 10, 29, 3, 59))  # 아직 수요일(논리적 날짜). 하루 한 번 작업은 수요일 몫이 이미 돌았다고 둔다
+    state.set("last_daily_jobs_date", "2026-10-28")
+    state.set("last_seen_at", to_iso(env.clock.now()))
+    env.runner.tick()
+    assert repo.get(three_days.id).status is TaskStatus.draft
+    env.clock.set(kst(2026, 10, 29, 4, 0))  # 목 04:00: 하루 한 번 작업. 첫째는 정확히 3일, 둘째는 2일 23시간
+    env.runner.tick()
+
+    assert repo.get(three_days.id).status is TaskStatus.dropped
+    assert repo.get(almost.id).status is TaskStatus.draft
+    assert repo.get(opened.id).status is TaskStatus.open
+    assert env.dispatcher.submitted == []  # 조용히: 아무것도 보내지 않는다
+    env.clock.set(kst(2026, 10, 30, 4, 0))
+    env.runner.tick()
+    assert repo.get(almost.id).status is TaskStatus.dropped

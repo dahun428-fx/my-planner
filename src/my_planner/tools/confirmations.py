@@ -47,6 +47,7 @@ def _line(e: ToolEvent, today: date) -> str | None:
         "task_reopened": f"✓ 되돌림: {title}",
         "task_dropped": f"✓ 내려놓음: {title}",
         "task_updated": f"✓ 바꿈: {title}",
+        "tasks_confirmed": f"✓ 확정: {title}",
     }.get(e.kind)
 
 

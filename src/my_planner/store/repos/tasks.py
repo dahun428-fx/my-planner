@@ -146,6 +146,18 @@ class TasksRepo:
             args.append(limit)
         return [self._task(r) for r in self.conn.execute(sql, args).fetchall()]
 
+    def dropped_from(self, id: int) -> TaskStatus | None:
+        """가장 최근에 내려놓기 직전의 상태. 내려놓은 적이 없으면 None."""
+        r = self.conn.execute(
+            "SELECT payload_json FROM task_events WHERE task_id = ? AND kind = 'dropped' "
+            "ORDER BY at DESC, id DESC LIMIT 1",
+            (id,),
+        ).fetchone()
+        if r is None:
+            return None
+        before = json.loads(r["payload_json"]).get("from")
+        return TaskStatus(before) if before else None
+
     def _day_start(self, d: date) -> datetime:
         from zoneinfo import ZoneInfo
 
@@ -265,9 +277,9 @@ class TasksRepo:
         return task
 
     def expire_drafts(self, older_than: datetime) -> list[int]:
-        """`older_than`보다 먼저 만든 초안을 조용히 `dropped`로 바꾼다."""
+        """`older_than`이나 그보다 먼저 만든 초안을 조용히 `dropped`로 바꾼다(딱 3일이 된 것도 포함)."""
         rows = self.conn.execute(
-            "SELECT id FROM tasks WHERE status = 'draft' AND deleted_at IS NULL AND created_at < ? "
+            "SELECT id FROM tasks WHERE status = 'draft' AND deleted_at IS NULL AND created_at <= ? "
             "ORDER BY id",
             (to_iso(older_than),),
         ).fetchall()
@@ -309,6 +321,16 @@ class TasksRepo:
                 "VALUES (?, ?, ?, ?, ?)",
                 (run_id, conversation_id, task_id, kind, to_iso(self.clock.now())),
             )
+
+    def proposed_task_ids(self, conversation_id: int) -> list[int]:
+        """그 대화에서 `propose_tasks`로 제안한 할 일 번호(제안한 순서). 상태는 거르지 않는다."""
+        rows = self.conn.execute(
+            "SELECT task_id FROM tool_events_log "
+            "WHERE conversation_id = ? AND kind = 'tasks_proposed' AND task_id IS NOT NULL "
+            "GROUP BY task_id ORDER BY MIN(id)",
+            (conversation_id,),
+        ).fetchall()
+        return [r["task_id"] for r in rows]
 
     def local(self, dt: datetime) -> datetime:
         return local(dt, self.tz)

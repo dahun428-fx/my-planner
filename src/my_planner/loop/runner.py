@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, logical_date, to_iso
@@ -17,8 +17,22 @@ if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
+    from my_planner.store.repos.tasks import TasksRepo
 
 log = logging.getLogger(__name__)
+
+DRAFT_EXPIRE_DAYS = 3
+
+
+def expire_drafts(tasks: TasksRepo, clock: Clock, *, days: int = DRAFT_EXPIRE_DAYS) -> Callable[[date], None]:
+    """하루 한 번 작업: 만든 지 `days`일이 지난 초안을 조용히 `dropped`로 바꾼다(알리지 않음, 스펙 5.7)."""
+
+    def job(today: date) -> None:
+        ids = tasks.expire_drafts(clock.now() - timedelta(days=days))
+        log.info("drafts_expired", extra={"count": len(ids)})
+
+    job.__name__ = "expire_drafts"
+    return job
 
 
 class RunSubmitter(Protocol):

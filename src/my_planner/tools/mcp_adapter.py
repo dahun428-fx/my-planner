@@ -14,6 +14,8 @@ SERVER_NAME = "planner"
 # 두뇌가 부를 수 있는 도구 이름(스펙 5.5 표 순서). 티켓마다 늘어난다.
 TOOL_NAMES: list[str] = [
     "add_task",
+    "propose_tasks",
+    "confirm_tasks",
     "update_task",
     "move_task",
     "complete_task",
@@ -37,26 +39,53 @@ def _schema(props: dict[str, Any], required: list[str]) -> dict[str, Any]:
     return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
 
 
+_NEW_TASK = _schema(
+    {
+        "title": {"type": "string", "description": "1~200자"},
+        "areas": {
+            "type": "array",
+            "items": {"enum": _AREAS},
+            "minItems": 1,
+            "description": "영역 하나 이상",
+        },
+        "planned_for": _DATE,
+        "scheduled_at": _DATETIME,
+        "parent_id": {"type": ["integer", "null"], "description": "첫 걸음이면 부모 할 일 번호"},
+        "note": {"type": ["string", "null"]},
+    },
+    ["title", "areas"],
+)
+
 # (이름, 설명, 입력 스키마). JSON 스키마의 "from"은 파이썬 이름 `from_`으로 넘기지 않고 그대로 받는다.
 _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "add_task": (
         "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다.",
+        _NEW_TASK,
+    ),
+    "propose_tasks": (
+        (
+            "비서가 제안하는 할 일을 초안(draft)으로 저장합니다. 브리핑, 체크인, 회고, 계획 의논에서 비서가 "
+            "먼저 꺼낸 할 일에 씁니다. 하네스가 메시지 아래에 초안마다 추가·빼기 버튼을 붙이므로 "
+            "답에서 확정했다고 말하지 않습니다. 한 번에 최대 10개."
+        ),
         _schema(
             {
-                "title": {"type": "string", "description": "1~200자"},
-                "areas": {
+                "tasks": {
                     "type": "array",
-                    "items": {"enum": _AREAS},
                     "minItems": 1,
-                    "description": "영역 하나 이상",
-                },
-                "planned_for": _DATE,
-                "scheduled_at": _DATETIME,
-                "parent_id": {"type": ["integer", "null"], "description": "첫 걸음이면 부모 할 일 번호"},
-                "note": {"type": ["string", "null"]},
+                    "maxItems": 10,
+                    "items": _NEW_TASK,
+                }
             },
-            ["title", "areas"],
+            ["tasks"],
         ),
+    ),
+    "confirm_tasks": (
+        (
+            "초안을 열린(open) 할 일로 확정합니다. 사용자가 글로 \"좋아, 다 넣어\"처럼 동의했을 때 부릅니다. "
+            "초안이 아닌 번호는 바꾸지 않고 skipped_ids로 돌려줍니다. 초안 번호는 list_tasks(status=draft)로 찾습니다."
+        ),
+        _schema({"ids": {"type": "array", "items": _ID, "minItems": 1}}, ["ids"]),
     ),
     "update_task": (
         "할 일의 제목, 영역, 메모, 시각을 바꿉니다. 날짜는 move_task로 바꿉니다.",
@@ -77,7 +106,7 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     ),
     "complete_task": ("할 일을 완료로 바꿉니다.", _schema({"id": _ID}, ["id"])),
     "reopen_task": (
-        "완료했거나 내려놓은 할 일을 다시 엽니다.",
+        "완료했거나, 열린 채로 내려놓은 할 일을 다시 엽니다. 확정하지 않은 초안은 열지 않습니다.",
         _schema({"id": _ID}, ["id"]),
     ),
     "drop_task": ("할 일을 내려놓습니다.", _schema({"id": _ID}, ["id"])),
@@ -99,7 +128,7 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         ),
     ),
     "list_tasks": (
-        "할 일을 조회합니다. status를 안 주면 열린 것과 초안을 돌려줍니다. 최대 50개.",
+        "할 일을 조회합니다. status를 안 주면 열린(open) 할 일만 돌려줍니다. 초안은 status=draft로 따로 묻습니다. 최대 50개.",
         _schema(
             {
                 "status": {"enum": ["draft", "open", "done", "dropped"]},
