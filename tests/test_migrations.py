@@ -91,10 +91,13 @@ def test_migrate_to_4_conditions_constraints(tmp_path):
     now = "2026-10-23T09:00:00+00:00"
     conn.execute("INSERT INTO conditions (date, score, note, recorded_at) VALUES ('2026-10-23', 1, NULL, ?)", (now,))
     conn.execute("INSERT INTO conditions (date, score, note, recorded_at) VALUES ('2026-10-24', 5, '좋음', ?)", (now,))
-    for bad in (0, 6):
-        with pytest.raises(sqlite3.IntegrityError):  # score CHECK 1~5
+    for bad in (0, 6, 3.5):
+        with pytest.raises(sqlite3.IntegrityError):  # score CHECK 1~5 (정수만)
             conn.execute("INSERT INTO conditions (date, score, recorded_at) VALUES ('2026-10-25', ?, ?)", (bad, now))
     with pytest.raises(sqlite3.IntegrityError):  # date PK
         conn.execute("INSERT INTO conditions (date, score, recorded_at) VALUES ('2026-10-23', 3, ?)", (now,))
+    for bad_date in ("bogus", "20261025", "2026-10-25T00:00"):
+        with pytest.raises(sqlite3.IntegrityError):  # date는 YYYY-MM-DD
+            conn.execute("INSERT INTO conditions (date, score, recorded_at) VALUES (?, 3, ?)", (bad_date, now))
     with pytest.raises(sqlite3.IntegrityError):  # recorded_at NOT NULL
         conn.execute("INSERT INTO conditions (date, score) VALUES ('2026-10-26', 3)")

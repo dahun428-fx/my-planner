@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import re
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, tzinfo
 from pathlib import Path
@@ -28,6 +29,7 @@ LIST_LIMIT_DEFAULT = 20
 TRANSCRIPT_MAX_DAYS = 7
 PRIORITY_MAX = 3
 SCORE_MIN, SCORE_MAX = 1, 5  # 컨디션 점수
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")  # fromisoformat은 20261023, 2026-W43-5도 받는다
 PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
 _NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
 PERIOD_EXAMPLE = {
@@ -447,10 +449,14 @@ class Tools:
             return _err("컨디션을 기록할 수 없어요.")
         if not isinstance(score, int) or isinstance(score, bool) or not SCORE_MIN <= score <= SCORE_MAX:
             return _err(f"컨디션은 {SCORE_MIN}~{SCORE_MAX} 사이의 숫자로 알려 주세요.")
+        if date is not None and not (isinstance(date, str) and _ISO_DATE.fullmatch(date)):
+            return _err("date는 YYYY-MM-DD 형식으로 알려 주세요.")
         d = self._parse_date(date, "date")
         if isinstance(d, str):
             return _err(d)
         day = d if d is not None else self.today()
+        if day > self.today():
+            return _err("아직 오지 않은 날의 컨디션은 기록할 수 없어요.")
         c = self.conditions.upsert(day, score, note if isinstance(note, str) else None)
         # 메모는 남기지 않는다. 날짜와 점수만.
         log.info("condition_recorded", extra={"date": day.isoformat(), "score": c.score})

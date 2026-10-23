@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from typing import Literal
 
@@ -23,6 +24,7 @@ log = logging.getLogger(__name__)
 CallbackResult = Literal["confirmed", "dropped", "recorded", "stale", "ignored", "unknown"]
 
 STALE_REPLY = "이미 정리된 할 일이에요."
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def _parse(data: str | None) -> tuple[str, int] | None:
@@ -37,6 +39,8 @@ def _parse_condition(data: str | None) -> tuple[date, int] | None:
     """`c:2026-10-23:4` → (date(2026, 10, 23), 4). 모르는 모양이면 None."""
     parts = (data or "").split(":")
     if len(parts) != 3 or parts[0] != "c" or parts[2] not in ("1", "2", "3", "4", "5"):
+        return None
+    if not _ISO_DATE.fullmatch(parts[1]):  # fromisoformat은 20261023, 2026-W43-5도 받는다
         return None
     try:
         return date.fromisoformat(parts[1]), int(parts[2])

@@ -187,3 +187,62 @@ def test_condition_prompts_cover_buttons_and_lightening_without_banned_words():
     for name in ("evening_checkin.md", "morning_brief.md", "chat.md"):
         for word in ("놓쳤어요", "밀렸어요", "늦었지만", "실패"):
             assert word not in prompts.load(name), (name, word)
+
+
+async def test_reply_after_yesterday_button_tells_brain_the_score(tmp_path, conn, state):
+    # 아침 브리핑에 붙은 어제 버튼을 누른 뒤 같은 아침 대화로 답하면 두뇌가 어제 점수를 안다
+    from my_planner.domain import RunContext
+
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], "좋은 아침이에요.", session_id="am-s"), FakeTurn([], "오늘은 가볍게 해요.", session_id="am-s")],
+        start=TUE_0900,
+    )
+    run = _queued(env, LoopKey.morning_brief, TUE_0900)
+    await env.process_run(run)
+    env.tools.record_condition(RunContext(None, None), score=1, date="2026-10-26")  # 어제 버튼
+    env.clock.set(kst(2026, 10, 27, 9, 30))
+    await env.process(env.inbound("어제 너무 힘들었어요", update_id=1))
+
+    assert env.brain.session_ids[1] == "am-s"
+    assert "## 기록된 컨디션\n- 어제(10/26): 1/5" in env.brain.prompts[1]
+
+
+async def test_evening_run_sent_at_limit_0400_still_asks_its_own_date(tmp_path, conn, state):
+    # 한계 시각 정확히 화 04:00에 보내면 지금의 논리적 날짜는 화지만, 버튼 날짜는 그 회차의 날짜(월)다
+    env = _env(tmp_path, conn, state, [FakeTurn([], CHECKIN)], start=kst(2026, 10, 27, 4, 0))
+    run = _queued(env, LoopKey.evening_checkin, MON_1730)
+    await env.process_run(run)
+
+    assert [o.ask_condition_for for o in env.sender.sent] == [MON]
+    assert "이 메시지 아래에 10/26(월) 컨디션 버튼" in env.brain.prompts[0]
+
+
+async def test_morning_asks_when_only_an_older_evening_is_done(tmp_path, conn, state):
+    # 일요일 체크인은 done이어도 월요일 체크인이 늦어 건너뛰었으면 화 아침은 월요일을 묻는다
+    env = _env(tmp_path, conn, state, [FakeTurn([], "좋은 아침이에요.")], start=TUE_0900)
+    sun = env.runs.ensure(LoopKey.evening_checkin, kst(2026, 10, 25, 18, 0))
+    env.runs.mark_done(sun.id)
+    mon = env.runs.ensure(LoopKey.evening_checkin, MON_1730)
+    env.runs.mark_skipped(mon.id, SkipReason.late)
+    run = _queued(env, LoopKey.morning_brief, TUE_0900)
+    await env.process_run(run)
+
+    assert [o.ask_condition_for for o in env.sender.sent] == [MON]
+
+
+async def test_evening_merged_into_review_still_gets_buttons(tmp_path, conn, state, monkeypatch):
+    # 일 18:00 회고와 저녁 체크인을 합쳐 회고가 primary여도 저녁 체크인 날짜의 버튼을 붙인다
+    from my_planner.domain import Cadence
+
+    real_load = prompts.load
+    monkeypatch.setattr(prompts, "load", lambda n: "## 회고(임시)" if n == "review_week.md" else real_load(n))
+    sun_1800 = kst(2026, 10, 25, 18, 0)
+    env = _env(tmp_path, conn, state, [FakeTurn([], "한 주 돌아보기와 체크인")], start=sun_1800)
+    review = env.runs.ensure(LoopKey.review, sun_1800, Cadence.week)
+    eve = env.runs.ensure(LoopKey.evening_checkin, sun_1800)
+    for r in (review, eve):
+        env.runs.mark_queued(r.id)
+    await env.process_run(env.runs.get(review.id), [env.runs.get(eve.id)])
+
+    assert [o.ask_condition_for for o in env.sender.sent] == [date(2026, 10, 25)]

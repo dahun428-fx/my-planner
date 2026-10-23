@@ -64,7 +64,40 @@ async def test_condition_button_records_original_date(cenv):
 
     # 다른 사람, 모르는 모양은 아무것도 바꾸지 않고 답만 한 번
     assert await press(cenv, "c:2026-10-23:5", uid=99, update_id=902) == "ignored"
-    for n, data in enumerate(("c:2026-10-23:6", "c:2026-10-23:0", "c:2026-13-40:3", "c:yesterday:3")):
+    bad = (
+        "c:2026-10-23:6", "c:2026-10-23:0", "c:2026-13-40:3", "c:yesterday:3",
+        "c:20261023:3", "c:2026-W43-5:3", "c:2026-10-25:3",  # 느슨한 형식, 논리적 오늘(10/24)보다 뒤
+    )
+    for n, data in enumerate(bad):
         assert await press(cenv, data, update_id=910 + n) == "unknown"
     assert cenv.conditions.get(OCT23).score == 2
-    assert len(cenv.bot.answers) == 2 + 1 + 4
+    assert cenv.conn.execute("SELECT count(*) FROM conditions").fetchone()[0] == 1
+    assert len(cenv.bot.answers) == 2 + 1 + len(bad)
+
+
+async def test_condition_button_transcript_before_answer_none_when_rejected(cenv):
+    order = []
+    real_append = cenv.transcripts.append
+    real_answer = cenv.bot.answer_callback_query
+
+    def spy_append(*a, **kw):
+        order.append(("transcript", a[4]))
+        return real_append(*a, **kw)
+
+    async def spy_answer(callback_query_id, text=None, **kw):
+        order.append(("answer", text))
+        return await real_answer(callback_query_id, text, **kw)
+
+    cenv.transcripts.append = spy_append
+    cenv.bot.answer_callback_query = spy_answer
+
+    # 사용자가 아니거나 형식이 틀리거나 미래 날짜면 원문 기록 없이 답만 한 번
+    assert await press(cenv, "c:2026-10-23:3", uid=99, update_id=950) == "ignored"
+    assert await press(cenv, "c:2026-10-23:9", update_id=951) == "unknown"
+    assert await press(cenv, "c:2026-10-25:3", update_id=952) == "unknown"
+    assert order == [("answer", None), ("answer", None), ("answer", None)]
+
+    # 기록하면 원문 기록이 먼저, 답이 그다음
+    order.clear()
+    assert await press(cenv, "c:2026-10-23:3", update_id=953) == "recorded"
+    assert order == [("transcript", "[버튼] 컨디션 3"), ("answer", "컨디션 3 기록했어요.")]

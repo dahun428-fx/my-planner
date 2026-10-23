@@ -342,7 +342,7 @@ class Dispatcher:
         runs.mark_running(run.id)
         conv = self.router.for_run(run)
         runs.set_conversation(run.id, conv.id)
-        ask = self._ask_condition_for(run)
+        ask = self._ask_condition_for(run, merged)
         result, run_ctx = await self._run_brain(run, merged, conv, ask)
         if not _run_ok(result) and self._may_rerun(run, result):
             runs.mark_running(run.id)
@@ -380,14 +380,18 @@ class Dispatcher:
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
 
-    def _ask_condition_for(self, run: Run) -> date | None:
-        """컨디션 버튼의 날짜(스펙 5.4). 저녁 체크인은 그 회차의 논리적 날짜다."""
+    def _ask_condition_for(self, run: Run, merged: list[Run] | None = None) -> date | None:
+        """컨디션 버튼의 날짜(스펙 5.4). 저녁 체크인은 그 회차의 논리적 날짜다.
+
+        저녁 체크인이 다른 회차(예: 일요일 회고)에 합쳐졌어도 그 저녁 체크인의 날짜를 쓴다.
+        """
         if self.conditions is None:
             return None
         s = self.settings
+        for r in (run, *(merged or [])):
+            if r.loop is LoopKey.evening_checkin:
+                return logical_date(r.scheduled_for, s.timezone, s.day_boundary)
         today = logical_date(run.scheduled_for, s.timezone, s.day_boundary)
-        if run.loop is LoopKey.evening_checkin:
-            return today
         if run.loop is LoopKey.morning_brief:
             # 어제 기록이 없고 어제 저녁 체크인이 done이 아니면(늦음, 복귀 인사, 멈춤 등 이유와 상관없이) 어제를 묻는다
             yesterday = today - timedelta(days=1)
@@ -396,14 +400,16 @@ class Dispatcher:
         return None
 
     def _recorded_condition(self) -> str:
-        """오늘(논리적 날짜) 기록된 컨디션. 버튼은 두뇌를 거치지 않으니 매 호출 메시지 앞에 알린다."""
+        """오늘과 어제(논리적 날짜) 기록된 컨디션. 버튼은 두뇌를 거치지 않으니 매 호출 메시지 앞에 알린다."""
         if self.conditions is None:
             return ""
         today = self._today()
-        c = self.conditions.get(today)
-        if c is None:
-            return ""
-        return f"## 기록된 컨디션\n- 오늘({today.month}/{today.day}): {c.score}/5"
+        lines = []
+        for label, d in (("어제", today - timedelta(days=1)), ("오늘", today)):
+            c = self.conditions.get(d)
+            if c is not None:
+                lines.append(f"- {label}({d.month}/{d.day}): {c.score}/5")
+        return "## 기록된 컨디션\n" + "\n".join(lines) if lines else ""
 
     def _evening_done(self, d: date) -> bool:
         """그 논리적 날짜의 저녁 체크인 회차가 done인지. 회차가 없으면 done이 아니다."""

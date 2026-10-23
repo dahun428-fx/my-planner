@@ -70,3 +70,13 @@ async def test_record_condition_out_of_range_error(cenv):
     assert is_error is True and "error" in out
     assert cenv.conditions.get(date(2026, 10, 23)) is None
     assert cenv.conn.execute("SELECT count(*) FROM conditions").fetchone()[0] == 0
+
+
+async def test_record_condition_rejects_loose_and_future_dates(cenv):
+    # 지금 KST 10/24 01:30 → 논리적 오늘은 10/23. 날짜는 YYYY-MM-DD만, 오늘보다 뒤는 안 된다
+    for bad in ("20261023", "2026-W43-5", "2026-10-24", "2099-01-01"):
+        out, is_error = await cenv.call("record_condition", score=3, date=bad)
+        assert is_error is True and "error" in out, bad
+    assert cenv.conn.execute("SELECT count(*) FROM conditions").fetchone()[0] == 0
+    out, is_error = await cenv.call("record_condition", score=3, date="2026-10-23")
+    assert is_error is False
