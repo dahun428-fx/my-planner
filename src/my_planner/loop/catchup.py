@@ -69,9 +69,14 @@ def decide(
     # 시계가 뒤로 갔으면(last_seen_at이 미래) 공백을 0으로 본다
     clock_backwards = last_seen_at is not None and last_seen_at > now
     gap = timedelta(0) if last_seen_at is None or clock_backwards else now - last_seen_at
+    # 아직 예정 시각이 오지 않은 회차(시계가 뒤로 갔을 때 생긴다)는 판정하지 않고 그대로 둔다
+    pending = [d for d in pending if d.scheduled_for <= now]
+    if carried_review is not None and carried_review.scheduled_for > now:
+        carried_review = None
     if gap >= RETURN_GAP:  # R1
         # 이미 넘겨 받은 회고가 있으면 그것도 공백의 회차로 다시 판정한다
-        return _return(now, [*pending, *([carried_review] if carried_review else [])], cfg, tz, boundary)
+        gap_runs = [*pending, *([carried_review] if carried_review else [])]
+        return _return(now, last_seen_at, gap_runs, cfg, tz, boundary)
     d = _regular(now, pending, carried_review, proactive_today, cfg, tz, boundary)
     d.clock_backwards = clock_backwards
     return d
@@ -109,15 +114,31 @@ def _regular(
     return Decision(primary=primary, merged=merged, skipped=skipped)
 
 
-def _return(now: datetime, pending: list[Due], cfg: Settings, tz: str | tzinfo, boundary: time) -> Decision:
+def _return(
+    now: datetime,
+    last_seen_at: datetime | None,
+    pending: list[Due],
+    cfg: Settings,
+    tz: str | tzinfo,
+    boundary: time,
+) -> Decision:
     """R1: 공백 동안의 회차는 `skipped(merged_into_return)`, 복귀 인사 하나를 만든다.
 
     회고는 한계(+3일) 안이면 넘겨 받는다(`carry_review`, 가장 최근 것 하나).
+    공백 전부터 기다리던 회차(`scheduled_for <= last_seen_at`, 예: 상한으로 대기, 넘겨 받은 회고)가
+    한계를 넘었으면 공백의 회차가 아니라 `late`다.
     """
     gap = sorted(pending, key=lambda d: d.scheduled_for)
-    reviews = [d for d in gap if d.loop is LoopKey.review and now <= limit_for(d, cfg, tz, boundary)]
+    in_limit = {d: now <= limit_for(d, cfg, tz, boundary) for d in gap}
+    reviews = [d for d in gap if d.loop is LoopKey.review and in_limit[d]]
     carry = reviews[-1] if reviews else None
-    skipped = [(due, SkipReason.merged_into_return) for due in gap if due != carry]
+    skipped: list[tuple[Due, SkipReason]] = []
+    for due in gap:
+        if due == carry:
+            continue
+        waited = last_seen_at is not None and due.scheduled_for <= last_seen_at
+        reason = SkipReason.late if waited and not in_limit[due] else SkipReason.merged_into_return
+        skipped.append((due, reason))
     # 복귀 인사가 오늘(논리적 날짜) 아침 브리핑 예정 시각 전에 나가면, 그 아침 브리핑도 건너뛴다
     zone = ZoneInfo(tz) if isinstance(tz, str) else tz
     day_end = datetime.combine(logical_date(now, tz, boundary) + timedelta(days=1), boundary, zone)

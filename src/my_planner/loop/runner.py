@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
@@ -41,7 +41,7 @@ def expire_drafts(tasks: TasksRepo, clock: Clock, *, days: int = DRAFT_EXPIRE_DA
 
 
 class RunSubmitter(Protocol):
-    def submit_run(self, run: Run, merged: list[Run]) -> None: ...
+    def submit_run(self, run: Run, merged: list[Run], *, carried_ids: Iterable[int] = ()) -> None: ...
 
 
 class Runner:
@@ -76,8 +76,27 @@ class Runner:
     def _carried_review(self) -> Run | None:
         """`app_state.carry_review_run_id`가 가리키는, 아직 pending인 회고 회차."""
         v = self.state.get(CARRY_REVIEW_KEY)
-        run = self.runs.get(int(v)) if v else None
-        return run if run is not None and run.status is RunStatus.pending else None
+        if not v:
+            return None
+        run = self.runs.get(int(v))
+        if run is None or run.status is not RunStatus.pending:
+            self.state.set(CARRY_REVIEW_KEY, None)  # 낡은 표시는 지운다
+            return None
+        return run
+
+    def _after_started_return(self, last_seen: datetime | None, now: datetime) -> datetime | None:
+        """판정에 쓸 마지막 tick 시각. `last_seen` 뒤에 이미 큐에 들었거나 끝난 return이 있으면 그 시각으로 본다.
+
+        하트비트가 기록되지 않은 채 tick이 죽었을 때 복귀 인사를 두 번 만들지 않기 위해서다.
+        """
+        if last_seen is None or last_seen >= now:
+            return last_seen
+        started = [
+            r.scheduled_for
+            for r in self.runs.between(last_seen, now)
+            if r.loop is LoopKey.return_ and r.status not in (RunStatus.pending, RunStatus.skipped)
+        ]
+        return max([last_seen, *started])
 
     def ensure_installed(self) -> None:
         """첫 실행이면(`installed_at`이 없으면) 지금 시각을 기록한다(스펙 5.1 5단계)."""
@@ -101,6 +120,7 @@ class Runner:
         self.ensure_installed()
         last_seen = self._get_time("last_seen_at")
         installed = self._get_time("installed_at")
+        judged_from = self._after_started_return(last_seen, now)
         # 2. 창 안의 예정 회차를 runs에 만든다(이미 있으면 그대로)
         for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops):
             self.runs.ensure(due.loop, due.scheduled_for, due.cadence)
@@ -110,7 +130,7 @@ class Runner:
         carried = self._carried_review()
         carried_due = _due(carried) if carried is not None else None
         decision = decide(
-            now, last_seen, [d for d in by_due if d != carried_due], carried_review=carried_due,
+            now, judged_from, [d for d in by_due if d != carried_due], carried_review=carried_due,
             proactive_today=self.state.usage(logical_date(now, tz, boundary)).proactive_messages,
             cfg=s, tz=tz, boundary=boundary,
         )
@@ -139,7 +159,12 @@ class Runner:
             merged = [by_due[d] for d in decision.merged]
             for r in (primary, *merged):
                 self.runs.mark_queued(r.id)
-            self.dispatcher.submit_run(self.runs.get(primary.id), [self.runs.get(r.id) for r in merged])
+            carried_ids = [carried.id] if carried is not None and carried_due in decision.merged else []
+            # 제출 전에 하트비트를 먼저 남긴다. 제출 뒤에 tick이 죽어도 다음 tick이 R1을 다시 적용하지 않는다
+            self.state.set("last_seen_at", to_iso(now))
+            self.dispatcher.submit_run(
+                self.runs.get(primary.id), [self.runs.get(r.id) for r in merged], carried_ids=carried_ids
+            )
         # 4. 하트비트
         self.state.set("last_seen_at", to_iso(now))
         self._run_daily(logical_date(now, tz, boundary))

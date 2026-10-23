@@ -249,3 +249,23 @@ async def test_review_week_53(tmp_path, conn, state):
     note = env.brain.prompts[0][env.brain.prompts[0].index("## 회고 주\n"):]
     assert "2026-W53 (12/28~1/3)" in note and "2027-W01 (1/4~1/10)" in note
     assert _review_file(env, "2026-W53").exists()
+
+
+async def test_carried_review_not_promoted_when_primary_goes_late(tmp_path, conn, state):
+    # 티켓 09: R1로 넘겨 받은 일 회고가 월 아침 브리핑에 합쳐져 큐에 들었다. 꺼낼 때(월 12:01) 아침은 한계 밖이다.
+    # 넘겨 받은 회고는 혼자 실행하지 않으므로 승격하지 않고 아침과 같이 skipped(late)
+    from my_planner.domain import SkipReason
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], REVIEW_REPLY)], start=kst(2026, 10, 26, 12, 1))
+    mor = env.runs.ensure(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    review = env.runs.ensure(LoopKey.review, SUN_1800, Cadence.week)
+    for r in (mor, review):
+        env.runs.mark_queued(r.id)
+    env.dispatcher.start()
+    env.dispatcher.submit_run(env.runs.get(mor.id), [env.runs.get(review.id)], carried_ids=[review.id])
+    await env.dispatcher.stop(timeout=5)
+
+    assert env.sender.sent == [] and env.brain.prompts == []
+    for r in (mor, review):
+        got = env.runs.get(r.id)
+        assert (got.status, got.skip_reason) == (RunStatus.skipped, SkipReason.late)

@@ -15,9 +15,11 @@ from my_planner.store.repos.runs import RunsRepo
 class FakeDispatcher:
     def __init__(self):
         self.submitted = []
+        self.carried = []  # 제출마다 넘겨 받은 회고 id
 
-    def submit_run(self, run, merged):
+    def submit_run(self, run, merged, *, carried_ids=()):
         self.submitted.append((run, merged))
+        self.carried.append(sorted(carried_ids))
 
 
 class Env:
@@ -236,6 +238,7 @@ def test_r1_carried_review_merges_into_next_contact(tmp_path, conn, state):
     assert [m.id for m in merged] == [review.id]
     assert env.runs.get(review.id).status is RunStatus.queued
     assert state.get("carry_review_run_id") is None
+    assert env.dispatcher.carried == [[], [review.id]]  # 디스패처가 승격하지 않도록 표시해 넘긴다
 
 
 def test_r1_carried_review_late_clears_mark(tmp_path, conn, state):
@@ -327,3 +330,77 @@ def test_clock_backwards_then_forward_does_not_rerun_done_runs(mon_morning):
     assert len(env.dispatcher.submitted) == 1
     mornings = [r for r in env.runs.between(kst(2026, 10, 26, 0, 0), env.clock.now()) if r.loop is LoopKey.morning_brief]
     assert [(r.id, r.status) for r in mornings] == [(run.id, RunStatus.done)]
+
+
+def test_stale_carry_mark_cleared_when_run_not_pending(mon_morning):
+    # 표시된 회고 회차가 이미 pending이 아니면(예: 다른 경로로 끝남) 표시를 지운다
+    from my_planner.domain import Cadence
+
+    env = mon_morning
+    review = env.runs.ensure(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    env.runs.mark_done(review.id)
+    env.state.set("carry_review_run_id", str(review.id))
+    env.runner.tick()
+    assert env.state.get("carry_review_run_id") is None
+    assert env.dispatcher.carried == [[]]
+
+
+def test_crash_between_submit_and_heartbeat_leaves_one_return(tmp_path, conn, state):
+    # 복귀 인사를 제출한 직후 tick이 죽었다(하트비트 전). 다음 tick이 R1을 다시 적용해 return을 또 만들면 안 된다
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 24, 17, 0), kst(2026, 10, 25, 18, 30))
+    real_submit = env.dispatcher.submit_run
+
+    def submit_then_crash(run, merged, **kw):
+        real_submit(run, merged, **kw)
+        raise RuntimeError("crash after submit")
+
+    env.dispatcher.submit_run = submit_then_crash
+    with pytest.raises(RuntimeError):
+        env.runner.tick()
+    env.dispatcher.submit_run = real_submit
+    env.clock.advance(minutes=1)
+    env.runner.tick()
+
+    returns = [r for r in env.runs.between(kst(2026, 10, 24, 0, 0), env.clock.now()) if r.loop is LoopKey.return_]
+    assert len(returns) == 1
+    assert [r.loop for r, _ in env.dispatcher.submitted] == [LoopKey.return_]
+
+
+def test_r1_skipped_when_return_already_queued_after_last_seen(tmp_path, conn, state):
+    # last_seen_at이 기록되지 않았어도(예전 값 그대로) 그 뒤에 queued/done인 return이 있으면 R1을 다시 적용하지 않는다
+    last = kst(2026, 10, 24, 17, 0)
+    env = _gap_env(tmp_path, conn, state, last, kst(2026, 10, 25, 18, 30))
+    env.runner.tick()
+    for status_done in (False, True):
+        if status_done:
+            env.runs.mark_done(env.dispatcher.submitted[0][0].id)
+        state.set("last_seen_at", to_iso(last))
+        env.clock.advance(minutes=1)
+        env.runner.tick()
+    returns = [r for r in env.runs.between(last, env.clock.now()) if r.loop is LoopKey.return_]
+    assert len(returns) == 1 and len(env.dispatcher.submitted) == 1
+
+
+def test_r1_leaves_non_pending_future_morning_alone(tmp_path, conn, state):
+    # 그날 아침 브리핑 회차가 이미 있고 pending이 아니면(예: 시계 이상으로 먼저 나감) R1이 상태를 덮어쓰지 않는다
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 23, 22, 0), kst(2026, 10, 27, 8, 0))
+    morning = env.runs.ensure(LoopKey.morning_brief, kst(2026, 10, 27, 9, 0))
+    env.runs.mark_done(morning.id)
+    env.runner.tick()
+    got = env.runs.get(morning.id)
+    assert (got.status, got.skip_reason) == (RunStatus.done, None)
+    assert [r.loop for r, _ in env.dispatcher.submitted] == [LoopKey.return_]
+
+
+def test_tick_after_30_day_jump_sends_single_return_within_7_days(tmp_path, conn, state):
+    # 시계가 30일 앞으로 갔다(월 13:00): return 하나만 내고, 회차는 7일 창 안의 것만 만든다
+    woke = kst(2026, 10, 26, 13, 0)
+    env = _gap_env(tmp_path, conn, state, woke - timedelta(days=30), woke)
+    env.runner.tick()
+    assert [(r.loop, r.scheduled_for) for r, _ in env.dispatcher.submitted] == [(LoopKey.return_, woke)]
+    created = env.runs.between(woke - timedelta(days=60), woke)
+    assert min(r.scheduled_for for r in created) > woke - timedelta(days=7)
+    assert len([r for r in created if r.loop is not LoopKey.return_]) == 15  # 아침 7 + 저녁 7 + 회고 1
+    env.clock.advance(minutes=1)
+    env.runner.tick()
+    assert len(env.dispatcher.submitted) == 1
