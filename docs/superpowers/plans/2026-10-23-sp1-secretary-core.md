@@ -1,5 +1,7 @@
 # SP1 비서 코어 Implementation Plan
 
+> **실행 완료 (2026-10-23).** 이 계획의 티켓 00~14는 모두 실행되어 main에 머지됐다(티켓 PR #20–#34, 최종 리뷰 수정 #35, #18·#19는 스파이크 기록). 7일 수용 테스트(이슈 #17)와 노트북 수동 점검(이슈 #16)만 남았다. 구현 중 바뀌거나 정해진 동작은 스펙의 [변경 기록](../specs/2026-10-23-sp1-secretary-core-design.md#변경-기록-구현-반영-2026-10-23)과 부록 A(고정 문구)에 있다. 아래 본문은 실행 당시의 계획 그대로 두며, 스펙과 다르면 스펙이 맞다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan ticket-by-ticket. Steps use checkbox (`- [ ]`) syntax for tracking. 티켓 하나를 끝낼 때마다 `.claude/agents/code-reviewer.md`로 리뷰한다. 지적을 반영한 뒤에 다음 티켓으로 간다.
 
 **Goal:** 단일 사용자 비서(하네스 + 루프)를 만든다. 비서는 텔레그램으로 먼저 말을 걸고, 사용자와 할 일을 함께 정리한다. Windows 노트북에서 늘 실행되게 한다.
