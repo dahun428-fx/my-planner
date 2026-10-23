@@ -21,7 +21,7 @@ from claude_agent_sdk import (
     query,
 )
 
-from my_planner.domain import RunContext, ToolEvent
+from my_planner.domain import RunContext
 from my_planner.harness import prompts
 from my_planner.tools.mcp_adapter import (
     SERVER_NAME,
@@ -45,7 +45,6 @@ class BrainResult:
     text: str
     session_id: str | None
     turns: int
-    tool_events: list[ToolEvent]
     status: BrainStatus
     error: str | None = None  # auth_error면 "login" | "billing"
     resume_failed: bool = False
@@ -188,7 +187,7 @@ class ClaudeBrain:
         try:
             async for message in query(prompt=prompt, options=options):
                 messages.append(message)
-        except Exception as e:  # ResultError/ProcessError 등. CancelledError는 그대로 올린다.
+        except Exception as e:  # noqa: BLE001 - ResultError/ProcessError 등을 classify가 판정한다. CancelledError는 그대로 올린다.
             exc = e
 
         status, error, retry_at = classify(messages, exc, datetime.now(UTC))
@@ -198,7 +197,6 @@ class ClaudeBrain:
             text=_reply_text(messages, result) if status == "ok" else "",
             session_id=_session_id(messages, result) or session_id,
             turns=result.num_turns if result else 0,
-            tool_events=list(run_ctx.events),
             status=status,
             error=error,
             resume_failed=detect_resume_failed(session_id, messages, status),

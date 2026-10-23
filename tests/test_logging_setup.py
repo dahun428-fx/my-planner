@@ -16,8 +16,9 @@ def test_third_party_fstring_message_dropped(tmp_path):
     try:
         raise ValueError(f"Failed to decode JSON: {body}")
     except ValueError as e:
-        logging.getLogger("claude_agent_sdk._internal.query").error(
-            f"Fatal error in message reader: {e}", exc_info=True
+        # SDK의 .error(..., exc_info=True)와 같은 기록. 본문이 든 f-string 메시지가 이 테스트의 대상이다
+        logging.getLogger("claude_agent_sdk._internal.query").exception(
+            f"Fatal error in message reader: {e}"  # noqa: TRY401
         )
     logging.getLogger("my_planner.x").info("own_event", extra={"n": 1})
 

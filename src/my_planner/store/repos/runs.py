@@ -24,6 +24,7 @@ class Run:
     resent: int
     conversation_id: int | None
     merged_run_ids: list[int] = field(default_factory=list)
+    finished_at: datetime | None = None  # done이면 보낸 때(전송이 끝나 done으로 바꾼 시각)
 
 
 def _row(r: sqlite3.Row) -> Run:
@@ -39,6 +40,7 @@ def _row(r: sqlite3.Row) -> Run:
         resent=r["resent"],
         conversation_id=r["conversation_id"],
         merged_run_ids=[int(i) for i in json.loads(r["merged_run_ids"])],
+        finished_at=from_iso(r["finished_at"]) if r["finished_at"] else None,
     )
 
 

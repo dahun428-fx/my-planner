@@ -12,10 +12,11 @@ dependencies = [
     "python-telegram-bot>=21.6,<23",
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.3,<3",
+    "anyio>=4,<5",  # 두뇌 호출 시간 상한(fail_after). SDK도 쓴다
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.17.2,<0.18"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -28,3 +29,8 @@ testpaths = ["tests"]
 pythonpath = ["src", "tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
+# 린트 게이트: `ruff check src tests`. 규칙은 ruff 0.17의 기본 묶음 그대로다(select를 두지 않는다).
+# 기본 묶음은 ruff 판마다 바뀌므로 dev 의존성에서 0.17로 묶어 둔다.
+[tool.ruff]
+target-version = "py312"

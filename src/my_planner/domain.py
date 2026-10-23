@@ -78,3 +78,4 @@ class RunContext:
     run_id: int | None
     events: list[ToolEvent] = field(default_factory=list)
     tool_names: list[str] = field(default_factory=list)  # 부른 도구 이름(인자 없이). 원문 기록과 로그에 쓴다
+    inbound_id: int | None = None  # 사용자 메시지 처리면 묶음의 첫 update_id(`inbound_pending`, 도구 호출 기록에 잇는다)

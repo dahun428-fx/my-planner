@@ -196,3 +196,66 @@ def test_split_counts_utf16_units():
     assert "".join(parts) == mixed
     assert all(units(p) <= 4096 for p in parts)
     assert all(p.endswith("\n") for p in parts[:-1])
+
+
+async def test_non_text_reply_retried_and_marked_only_after_send(state, tmp_path):
+    from datetime import UTC, datetime, time
+
+    from test_telegram_commands import _FlakyBot
+
+    from my_planner.bot.telegram_io import NON_TEXT_REPLY, handle_update
+    from my_planner.clock import FakeClock
+    from my_planner.store.transcripts import TranscriptStore
+
+    transcripts = TranscriptStore(tmp_path / "data", "Asia/Seoul", time(4))
+    clock = FakeClock(datetime(2026, 10, 23, 6, 30, tzinfo=UTC))
+    day = tmp_path / "data" / "transcripts" / "2026" / "10" / "2026-10-23.md"
+    slept = []
+
+    async def sleep(s):
+        slept.append(s)
+
+    for update_id, fail_times in ((21, 2), (22, 99)):
+        bot = _FlakyBot(fail_times)
+        await handle_update(
+            _update(update_id=update_id, photo=PHOTO),
+            bot=bot, owner_id=OWNER, state=state, dispatcher=_NoDispatch(),
+            transcripts=transcripts, clock=clock, sleep=sleep,
+        )
+        assert bot.attempts == 3
+
+    assert slept == [1, 2, 1, 2]
+    assert state.is_seen_update(21) and not state.is_seen_update(22)
+    assert day.read_text(encoding="utf-8").count(NON_TEXT_REPLY) == 1  # 보낸 한 번만 기록한다
+
+
+async def test_accepted_message_persisted_redacted_before_submit(state, tmp_path):
+    from datetime import UTC, datetime, time
+
+    from my_planner.bot.telegram_io import handle_update
+    from my_planner.clock import FakeClock
+    from my_planner.store.transcripts import TranscriptStore
+
+    clock = FakeClock(datetime(2026, 10, 23, 6, 31, tzinfo=UTC))
+    seen_at_submit = []
+
+    class _Dispatch:
+        def submit_message(self, m):
+            seen_at_submit.append([p.update_id for p in state.pending_inbound()])
+
+    upd = _update(update_id=31, text="비번은 hunter2야 그리고 내일 치과 14시 추가해 줘")
+    kw = {
+        "bot": _RecordingBot(), "owner_id": OWNER, "state": state, "dispatcher": _Dispatch(),
+        "transcripts": TranscriptStore(tmp_path / "data", "Asia/Seoul", time(4)), "clock": clock,
+    }
+    assert await handle_update(upd, **kw) == "accept"
+
+    assert seen_at_submit == [[31]]  # 디스패처에 넣기 전에 이미 저장했다
+    [row] = state.pending_inbound()
+    assert row.text == "비번은 [가림]야 그리고 내일 치과 14시 추가해 줘"  # 가린 글만 저장한다
+    assert row.sent_at == datetime.fromtimestamp(DATE, UTC) and row.received_at == clock.now()
+    # 같은 업데이트를 다시 받으면(확인 전 크래시로 텔레그램이 다시 줌) 시작 때 다시 넣은 것과 겹치지 않게 건너뛴다
+    assert await handle_update(upd, **kw) == "duplicate"
+    assert seen_at_submit == [[31]]
+    state.mark_updates_done([31])  # 답을 보내 처리 완료로 기록하면 지운다
+    assert state.pending_inbound() == []

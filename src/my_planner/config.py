@@ -85,6 +85,7 @@ class LimitsConfig(_Model):
     draft_ttl_days: int = 3
     stale_message_hours: int = 6
     input_max_chars: int = 8000
+    brain_timeout_s: float = 300  # 두뇌 호출 한 번의 상한(초). 넘으면 status="error", error="timeout"
     reply_window: ReplyWindowConfig = ReplyWindowConfig()
     catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
 

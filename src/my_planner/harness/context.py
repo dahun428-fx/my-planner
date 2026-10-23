@@ -18,15 +18,15 @@ NO_CONDITION = "기록 없음"
 _WEEKDAY = "월화수목금토일"
 
 
-def build_notices(*, redacted: bool, stale_hours: float | None, truncated: bool) -> str:
-    """`## 알림` 섹션. 해당하는 것이 없으면 빈 문자열."""
+def build_notices(*, redacted: bool, stale_hours: float | None, truncated_to: int | None) -> str:
+    """`## 알림` 섹션. 해당하는 것이 없으면 빈 문자열. `truncated_to`는 앞에서 자른 글자 수(`limits.input_max_chars`)."""
     lines: list[str] = []
     if redacted:
         lines.append("- 인증·식별 정보를 가렸어요.")
     if stale_hours is not None:
         lines.append(f"- 약 {max(1, round(stale_hours))}시간 전에 보낸 메시지예요.")
-    if truncated:
-        lines.append("- 메시지가 길어 앞 8000자만 넘겼어요.")
+    if truncated_to is not None:
+        lines.append(f"- 메시지가 길어 앞 {truncated_to}자만 넘겼어요.")
     if not lines:
         return ""
     return "## 알림\n" + "\n".join(lines)

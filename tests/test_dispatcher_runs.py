@@ -433,3 +433,106 @@ async def test_run_past_limit_when_dequeued_is_skipped_late(tmp_path, conn, stat
     after = env.runs.get(run.id)
     assert after.status is RunStatus.skipped and after.skip_reason is SkipReason.late
     assert env.brain.calls == [] and env.sender.sent == []
+
+
+async def test_reply_window_routed_by_sent_time(tmp_path, conn, state):
+    # 저녁 체크인 답을 03:00에 보냈고(노트북은 잠듦) 09:30에 처리한다: 보낸 시각으로 저녁 대화에 잇는다(스펙 갭 7 결정)
+    from my_planner.harness.dispatcher import Inbound
+
+    evening_at = kst(2026, 10, 26, 17, 30)
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], "오늘 하루 어땠어요?", session_id="eve-s"), FakeTurn([], "푹 쉬세요.", session_id="eve-s")],
+        start=evening_at + timedelta(seconds=30),
+    )
+    run = env.runs.ensure(LoopKey.evening_checkin, evening_at)
+    env.runs.mark_queued(run.id)
+    await env.process_run(env.runs.get(run.id))
+    eve_conv = env.runs.get(run.id).conversation_id
+
+    env.clock.set(kst(2026, 10, 27, 9, 30))  # 답장 창(다음 날 04:00) 밖에서 처리한다
+    sent = kst(2026, 10, 27, 3, 0)  # 보낸 시각은 답장 창 안
+    await env.process(Inbound(text="괜찮았어요", at=env.clock.now(), sent_at=sent, update_ids=[1]))
+
+    assert env.brain.session_ids[1] == "eve-s"
+    assert env.brain.calls[1]["run_ctx"].conversation_id == eve_conv
+
+
+def _short_brain_timeout(env):
+    """두뇌 호출 상한을 0.05초로 줄인다. 그동안 '입력 중' 루프가 가짜 시계를 한계 밖으로 돌리지 않게 한다."""
+    from fakes import fake_sleep, make_settings
+
+    from my_planner.config import LimitsConfig
+
+    env.dispatcher.settings = make_settings(env.settings.paths.root, limits=LimitsConfig(brain_timeout_s=0.05))
+    env.dispatcher._sleep = fake_sleep(env.clock, real=0.005)
+
+
+async def test_hung_run_brain_call_times_out_and_reruns_once(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([], "", hang=True), FakeTurn([], BRIEF)])
+    _short_brain_timeout(env)
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    assert len(env.brain.calls) == 2
+    assert [o.text for o in env.sender.sent] == [BRIEF]
+    assert env.runs.get(run.id).status is RunStatus.done
+
+
+async def test_hung_run_after_tool_write_fails_without_rerun(tmp_path, conn, state):
+    add = ("add_task", {"title": "보고서", "areas": ["career"]})
+    env = _env(tmp_path, conn, state, [FakeTurn([add], "", hang=True), FakeTurn([], BRIEF)])
+    _short_brain_timeout(env)
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    assert len(env.brain.calls) == 1
+    assert env.sender.sent == []
+    assert env.runs.get(run.id).status is RunStatus.failed
+    assert conn.execute("SELECT error FROM runs WHERE id = ?", (run.id,)).fetchone()[0] == "error"
+
+
+async def test_reply_sent_before_catchup_run_joins_the_earlier_run(tmp_path, conn, state):
+    # 깨어난 09:30: 따라잡기 아침 브리핑을 09:29에 먼저 보냈고, 03:00에 보낸 저녁 체크인 답은 그 뒤에 받아 왔다.
+    # 보낸 시각 이전에 열려 보낸 가장 최근 회차 대화(저녁)에 잇는다(최종 재리뷰 Important 1)
+    from my_planner.harness.dispatcher import Inbound
+
+    evening_at = kst(2026, 10, 26, 17, 30)
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], "오늘 하루 어땠어요?", session_id="eve-s"), FakeTurn([], BRIEF, session_id="morning-s"),
+         FakeTurn([], "푹 쉬세요.", session_id="eve-s")],
+        start=evening_at + timedelta(seconds=30),
+    )
+    eve = env.runs.ensure(LoopKey.evening_checkin, evening_at)
+    env.runs.mark_queued(eve.id)
+    await env.process_run(env.runs.get(eve.id))
+    eve_conv = env.runs.get(eve.id).conversation_id
+
+    env.clock.set(kst(2026, 10, 27, 9, 29))
+    morning = _queued_morning(env, at=kst(2026, 10, 27, 9, 0))
+    await env.process_run(morning)
+    assert env.runs.get(morning.id).status is RunStatus.done
+
+    env.clock.set(kst(2026, 10, 27, 9, 30))
+    await env.process(Inbound(text="괜찮았어요", at=env.clock.now(), sent_at=kst(2026, 10, 27, 3, 0), update_ids=[1]))
+
+    assert env.brain.session_ids[2] == "eve-s"
+    assert env.brain.calls[2]["run_ctx"].conversation_id == eve_conv
+
+
+async def test_reply_sent_while_run_was_still_being_written_is_not_joined_to_it(tmp_path, conn, state):
+    # 회차 대화는 두뇌를 부르기 전에 열린다. 그 뒤, 보내기 전에 쓴 메시지는 그 회차에 대한 답이 아니다
+    from my_planner.harness.dispatcher import Inbound
+
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], BRIEF, session_id="run-s", delay=60), FakeTurn([], "네", session_id="c")],
+    )
+    run = _queued_morning(env)
+    await env.process_run(run)
+    opened = env.convs.get(env.runs.get(run.id).conversation_id).opened_at
+    env.clock.advance(timedelta(minutes=1))
+    sent = opened + timedelta(seconds=30)  # 대화는 열렸지만 회차를 보내기 전(두뇌가 쓰는 중)에 보낸 글
+    await env.process(Inbound(text="안녕", at=env.clock.now(), sent_at=sent, update_ids=[2]))
+    assert env.brain.session_ids[1] is None
