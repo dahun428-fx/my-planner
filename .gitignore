@@ -1,6 +1,6 @@
-﻿.venv/
-spikes/
+﻿/.venv/
+/spikes/
 .env
-data/
-state/
+/data/
+/state/
 __pycache__/
