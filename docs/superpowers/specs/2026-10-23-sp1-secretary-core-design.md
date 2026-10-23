@@ -39,9 +39,9 @@
 | # | 확인할 것 | 실패 시 대안 |
 |---|---|---|
 | S0 | Python 배포판: Microsoft Store판 3.12에서 `sqlite3.Connection.enable_load_extension`과 sqlite-vec 로드가 되는지. venv 경로가 `%LOCALAPPDATA%` 가상화에 걸리지 않는지 | python.org 설치판 3.12로 venv를 만든다 (SP1부터) |
-| S1 | 작업 스케줄러가 로그인 시 `pythonw.exe`로 띄운 프로세스에서 Agent SDK가 사용자 구독 로그인으로 호출된다. 호출마다 콘솔 창이 뜨지 않는다. PATH에 `claude`가 없어도 동작하도록 CLI 경로를 정한다(SDK 번들 CLI 또는 `cli_path` 고정) | 터미널에서 시작하는 바로가기, 창 숨김 래퍼 |
+| S1 | 작업 스케줄러가 로그인 시 `pythonw.exe`로 띄운 프로세스에서 Agent SDK가 사용자 구독 로그인으로 호출된다. 호출마다 콘솔 창이 뜨지 않는다. PATH에 `claude`가 없어도 동작하도록 CLI 경로를 정한다. **결과**: `cli_path` 미지정, SDK 번들 CLI 사용. 콘솔 창은 시작 순서 0으로 숨긴다(5.1) | 터미널에서 시작하는 바로가기, 창 숨김 래퍼 |
 | S2 | 아래 5.3의 **두뇌 실행 설정**으로 기본 도구가 하나도 보이지 않고, `mcp__planner__*` 도구 12개는 모두 호출된다(도구 지연 로드 포함) | `tools=[]` 대신 기본 도구 이름을 `disallowed_tools`에 나열, PreToolUse 훅으로 `mcp__planner__` 외 전부 거부 |
-| S3 | 격리: 사용자 `~/.claude`의 설정·스킬·플러그인·CLAUDE.md, claude.ai MCP 커넥터, auto memory가 비서 세션에 나타나지 않는다. SDK 최소 버전을 이 검증으로 고정한다 | `CLAUDE_CONFIG_DIR`로 전용 설정 폴더 지정 |
+| S3 | 격리: 사용자 `~/.claude`의 설정·스킬·플러그인·CLAUDE.md, claude.ai MCP 커넥터, auto memory가 비서 세션에 나타나지 않는다. SDK 최소 버전을 이 검증으로 고정한다. **결과**: `claude-agent-sdk>=0.2.173,<0.3` | `CLAUDE_CONFIG_DIR`로 전용 설정 폴더 지정 |
 | S4 | 전원: `powercfg /a` 결과(S3 대기 vs Modern Standby)를 기록한다. 깨우기 타이머가 AC와 배터리, 덮개 닫힘에서 동작하는지 확인한다 | 깨우기 없이 따라잡기만 사용 (기본 경로이므로 기능 손실 없음) |
 | S5 | 텔레그램 롱폴링이 절전 복귀 후 다시 연결된다 | 복귀 이벤트 수신 시 폴링 재시작 |
 | S6 | 프로세스가 0이 아닌 코드로 죽으면 작업 스케줄러가 다시 띄운다 | 5분 반복 워치독 트리거(IgnoreNew)가 대신 띄운다 |
@@ -88,7 +88,9 @@ src/my_planner/
       async def run(self, prompt: str, *, session_id: str | None,
                     run_ctx: RunContext) -> BrainResult: ...
   # BrainResult: text, session_id, turns, tool_events: list[ToolEvent],
-  #              status: ok | max_turns | auth_error | rate_limited | error
+  #              status: ok | max_turns | auth_error | rate_limited | error,
+  #              error: str | None (auth_error면 "login" | "billing"),
+  #              retry_at: datetime | None (rate_limited일 때 재개 시각, 디스패처가 app_state.limited_until에 저장)
   ```
   테스트는 시나리오를 재생하는 `FakeBrain`을 쓴다.
 
@@ -102,14 +104,15 @@ src/my_planner/
 |---|---|
 | 트리거 | 사용자 로그온, 절전 복귀(이벤트 로그 System, Power-Troubleshooter, ID 1), 5분 반복 워치독(IgnoreNew라 실행 중이면 아무 일도 없음) |
 | 실행 계정 | 사용자 본인, "사용자가 로그온한 경우에만 실행" (구독 자격 증명 접근 때문) |
-| 동작 | venv의 `pythonw.exe -m my_planner` |
+| 동작 | venv의 `pythonw.exe -m my_planner` (S0: Store판 Python 3.12 venv `E:\my-planner\.venv\Scripts\pythonw.exe`) |
 | 조건 | `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false`, 유휴 조건 없음 |
-| 설정 | `ExecutionTimeLimit=PT0S`(무제한), `MultipleInstancesPolicy=IgnoreNew`, 실패 시 1분 간격으로 최대 999회 재시작 |
+| 설정 | `ExecutionTimeLimit=PT0S`(무제한), `MultipleInstancesPolicy=IgnoreNew`, 실패 시 1분 간격으로 최대 999회 재시작. S6에서 `Stop-Process`로 죽인 경우 이 설정은 다시 띄우지 않았고 5분 워치독 트리거가 띄웠다. 실제 재시작은 워치독이 맡는다([S6](../../spikes/2026-10-sp1.md#s6-재시작)) |
 
-**깨우기 작업 `my-planner-wake`**: 고정 작업 하나에 트리거 여러 개(각 회차 기본 시각 5분 전, 시각 목록은 `python -m my_planner.wake_times`가 `config.toml`에서 계산해 출력). "이 작업을 실행하기 위해 절전 모드 해제"를 켜고 배터리에서도 실행한다. 하는 일은 없다(`pythonw -c pass`, 콘솔 창 없음). S4가 실패하면 등록하지 않는다. 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.
+**깨우기 작업 `my-planner-wake`**: 고정 작업 하나에 트리거 여러 개(각 회차 기본 시각 5분 전, 시각 목록은 `python -m my_planner.wake_times`가 `config.toml`에서 계산해 출력). "이 작업을 실행하기 위해 절전 모드 해제"를 켜고 배터리에서도 실행한다. 하는 일은 없다(`pythonw -c pass`, 콘솔 창 없음). S4가 실패하면 등록하지 않는다. 배터리에서는 전원 구성표의 "절전 모드 해제 타이머 허용"(배터리)이 꺼져 있으면 깨우지 못한다(S4에서 이 노트북은 꺼짐). 그때는 따라잡기만 쓴다. 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.
 
 **시작 순서**
 
+0. Windows에서 콘솔이 없을 때만(`pythonw`, `GetConsoleWindow()==0`) 창 없는 콘솔을 하나 만든다(`AllocConsoleWithOptions(ALLOC_CONSOLE_MODE_NO_WINDOW)`, S1 결과). 이게 없으면 `pythonw`가 SDK의 `claude.exe`를 띄울 때마다 터미널 창이 뜬다. 콘솔에서 `python -m`으로 실행했으면 건너뛴다(Ctrl+C 처리 유지). 함수가 없는 Windows 버전이면 결과만 기억해 두고, 2단계 로그 설정 뒤에 경고 로그로 남긴다.
 1. `msvcrt.locking`으로 `state/my-planner.lock`을 잠근다. 실패하면 이미 실행 중이므로 종료한다. 크래시하면 OS가 잠금을 푼다.
 2. 로그 설정. `pythonw`에서는 `sys.stdout/stderr`가 `None`이므로 파일 핸들러만 쓰고, 둘을 `os.devnull`로 바꿔 둔다.
 3. DB 열기, 무결성 검사, 마이그레이션. 무결성 검사가 실패하면 **안전 모드**로 들어간다: 표식 파일 `state/integrity_notice_sent`가 없을 때만 텔레그램으로 "데이터베이스에 문제가 있어요. 최신 백업으로 복구해야 해요. PC에서 README의 복구 절차를 따라 주세요."를 한 번 보내고 표식을 만든다. 그 뒤 폴링과 tick 없이 프로세스만 살아 있는다(작업 스케줄러가 계속 다시 띄우지 않도록). 복구 뒤 표식을 지우고 다시 시작한다.
@@ -192,13 +195,23 @@ ClaudeAgentOptions(
 |---|---|
 | `ok` | 두뇌 답변 + 확인 문구(5.5) |
 | `max_turns` | 확인 문구만 보내고 "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요." |
-| `auth_error` | 하루 한 번만: "Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요." 회차는 `skipped(auth)` |
-| `rate_limited` | 한도 구간당 한 번만: "지금은 Claude 사용 한도에 닿았어요. {HH:MM}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요." `app_state.limited_until`을 기록하고(SDK가 재개 시각을 주지 않으면 지금 + 1시간) 그때까지 회차는 `skipped(rate_limit)`, 명령은 계속 동작 |
+| `auth_error` | 하루 한 번만. 로그인(`error="login"`): "Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요." 결제(`error="billing"`): "Claude 계정이나 결제 상태를 확인해야 해요. PC에서 Claude 계정을 살펴봐 주세요." 회차는 `skipped(auth)` |
+| `rate_limited` | 한도 구간당 한 번만: "지금은 Claude 사용 한도에 닿았어요. {재개}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요." `{재개}`는 재개 시각이 오늘(논리적 날짜)이면 `HH:MM`, 아니면 `M월 D일 HH:MM`이다(7일 한도). 이미 지난 `resets_at`은 없는 것으로 본다. `app_state.limited_until`을 기록하고(SDK가 재개 시각을 주지 않으면 지금 + 1시간) 그때까지 회차는 `skipped(rate_limit)`, 명령은 계속 동작 |
 | `error` | 사용자 메시지: 지수 백오프(2, 4, 8초)로 최대 3회 다시 호출(각 호출이 하루 두뇌 호출 수에 포함), 그래도 실패하면 "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요." 회차: 백오프 없이 5.4 재실행 규칙만 적용(회차당 두뇌 호출 최대 2회), 문구 없이 `failed` |
 
-고정 안내(로그인, 사용 한도, 하루 상한, 텍스트 아님, DB 문제)는 비서가 먼저 보내는 메시지 하루 3회에 세지 않는다.
+고정 안내(로그인·결제, 사용 한도, 하루 상한, 텍스트 아님, DB 문제)는 비서가 먼저 보내는 메시지 하루 3회에 세지 않는다.
 
-`auth_error`와 `rate_limited`를 구분하는 방법(SDK 예외 종류, 결과 메시지의 오류 하위 유형)은 S1에서 실제 오류를 확인해 정한다. 확인 전에는 둘 다 `error`로 처리한다.
+**오류 판별 규칙** (S1 결과, [스파이크 기록](../../spikes/2026-10-sp1.md)): 호출 중 받은 메시지를 모두 보고, `ResultError`/`ProcessError` 예외는 잡은 뒤 아래 순서로 판정한다. 문자열 매칭은 쓰지 않는다.
+
+1. `AssistantMessage.error`가 `"authentication_failed"` 또는 `"billing_error"` → `auth_error` (뒤따르는 예외보다 우선)
+2. `RateLimitEvent.rate_limit_info.status == "rejected"` 또는 `AssistantMessage.error == "rate_limit"` → `rate_limited`. `retry_at`은 `rejected` 이벤트의 `resets_at`(Unix 초)이고, 없으면 지금 + 1시간. `allowed_warning`은 로그만 남긴다.
+3. `ResultMessage.subtype == "error_max_turns"`(예외의 `subtype`/`terminal_reason`이 max_turns인 경우 포함) → `max_turns`
+4. 그 밖의 예외나 `ResultMessage.is_error=True` → `error`
+5. 아니면 `ok`
+
+미검증: 사용 한도에 실제로 닿았을 때의 이벤트 순서와, 실제 토큰 만료(시험은 빈 `CLAUDE_CONFIG_DIR`로 대신함)는 확인하지 못했다. 규칙에 맞지 않는 오류는 4번 `error`로 떨어지므로 안전하다. 처음 실제로 일어나면 로그(`status`, SDK 오류 필드)로 확인하고 규칙을 고친다.
+
+`max_turns=10` 한계: S2에서 도구 12번 호출에 13턴이 들었다. 한 호출에서 도구를 9번 넘게 부르는 일괄 정리(예: 할 일 10개 미루기)는 `max_turns` 문구로 끝나고, 사용자가 이어 말하면 계속한다. SP1에서는 10을 유지한다(호출 비용과 폭주 방지). 7일 수용 테스트에서 이 문구가 자주 나오면 15로 올린다.
 
 ### 5.4 루프와 회차
 
@@ -412,7 +425,7 @@ ClaudeAgentOptions(
 
 - `.env` (Git 제외, 사용자가 직접 입력): `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`
 - `config.toml` (Git 포함, 개인값 없음): 시간대, 하루 경계, 회차 시각, 답장 창, 따라잡기 한계, 호출 상한, 로그·백업 보관 기간
-- 의존성: `python-telegram-bot`(비동기), `claude-agent-sdk`(최소 버전은 S3에서 고정), `pydantic`, `pytest`, `pytest-asyncio`. 스케줄러는 직접 구현한다. 정확한 버전은 구현 계획에서 고정한다.
+- 의존성: `python-telegram-bot`(비동기), `claude-agent-sdk>=0.2.173,<0.3`(S3), `pydantic`, `pytest`, `pytest-asyncio`. 스케줄러는 직접 구현한다. 정확한 버전은 구현 계획에서 고정한다.
 
 ## 10. 미결 사항
 
