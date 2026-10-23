@@ -44,6 +44,7 @@
 | S3 | 격리: 사용자 `~/.claude`의 설정·스킬·플러그인·CLAUDE.md, claude.ai MCP 커넥터, auto memory가 비서 세션에 나타나지 않는다. SDK 최소 버전을 이 검증으로 고정한다 | `CLAUDE_CONFIG_DIR`로 전용 설정 폴더 지정 |
 | S4 | 전원: `powercfg /a` 결과(S3 대기 vs Modern Standby)를 기록한다. 깨우기 타이머가 AC와 배터리, 덮개 닫힘에서 동작하는지 확인한다 | 깨우기 없이 따라잡기만 사용 (기본 경로이므로 기능 손실 없음) |
 | S5 | 텔레그램 롱폴링이 절전 복귀 후 다시 연결된다 | 복귀 이벤트 수신 시 폴링 재시작 |
+| S6 | 프로세스가 0이 아닌 코드로 죽으면 작업 스케줄러가 다시 띄운다 | 5분 반복 워치독 트리거(IgnoreNew)가 대신 띄운다 |
 
 ## 4. 구성 요소와 경계
 
@@ -98,7 +99,7 @@ src/my_planner/
 
 | 항목 | 값 |
 |---|---|
-| 트리거 | 사용자 로그온, 절전 복귀(이벤트 로그 System, Power-Troubleshooter, ID 1) |
+| 트리거 | 사용자 로그온, 절전 복귀(이벤트 로그 System, Power-Troubleshooter, ID 1), 5분 반복 워치독(IgnoreNew라 실행 중이면 아무 일도 없음) |
 | 실행 계정 | 사용자 본인, "사용자가 로그온한 경우에만 실행" (구독 자격 증명 접근 때문) |
 | 동작 | venv의 `pythonw.exe -m my_planner` |
 | 조건 | `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false`, 유휴 조건 없음 |
@@ -156,7 +157,7 @@ ClaudeAgentOptions(
     permission_mode="dontAsk",                 # 허용 목록 밖은 묻지 않고 거부
     strict_mcp_config=True,                    # 다른 MCP 설정 무시
     setting_sources=[],                        # user/project/local 설정 안 읽음
-    cwd="state/brain-workdir",                 # 빈 전용 폴더
+    cwd=str(paths.state_dir / "brain-workdir"),  # 빈 전용 폴더, 절대경로
     max_turns=10,
     system_prompt=load("prompts/system.md"),
     resume=session_id_or_none,
@@ -211,7 +212,7 @@ ClaudeAgentOptions(
 
 | # | 조건 | 결정 |
 |---|---|---|
-| R1 | 공백 ≥ 24시간이고 지금 멈춤 기간이 아님 (멈춤 중이면 R2가 먼저: 모두 `skipped(paused)`, `return` 없음) | 공백 동안의 모든 회차를 `skipped(merged_into_return)`로 기록하고, `return` 회차 하나를 만든다. `return`은 "다시 이어서 해 볼까요"와 오늘 할 것만 담는다. 공백 중 `review(week)`가 있었고 지금이 그 회차 + 3일 이내면, `return` 다음 정규 연락(아침 브리핑 또는 저녁 체크인)에 주간 회고를 합쳐 보낸다 |
+| R1 | 공백 ≥ 24시간이고 지금 멈춤 기간이 아님 (멈춤 중이면 R2가 먼저: 모두 `skipped(paused)`, `return` 없음) | 공백 동안의 모든 회차를 `skipped(merged_into_return)`로 기록하고, `return` 회차 하나를 만든다. `return`은 "다시 이어서 해 볼까요"와 오늘 할 것만 담는다. 공백 중 `review(week)`가 있었고 지금이 그 회차 + 3일 이내면, `return` 다음 정규 연락(아침 브리핑 또는 저녁 체크인)에 주간 회고를 합쳐 보낸다. 넘겨 받은 회고는 `pending`으로 두되 `app_state.carry_review_run_id`로 표시해 따라잡기 판정에서 빼고, 혼자 실행하지 않는다. 다음 정규 연락 없이 +3일이 지나면 `skipped(late)` |
 | R2 | 멈춤 기간 안 | `skipped(paused)` |
 | R3 | 하루 두뇌 호출 상한 도달 | `skipped(daily_cap)` |
 | R4 | 루프별 한계 안 | 늦게라도 실행한다 |
@@ -219,7 +220,7 @@ ClaudeAgentOptions(
 
 루프별 한계: `morning_brief`는 당일 12:00, `evening_checkin`은 다음 날 04:00(논리적 날짜 끝), `review(week)`는 예정 시각 + 3일.
 
-**합치기**: 같은 tick에서 실행할 회차가 둘 이상이면 하나로 합친다. 우선순위는 `return` > `evening_checkin` > `morning_brief` > `review(week)`이고, 합쳐진 회차는 `skipped(merged_into_return)`가 아니라 실행된 회차의 `merged_run_ids`에 기록한다. 이로써 비서가 먼저 보내는 메시지는 하루 최대 3회(마스터 5.5)를 넘지 않는다. 하루 4번째가 되면 다음 정규 연락에 합친다.
+**합치기**: 같은 tick에서 실행할 회차가 둘 이상이면 하나로 합친다. 우선순위는 `return` > `evening_checkin` > `morning_brief` > `review(week)`이고, 합쳐진 회차는 `skipped(merged_into_return)`가 아니라 실행된 회차의 `merged_run_ids`에 기록하고, 실행된 회차의 전송이 성공하면 함께 `done`이 된다. 이로써 비서가 먼저 보내는 메시지는 하루 최대 3회(마스터 5.5)를 넘지 않는다. 하루 4번째가 되면 다음 정규 연락에 합친다.
 
 **문구 규칙**: 따라잡기 메시지에 "놓쳤어요", "밀렸어요", "늦었지만" 같은 지연 표현을 쓰지 않는다(P2). 프롬프트와 테스트로 확인한다.
 

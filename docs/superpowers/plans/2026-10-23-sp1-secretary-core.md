@@ -93,7 +93,7 @@ tests/                               # 모듈별 test_*.py, tests/integration/
 
 ---
 
-### Task 0: 착수 전 검증 (스파이크 S0~S5)
+### Task 0: 착수 전 검증 (스파이크 S0~S6)
 
 노트북에서 사람이(또는 원격 세션이) 직접 수행한다. 코드는 `spikes/` 폴더에 두고 커밋하지 않는다. 결과만 문서로 남긴다.
 
@@ -171,7 +171,7 @@ tests/                               # 모듈별 test_*.py, tests/integration/
 **Interfaces:**
 - Produces: `open_db(path: Path) -> sqlite3.Connection` (WAL, `foreign_keys=ON`, `row_factory=sqlite3.Row`), `migrate(conn) -> int` (적용 후 `user_version`), `integrity_ok(conn) -> bool`.
 - 스키마(001): 스펙 5.5의 `tasks`, `task_areas`, `task_events`, `priorities`, `conditions` 그대로, 그리고:
-  - `runs(id PK, loop TEXT, cadence TEXT NULL, scheduled_for TEXT, status TEXT, skip_reason TEXT NULL, attempt INT DEFAULT 0, started_at, finished_at, outbound_text TEXT NULL, error TEXT NULL, conversation_id INT NULL, merged_run_ids TEXT DEFAULT '[]', created_at)`, UNIQUE `(loop, cadence, scheduled_for)`, CHECK status/skip_reason 값.
+  - `runs(id PK, loop TEXT, cadence TEXT NOT NULL DEFAULT 'day', scheduled_for TEXT, status TEXT, skip_reason TEXT NULL, attempt INT DEFAULT 0, started_at, finished_at, outbound_text TEXT NULL, error TEXT NULL, conversation_id INT NULL, merged_run_ids TEXT DEFAULT '[]', created_at)`, UNIQUE `(loop, cadence, scheduled_for)`, CHECK status/skip_reason 값.
   - `conversations(id PK, kind TEXT, run_id INT NULL, session_id TEXT NULL, logical_date TEXT, opened_at, last_message_at, closed_at NULL)`.
   - `app_state(key TEXT PK, value TEXT)` — 키: `installed_at`, `last_seen_at`, `last_tick_at`, `pause_until`, `last_auth_notice_date`, `last_rate_limit_notice_until`, `last_daily_jobs_date`, `carry_review_run_id`.
   - `usage_state(date TEXT PK, brain_calls INT, proactive_messages INT, limited_until TEXT NULL)`.
@@ -182,7 +182,7 @@ tests/                               # 모듈별 test_*.py, tests/integration/
   - `test_migrate_fresh_db_sets_version_1`
   - `test_migrate_is_idempotent` (두 번 실행해도 1, 오류 없음)
   - `test_wal_and_foreign_keys_on`
-  - `test_runs_unique_loop_scheduled_for` (같은 키 두 번 INSERT → `IntegrityError`)
+  - `test_runs_unique_loop_scheduled_for` (cadence를 생략한 `morning_brief` 같은 키 두 번 INSERT → `IntegrityError`; SQLite UNIQUE는 NULL끼리 막지 않으므로 cadence는 NOT NULL)
   - `test_priority_rank_check` (rank 4 → `IntegrityError`)
   - `test_completed_at_only_when_done` (status `open` + completed_at → `IntegrityError`)
   - `test_task_area_check` (`area='sports'` → `IntegrityError`)
@@ -240,8 +240,8 @@ tests/                               # 모듈별 test_*.py, tests/integration/
 
 **Interfaces:**
 - Produces:
-  - `@dataclass Run(id, loop: LoopKey, cadence: Cadence|None, scheduled_for: datetime, status: RunStatus, skip_reason, attempt, outbound_text, conversation_id, merged_run_ids: list[int])`, `@dataclass Conversation(id, kind: ConversationKind, run_id, session_id, logical_date: date, opened_at, last_message_at, closed_at)`, `@dataclass Usage(brain_calls: int, proactive_messages: int, limited_until: datetime|None)`는 각 repo 파일에 둔다.
-  - `RunsRepo`: `ensure(loop: LoopKey, scheduled_for: datetime, cadence: Cadence|None = None) -> Run` (없으면 `pending`으로 생성, 있으면 기존 반환), `mark_running(id)`, `save_outbound(id, text)`, `mark_done(id)`, `mark_failed(id, error)`, `mark_skipped(id, reason: SkipReason)`, `add_merged(id, merged_ids: list[int])`, `interrupt_running() -> list[int]`, `pending() -> list[Run]`, `between(start, end) -> list[Run]`, `has_tool_events(run_id) -> bool`.
+  - `@dataclass Run(id, loop: LoopKey, cadence: Cadence, scheduled_for: datetime, status: RunStatus, skip_reason, attempt, outbound_text, conversation_id, merged_run_ids: list[int])`, `@dataclass Conversation(id, kind: ConversationKind, run_id, session_id, logical_date: date, opened_at, last_message_at, closed_at)`, `@dataclass Usage(brain_calls: int, proactive_messages: int, limited_until: datetime|None)`는 각 repo 파일에 둔다.
+  - `RunsRepo`: `ensure(loop: LoopKey, scheduled_for: datetime, cadence: Cadence = Cadence.day) -> Run` (없으면 `pending`으로 생성, 있으면 기존 반환), `mark_running(id)`, `save_outbound(id, text)`, `mark_done(id)`, `mark_failed(id, error)`, `mark_skipped(id, reason: SkipReason)`, `add_merged(id, merged_ids: list[int])`, `interrupt_running() -> list[int]`, `pending() -> list[Run]`, `between(start, end) -> list[Run]`, `has_tool_events(run_id) -> bool`.
   - `ConversationsRepo`: `open(kind, logical_date, run_id=None) -> Conversation`, `touch(id)`, `set_session(id, session_id)`, `close(id)`, `latest_open(kind) -> Conversation|None`, `open_run_conversations() -> list[Conversation]`.
   - `ConditionsRepo`: `upsert(date, score: int, note: str|None)`, `get(date) -> Condition|None`.
   - `StateRepo`: `get(key) -> str|None`, `set(key, value)`, `incr_usage(date, field: Literal["brain_calls","proactive_messages"]) -> int`, `usage(date) -> Usage`, `set_limited_until(date, dt)`, `is_seen_update(update_id) -> bool` (조회만), `mark_update_done(update_id)` (처리 완료 후 기록), `prune_updates(older_than)`. `usage(date)`의 `date`는 논리적 날짜.
@@ -360,7 +360,7 @@ tests/                               # 모듈별 test_*.py, tests/integration/
 - Produces:
   - `@dataclass(frozen=True) Due(loop: LoopKey, scheduled_for: datetime)` (UTC)
   - `due_between(start: datetime, end: datetime, cfg: ScheduleConfig, tz) -> list[Due]` — `(start, end]` 구간, 시간순. `Due(loop=review, cadence=week)`는 일요일 18:00.
-  - `Due`에 `cadence: Cadence|None = None` 필드를 둔다.
+  - `Due`에 `cadence: Cadence = Cadence.day` 필드를 둔다(회고만 `week`).
   - `window_start(now, last_seen_at, installed_at) -> datetime` = `min(now, max(last_seen_at, installed_at, now - 7일))` (`last_seen_at`이 미래면 `now`)
   - `limit_for(due: Due, cfg, tz, boundary) -> datetime` (루프별 한계)
   - `reply_window_end(due: Due, tz, boundary) -> datetime` (아침 당일 12:00, 저녁 다음 날 04:00, 회고 +24시간)
@@ -389,13 +389,15 @@ tests/                               # 모듈별 test_*.py, tests/integration/
 - Consumes: `Due`, `limit_for` (Task 9)
 - Produces:
   - `@dataclass Decision(execute: list[Due], primary: Due|None, merged: list[Due], skipped: list[tuple[Due, SkipReason]], create_return: bool, carry_review: Due|None)`
-  - `decide(now, last_seen_at, pending: list[Due], *, paused_until: datetime|None, limited_until: datetime|None, brain_calls_today: int, proactive_today: int, plan_open: bool, cfg, tz, boundary) -> Decision`
-  - 규칙 순서는 스펙 5.4 표 R1~R5 그대로. 같은 tick의 실행 대상이 여럿이면 `primary` 하나와 `merged`로 나눈다(우선순위 `return > evening_checkin > morning_brief > review(week)`). `proactive_today >= 3`이면 `execute`를 비우고 skipped 없이 다음 tick으로 넘긴다(다음 정규 연락에 합쳐짐). `plan_open`이면 한계 안의 회차는 그대로 대기(결정에 넣지 않음), 한계 밖은 `late`. 시계 역행(`now < last_seen_at`)이면 공백 0으로 본다. `limited_until > now`이면 실행 대상은 `skipped(rate_limit)`. R1은 멈춤 중이 아닐 때만(멈춤 중이면 R2: 모두 `skipped(paused)`, `return` 없음).
+  - `decide(now, last_seen_at, pending: list[Due], *, carried_review: Due|None, paused_until: datetime|None, limited_until: datetime|None, brain_calls_today: int, proactive_today: int, plan_open: bool, cfg, tz, boundary) -> Decision`
+  - 규칙 순서는 스펙 5.4 표 R1~R5 그대로. 같은 tick의 실행 대상이 여럿이면 `primary` 하나와 `merged`로 나눈다(우선순위 `return > evening_checkin > morning_brief > review(week)`). `proactive_today >= 3`이면 `execute`를 비우고 skipped 없이 다음 tick으로 넘긴다(다음 정규 연락에 합쳐짐). `plan_open`이면 한계 안의 회차는 그대로 대기(결정에 넣지 않음), 한계 밖은 `late`. 시계 역행(`now < last_seen_at`)이면 공백 0으로 본다. `limited_until > now`이면 실행 대상은 `skipped(rate_limit)`. `carried_review`는 `pending`에 있어도 혼자 실행하지 않고, 이번 tick에 정규 연락(아침·저녁)이 실행되면 `merged`에 넣으며, 한계(+3일)를 넘으면 `skipped(late)`. R1은 멈춤 중이 아닐 때만(멈춤 중이면 R2: 모두 `skipped(paused)`, `return` 없음).
 
 - [ ] **Step 1: 실패하는 테스트** (표 기반 `pytest.mark.parametrize`, 스펙 8장 표 10행 전부 + 아래)
   - `test_spec_table_row_1` … `test_spec_table_row_10` (스펙 8장의 마지막 tick·깨어난 시각·기대 결과 그대로. 예: 금 22:00 → 화 08:00은 회고가 `carry_review`, 금 22:00 → 목 08:00은 회고 `skipped(merged_into_return)`)
   - `test_rate_limited_until_skips_with_reason`
   - `test_r1_during_pause_is_paused_without_return`
+  - `test_carried_review_not_executed_alone` (return 다음 tick, 정규 연락 없음 → 회고 실행 안 함)
+  - `test_carried_review_late_after_3_days`
   - `test_paused_skips_with_reason`
   - `test_daily_cap_skips_with_reason` (brain_calls_today=60)
   - `test_fourth_proactive_message_waits`
@@ -590,7 +592,7 @@ tests/                               # 모듈별 test_*.py, tests/integration/
 **Interfaces:**
 - Consumes: 모든 앞 Task
 - Produces:
-  - `class Runner(clock, cfg, runs, state, tasks, router, dispatcher, conn, paths)`: `async def tick() -> None` — 순서: ① `now`, `last_seen_at` 읽기 ② `due_between(window_start, now)`마다 `runs.ensure(due.loop, due.scheduled_for, due.cadence)`로 `Due → Run` 매핑 ③ `decide(...)` 적용(skip 기록, `return` 회차 생성, `carry_review`가 있으면 `app_state.carry_review_run_id`에 저장, 다음 정규 연락의 `merged`에 그 회차를 넣고 키를 지움, `submit_run(primary_run, merged_runs)`) ④ `last_seen_at = now` ⑤ 하루 한 번(`last_daily_jobs_date` ≠ 논리적 오늘): `daily_backup`, `expire_drafts(3일)`, `prune_updates(2일)`, 로그 정리 ⑥ `router.close_expired()` ⑦ `last_tick_at`과 지금의 차이가 3분을 넘으면(절전 복귀) `on_resume()` 콜백 호출 → 텔레그램 폴링 재시작. `async def run_forever(interval=60)`.
+  - `class Runner(clock, cfg, runs, state, tasks, router, dispatcher, conn, paths)`: `async def tick() -> None` — 순서: ① `now`, `last_seen_at` 읽기 ② `due_between(window_start, now)`마다 `runs.ensure(due.loop, due.scheduled_for, due.cadence)`로 `Due → Run` 매핑 ③ `decide(pending=RunsRepo.pending() 전체를 Due로, carried_review=carry_review_run_id의 회차, ...)` 적용(계획 모드나 하루 3회 상한으로 미룬 회차도 다음 tick에 다시 판정된다. skip 기록, `return` 회차 생성, `carry_review`가 있으면 `app_state.carry_review_run_id`에 저장, 다음 정규 연락의 `merged`에 그 회차를 넣고 키를 지움, `submit_run(primary_run, merged_runs)`) ④ `last_seen_at = now` ⑤ 하루 한 번(`last_daily_jobs_date` ≠ 논리적 오늘): `daily_backup`, `expire_drafts(3일)`, `prune_updates(2일)`, 로그 정리 ⑥ `router.close_expired()` ⑦ `last_tick_at`과 지금의 차이가 3분을 넘으면(절전 복귀) `on_resume()` 콜백 호출 → 텔레그램 폴링 재시작. `async def run_forever(interval=60)`.
   - `platform/windows.py`: `SingleInstanceLock(path)` (컨텍스트 관리자, `msvcrt.locking` 비차단, 실패 시 `AlreadyRunning`), `keep_awake()` (컨텍스트 관리자, 참조 카운트: 0→1에서 `SetThreadExecutionState(ES_CONTINUOUS|ES_SYSTEM_REQUIRED)`, 1→0에서 `ES_CONTINUOUS`. 이벤트 루프 스레드에서만 부른다). Windows가 아니면 둘 다 no-op(테스트용).
   - `setup_logging(state_dir, keep_days=30)` — JSON 줄 로그, 하루 회전, `sys.stdout/stderr`가 None이면 `os.devnull`로 교체. 로그 필터가 `text`, `args`, `input` 키를 지운다.
   - `app.main()` — 스펙 5.1 시작 순서 1~5. `installed_at`이 없으면 지금으로 설정. `integrity_ok`가 False면 텔레그램으로 "데이터베이스에 문제가 있어요. 최신 백업으로 복구할까요? PC에서 README의 복구 절차를 따라 주세요."를 보내고 종료(자동 복구 없음). 종료: 콘솔 실행에서는 `KeyboardInterrupt`(SIGINT)로 `dispatcher.stop(30)`. Windows asyncio는 `add_signal_handler`가 없고 `pythonw`는 콘솔 이벤트를 못 받으므로, 로그오프·작업 종료는 강제 종료로 보고 다음 시작의 `interrupt_running()` 복구에 맡긴다.
@@ -600,6 +602,8 @@ tests/                               # 모듈별 test_*.py, tests/integration/
   - `test_tick_updates_last_seen_even_when_nothing_due`
   - `test_tick_after_25h_gap_creates_single_return_run`
   - `test_r1_carried_review_merges_into_next_brief`
+  - `test_deferred_run_reconsidered_next_tick` (계획 모드로 미룬 체크인이 `/done` 뒤 tick에서 실행)
+  - `test_merged_runs_marked_done_after_send`
   - `test_resume_detected_after_gap_calls_on_resume`
   - `test_integrity_failure_notifies_and_stops`
   - `test_installed_at_set_once`
