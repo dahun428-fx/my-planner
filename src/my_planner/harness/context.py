@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta, tzinfo
 from typing import TYPE_CHECKING, Any
 
-from my_planner.clock import local, logical_date
-from my_planner.domain import TaskStatus
+from my_planner.clock import local, logical_date, period_of
+from my_planner.domain import Cadence, TaskStatus
 from my_planner.store.exports import format_task
 
 if TYPE_CHECKING:
@@ -40,12 +40,21 @@ def build_preamble(
     paused_until: datetime | None = None,
     merged: list[str] | None = None,
 ) -> str:
-    """새 세션의 앞머리. 빈 섹션은 뺀다. 우선순위(04), 컨디션(07), 멈춤(10)은 그 티켓에서 채운다."""
+    """새 세션의 앞머리. 빈 섹션은 뺀다. 컨디션(07), 멈춤(10)은 그 티켓에서 채운다."""
     today = logical_date(now, tz, boundary)
     lt = local(now, tz)
     sections = [
         f"## 지금\n{lt:%Y-%m-%d} ({_WEEKDAY[lt.weekday()]}) {lt:%H:%M}, 오늘(논리적 날짜)은 {today.isoformat()}"
     ]
+
+    prio_lines = []
+    for cadence, label in ((Cadence.day, "오늘"), (Cadence.week, "이번 주")):
+        picked = [t for t in tasks.priorities(cadence, period_of(cadence, today)) if t.status is TaskStatus.open]
+        if picked:
+            items = " ".join(f"{i}. {t.title} (#{t.id})" for i, t in enumerate(picked, start=1))
+            prio_lines.append(f"- {label}: {items}")
+    if prio_lines:
+        sections.append("## 우선순위\n" + "\n".join(prio_lines))
 
     open_tasks = tasks.list(status=TaskStatus.open)
     mon = today - timedelta(days=today.weekday())

@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import Clock, local, logical_date
-from my_planner.domain import Area, RunContext, TaskStatus, ToolEvent
+from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.store.exports import export_tasks
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -26,6 +26,14 @@ TITLE_MAX = 200
 LIST_LIMIT_MAX = 50
 LIST_LIMIT_DEFAULT = 20
 TRANSCRIPT_MAX_DAYS = 7
+PRIORITY_MAX = 3
+PERIOD_EXAMPLE = {
+    Cadence.day: "2026-10-23",
+    Cadence.week: "2026-W43",
+    Cadence.month: "2026-10",
+    Cadence.quarter: "2026-Q4",
+    Cadence.year: "2026",
+}
 
 
 def _err(msg: str) -> dict[str, Any]:
@@ -245,7 +253,9 @@ class Tools:
             changes["scheduled_at"] = None
         elif t.scheduled_at is not None:  # 시각이 있으면 날짜만 옮기고 한국 시간 시각은 그대로 둔다
             at = local(t.scheduled_at, self.tz)
-            changes["scheduled_at"] = datetime.combine(pf, at.timetz().replace(tzinfo=None), tzinfo=self.tz)
+            # 경계 전(00:00~03:59)의 시각은 새 논리적 날짜의 다음 달력 날에 놓는다
+            day = pf + timedelta(days=1) if at.time() < self.boundary else pf
+            changes["scheduled_at"] = datetime.combine(day, at.timetz().replace(tzinfo=None), tzinfo=self.tz)
         with self.tasks.transaction():
             t = self.tasks.update(t.id, event_kind="moved", **changes)
             out = self._finish(ctx, "task_moved", t)
@@ -293,6 +303,64 @@ class Tools:
             {TaskStatus.open, TaskStatus.draft},
             "열려 있거나 초안인 할 일만 내려놓을 수 있어요.",
         )
+
+    @staticmethod
+    def _valid_period(c: Cadence, period: str) -> bool:
+        try:
+            if c is Cadence.day:
+                return date.fromisoformat(period).isoformat() == period
+            if c is Cadence.week:
+                y, w = period.split("-W")
+                date.fromisocalendar(int(y), int(w), 1)
+                return len(y) == 4 and len(w) == 2
+            if c is Cadence.month:
+                y, m = period.split("-")
+                return len(y) == 4 and len(m) == 2 and 1 <= int(m) <= 12
+            if c is Cadence.quarter:
+                y, q = period.split("-Q")
+                return len(y) == 4 and q in ("1", "2", "3", "4")
+            return len(period) == 4 and period.isdigit()
+        except ValueError:
+            return False
+
+    @_tool
+    def set_priorities(
+        self, ctx: RunContext, cadence: Any = None, period: Any = None, task_ids: Any = None
+    ) -> dict[str, Any]:
+        """그 기간의 우선순위를 통째로 바꾼다. 순서가 순위다."""
+        try:
+            c = Cadence(cadence)
+        except ValueError:
+            return _err("cadence는 day, week, month, quarter, year 중 하나예요.")
+        if not isinstance(period, str) or not self._valid_period(c, period):
+            return _err(f"period 형식이 맞지 않아요. {c.value}는 {PERIOD_EXAMPLE[c]} 같은 형식이에요.")
+        if not isinstance(task_ids, list):
+            return _err("task_ids는 할 일 번호 목록이에요.")
+        if len(task_ids) > PRIORITY_MAX:
+            return _err(f"우선순위는 {PRIORITY_MAX}개까지 정할 수 있어요.")
+        if any(not isinstance(i, int) or isinstance(i, bool) for i in task_ids):
+            return _err("task_ids는 할 일 번호(숫자) 목록이에요.")
+        if len(set(task_ids)) != len(task_ids):
+            return _err("같은 할 일을 두 순위에 올릴 수 없어요.")
+        for i in task_ids:
+            t = self._get(i)
+            if isinstance(t, str):
+                return _err(t)
+            if t.status is not TaskStatus.open:
+                return _err(f"{t.id}번 할 일은 열린 할 일이 아니라서 우선순위에 올릴 수 없어요.")
+        ids: list[int] = list(task_ids)
+        with self.tasks.transaction():
+            self.tasks.set_priorities(c, period, ids)
+            self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, "priorities_set")
+            picked = self.tasks.priorities(c, period)
+        ctx.events.append(
+            ToolEvent(
+                kind="priorities_set",
+                task_id=None,
+                data={"cadence": c.value, "period": period, "titles": [t.title for t in picked]},
+            )
+        )
+        return {"cadence": c.value, "period": period, "priorities": [self._task_dict(t) for t in picked]}
 
     # --- 읽기 도구 ---
 

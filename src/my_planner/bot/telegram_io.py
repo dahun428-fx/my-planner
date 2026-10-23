@@ -3,21 +3,25 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Literal, Protocol
 
 from telegram import Bot, Update
 from telegram.constants import ChatAction, ChatType
 from telegram.ext import Application, ContextTypes, TypeHandler
 
+from my_planner.bot.commands import HELP_TEXT, command_of, today_text, week_text
 from my_planner.clock import Clock, SystemClock
 from my_planner.config import Settings
 from my_planner.harness.dispatcher import Inbound, Outbound
+from my_planner.harness.redact import redact
 from my_planner.store.repos.state import StateRepo
 from my_planner.store.transcripts import TranscriptStore
+from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
 
-Verdict = Literal["accept", "ignore", "duplicate", "non_text"]
+Verdict = Literal["accept", "ignore", "duplicate", "non_text", "command"]
 
 NON_TEXT_REPLY = "지금은 글로만 이야기할 수 있어요."
 NON_TEXT_MARK = "[글이 아닌 메시지]"
@@ -65,12 +69,21 @@ async def handle_update(
     dispatcher: _Submitter,
     transcripts: TranscriptStore,
     clock: Clock,
+    tools: Tools | None = None,
 ) -> Verdict:
-    """업데이트 하나를 판정하고 처리한다. 받은 글은 디스패처로 넘긴다."""
+    """업데이트 하나를 판정하고 처리한다. 받은 글은 디스패처로 넘긴다. /today /week /help는 바로 답한다."""
     verdict = accept_update(update, owner_id, state)
     if verdict == "accept":
         msg = update.message
         assert msg is not None and msg.text is not None
+        cmd = command_of(msg.text) if tools is not None else None
+        if cmd is not None:
+            assert tools is not None
+            done = [update.update_id]
+            await _answer_command(
+                msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, lambda: state.mark_updates_done(done)
+            )
+            return "command"
         dispatcher.submit_message(
             Inbound(text=msg.text, at=clock.now(), sent_at=msg.date, update_ids=[update.update_id])
         )
@@ -85,6 +98,33 @@ async def handle_update(
     elif verdict == "ignore":
         state.mark_updates_done([update.update_id])
     return verdict
+
+
+async def _answer_command(
+    chat_id: int,
+    text: str,
+    cmd: str,
+    bot: _MessageBot,
+    tools: Tools,
+    transcripts: TranscriptStore,
+    clock: Clock,
+    on_sent: Callable[[], None],
+) -> None:
+    """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
+    now = clock.now()
+    if cmd == "/help":
+        reply = HELP_TEXT
+    else:
+        render = today_text if cmd == "/today" else week_text
+        reply = render(tools.tasks, now, tools.tz, tools.boundary)
+    for part in split_message(reply):
+        await bot.send_message(chat_id=chat_id, text=part)
+    on_sent()  # 보낸 뒤에 먼저 처리 완료로 기록한다: 원문 기록이 실패해도 다시 받았을 때 두 번 답하지 않는다
+    try:
+        transcripts.append(now, "사용자", None, None, redact(text)[0])
+        transcripts.append(now, "비서", None, None, reply)
+    except OSError as e:
+        log.warning("command_transcript_failed", extra={"error_type": type(e).__name__})
 
 
 TELEGRAM_LIMIT = 4096
@@ -150,6 +190,7 @@ def build_application(
     *,
     bot: Bot | None = None,
     clock: Clock | None = None,
+    tools: Tools | None = None,
 ) -> Application:
     """롱폴링 앱. `bot`을 주면 Sender와 같은 봇을 쓴다(한 번만 초기화된다)."""
     builder = Application.builder()
@@ -171,6 +212,7 @@ def build_application(
             dispatcher=dispatcher,
             transcripts=transcripts,
             clock=clk,
+            tools=tools,
         )
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

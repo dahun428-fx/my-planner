@@ -133,7 +133,9 @@ async def _serve(settings: Settings) -> None:
             tools=tools,
             keep_awake=keep_awake,
         )
-        application = build_application(settings, dispatcher, state, transcripts, bot=bot, clock=clock)
+        application = build_application(
+            settings, dispatcher, state, transcripts, bot=bot, clock=clock, tools=tools
+        )
 
         # 5. 폴링 시작
         async with application:

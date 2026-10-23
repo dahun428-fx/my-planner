@@ -5,7 +5,7 @@ import pytest
 from test_dispatcher_messages import kst
 
 from my_planner.clock import FakeClock
-from my_planner.domain import RunContext
+from my_planner.domain import Area, RunContext, TaskStatus
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
@@ -238,3 +238,120 @@ def test_update_scheduled_at_rederives_planned_for(env):
     assert out["planned_for"] == "2026-10-27"
     out = env.tools.update_task(env.ctx(), id=t["id"], scheduled_at="2026-10-29T02:00")
     assert out["planned_for"] == "2026-10-28"
+
+
+def test_move_early_morning_schedule_keeps_logical_date(env):
+    t = env.tools.add_task(env.ctx(), title="새벽 운동", areas=["health"], scheduled_at="2026-10-25T01:30")
+    assert t["planned_for"] == "2026-10-24"
+    out = env.tools.move_task(env.ctx(), id=t["id"], planned_for="2026-10-27")
+    assert out["planned_for"] == "2026-10-27"
+    assert out["scheduled_at"] == "2026-10-28T01:30+09:00"  # 논리적 날짜 10/27의 새벽 1시 30분
+
+
+def _three(env):
+    return [env.tools.add_task(env.ctx(), title=n, areas=["career"])["id"] for n in ("A", "B", "C")]
+
+
+def _prio(env, cadence="week", period="2026-W43"):
+    return [t.title for t in env.repo.priorities(cadence, period)]
+
+
+def test_set_priorities_replaces_whole_period(env):
+    a, b, c = _three(env)
+    ctx = env.ctx()
+    out = env.tools.set_priorities(ctx, cadence="week", period="2026-W43", task_ids=[a, b, c])
+    assert "error" not in out and [t["id"] for t in out["priorities"]] == [a, b, c]
+    assert _prio(env) == ["A", "B", "C"]
+    assert ctx.tool_names == ["set_priorities"]
+    assert [e.kind for e in ctx.events] == ["priorities_set"]
+    assert env.conn.execute("SELECT kind FROM tool_events_log ORDER BY id").fetchall()[-1]["kind"] == "priorities_set"
+
+    env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=[c, a])
+    assert _prio(env) == ["C", "A"]
+    env.tools.set_priorities(env.ctx(), cadence="day", period="2026-10-24", task_ids=[b])
+    assert _prio(env) == ["C", "A"] and _prio(env, "day", "2026-10-24") == ["B"]
+    env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=[])
+    assert _prio(env) == []
+
+
+def test_set_priorities_four_returns_error(env):
+    a, b, c = _three(env)
+    d = env.tools.add_task(env.ctx(), title="D", areas=["career"])["id"]
+    env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=[a])
+    ctx = env.ctx()
+    out = env.tools.set_priorities(ctx, cadence="week", period="2026-W43", task_ids=[a, b, c, d])
+    assert "error" in out and "3" in out["error"]
+    assert _prio(env) == ["A"]  # 기존 우선순위는 그대로
+    assert ctx.events == []
+
+
+def test_set_priorities_rejects_draft_and_done(env):
+    a, b, _ = _three(env)
+    draft = env.repo.create("초안", [Area.career], TaskStatus.draft, None, None, None, "").id
+    env.tools.complete_task(env.ctx(), id=b)
+    env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=[a])
+    for bad in (draft, b, 999):
+        ctx = env.ctx()
+        out = env.tools.set_priorities(ctx, cadence="week", period="2026-W43", task_ids=[a, bad])
+        assert "error" in out
+        assert ctx.events == []
+    assert _prio(env) == ["A"]
+
+
+def test_priority_unique_task_per_period(env):
+    a, b, _ = _three(env)
+    ctx = env.ctx()
+    out = env.tools.set_priorities(ctx, cadence="week", period="2026-W43", task_ids=[a, b, a])
+    assert "error" in out and ctx.events == []
+    assert _prio(env) == []
+    # 같은 할 일이 다른 기간(오늘과 이번 주)에 오르는 것은 괜찮다
+    env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=[a])
+    out = env.tools.set_priorities(env.ctx(), cadence="day", period="2026-10-24", task_ids=[a])
+    assert "error" not in out
+
+
+def test_drop_removes_from_priorities(env):
+    a, b, c = _three(env)
+    env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=[a, b, c])
+    env.tools.set_priorities(env.ctx(), cadence="day", period="2026-10-24", task_ids=[b])
+    env.tools.drop_task(env.ctx(), id=b)
+    assert _prio(env) == ["A", "C"] and _prio(env, "day", "2026-10-24") == []
+    ranks = [r["rank"] for r in env.conn.execute("SELECT rank FROM priorities WHERE cadence='week'")]
+    assert sorted(ranks) == [1, 3]  # 순위 번호는 다시 매기지 않는다(스펙: 행만 지운다)
+
+
+def test_set_priorities_rejects_bad_cadence_or_period(env):
+    a, _, _ = _three(env)
+    for cadence, period in (
+        ("decade", "2026"),
+        ("week", "2026-10-24"),
+        ("day", "내일"),
+        ("month", "2026-13"),
+        ("quarter", "2026-Q5"),
+        ("week", "2026-W54"),
+        ("week", None),
+    ):
+        out = env.tools.set_priorities(env.ctx(), cadence=cadence, period=period, task_ids=[a])
+        assert "error" in out, (cadence, period)
+    for cadence, period in (("day", "2026-10-24"), ("week", "2026-W43"), ("month", "2026-10"),
+                            ("quarter", "2026-Q4"), ("year", "2026")):
+        assert "error" not in env.tools.set_priorities(env.ctx(), cadence=cadence, period=period, task_ids=[a])
+
+
+async def test_set_priorities_reachable_through_mcp_handler(env):
+    a, b, _ = _three(env)
+    ctx = env.ctx()
+    handlers = {t.name: t.handler for t in build_planner_tools(env.tools, ctx)}
+    assert "set_priorities" in TOOL_NAMES
+    res = await handlers["set_priorities"](
+        {"cadence": "week", "period": "2026-W43", "task_ids": [a, b]}
+    )
+    assert res["is_error"] is False
+    assert _prio(env) == ["A", "B"]
+
+
+def test_set_priorities_unhashable_id_returns_error(env):
+    a, _, _ = _three(env)
+    for bad in ([[1], [1]], [{"a": 1}, a], [True], ["1"], [None]):
+        out = env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=bad)
+        assert "error" in out, bad
