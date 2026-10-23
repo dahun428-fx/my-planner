@@ -224,7 +224,7 @@ class Tools:
             if isinstance(sa, str):
                 return _err(sa)
             changes["scheduled_at"] = sa
-            if sa is not None and t.planned_for is None:
+            if sa is not None:  # 시각을 바꾸면 하려는 날도 그 시각의 논리적 날짜로 다시 정한다
                 changes["planned_for"] = logical_date(sa, self.tz, self.boundary)
         with self.tasks.transaction():
             t = self.tasks.update(t.id, **changes)
@@ -240,8 +240,14 @@ class Tools:
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return _err(pf)
+        changes: dict[str, Any] = {"planned_for": pf}
+        if pf is None:  # 날짜 없음: 시각도 함께 지운다
+            changes["scheduled_at"] = None
+        elif t.scheduled_at is not None:  # 시각이 있으면 날짜만 옮기고 한국 시간 시각은 그대로 둔다
+            at = local(t.scheduled_at, self.tz)
+            changes["scheduled_at"] = datetime.combine(pf, at.timetz().replace(tzinfo=None), tzinfo=self.tz)
         with self.tasks.transaction():
-            t = self.tasks.update(t.id, planned_for=pf)
+            t = self.tasks.update(t.id, event_kind="moved", **changes)
             out = self._finish(ctx, "task_moved", t)
         self._after(ctx, "task_moved", t)
         return out

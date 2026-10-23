@@ -9,7 +9,11 @@ from my_planner.domain import RunContext
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
-from my_planner.tools.mcp_adapter import TOOL_NAMES, build_planner_server, build_planner_tools
+from my_planner.tools.mcp_adapter import (
+    TOOL_NAMES,
+    build_planner_server,
+    build_planner_tools,
+)
 
 TZ = "Asia/Seoul"
 BOUNDARY = time(4, 0)
@@ -131,3 +135,106 @@ async def test_two_servers_keep_separate_contexts(env):
     bad = await handlers_a["add_task"]({"title": "", "areas": ["career"]})
     assert bad["is_error"] is True
     assert build_planner_server(env.tools, ctx_a)["name"] == "planner"
+
+
+def _log(env):
+    return [
+        (r["kind"], r["task_id"], r["conversation_id"])
+        for r in env.conn.execute("SELECT * FROM tool_events_log ORDER BY id")
+    ]
+
+
+def _event_kinds(env, task_id):
+    return [
+        r["kind"]
+        for r in env.conn.execute("SELECT kind FROM task_events WHERE task_id = ? ORDER BY id", (task_id,))
+    ]
+
+
+def test_add_task_rolls_back_when_event_log_write_fails(env, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("log down")
+
+    monkeypatch.setattr(env.repo, "log_tool_event", boom)
+    with pytest.raises(RuntimeError):
+        env.tools.add_task(env.ctx(), title="치과", areas=["health"])
+    assert env.conn.execute("SELECT count(*) FROM tasks").fetchone()[0] == 0
+    assert env.conn.execute("SELECT count(*) FROM task_areas").fetchone()[0] == 0
+    assert env.conn.execute("SELECT count(*) FROM task_events").fetchone()[0] == 0
+
+
+def test_complete_rolls_back_when_event_log_write_fails(env, monkeypatch):
+    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"])
+    monkeypatch.setattr(env.repo, "log_tool_event", lambda *a, **k: 1 / 0)
+    with pytest.raises(ZeroDivisionError):
+        env.tools.complete_task(env.ctx(), id=t["id"])
+    assert env.repo.get(t["id"]).status.value == "open"
+
+
+def test_every_mutating_tool_writes_tool_events_log(env):
+    t = env.tools.add_task(env.ctx(conv=7), title="일", areas=["career"])["id"]
+    env.tools.update_task(env.ctx(conv=7), id=t, note="메모")
+    env.tools.move_task(env.ctx(conv=7), id=t, planned_for="2026-10-26")
+    env.tools.complete_task(env.ctx(conv=7), id=t)
+    env.tools.reopen_task(env.ctx(conv=7), id=t)
+    env.tools.drop_task(env.ctx(conv=7), id=t)
+    assert _log(env) == [
+        ("task_added", t, 7),
+        ("task_updated", t, 7),
+        ("task_moved", t, 7),
+        ("task_completed", t, 7),
+        ("task_reopened", t, 7),
+        ("task_dropped", t, 7),
+    ]
+
+
+def test_reopen_dropped_task_records_reopened_event(env):
+    t = env.tools.add_task(env.ctx(), title="일", areas=["career"])["id"]
+    env.tools.drop_task(env.ctx(), id=t)
+    out = env.tools.reopen_task(env.ctx(), id=t)
+    assert out["status"] == "open" and "error" not in out
+    assert _event_kinds(env, t) == ["created", "dropped", "reopened"]
+
+
+def test_tasks_md_reflects_complete_and_move_and_skips_drafts(env):
+    a = env.tools.add_task(env.ctx(), title="완료할일", areas=["career"], planned_for="2026-10-24")["id"]
+    b = env.tools.add_task(env.ctx(), title="옮길일", areas=["career"], planned_for="2026-10-24")["id"]
+    env.repo.create("초안일", ["career"], status="draft", planned_for=None)
+
+    def section(name):
+        text = env.export_path.read_text(encoding="utf-8")
+        return text.split(f"## {name}")[1].split("\n## ")[0]
+
+    env.tools.complete_task(env.ctx(), id=a)
+    assert "완료할일" not in section("오늘") and "[x] #" in section("이번 주 완료")
+    assert "완료할일" in section("이번 주 완료")
+    env.tools.move_task(env.ctx(), id=b, planned_for="2026-10-25")
+    assert "옮길일" not in section("오늘") and "옮길일" in section("이번 주")
+    assert "초안일" not in env.export_path.read_text(encoding="utf-8")
+
+
+def test_add_task_early_morning_schedule_belongs_to_previous_logical_day(env):
+    out = env.tools.add_task(env.ctx(), title="새벽", areas=["health"], scheduled_at="2026-10-25T01:30")
+    assert out["planned_for"] == "2026-10-24"
+
+
+def test_move_task_keeps_local_time_of_scheduled_task(env):
+    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], scheduled_at="2026-10-25T14:00")
+    out = env.tools.move_task(env.ctx(), id=t["id"], planned_for="2026-10-28")
+    assert out["planned_for"] == "2026-10-28"
+    assert out["scheduled_at"] == "2026-10-28T14:00+09:00"
+    assert _event_kinds(env, t["id"])[-1] == "moved"
+
+
+def test_move_task_to_no_date_clears_schedule(env):
+    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], scheduled_at="2026-10-25T14:00")
+    out = env.tools.move_task(env.ctx(), id=t["id"], planned_for=None)
+    assert out["planned_for"] is None and out["scheduled_at"] is None
+
+
+def test_update_scheduled_at_rederives_planned_for(env):
+    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], planned_for="2026-10-25", scheduled_at="2026-10-25T14:00")
+    out = env.tools.update_task(env.ctx(), id=t["id"], scheduled_at="2026-10-27T09:00")
+    assert out["planned_for"] == "2026-10-27"
+    out = env.tools.update_task(env.ctx(), id=t["id"], scheduled_at="2026-10-29T02:00")
+    assert out["planned_for"] == "2026-10-28"

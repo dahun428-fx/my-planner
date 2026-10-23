@@ -133,3 +133,9 @@ async def test_brain_call_log_has_tool_names(tmp_path, conn, state):
     calls = [e for e in map(json.loads, raw.splitlines()) if e.get("msg") == "brain_call"]
     assert calls[0]["tool_names"] == ["add_task"]
     assert "비밀스러운제목" not in raw
+
+
+async def test_confirmation_one_digit_month_day_schedule(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([add("회의", scheduled_at="2026-11-02T09:05")], "네")])
+    await env.process(env.inbound("회의 추가"))
+    assert "✓ 추가: 회의 (11/2 09:05)" in env.sender.sent[0].text

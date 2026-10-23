@@ -13,11 +13,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from my_planner.clock import Clock
+from my_planner.clock import Clock, logical_date
 from my_planner.domain import RunContext
 from my_planner.harness import prompts
 from my_planner.harness.brain import Brain, BrainResult
-from my_planner.clock import logical_date
 from my_planner.harness.context import build_notices, build_preamble
 from my_planner.harness.redact import redact
 from my_planner.tools.confirmations import render_confirmations

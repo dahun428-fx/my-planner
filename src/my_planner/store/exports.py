@@ -29,7 +29,10 @@ def week_bounds(today: date) -> tuple[date, date]:
 
 
 def export_tasks(repo: TasksRepo, path: Path, today: date) -> None:
-    """오늘, 이번 주, 열린 할 일, 이번 주 완료를 쓴다. 초안과 내려놓은 것은 뺀다."""
+    """오늘, 이번 주, 열린 할 일, 이번 주 완료를 쓴다. 초안과 내려놓은 것은 뺀다.
+
+    쓰기에 실패하면 다음 변경 때까지 tasks.md가 예전 내용으로 남는다(도구는 실패를 로그만 남기고 넘어간다).
+    """
     mon, sun = week_bounds(today)
     open_tasks = repo.list(status=TaskStatus.open)
     todays = [t for t in open_tasks if t.planned_for == today]

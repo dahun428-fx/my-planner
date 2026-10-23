@@ -13,12 +13,23 @@ from telegram import Bot
 
 from my_planner.bot.telegram_io import TelegramSender, build_application
 from my_planner.clock import SystemClock
-from my_planner.config import PathsConfig, RetentionConfig, Settings, load_settings, resolve_root
+from my_planner.config import (
+    PathsConfig,
+    RetentionConfig,
+    Settings,
+    load_settings,
+    resolve_root,
+)
 from my_planner.harness.brain import ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher
 from my_planner.logging_setup import setup_logging
-from my_planner.platform.windows import AlreadyRunning, SingleInstanceLock, hide_console, keep_awake
+from my_planner.platform.windows import (
+    AlreadyRunning,
+    SingleInstanceLock,
+    hide_console,
+    keep_awake,
+)
 from my_planner.store.db import migrate, open_db
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.state import StateRepo

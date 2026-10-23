@@ -203,7 +203,7 @@ class TasksRepo:
         for a in dict.fromkeys(Area(x).value for x in areas):
             self.conn.execute("INSERT INTO task_areas (task_id, area) VALUES (?, ?)", (task_id, a))
 
-    def update(self, id: int, **fields: object) -> Task:
+    def update(self, id: int, *, event_kind: str | None = None, **fields: object) -> Task:
         """title, note, planned_for, scheduled_at, areas만 바꾼다. 하려는 날만 바꾸면 `moved`, 아니면 `updated`."""
         unknown = set(fields) - _UPDATABLE
         if unknown:
@@ -222,7 +222,7 @@ class TasksRepo:
             sa = fields["scheduled_at"]
             sets.append("scheduled_at = ?")
             args.append(to_iso(sa) if isinstance(sa, datetime) else None)
-        kind = "moved" if set(fields) == {"planned_for"} else "updated"
+        kind = event_kind or ("moved" if set(fields) == {"planned_for"} else "updated")
         with self.transaction():
             cur = self.conn.execute(
                 f"UPDATE tasks SET {', '.join(sets)} WHERE id = ? AND deleted_at IS NULL", (*args, id)
