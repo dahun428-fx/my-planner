@@ -26,6 +26,7 @@ plan_idle_hours = 2             # 계획 모드 유휴 만료
 draft_ttl_days = 3              # 초안 만료
 stale_message_hours = 6         # 이보다 오래된 메시지는 "몇 시간 전" 알림
 input_max_chars = 8000          # 두뇌에 넘기는 입력 상한
+brain_timeout_s = 300           # 두뇌 호출 한 번의 상한(초). 넘으면 오류로 보고 재시도 규칙을 따른다
 
 # 답장 창: 이 시각까지 답하면 같은 회차 대화로 잇는다
 [limits.reply_window]

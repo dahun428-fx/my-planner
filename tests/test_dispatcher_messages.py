@@ -204,3 +204,34 @@ async def test_logging_drops_message_bodies(tmp_path, conn, state):
     assert {"duration_ms", "turns", "status"} <= calls[0].keys()
     assert calls[0]["status"] == "ok" and calls[0]["turns"] == 1
     assert not ({"text", "args", "input"} & calls[0].keys())
+
+
+def test_brain_timeout_defaults_to_300_seconds():
+    import tomllib
+    from pathlib import Path
+
+    from my_planner.config import LimitsConfig
+
+    assert LimitsConfig().brain_timeout_s == 300
+    toml = tomllib.loads((Path(__file__).resolve().parents[1] / "config.toml").read_text(encoding="utf-8"))
+    assert toml["limits"]["brain_timeout_s"] == 300
+
+
+async def test_hung_brain_call_times_out_and_message_retries(tmp_path, conn, state):
+    from fakes import make_settings
+
+    from my_planner.config import LimitsConfig
+
+    env = Env(
+        tmp_path, conn, state,
+        script=[FakeTurn([], "", hang=True), FakeTurn([], "다시 생각한 답")],
+        start=kst(2026, 10, 23, 15, 0),
+    )
+    env.dispatcher.settings = make_settings(tmp_path, limits=LimitsConfig(brain_timeout_s=0.05))
+    env.dispatcher._sleep = fake_sleep(env.clock, real=0.005)  # 기다리는 동안 가짜 시계가 내달리지 않게
+    await env.process(env.inbound("안녕", update_id=5))
+
+    # 시간 상한에 걸린 호출은 error(timeout): 메시지 규칙대로 백오프 뒤 다시 부른다
+    assert len(env.brain.calls) == 2
+    assert [o.text for o in env.sender.sent] == ["다시 생각한 답"]
+    assert state.is_seen_update(5)

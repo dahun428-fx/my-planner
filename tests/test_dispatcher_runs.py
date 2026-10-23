@@ -456,3 +456,37 @@ async def test_reply_window_routed_by_sent_time(tmp_path, conn, state):
 
     assert env.brain.session_ids[1] == "eve-s"
     assert env.brain.calls[1]["run_ctx"].conversation_id == eve_conv
+
+
+def _short_brain_timeout(env):
+    """두뇌 호출 상한을 0.05초로 줄인다. 그동안 '입력 중' 루프가 가짜 시계를 한계 밖으로 돌리지 않게 한다."""
+    from fakes import fake_sleep, make_settings
+
+    from my_planner.config import LimitsConfig
+
+    env.dispatcher.settings = make_settings(env.settings.paths.root, limits=LimitsConfig(brain_timeout_s=0.05))
+    env.dispatcher._sleep = fake_sleep(env.clock, real=0.005)
+
+
+async def test_hung_run_brain_call_times_out_and_reruns_once(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([], "", hang=True), FakeTurn([], BRIEF)])
+    _short_brain_timeout(env)
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    assert len(env.brain.calls) == 2
+    assert [o.text for o in env.sender.sent] == [BRIEF]
+    assert env.runs.get(run.id).status is RunStatus.done
+
+
+async def test_hung_run_after_tool_write_fails_without_rerun(tmp_path, conn, state):
+    add = ("add_task", {"title": "보고서", "areas": ["career"]})
+    env = _env(tmp_path, conn, state, [FakeTurn([add], "", hang=True), FakeTurn([], BRIEF)])
+    _short_brain_timeout(env)
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    assert len(env.brain.calls) == 1
+    assert env.sender.sent == []
+    assert env.runs.get(run.id).status is RunStatus.failed
+    assert conn.execute("SELECT error FROM runs WHERE id = ?", (run.id,)).fetchone()[0] == "error"

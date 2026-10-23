@@ -28,6 +28,7 @@ class FakeTurn:
     retry_at: Any = None
     resume_failed: bool = False
     delay: float = 0.0  # 이 초만큼 걸린 것처럼 한다(FakeClock이 그만큼 움직일 때까지 기다린다)
+    hang: bool = False  # 도구를 부른 뒤 영영 돌아오지 않는다(두뇌 호출 시간 상한 시험)
 
 
 class FakeBrain:
@@ -56,6 +57,8 @@ class FakeBrain:
             out = getattr(self.tools, name)(run_ctx, **args)
             if inspect.isawaitable(out):
                 await out
+        if turn.hang:
+            await asyncio.Event().wait()
         if turn.delay:
             assert self.clock is not None, "delay에는 clock이 필요하다"
             until = self.clock.now() + timedelta(seconds=turn.delay)
@@ -87,12 +90,16 @@ class FakeSender:
         self.typing_count += 1
 
 
-def fake_sleep(clock: FakeClock):
-    """실제로 기다리지 않는 sleep: 시계만 움직이고 한 번 양보한다."""
+def fake_sleep(clock: FakeClock, *, real: float = 0.0):
+    """실제로 기다리지 않는 sleep: 시계만 움직이고 한 번 양보한다.
+
+    `real`초는 실제로 기다린다. 실제 시간 상한(두뇌 호출 시간 상한)을 기다리는 동안 '입력 중' 루프가
+    가짜 시계를 몇 시간씩 앞으로 돌리지 않게 할 때 쓴다.
+    """
 
     async def sleep(seconds: float) -> None:
         clock.advance(timedelta(seconds=seconds))
-        await asyncio.sleep(0)
+        await asyncio.sleep(real)
 
     return sleep
 

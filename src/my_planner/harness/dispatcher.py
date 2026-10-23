@@ -848,7 +848,14 @@ class Dispatcher:
         typing = asyncio.create_task(self._typing_loop(), name="typing")
         started = time.monotonic()
         try:
-            result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx)
+            # 한 호출이 멈춰 직렬 작업자 전체가 서지 않도록 상한을 둔다. 넘으면 error(timeout)로 보고
+            # 메시지 백오프와 회차 재실행 규칙을 그대로 따른다(도구가 이미 썼으면 다시 부르지 않는다)
+            result = await asyncio.wait_for(
+                self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx),
+                self.settings.limits.brain_timeout_s,
+            )
+        except TimeoutError:
+            result = BrainResult(text="", session_id=session_id, turns=0, status="error", error="timeout")
         finally:
             typing.cancel()
             with contextlib.suppress(asyncio.CancelledError):
