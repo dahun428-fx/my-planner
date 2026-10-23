@@ -1,3 +1,94 @@
 # my-planner
 
-개인 일정과 할 일을 관리하기 위한 프로젝트입니다.
+Dahun 한 사람을 위한 텔레그램 AI 비서입니다. 텔레그램 개인 채팅으로 말을 걸면 비서(Claude)가 답합니다. 할 일 정리, 아침 브리핑, 저녁 체크인은 다음 단계에서 붙습니다.
+
+- 용어: [`GLOSSARY.md`](GLOSSARY.md)
+- 설계: [`docs/superpowers/specs/`](docs/superpowers/specs/), 결정 기록: [`docs/adr/`](docs/adr/)
+
+## 준비물
+
+- Windows 11 노트북, Python 3.12 (Microsoft Store판으로 확인했습니다)
+- Claude 구독과 Claude Code 로그인. 비서는 API 키가 아니라 이 PC의 구독 로그인으로 Claude를 부릅니다([ADR 0001](docs/adr/0001-subscription-login-for-brain.md)). 로그인이 안 되어 있으면 터미널에서 `claude`를 실행해 `/login` 해 주세요.
+- 텔레그램 계정
+
+## 설치
+
+저장소 폴더는 **OneDrive 같은 동기화 폴더 밖에** 둡니다. 동기화 프로그램이 SQLite 파일(WAL)을 건드리면 데이터베이스가 손상될 수 있습니다. 기본 위치는 `E:\my-planner`입니다.
+
+```powershell
+cd E:\my-planner
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.lock
+.venv\Scripts\python.exe -m pip install -e . --no-deps
+```
+
+`requirements.lock`은 정확한 버전 목록입니다. 의존성 범위는 `pyproject.toml`에 있습니다.
+
+## `.env` 만들기
+
+`.env.example`을 `.env`로 복사하고 두 값을 채웁니다. `.env`는 Git에 들어가지 않습니다.
+
+```powershell
+copy .env.example .env
+notepad .env
+```
+
+```
+TELEGRAM_BOT_TOKEN=...
+OWNER_TELEGRAM_ID=...
+```
+
+### 봇 토큰 받기 (BotFather)
+
+1. 텔레그램에서 [@BotFather](https://t.me/BotFather)를 찾아 대화를 시작합니다.
+2. `/newbot`을 보내고, 봇 이름과 사용자명(`..._bot`으로 끝나야 합니다)을 정합니다.
+3. BotFather가 알려 주는 토큰(`123456789:ABC...` 형식)을 `TELEGRAM_BOT_TOKEN`에 넣습니다.
+4. 토큰은 비밀번호처럼 다룹니다. 새어 나갔으면 BotFather에서 `/revoke`로 바꿉니다.
+
+### 본인 텔레그램 ID 확인
+
+비서는 이 ID의 개인 채팅에만 답합니다. 다른 사람이나 그룹 채팅의 메시지는 무시합니다.
+
+1. 텔레그램에서 [@userinfobot](https://t.me/userinfobot)에게 아무 메시지나 보냅니다.
+2. 답장에 나오는 숫자 `Id`를 `OWNER_TELEGRAM_ID`에 넣습니다. (사용자명 `@...`이 아니라 숫자입니다.)
+3. 만든 봇과의 대화창을 열어 **시작(/start)** 을 한 번 눌러 둡니다. 봇은 먼저 대화를 연 사람에게만 메시지를 보낼 수 있습니다.
+
+## 실행
+
+```powershell
+.venv\Scripts\python.exe -m my_planner
+```
+
+- 텔레그램에서 봇에게 "안녕"이라고 보내면 답이 옵니다.
+- 끄려면 이 콘솔 창에서 Ctrl+C를 누릅니다. 진행 중인 답은 최대 30초 기다렸다가 끝냅니다.
+- 이미 실행 중이면 새로 띄운 프로세스는 바로 끝납니다(단일 실행 잠금 `state\my-planner.lock`).
+- 다른 폴더의 데이터를 쓰려면 환경변수 `MY_PLANNER_ROOT`에 저장소 루트를 지정합니다.
+
+설정값(회차 시각, 상한, 보관 기간)은 `config.toml`에 있습니다. 개인값은 넣지 않습니다.
+
+## 데이터는 어디에 남나요
+
+| 위치 | 내용 |
+|---|---|
+| `state\planner.db` | 원본 데이터(SQLite) |
+| `data\transcripts\YYYY\MM\YYYY-MM-DD.md` | 원문 기록. 하루 경계는 04:00이라 새벽 0시~3시 59분의 대화는 전날 파일에 들어갑니다 |
+| `state\logs\my-planner.jsonl` | 시스템 로그. 메시지 본문은 남기지 않습니다 |
+| `%USERPROFILE%\.claude\projects\` | Claude Agent SDK가 따로 남기는 **세션 기록 사본**입니다. 원본은 `data\transcripts\`이고, 이 사본에는 가리기 전 내용이 없도록 두뇌에는 가린 글만 넘깁니다. 지우고 싶으면 이 폴더의 my-planner 관련 하위 폴더를 지우면 됩니다 |
+
+- 주민등록번호, 계좌번호로 보이는 숫자, "비밀번호/비번/password/PIN" 뒤의 값은 원문 기록과 두뇌에 넘기기 전에 `[가림]`으로 바뀝니다. 그래도 민감한 정보는 보내지 않는 편이 안전합니다.
+- `data\`, `state\`, `.env`는 Git에 들어가지 않습니다. 백업은 로컬·외장 디스크에만 합니다.
+
+## 알아 둘 점
+
+- **텔레그램은 받아 가지 않은 메시지를 24시간까지만 보관합니다.** PC가 24시간 넘게 꺼져 있었다면 그동안 보낸 메시지는 사라질 수 있습니다.
+- 사진, 스티커, 음성 같은 글이 아닌 메시지에는 "지금은 글로만 이야기할 수 있어요."라고 답합니다. 수정한 메시지는 다시 읽지 않습니다.
+- 지금은 메시지마다 새 대화로 답합니다. 대화 이어가기와 할 일 도구는 다음 단계에서 붙습니다.
+
+## 개발
+
+```powershell
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.venv\Scripts\python.exe -m pytest -q
+```
+
+테스트는 텔레그램이나 Claude에 실제로 연결하지 않습니다. Windows 전용 테스트는 다른 OS에서 건너뜁니다.

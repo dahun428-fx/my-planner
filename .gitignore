@@ -1,0 +1,17 @@
+# 개인 데이터와 실행 상태 (Git에 넣지 않는다)
+data/
+state/
+.env
+
+# 개발 환경
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# 스파이크와 작업 기록
+spikes/
+.superpowers/
