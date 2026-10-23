@@ -102,14 +102,15 @@ src/my_planner/
 |---|---|
 | 트리거 | 사용자 로그온, 절전 복귀(이벤트 로그 System, Power-Troubleshooter, ID 1), 5분 반복 워치독(IgnoreNew라 실행 중이면 아무 일도 없음) |
 | 실행 계정 | 사용자 본인, "사용자가 로그온한 경우에만 실행" (구독 자격 증명 접근 때문) |
-| 동작 | venv의 `pythonw.exe -m my_planner` |
+| 동작 | venv의 `pythonw.exe -m my_planner` (S0: Store판 Python 3.12 venv `E:\my-planner\.venv\Scripts\pythonw.exe`) |
 | 조건 | `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false`, 유휴 조건 없음 |
-| 설정 | `ExecutionTimeLimit=PT0S`(무제한), `MultipleInstancesPolicy=IgnoreNew`, 실패 시 1분 간격으로 최대 999회 재시작 |
+| 설정 | `ExecutionTimeLimit=PT0S`(무제한), `MultipleInstancesPolicy=IgnoreNew`, 실패 시 1분 간격으로 최대 999회 재시작. S6에서 `Stop-Process`로 죽인 경우 이 설정은 다시 띄우지 않았고 5분 워치독 트리거가 띄웠다. 실제 재시작은 워치독이 맡는다 |
 
 **깨우기 작업 `my-planner-wake`**: 고정 작업 하나에 트리거 여러 개(각 회차 기본 시각 5분 전, 시각 목록은 `python -m my_planner.wake_times`가 `config.toml`에서 계산해 출력). "이 작업을 실행하기 위해 절전 모드 해제"를 켜고 배터리에서도 실행한다. 하는 일은 없다(`pythonw -c pass`, 콘솔 창 없음). S4가 실패하면 등록하지 않는다. 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.
 
 **시작 순서**
 
+0. Windows에서는 창 없는 콘솔을 하나 만든다(`AllocConsoleWithOptions(ALLOC_CONSOLE_MODE_NO_WINDOW)`, S1 결과). 이게 없으면 `pythonw`가 SDK의 `claude.exe`를 띄울 때마다 터미널 창이 뜬다. 함수가 없는 Windows 버전에서는 아무것도 하지 않고 경고 로그만 남긴다.
 1. `msvcrt.locking`으로 `state/my-planner.lock`을 잠근다. 실패하면 이미 실행 중이므로 종료한다. 크래시하면 OS가 잠금을 푼다.
 2. 로그 설정. `pythonw`에서는 `sys.stdout/stderr`가 `None`이므로 파일 핸들러만 쓰고, 둘을 `os.devnull`로 바꿔 둔다.
 3. DB 열기, 무결성 검사, 마이그레이션. 무결성 검사가 실패하면 **안전 모드**로 들어간다: 표식 파일 `state/integrity_notice_sent`가 없을 때만 텔레그램으로 "데이터베이스에 문제가 있어요. 최신 백업으로 복구해야 해요. PC에서 README의 복구 절차를 따라 주세요."를 한 번 보내고 표식을 만든다. 그 뒤 폴링과 tick 없이 프로세스만 살아 있는다(작업 스케줄러가 계속 다시 띄우지 않도록). 복구 뒤 표식을 지우고 다시 시작한다.
@@ -198,7 +199,13 @@ ClaudeAgentOptions(
 
 고정 안내(로그인, 사용 한도, 하루 상한, 텍스트 아님, DB 문제)는 비서가 먼저 보내는 메시지 하루 3회에 세지 않는다.
 
-`auth_error`와 `rate_limited`를 구분하는 방법(SDK 예외 종류, 결과 메시지의 오류 하위 유형)은 S1에서 실제 오류를 확인해 정한다. 확인 전에는 둘 다 `error`로 처리한다.
+**오류 판별 규칙** (S1 결과, [스파이크 기록](../../spikes/2026-10-sp1.md)): 호출 중 받은 메시지를 모두 보고, `ResultError`/`ProcessError` 예외는 잡은 뒤 아래 순서로 판정한다. 문자열 매칭은 쓰지 않는다.
+
+1. `AssistantMessage.error`가 `"authentication_failed"` 또는 `"billing_error"` → `auth_error` (뒤따르는 예외보다 우선)
+2. `RateLimitEvent.rate_limit_info.status == "rejected"` 또는 `AssistantMessage.error == "rate_limit"` → `rate_limited`. `retry_at`은 `rejected` 이벤트의 `resets_at`(Unix 초)이고, 없으면 지금 + 1시간. `allowed_warning`은 로그만 남긴다.
+3. `ResultMessage.subtype == "error_max_turns"`(예외의 `subtype`/`terminal_reason`이 max_turns인 경우 포함) → `max_turns`
+4. 그 밖의 예외나 `ResultMessage.is_error=True` → `error`
+5. 아니면 `ok`
 
 ### 5.4 루프와 회차
 
