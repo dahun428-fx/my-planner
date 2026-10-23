@@ -70,6 +70,20 @@ async def test_truncate_huge_input(tmp_path, conn, state):
     assert prompt.index("## 알림") < prompt.index("## 지금 상황")
 
 
+async def test_truncate_notice_uses_configured_limit(tmp_path, conn, state):
+    from fakes import make_settings
+
+    from my_planner.config import LimitsConfig
+
+    env = Env(tmp_path, conn, state, script=[FakeTurn([], "네")], start=kst(2026, 10, 23, 10, 0))
+    env.dispatcher.settings = make_settings(tmp_path, limits=LimitsConfig(input_max_chars=100))
+    await env.process(env.inbound("가" * 150))
+
+    prompt = env.brain.prompts[0]
+    assert "가" * 100 in prompt and "가" * 101 not in prompt
+    assert "메시지가 길어 앞 100자만 넘겼어요" in prompt and "8000" not in prompt
+
+
 async def test_stale_message_notice(tmp_path, conn, state):
     env = Env(tmp_path, conn, state, script=[FakeTurn([], "네")], start=kst(2026, 10, 23, 18, 0))
     m = env.inbound("예전에 쓴 글")

@@ -287,6 +287,24 @@ def test_app_wires_conditions(started, monkeypatch):
     assert seen["tools"].conditions is seen["conditions"]  # 도구(버튼)와 디스패처가 같은 표를 본다
 
 
+def test_draft_expiry_uses_configured_ttl(started, monkeypatch):
+    app, root, _calls = started
+    toml = root / "config.toml"
+    toml.write_text(
+        toml.read_text(encoding="utf-8").replace("draft_ttl_days = 3", "draft_ttl_days = 5"), encoding="utf-8"
+    )
+    seen = []
+    real = app.expire_drafts
+
+    def spy(tasks, clock, **kw):
+        seen.append(kw)
+        return real(tasks, clock, **kw)
+
+    monkeypatch.setattr(app, "expire_drafts", spy)
+    assert app.main() == 0
+    assert seen == [{"days": 5}]
+
+
 def _daily_jobs(monkeypatch):
     from my_planner.loop import runner as runner_mod
 

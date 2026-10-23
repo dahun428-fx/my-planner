@@ -234,7 +234,8 @@ async def _serve(settings: Settings) -> None:
             clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
             on_resume=restart_polling,
         )
-        runner.register_daily(expire_drafts(tasks, clock))  # 3일 지난 초안은 조용히 dropped
+        # 만든 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped
+        runner.register_daily(expire_drafts(tasks, clock, days=settings.limits.draft_ttl_days))
         runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
         runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다
         runner.register_daily(cleanup_logs_daily(paths.state_dir / "logs", keep=settings.retention.log_days))

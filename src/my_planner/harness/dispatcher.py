@@ -349,7 +349,7 @@ class Dispatcher:
         notices = build_notices(
             redacted=any(r for _, r in redacted_parts),
             stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
-            truncated=truncated,
+            truncated_to=limits.input_max_chars if truncated else None,
         )
         conv = self.router.for_user_message(batch[0].at)
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
