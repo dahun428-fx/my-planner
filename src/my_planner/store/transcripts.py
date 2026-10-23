@@ -40,7 +40,7 @@ class TranscriptStore:
             header += f" ({run_key})"
         lines = [header]
         lines += [f"> 도구: {name}" for name in tools or []]
-        lines += ["", text.rstrip("\n"), "", ""]
+        lines += ["", _escape_headers(text.rstrip("\n")), "", ""]
         path = self.path_for(at)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8", newline="\n") as f:
@@ -72,6 +72,14 @@ class TranscriptStore:
                 if len(found) >= want:
                     break
         return "\n".join(reversed(found[skip_last:]))
+
+
+# 본문 줄이 `### `로 시작하면 머리글로 읽히지 않게 앞에 폭 없는 공백(U+200B)을 붙인다
+_HEADER_ESCAPE = "\u200b"
+
+
+def _escape_headers(text: str) -> str:
+    return "\n".join(_HEADER_ESCAPE + line if line.startswith("### ") else line for line in text.split("\n"))
 
 
 _HEADER = re.compile(r"^### (\d{2}:\d{2}) (사용자|비서) \[(\d+|-)\](?: \(.*\))?$")
