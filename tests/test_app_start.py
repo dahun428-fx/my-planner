@@ -160,3 +160,18 @@ def test_logging_survives_none_stderr(started, monkeypatch):
     entries = _log_entries(root)
     assert any(e["msg"] == "polling_started" for e in entries)
     assert ("serving", None) in calls
+
+
+def test_build_application_gets_tools(started, monkeypatch):
+    from my_planner.tools.core import Tools
+
+    app, _root, calls = started
+    seen = {}
+
+    def fake_build(settings, dispatcher, state, transcripts, **kw):
+        seen.update(kw)
+        return FakeApplication(calls)
+
+    monkeypatch.setattr(app, "build_application", fake_build)
+    assert app.main() == 0
+    assert isinstance(seen["tools"], Tools)

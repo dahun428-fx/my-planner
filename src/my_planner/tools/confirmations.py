@@ -19,6 +19,9 @@ def _day_label(d: date, today: date) -> str:
     return _md(d)
 
 
+_CADENCE_LABEL = {"day": "오늘", "week": "이번 주", "month": "이번 달", "quarter": "이번 분기", "year": "올해"}
+
+
 def _line(e: ToolEvent, today: date) -> str | None:
     title = e.data.get("title", "")
     if e.kind == "task_added":
@@ -33,6 +36,12 @@ def _line(e: ToolEvent, today: date) -> str | None:
         pf = e.data.get("planned_for")
         label = _day_label(date.fromisoformat(pf), today) if pf else "날짜 없음"
         return f"✓ 옮김: {title} → {label}"
+    if e.kind == "priorities_set":
+        label = _CADENCE_LABEL[e.data["cadence"]]
+        titles = e.data.get("titles", [])
+        if not titles:
+            return f"✓ 우선순위({label}): 비움"
+        return f"✓ 우선순위({label}): " + " ".join(f"{i}. {t}" for i, t in enumerate(titles, start=1))
     return {
         "task_completed": f"✓ 완료: {title}",
         "task_reopened": f"✓ 되돌림: {title}",

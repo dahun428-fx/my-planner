@@ -139,3 +139,38 @@ async def test_confirmation_one_digit_month_day_schedule(tmp_path, conn, state):
     env = _env(tmp_path, conn, state, [FakeTurn([add("회의", scheduled_at="2026-11-02T09:05")], "네")])
     await env.process(env.inbound("회의 추가"))
     assert "✓ 추가: 회의 (11/2 09:05)" in env.sender.sent[0].text
+
+
+async def test_confirmation_priorities_set(tmp_path, conn, state):
+    from my_planner.domain import RunContext
+
+    script = [
+        FakeTurn(
+            [("set_priorities", {"cadence": "week", "period": "2026-W43", "task_ids": [1, 2, 3]})],
+            "정했어요.",
+        ),
+        FakeTurn([("set_priorities", {"cadence": "day", "period": "2026-10-24", "task_ids": [2]})], "네."),
+    ]
+    env = _env(tmp_path, conn, state, script)
+    for title in ("A", "B", "C"):
+        env.tools.add_task(RunContext(None, None), title=title, areas=["career"])
+    await env.process(env.inbound("이번 주 우선순위는 A, B, C"))
+    assert env.sender.sent[0].text == "정했어요.\n\n✓ 우선순위(이번 주): 1. A 2. B 3. C"
+    await env.process(env.inbound("오늘은 B만"))
+    assert env.sender.sent[1].text.endswith("✓ 우선순위(오늘): 1. B")
+
+
+async def test_preamble_includes_today_and_week_priorities(tmp_path, conn, state):
+    from my_planner.domain import RunContext
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], "네."), FakeTurn([], "네.")])
+    ctx = RunContext(None, None)
+    for title in ("A", "B", "C"):
+        env.tools.add_task(ctx, title=title, areas=["career"])
+    env.tools.set_priorities(ctx, cadence="week", period="2026-W43", task_ids=[1, 2])
+    env.tools.set_priorities(ctx, cadence="day", period="2026-10-24", task_ids=[3])
+    env.tools.set_priorities(ctx, cadence="day", period="2026-10-25", task_ids=[1])  # 내일 것은 넣지 않는다
+    await env.process(env.inbound("안녕"))
+    prompt = env.brain.prompts[0]
+    assert "## 우선순위\n- 오늘: 1. C (#3)\n- 이번 주: 1. A (#1) 2. B (#2)" in prompt
+    assert prompt.index("## 우선순위") < prompt.index("## 열린 할 일")

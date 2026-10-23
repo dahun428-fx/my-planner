@@ -19,6 +19,7 @@ TOOL_NAMES: list[str] = [
     "complete_task",
     "reopen_task",
     "drop_task",
+    "set_priorities",
     "list_tasks",
     "read_transcript",
 ]
@@ -80,6 +81,23 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         _schema({"id": _ID}, ["id"]),
     ),
     "drop_task": ("할 일을 내려놓습니다.", _schema({"id": _ID}, ["id"])),
+    "set_priorities": (
+        (
+            "그 기간의 우선순위를 통째로 바꿉니다. task_ids는 최대 3개이고 순서가 순위입니다. "
+            "열린(open) 할 일만 올릴 수 있고 초안은 안 됩니다. 사용자가 정해 달라고 하거나 확인한 뒤에 부릅니다."
+        ),
+        _schema(
+            {
+                "cadence": {"enum": ["day", "week", "month", "quarter", "year"]},
+                "period": {
+                    "type": "string",
+                    "description": "일 2026-10-23, 주 2026-W43(ISO 주), 월 2026-10, 분기 2026-Q4, 년 2026",
+                },
+                "task_ids": {"type": "array", "items": _ID, "maxItems": 3},
+            },
+            ["cadence", "period", "task_ids"],
+        ),
+    ),
     "list_tasks": (
         "할 일을 조회합니다. status를 안 주면 열린 것과 초안을 돌려줍니다. 최대 50개.",
         _schema(
