@@ -108,7 +108,7 @@ src/my_planner/
 | 조건 | `DisallowStartIfOnBatteries=false`, `StopIfGoingOnBatteries=false`, 유휴 조건 없음 |
 | 설정 | `ExecutionTimeLimit=PT0S`(무제한), `MultipleInstancesPolicy=IgnoreNew`, 실패 시 1분 간격으로 최대 999회 재시작. S6에서 `Stop-Process`로 죽인 경우 이 설정은 다시 띄우지 않았고 5분 워치독 트리거가 띄웠다. 실제 재시작은 워치독이 맡는다([S6](../../spikes/2026-10-sp1.md#s6-재시작)) |
 
-**깨우기 작업 `my-planner-wake`**: 고정 작업 하나에 트리거 여러 개(각 회차 기본 시각 5분 전, 시각 목록은 `python -m my_planner.wake_times`가 `config.toml`에서 계산해 출력). "이 작업을 실행하기 위해 절전 모드 해제"를 켜고 배터리에서도 실행한다. 하는 일은 없다(`pythonw -c pass`, 콘솔 창 없음). S4가 실패하면 등록하지 않는다. 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.
+**깨우기 작업 `my-planner-wake`**: 고정 작업 하나에 트리거 여러 개(각 회차 기본 시각 5분 전, 시각 목록은 `python -m my_planner.wake_times`가 `config.toml`에서 계산해 출력). "이 작업을 실행하기 위해 절전 모드 해제"를 켜고 배터리에서도 실행한다. 하는 일은 없다(`pythonw -c pass`, 콘솔 창 없음). S4가 실패하면 등록하지 않는다. 배터리에서는 전원 구성표의 "절전 모드 해제 타이머 허용"(배터리)이 꺼져 있으면 깨우지 못한다(S4에서 이 노트북은 꺼짐). 그때는 따라잡기만 쓴다. 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.
 
 **시작 순서**
 
@@ -196,7 +196,7 @@ ClaudeAgentOptions(
 | `ok` | 두뇌 답변 + 확인 문구(5.5) |
 | `max_turns` | 확인 문구만 보내고 "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요." |
 | `auth_error` | 하루 한 번만. 로그인(`error="login"`): "Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요." 결제(`error="billing"`): "Claude 계정이나 결제 상태를 확인해야 해요. PC에서 Claude 계정을 살펴봐 주세요." 회차는 `skipped(auth)` |
-| `rate_limited` | 한도 구간당 한 번만: "지금은 Claude 사용 한도에 닿았어요. {재개}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요." `{재개}`는 재개 시각이 오늘(논리적 날짜)이면 `HH:MM`, 아니면 `M월 D일 HH:MM`이다(7일 한도). 이미 지난 `resets_at`은 없는 것으로 본다 `app_state.limited_until`을 기록하고(SDK가 재개 시각을 주지 않으면 지금 + 1시간) 그때까지 회차는 `skipped(rate_limit)`, 명령은 계속 동작 |
+| `rate_limited` | 한도 구간당 한 번만: "지금은 Claude 사용 한도에 닿았어요. {재개}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요." `{재개}`는 재개 시각이 오늘(논리적 날짜)이면 `HH:MM`, 아니면 `M월 D일 HH:MM`이다(7일 한도). 이미 지난 `resets_at`은 없는 것으로 본다. `app_state.limited_until`을 기록하고(SDK가 재개 시각을 주지 않으면 지금 + 1시간) 그때까지 회차는 `skipped(rate_limit)`, 명령은 계속 동작 |
 | `error` | 사용자 메시지: 지수 백오프(2, 4, 8초)로 최대 3회 다시 호출(각 호출이 하루 두뇌 호출 수에 포함), 그래도 실패하면 "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요." 회차: 백오프 없이 5.4 재실행 규칙만 적용(회차당 두뇌 호출 최대 2회), 문구 없이 `failed` |
 
 고정 안내(로그인·결제, 사용 한도, 하루 상한, 텍스트 아님, DB 문제)는 비서가 먼저 보내는 메시지 하루 3회에 세지 않는다.

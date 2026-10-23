@@ -259,7 +259,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - `Brain` 프로토콜: `async run(prompt, *, session_id, run_ctx) -> BrainResult`
 - `BrainResult(text, session_id, turns, tool_events, status, error=None, resume_failed=False, retry_at: datetime|None = None)`. `status`는 `"ok"|"max_turns"|"auth_error"|"rate_limited"|"error"`.
 - `build_options(*, server, session_id, workdir: Path, max_turns, system_prompt, cli_path=None) -> ClaudeAgentOptions`: 스펙 5.3 값을 쓴다. S2 결과: 문자열 `prompt`로 `query()`를 부르고, `strict_mcp_config=True`는 필드로 넘긴다. `cli_path`는 기본 None(번들 CLI)이다.
-- `ClaudeBrain(tools_factory, workdir, max_turns, cli_path=None)` (`cli_path`는 번들 CLI가 망가졌을 때를 위한 비상용 설정값 `brain.cli_path`): 호출마다 `build_planner_server(tools, run_ctx)`로 서버를 새로 만든다. 오류 판별은 스펙 5.3 "오류 판별 규칙"(S1 결과)을 따른다. 판별 함수 `classify(messages, exc, now: datetime) -> (status, error, retry_at)`은 가짜 SDK 메시지로 `test_classify_*`에서 확인한다(두뇌 설정 경계에 포함).
+- `ClaudeBrain(tools_factory, workdir, max_turns, cli_path=None)` (`cli_path`는 번들 CLI가 망가졌을 때를 위한 비상용 인자이고 설정 파일에는 두지 않는다. `app.py`는 넘기지 않는다): 호출마다 `build_planner_server(tools, run_ctx)`로 서버를 새로 만든다. 오류 판별은 스펙 5.3 "오류 판별 규칙"(S1 결과)을 따른다. 판별 함수 `classify(messages, exc, now: datetime) -> (status, error, retry_at)`은 가짜 SDK 메시지로 `test_classify_*`에서 확인한다(두뇌 설정 경계에 포함).
 - `tests/fakes.py`의 `FakeBrain(script: list[FakeTurn], tools=None)`
   - `FakeTurn(tool_calls, text, status="ok", session_id="s1")`
   - 받은 프롬프트와 `session_id`를 기록해 둔다.
@@ -326,7 +326,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
   - `setting_sources == []`, env 두 키, `max_turns == 10`
   - `cwd`는 절대경로이고 `state_dir/brain-workdir`로 끝난다
 - [ ] `test_build_options_resume_passthrough`
-- [ ] `test_classify_auth_error`: `AssistantMessage(error="authentication_failed")` 뒤 `ResultError` → `auth_error`. `billing_error`도 `auth_error`
+- [ ] `test_classify_auth_error`: `AssistantMessage(error="authentication_failed")` 뒤 `ResultError` → `(auth_error, "login")`. `billing_error`도 `auth_error`
 - [ ] `test_classify_rate_limited`: `RateLimitEvent(status="rejected", resets_at=1792780200)` → `rate_limited`, `retry_at`은 그 시각(UTC). `resets_at`이 없으면 지금+1시간. `allowed_warning`은 `ok`. `billing_error`는 `(auth_error, "billing")`
 - [ ] `test_classify_max_turns_and_error`: `ResultMessage(subtype="error_max_turns")` → `max_turns`, 다른 예외 → `error`
 
