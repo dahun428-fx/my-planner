@@ -259,7 +259,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - `Brain` 프로토콜: `async run(prompt, *, session_id, run_ctx) -> BrainResult`
 - `BrainResult(text, session_id, turns, tool_events, status, error=None, resume_failed=False, retry_at: datetime|None = None)`. `status`는 `"ok"|"max_turns"|"auth_error"|"rate_limited"|"error"`.
 - `build_options(*, server, session_id, workdir: Path, max_turns, system_prompt, cli_path=None) -> ClaudeAgentOptions`: 스펙 5.3 값을 쓴다. S2 결과: 문자열 `prompt`로 `query()`를 부르고, `strict_mcp_config=True`는 필드로 넘긴다. `cli_path`는 기본 None(번들 CLI)이다.
-- `ClaudeBrain(tools_factory, workdir, max_turns, cli_path)`: 호출마다 `build_planner_server(tools, run_ctx)`로 서버를 새로 만든다. 오류 판별은 스펙 5.3 "오류 판별 규칙"(S1 결과)을 따른다. 판별 함수 `classify(messages, exc) -> (status, retry_at)`은 가짜 SDK 메시지로 `test_classify_*`에서 확인한다(두뇌 설정 경계에 포함).
+- `ClaudeBrain(tools_factory, workdir, max_turns, cli_path=None)` (`cli_path`는 번들 CLI가 망가졌을 때를 위한 비상용 설정값 `brain.cli_path`): 호출마다 `build_planner_server(tools, run_ctx)`로 서버를 새로 만든다. 오류 판별은 스펙 5.3 "오류 판별 규칙"(S1 결과)을 따른다. 판별 함수 `classify(messages, exc, now: datetime) -> (status, error, retry_at)`은 가짜 SDK 메시지로 `test_classify_*`에서 확인한다(두뇌 설정 경계에 포함).
 - `tests/fakes.py`의 `FakeBrain(script: list[FakeTurn], tools=None)`
   - `FakeTurn(tool_calls, text, status="ok", session_id="s1")`
   - 받은 프롬프트와 `session_id`를 기록해 둔다.
@@ -289,6 +289,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - `build_application(settings, dispatcher, state, transcripts) -> Application`
 
 `app.main()`
+0. `hide_console()`
 1. 단일 실행 잠금
 2. 로그 설정
 3. DB 열기, 마이그레이션
@@ -299,7 +300,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 `platform/windows.py`
 - `SingleInstanceLock(path)`: `msvcrt.locking`을 비차단으로 건다. 실패하면 `AlreadyRunning`.
 - `keep_awake()`: 참조 카운트를 둔다. 0→1에서 `ES_CONTINUOUS|ES_SYSTEM_REQUIRED`, 1→0에서 `ES_CONTINUOUS`.
-- `hide_console()`: `kernel32.AllocConsoleWithOptions`를 `mode=2`(NO_WINDOW)로 한 번 부른다. 함수가 없으면 경고 로그만 남긴다. `app.main()` 맨 처음, 잠금보다 먼저 부른다(스펙 5.1 시작 순서 0).
+- `hide_console() -> str`: `GetConsoleWindow()`가 0일 때만 `kernel32.AllocConsoleWithOptions`를 `mode=2`(NO_WINDOW)로 한 번 부른다. 결과 `"created"|"has_console"|"unavailable"|"not_windows"`를 돌려주고, `app.main()`은 로그 설정 뒤 `unavailable`이면 경고 로그를 남긴다. `app.main()` 맨 처음, 잠금보다 먼저 부른다(스펙 5.1 시작 순서 0).
 - Windows가 아니면 셋 다 아무것도 하지 않는다.
 
 `setup_logging(state_dir, keep_days)`
@@ -326,7 +327,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
   - `cwd`는 절대경로이고 `state_dir/brain-workdir`로 끝난다
 - [ ] `test_build_options_resume_passthrough`
 - [ ] `test_classify_auth_error`: `AssistantMessage(error="authentication_failed")` 뒤 `ResultError` → `auth_error`. `billing_error`도 `auth_error`
-- [ ] `test_classify_rate_limited`: `RateLimitEvent(status="rejected", resets_at=1792780200)` → `rate_limited`, `retry_at`은 그 시각(UTC). `resets_at`이 없으면 지금+1시간. `allowed_warning`은 `ok`
+- [ ] `test_classify_rate_limited`: `RateLimitEvent(status="rejected", resets_at=1792780200)` → `rate_limited`, `retry_at`은 그 시각(UTC). `resets_at`이 없으면 지금+1시간. `allowed_warning`은 `ok`. `billing_error`는 `(auth_error, "billing")`
 - [ ] `test_classify_max_turns_and_error`: `ResultMessage(subtype="error_max_turns")` → `max_turns`, 다른 예외 → `error`
 
 텔레그램 어댑터
@@ -347,6 +348,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 
 앱 시작
 - [ ] `test_second_instance_exits` (Windows 전용, 그 밖에서는 skip): `app.main()`을 두 번 띄우면 두 번째가 `AlreadyRunning`으로 바로 끝난다
+- [ ] `test_main_hides_console_first`: 가짜 `hide_console`과 가짜 잠금으로 호출 순서가 `hide_console` → 잠금 → 로그이고, `unavailable`이면 로그 파일에 경고 한 줄이 남는다
 - [ ] `test_logging_survives_none_stderr`: `sys.stderr=None`으로 `app.main()` 시작 경로를 지나도 예외가 없다
 
 마무리
@@ -577,7 +579,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - `run_forever(interval=60)`
 - 첫 실행이면(`installed_at`이 없으면) 지금 시각을 기록한다.
 - 하루 한 번 작업: `register_daily(job: Callable[[date], None])`. tick 끝에서 `app_state.last_daily_jobs_date`가 논리적 오늘과 다르면 등록된 작업을 차례로 부르고 날짜를 기록한다. 06, 12가 작업을 등록한다.
-- `app.main()` 시작 순서(스펙 5.1): 잠금 → 로그 → DB → (12의 복구) → `installed_at` → 첫 tick 판정 → 폴링 → `run_forever`.
+- `app.main()` 시작 순서(스펙 5.1): 창 숨김 → 잠금 → 로그 → DB → (12의 복구) → `installed_at` → 첫 tick 판정 → 폴링 → `run_forever`.
 
 대화 라우터 변경
 - `ConversationRouter.for_run(run) -> Conversation`: 항상 새 `run` 대화를 연다.
@@ -824,7 +826,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - Produces:
   - `decide`: R2(`paused_until`), R3(`brain_calls_today >= 60`), `limited_until`을 적용한다. R1은 멈춤 중이 아닐 때만 적용한다.
   - `app_state` 키: `pause_until`, `last_auth_notice_date`, `limited_until`, `last_rate_limit_notice_until`
-  - `ClaudeBrain`이 S1 기록대로 `auth_error`와 `rate_limited`를 가려내고 `retry_at`을 채운다. SDK가 시각을 주지 않으면 지금 + 1시간.
+  - `ClaudeBrain`이 스펙 5.3 "오류 판별 규칙"대로 `auth_error`와 `rate_limited`를 가려내고 `retry_at`을 채운다. SDK가 시각을 주지 않으면 지금 + 1시간.
   - 고정 문구는 스펙 5.3과 7장 그대로다. 비서가 먼저 보내는 하루 3회에는 세지 않는다.
   - preamble의 `## 멈춤`
 
@@ -843,6 +845,8 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_paused_still_answers_messages`
 - [ ] `test_daily_cap_reply_without_brain_call`: 61번째 메시지에는 고정 문구, 두뇌 호출 0회, `/today`는 그대로 동작
 - [ ] `test_auth_error_notice_once_per_day`, `test_rate_limited_notice_once_per_window`
+- [ ] `test_billing_error_uses_billing_copy`: `error="billing"`이면 결제 문구, 하루 한 번
+- [ ] `test_rate_limited_resume_text_formats`: 재개가 오늘 21:30이면 `21:30쯤`, 10/30 09:00이면 `10월 30일 09:00쯤`, 이미 지난 `retry_at`이면 지금+1시간
 - [ ] `test_error_retries_3_times_with_backoff_then_fixed_text`: 호출 4회, `brain_calls` +4
 - [ ] `test_run_error_no_backoff_max_two_calls`
 - [ ] `test_run_auth_error_marked_skipped_not_rerun` (rate_limited도 같은 테스트에서 `skipped(rate_limit)`)
