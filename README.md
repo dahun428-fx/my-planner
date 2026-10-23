@@ -88,14 +88,15 @@ DB가 손상되면 비서는 텔레그램으로 "데이터베이스에 문제가
    Disable-ScheduledTask -TaskName my-planner
    Stop-ScheduledTask -TaskName my-planner
    ```
-2. 가장 최근 백업을 `state\planner.db` 위에 복사합니다. 파일 이름의 날짜는 `state\backups\`에서 가장 최근 것으로 바꿉니다. 옛 DB의 WAL 파일이 남아 있으면 먼저 지웁니다. 다시 시작해도 같은 알림이 오면 하루 앞 백업으로 다시 해 봅니다.
+2. 지금 DB는 지우지 않고 옆으로 옮겨 둔 뒤, 가장 최근 백업을 `state\planner.db`로 복사합니다. 파일 이름의 날짜는 `state\backups\`에서 가장 최근 것으로 바꿉니다. 옛 DB의 WAL 파일이 남아 있으면 지웁니다. 다시 시작해도 같은 알림이 오면 하루 앞 백업으로 다시 해 봅니다.
    ```powershell
+   Move-Item state\planner.db state\planner.db.broken -Force
    Remove-Item state\planner.db-wal, state\planner.db-shm -ErrorAction SilentlyContinue
-   Copy-Item state\backups\planner-2026-10-23.db state\planner.db -Force
+   Copy-Item state\backups\planner-2026-10-23.db state\planner.db
    ```
 3. 알림 표식을 지웁니다. 다음에 또 문제가 생기면 다시 알리게 됩니다.
    ```powershell
-   Remove-Item state\integrity_notice_sent
+   Remove-Item state\integrity_notice_sent -ErrorAction SilentlyContinue
    ```
 4. 다시 시작합니다.
    ```powershell

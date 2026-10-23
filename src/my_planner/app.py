@@ -112,15 +112,25 @@ def _run_locked(root: Path, console: str) -> int:
 
 
 def _open_checked(path: Path) -> sqlite3.Connection | None:
-    """DB를 열고 무결성을 본다(`PRAGMA quick_check`). 손상됐으면 None. 파일이 없으면 새로 설치한 것이다."""
+    """DB를 열고 무결성을 본다(`PRAGMA quick_check`). 손상됐으면 None. 파일이 없으면 새로 설치한 것이다.
+
+    손상은 quick_check가 "ok"가 아니거나, `OperationalError`가 아닌 `DatabaseError`("file is not a database"
+    같은)일 때만이다. 디스크 I/O, 잠금, 열기 오류(`OperationalError`)는 그대로 올린다: 안전 모드에 들어가지
+    않고 끝나서 워치독이 다시 띄운다(건강한 DB를 백업으로 덮지 않게).
+    """
     fresh = not path.exists()
     conn: sqlite3.Connection | None = None
     try:
         conn = open_db(path)
         if fresh or integrity_ok(conn):
             return conn
+        log.error("db_integrity_failed")
+    except sqlite3.OperationalError:
+        if conn is not None:
+            conn.close()
+        raise
     except sqlite3.DatabaseError as e:
-        log.error("db_open_error", extra={"error_type": type(e).__name__})
+        log.error("db_corrupt", extra={"error_type": type(e).__name__})
     if conn is not None:
         conn.close()
     return None
@@ -207,7 +217,10 @@ async def _serve(settings: Settings) -> None:
         runner.register_daily(cleanup_logs_daily(paths.state_dir / "logs", keep=settings.retention.log_days))
         # 4. 남은 회차 복구: queued/running → interrupted와 재실행 규칙, failed 회차는 전송만 한 번 더.
         # 디스패처 큐에 넣어 두고, 6단계에서 디스패처가 시작하면 처리한다
-        recover_on_start(runs, dispatcher, clock, settings)
+        try:
+            recover_on_start(runs, dispatcher, clock, settings)
+        except Exception:  # 복구가 안 돼도 시작은 한다(매번 죽으면 워치독이 5분마다 다시 띄우기만 한다)
+            log.exception("recovery_error")
         # 5. 첫 실행이면 installed_at 기록
         runner.ensure_installed()
         # 버튼 누름: 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다(스펙 5.7)

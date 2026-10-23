@@ -284,3 +284,86 @@ async def test_rerun_deferred_when_plan_open_goes_back_to_pending(tmp_path, conn
 
     assert env.brain.calls == []
     assert env.runs.get(run.id).status is RunStatus.pending
+
+
+# --- 리뷰 1차 ---
+
+
+class _Capture:
+    def __init__(self):
+        self.submitted = []
+
+    def submit_run(self, run, merged, *, carried_ids=()):
+        self.submitted.append((run.loop, [m.loop for m in merged], sorted(carried_ids)))
+
+
+def _tick(env, capture):
+    from my_planner.loop.runner import Runner
+
+    Runner(clock=env.clock, settings=env.settings, runs=env.runs, state=env.state, dispatcher=capture).tick()
+
+
+async def test_member_of_late_primary_goes_back_to_pending(tmp_path, conn, state):
+    # 일 18:00 저녁 체크인에 회고를 합쳐 실행하다 멈췄고, 월 09:10에 다시 시작했다(저녁 한계 04:00이 지났다)
+    from my_planner.domain import SkipReason
+
+    sun_1800 = kst(2026, 10, 25, 18, 0)
+    env = _env(tmp_path, conn, state)
+    state.set("installed_at", to_iso(sun_1800 - timedelta(days=30)))
+    state.set("last_seen_at", to_iso(sun_1800 + timedelta(minutes=1)))
+    evening = env.runs.ensure(LoopKey.evening_checkin, sun_1800)
+    review = env.runs.ensure(LoopKey.review, sun_1800, Cadence.week)
+    old_morning = env.runs.ensure(LoopKey.morning_brief, kst(2026, 10, 25, 10, 0))  # 한계(12:00)가 지난 멤버
+    env.runs.mark_queued(review.id)
+    env.runs.mark_queued(old_morning.id)
+    env.runs.add_merged(evening.id, [review.id, old_morning.id])
+    env.runs.mark_running(evening.id)
+
+    _recover(env)
+
+    assert env.runs.get(evening.id).status is RunStatus.interrupted
+    assert env.runs.get(review.id).status is RunStatus.pending  # 자기 한계(+3일) 안: 첫 tick이 다시 판정한다
+    late = env.runs.get(old_morning.id)
+    assert late.status is RunStatus.skipped and late.skip_reason is SkipReason.late
+    assert env.brain.calls == []
+
+    capture = _Capture()
+    _tick(env, capture)
+    assert capture.submitted == [(LoopKey.morning_brief, [LoopKey.review], [])]  # 아침 브리핑에 합친다
+
+
+async def test_long_gap_rerun_left_to_first_tick_r1(tmp_path, conn, state):
+    # 일 18:00 회고를 실행하다 멈췄고 화 08:00에 시작했다(공백 24시간 이상): 회고를 바로 다시 보내지 않고
+    # 첫 tick의 R1에 맡긴다. 복귀 인사 하나만 나가고 회고는 다음 정규 연락에 합치도록 넘겨진다
+    from my_planner.loop.runner import CARRY_REVIEW_KEY
+
+    sun_1800 = kst(2026, 10, 25, 18, 0)
+    env = _env(tmp_path, conn, state, start=kst(2026, 10, 27, 8, 0))
+    state.set("installed_at", to_iso(sun_1800 - timedelta(days=30)))
+    state.set("last_seen_at", to_iso(sun_1800 + timedelta(minutes=1)))
+    review = env.runs.ensure(LoopKey.review, sun_1800, Cadence.week)
+    env.runs.mark_running(review.id)
+
+    _recover(env)
+    assert env.runs.get(review.id).status is RunStatus.pending
+
+    capture = _Capture()
+    _tick(env, capture)
+    assert capture.submitted == [(LoopKey.return_, [], [])]
+    assert state.get(CARRY_REVIEW_KEY) == str(review.id)
+
+
+async def test_resend_on_start_skips_drafts_already_confirmed(tmp_path, conn, state):
+    from my_planner.domain import RunContext
+
+    run = await _failed_evening_with_drafts(tmp_path, conn, state)
+    second = _env(tmp_path, conn, state, start=kst(2026, 10, 26, 20, 0))
+    ids = [r[0] for r in conn.execute("SELECT id FROM tasks WHERE status = 'draft' ORDER BY id")]
+    second.tools.confirm_tasks(RunContext(None, None), ids=[ids[0]])  # 그 사이 하나는 확정됐다
+
+    _recover(second)
+    second.dispatcher.start()
+    await second.dispatcher.stop(timeout=5)
+
+    assert [o.draft_task_ids for o in second.sender.sent] == [[ids[1]]]
+    assert second.runs.get(run.id).status is RunStatus.done

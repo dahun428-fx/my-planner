@@ -550,3 +550,25 @@ def test_daily_prunes_update_ids_older_than_2_days(tmp_path, conn, state):
 
     assert not state.is_seen_update(1)  # 2일이 지났다
     assert state.is_seen_update(2)
+
+
+def test_backup_clears_leftover_tmp_files(tmp_path, conn, state):
+    import sqlite3
+
+    from my_planner.loop.runner import backup_daily
+
+    start = kst(2026, 10, 23, 14, 0)
+    env = Env(tmp_path, conn, state, start, installed=start - timedelta(days=1), last_seen=start)
+    backups = tmp_path / "state" / "backups"
+    backups.mkdir(parents=True)
+    # 백업 도중 강제 종료되어 남은 임시 파일: 오늘 것(망가짐)과 지난 날 것
+    (backups / "planner-2026-10-23.db.tmp").write_bytes(b"half written" * 100)
+    (backups / "planner-2026-10-20.db.tmp").write_bytes(b"half written" * 100)
+    env.runner.register_daily(backup_daily(conn, backups, keep=14))
+
+    env.runner.tick()
+
+    assert sorted(p.name for p in backups.iterdir()) == ["planner-2026-10-23.db"]
+    copy = sqlite3.connect(backups / "planner-2026-10-23.db")
+    assert copy.execute("PRAGMA quick_check").fetchone() == ("ok",)
+    copy.close()

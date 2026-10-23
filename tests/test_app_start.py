@@ -388,3 +388,72 @@ def test_main_recovers_left_runs_before_first_tick(started, monkeypatch):
     check = sqlite3.connect(root / "state" / "planner.db")
     assert check.execute("SELECT status FROM runs WHERE id = ?", (old.id,)).fetchone() == ("interrupted",)
     check.close()
+
+
+def test_recovery_error_does_not_stop_start(started, monkeypatch):
+    app, root, calls = started
+
+    def broken(*a, **kw):
+        raise ValueError("이상한 행")
+
+    monkeypatch.setattr(app, "recover_on_start", broken)
+    assert app.main() == 0  # 시작할 때마다 죽어 워치독이 되살리는 반복에 빠지지 않는다
+    assert "start_polling" in [c[0] for c in calls]
+    errors = [e for e in _log_entries(root) if e["msg"] == "recovery_error"]
+    assert len(errors) == 1 and errors[0]["exc_type"] == "ValueError"
+
+
+def test_operational_error_exits_without_safe_mode(started, monkeypatch):
+    # 디스크 I/O, 잠금, 열기 오류는 손상이 아니다: 안전 모드에 들어가지 않고 끝나서 워치독이 다시 띄운다
+    import sqlite3
+
+    from my_planner.store.db import migrate, open_db
+
+    app, root, calls = started
+    bot = FakeBot()
+    monkeypatch.setattr(app, "Bot", lambda token: bot)
+    conn = open_db(root / "state" / "planner.db")
+    migrate(conn)
+    conn.close()
+
+    def io_error(path):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(app, "open_db", io_error)
+    assert app.main() == app.EXIT_FATAL
+
+    assert bot.sent == [] and calls == []
+    assert not (root / "state" / "integrity_notice_sent").exists()
+    entries = _log_entries(root)
+    assert "safe_mode" not in [e["msg"] for e in entries]
+    assert any(e.get("exc_type") == "OperationalError" for e in entries)
+
+
+def test_damaged_pages_fail_quick_check_and_enter_safe_mode(started, monkeypatch):
+    # 머리말은 멀쩡해 열리지만 b-tree 페이지가 망가진 DB: quick_check가 "ok"가 아니다
+    from my_planner.store.db import migrate, open_db
+
+    app, root, calls = started
+    bot = FakeBot()
+    monkeypatch.setattr(app, "Bot", lambda token: bot)
+    db = root / "state" / "planner.db"
+    conn = open_db(db)
+    migrate(conn)
+    with conn:
+        conn.executemany("INSERT INTO app_state (key, value) VALUES (?, ?)", [(f"k{i}", "v" * 50) for i in range(2000)])
+    root_page = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = 'app_state'").fetchone()[0]
+    page = conn.execute("PRAGMA page_size").fetchone()[0]
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    conn.close()
+    data = bytearray(db.read_bytes())
+    root_at = (root_page - 1) * page
+    assert data[root_at] == 0x05  # app_state의 뿌리는 내부 페이지다. 머리 8~11바이트가 맨 오른쪽 자식 페이지 번호
+    leaf = int.from_bytes(data[root_at + 8 : root_at + 12], "big")
+    end = leaf * page  # 잎 페이지 끝의 셀 내용을 지운다(머리나 뿌리를 망가뜨리면 quick_check가 예외를 낸다)
+    data[end - 96 : end] = b"\x00" * 96
+    db.write_bytes(bytes(data))
+
+    assert app.main() == 0
+    assert bot.sent == [(42, INTEGRITY_NOTICE)]
+    assert calls == [("serving", None)]
+    assert "db_integrity_failed" in [e["msg"] for e in _log_entries(root)]

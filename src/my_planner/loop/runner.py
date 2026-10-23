@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, logical_date, to_iso
-from my_planner.domain import LoopKey, RunStatus
+from my_planner.domain import LoopKey, RunStatus, SkipReason
 from my_planner.harness.dispatcher import MAX_RUN_ATTEMPTS
 from my_planner.logging_setup import cleanup_logs
-from my_planner.loop.catchup import decide, merge_order
+from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
 from my_planner.loop.schedule import (
     ENABLED_LOOPS,
     Due,
@@ -118,6 +118,9 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
         runs.mark_interrupted(run.id)
         log.info("run_interrupted", extra={"run_id": run.id, "was": run.status.value})
 
+    def past_limit(run: Run) -> bool:
+        return now > limit_for(_due(run), settings, tz, boundary)
+
     fate: dict[int, str] = {}
     for run in left:
         if run.id in owner:
@@ -127,19 +130,30 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
         elif runs.has_tool_events(run.id):  # 도구가 이미 데이터를 바꿨다(중복 쓰기 방지)
             fate[run.id] = "failed"
             log.warning("run_interrupted_with_tool_events", extra={"run_id": run.id})
-        elif run.attempt >= MAX_RUN_ATTEMPTS or now > limit_for(_due(run), settings, tz, boundary):
+        elif run.attempt >= MAX_RUN_ATTEMPTS or past_limit(run):
             fate[run.id] = "keep"
         else:
             fate[run.id] = "rerun"
+    by_id = {r.id: r for r in left}
     for member, primary in owner.items():
-        fate[member] = fate[primary]
+        if fate[primary] == "keep":
+            # primary를 다시 실행하지 않으면 멤버는 따로 본다: 자기 한계 안이면 pending으로 되돌려 첫 tick이
+            # 다시 판정하고(R1, 합치기), 한계 밖이면 skipped(late)
+            fate[member] = "late" if past_limit(by_id[member]) else "pending"
+        else:
+            fate[member] = fate[primary]
+    # 공백이 24시간 이상이면 바로 다시 실행하지 않고 pending으로 되돌린다. 첫 tick이 R1로 판정해
+    # 복귀 인사 하나만 보내고 회고는 다음 정규 연락에 넘긴다(연달아 두 통 보내지 않는다)
+    last_seen = dispatcher.state.get("last_seen_at")
+    if last_seen is not None and now - from_iso(last_seen) >= RETURN_GAP:
+        fate = {i: ("pending" if f == "rerun" else f) for i, f in fate.items()}
     # 넘겨 받은 회고(R1)는 혼자 실행하지 않는다. 표시가 남은 채 큐에 있었으면(계획 모드 되돌리기 도중 멈춤)
     # 다시 실행할 수 있을 때 pending으로 되돌리고 표시를 둔다: 다음 tick이 다음 정규 연락에 다시 합친다.
     # 그렇지 않으면 표시를 지운다
     carried = dispatcher.state.get(CARRY_REVIEW_KEY)
     carried_id = int(carried) if carried else None
     if carried_id in fate:
-        if fate[carried_id] == "rerun":
+        if fate[carried_id] in ("rerun", "pending"):
             fate[carried_id] = "carry"
         else:
             dispatcher.state.set(CARRY_REVIEW_KEY, None)
@@ -154,6 +168,12 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
         elif f == "carry":
             runs.mark_pending(run.id)
             log.info("carried_review_back_to_pending", extra={"run_id": run.id})
+        elif f == "pending":
+            runs.mark_pending(run.id)
+            log.info("run_back_to_pending", extra={"run_id": run.id})
+        elif f == "late":
+            runs.mark_skipped(run.id, SkipReason.late)
+            log.info("run_skipped_late_on_start", extra={"run_id": run.id})
         else:
             reruns.append(run)
     if reruns:

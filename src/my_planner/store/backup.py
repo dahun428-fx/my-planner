@@ -15,6 +15,7 @@ from pathlib import Path
 
 BACKUP_PREFIX = "planner-"
 _BACKUP_RE = re.compile(r"^planner-\d{4}-\d{2}-\d{2}\.db$")
+_TMP_RE = re.compile(r"^planner-\d{4}-\d{2}-\d{2}\.db\.tmp$")
 
 
 def backup_name(d: date) -> str:
@@ -30,6 +31,7 @@ def daily_backup(conn: sqlite3.Connection, backups_dir: Path, today: date, keep:
         _prune(backups_dir, keep)
         return None
     tmp = target.with_name(target.name + ".tmp")
+    tmp.unlink(missing_ok=True)  # 지난번 백업 도중 강제 종료되어 남은 것
     try:
         dest = sqlite3.connect(tmp)
         try:
@@ -46,7 +48,10 @@ def daily_backup(conn: sqlite3.Connection, backups_dir: Path, today: date, keep:
 
 
 def _prune(backups_dir: Path, keep: int) -> None:
-    """이름(날짜)순으로 가장 최근 `keep`개만 남긴다. 백업 이름이 아닌 파일은 건드리지 않는다."""
+    """이름(날짜)순으로 가장 최근 `keep`개만 남기고, 남은 임시 파일을 지운다. 그 밖의 파일은 건드리지 않는다."""
+    for p in backups_dir.iterdir():
+        if _TMP_RE.match(p.name):
+            p.unlink(missing_ok=True)
     found = sorted(p for p in backups_dir.iterdir() if _BACKUP_RE.match(p.name))
     for old in found[: max(len(found) - keep, 0)]:
         old.unlink()
