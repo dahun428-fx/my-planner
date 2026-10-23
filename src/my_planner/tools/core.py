@@ -338,6 +338,8 @@ class Tools:
             return _err("task_ids는 할 일 번호 목록이에요.")
         if len(task_ids) > PRIORITY_MAX:
             return _err(f"우선순위는 {PRIORITY_MAX}개까지 정할 수 있어요.")
+        if any(not isinstance(i, int) or isinstance(i, bool) for i in task_ids):
+            return _err("task_ids는 할 일 번호(숫자) 목록이에요.")
         if len(set(task_ids)) != len(task_ids):
             return _err("같은 할 일을 두 순위에 올릴 수 없어요.")
         for i in task_ids:

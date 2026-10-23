@@ -348,3 +348,10 @@ async def test_set_priorities_reachable_through_mcp_handler(env):
     )
     assert res["is_error"] is False
     assert _prio(env) == ["A", "B"]
+
+
+def test_set_priorities_unhashable_id_returns_error(env):
+    a, _, _ = _three(env)
+    for bad in ([[1], [1]], [{"a": 1}, a], [True], ["1"], [None]):
+        out = env.tools.set_priorities(env.ctx(), cadence="week", period="2026-W43", task_ids=bad)
+        assert "error" in out, bad

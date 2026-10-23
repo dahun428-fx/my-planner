@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Literal, Protocol
 
 from telegram import Bot, Update
@@ -78,8 +79,10 @@ async def handle_update(
         cmd = command_of(msg.text) if tools is not None else None
         if cmd is not None:
             assert tools is not None
-            await _answer_command(msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock)
-            state.mark_updates_done([update.update_id])
+            done = [update.update_id]
+            await _answer_command(
+                msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, lambda: state.mark_updates_done(done)
+            )
             return "command"
         dispatcher.submit_message(
             Inbound(text=msg.text, at=clock.now(), sent_at=msg.date, update_ids=[update.update_id])
@@ -105,6 +108,7 @@ async def _answer_command(
     tools: Tools,
     transcripts: TranscriptStore,
     clock: Clock,
+    on_sent: Callable[[], None],
 ) -> None:
     """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
     now = clock.now()
@@ -115,8 +119,12 @@ async def _answer_command(
         reply = render(tools.tasks, now, tools.tz, tools.boundary)
     for part in split_message(reply):
         await bot.send_message(chat_id=chat_id, text=part)
-    transcripts.append(now, "사용자", None, None, redact(text)[0])
-    transcripts.append(now, "비서", None, None, reply)
+    on_sent()  # 보낸 뒤에 먼저 처리 완료로 기록한다: 원문 기록이 실패해도 다시 받았을 때 두 번 답하지 않는다
+    try:
+        transcripts.append(now, "사용자", None, None, redact(text)[0])
+        transcripts.append(now, "비서", None, None, reply)
+    except OSError as e:
+        log.warning("command_transcript_failed", extra={"error_type": type(e).__name__})
 
 
 TELEGRAM_LIMIT = 4096

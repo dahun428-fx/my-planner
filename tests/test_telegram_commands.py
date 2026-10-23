@@ -141,3 +141,31 @@ async def test_command_from_other_user_ignored(cenv):
     assert await cenv.send("안녕") == "accept"
     assert await cenv.send("/pause 2") == "accept"
     assert [m.text for m in cenv.dispatcher.got] == ["안녕", "/pause 2"]
+
+
+async def test_commands_use_logical_date_before_boundary(cenv):
+    cenv.clock.set(kst(2026, 10, 26, 2, 0))
+    cenv.add("일요일 일", planned_for="2026-10-25")
+    cenv.add("월요일 일", planned_for="2026-10-26")
+    await cenv.send("/today")
+    assert cenv.last.startswith("오늘 (10/25 일)")
+    assert "일요일 일" in cenv.last and "월요일 일" not in cenv.last
+    await cenv.send("/week")
+    assert cenv.last.startswith("이번 주 (10/19~10/25)")
+    assert "일요일 일" in cenv.last and "월요일 일" not in cenv.last
+
+
+async def test_command_transcript_failure_does_not_resend_on_redelivery(cenv, monkeypatch):
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(cenv.transcripts, "append", boom)
+    upd = _update(update_id=500, text="/help")
+    kw = {
+        "bot": cenv.bot, "owner_id": OWNER, "state": cenv.state, "dispatcher": cenv.dispatcher,
+        "transcripts": cenv.transcripts, "clock": cenv.clock, "tools": cenv.tools,
+    }
+    assert await handle_update(upd, **kw) == "command"  # 기록 실패는 삼키고 로그만 남긴다
+    assert len(cenv.bot.sent) == 1 and cenv.state.is_seen_update(500)
+    assert await handle_update(upd, **kw) == "duplicate"
+    assert len(cenv.bot.sent) == 1

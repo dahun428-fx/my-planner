@@ -174,3 +174,19 @@ async def test_preamble_includes_today_and_week_priorities(tmp_path, conn, state
     prompt = env.brain.prompts[0]
     assert "## 우선순위\n- 오늘: 1. C (#3)\n- 이번 주: 1. A (#1) 2. B (#2)" in prompt
     assert prompt.index("## 우선순위") < prompt.index("## 열린 할 일")
+
+
+async def test_preamble_priorities_skip_tasks_no_longer_open(tmp_path, conn, state):
+    from my_planner.domain import RunContext
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], "네.")])
+    ctx = RunContext(None, None)
+    for title in ("A", "B"):
+        env.tools.add_task(ctx, title=title, areas=["career"])
+    env.tools.set_priorities(ctx, cadence="week", period="2026-W43", task_ids=[1, 2])
+    env.tools.set_priorities(ctx, cadence="day", period="2026-10-24", task_ids=[1])
+    env.tools.complete_task(ctx, id=1)
+    await env.process(env.inbound("안녕"))
+    prompt = env.brain.prompts[0]
+    assert "- 이번 주: 1. B (#2)" in prompt
+    assert "- 오늘" not in prompt and "A (#1) 1." not in prompt

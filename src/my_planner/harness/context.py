@@ -49,7 +49,7 @@ def build_preamble(
 
     prio_lines = []
     for cadence, label in ((Cadence.day, "오늘"), (Cadence.week, "이번 주")):
-        picked = tasks.priorities(cadence, period_of(cadence, today))
+        picked = [t for t in tasks.priorities(cadence, period_of(cadence, today)) if t.status is TaskStatus.open]
         if picked:
             items = " ".join(f"{i}. {t.title} (#{t.id})" for i, t in enumerate(picked, start=1))
             prio_lines.append(f"- {label}: {items}")
