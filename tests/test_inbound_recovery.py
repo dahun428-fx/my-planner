@@ -170,3 +170,16 @@ def test_pending_row_dropped_after_3_attempts(tmp_path, conn, state):
                if e.get("msg") == "inbound_dropped"]
     assert len(dropped) == 1 and dropped[0]["update_id"] == 46 and dropped[0]["reason"] == "max_attempts"
     assert "늘 실패하는 글" not in log_path.read_text(encoding="utf-8")
+
+
+async def test_fresh_message_reusing_old_update_id_calls_brain(tmp_path, conn, state):
+    # 텔레그램은 한동안 업데이트가 없으면 update_id를 새로 고른다. 예전 메시지의 도구 기록(inbound_id)과 번호가
+    # 같아도 새 메시지는 두뇌를 그대로 부른다(최종 재리뷰 Minor 2)
+    env = Env(tmp_path, conn, state, script=[FakeTurn([], "새 답")], start=START, with_tools=True)
+    env.tools.tasks.log_tool_event(None, 99, 1, "task_added", inbound_id=47, data={"title": "예전 일"})
+    env.dispatcher.start()
+    await _receive(env, state, 47, "새로 묻는 말")
+    await env.dispatcher.stop(timeout=5)
+
+    assert len(env.brain.calls) == 1
+    assert [o.text for o in env.sender.sent] == ["새 답"]

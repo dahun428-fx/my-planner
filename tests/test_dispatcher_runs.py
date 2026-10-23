@@ -490,3 +490,49 @@ async def test_hung_run_after_tool_write_fails_without_rerun(tmp_path, conn, sta
     assert env.sender.sent == []
     assert env.runs.get(run.id).status is RunStatus.failed
     assert conn.execute("SELECT error FROM runs WHERE id = ?", (run.id,)).fetchone()[0] == "error"
+
+
+async def test_reply_sent_before_catchup_run_joins_the_earlier_run(tmp_path, conn, state):
+    # 깨어난 09:30: 따라잡기 아침 브리핑을 09:29에 먼저 보냈고, 03:00에 보낸 저녁 체크인 답은 그 뒤에 받아 왔다.
+    # 보낸 시각 이전에 열려 보낸 가장 최근 회차 대화(저녁)에 잇는다(최종 재리뷰 Important 1)
+    from my_planner.harness.dispatcher import Inbound
+
+    evening_at = kst(2026, 10, 26, 17, 30)
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], "오늘 하루 어땠어요?", session_id="eve-s"), FakeTurn([], BRIEF, session_id="morning-s"),
+         FakeTurn([], "푹 쉬세요.", session_id="eve-s")],
+        start=evening_at + timedelta(seconds=30),
+    )
+    eve = env.runs.ensure(LoopKey.evening_checkin, evening_at)
+    env.runs.mark_queued(eve.id)
+    await env.process_run(env.runs.get(eve.id))
+    eve_conv = env.runs.get(eve.id).conversation_id
+
+    env.clock.set(kst(2026, 10, 27, 9, 29))
+    morning = _queued_morning(env, at=kst(2026, 10, 27, 9, 0))
+    await env.process_run(morning)
+    assert env.runs.get(morning.id).status is RunStatus.done
+
+    env.clock.set(kst(2026, 10, 27, 9, 30))
+    await env.process(Inbound(text="괜찮았어요", at=env.clock.now(), sent_at=kst(2026, 10, 27, 3, 0), update_ids=[1]))
+
+    assert env.brain.session_ids[2] == "eve-s"
+    assert env.brain.calls[2]["run_ctx"].conversation_id == eve_conv
+
+
+async def test_reply_sent_while_run_was_still_being_written_is_not_joined_to_it(tmp_path, conn, state):
+    # 회차 대화는 두뇌를 부르기 전에 열린다. 그 뒤, 보내기 전에 쓴 메시지는 그 회차에 대한 답이 아니다
+    from my_planner.harness.dispatcher import Inbound
+
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([], BRIEF, session_id="run-s", delay=60), FakeTurn([], "네", session_id="c")],
+    )
+    run = _queued_morning(env)
+    await env.process_run(run)
+    opened = env.convs.get(env.runs.get(run.id).conversation_id).opened_at
+    env.clock.advance(timedelta(minutes=1))
+    sent = opened + timedelta(seconds=30)  # 대화는 열렸지만 회차를 보내기 전(두뇌가 쓰는 중)에 보낸 글
+    await env.process(Inbound(text="안녕", at=env.clock.now(), sent_at=sent, update_ids=[2]))
+    assert env.brain.session_ids[1] is None

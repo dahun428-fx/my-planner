@@ -78,6 +78,15 @@ class ConversationsRepo:
                 (to_iso(self.clock.now()), id),
             )
 
+    def latest_open_run_opened_by(self, at: datetime) -> Conversation | None:
+        """`at`(보낸 시각) 이전에 열린 열린 `run` 대화 가운데 가장 최근 것."""
+        r = self.conn.execute(
+            "SELECT * FROM conversations WHERE kind = 'run' AND closed_at IS NULL AND opened_at <= ? "
+            "ORDER BY opened_at DESC, id DESC LIMIT 1",
+            (to_iso(at),),
+        ).fetchone()
+        return _row(r) if r is not None else None
+
     def latest_open(self, kind: ConversationKind | str) -> Conversation | None:
         r = self.conn.execute(
             "SELECT * FROM conversations WHERE kind = ? AND closed_at IS NULL "

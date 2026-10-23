@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
 
+import anyio
+
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import (
     Cadence,
@@ -335,7 +337,11 @@ class Dispatcher:
             # 두뇌 답을 저장한 뒤 보내지 못했다: 그 답만 다시 보낸다
             await self._resend_saved_reply(batch, pending, update_ids)
             return
-        if pending is not None and (logged := self.tools is not None and self.tools.tasks.inbound_tool_events(lead)):
+        if (
+            pending is not None
+            and pending.user_logged  # 이 행으로 이미 처리를 시작했다. 새 메시지가 예전 update_id를 다시 받았으면 아니다
+            and (logged := self.tools is not None and self.tools.tasks.inbound_tool_events(lead))
+        ):
             # 두뇌 호출 도중 멈췄고 도구가 이미 썼다: 다시 부르지 않고 확인 문구와 일반 문구로 마친다
             await self._finish_after_logged_tools(batch, pending, update_ids, logged)
             return
@@ -952,11 +958,11 @@ class Dispatcher:
         started = time.monotonic()
         try:
             # 한 호출이 멈춰 직렬 작업자 전체가 서지 않도록 상한을 둔다. 넘으면 error(timeout)로 보고
-            # 메시지 백오프와 회차 재실행 규칙을 그대로 따른다(도구가 이미 썼으면 다시 부르지 않는다)
-            result = await asyncio.wait_for(
-                self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx),
-                self.settings.limits.brain_timeout_s,
-            )
+            # 메시지 백오프와 회차 재실행 규칙을 그대로 따른다(도구가 이미 썼으면 다시 부르지 않는다).
+            # anyio 취소 범위를 쓴다: SDK가 CLI 자식을 정리하는 차폐 구간(close())이 끝까지 돈다.
+            # asyncio.wait_for의 날 취소는 그 차폐 안의 다음 await에서 터져 자식이 고아로 남을 수 있다
+            with anyio.fail_after(self.settings.limits.brain_timeout_s):
+                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx)
         except TimeoutError:
             result = BrainResult(text="", session_id=session_id, turns=0, status="error", error="timeout")
         finally:

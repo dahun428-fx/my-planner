@@ -107,11 +107,15 @@ class ConversationRouter:
     def _run_conversation_in_window(self, at: datetime) -> Conversation | None:
         if self.runs is None:
             return None
-        conv = self.convs.latest_open(ConversationKind.run)
+        # 보낸 시각 이전에 열린 가장 최근 회차 대화만 본다. 늦게 받아 온 답이 그 사이 먼저 보낸 따라잡기 회차에
+        # 붙지 않는다(최종 재리뷰 Important 1). 그 회차를 보낸 뒤에 쓴 글이어야 그 회차에 대한 답이다
+        conv = self.convs.latest_open_run_opened_by(at)
         if conv is None or conv.run_id is None:
             return None
         run = self.runs.get(conv.run_id)
         if run is None or run.status is not RunStatus.done:  # 보내지 않은 회차에는 답할 것이 없다
+            return None
+        if run.finished_at is not None and run.finished_at > at:
             return None
         # 합쳐 보낸 회차(merged_run_ids)가 있으면 그 가운데 가장 늦은 답장 창 끝까지 잇는다
         # (예: 일요일 저녁 + 회고 → 회고의 24시간).
