@@ -90,6 +90,21 @@ def test_limits_and_reply_windows(cfg):
     assert limit_for(evening, cfg, tz, b) == kst(2026, 10, 27, 4, 0)  # 화 04:00
     assert limit_for(review, cfg, tz, b) == kst(2026, 10, 28, 18, 0)  # +3일
 
-    assert reply_window_end(morning, tz, b) == kst(2026, 10, 26, 12, 0)
-    assert reply_window_end(evening, tz, b) == kst(2026, 10, 27, 4, 0)
-    assert reply_window_end(review, tz, b) == kst(2026, 10, 26, 18, 0)  # 24시간
+    assert reply_window_end(morning, tz, b, cfg=cfg) == kst(2026, 10, 26, 12, 0)
+    assert reply_window_end(evening, tz, b, cfg=cfg) == kst(2026, 10, 27, 4, 0)
+    assert reply_window_end(review, tz, b, cfg=cfg) == kst(2026, 10, 26, 18, 0)  # 24시간
+
+
+def test_reply_window_reads_config(tmp_path):
+    from datetime import time
+
+    from my_planner.config import LimitsConfig, ReplyWindowConfig
+    from my_planner.loop.schedule import reply_window_end
+
+    cfg = make_settings(
+        tmp_path, limits=LimitsConfig(reply_window=ReplyWindowConfig(morning_brief_until=time(11, 0), review_hours=6))
+    )
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    review = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    assert reply_window_end(morning, cfg.timezone, cfg.day_boundary, cfg=cfg) == kst(2026, 10, 26, 11, 0)
+    assert reply_window_end(review, cfg.timezone, cfg.day_boundary, cfg=cfg) == kst(2026, 10, 26, 0, 0)

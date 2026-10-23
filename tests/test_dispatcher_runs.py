@@ -254,7 +254,7 @@ async def test_run_and_message_serialized(tmp_path, conn, state):
         [FakeTurn([], "브리핑 A", delay=1), FakeTurn([], "메시지 답"), FakeTurn([], "브리핑 B")],
     )
     run_a = _queued_morning(env)
-    run_b = _queued_morning(env, at=kst(2026, 10, 25, 10, 0))
+    run_b = _queued_morning(env, at=kst(2026, 10, 26, 9, 1))  # 한계 안의 다른 회차
     env.dispatcher.start()
     env.dispatcher.submit_run(run_a, [])
     while not env.brain.calls:  # A가 두뇌를 부르는 중에
@@ -290,11 +290,146 @@ async def test_undelivered_run_conversation_not_continued(tmp_path, conn, state)
 
 
 async def test_brain_failure_past_limit_not_rerun(tmp_path, conn, state):
-    # 아침 브리핑의 한계(12:00)가 지난 뒤의 오류는 다시 실행하지 않는다
-    env = _env(tmp_path, conn, state, [_brain_error(), FakeTurn([], BRIEF)], start=kst(2026, 10, 26, 12, 1))
+    # 11:59에 시작한 두뇌 호출이 2분 걸려 오류로 끝나면, 한계(12:00)가 지났으니 다시 실행하지 않는다
+    slow_error = FakeTurn([], "", status="error", session_id=None, delay=120)
+    env = _env(tmp_path, conn, state, [slow_error, FakeTurn([], BRIEF)], start=kst(2026, 10, 26, 11, 59))
     run = _queued_morning(env)
     await env.process_run(run)
 
     assert len(env.brain.calls) == 1
     assert env.runs.get(run.id).status is RunStatus.failed
     assert env.sender.sent == []
+
+
+async def test_run_done_even_if_transcript_write_fails(tmp_path, conn, state):
+    # 전송이 끝났으면 원문 기록이 안 돼도 회차는 done, 먼저 보낸 메시지 수도 +1
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF)])
+
+    def broken_append(*a, **kw):
+        raise OSError("disk full")
+
+    env.transcripts.append = broken_append
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    assert [o.text for o in env.sender.sent] == [BRIEF]
+    assert env.runs.get(run.id).status is RunStatus.done
+    assert state.usage(MON).proactive_messages == 1
+
+
+async def test_brain_phase_exception_marks_failed(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF)])
+
+    def broken_for_run(run):
+        raise RuntimeError("boom")
+
+    env.dispatcher.router.for_run = broken_for_run
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    after = env.runs.get(run.id)
+    assert after.status is RunStatus.failed
+    assert env.sender.sent == []
+
+
+def _resend_tasks():
+    import asyncio
+
+    return [t for t in asyncio.all_tasks() if t.get_name().startswith("resend-") and not t.done()]
+
+
+def _hold_long_sleeps(env):
+    """5분 타이머의 sleep은 끝나지 않게 한다. 취소되지 않은 타이머가 남아 보이도록."""
+    import asyncio
+
+    fast = env.dispatcher._sleep
+
+    async def sleep(seconds):
+        if seconds >= 300:
+            await asyncio.Event().wait()
+        await fast(seconds)
+
+    env.dispatcher._sleep = sleep
+
+
+async def test_resend_timer_cancelled_on_stop(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF)])
+    env.sender = env.dispatcher.sender = RecordingSender(fail_times=3)
+    _hold_long_sleeps(env)
+    run = _queued_morning(env)
+    env.dispatcher.start()
+    env.dispatcher.submit_run(run, [])
+    await _wait_for(lambda: env.runs.get(run.id).status is RunStatus.failed)
+    assert len(_resend_tasks()) == 1  # 실패 직후 타이머가 기다리고 있다
+    await env.dispatcher.stop(timeout=5)
+
+    assert env.sender.attempts == 3
+    assert env.runs.get(run.id).resent == 0
+    assert _resend_tasks() == []
+
+
+async def test_no_resend_timer_left_when_send_fails_during_stop(tmp_path, conn, state):
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF)])
+    env.sender = env.dispatcher.sender = RecordingSender(fail_times=3)
+    _hold_long_sleeps(env)
+    run = _queued_morning(env)
+    env.dispatcher.start()
+    env.dispatcher.submit_run(run, [])
+    await env.dispatcher.stop(timeout=5)  # 큐를 비우는 동안 전송이 끝내 안 된다
+
+    assert env.runs.get(run.id).status is RunStatus.failed
+    assert _resend_tasks() == []
+
+
+async def test_resend_skipped_after_reply_window(tmp_path, conn, state):
+    # 11:58에 전송이 끝내 안 되면 5분 뒤는 12:03, 답장 창(12:00) 밖이라 보내지 않고 재전송만 기록한다
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF)], start=kst(2026, 10, 26, 11, 58))
+    env.sender = env.dispatcher.sender = TimedSender(env.clock, fail_times=3)
+    run = _queued_morning(env)
+    env.dispatcher.start()
+    env.dispatcher.submit_run(run, [])
+    await _wait_for(lambda: env.runs.get(run.id).resent == 1)
+    await env.dispatcher.stop(timeout=5)
+
+    assert env.sender.attempts == 3
+    after = env.runs.get(run.id)
+    assert after.status is RunStatus.failed and after.resent == 1
+    assert state.usage(MON).proactive_messages == 0
+
+
+async def test_reply_at_exactly_12_00_continues_run_conversation(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF, session_id="run-s"), FakeTurn([], "네.", session_id="run-s")])
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    env.clock.set(kst(2026, 10, 26, 12, 0))
+    await env.process(env.inbound("지금 답해요", update_id=1))
+    assert env.brain.session_ids[1] == "run-s"
+
+
+async def test_reply_to_run_without_session_gets_recent_history(tmp_path, conn, state):
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF, session_id=None), FakeTurn([], "네.", session_id="s2")])
+    run = _queued_morning(env)
+    await env.process_run(run)
+
+    env.clock.set(kst(2026, 10, 26, 9, 10))
+    await env.process(env.inbound("목차부터 할게요", update_id=1))
+    prompt = env.brain.prompts[1]
+    assert env.brain.session_ids[1] is None
+    assert "## 최근 대화" in prompt and BRIEF in prompt
+    assert prompt.count("목차부터 할게요") == 1
+    assert prompts.load("chat.md") not in prompt
+    assert prompt.index("## 최근 대화") < prompt.index("## 메시지")
+
+
+async def test_run_past_limit_when_dequeued_is_skipped_late(tmp_path, conn, state):
+    from my_planner.domain import SkipReason
+
+    env = _env(tmp_path, conn, state, [FakeTurn([], BRIEF)], start=kst(2026, 10, 26, 12, 1))
+    run = _queued_morning(env)  # 대기하는 동안 한계(12:00)가 지났다
+    await env.process_run(run)
+
+    after = env.runs.get(run.id)
+    assert after.status is RunStatus.skipped and after.skip_reason is SkipReason.late
+    assert env.brain.calls == [] and env.sender.sent == []

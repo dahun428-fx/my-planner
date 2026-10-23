@@ -35,3 +35,10 @@ def test_spec_table_row_2(cfg):
     d = _decide(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 13, 0))
     assert d.primary is None
     assert d.skipped == [(Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0)), SkipReason.late)]
+
+
+def test_limit_boundary_12_00_included(cfg):
+    # 월 08:00 → 정확히 월 12:00: 한계 시각까지는 보낸다
+    d = _decide(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 12, 0))
+    assert d.primary == Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    assert d.skipped == []
