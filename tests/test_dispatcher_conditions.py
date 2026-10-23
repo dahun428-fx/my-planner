@@ -1,6 +1,6 @@
 """디스패처: 저녁 체크인, 자정 넘긴 답장, 아침 브리핑의 어제 컨디션 (스펙 5.3, 5.4)."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fakes import FakeTurn
@@ -259,3 +259,40 @@ async def test_return_run_uses_return_prompt_without_condition_buttons(tmp_path,
     assert "## 컨디션 버튼" not in env.brain.prompts[0]
     assert env.runs.get(run.id).status is RunStatus.done
     assert state.usage(date(2026, 10, 27)).proactive_messages == 1
+
+
+async def test_evening_run_hitting_max_turns_after_tools_sends_confirmations_and_buttons(tmp_path, conn, state):
+    # 턴 상한에 닿았어도 도구가 이미 바꾼 것은 알린다: 확인 문구, 초안 버튼, 컨디션 버튼(최종 리뷰 Minor 3 결정)
+    from test_dispatcher_drafts import propose
+
+    from my_planner.domain import TaskStatus
+    from my_planner.harness.dispatcher import MAX_TURNS_REPLY
+
+    add = ("add_task", {"title": "보고서", "areas": ["career"]})
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([propose("산책 20분"), add], "", status="max_turns", session_id="eve-s")],
+        start=MON_1730 + timedelta(seconds=30),
+    )
+    run = _queued(env, LoopKey.evening_checkin, MON_1730)
+    await env.process_run(run)
+
+    draft = env.tools.tasks.list(status=TaskStatus.draft)[0]
+    want = f"{MAX_TURNS_REPLY}\n\n✓ 추가: 보고서"
+    assert [(o.text, o.draft_task_ids, o.ask_condition_for) for o in env.sender.sent] == [(want, [draft.id], MON)]
+    after = env.runs.get(run.id)
+    assert after.status is RunStatus.done and after.outbound_text == want
+    assert state.usage(MON).proactive_messages == 1
+    assert env.convs.get(after.conversation_id).session_id == "eve-s"  # 이어 말하면 그 세션으로 계속한다
+
+
+async def test_evening_run_hitting_max_turns_without_tools_stays_failed(tmp_path, conn, state):
+    env = _env(
+        tmp_path, conn, state, [FakeTurn([], "", status="max_turns")], start=MON_1730 + timedelta(seconds=30)
+    )
+    run = _queued(env, LoopKey.evening_checkin, MON_1730)
+    await env.process_run(run)
+
+    assert env.sender.sent == []
+    assert env.runs.get(run.id).status is RunStatus.failed
+    assert conn.execute("SELECT error FROM runs WHERE id = ?", (run.id,)).fetchone()[0] == "max_turns"

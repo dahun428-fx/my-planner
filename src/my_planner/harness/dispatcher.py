@@ -602,16 +602,21 @@ class Dispatcher:
             else:
                 await self._run_notice_rate_limit(self._set_limited(result.retry_at))
             return None
-        if not _run_ok(result):
+        # 턴 상한이어도 도구가 이미 바꾼 것이 있으면 알린다: 턴 상한 문구 + 확인 문구, 초안·컨디션 버튼.
+        # 같은 두 단계(저장 → 전송)로 보내고 done으로 둔다(최종 리뷰 Minor 3 결정). 도구 이벤트가 없으면 failed
+        partial = result.status == "max_turns" and bool(run_ctx.events)
+        if not _run_ok(result) and not partial:
             # 사용자에게는 아무것도 보내지 않는다(스펙 5.4 재실행 규칙 4). 로그만 남긴다.
             for r in (run, *merged):
                 runs.mark_failed(r.id, result.status)
             self.convs.close(conv.id)
             log.warning("run_brain_failed", extra={"run_id": run.id, "status": result.status})
             return None
+        if partial:
+            log.warning("run_max_turns_after_tools", extra={"run_id": run.id})
         if result.session_id:
             self.convs.set_session(conv.id, result.session_id)
-        text = result.text
+        text = MAX_TURNS_REPLY if partial else result.text
         confirmations = render_confirmations(run_ctx.events, self._today())
         if confirmations:
             text = f"{text}\n\n{confirmations}"
