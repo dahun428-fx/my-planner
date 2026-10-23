@@ -1,0 +1,44 @@
+# my-planner 설정 (Git에 넣는다. 개인값과 비밀값은 .env에 둔다)
+# 시각은 "HH:MM" 형식, 시간대 기준이다.
+
+timezone = "Asia/Seoul"
+day_boundary = "04:00"   # 논리적 날짜의 하루 경계. 00:00~03:59는 전날이다.
+
+# 회차 시각 (주말 = 토, 일)
+[schedule.morning_brief]
+weekday = "09:00"
+weekend = "10:00"
+
+[schedule.evening_checkin]
+weekday = "17:30"
+weekend = "18:00"
+
+[schedule.review.week]
+day = "sun"
+time = "18:00"
+
+[limits]
+daily_brain_calls = 60          # 하루 두뇌 호출 상한
+max_turns = 10                  # 호출당 턴 상한
+daily_proactive_messages = 3    # 비서가 먼저 보내는 메시지 하루 상한
+chat_resume_minutes = 30        # chat 대화 이어가기
+plan_idle_hours = 2             # 계획 모드 유휴 만료
+draft_ttl_days = 3              # 초안 만료
+stale_message_hours = 6         # 이보다 오래된 메시지는 "몇 시간 전" 알림
+input_max_chars = 8000          # 두뇌에 넘기는 입력 상한
+
+# 답장 창: 이 시각까지 답하면 같은 회차 대화로 잇는다
+[limits.reply_window]
+morning_brief_until = "12:00"   # 당일
+evening_checkin_until = "04:00" # 다음 날
+review_hours = 24
+
+# 루프별 한계: 이 시각이 지나면 보내지 않는다
+[limits.catchup_limit]
+morning_brief_until = "12:00"   # 당일
+evening_checkin_until = "04:00" # 다음 날
+review_days = 3
+
+[retention]
+log_days = 30       # 로그 보관 일수
+backup_count = 14   # DB 백업 보관 개수

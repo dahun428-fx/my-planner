@@ -1,0 +1,150 @@
+"""설정: `root/config.toml`(Git 포함, 개인값 없음)과 `root/.env`(비밀값) (스펙 9).
+
+값의 기본은 계획의 Global Constraints다. 모든 경로는 `paths.root` 기준 절대경로다.
+"""
+
+from __future__ import annotations
+
+import os
+import tomllib
+from datetime import time
+from pathlib import Path
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT_ENV = "MY_PLANNER_ROOT"
+
+Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+WEEKDAYS: tuple[Weekday, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+class _Model(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class DailyTimes(_Model):
+    """매일 도는 루프의 시각. 주말 = 토, 일."""
+
+    weekday: time
+    weekend: time
+
+
+class WeeklyTime(_Model):
+    day: Weekday
+    time: time
+
+    @property
+    def weekday_index(self) -> int:
+        """`date.weekday()`와 같은 번호(월=0 … 일=6)."""
+        return WEEKDAYS.index(self.day)
+
+
+class ReviewSchedule(_Model):
+    week: WeeklyTime = WeeklyTime(day="sun", time=time(18, 0))
+
+
+class ScheduleConfig(_Model):
+    morning_brief: DailyTimes = DailyTimes(weekday=time(9, 0), weekend=time(10, 0))
+    evening_checkin: DailyTimes = DailyTimes(weekday=time(17, 30), weekend=time(18, 0))
+    review: ReviewSchedule = ReviewSchedule()
+
+
+class ReplyWindowConfig(_Model):
+    """이 시각까지 답하면 같은 회차 대화로 잇는다."""
+
+    morning_brief_until: time = time(12, 0)  # 당일
+    evening_checkin_until: time = time(4, 0)  # 다음 날(논리적 날짜 끝)
+    review_hours: int = 24
+
+
+class CatchupLimitConfig(_Model):
+    """루프별 한계: 이 시각이 지나면 보내지 않는다."""
+
+    morning_brief_until: time = time(12, 0)  # 당일
+    evening_checkin_until: time = time(4, 0)  # 다음 날
+    review_days: int = 3
+
+
+class LimitsConfig(_Model):
+    daily_brain_calls: int = 60
+    max_turns: int = 10
+    daily_proactive_messages: int = 3
+    chat_resume_minutes: int = 30
+    plan_idle_hours: int = 2
+    draft_ttl_days: int = 3
+    stale_message_hours: int = 6
+    input_max_chars: int = 8000
+    reply_window: ReplyWindowConfig = ReplyWindowConfig()
+    catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
+
+
+class PathsConfig(_Model):
+    root: Path
+    data_dir: Path
+    state_dir: Path
+
+    @field_validator("root", "data_dir", "state_dir")
+    @classmethod
+    def _absolute(cls, v: Path) -> Path:
+        if not v.is_absolute():
+            raise ValueError("경로는 절대경로여야 한다")
+        return v
+
+    @classmethod
+    def for_root(cls, root: Path) -> PathsConfig:
+        root = Path(root).resolve()
+        return cls(root=root, data_dir=root / "data", state_dir=root / "state")
+
+
+class RetentionConfig(_Model):
+    log_days: int = 30
+    backup_count: int = 14
+
+
+class Settings(_Model):
+    telegram_bot_token: SecretStr
+    owner_telegram_id: int
+    timezone: str = "Asia/Seoul"
+    day_boundary: time = time(4, 0)
+    schedule: ScheduleConfig = ScheduleConfig()
+    limits: LimitsConfig = LimitsConfig()
+    paths: PathsConfig
+    retention: RetentionConfig = RetentionConfig()
+
+
+class _Secrets(BaseSettings):
+    """비밀값만 환경변수와 `.env`에서 읽는다(환경변수가 `.env`보다 먼저)."""
+
+    model_config = SettingsConfigDict(extra="ignore", env_file_encoding="utf-8")
+
+    telegram_bot_token: SecretStr = Field(validation_alias="TELEGRAM_BOT_TOKEN")
+    owner_telegram_id: int = Field(validation_alias="OWNER_TELEGRAM_ID")
+
+
+def resolve_root() -> Path:
+    """`MY_PLANNER_ROOT`가 있으면 그 값, 없으면 패키지 위치에서 두 단계 위(`src/my_planner` → 저장소 루트)."""
+    env = os.environ.get(ROOT_ENV)
+    if env:
+        return Path(env).expanduser().resolve()
+    return Path(__file__).resolve().parents[2]
+
+
+def load_settings(root: Path) -> Settings:
+    root = Path(root).resolve()
+    toml_path = root / "config.toml"
+    data: dict[str, Any] = {}
+    if toml_path.exists():
+        with toml_path.open("rb") as f:
+            data = tomllib.load(f)
+    for key in ("telegram_bot_token", "owner_telegram_id", "paths"):
+        if key in data:
+            raise ValueError(f"config.toml에 {key}를 두지 않는다")
+    secrets = _Secrets(_env_file=root / ".env")  # type: ignore[call-arg]
+    return Settings(
+        telegram_bot_token=secrets.telegram_bot_token,
+        owner_telegram_id=secrets.owner_telegram_id,
+        paths=PathsConfig.for_root(root),
+        **data,
+    )

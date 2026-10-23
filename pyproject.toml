@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-planner"
+version = "0.1.0"
+description = "Dahun 한 사람을 위한 텔레그램 AI 비서"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "claude-agent-sdk>=0.2.173,<0.3",
+    "python-telegram-bot>=21.6,<23",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.3,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+my_planner = ["store/migrations/*.sql", "harness/prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
