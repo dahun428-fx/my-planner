@@ -207,3 +207,38 @@ def test_first_tick_before_polling_then_run_forever(started, monkeypatch):
     keys = {k for (k,) in conn.execute("SELECT key FROM app_state")}
     conn.close()
     assert {"installed_at", "last_seen_at"} <= keys
+
+
+def test_app_wires_draft_buttons_and_daily_expiry(started, monkeypatch):
+    from my_planner.loop import runner as runner_mod
+
+    app, _root, calls = started
+    seen = {}
+
+    def fake_build(settings, dispatcher, state, transcripts, **kw):
+        seen.update(kw)
+        return FakeApplication(calls)
+
+    jobs = []
+    real_register = runner_mod.Runner.register_daily
+
+    def spy_register(self, job):
+        jobs.append(getattr(job, "__name__", ""))
+        real_register(self, job)
+
+    senders = []
+    real_sender = app.TelegramSender
+
+    def spy_sender(*a, **kw):
+        s = real_sender(*a, **kw)
+        senders.append(s)
+        return s
+
+    monkeypatch.setattr(app, "build_application", fake_build)
+    monkeypatch.setattr(runner_mod.Runner, "register_daily", spy_register)
+    monkeypatch.setattr(app, "TelegramSender", spy_sender)
+    assert app.main() == 0
+
+    assert callable(seen["callbacks"]) and seen["callbacks"].keywords["owner_id"] == 42
+    assert "expire_drafts" in jobs
+    assert senders[0].tasks is not None  # 초안 버튼에 제목을 붙인다
