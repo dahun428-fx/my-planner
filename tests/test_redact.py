@@ -22,3 +22,13 @@ def test_redact_keeps_phone_and_dates():
     for text in ["010-1234-5678", "01012345678", "2026-10-23", "14:00", "내일 14:00 치과, 2026-10-23"]:
         assert redact(text) == (text, False)
     assert redact("비밀번호 바꾸는 날") == ("비밀번호 바꾸는 날", False)
+
+
+def test_redact_password_context_more_forms():
+    assert redact("my password is hunter2") == ("my password is [가림]", True)
+    assert redact("pin 1234") == ("pin [가림]", True)
+    assert redact("PIN번호는 1234") == ("PIN번호는 [가림]", True)
+    assert redact("비번은 사랑해123") == ("비번은 [가림]", True)
+    assert redact("비번은 사랑해123이야") == ("비번은 [가림]이야", True)
+    # 한글만으로 된 말은 값으로 보지 않는다
+    assert redact("비번은 바꿨어요") == ("비번은 바꿨어요", False)

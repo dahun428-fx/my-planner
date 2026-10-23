@@ -90,17 +90,33 @@ async def handle_update(
 TELEGRAM_LIMIT = 4096
 
 
+def utf16_len(s: str) -> int:
+    """텔레그램이 세는 길이(UTF-16 코드 단위). 이모지 같은 BMP 밖 글자는 2로 센다."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _fit(s: str, limit: int) -> int:
+    """앞에서부터 UTF-16 `limit` 단위 안에 들어가는 글자 수."""
+    units = 0
+    for i, ch in enumerate(s):
+        units += 2 if ord(ch) > 0xFFFF else 1
+        if units > limit:
+            return i
+    return len(s)
+
+
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
-    """긴 답을 `limit`자 이하 조각으로 나눈다. 빈 줄, 줄바꿈, 글자 순서로 자를 곳을 찾는다.
+    """긴 답을 UTF-16 `limit` 단위 이하 조각으로 나눈다. 빈 줄, 줄바꿈, 글자 순서로 자를 곳을 찾는다.
 
     구분자는 앞 조각 끝에 남겨 두어, 조각을 이어 붙이면 원문이 된다.
     """
     parts: list[str] = []
     rest = text
-    while len(rest) > limit:
-        cut = limit
+    while utf16_len(rest) > limit:
+        fit = _fit(rest, limit)
+        cut = fit
         for sep in ("\n\n", "\n"):
-            i = rest.rfind(sep, 0, limit)
+            i = rest.rfind(sep, 0, fit)
             if i > 0:
                 cut = i + len(sep)
                 break

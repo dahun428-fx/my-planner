@@ -177,3 +177,22 @@ def test_split_long_reply():
     assert all(len(p) <= 4096 and (p.endswith("\n") or p is parts[-1]) for p in parts)
 
     assert split_message("짧은 답") == ["짧은 답"]
+
+
+def test_split_counts_utf16_units():
+    from my_planner.bot.telegram_io import split_message
+
+    def units(s):
+        return len(s.encode("utf-16-le")) // 2
+
+    text = "😀" * 3000  # 이모지 하나 = UTF-16 2단위, 모두 6000단위
+    parts = split_message(text)
+    assert "".join(parts) == text
+    assert all(units(p) <= 4096 for p in parts)
+    assert len(parts) == 2
+
+    mixed = ("가나다😀\n" * 1500).rstrip("\n")
+    parts = split_message(mixed)
+    assert "".join(parts) == mixed
+    assert all(units(p) <= 4096 for p in parts)
+    assert all(p.endswith("\n") for p in parts[:-1])

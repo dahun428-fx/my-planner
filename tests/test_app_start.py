@@ -118,13 +118,21 @@ def test_main_hides_console_first(started, monkeypatch):
     monkeypatch.setattr(app, "SingleInstanceLock", FakeLock)
     monkeypatch.setattr(app, "setup_logging", spy_setup)
 
+    real_stop = app.Dispatcher.stop
+
+    async def spy_stop(self, timeout=30):
+        calls.append(("dispatcher.stop", timeout))
+        await real_stop(self, timeout)
+
+    monkeypatch.setattr(app.Dispatcher, "stop", spy_stop)
+
     assert app.main() == 0
     assert order == ["hide_console", "lock", "logging", "unlock"]
 
     warnings = [e for e in _log_entries(root) if e["level"] == "WARNING"]
     assert [w["msg"] for w in warnings] == ["console_hide_unavailable"]
 
-    # 폴링 시작 인자와 종료 순서(스펙 5.1): updater.stop → app.stop → (디스패처) → shutdown
+    # 폴링 시작 인자와 종료 순서(스펙 5.1): updater.stop → app.stop → dispatcher.stop(30) → shutdown
     names = [c[0] for c in calls]
     assert names == [
         "app.initialize",
@@ -133,8 +141,10 @@ def test_main_hides_console_first(started, monkeypatch):
         "serving",
         "updater.stop",
         "app.stop",
+        "dispatcher.stop",
         "app.shutdown",
     ]
+    assert ("dispatcher.stop", 30) in calls
     assert calls[2][1] == {"allowed_updates": ["message", "callback_query"], "drop_pending_updates": False}
     assert (root / "state" / "planner.db").exists()
 

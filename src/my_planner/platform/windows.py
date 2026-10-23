@@ -69,11 +69,27 @@ class SingleInstanceLock:
         self.release()
 
 
+_KERNEL32: Any = None
+
+
+def _kernel32() -> Any:
+    """kernel32를 한 번만 불러오고, 쓰는 함수의 인자·반환 형식을 정해 둔다(64비트 핸들 잘림 방지)."""
+    global _KERNEL32
+    if _KERNEL32 is None:
+        k = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+        k.GetConsoleWindow.argtypes = []
+        k.GetConsoleWindow.restype = ctypes.c_void_p  # HWND
+        k.SetThreadExecutionState.argtypes = [ctypes.c_uint]  # EXECUTION_STATE (DWORD)
+        k.SetThreadExecutionState.restype = ctypes.c_uint
+        _KERNEL32 = k
+    return _KERNEL32
+
+
 _awake_refs = 0
 
 
 def _set_execution_state(flags: int) -> None:
-    ctypes.windll.kernel32.SetThreadExecutionState(ctypes.c_uint(flags))  # type: ignore[attr-defined]
+    _kernel32().SetThreadExecutionState(flags)
 
 
 @contextmanager
@@ -112,15 +128,15 @@ def hide_console() -> ConsoleResult:
     """
     if not IS_WINDOWS:
         return "not_windows"
-    kernel32: Any = ctypes.windll.kernel32  # type: ignore[attr-defined]
-    if kernel32.GetConsoleWindow():
+    kernel32 = _kernel32()
+    if kernel32.GetConsoleWindow():  # HWND, c_void_p: 콘솔이 없으면 None
         return "has_console"
-    try:
-        alloc = kernel32.AllocConsoleWithOptions
-    except AttributeError:
+    alloc = getattr(kernel32, "AllocConsoleWithOptions", None)
+    if alloc is None:  # 이 함수가 없는 Windows 버전
         return "unavailable"
-    options = _AllocConsoleOptions(ALLOC_CONSOLE_MODE_NO_WINDOW, 0, 0)
-    result = ctypes.c_int(0)
+    alloc.argtypes = [ctypes.POINTER(_AllocConsoleOptions), ctypes.POINTER(ctypes.c_int)]
     alloc.restype = ctypes.c_long  # HRESULT
+    options = _AllocConsoleOptions(ALLOC_CONSOLE_MODE_NO_WINDOW, 0, 0)
+    result = ctypes.c_int(0)  # ALLOC_CONSOLE_RESULT
     hr = alloc(ctypes.byref(options), ctypes.byref(result))
     return "created" if hr == 0 else "unavailable"

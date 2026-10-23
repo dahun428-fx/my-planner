@@ -1,6 +1,7 @@
 """JSON 줄 로그 `state/logs/my-planner.jsonl`, 하루 단위 회전 (스펙 7).
 
 메시지 본문과 도구 인자는 남기지 않는다. 그래서:
+- `my_planner.*` 밖의 로거는 메시지와 extra를 버리고 로거 이름, 수준, 예외 종류만 남긴다.
 - 로그 메시지는 `%` 서식을 적용하지 않고 이름(`msg`) 그대로 쓴다. 값은 `extra=`로 넘긴다.
 - `text`, `args`, `input` 키는 지운다.
 - 예외는 종류와 호출 위치만 남기고, 예외 메시지(입력값이 들어 있을 수 있다)는 남기지 않는다.
@@ -28,18 +29,31 @@ _MARK = "_my_planner_handler"
 _QUIET_LOGGERS = ("httpx", "httpcore", "telegram", "apscheduler")
 
 
+THIRD_PARTY_MSG = "third_party_log"
+_OWN_PREFIX = "my_planner"
+
+
+def _is_own(name: str) -> bool:
+    return name == _OWN_PREFIX or name.startswith(_OWN_PREFIX + ".")
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         entry: dict[str, Any] = {
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
             "level": record.levelname,
             "logger": record.name,
-            "msg": record.msg if isinstance(record.msg, str) else type(record.msg).__name__,
         }
-        for key, value in record.__dict__.items():
-            if key in _STANDARD_ATTRS or key in DROPPED_KEYS or key.startswith("_"):
-                continue
-            entry[key] = value
+        if _is_own(record.name):
+            entry["msg"] = record.msg if isinstance(record.msg, str) else type(record.msg).__name__
+            for key, value in record.__dict__.items():
+                if key in _STANDARD_ATTRS or key in DROPPED_KEYS or key.startswith("_"):
+                    continue
+                entry[key] = value
+        else:
+            # 외부 라이브러리는 f-string으로 본문을 메시지에 넣기도 한다(예: SDK의 JSON 해석 오류는
+            # CLI 출력 앞 100자를 담는다). 메시지와 extra를 버리고 고정 이름만 남긴다.
+            entry["msg"] = THIRD_PARTY_MSG
         if record.exc_info and record.exc_info[0] is not None:
             exc_type, _, tb = record.exc_info
             entry["exc_type"] = exc_type.__name__
