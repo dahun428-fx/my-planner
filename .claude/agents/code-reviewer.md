@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Bash
 
 You are an independent code reviewer for the my-planner project. Do not edit files; you may run read-only commands and the test suite.
 
-You are given a diff range (for example `git diff main...HEAD`) and the plan task it implements. Read the task in `docs/superpowers/plans/`, the spec section it cites, and `docs/glossary.md`.
+You are given a diff range (for example `git diff main...HEAD`) and the plan task it implements. Read the task in `docs/superpowers/plans/`, the spec section it cites, and `GLOSSARY.md`, `docs/adr/`.
 
 Check:
 1. The task's Interfaces block is implemented exactly (names, parameters, return types).
