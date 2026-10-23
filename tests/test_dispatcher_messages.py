@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fakes import FakeBrain, FakeSender, FakeTurn, fake_sleep, make_settings
 
 from my_planner.clock import FakeClock
+from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher, Inbound
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -27,6 +28,7 @@ class Env:
             transcripts=self.transcripts,
             clock=self.clock,
             settings=self.settings,
+            router=ConversationRouter(convs=self.convs, clock=self.clock, settings=self.settings),
             sleep=fake_sleep(self.clock),
         )
 
@@ -79,7 +81,7 @@ async def test_logical_date_boundary_in_transcript(tmp_path, conn, state):
     env.dispatcher.submit_message(env.inbound("새벽 세 시 오십구 분", update_id=1))
     await env.dispatcher.stop(timeout=5)
 
-    env.clock.set(kst(2026, 10, 23, 4, 0))
+    env.clock.set(kst(2026, 10, 23, 4, 31))  # 30분이 지나 새 대화
     env.dispatcher.start()
     env.dispatcher.submit_message(env.inbound("네 시 정각", update_id=2))
     await env.dispatcher.stop(timeout=5)
@@ -87,7 +89,7 @@ async def test_logical_date_boundary_in_transcript(tmp_path, conn, state):
     before = env.day_file("2026-10-22").read_text(encoding="utf-8")
     after = env.day_file("2026-10-23").read_text(encoding="utf-8")
     assert "### 03:59 사용자 [1]" in before and "새벽 세 시 오십구 분" in before and "첫 답" in before
-    assert "### 04:00 사용자 [2]" in after and "네 시 정각" in after and "둘째 답" in after
+    assert "### 04:31 사용자 [2]" in after and "네 시 정각" in after and "둘째 답" in after
     assert "네 시 정각" not in before and "새벽" not in after
 
 

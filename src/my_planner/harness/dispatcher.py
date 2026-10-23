@@ -13,14 +13,16 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from my_planner.clock import Clock, logical_date
-from my_planner.domain import ConversationKind, RunContext
+from my_planner.clock import Clock
+from my_planner.domain import RunContext
 from my_planner.harness import prompts
 from my_planner.harness.brain import Brain, BrainResult
+from my_planner.harness.context import build_notices
 from my_planner.harness.redact import redact
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
+    from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.store.transcripts import TranscriptStore
@@ -73,6 +75,7 @@ class Dispatcher:
         transcripts: TranscriptStore,
         clock: Clock,
         settings: Settings,
+        router: ConversationRouter,
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -83,6 +86,7 @@ class Dispatcher:
         self.transcripts = transcripts
         self.clock = clock
         self.settings = settings
+        self.router = router
         self._keep_awake = keep_awake
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
@@ -118,24 +122,73 @@ class Dispatcher:
             _, _, item = await self._queue.get()
             if item is None:
                 return
+            batch = [item, *self._drain_messages()]
             try:
-                await self._handle_message(item)
+                await self._handle_messages(batch)
             except Exception:
-                log.exception("message_handling_error", extra={"update_ids": item.update_ids})
+                ids = [i for m in batch for i in m.update_ids]
+                log.exception("message_handling_error", extra={"update_ids": ids})
+
+    def _drain_messages(self) -> list[Inbound]:
+        """쌓여 있는 메시지를 모두 꺼낸다(도착 순서). 메시지가 아닌 항목은 제자리로 돌려 놓는다."""
+        taken: list[tuple[int, int, Any]] = []
+        while True:
+            try:
+                taken.append(self._queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        msgs: list[Inbound] = []
+        for entry in taken:
+            if isinstance(entry[2], Inbound):
+                msgs.append(entry[2])
+            else:
+                self._queue.put_nowait(entry)
+        return msgs
 
     # --- 메시지 처리 ---
 
-    async def _handle_message(self, m: Inbound) -> None:
-        tz, boundary = self.settings.timezone, self.settings.day_boundary
-        text, _redacted = redact(m.text)  # 가린 일 알림은 티켓 02의 build_notices가 붙인다
-        conv = self.convs.open(ConversationKind.chat, logical_date(m.at, tz, boundary))
-        self.transcripts.append(m.at, "사용자", conv.id, None, text)
+    async def _handle_messages(self, batch: list[Inbound]) -> None:
+        """쌓인 메시지를 두뇌 호출 한 번으로 처리한다. 본문은 두 줄 바꿈으로 잇고 update_id는 모두 기록한다."""
+        update_ids = [i for m in batch for i in m.update_ids]
+        redacted_parts = [redact(m.text) for m in batch]
+        text = "\n\n".join(t for t, _ in redacted_parts)
+        limits = self.settings.limits
+        truncated = len(text) > limits.input_max_chars
+        if truncated:
+            text = text[: limits.input_max_chars]
+        age = self.clock.now() - min(m.sent_at for m in batch)
+        stale_hours = age.total_seconds() / 3600
+        notices = build_notices(
+            redacted=any(r for _, r in redacted_parts),
+            stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
+            truncated=truncated,
+        )
+        conv = self.router.for_user_message(batch[0].at)
 
         run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
-        prompt = f"{prompts.load('chat.md')}\n\n## 메시지\n{text}"
+        body = f"## 메시지\n{text}"
         with self._keep_awake():
-            result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
-            if result.session_id:
+            fell_back = False
+            try:
+                resumed = conv.session_id is not None
+                prompt = _join(notices, "" if resumed else prompts.load("chat.md"), body)
+                result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
+                if resumed and result.resume_failed:
+                    # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(지금 메시지는 아직 기록 전).
+                    history = self.transcripts.recent(conv.id, 20)
+                    prompt = _join(
+                        notices,
+                        prompts.load("chat.md"),
+                        f"## 최근 대화\n{history}" if history else "",
+                        body,
+                    )
+                    fell_back = True
+                    run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
+                    result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
+            finally:
+                for m in batch:
+                    self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
+            if result.session_id or fell_back:  # 대체 경로가 세션을 못 얻었으면 깨진 세션 ID를 지운다
                 self.convs.set_session(conv.id, result.session_id)
             self.convs.touch(conv.id)
 
@@ -143,10 +196,14 @@ class Dispatcher:
             self.transcripts.append(self.clock.now(), "비서", conv.id, None, redact(reply)[0])
             await self.sender.send(Outbound(text=reply))
         # 전송까지 끝난 뒤에만 처리 완료로 기록한다(전송 전에 죽으면 다시 처리될 수 있다).
-        self.state.mark_updates_done(m.update_ids)
+        self.state.mark_updates_done(update_ids)
         log.info(
             "message_handled",
-            extra={"conversation_id": conv.id, "update_ids": m.update_ids, "chars": len(m.text)},
+            extra={
+                "conversation_id": conv.id,
+                "update_ids": update_ids,
+                "chars": sum(len(m.text) for m in batch),
+            },
         )
 
     async def _call_brain(
@@ -184,6 +241,10 @@ class Dispatcher:
             except Exception as e:  # 입력 중 표시는 없어도 된다
                 log.warning("typing_error", extra={"error_type": type(e).__name__})
             await self._sleep(TYPING_INTERVAL_S)
+
+
+def _join(*parts: str) -> str:
+    return "\n\n".join(p for p in parts if p)
 
 
 def _reply_for(result: BrainResult) -> str:
