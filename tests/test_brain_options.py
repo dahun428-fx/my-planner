@@ -11,7 +11,7 @@ from claude_agent_sdk import (
 )
 
 from my_planner.domain import RunContext
-from my_planner.harness.brain import build_options, classify
+from my_planner.harness.brain import build_options, classify, detect_resume_failed
 from my_planner.tools.mcp_adapter import allowed_tool_patterns, build_planner_server
 
 
@@ -152,3 +152,47 @@ def test_classify_max_turns_and_error():
     )
     # 아니면 ok
     assert classify([_assistant(), _result()], None, NOW) == ("ok", None, None)
+
+
+def test_detect_resume_failed():
+    # resume을 시도했는데 두뇌가 한 턴도 돌기 전에 오류로 끝나면 resume 실패(세션 파일 없음 등)
+    zero_turn = ResultMessage(
+        subtype="error_during_execution",
+        duration_ms=1,
+        duration_api_ms=0,
+        is_error=True,
+        num_turns=0,
+        session_id="new",
+    )
+    assert detect_resume_failed("s1", [], "error") is True
+    assert detect_resume_failed("s1", [zero_turn], "error") is True
+    # 새 세션이면 resume 실패가 아니다
+    assert detect_resume_failed(None, [zero_turn], "error") is False
+    # 두뇌가 답을 시작했으면 resume은 된 것이다
+    assert detect_resume_failed("s1", [_assistant(), _result(is_error=True)], "error") is False
+    turned = _result(is_error=True)
+    assert turned.num_turns > 0
+    assert detect_resume_failed("s1", [turned], "error") is False
+    # 오류가 아닌 상태(로그인·한도·턴 상한·정상)는 resume 실패로 보지 않는다
+    for status in ("ok", "auth_error", "rate_limited", "max_turns"):
+        assert detect_resume_failed("s1", [], status) is False
+
+
+async def test_claude_brain_sets_resume_failed(tmp_path, monkeypatch):
+    # 원래 버그: ClaudeBrain이 resume_failed를 넘기지 않았다. 턴 없이 예외로 끝난 resume은 True.
+    from my_planner.harness import brain as brain_mod
+
+    async def failing_query(*, prompt, options):
+        raise RuntimeError("process exited")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(brain_mod, "query", failing_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk"})
+    monkeypatch.setattr(brain_mod, "build_options", lambda **kw: None)
+    b = brain_mod.ClaudeBrain(lambda: None, tmp_path, max_turns=10)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[])
+    resumed = await b.run("hi", session_id="s1", run_ctx=ctx)
+    assert resumed.status == "error"
+    assert resumed.resume_failed is True
+    fresh = await b.run("hi", session_id=None, run_ctx=ctx)
+    assert fresh.resume_failed is False
