@@ -203,3 +203,50 @@ async def test_unpause(cenv):
     day = cenv.day_file()
     assert "### 10:30 사용자 [-]\n\n/unpause\n" in day and UNPAUSE_REPLY in day
     assert cenv.dispatcher.got == []
+
+
+class _FlakyBot:
+    """`fail_times`번까지 보내기가 안 된다."""
+
+    def __init__(self, fail_times):
+        self.fail_times = fail_times
+        self.attempts = 0
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kw):
+        self.attempts += 1
+        if self.attempts <= self.fail_times:
+            raise ConnectionError("fake send failure")
+        self.sent.append((chat_id, text))
+
+
+async def _command_with_flaky_bot(cenv, text, fail_times, update_id):
+    slept = []
+
+    async def sleep(s):
+        slept.append(s)
+
+    bot = _FlakyBot(fail_times)
+    await handle_update(
+        _update(update_id=update_id, text=text),
+        bot=bot, owner_id=OWNER, state=cenv.state, dispatcher=cenv.dispatcher,
+        transcripts=cenv.transcripts, clock=cenv.clock, tools=cenv.tools, sleep=sleep,
+    )
+    return bot, slept
+
+
+async def test_command_reply_retried_until_sent(cenv):
+    from my_planner.bot.commands import HELP_TEXT
+
+    bot, slept = await _command_with_flaky_bot(cenv, "/help", fail_times=2, update_id=501)
+    assert bot.attempts == 3 and slept == [1, 2]
+    assert bot.sent == [(OWNER, HELP_TEXT)]
+    assert cenv.state.is_seen_update(501)
+    assert "/help" in cenv.day_file()
+
+
+async def test_command_reply_final_send_failure_not_marked_or_recorded(cenv):
+    bot, slept = await _command_with_flaky_bot(cenv, "/help", fail_times=99, update_id=502)
+    assert bot.attempts == 3 and slept == [1, 2] and bot.sent == []
+    assert not cenv.state.is_seen_update(502)
+    assert "/help" not in cenv.day_file()

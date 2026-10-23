@@ -196,3 +196,34 @@ def test_split_counts_utf16_units():
     assert "".join(parts) == mixed
     assert all(units(p) <= 4096 for p in parts)
     assert all(p.endswith("\n") for p in parts[:-1])
+
+
+async def test_non_text_reply_retried_and_marked_only_after_send(state, tmp_path):
+    from datetime import UTC, datetime, time
+
+    from test_telegram_commands import _FlakyBot
+
+    from my_planner.bot.telegram_io import NON_TEXT_REPLY, handle_update
+    from my_planner.clock import FakeClock
+    from my_planner.store.transcripts import TranscriptStore
+
+    transcripts = TranscriptStore(tmp_path / "data", "Asia/Seoul", time(4))
+    clock = FakeClock(datetime(2026, 10, 23, 6, 30, tzinfo=UTC))
+    day = tmp_path / "data" / "transcripts" / "2026" / "10" / "2026-10-23.md"
+    slept = []
+
+    async def sleep(s):
+        slept.append(s)
+
+    for update_id, fail_times in ((21, 2), (22, 99)):
+        bot = _FlakyBot(fail_times)
+        await handle_update(
+            _update(update_id=update_id, photo=PHOTO),
+            bot=bot, owner_id=OWNER, state=state, dispatcher=_NoDispatch(),
+            transcripts=transcripts, clock=clock, sleep=sleep,
+        )
+        assert bot.attempts == 3
+
+    assert slept == [1, 2, 1, 2]
+    assert state.is_seen_update(21) and not state.is_seen_update(22)
+    assert day.read_text(encoding="utf-8").count(NON_TEXT_REPLY) == 1  # 보낸 한 번만 기록한다

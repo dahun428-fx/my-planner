@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
@@ -34,7 +35,7 @@ from my_planner.bot.commands import (
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
 from my_planner.config import Settings
 from my_planner.harness.conversations import ConversationRouter
-from my_planner.harness.dispatcher import Inbound, Outbound
+from my_planner.harness.dispatcher import Inbound, Outbound, send_with_retry
 from my_planner.harness.redact import redact
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -99,12 +100,16 @@ async def handle_update(
     tools: Tools | None = None,
     callbacks: CallbackHandler | None = None,
     router: ConversationRouter | None = None,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> Verdict:
     """업데이트 하나를 판정하고 처리한다. 받은 글은 디스패처로 넘긴다. /today /week /help는 바로 답한다.
 
     `/plan [주제]`는 계획 대화를 열고(열려 있던 것은 닫는다) 주제를 디스패처로 넘긴다. 답은 두뇌가 한다.
 
     버튼 누름은 `callbacks`가 처리하고(두뇌를 거치지 않는다), 끝나면 처리 완료로 기록한다.
+
+    명령과 글이 아닌 메시지의 답은 바로 3회까지 보낸다(1초, 2초 간격, `sleep`). 끝내 안 되면 처리 완료로도,
+    원문 기록에도 남기지 않는다.
     """
     verdict = accept_update(update, owner_id, state)
     if verdict == "callback":
@@ -134,7 +139,7 @@ async def handle_update(
             done = [update.update_id]
             await _answer_command(
                 msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, state,
-                lambda: state.mark_updates_done(done), router,
+                lambda: state.mark_updates_done(done), router, sleep,
             )
             return "command"
         dispatcher.submit_message(
@@ -143,7 +148,8 @@ async def handle_update(
     elif verdict == "non_text":
         msg = update.message
         assert msg is not None
-        await bot.send_message(chat_id=msg.chat.id, text=NON_TEXT_REPLY)
+        if not await _send_text(bot, msg.chat.id, NON_TEXT_REPLY, sleep, update.update_id):
+            return verdict
         now = clock.now()
         transcripts.append(now, "사용자", None, None, NON_TEXT_MARK)
         transcripts.append(now, "비서", None, None, NON_TEXT_REPLY)
@@ -164,6 +170,7 @@ async def _answer_command(
     state: StateRepo,
     on_sent: Callable[[], None],
     router: ConversationRouter | None = None,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
     now = clock.now()
@@ -188,13 +195,28 @@ async def _answer_command(
         render = today_text if cmd == "/today" else week_text
         reply = render(tools.tasks, now, tools.tz, tools.boundary)
     for part in split_message(reply):
-        await bot.send_message(chat_id=chat_id, text=part)
+        if not await _send_text(bot, chat_id, part, sleep, None):
+            return  # 처리 완료로 두지 않고 원문 기록도 남기지 않는다
     on_sent()  # 보낸 뒤에 먼저 처리 완료로 기록한다: 원문 기록이 실패해도 다시 받았을 때 두 번 답하지 않는다
     try:
         transcripts.append(now, "사용자", None, None, redact(text)[0])
         transcripts.append(now, "비서", None, None, reply)
     except OSError as e:
         log.warning("command_transcript_failed", extra={"error_type": type(e).__name__})
+
+
+async def _send_text(
+    bot: _MessageBot, chat_id: int, text: str, sleep: Callable[[float], Awaitable[None]], update_id: int | None
+) -> bool:
+    """글 하나를 바로 3회까지 보낸다. 끝내 안 되면 `message_send_failed`(예외 종류만)를 남기고 False."""
+    err = await send_with_retry(
+        lambda: bot.send_message(chat_id=chat_id, text=text), sleep=sleep, event="message_send_error",
+        extra={"update_ids": [update_id] if update_id is not None else []},
+    )
+    if err is None:
+        return True
+    log.warning("message_send_failed", extra={"update_id": update_id, "error_type": type(err).__name__})
+    return False
 
 
 TELEGRAM_LIMIT = 4096

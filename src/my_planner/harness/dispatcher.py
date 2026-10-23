@@ -326,17 +326,15 @@ class Dispatcher:
         update_ids = [i for m in batch for i in m.update_ids]
         if self._capped():
             # 하루 두뇌 호출 상한: 두뇌를 부르지 않고 고정 문구로 답한다(스펙 7)
-            await self._fixed_reply(batch, DAILY_CAP_REPLY)
-            self.state.mark_updates_done(update_ids)
-            log.info("message_daily_cap", extra={"update_ids": update_ids})
+            if await self._fixed_reply(batch, DAILY_CAP_REPLY, update_ids):
+                log.info("message_daily_cap", extra={"update_ids": update_ids})
             return
         limited = self._state_time(LIMITED_UNTIL_KEY)
         if limited is not None and self.clock.now() < limited:
             # 사용 한도 구간 안: 두뇌를 부르지 않고 매번 답한다. 기록된 재개 시각을 쓰고,
             # 회차 안내의 구간 한 번 몫은 쓰지 않는다
-            await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)))
-            self.state.mark_updates_done(update_ids)
-            log.info("message_rate_limited_window", extra={"update_ids": update_ids})
+            if await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)), update_ids):
+                log.info("message_rate_limited_window", extra={"update_ids": update_ids})
             return
         redacted_parts = [redact(m.text) for m in batch]
         text = "\n\n".join(t for t, _ in redacted_parts)
@@ -412,31 +410,28 @@ class Dispatcher:
             # 로그인·결제와 사용 한도: 사용자 메시지에는 매번 고정 문구로 답한다(하루·구간 한 번은 회차 안내에만)
             if result.status == "rate_limited":
                 until = self._set_limited(result.retry_at)
-                await self._fixed_reply([], rate_limit_notice(self._resume_text(until)))
-                self.state.mark_updates_done(update_ids)
-                log.info("message_rate_limited", extra={"conversation_id": conv.id, "update_ids": update_ids})
+                if await self._fixed_reply([], rate_limit_notice(self._resume_text(until)), update_ids):
+                    log.info("message_rate_limited", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if result.status == "auth_error":
-                await self._fixed_reply([], _auth_copy(result.error))
-                self.state.mark_updates_done(update_ids)
-                log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
+                if await self._fixed_reply([], _auth_copy(result.error), update_ids):
+                    log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if capped:  # 백오프 중 하루 상한: 고정 안내로(대화 밖 `[-]`), 모인 확인 문구를 붙여 답한다
                 confirmations = render_confirmations(run_ctx.events, self._today())
-                await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations))
-                self.state.mark_updates_done(update_ids)
-                log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
+                if await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations), update_ids):
+                    log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
                 return
             reply = _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
                 reply = f"{reply}\n\n{confirmations}"
-            self.transcripts.append(
-                self.clock.now(), "비서", conv.id, None, redact(reply)[0], tools=list(run_ctx.tool_names)
-            )
-            await self.sender.send(_outbound(reply, run_ctx))
-        # 전송까지 끝난 뒤에만 처리 완료로 기록한다(전송 전에 죽으면 다시 처리될 수 있다).
-        self.state.mark_updates_done(update_ids)
+            # 바로 3회까지 보낸다. 끝내 안 되면 처리 완료로 두지 않는다(다음 시작 때 다시 처리한다)
+            if not await self._send_reply(_outbound(reply, run_ctx), update_ids, conv.id):
+                return
+            # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
+            self._messages_done(update_ids)
+            self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names))
         log.info(
             "message_handled",
             extra={
@@ -446,16 +441,44 @@ class Dispatcher:
             },
         )
 
-    async def _fixed_reply(self, batch: list[Inbound], text: str) -> None:
+    async def _fixed_reply(self, batch: list[Inbound], text: str, update_ids: list[int]) -> bool:
         """사용자 메시지에 고정 안내로 답한다. 원문 기록에는 대화 밖(`[-]`)으로 남긴다.
 
-        `batch`의 메시지도 `[-]`로 기록한다(이미 대화에 기록했으면 빈 목록). 전송 오류는 그대로 올린다:
-        호출한 쪽은 전송이 된 뒤에만 처리 완료로 기록한다.
+        `batch`의 메시지도 `[-]`로 기록한다(이미 대화에 기록했으면 빈 목록). 바로 3회까지 보내고, 보낸 뒤에만
+        `update_ids`를 처리 완료로 기록하고 비서 줄을 남긴다. 끝내 안 보냈으면 False.
         """
         for m in batch:
             self.transcripts.append(m.at, "사용자", None, None, redact(m.text)[0])
-        await self.sender.send(Outbound(text=text))
-        self.transcripts.append(self.clock.now(), "비서", None, None, text)
+        if not await self._send_reply(Outbound(text=text), update_ids, None):
+            return False
+        self._messages_done(update_ids)
+        self._transcribe_reply(None, text, [])
+        return True
+
+    async def _send_reply(self, out: Outbound, update_ids: list[int], conversation_id: int | None) -> bool:
+        """사용자 메시지에 답하는 전송. 바로 3회까지(1초, 2초 간격). 끝내 안 되면 `message_send_failed`."""
+        err = await send_with_retry(
+            lambda: self.sender.send(out), sleep=self._sleep, event="message_send_error",
+            extra={"update_ids": update_ids},
+        )
+        if err is None:
+            return True
+        log.warning(
+            "message_send_failed",
+            extra={"update_ids": update_ids, "conversation_id": conversation_id, "error_type": type(err).__name__},
+        )
+        return False
+
+    def _messages_done(self, update_ids: list[int]) -> None:
+        """답을 보낸 메시지를 처리 완료로 기록한다."""
+        self.state.mark_updates_done(update_ids)
+
+    def _transcribe_reply(self, conversation_id: int | None, text: str, tools: list[str]) -> None:
+        """보낸 답을 원문 기록에 남긴다. 기록이 안 돼도 사용자는 이미 받았으니 종류만 로그에 남긴다."""
+        try:
+            self.transcripts.append(self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools)
+        except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
+            log.warning("reply_transcript_error", extra={"error_type": type(e).__name__})
 
     def _capped(self) -> bool:
         return self.state.usage(self._today()).brain_calls >= self.settings.limits.daily_brain_calls
@@ -731,17 +754,11 @@ class Dispatcher:
         return self.clock.now() > limit_for(due, s, s.timezone, s.day_boundary)
 
     async def _send_run(self, out: Outbound, run_id: int, *, attempts: int) -> bool:
-        for i in range(attempts):
-            try:
-                await self.sender.send(out)
-                return True
-            except Exception as e:  # noqa: BLE001 - 어떤 전송 오류든 다시 시도한다. 본문 없이 종류만 남긴다
-                log.warning(
-                    "run_send_error", extra={"run_id": run_id, "try": i + 1, "error_type": type(e).__name__}
-                )
-                if i + 1 < attempts:
-                    await self._sleep(SEND_RETRY_DELAYS_S[i])
-        return False
+        err = await send_with_retry(
+            lambda: self.sender.send(out), sleep=self._sleep, attempts=attempts, event="run_send_error",
+            extra={"run_id": run_id},
+        )
+        return err is None
 
     def _later(self, delay: float, job: _ResendJob) -> None:
         if self._stopping:
@@ -888,6 +905,31 @@ class Dispatcher:
             except Exception as e:  # noqa: BLE001 - 입력 중 표시는 없어도 된다
                 log.warning("typing_error", extra={"error_type": type(e).__name__})
             await self._sleep(TYPING_INTERVAL_S)
+
+
+async def send_with_retry(
+    send: Callable[[], Awaitable[object]],
+    *,
+    sleep: Callable[[float], Awaitable[None]],
+    event: str,
+    extra: dict[str, Any],
+    attempts: int = SEND_ATTEMPTS,
+) -> Exception | None:
+    """`send()`를 바로 `attempts`회까지 부른다. 시도 사이 1초, 2초(…) 쉰다. 된 즉시 None, 끝내 안 되면 마지막 예외.
+
+    실패마다 `event` 경고를 남긴다(본문 없이 시도 번호와 예외 종류만). 텔레그램 쪽 명령 답과 글이 아닌 메시지 답도 쓴다.
+    """
+    err: Exception | None = None
+    for i in range(attempts):
+        try:
+            await send()
+            return None
+        except Exception as e:  # noqa: BLE001 - 어떤 전송 오류든 다시 시도한다. 본문 없이 종류만 남긴다
+            err = e
+            log.warning(event, extra={**extra, "try": i + 1, "error_type": type(e).__name__})
+            if i + 1 < attempts:
+                await sleep(SEND_RETRY_DELAYS_S[i])
+    return err
 
 
 def _outbound(text: str, run_ctx: RunContext) -> Outbound:
