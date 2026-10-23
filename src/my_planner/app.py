@@ -35,6 +35,7 @@ from my_planner.loop.runner import (
     expire_drafts,
     prune_updates_daily,
     recover_on_start,
+    resubmit_inbound,
 )
 from my_planner.platform.windows import (
     AlreadyRunning,
@@ -245,6 +246,11 @@ async def _serve(settings: Settings) -> None:
             recover_on_start(runs, dispatcher, clock, settings)
         except Exception:  # 복구가 안 돼도 시작은 한다(매번 죽으면 워치독이 5분마다 다시 띄우기만 한다)
             log.exception("recovery_error")
+        # 4b. 받았지만 답하지 못한 메시지(inbound_pending)를 다시 넣는다. 메시지가 회차보다 먼저 처리된다
+        try:
+            resubmit_inbound(state, dispatcher)
+        except Exception:
+            log.exception("inbound_resubmit_error")
         # 5. 첫 실행이면 installed_at 기록
         runner.ensure_installed()
         # 버튼 누름: 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다(스펙 5.7)

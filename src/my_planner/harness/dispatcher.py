@@ -28,7 +28,7 @@ from my_planner.domain import (
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
 from my_planner.harness.context import build_notices, build_preamble
-from my_planner.harness.redact import redact
+from my_planner.harness.redact import MASK, redact
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
 from my_planner.store.repos.state import (
@@ -60,6 +60,7 @@ class Inbound:
     at: datetime  # 하네스가 받은 시각(UTC)
     sent_at: datetime  # 텔레그램이 기록한 보낸 시각
     update_ids: list[int]
+    recovered: bool = False  # 시작 때 `inbound_pending`에서 다시 넣은 메시지(본문은 이미 가린 글)
 
 
 @dataclass
@@ -345,7 +346,8 @@ class Dispatcher:
         age = self.clock.now() - min(m.sent_at for m in batch)
         stale_hours = age.total_seconds() / 3600
         notices = build_notices(
-            redacted=any(r for _, r in redacted_parts),
+            # 시작 때 다시 넣은 메시지는 저장해 둔 가린 글이라 `[가림]`이 남아 있는지로 본다
+            redacted=any(r for _, r in redacted_parts) or any(m.recovered and MASK in m.text for m in batch),
             stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
             truncated_to=limits.input_max_chars if truncated else None,
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal, Protocol
 
 from telegram import (
@@ -63,8 +63,8 @@ class _MessageBot(Protocol):
 
 def accept_update(update: Update, owner_id: int, state: StateRepo) -> Verdict:
     """받을지 판정만 한다. DB에 쓰지 않는다."""
-    if state.is_seen_update(update.update_id):
-        return "duplicate"
+    if state.is_seen_update(update.update_id) or state.is_pending_inbound(update.update_id):
+        return "duplicate"  # 처리를 마쳤거나, 이미 받아 저장해 둔 메시지(시작 때 다시 넣는다)
     if update.callback_query is not None:
         return "callback"  # 보낸 사람 확인은 handle_callback이 한다
     msg = update.message
@@ -130,9 +130,7 @@ async def handle_update(
             assert router is not None
             router.start_plan()
             # 처리 완료 기록은 디스패처가 답을 보낸 뒤에 한다
-            dispatcher.submit_message(
-                Inbound(text=plan_topic(msg.text), at=clock.now(), sent_at=msg.date, update_ids=[update.update_id])
-            )
+            _persist_and_submit(dispatcher, state, update.update_id, plan_topic(msg.text), msg.date, clock.now())
             return "command"
         if cmd is not None:
             assert tools is not None
@@ -142,9 +140,7 @@ async def handle_update(
                 lambda: state.mark_updates_done(done), router, sleep,
             )
             return "command"
-        dispatcher.submit_message(
-            Inbound(text=msg.text, at=clock.now(), sent_at=msg.date, update_ids=[update.update_id])
-        )
+        _persist_and_submit(dispatcher, state, update.update_id, msg.text, msg.date, clock.now())
     elif verdict == "non_text":
         msg = update.message
         assert msg is not None
@@ -157,6 +153,16 @@ async def handle_update(
     elif verdict == "ignore":
         state.mark_updates_done([update.update_id])
     return verdict
+
+
+def _persist_and_submit(
+    dispatcher: _Submitter, state: StateRepo, update_id: int, text: str, sent_at: datetime, now: datetime
+) -> None:
+    """디스패처에 넣기 전에 `inbound_pending`에 먼저 쓴다(가린 글만). 텔레그램은 받아 간 업데이트를 다시 주지
+    않으므로, 답하기 전에 프로세스가 죽어도 다음 시작 때 이 행으로 다시 처리한다. 답을 보내 처리 완료로
+    기록할 때 지운다."""
+    state.add_pending_inbound(update_id, redact(text)[0], sent_at, now)
+    dispatcher.submit_message(Inbound(text=text, at=now, sent_at=sent_at, update_ids=[update_id]))
 
 
 async def _answer_command(

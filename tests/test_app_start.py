@@ -584,3 +584,46 @@ def test_shutdown_during_restart_waits_for_it_and_keeps_order(started, monkeypat
         "updater.stop", "app.stop", "dispatcher.stop", "app.shutdown",
     ]
     assert not FakeApplication.last.updater.running
+
+
+def test_main_resubmits_pending_inbound_after_recovery_before_first_tick(started, monkeypatch):
+    from my_planner.loop import runner as runner_mod
+
+    app, _root, calls = started
+    real_recover, real_resubmit = app.recover_on_start, app.resubmit_inbound
+
+    def spy_recover(*a, **kw):
+        calls.append(("recover", None))
+        return real_recover(*a, **kw)
+
+    def spy_resubmit(state, dispatcher):
+        calls.append(("resubmit", dispatcher._worker is None))  # 디스패처를 시작하기 전
+        return real_resubmit(state, dispatcher)
+
+    real_tick = runner_mod.Runner.tick
+
+    def spy_tick(self):
+        calls.append(("tick", None))
+        real_tick(self)
+
+    monkeypatch.setattr(app, "recover_on_start", spy_recover)
+    monkeypatch.setattr(app, "resubmit_inbound", spy_resubmit)
+    monkeypatch.setattr(runner_mod.Runner, "tick", spy_tick)
+    assert app.main() == 0
+
+    names = [c[0] for c in calls]
+    assert names.index("recover") < names.index("resubmit") < names.index("tick") < names.index("start_polling")
+    assert ("resubmit", True) in calls
+
+
+def test_resubmit_error_does_not_stop_start(started, monkeypatch):
+    app, root, calls = started
+
+    def broken(*a, **kw):
+        raise ValueError("이상한 행")
+
+    monkeypatch.setattr(app, "resubmit_inbound", broken)
+    assert app.main() == 0
+    assert "start_polling" in [c[0] for c in calls]
+    errors = [e for e in _log_entries(root) if e["msg"] == "inbound_resubmit_error"]
+    assert len(errors) == 1 and errors[0]["exc_type"] == "ValueError"

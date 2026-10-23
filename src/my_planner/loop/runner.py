@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, logical_date, to_iso
 from my_planner.domain import LoopKey, RunStatus, SkipReason
-from my_planner.harness.dispatcher import MAX_RUN_ATTEMPTS
+from my_planner.harness.dispatcher import MAX_RUN_ATTEMPTS, Inbound
 from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
 from my_planner.loop.schedule import (
@@ -189,6 +189,26 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
         if run.outbound_text and not run.resent:
             dispatcher.submit_resend(run)
             log.info("run_resend_on_start", extra={"run_id": run.id})
+
+
+def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
+    """시작 시 복구 다음 단계: 받았지만 답하지 못한 메시지(`inbound_pending`)를 받은 순서대로 다시 넣는다.
+
+    본문은 저장해 둔 가린 글이다(가린 정보는 두뇌도 다시 받지 못한다). 받은 시각과 보낸 시각은 처음 그대로라,
+    6시간보다 오래된 메시지는 "몇 시간 전" 알림을 붙여 넘긴다. 답을 보내면 처리 완료로 기록하면서 행을 지운다.
+    """
+    rows = state.pending_inbound()
+    for row in rows:
+        dispatcher.submit_message(
+            Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)
+        )
+    if rows:
+        log.info("inbound_resubmitted_on_start", extra={"update_ids": [r.update_id for r in rows]})
+    return len(rows)
+
+
+class MessageSubmitter(Protocol):
+    def submit_message(self, m: Inbound) -> None: ...
 
 
 class RunSubmitter(Protocol):

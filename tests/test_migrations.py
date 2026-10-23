@@ -101,3 +101,20 @@ def test_migrate_to_4_conditions_constraints(tmp_path):
             conn.execute("INSERT INTO conditions (date, score, recorded_at) VALUES (?, 3, ?)", (bad_date, now))
     with pytest.raises(sqlite3.IntegrityError):  # recorded_at NOT NULL
         conn.execute("INSERT INTO conditions (date, score) VALUES ('2026-10-26', 3)")
+
+
+def test_migrate_to_5_inbound_pending(tmp_path):
+    import sqlite3
+
+    import pytest
+
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn) >= 5
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(inbound_pending)")]
+    assert cols == ["update_id", "text_redacted", "sent_at", "received_at"]
+    now = "2026-10-23T09:00:00+00:00"
+    conn.execute("INSERT INTO inbound_pending VALUES (7, '비번은 [가림]', ?, ?)", (now, now))
+    with pytest.raises(sqlite3.IntegrityError):  # update_id PK
+        conn.execute("INSERT INTO inbound_pending VALUES (7, '다른 글', ?, ?)", (now, now))
+    with pytest.raises(sqlite3.IntegrityError):  # 시각은 NOT NULL
+        conn.execute("INSERT INTO inbound_pending (update_id, text_redacted) VALUES (8, '글')")

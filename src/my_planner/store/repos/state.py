@@ -1,4 +1,4 @@
-"""app_state, usage_state, telegram_updates."""
+"""app_state, usage_state, telegram_updates, inbound_pending."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
-from my_planner.clock import Clock, SystemClock, to_iso
+from my_planner.clock import Clock, SystemClock, from_iso, to_iso
 
 # app_state 키 (티켓 10). 시각은 UTC ISO, 날짜는 논리적 날짜 ISO.
 PAUSE_UNTIL_KEY = "pause_until"  # /pause가 정한 멈춤 끝 시각
@@ -24,6 +24,16 @@ _USAGE_FIELDS = ("brain_calls", "proactive_messages")
 class Usage:
     brain_calls: int
     proactive_messages: int
+
+
+@dataclass
+class PendingInbound:
+    """받았지만 아직 답하지 못한 사용자 메시지. `text`는 가린 뒤의 글이다."""
+
+    update_id: int
+    text: str
+    sent_at: datetime
+    received_at: datetime
 
 
 class StateRepo:
@@ -73,6 +83,7 @@ class StateRepo:
         return row is not None
 
     def mark_updates_done(self, ids: list[int]) -> None:
+        """처리 완료로 기록하고, 같은 트랜잭션에서 그 메시지의 `inbound_pending` 행을 지운다."""
         if not ids:
             return
         now = to_iso(self.clock.now())
@@ -81,6 +92,32 @@ class StateRepo:
                 "INSERT OR IGNORE INTO telegram_updates (update_id, received_at) VALUES (?, ?)",
                 [(i, now) for i in ids],
             )
+            self.conn.executemany("DELETE FROM inbound_pending WHERE update_id = ?", [(i,) for i in ids])
+
+    # inbound_pending (받았지만 아직 답하지 못한 메시지, 가린 글만)
+    def add_pending_inbound(
+        self, update_id: int, text_redacted: str, sent_at: datetime, received_at: datetime
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at) "
+                "VALUES (?, ?, ?, ?)",
+                (update_id, text_redacted, to_iso(sent_at), to_iso(received_at)),
+            )
+
+    def is_pending_inbound(self, update_id: int) -> bool:
+        row = self.conn.execute("SELECT 1 FROM inbound_pending WHERE update_id = ?", (update_id,)).fetchone()
+        return row is not None
+
+    def pending_inbound(self) -> list[PendingInbound]:
+        """남은 메시지를 받은 순서(update_id)로."""
+        rows = self.conn.execute(
+            "SELECT update_id, text_redacted, sent_at, received_at FROM inbound_pending ORDER BY update_id"
+        ).fetchall()
+        return [
+            PendingInbound(r["update_id"], r["text_redacted"], from_iso(r["sent_at"]), from_iso(r["received_at"]))
+            for r in rows
+        ]
 
     def prune_updates(self, older_than: datetime) -> int:
         with self.conn:
