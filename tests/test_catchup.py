@@ -6,7 +6,7 @@ import pytest
 from fakes import make_settings
 from test_dispatcher_messages import kst
 
-from my_planner.domain import LoopKey, SkipReason
+from my_planner.domain import Cadence, LoopKey, SkipReason
 from my_planner.loop.catchup import decide
 from my_planner.loop.schedule import ENABLED_LOOPS, Due, due_between, window_start
 
@@ -377,3 +377,29 @@ def test_daily_cap_and_rate_limit_win_over_late(cfg):
     assert _decide10(cfg, last, woke, brain_calls_today=60).skipped == [(morning, SkipReason.daily_cap)]
     d = _decide10(cfg, last, woke, limited_until=kst(2026, 10, 26, 14, 0))
     assert d.skipped == [(morning, SkipReason.rate_limit)]
+
+
+def test_plan_open_defers_within_limit(cfg):
+    # 계획 대화가 열려 있으면 한계 안의 회차는 판정하지 않고 그대로 둔다(pending으로 기다린다)
+    evening = Due(LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30))
+    d = _decide10(cfg, kst(2026, 10, 26, 17, 29), kst(2026, 10, 26, 17, 30), plan_open=True)
+    assert d.primary is None and d.merged == [] and d.skipped == []
+    # 넘겨 받은 회고(한계 안)도 그대로 둔다: 다음 정규 연락에 합치지도, 건너뛰지도 않는다
+    review = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+    d = decide(
+        kst(2026, 10, 26, 17, 31), kst(2026, 10, 26, 17, 30), [evening], carried_review=review,
+        plan_open=True, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary,
+    )
+    assert d.primary is None and d.merged == [] and d.skipped == [] and d.carry_review is None
+
+
+def test_plan_open_past_limit_is_late(cfg):
+    # 계획 대화가 길어져 한계를 넘은 회차는 5.4 규칙대로 late. 한계 안의 것은 그대로 둔다
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))  # 한계 12:00
+    review = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)  # 한계 +3일
+    d = decide(
+        kst(2026, 10, 26, 12, 1), kst(2026, 10, 26, 12, 0), [morning, review],
+        plan_open=True, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary,
+    )
+    assert d.primary is None and d.merged == []
+    assert d.skipped == [(morning, SkipReason.late)]

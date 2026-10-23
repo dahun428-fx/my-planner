@@ -131,6 +131,8 @@ async def _serve(settings: Settings) -> None:
             workdir=paths.state_dir / "brain-workdir",
             max_turns=settings.limits.max_turns,
         )
+        # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
+        router = ConversationRouter(convs, runs, clock=clock, settings=settings)
         dispatcher = Dispatcher(
             brain=brain,
             sender=sender,
@@ -139,14 +141,16 @@ async def _serve(settings: Settings) -> None:
             transcripts=transcripts,
             clock=clock,
             settings=settings,
-            router=ConversationRouter(convs, runs, clock=clock, settings=settings),
+            router=router,
             tools=tools,
             runs=runs,
             conditions=conditions,
             data_dir=paths.data_dir,
             keep_awake=keep_awake,
         )
-        runner = Runner(clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher)
+        runner = Runner(
+            clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router
+        )
         runner.register_daily(expire_drafts(tasks, clock))  # 3일 지난 초안은 조용히 dropped
         # (티켓 12: queued/running 회차 복구가 여기 들어온다)
         # 5. 첫 실행이면 installed_at 기록
@@ -158,9 +162,11 @@ async def _serve(settings: Settings) -> None:
             tools=tools,
             transcripts=transcripts,
             clock=clock,
+            router=router,
         )
         application = build_application(
-            settings, dispatcher, state, transcripts, bot=bot, clock=clock, tools=tools, callbacks=callbacks
+            settings, dispatcher, state, transcripts,
+            bot=bot, clock=clock, tools=tools, callbacks=callbacks, router=router,
         )
 
         # 6. 첫 tick 판정 → 폴링 시작 → 1분 tick

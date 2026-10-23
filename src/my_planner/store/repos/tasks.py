@@ -332,6 +332,15 @@ class TasksRepo:
         ).fetchall()
         return [r["task_id"] for r in rows]
 
+    def proposed_conversation_id(self, task_id: int) -> int | None:
+        """그 할 일을 `propose_tasks`로 제안한 대화. 없으면 None."""
+        r = self.conn.execute(
+            "SELECT conversation_id FROM tool_events_log "
+            "WHERE task_id = ? AND kind = 'tasks_proposed' ORDER BY id LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return r["conversation_id"] if r is not None else None
+
     def local(self, dt: datetime) -> datetime:
         return local(dt, self.tz)
 

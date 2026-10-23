@@ -12,10 +12,15 @@ from my_planner.clock import Clock, from_iso, logical_date, to_iso
 from my_planner.domain import LoopKey, RunStatus
 from my_planner.loop.catchup import decide
 from my_planner.loop.schedule import ENABLED_LOOPS, Due, due_between, window_start
-from my_planner.store.repos.state import LIMITED_UNTIL_KEY, PAUSE_UNTIL_KEY
+from my_planner.store.repos.state import (
+    CARRY_REVIEW_KEY,
+    LIMITED_UNTIL_KEY,
+    PAUSE_UNTIL_KEY,
+)
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
+    from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.store.repos.tasks import TasksRepo
@@ -23,7 +28,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DRAFT_EXPIRE_DAYS = 3
-CARRY_REVIEW_KEY = "carry_review_run_id"
 
 
 def _due(run: Run) -> Due:
@@ -54,10 +58,12 @@ class Runner:
         runs: RunsRepo,
         state: StateRepo,
         dispatcher: RunSubmitter,
+        router: ConversationRouter | None = None,
         loops: frozenset[LoopKey] = ENABLED_LOOPS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self.clock = clock
+        self.router = router
         self.settings = settings
         self.runs = runs
         self.state = state
@@ -75,11 +81,16 @@ class Runner:
         return from_iso(v) if v else None
 
     def _carried_review(self) -> Run | None:
-        """`app_state.carry_review_run_id`가 가리키는, 아직 pending인 회고 회차."""
+        """`app_state.carry_review_run_id`가 가리키는, 아직 pending인 회고 회차.
+
+        queued면 표시를 남겨 두고 None이다(계획 모드로 pending에 되돌아가는 중일 수 있다).
+        """
         v = self.state.get(CARRY_REVIEW_KEY)
         if not v:
             return None
         run = self.runs.get(int(v))
+        if run is not None and run.status is RunStatus.queued:
+            return None
         if run is None or run.status is not RunStatus.pending:
             self.state.set(CARRY_REVIEW_KEY, None)  # 낡은 표시는 지운다
             return None
@@ -125,7 +136,9 @@ class Runner:
         # 2. 창 안의 예정 회차를 runs에 만든다(이미 있으면 그대로)
         for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops):
             self.runs.ensure(due.loop, due.scheduled_for, due.cadence)
-        # 3. 따라잡기 판정과 적용
+        # 3. 만료된 대화를 닫고(chat 30분, plan 2시간), 따라잡기 판정과 적용
+        if self.router is not None:
+            self.router.close_expired()
         by_due = {_due(r): r for r in self.runs.pending()}
         # 넘겨 받은 회고(R1)는 pending이지만 판정에서 빼고 따로 넘긴다
         carried = self._carried_review()
@@ -137,6 +150,7 @@ class Runner:
             limited_until=self._get_time(LIMITED_UNTIL_KEY),
             brain_calls_today=usage.brain_calls,
             proactive_today=usage.proactive_messages,
+            plan_open=self.router is not None and self.router.plan_open(),
             cfg=s, tz=tz, boundary=boundary,
         )
         if decision.clock_backwards and last_seen is not None:  # 공백은 0으로 봤다. 차이만 남긴다

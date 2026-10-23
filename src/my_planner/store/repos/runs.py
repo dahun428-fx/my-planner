@@ -96,6 +96,14 @@ class RunsRepo:
 
     # --- 상태 바꾸기 ---
 
+    def mark_pending(self, id: int) -> None:
+        """큐에서 실행하지 않고 돌려 놓는다(계획 대화가 열려 있음). 다음 tick이 다시 판정한다.
+
+        queued인 회차만 바꾼다. 이미 실행 중이거나 끝난 회차는 되살리지 않는다.
+        """
+        with self.conn:
+            self.conn.execute("UPDATE runs SET status = 'pending' WHERE id = ? AND status = 'queued'", (id,))
+
     def mark_queued(self, id: int) -> None:
         self._update(id, "status = 'queued'")
 

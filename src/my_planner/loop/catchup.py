@@ -4,7 +4,8 @@
 09는 R1(복귀 인사), 넘겨 받은 회고, 하루 3회 상한(`proactive_today`), 시계 이상을 둔다.
 10은 R2(멈춤: 멈춤 끝 전에 예정된 회차는 `paused`, 멈춤 중에는 R1 없음, 공백은 멈춤 끝부터 센다),
 R3(하루 두뇌 호출 상한, `daily_cap`)과 사용 한도(`limited_until`까지 `rate_limit`)를 둔다.
-R3과 사용 한도 중에는 두뇌를 부를 수 없으니 복귀 인사도 만들지 않는다. 계획 모드는 11이 채운다.
+R3과 사용 한도 중에는 두뇌를 부를 수 없으니 복귀 인사도 만들지 않는다.
+11은 계획 모드(`plan_open`: 한계 안의 회차는 판정하지 않고 pending으로 두고, 한계 밖이면 `late`)를 둔다.
 """
 
 from __future__ import annotations
@@ -98,7 +99,7 @@ def decide(
         d = _return(now, last_seen_at, gap_runs, cfg, tz, boundary)
         d.skipped = [*paused, *d.skipped]
         return d
-    d = _regular(now, pending, carried_review, proactive_today, cfg, tz, boundary)
+    d = _regular(now, pending, carried_review, proactive_today, plan_open, cfg, tz, boundary)
     d.skipped = [*paused, *d.skipped]
     d.clock_backwards = clock_backwards
     return d
@@ -109,11 +110,12 @@ def _regular(
     pending: list[Due],
     carried_review: Due | None,
     proactive_today: int,
+    plan_open: bool,
     cfg: Settings,
     tz: str | tzinfo,
     boundary: time,
 ) -> Decision:
-    """R4·R5, 합치기, 넘겨 받은 회고, 하루 3회 상한."""
+    """R4·R5, 계획 모드 대기, 합치기, 넘겨 받은 회고, 하루 3회 상한."""
     runnable: list[Due] = []
     skipped: list[tuple[Due, SkipReason]] = []
     if carried_review is not None and now > limit_for(carried_review, cfg, tz, boundary):
@@ -124,6 +126,9 @@ def _regular(
             runnable.append(due)
         else:  # R5
             skipped.append((due, SkipReason.late))
+    if plan_open:
+        # 계획 대화가 닫힐 때까지 한계 안의 회차(넘겨 받은 회고 포함)는 그대로 둔다. 한계 밖은 위에서 late
+        return Decision(primary=None, skipped=skipped)
     # 합치기: 실행할 회차가 둘 이상이면 우선순위가 가장 높은 하나가 primary, 나머지는 merged(같은 순위면 이른 것부터).
     runnable.sort(key=lambda d: merge_order(d.loop))
     if not runnable or proactive_today >= cfg.limits.daily_proactive_messages:
