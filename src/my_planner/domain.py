@@ -77,3 +77,4 @@ class RunContext:
     conversation_id: int | None
     run_id: int | None
     events: list[ToolEvent] = field(default_factory=list)
+    tool_names: list[str] = field(default_factory=list)  # 부른 도구 이름(인자 없이). 원문 기록과 로그에 쓴다

@@ -17,8 +17,10 @@ from my_planner.clock import Clock
 from my_planner.domain import RunContext
 from my_planner.harness import prompts
 from my_planner.harness.brain import Brain, BrainResult
-from my_planner.harness.context import build_notices
+from my_planner.clock import logical_date
+from my_planner.harness.context import build_notices, build_preamble
 from my_planner.harness.redact import redact
+from my_planner.tools.confirmations import render_confirmations
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.store.transcripts import TranscriptStore
+    from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +79,7 @@ class Dispatcher:
         clock: Clock,
         settings: Settings,
         router: ConversationRouter,
+        tools: Tools | None = None,
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -87,6 +91,7 @@ class Dispatcher:
         self.clock = clock
         self.settings = settings
         self.router = router
+        self.tools = tools
         self._keep_awake = keep_awake
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
@@ -172,7 +177,9 @@ class Dispatcher:
             for m in batch:
                 self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
             resumed = conv.session_id is not None
-            prompt = _join(notices, "" if resumed else prompts.load("chat.md"), body)
+            prompt = _join(
+                notices, "" if resumed else prompts.load("chat.md"), self._preamble(resumed), body
+            )
             result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
             if resumed and result.resume_failed:
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
@@ -180,6 +187,7 @@ class Dispatcher:
                 prompt = _join(
                     notices,
                     prompts.load("chat.md"),
+                    self._preamble(False),
                     f"## 최근 대화\n{history}" if history else "",
                     body,
                 )
@@ -191,7 +199,12 @@ class Dispatcher:
             self.convs.touch(conv.id)
 
             reply = _reply_for(result)
-            self.transcripts.append(self.clock.now(), "비서", conv.id, None, redact(reply)[0])
+            confirmations = render_confirmations(run_ctx.events, self._today())
+            if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
+                reply = f"{reply}\n\n{confirmations}"
+            self.transcripts.append(
+                self.clock.now(), "비서", conv.id, None, redact(reply)[0], tools=list(run_ctx.tool_names)
+            )
             await self.sender.send(Outbound(text=reply))
         # 전송까지 끝난 뒤에만 처리 완료로 기록한다(전송 전에 죽으면 다시 처리될 수 있다).
         self.state.mark_updates_done(update_ids)
@@ -202,6 +215,21 @@ class Dispatcher:
                 "update_ids": update_ids,
                 "chars": sum(len(m.text) for m in batch),
             },
+        )
+
+    def _today(self) -> date:
+        return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
+
+    def _preamble(self, resumed: bool) -> str:
+        """새 세션일 때만 붙인다: 지금 시각, 열린 할 일, 오늘 일정."""
+        if resumed or self.tools is None:
+            return ""
+        return build_preamble(
+            now=self.clock.now(),
+            tz=self.settings.timezone,
+            boundary=self.settings.day_boundary,
+            tasks=self.tools.tasks,
+            conditions=self.tools.conditions,
         )
 
     async def _call_brain(
@@ -224,7 +252,7 @@ class Dispatcher:
                 "run_id": run_ctx.run_id,
                 "duration_ms": round((time.monotonic() - started) * 1000),
                 "turns": result.turns,
-                "tool_names": [],  # 티켓 03에서 채운다
+                "tool_names": list(run_ctx.tool_names),
                 "status": result.status,
                 "error": result.error,
                 "resumed": session_id is not None,

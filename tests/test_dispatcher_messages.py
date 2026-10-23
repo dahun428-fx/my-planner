@@ -6,20 +6,34 @@ from my_planner.clock import FakeClock
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher, Inbound
 from my_planner.store.repos.conversations import ConversationsRepo
+from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
+from my_planner.tools.core import Tools
 
 
 class Env:
-    def __init__(self, tmp_path, conn, state, *, script, start, sender=None):
+    def __init__(self, tmp_path, conn, state, *, script, start, sender=None, with_tools=False):
         self.settings = make_settings(tmp_path)
         self.clock = FakeClock(start)
-        self.brain = FakeBrain(script, clock=self.clock)
         self.sender = sender or FakeSender()
         self.state = state
         self.convs = ConversationsRepo(conn, self.clock)
         self.transcripts = TranscriptStore(
             self.settings.paths.data_dir, self.settings.timezone, self.settings.day_boundary
         )
+        self.tools = None
+        if with_tools:
+            self.tools = Tools(
+                tasks=TasksRepo(
+                    conn, self.clock, tz=self.settings.timezone, boundary=self.settings.day_boundary
+                ),
+                transcripts=self.transcripts,
+                export_path=self.settings.paths.data_dir / "exports" / "tasks.md",
+                clock=self.clock,
+                tz=self.settings.timezone,
+                boundary=self.settings.day_boundary,
+            )
+        self.brain = FakeBrain(script, tools=self.tools, clock=self.clock)
         self.dispatcher = Dispatcher(
             brain=self.brain,
             sender=self.sender,
@@ -29,6 +43,7 @@ class Env:
             clock=self.clock,
             settings=self.settings,
             router=ConversationRouter(convs=self.convs, clock=self.clock, settings=self.settings),
+            tools=self.tools,
             sleep=fake_sleep(self.clock),
         )
 
