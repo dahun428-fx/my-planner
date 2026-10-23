@@ -74,17 +74,20 @@
   - **가리기**: `redact()`.
   - **두뇌 설정**: `build_options()`.
   - **작업 스케줄러 XML 템플릿**.
+  - **앱 시작과 운영 산출물**: `app.main()` 시작 경로(가짜 Bot, 임시 루트), 로그 파일, `python -m` CLI 출력, 프롬프트 파일. 2026-10-23 리뷰에서 추가.
 - 저장소(`*Repo`)는 따로 테스트하지 않는다. 위 경계를 거쳐 확인한다. 예외는 마이그레이션 테스트다.
 
 **TDD 주기** (Matt `tdd`: 한 번에 하나씩)
 - 각 "슬라이스"는 아래 네 단계를 순서대로 밟는다.
   1. 테스트 하나를 쓴다.
-  2. `pytest <파일>::<테스트> -v`로 실행해 FAIL을 확인한다. 기대하는 실패는 슬라이스에 적힌 그대로다.
+  2. `pytest <파일>::<테스트> -v`로 실행해 FAIL을 확인한다. 새 이름이면 `ImportError`/`AttributeError`, 새 동작이면 `AssertionError`가 기대 결과다(슬라이스에 따로 적힌 경우는 그것).
   3. 통과할 만큼만 구현한다.
   4. 같은 명령으로 PASS를 확인한다.
 - 테스트를 몰아서 먼저 쓰지 않는다.
 - 티켓이 끝나면 `pytest -q`로 전체를 돌린다. 기대 결과는 0 failed다(Linux에서는 Windows 전용 테스트가 skipped로 나온다). 그다음 `code-reviewer`로 리뷰하고 커밋한다.
 - 리팩터링은 이 주기에 넣지 않는다. 리뷰 단계에서 한다.
+- 시간에 기대는 테스트(typing 5초, 백오프 2·4·8초, 재전송 5분)는 실제로 기다리지 않는다. `Dispatcher`와 `Runner`는 `sleep=asyncio.sleep`을 주입받고, 테스트는 가짜 sleep과 `FakeClock`을 쓴다.
+- 생성자는 키워드 전용(`*`)이고, 티켓마다 인자가 늘어난다. `Dispatcher`: 02 `router`, 03 `tools`, 05 `runs`, 07 `conditions`, 08 `data_dir`. `build_application`: 04 `tools`, 06 `callbacks`. 가변 기본값은 `field(default_factory=list)`나 `None`으로 둔다.
 
 ## Review Focus
 
@@ -127,20 +130,20 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 | 00 | 착수 전 검증 (S0~S6) | 없음 |
 | 01 | 걸어 다니는 뼈대: 말 걸면 답한다 | 00 |
 | 02 | 대화 이어가기 | 01 |
-| 03 | 할 일을 말로 추가·변경 | 01 |
+| 03 | 할 일을 말로 추가·변경 | 02 |
 | 04 | 우선순위와 `/today` `/week` `/help` | 03 |
-| 05 | 아침 브리핑이 제시간에 온다 | 02, 04 |
+| 05 | 아침 브리핑이 제시간에 온다 | 04 |
 | 06 | 비서 제안은 초안, 버튼으로 확정 | 05 |
-| 07 | 저녁 체크인과 컨디션 버튼 | 05 |
+| 07 | 저녁 체크인과 컨디션 버튼 | 06 |
 | 08 | 일요일 주간 회고 | 07 |
 | 09 | 꺼졌다 켜져도 알맞게 따라잡는다 | 08 |
-| 10 | 멈춤, 상한, 로그인·한도 오류 | 05 |
+| 10 | 멈춤, 상한, 로그인·한도 오류 | 09 |
 | 11 | 계획 모드 | 06 |
 | 12 | 오래 돌아가도 안전하다 | 05 |
 | 13 | 로그온·절전·전원과 상관없이 늘 돈다 | 12 |
-| 14 | 7일 수용 테스트 | 09, 10, 11, 13 |
+| 14 | 7일 수용 테스트 | 10, 11, 13 |
 
-초안과 달라진 점이 하나 있다. 초안에서는 05가 04만 기다렸다. 05의 회차 대화가 02의 대화 라우터를 쓰므로, 05는 02도 기다린다.
+초안과 달라진 점: 03은 02를 기다린다(새 세션 판단과 `context.py`를 함께 쓴다). 07은 06을 기다린다(콜백과 버튼 장치). 08은 07을 거쳐 06의 초안을 쓴다. 10은 09의 R1을 고친다. 그래서 00→01→…→10은 한 줄로 이어지고, 11(06 뒤), 12(05 뒤), 13(12 뒤)이 옆길이다.
 
 ---
 
@@ -248,7 +251,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 
 가리기와 원문 기록
 - `redact(text) -> tuple[str, bool]`: 가린 자리는 `[가림]`으로 바꾼다. 휴대전화 번호 `01[016-9]-?\d{3,4}-?\d{4}`는 먼저 제외한다.
-- `TranscriptStore(data_dir, tz, boundary)`: `append(at, speaker: "사용자"|"비서", conversation_id: int|None, run_key: str|None, text, tools: list[str] = [])`.
+- `TranscriptStore(data_dir, tz, boundary)`: `append(at, speaker: "사용자"|"비서", conversation_id: int|None, run_key: str|None, text, tools: list[str] | None = None)`.
   - 머리글 형식: `### HH:MM 비서 [3] (morning_brief)`. 대화가 없으면 `[-]`.
   - 도구 호출은 `> 도구: add_task` 한 줄.
 
@@ -268,7 +271,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 
 `harness/dispatcher.py`
 - `@dataclass Inbound(text, at, sent_at, update_ids: list[int])`
-- `@dataclass Outbound(text, draft_conversation_id: int|None = None, draft_task_ids: list[int] = [], ask_condition_for: date|None = None)`
+- `@dataclass Outbound(text, draft_conversation_id: int|None = None, draft_task_ids: list[int] = field(default_factory=list), ask_condition_for: date|None = None)`
 - `Sender` 프로토콜: `async send(out) -> None`, `async typing() -> None`
 - `Dispatcher(*, brain, sender, convs, state, transcripts, clock, settings, keep_awake=nullcontext)`: `submit_message(m)`, `start()`, `stop(timeout=30)`. 작업자는 하나, 큐는 `asyncio.PriorityQueue`.
 - 메시지 처리 순서:
@@ -306,7 +309,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 **Slices** (경계별, 위에서부터 차례로)
 
 마이그레이션
-- [ ] `test_migrate_fresh_then_again` (FAIL: ImportError): 새 DB에 적용하면 1, 다시 실행해도 1이다. WAL과 foreign_keys가 켜져 있다.
+- [ ] `test_migrate_fresh_then_again` (FAIL: ImportError): 새 DB에 적용하면 최신 버전(마이그레이션 파일 수), 다시 실행해도 같다. WAL과 foreign_keys가 켜져 있다. 이 테스트는 티켓마다 마이그레이션이 늘어도 그대로 통과해야 한다.
 
 가리기
 - [ ] `test_redact_rrn`: `"900101-1234567"` → `[가림]`, True
@@ -332,13 +335,15 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 
 디스패처
 - [ ] `test_message_roundtrip_writes_transcript_both_sides`: Sender가 FakeBrain의 답을 받는다. 원문 기록 파일에 `사용자`, `비서` 블록이 있다. KST 01:00 메시지는 전날 파일에 들어간다.
+- [ ] `test_logical_date_boundary_in_transcript`: KST 03:59 메시지는 전날 파일, 04:00은 당일 파일
 - [ ] `test_redacted_text_reaches_neither_transcript_nor_brain`
 - [ ] `test_update_ids_marked_after_send`: 전송 전에 크래시하면(Sender 예외) 기록하지 않고, 전송에 성공하면 기록한다
 - [ ] `test_typing_every_5_seconds_during_brain_call`: FakeBrain이 12초 걸리면 `typing` 3회
 - [ ] `test_logging_drops_message_bodies`: 처리 뒤 로그 파일에 본문 문자열이 없고, `duration_ms`, `turns`, `status`는 있다
 
-플랫폼
-- [ ] `test_single_instance_lock_second_fails` (Windows 전용, 그 밖에서는 skip)
+앱 시작
+- [ ] `test_second_instance_exits` (Windows 전용, 그 밖에서는 skip): `app.main()`을 두 번 띄우면 두 번째가 `AlreadyRunning`으로 바로 끝난다
+- [ ] `test_logging_survives_none_stderr`: `sys.stderr=None`으로 `app.main()` 시작 경로를 지나도 예외가 없다
 
 마무리
 - [ ] **수동 확인**: 노트북에서 실행해 Acceptance criteria 3개를 확인한다.
@@ -397,7 +402,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - 바꾸기, 옮기기(날짜 없음 포함), 완료, 되돌리기, 내려놓기, 조회, 원문 기록 읽기도 도구로 할 수 있다.
 - 바꿀 때마다 `data/exports/tasks.md`를 다시 만든다.
 - 새 세션의 앞머리 컨텍스트에 지금 시각, 열린 할 일, 오늘 일정이 들어간다.
-**Blocked by:** 01
+**Blocked by:** 02
 
 **Files:** `store/migrations/002_tasks.sql`, `store/repos/tasks.py`, `store/exports.py`, `tools/core.py`, `tools/confirmations.py`, `tools/mcp_adapter.py`, `harness/context.py`(앞머리), `harness/dispatcher.py`
 
@@ -418,7 +423,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - 상태가 바뀔 때마다 같은 트랜잭션에서 `task_events`에 기록한다.
 - `@dataclass Task(..., areas: list[Area])`
 
-`Tools(tasks, conditions=None, transcripts, export_path, clock, tz, boundary)`
+`Tools(*, tasks, transcripts, export_path, clock, tz, boundary, conditions=None)`
 - 메서드 형식은 `(ctx, **inputs) -> dict`이다. 이름과 입력은 스펙 5.5 표 그대로다.
 - 이 티켓에서 만드는 메서드: `add_task`, `update_task`, `move_task`, `complete_task`, `reopen_task`, `drop_task`, `list_tasks`, `read_transcript`.
 - 잘못된 입력은 예외 대신 `{"error": "<한국어 이유>"}`를 돌려준다.
@@ -437,7 +442,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 `export_tasks(repo, path, today)`
 - 오늘, 이번 주, 열린 할 일, 이번 주 완료를 쓴다. 초안은 뺀다.
 
-`build_preamble(*, now, tz, boundary, tasks, conditions=None, paused_until=None, merged=[]) -> str`
+`build_preamble(*, now, tz, boundary, tasks, conditions=None, paused_until=None, merged=None) -> str`
 - 섹션 순서: `## 지금`, `## 우선순위`, `## 열린 할 일`(최대 30개, 오늘 → 이번 주 → 나머지), `## 오늘 일정`, `## 어제 컨디션`, `## 함께 처리할 회차`, `## 멈춤`.
 - 빈 섹션은 뺀다. 우선순위는 티켓 04, 컨디션은 티켓 07, 멈춤은 티켓 10에서 채운다.
 
@@ -462,15 +467,17 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_read_transcript_more_than_7_days_returns_error`
 - [ ] `test_two_servers_keep_separate_contexts`
 
-확인 문구 (today=2026-10-24)
-- [ ] `test_render_add_with_schedule`: 10/25 14:00 치과 → `✓ 추가: 치과 (10/25 14:00)`
-- [ ] `test_render_move_to_tomorrow`: `✓ 옮김: 운동 → 내일`
-- [ ] `test_render_empty_events_is_empty_string`
-- [ ] `test_render_has_no_banned_words`
+확인 문구 (디스패처 경계, FakeClock 2026-10-24, Sender가 받은 본문으로 확인)
+- [ ] `test_confirmation_add_with_schedule`: FakeBrain이 10/25 14:00 치과를 `add_task` → `✓ 추가: 치과 (10/25 14:00)`
+- [ ] `test_confirmation_move_to_tomorrow`: `✓ 옮김: 운동 → 내일`
+- [ ] `test_no_tool_calls_no_confirmation_block`: 도구 호출이 없으면 답 뒤에 빈 줄도 붙지 않는다
+- [ ] `test_confirmations_have_no_banned_words`: 이벤트 종류마다 하나씩 부르고 본문에 금지어가 없다
 
 디스패처
 - [ ] `test_confirmations_appended_below_reply`: FakeBrain이 `add_task`를 부르면, Sender가 받은 본문에서 답 다음 줄에 `✓ 추가`가 있다. 원문 기록에는 `> 도구: add_task`가 있다
 - [ ] `test_preamble_lists_at_most_30_open_tasks_in_order`, `test_preamble_today_schedule`
+- [ ] `test_max_turns_sends_confirmations_and_fixed_text`: `status="max_turns"`이면 확인 문구와 "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
+- [ ] `test_brain_call_log_has_tool_names`: 로그 줄에 `tool_names: ["add_task"]`, 인자는 없다
 
 마무리
 - [ ] **수동 확인**: 텔레그램에서 "치과 내일 2시 추가해 줘"를 보내고, 확인 문구와 `tasks.md`를 확인한다.
@@ -511,6 +518,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_today_command_shows_priorities_schedule_open_no_drafts`
 - [ ] `test_week_and_help_commands`
 - [ ] `test_command_logged_to_transcript`
+- [ ] `test_command_from_other_user_ignored`
 
 마무리
 - [ ] **Review + Commit** `feat: priorities and quick commands`
@@ -525,7 +533,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - 전송이 안 되면 바로 3회 시도한다. 그래도 안 되면 5분 뒤 전송만 한 번 더 한다.
 - 이 티켓의 따라잡기는 R4와 R5뿐이다. 한계 안이면 늦게라도 보내고, 한계 밖이면 `skipped(late)`로 둔다.
 - 브리핑에 답하면 12:00까지는 그 회차의 대화로 이어진다.
-**Blocked by:** 02, 04
+**Blocked by:** 04
 
 **Files:** `store/migrations/003_runs.sql`, `store/repos/runs.py`, `loop/{schedule,catchup,runner}.py`, `harness/prompts/morning_brief.md`, `harness/dispatcher.py`, `harness/conversations.py`, `app.py`
 
@@ -563,6 +571,8 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
   4. `last_seen_at = now`
 - `run_forever(interval=60)`
 - 첫 실행이면(`installed_at`이 없으면) 지금 시각을 기록한다.
+- 하루 한 번 작업: `register_daily(job: Callable[[date], None])`. tick 끝에서 `app_state.last_daily_jobs_date`가 논리적 오늘과 다르면 등록된 작업을 차례로 부르고 날짜를 기록한다. 06, 12가 작업을 등록한다.
+- `app.main()` 시작 순서(스펙 5.1): 잠금 → 로그 → DB → (12의 복구) → `installed_at` → 첫 tick 판정 → 폴링 → `run_forever`.
 
 대화 라우터 변경
 - `ConversationRouter.for_run(run) -> Conversation`: 항상 새 `run` 대화를 연다.
@@ -573,9 +583,11 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 2. 루프 프롬프트(스펙 5.3 "프롬프트 선택")와 preamble로 두뇌를 부른다.
 3. `save_outbound`
 4. 전송한다. 바로 3회(1, 2, 4초 간격)까지 시도한다.
-5. `mark_done`(primary와 merged 모두), `incr_usage("proactive_messages")`
+5. `mark_done`(primary와 merged 모두), `incr_usage(today, "proactive_messages")`
 - 전송이 끝내 안 되면: `mark_failed`, 5분 뒤 `outbound_text`로 한 번 다시 보낸다(`mark_resent`).
-- 두뇌 단계가 안 되면: `has_tool_events`가 False이고 한계 안이면 한 번 다시 실행한다. 아니면 `failed`로 둔다. 어느 경우든 사용자에게는 아무것도 보내지 않는다.
+- 두뇌 단계가 안 되면(`error`): `has_tool_events`가 False이고 한계 안이면 한 번 다시 실행한다. 아니면 `failed`로 둔다. 어느 경우든 사용자에게는 아무것도 보내지 않는다. `auth_error`와 `rate_limited`는 재실행하지 않는다(티켓 10).
+- 큐 순서: 사용자 메시지(우선순위 0)가 회차(1)보다 먼저다. 같은 우선순위는 들어온 순서.
+- 회차 대화에 사용자가 답할 때는 루프 지시문 없이 메시지만 넘긴다. 그 대화의 resume이 실패하면 preamble과 `recent(conv, 20)`만 넘긴다.
 
 **Slices**
 
@@ -596,12 +608,16 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_tick_creates_runs_and_submits_due`: FakeClock 월 09:00:30 → `morning_brief` 하나가 `queued`가 되고 제출된다
 - [ ] `test_run_not_resubmitted_while_queued`: 두 번째 tick에서는 제출이 없다
 - [ ] `test_tick_updates_last_seen_even_when_nothing_due`
+- [ ] `test_daily_jobs_run_once_per_logical_day`: 등록한 가짜 작업이 하루 1회, 04:00 경계로 다음 날
+- [ ] `test_installed_at_set_once`
 
 디스패처
 - [ ] `test_morning_run_two_phase`: `outbound_text`를 저장한 뒤 보낸다. 상태는 `done`, proactive 카운터는 1
 - [ ] `test_send_retries_3_then_failed_then_resend_once`: Sender가 계속 안 되면 3회 시도 후 `failed`, 5분 뒤 한 번 다시 보낸다. 두뇌 호출 수는 그대로다
 - [ ] `test_brain_failure_without_tool_events_reruns_once`, `test_brain_failure_with_tool_events_not_rerun`, `test_run_failure_sends_nothing_to_user`
 - [ ] `test_reply_within_morning_window_continues_run_conversation`, `test_reply_window_beats_30_minutes`
+- [ ] `test_reply_to_run_has_no_loop_prompt`
+- [ ] `test_run_and_message_serialized`: 회차 처리 중 들어온 메시지는 회차가 끝난 뒤 처리되고, 대기 중인 회차보다는 먼저 처리된다
 
 마무리
 - [ ] **수동 확인**: 다음 날 아침 실제로 브리핑을 받는다.
@@ -634,7 +650,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
     2. 이미 `draft`가 아닌 할 일이면 "이미 정리된 할 일이에요."라고 답한다.
     3. 항상 `query.answer()`를 부른다.
     4. 원문 기록에 `[버튼] 확정: {title}`처럼 남긴다.
-  - `Runner`에 하루 한 번 작업을 둔다(`app_state.last_daily_jobs_date`가 논리적 오늘과 다를 때). 여기에 `expire_drafts(3일)`을 등록한다.
+  - `Runner.register_daily`(티켓 05)에 `expire_drafts(3일)`을 등록한다.
 
 **Slices**
 
@@ -649,7 +665,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_today_hides_drafts`
 
 러너
-- [ ] `test_expire_drafts_after_3_days`: 2일 23시간이면 그대로, 3일이면 `dropped`. 하루에 한 번만 돈다
+- [ ] `test_expire_drafts_after_3_days`: 2일 23시간이면 그대로, 3일이면 `dropped`
 
 마무리
 - [ ] **Review + Commit** `feat: secretary proposals are drafts confirmed by buttons`
@@ -663,7 +679,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - 자정이 지나 답해도 04:00까지는 같은 체크인 대화로 이어진다.
 - 아침 브리핑 때 어제 컨디션 기록이 없고 어제 체크인이 `done`이 아니면, 브리핑에 어제 날짜의 컨디션 버튼을 붙인다.
 - 컨디션이 2 이하면 비서가 할 일을 줄이자고 먼저 제안한다(프롬프트에 넣는다).
-**Blocked by:** 05
+**Blocked by:** 06 (콜백 장치와 버튼 렌더링)
 
 **Files:** `store/migrations/004_conditions.sql`, `store/repos/conditions.py`, `tools/core.py`, `bot/callbacks.py`, `harness/prompts/evening_checkin.md`, `harness/dispatcher.py`, `harness/context.py`
 
@@ -710,7 +726,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - 다음 주 우선순위 제안은 초안으로 낸다. 사용자가 확정하고 승인하면 두뇌가 `set_priorities`를 부른다.
 - 두뇌의 답을 `data/reviews/week/<YYYY-Www>.md`에 저장한다. 어느 주인지는 회고 회차 `scheduled_for`의 논리적 날짜로 정한다.
 - 합쳐진 회차는 실행된 회차가 전송에 성공하면 함께 `done`이 된다.
-**Blocked by:** 07
+**Blocked by:** 07 (06의 초안을 07을 거쳐 씀)
 
 **Files:** `loop/schedule.py`, `loop/catchup.py`, `store/reviews.py`, `harness/prompts/review_week.md`, `harness/dispatcher.py`
 
@@ -747,10 +763,11 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - Produces:
 
 `decide`의 R1
-- `create_return=True`
+- `create_return=True`, `primary=Due(return_, now)`
+- 복귀 인사가 오늘 아침 브리핑 예정 시각 전에 나가면, 오늘 아침 브리핑의 **아직 오지 않은** Due를 `skipped`에 `merged_into_return`으로 넣는다. 러너는 그 Due를 `ensure`한 뒤 skip을 기록하므로, 09:00 tick에는 이미 `skipped`라 실행되지 않는다.
 - 공백 중에 회고가 있었고 +3일 이내면 `carry_review`에 넣는다.
 - 넘겨 받은 회고(`carried_review`)는 혼자 실행하지 않는다. 정규 연락이 실행될 때 `merged`에 넣는다. 한계를 넘으면 `skipped(late)`.
-- 시계가 뒤로 갔으면 공백을 0으로 보고 `warning` 로그를 남긴다.
+- 시계가 뒤로 갔으면 공백을 0으로 보고 `Decision.clock_backwards=True`. 경고 로그는 러너가 남긴다(`decide`는 부작용 없음).
 
 하루 3회 상한
 - `proactive_today >= 3`이면 `primary`를 비우고, skip도 기록하지 않는다(그대로 기다린다).
@@ -765,19 +782,21 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 
 따라잡기 판정
 - [ ] `test_spec_table_row_5`: 토 17:00 → 일 18:30이면 R1, 회고는 넘겨 받는다
-- [ ] `test_spec_table_row_6`: 금 22:00 → 화 08:00이면 `return` 하나. 화 아침 브리핑은 `merged_into_return`, 회고는 화 17:30 체크인에 합친다
+- [ ] `test_spec_table_row_6`: 금 22:00 → 화 08:00이면 `return` 하나. `skipped`에 화 09:00 아침 브리핑(`merged_into_return`)이 있다. 회고는 `carry_review`이고 화 17:30 체크인에 합친다. 화 09:00 tick에 보낼 메시지와 월요일 컨디션 버튼은 없다(러너 테스트로 확인)
 - [ ] `test_spec_table_row_7`: 금 22:00 → 목 08:00이면 회고는 `merged_into_return`
 - [ ] `test_spec_table_row_10`: 금 18:00 → 토 09:30이면 보낼 회차가 없다
 - [ ] `test_carried_review_not_executed_alone`, `test_carried_review_late_after_3_days`
 - [ ] `test_fourth_proactive_message_waits_then_merges_or_late`
-- [ ] `test_clock_went_backwards`: 공백 0, R1이 아니다, 경고 로그가 있다
+- [ ] `test_clock_went_backwards`: 공백 0, R1이 아니다, `clock_backwards=True`
 - [ ] `test_clock_jumped_far_ahead_is_capped_at_7_days`: 30일 앞으로 가면 `return` 하나, 판정 대상은 7일치뿐이다
 
 러너
 - [ ] `test_tick_after_25h_gap_creates_single_return_run`, `test_r1_carried_review_merges_into_next_contact`, `test_deferred_run_reconsidered_next_tick`
+- [ ] `test_return_before_morning_skips_that_morning`: 화 08:00 복귀 → 09:00 tick에 제출 없음
+- [ ] `test_clock_backwards_logs_warning`
 
-프롬프트
-- [ ] `test_return_text_has_no_banned_words`: 프롬프트 파일의 금지어를 검사한다. `system.md`의 `<!-- banned-words:start/end -->` 블록은 금지어 목록 자체라서 뺀다
+앱 시작과 운영 산출물
+- [ ] `test_prompts_have_no_banned_words`: 프롬프트 파일의 금지어를 검사한다. `system.md`의 `<!-- banned-words:start/end -->` 블록은 금지어 목록 자체라서 뺀다
 
 마무리
 - [ ] **Review + Commit** `feat: catch-up rules and return message`
@@ -792,7 +811,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - 로그인이 풀리면 하루 한 번 안내하고, 회차는 `skipped(auth)`로 둔다.
 - 사용 한도에 닿으면 구간마다 한 번 안내하고, 풀릴 때까지 회차는 `skipped(rate_limit)`로 둔다.
 - 사용자 메시지를 처리하다 오류가 나면 2, 4, 8초 간격으로 3회 다시 시도하고, 그래도 안 되면 고정 문구로 답한다.
-**Blocked by:** 05
+**Blocked by:** 09
 
 **Files:** `bot/commands.py`, `loop/catchup.py`, `harness/brain.py`, `harness/dispatcher.py`, `harness/context.py`
 
@@ -810,10 +829,10 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_paused_skips_with_reason`
 - [ ] `test_spec_table_row_8`: 멈춤 중이면 R2, `return` 없음
 - [ ] `test_daily_cap_skips_with_reason`, `test_rate_limited_until_skips_with_reason`
+- [ ] `test_pause_boundary`: 멈춤이 끝나기 1분 전 회차는 `paused`, 1분 뒤 회차는 실행
 
 텔레그램 어댑터
 - [ ] `test_pause_sets_until_and_rejects_15`, `test_unpause`
-- [ ] `test_pause_boundary`: 멈춤이 끝나기 1분 전 회차는 `paused`, 1분 뒤 회차는 실행
 
 디스패처
 - [ ] `test_paused_still_answers_messages`
@@ -821,6 +840,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_auth_error_notice_once_per_day`, `test_rate_limited_notice_once_per_window`
 - [ ] `test_error_retries_3_times_with_backoff_then_fixed_text`: 호출 4회, `brain_calls` +4
 - [ ] `test_run_error_no_backoff_max_two_calls`
+- [ ] `test_run_auth_error_marked_skipped_not_rerun` (rate_limited도 같은 테스트에서 `skipped(rate_limit)`)
 
 마무리
 - [ ] **Review + Commit** `feat: pause, daily cap, auth and rate-limit handling`
@@ -885,16 +905,16 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
   - `daily_backup(conn, backups_dir, today, keep) -> Path|None`: 오늘 백업이 이미 있으면 None.
   - `recover_on_start(runs, dispatcher, clock, settings) -> None`
   - `enter_safe_mode(state_dir, sender) -> None`: 표식 파일은 `state/integrity_notice_sent`.
-  - 러너의 하루 한 번 작업에 `daily_backup`, `prune_updates(2일)`, 로그 정리를 더한다.
+  - `Runner.register_daily`에 `daily_backup`, `prune_updates(2일)`, 로그 정리를 등록한다.
+  - `app.main()`의 복구 단계(티켓 05 시작 순서의 자리)에 `recover_on_start`와 무결성 검사를 넣는다.
 
 **Slices**
 
 러너
-- [ ] `test_backup_name_and_keeps_14`: 15일 연속 돌리면 14개가 남고, 이름은 `planner-2026-10-23.db` 형식
-- [ ] `test_daily_jobs_run_once_per_logical_day`
+- [ ] `test_backup_name_and_keeps_14`: 15일 연속 tick → 14개가 남고, 이름은 `planner-2026-10-23.db` 형식
 
-로그
-- [ ] `test_logging_rotates_and_keeps_30_days`, `test_logging_survives_none_stderr`
+앱 시작과 운영 산출물
+- [ ] `test_logging_rotates_and_keeps_30_days`: FakeClock으로 31일 → 로그 파일 30개
 
 디스패처
 - [ ] `test_startup_marks_queued_and_running_as_interrupted`
@@ -902,9 +922,8 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
 - [ ] `test_crash_mid_run_no_duplicate_task`: `add_task` 뒤 크래시하고 다시 시작해도 할 일은 1개
 - [ ] `test_failed_run_resent_on_start_within_reply_window`
 
-시작
-- [ ] `test_integrity_failure_notifies_once_and_idles`: 두 번 시작해도 알림은 1회, 폴링은 시작하지 않는다
-- [ ] `test_installed_at_set_once`
+앱 시작과 운영 산출물
+- [ ] `test_integrity_failure_notifies_once_and_idles`: 손상된 DB로 `app.main()`을 두 번 시작해도 알림은 1회, 폴링은 시작하지 않는다
 
 마무리
 - [ ] **Review + Commit** `feat: backups, log retention, startup recovery, safe mode`
@@ -932,7 +951,7 @@ tests/  (경계별: test_dispatcher_*.py, test_catchup.py, test_schedule.py, tes
     - 템플릿의 `{{PYTHONW}}`, `{{ROOT}}`, `{{USER}}`, `{{WAKE_TRIGGERS}}`를 채운다.
     - UTF-16 LE로 저장한다.
     - `Register-ScheduledTask -Xml (Get-Content -Raw ...) -TaskName ... -Force`로 등록한다.
-  - `Runner(on_resume: Callable[[], Awaitable[None]])`: tick을 시작할 때 이전 `last_seen_at`과 지금의 차이가 3분을 넘으면 부른다. app은 `updater.stop()` 뒤 `updater.start_polling(...)`을 부른다.
+  - `Runner(on_resume: Callable[[], Awaitable[None]])`: tick을 시작할 때 이전 `last_seen_at`과 지금의 차이가 3분을 넘으면 부른다. 프로세스를 시작한 뒤 첫 tick에는 부르지 않는다(첫 tick은 따라잡기만). app은 `updater.stop()` 뒤 `updater.start_polling(...)`을 부른다.
 
 **Slices**
 
@@ -942,12 +961,14 @@ XML 템플릿
 - [ ] `test_main_task_working_directory_is_root`
 - [ ] `test_wake_task_has_wake_to_run_battery_and_noop_action`
 
-깨우기 시각
+앱 시작과 운영 산출물
 - [ ] `test_wake_times_output`: 기본 설정이면 `weekday 08:55`, `weekday 17:25`, `weekend 09:55`, `weekend 17:55`
 
 러너
-- [ ] `test_resume_detected_after_gap_calls_on_resume`
-- [ ] `test_keep_awake_nested_refcount`: Windows가 아니면 호출 기록만 확인한다
+- [ ] `test_resume_detected_after_gap_calls_on_resume`, `test_first_tick_after_start_does_not_call_on_resume`
+
+디스패처
+- [ ] `test_keep_awake_held_during_brain_and_send`: 주입한 가짜 `keep_awake`가 두뇌 호출과 전송 동안만 잡혀 있다(회차와 메시지가 겹쳐도 풀림은 마지막에 한 번)
 
 마무리
 - [ ] **수동 확인** (노트북)
@@ -961,7 +982,7 @@ XML 템플릿
 ### 티켓 14: 7일 수용 테스트
 
 **What to build:** Dahun이 7일 동안 실제로 써 보면서 스펙 1장 완료 조건 1~5를 확인한다.
-**Blocked by:** 09, 10, 11, 13
+**Blocked by:** 10, 11, 13
 
 - [ ] `docs/acceptance/sp1-checklist.md`를 만든다. 날짜 × 완료 조건 표와 확인용 SQL을 둔다: `SELECT loop, status, skip_reason, count(*) FROM runs WHERE scheduled_for >= ? GROUP BY 1,2,3`
 - [ ] 7일 동안 매일 체크하고, 발견한 문제는 새 이슈로 남긴다.
@@ -972,7 +993,7 @@ XML 템플릿
 ## 스펙 대비 확인 (셀프 리뷰)
 
 스펙 1장 완료 조건
-- 1 (회차가 모두 done 또는 규칙에 맞는 skipped) → 티켓 05, 07, 08, 09, 그리고 14
+- 1 (회차가 모두 done 또는 규칙에 맞는 skipped) → 티켓 05, 07, 08, 09, 10, 그리고 14
 - 2 (할 일 확정과 확인 문구) → 티켓 03, 04, 06
 - 3 (다른 계정 무시) → 티켓 01
 - 4 (재부팅, 절전, 전원 분리 뒤에도 동작) → 티켓 13
