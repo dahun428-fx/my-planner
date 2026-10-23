@@ -1,4 +1,4 @@
-"""텔레그램 명령 /today /week /help /pause /unpause (스펙 5.6). 두뇌를 거치지 않고 하네스가 바로 답한다.
+"""텔레그램 명령 /today /week /help /pause /unpause /plan /done (스펙 5.6). /plan 말고는 두뇌를 거치지 않고 하네스가 바로 답한다.
 
 /today /week는 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
 """
@@ -21,17 +21,24 @@ HELP_TEXT = (
     "/week  이번 주 우선순위와 할 일\n"
     "/pause 3  사흘 동안 먼저 연락하지 않기(1~14일)\n"
     "/unpause  멈춤 풀기\n"
+    "/plan 주제  함께 계획 세우기(주제는 없어도 돼요)\n"
+    "/done  계획 대화 마치기\n"
     "/help  이 안내\n"
     "\n"
     "그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요."
 )
 
-COMMANDS = ("/today", "/week", "/help", "/pause", "/unpause")
+COMMANDS = ("/today", "/week", "/help", "/pause", "/unpause", "/plan", "/done")
 
 PAUSE_MIN_DAYS, PAUSE_MAX_DAYS = 1, 14
 PAUSE_USAGE = "쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3"
 UNPAUSE_REPLY = "멈춤을 풀었어요. 다시 정해진 시각에 연락할게요."
 NOT_PAUSED_REPLY = "지금은 멈춤 중이 아니에요."
+
+# 계획 모드 (스펙 5.7). /plan은 주제(없으면 PLAN_START_TEXT)를 계획 대화로 디스패처에 넘긴다
+PLAN_START_TEXT = "계획 모드 시작"
+PLAN_DONE_REPLY = "계획 대화를 마칠게요. 다시 함께 정리하고 싶으면 /plan을 보내 주세요."
+NO_PLAN_REPLY = "지금 열린 계획 대화가 없어요."
 
 
 def command_of(text: str) -> str | None:
@@ -41,6 +48,13 @@ def command_of(text: str) -> str | None:
         return None
     name = words[0].split("@", 1)[0].lower()
     return name if name in COMMANDS else None
+
+
+def plan_topic(text: str) -> str:
+    """`/plan [주제]`의 주제. 없으면 "계획 모드 시작"."""
+    words = text.strip().split(None, 1)
+    topic = words[1].strip() if len(words) == 2 else ""
+    return topic or PLAN_START_TEXT
 
 
 def pause_days(text: str) -> int | None:

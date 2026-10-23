@@ -423,3 +423,60 @@ def test_tick_applies_pause_rate_limit_and_daily_cap(mon_morning, setup, reason)
     assert env.dispatcher.submitted == []
     (run,) = env.runs.between(kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 10, 0))
     assert run.status is RunStatus.skipped and run.skip_reason == reason
+
+
+def _with_router(env, conn):
+    from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.conversations import ConversationsRepo
+
+    env.convs = ConversationsRepo(conn, env.clock)
+    env.router = ConversationRouter(env.convs, env.runs, clock=env.clock, settings=env.settings)
+    env.runner = Runner(
+        clock=env.clock, settings=env.settings, runs=env.runs, state=env.state, dispatcher=env.dispatcher,
+        router=env.router,
+    )
+    return env
+
+
+def test_plan_mode_defers_run(tmp_path, conn, state):
+    # 월 16:50 /plan, 17:30 체크인은 대기, 18:00 /done 뒤 다음 tick에 체크인 실행
+    start = kst(2026, 10, 26, 16, 50)
+    env = _with_router(Env(tmp_path, conn, state, start, installed=start - timedelta(days=3), last_seen=start), conn)
+    env.router.start_plan()
+    for at in (kst(2026, 10, 26, 17, 30), kst(2026, 10, 26, 17, 45)):
+        env.clock.set(at)
+        env.runner.tick()
+    assert env.dispatcher.submitted == []
+    [evening] = env.runs.pending()
+    assert evening.loop is LoopKey.evening_checkin
+
+    env.clock.set(kst(2026, 10, 26, 18, 0))
+    assert env.router.end_plan() is True
+    env.clock.advance(minutes=1)
+    env.runner.tick()
+    [(run, merged)] = env.dispatcher.submitted
+    assert run.id == evening.id and merged == []
+    assert env.runs.get(evening.id).status is RunStatus.queued
+
+
+def test_tick_closes_expired_conversations(tmp_path, conn, state):
+    # tick마다 30분 지난 chat 대화와 2시간 지난 plan 대화를 닫는다(만료는 볼 때 확인한다)
+    from my_planner.domain import ConversationKind
+
+    start = kst(2026, 10, 26, 14, 0)
+    env = _with_router(Env(tmp_path, conn, state, start, installed=start - timedelta(days=3), last_seen=start), conn)
+    chat = env.convs.open(ConversationKind.chat, date(2026, 10, 26))
+    plan = env.router.start_plan()
+    env.clock.advance(minutes=30)
+    env.runner.tick()
+    assert env.convs.get(chat.id).closed_at is None  # 정확히 30분은 아직 이어진다
+    env.clock.advance(minutes=1)
+    env.runner.tick()
+    assert env.convs.get(chat.id).closed_at is not None
+    assert env.convs.get(plan.id).closed_at is None
+    env.clock.set(kst(2026, 10, 26, 16, 0))
+    env.runner.tick()
+    assert env.convs.get(plan.id).closed_at is None  # 정확히 2시간
+    env.clock.advance(minutes=1)
+    env.runner.tick()
+    assert env.convs.get(plan.id).closed_at is not None

@@ -96,6 +96,10 @@ class RunsRepo:
 
     # --- 상태 바꾸기 ---
 
+    def mark_pending(self, id: int) -> None:
+        """큐에서 실행하지 않고 돌려 놓는다(계획 대화가 열려 있음). 다음 tick이 다시 판정한다."""
+        self._update(id, "status = 'pending'")
+
     def mark_queued(self, id: int) -> None:
         self._update(id, "status = 'queued'")
 

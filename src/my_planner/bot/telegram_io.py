@@ -19,17 +19,21 @@ from telegram.ext import Application, ContextTypes, TypeHandler
 
 from my_planner.bot.commands import (
     HELP_TEXT,
+    NO_PLAN_REPLY,
     NOT_PAUSED_REPLY,
     PAUSE_USAGE,
+    PLAN_DONE_REPLY,
     UNPAUSE_REPLY,
     command_of,
     pause_days,
     pause_reply,
+    plan_topic,
     today_text,
     week_text,
 )
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
 from my_planner.config import Settings
+from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Inbound, Outbound
 from my_planner.harness.redact import redact
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
@@ -94,8 +98,11 @@ async def handle_update(
     clock: Clock,
     tools: Tools | None = None,
     callbacks: CallbackHandler | None = None,
+    router: ConversationRouter | None = None,
 ) -> Verdict:
     """업데이트 하나를 판정하고 처리한다. 받은 글은 디스패처로 넘긴다. /today /week /help는 바로 답한다.
+
+    `/plan [주제]`는 계획 대화를 열고(열려 있던 것은 닫는다) 주제를 디스패처로 넘긴다. 답은 두뇌가 한다.
 
     버튼 누름은 `callbacks`가 처리하고(두뇌를 거치지 않는다), 끝나면 처리 완료로 기록한다.
     """
@@ -112,12 +119,22 @@ async def handle_update(
         msg = update.message
         assert msg is not None and msg.text is not None
         cmd = command_of(msg.text) if tools is not None else None
+        if cmd in ("/plan", "/done") and router is None:
+            cmd = None  # 계획 모드를 쓸 수 없으면 보통 글로 넘긴다
+        if cmd == "/plan":
+            assert router is not None
+            router.start_plan()
+            # 처리 완료 기록은 디스패처가 답을 보낸 뒤에 한다
+            dispatcher.submit_message(
+                Inbound(text=plan_topic(msg.text), at=clock.now(), sent_at=msg.date, update_ids=[update.update_id])
+            )
+            return "command"
         if cmd is not None:
             assert tools is not None
             done = [update.update_id]
             await _answer_command(
                 msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, state,
-                lambda: state.mark_updates_done(done),
+                lambda: state.mark_updates_done(done), router,
             )
             return "command"
         dispatcher.submit_message(
@@ -146,6 +163,7 @@ async def _answer_command(
     clock: Clock,
     state: StateRepo,
     on_sent: Callable[[], None],
+    router: ConversationRouter | None = None,
 ) -> None:
     """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
     now = clock.now()
@@ -163,6 +181,9 @@ async def _answer_command(
         v = state.get(PAUSE_UNTIL_KEY)
         state.set(PAUSE_UNTIL_KEY, None)
         reply = UNPAUSE_REPLY if v and from_iso(v) > now else NOT_PAUSED_REPLY
+    elif cmd == "/done":
+        assert router is not None
+        reply = PLAN_DONE_REPLY if router.end_plan() else NO_PLAN_REPLY
     else:
         render = today_text if cmd == "/today" else week_text
         reply = render(tools.tasks, now, tools.tz, tools.boundary)
@@ -302,6 +323,7 @@ def build_application(
     clock: Clock | None = None,
     tools: Tools | None = None,
     callbacks: CallbackHandler | None = None,
+    router: ConversationRouter | None = None,
 ) -> Application:
     """롱폴링 앱. `bot`을 주면 Sender와 같은 봇을 쓴다(한 번만 초기화된다)."""
     builder = Application.builder()
@@ -325,6 +347,7 @@ def build_application(
             clock=clk,
             tools=tools,
             callbacks=callbacks,
+            router=router,
         )
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

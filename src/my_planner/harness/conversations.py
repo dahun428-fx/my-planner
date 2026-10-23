@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class ConversationRouter:
-    """회차 대화 규칙(답장 창)이 30분 규칙보다 먼저다. 계획 대화 규칙(티켓 11)은 그보다 앞에 들어온다."""
+    """계획 대화 규칙(2시간)이 가장 먼저, 그다음 회차 대화 규칙(답장 창), 그다음 30분 규칙이다."""
 
     def __init__(
         self,
@@ -35,11 +35,45 @@ class ConversationRouter:
     def _idle(self) -> timedelta:
         return timedelta(minutes=self.settings.limits.chat_resume_minutes)
 
-    def for_user_message(self, at: datetime) -> Conversation:
-        """가장 최근 `run` 대화가 그 회차의 답장 창 안이면 잇는다(30분 규칙보다 먼저).
+    def _plan_idle(self) -> timedelta:
+        return timedelta(hours=self.settings.limits.plan_idle_hours)
 
+    def _open_plan(self, at: datetime) -> Conversation | None:
+        """마지막 메시지 후 2시간 이내의 열린 `plan` 대화. 2시간이 지났으면 닫고 None(만료는 볼 때 확인한다)."""
+        cur = self.convs.latest_open(ConversationKind.plan)
+        if cur is None:
+            return None
+        if at - cur.last_message_at <= self._plan_idle():
+            return cur
+        self.convs.close(cur.id)
+        return None
+
+    def start_plan(self) -> Conversation:
+        """새 `plan` 대화를 연다. 열려 있던 다른 계획 대화는 닫는다."""
+        while (cur := self.convs.latest_open(ConversationKind.plan)) is not None:
+            self.convs.close(cur.id)
+        tz, boundary = self.settings.timezone, self.settings.day_boundary
+        return self.convs.open(ConversationKind.plan, logical_date(self.clock.now(), tz, boundary))
+
+    def end_plan(self) -> bool:
+        """열린 계획 대화를 닫는다. 2시간 안에 열려 있던 것이 있었으면 True."""
+        was_open = self._open_plan(self.clock.now()) is not None
+        while (cur := self.convs.latest_open(ConversationKind.plan)) is not None:
+            self.convs.close(cur.id)
+        return was_open
+
+    def plan_open(self) -> bool:
+        return self._open_plan(self.clock.now()) is not None
+
+    def for_user_message(self, at: datetime) -> Conversation:
+        """2시간 이내의 열린 `plan` 대화가 있으면 그것을 잇는다(가장 먼저).
+
+        아니면 가장 최근 `run` 대화가 그 회차의 답장 창 안이면 잇는다(30분 규칙보다 먼저).
         아니면 30분 이내의 `chat` 대화를 잇고, 그것도 없으면 새 `chat`을 연다.
         """
+        plan = self._open_plan(at)
+        if plan is not None:
+            return plan
         run_conv = self._run_conversation_in_window(at)
         if run_conv is not None:
             return run_conv
@@ -76,7 +110,9 @@ class ConversationRouter:
         return self.convs.open(ConversationKind.run, logical_date(self.clock.now(), tz, boundary), run_id=run.id)
 
     def close_expired(self) -> None:
-        """마지막 메시지 후 30분이 지난 `chat` 대화를 닫는다."""
+        """마지막 메시지 후 30분이 지난 `chat` 대화와 2시간이 지난 `plan` 대화를 닫는다. 러너가 tick마다 부른다."""
+        now = self.clock.now()
         cur = self.convs.latest_open(ConversationKind.chat)
-        if cur is not None and self.clock.now() - cur.last_message_at > self._idle():
+        if cur is not None and now - cur.last_message_at > self._idle():
             self.convs.close(cur.id)
+        self._open_plan(now)

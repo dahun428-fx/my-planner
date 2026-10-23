@@ -31,6 +31,7 @@ from my_planner.harness.redact import redact
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
 from my_planner.store.repos.state import (
+    CARRY_REVIEW_KEY,
     LAST_AUTH_NOTICE_KEY,
     LAST_RATE_LIMIT_NOTICE_KEY,
     LIMITED_UNTIL_KEY,
@@ -103,6 +104,12 @@ LOOP_PROMPTS = {
     LoopKey.evening_checkin: "evening_checkin.md",
     LoopKey.review: "review_week.md",
     LoopKey.return_: "return.md",
+}
+
+# 사용자가 연 대화의 지시문. 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다
+CONVERSATION_PROMPTS = {
+    ConversationKind.chat: "chat.md",
+    ConversationKind.plan: "plan.md",
 }
 
 TYPING_INTERVAL_S = 5
@@ -290,7 +297,7 @@ class Dispatcher:
                 self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
             resumed = conv.session_id is not None
             # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택").
-            instructions = "" if conv.kind is ConversationKind.run else prompts.load("chat.md")
+            instructions = "" if conv.kind is ConversationKind.run else prompts.load(CONVERSATION_PROMPTS[conv.kind])
             history = ""
             if not resumed and conv.kind is ConversationKind.run:
                 # 세션이 없는 회차 대화: 두뇌가 자기가 보낸 회차 메시지를 알도록 최근 원문을 붙인다.
@@ -451,6 +458,15 @@ class Dispatcher:
             else:
                 live.append(r)
         if not live:
+            return
+        if self.router.plan_open():
+            # 큐에 든 뒤 계획 대화가 열렸다: 건너뛰지 않고 pending으로 돌려 놓는다. 다음 tick이 다시 판정한다
+            # (닫힐 때까지 기다리고, 한계를 넘으면 late). 넘겨 받은 회고는 표시를 되돌려 혼자 실행되지 않게 한다
+            for r in live:
+                runs.mark_pending(r.id)
+                if r.id in carried_ids:
+                    self.state.set(CARRY_REVIEW_KEY, str(r.id))
+            log.info("run_deferred_plan_open", extra={"run_ids": [r.id for r in live]})
             return
         if live[0] is not run:  # primary가 늦었으면 남은 회차 중 합치기 우선순위가 가장 높은 것이 primary
             live.sort(key=lambda r: merge_order(r.loop))
