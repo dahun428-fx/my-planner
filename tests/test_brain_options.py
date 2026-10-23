@@ -170,7 +170,29 @@ def test_detect_resume_failed():
     assert detect_resume_failed(None, [zero_turn], "error") is False
     # 두뇌가 답을 시작했으면 resume은 된 것이다
     assert detect_resume_failed("s1", [_assistant(), _result(is_error=True)], "error") is False
-    assert detect_resume_failed("s1", [_result(is_error=True)], "error") is False
+    turned = _result(is_error=True)
+    assert turned.num_turns > 0
+    assert detect_resume_failed("s1", [turned], "error") is False
     # 오류가 아닌 상태(로그인·한도·턴 상한·정상)는 resume 실패로 보지 않는다
     for status in ("ok", "auth_error", "rate_limited", "max_turns"):
         assert detect_resume_failed("s1", [], status) is False
+
+
+async def test_claude_brain_sets_resume_failed(tmp_path, monkeypatch):
+    # 원래 버그: ClaudeBrain이 resume_failed를 넘기지 않았다. 턴 없이 예외로 끝난 resume은 True.
+    from my_planner.harness import brain as brain_mod
+
+    async def failing_query(*, prompt, options):
+        raise RuntimeError("process exited")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(brain_mod, "query", failing_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk"})
+    monkeypatch.setattr(brain_mod, "build_options", lambda **kw: None)
+    b = brain_mod.ClaudeBrain(lambda: None, tmp_path, max_turns=10)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[])
+    resumed = await b.run("hi", session_id="s1", run_ctx=ctx)
+    assert resumed.status == "error"
+    assert resumed.resume_failed is True
+    fresh = await b.run("hi", session_id=None, run_ctx=ctx)
+    assert fresh.resume_failed is False
