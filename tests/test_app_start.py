@@ -175,3 +175,35 @@ def test_build_application_gets_tools(started, monkeypatch):
     monkeypatch.setattr(app, "build_application", fake_build)
     assert app.main() == 0
     assert isinstance(seen["tools"], Tools)
+
+
+def test_first_tick_before_polling_then_run_forever(started, monkeypatch):
+    import sqlite3
+
+    app, root, calls = started
+    from my_planner.loop import runner as runner_mod
+
+    real_tick = runner_mod.Runner.tick
+
+    def spy_tick(self):
+        calls.append(("tick", None))
+        real_tick(self)
+
+    def spy_forever(self, interval=60):  # 부르는 순간을 적는다(가짜 종료가 곧바로 취소한다)
+        import asyncio
+
+        calls.append(("run_forever", interval))
+        return asyncio.sleep(0)
+
+    monkeypatch.setattr(runner_mod.Runner, "tick", spy_tick)
+    monkeypatch.setattr(runner_mod.Runner, "run_forever", spy_forever)
+    assert app.main() == 0
+
+    names = [c[0] for c in calls]
+    # 스펙 5.1: (installed_at) → 첫 tick 판정 → 폴링 → run_forever
+    assert names.index("tick") < names.index("start_polling") < names.index("run_forever")
+    assert names.count("tick") == 1
+    conn = sqlite3.connect(root / "state" / "planner.db")
+    keys = {k for (k,) in conn.execute("SELECT key FROM app_state")}
+    conn.close()
+    assert {"installed_at", "last_seen_at"} <= keys

@@ -50,3 +50,32 @@ def test_migrate_to_2_with_constraints(tmp_path):
             "VALUES ('나', 'open', ?, ?, ?)",
             (now, now, now),
         )
+
+
+def test_migrate_to_3_runs_constraints(tmp_path):
+    import sqlite3
+
+    import pytest
+
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn) >= 3
+    now = "2026-10-26T00:00:00+00:00"
+
+    def insert(**kw):
+        row = {"loop": "morning_brief", "scheduled_for": now, "status": "pending", "created_at": now, **kw}
+        cols = ", ".join(row)
+        conn.execute(f"INSERT INTO runs ({cols}) VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
+
+    insert()
+    r = conn.execute("SELECT * FROM runs").fetchone()
+    assert (r["cadence"], r["attempt"], r["resent"], r["merged_run_ids"]) == ("day", 0, 0, "[]")
+    with pytest.raises(sqlite3.IntegrityError):  # UNIQUE (loop, cadence, scheduled_for)
+        insert()
+    insert(loop="review", cadence="week")  # 주기가 다르면 같은 시각이어도 된다
+    with pytest.raises(sqlite3.IntegrityError):  # 없는 상태
+        insert(scheduled_for="2026-10-27T00:00:00+00:00", status="waiting")
+    with pytest.raises(sqlite3.IntegrityError):  # 없는 건너뜀 이유
+        insert(scheduled_for="2026-10-27T00:00:00+00:00", status="skipped", skip_reason="bored")
+    with pytest.raises(sqlite3.IntegrityError):  # skipped가 아닌데 이유가 있음
+        insert(scheduled_for="2026-10-27T00:00:00+00:00", status="done", skip_reason="late")
+    insert(scheduled_for="2026-10-27T00:00:00+00:00", status="skipped", skip_reason="late")

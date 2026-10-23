@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 from contextlib import ExitStack
@@ -24,6 +25,7 @@ from my_planner.harness.brain import ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher
 from my_planner.logging_setup import setup_logging
+from my_planner.loop.runner import Runner
 from my_planner.platform.windows import (
     AlreadyRunning,
     SingleInstanceLock,
@@ -32,6 +34,7 @@ from my_planner.platform.windows import (
 )
 from my_planner.store.db import migrate, open_db
 from my_planner.store.repos.conversations import ConversationsRepo
+from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -103,6 +106,7 @@ async def _serve(settings: Settings) -> None:
         clock = SystemClock()
         state = StateRepo(conn, clock)
         convs = ConversationsRepo(conn, clock)
+        runs = RunsRepo(conn, clock)
         transcripts = TranscriptStore(paths.data_dir, settings.timezone, settings.day_boundary)
 
         # 4. Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
@@ -129,26 +133,39 @@ async def _serve(settings: Settings) -> None:
             transcripts=transcripts,
             clock=clock,
             settings=settings,
-            router=ConversationRouter(convs, clock=clock, settings=settings),
+            router=ConversationRouter(convs, runs, clock=clock, settings=settings),
             tools=tools,
+            runs=runs,
             keep_awake=keep_awake,
         )
+        runner = Runner(clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher)
+        # (티켓 12: queued/running 회차 복구가 여기 들어온다)
+        # 5. 첫 실행이면 installed_at 기록
+        runner.ensure_installed()
         application = build_application(
             settings, dispatcher, state, transcripts, bot=bot, clock=clock, tools=tools
         )
 
-        # 5. 폴링 시작
+        # 6. 첫 tick 판정 → 폴링 시작 → 1분 tick
         async with application:
             await application.start()
             dispatcher.start()
+            try:
+                runner.tick()
+            except Exception:  # 첫 tick이 안 돼도 폴링과 1분 tick은 시작한다
+                log.exception("tick_error")
             await application.updater.start_polling(
                 allowed_updates=["message", "callback_query"], drop_pending_updates=False
             )
             log.info("polling_started")
+            ticking = asyncio.create_task(runner.run_forever(), name="runner")
             try:
                 await _wait_for_shutdown()
             finally:
-                # 종료 순서: updater.stop → app.stop → dispatcher.stop(30)
+                # 종료 순서: tick 멈춤 → updater.stop → app.stop → dispatcher.stop(30)
+                ticking.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await ticking
                 await application.updater.stop()
                 await application.stop()
                 await dispatcher.stop(SHUTDOWN_TIMEOUT_S)
