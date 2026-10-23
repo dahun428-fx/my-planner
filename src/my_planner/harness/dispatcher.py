@@ -7,7 +7,7 @@ import contextlib
 import itertools
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -72,6 +72,7 @@ class Sender(Protocol):
 class _RunJob:
     run: Run
     merged: list[Run]
+    carried_ids: frozenset[int] = frozenset()  # merged 가운데 R1로 넘겨 받은 회고(혼자 실행하지 않는다)
 
 
 @dataclass
@@ -184,9 +185,13 @@ class Dispatcher:
     def submit_message(self, m: Inbound) -> None:
         self._queue.put_nowait((_PRIORITY_MESSAGE, next(self._seq), m))
 
-    def submit_run(self, run: Run, merged: list[Run]) -> None:
-        """러너가 `queued`로 바꾼 회차를 넣는다. `merged`는 이 회차에 합쳐 함께 처리할 회차다."""
-        self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), _RunJob(run, list(merged))))
+    def submit_run(self, run: Run, merged: list[Run], *, carried_ids: Iterable[int] = ()) -> None:
+        """러너가 `queued`로 바꾼 회차를 넣는다. `merged`는 이 회차에 합쳐 함께 처리할 회차다.
+
+        `carried_ids`는 merged 가운데 넘겨 받은 회고다. primary가 늦으면 승격하지 않고 같이 건너뛴다.
+        """
+        job = _RunJob(run, list(merged), frozenset(carried_ids))
+        self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:
         while True:
@@ -195,7 +200,7 @@ class Dispatcher:
                 return
             if isinstance(item, _RunJob):
                 try:
-                    await self._handle_run(item.run, item.merged)
+                    await self._handle_run(item.run, item.merged, item.carried_ids)
                 except Exception:
                     log.exception("run_handling_error", extra={"run_id": item.run.id})
                 continue
@@ -307,13 +312,15 @@ class Dispatcher:
 
     # --- 회차 실행 (스펙 5.4: 두 단계) ---
 
-    async def _handle_run(self, run: Run, merged: list[Run]) -> None:
+    async def _handle_run(self, run: Run, merged: list[Run], carried_ids: frozenset[int] = frozenset()) -> None:
         assert self.runs is not None, "회차를 실행하려면 runs가 있어야 한다"
         runs = self.runs
         # 대기하는 동안 한계가 지난 회차는 저마다 따로 건너뛴다(스펙 5.4 R5). 남은 회차끼리 합쳐 실행한다.
+        # 넘겨 받은 회고(R1)는 primary가 늦으면 승격하지 않고 같이 late가 된다(혼자 실행하지 않는다).
+        primary_late = self._past_limit(run)
         live: list[Run] = []
         for r in (run, *merged):
-            if self._past_limit(r):
+            if self._past_limit(r) or (primary_late and r.id in carried_ids):
                 runs.mark_skipped(r.id, SkipReason.late)
                 log.info("run_skipped_late_at_start", extra={"run_id": r.id})
             else:

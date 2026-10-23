@@ -244,3 +244,18 @@ async def test_evening_merged_into_review_still_gets_buttons(tmp_path, conn, sta
     await env.process_run(env.runs.get(review.id), [env.runs.get(eve.id)])
 
     assert [o.ask_condition_for for o in env.sender.sent] == [date(2026, 10, 25)]
+
+
+async def test_return_run_uses_return_prompt_without_condition_buttons(tmp_path, conn, state):
+    # 화 08:00 복귀 인사(어제 체크인 없음): return.md로 쓰고, 컨디션 버튼은 붙이지 않는다. 먼저 보낸 메시지로 센다
+    hello = "다시 이어서 해 볼까요? 오늘은 보고서 목차부터 정해 봐요."
+    tue_0800 = kst(2026, 10, 27, 8, 0)
+    env = _env(tmp_path, conn, state, [FakeTurn([], hello)], start=tue_0800)
+    run = _queued(env, LoopKey.return_, tue_0800)
+    await env.process_run(run)
+
+    assert [(o.text, o.ask_condition_for) for o in env.sender.sent] == [(hello, None)]
+    assert prompts.load("return.md") in env.brain.prompts[0]
+    assert "## 컨디션 버튼" not in env.brain.prompts[0]
+    assert env.runs.get(run.id).status is RunStatus.done
+    assert state.usage(date(2026, 10, 27)).proactive_messages == 1
