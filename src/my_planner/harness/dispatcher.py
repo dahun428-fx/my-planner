@@ -23,6 +23,7 @@ from my_planner.domain import (
     RunContext,
     RunStatus,
     SkipReason,
+    TaskStatus,
 )
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
@@ -215,6 +216,25 @@ class Dispatcher:
         `carried_ids`는 merged 가운데 넘겨 받은 회고다. primary가 늦으면 승격하지 않고 같이 건너뛴다.
         """
         job = _RunJob(run, list(merged), frozenset(carried_ids))
+        self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
+
+    def submit_resend(self, run: Run) -> None:
+        """시작 시 복구: 전송이 끝내 안 된 회차(`failed`, `outbound_text` 있음)를 전송만 한 번 다시 한다.
+
+        5분 뒤 재전송과 같은 길로 간다(답장 창, `resent` 확인). 버튼은 DB에서 다시 만든다: 그 대화에서 제안해
+        아직 초안인 할 일, 그리고 그 회차의 컨디션 버튼 날짜.
+        """
+        assert self.runs is not None
+        merged = [m for m in (self.runs.get(i) for i in run.merged_run_ids) if m is not None]
+        drafts: list[int] = []
+        if self.tools is not None and run.conversation_id is not None:
+            tasks = self.tools.tasks
+            drafts = [
+                i
+                for i in tasks.proposed_task_ids(run.conversation_id)
+                if (t := tasks.get(i)) is not None and t.status is TaskStatus.draft
+            ]
+        job = _ResendJob(run, merged, [], drafts, self._ask_condition_for(run, merged))
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:

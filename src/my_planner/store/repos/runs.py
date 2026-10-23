@@ -90,6 +90,14 @@ class RunsRepo:
         ).fetchall()
         return [_row(r) for r in rows]
 
+    def with_status(self, *statuses: RunStatus) -> list[Run]:
+        marks = ", ".join("?" for _ in statuses)
+        rows = self.conn.execute(
+            f"SELECT * FROM runs WHERE status IN ({marks}) ORDER BY scheduled_for, id",
+            [RunStatus(s).value for s in statuses],
+        ).fetchall()
+        return [_row(r) for r in rows]
+
     def has_tool_events(self, id: int) -> bool:
         r = self.conn.execute("SELECT 1 FROM tool_events_log WHERE run_id = ? LIMIT 1", (id,)).fetchone()
         return r is not None
@@ -99,10 +107,19 @@ class RunsRepo:
     def mark_pending(self, id: int) -> None:
         """큐에서 실행하지 않고 돌려 놓는다(계획 대화가 열려 있음). 다음 tick이 다시 판정한다.
 
-        queued인 회차만 바꾼다. 이미 실행 중이거나 끝난 회차는 되살리지 않는다.
+        queued인 회차와, 시작 시 복구로 다시 실행하려고 큐에 넣은 interrupted 회차만 바꾼다.
+        이미 실행 중이거나 끝난 회차는 되살리지 않는다.
         """
         with self.conn:
-            self.conn.execute("UPDATE runs SET status = 'pending' WHERE id = ? AND status = 'queued'", (id,))
+            self.conn.execute(
+                "UPDATE runs SET status = 'pending', finished_at = NULL "
+                "WHERE id = ? AND status IN ('queued', 'interrupted')",
+                (id,),
+            )
+
+    def mark_interrupted(self, id: int) -> None:
+        """시작할 때 `queued`나 `running`으로 남아 있던 회차(스펙 5.1 4단계)."""
+        self._update(id, "status = 'interrupted', finished_at = ?", self._now())
 
     def mark_queued(self, id: int) -> None:
         self._update(id, "status = 'queued'")

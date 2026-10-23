@@ -480,3 +480,73 @@ def test_tick_closes_expired_conversations(tmp_path, conn, state):
     env.clock.advance(minutes=1)
     env.runner.tick()
     assert env.convs.get(plan.id).closed_at is not None
+
+
+# --- 티켓 12: 백업, update_id 정리 ---
+
+
+def test_backup_name_and_keeps_14(tmp_path, conn, state):
+    import sqlite3
+
+    from my_planner.loop.runner import backup_daily
+
+    start = kst(2026, 10, 23, 14, 0)
+    env = Env(tmp_path, conn, state, start, installed=start - timedelta(days=1), last_seen=start)
+    backups = tmp_path / "state" / "backups"
+    env.runner.register_daily(backup_daily(conn, backups, keep=14))
+    state.set("marker", "first-day")
+
+    for day in range(15):  # 15일 연속, 하루 두 번 tick(두 번째는 백업하지 않는다)
+        at = start + timedelta(days=day)
+        for t in (at, at + timedelta(hours=1)):
+            state.set("last_seen_at", to_iso(t - timedelta(minutes=1)))
+            env.clock.set(t)
+            env.runner.tick()
+
+    names = sorted(p.name for p in backups.iterdir())
+    assert len(names) == 14
+    assert names[0] == "planner-2026-10-24.db"  # 가장 오래된 10-23 것은 지웠다
+    assert names[-1] == "planner-2026-11-06.db"
+    copy = sqlite3.connect(backups / names[0])
+    assert copy.execute("SELECT value FROM app_state WHERE key = 'marker'").fetchone() == ("first-day",)
+    copy.close()
+
+
+def test_backup_error_does_not_block_tick(tmp_path, conn, state, caplog):
+    from my_planner.loop.runner import backup_daily
+
+    start = kst(2026, 10, 23, 14, 0)
+    env = Env(tmp_path, conn, state, start, installed=start - timedelta(days=1), last_seen=start)
+    blocker = tmp_path / "state" / "backups"
+    blocker.write_text("폴더가 아니다", encoding="utf-8")  # 백업 폴더를 만들 수 없다
+    seen = []
+    env.runner.register_daily(backup_daily(conn, blocker, keep=14))
+    env.runner.register_daily(seen.append)
+
+    env.runner.tick()  # 예외가 올라오지 않는다
+
+    assert seen == [date(2026, 10, 23)]
+    assert state.get("last_daily_jobs_date") == "2026-10-23"
+    assert from_iso(state.get("last_seen_at")) == start
+    errors = [r for r in caplog.records if r.msg == "backup_error"]  # 예외 종류만 남긴다
+    assert len(errors) == 1 and errors[0].error_type == "FileExistsError"
+    assert errors[0].levelname == "WARNING" and errors[0].exc_info is None
+
+
+def test_daily_prunes_update_ids_older_than_2_days(tmp_path, conn, state):
+    from my_planner.loop.runner import prune_updates_daily
+
+    start = kst(2026, 10, 23, 14, 0)
+    env = Env(tmp_path, conn, state, start, installed=start - timedelta(days=7), last_seen=start)
+    state.clock = env.clock
+    env.clock.set(start - timedelta(days=2, minutes=1))
+    state.mark_updates_done([1])
+    env.clock.set(start - timedelta(days=2) + timedelta(minutes=1))
+    state.mark_updates_done([2])
+    env.clock.set(start)
+    env.runner.register_daily(prune_updates_daily(state, env.clock))
+
+    env.runner.tick()
+
+    assert not state.is_seen_update(1)  # 2일이 지났다
+    assert state.is_seen_update(2)

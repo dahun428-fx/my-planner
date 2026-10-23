@@ -72,11 +72,38 @@ OWNER_TELEGRAM_ID=...
 |---|---|
 | `state\planner.db` | 원본 데이터(SQLite) |
 | `data\transcripts\YYYY\MM\YYYY-MM-DD.md` | 원문 기록. 하루 경계는 04:00이라 새벽 0시~3시 59분의 대화는 전날 파일에 들어갑니다 |
-| `state\logs\my-planner.jsonl` | 시스템 로그. 메시지 본문은 남기지 않습니다 |
+| `state\logs\my-planner.jsonl` | 시스템 로그. 메시지 본문은 남기지 않습니다. 하루 단위로 회전하고 30일 치를 보관합니다 |
+| `state\backups\planner-YYYY-MM-DD.db` | DB 백업. 매일 처음 도는 tick에 하나 만들고 최근 14개를 남깁니다 |
 | `%USERPROFILE%\.claude\projects\` | Claude Agent SDK가 따로 남기는 **세션 기록 사본**입니다. 원본은 `data\transcripts\`이고, 이 사본에는 가리기 전 내용이 없도록 두뇌에는 가린 글만 넘깁니다. 지우고 싶으면 이 폴더의 my-planner 관련 하위 폴더를 지우면 됩니다 |
 
 - 주민등록번호, 계좌번호로 보이는 숫자, "비밀번호/비번/password/PIN" 뒤의 값은 원문 기록과 두뇌에 넘기기 전에 `[가림]`으로 바뀝니다. 그래도 민감한 정보는 보내지 않는 편이 안전합니다.
 - `data\`, `state\`, `.env`는 Git에 들어가지 않습니다. 백업은 로컬·외장 디스크에만 합니다.
+
+## 백업에서 복구하기
+
+DB가 손상되면 비서는 텔레그램으로 "데이터베이스에 문제가 있어요."라고 한 번 알리고, 답하지 않은 채 기다립니다(안전 모드). 자동으로 복구하지 않습니다. PowerShell에서 저장소 폴더(`E:\my-planner`)로 가서 아래 순서로 복구합니다.
+
+1. 작업을 멈춥니다. 5분 워치독이 다시 띄우지 않도록 끄고 멈춥니다(콘솔에서 실행 중이면 Ctrl+C).
+   ```powershell
+   Disable-ScheduledTask -TaskName my-planner
+   Stop-ScheduledTask -TaskName my-planner
+   ```
+2. 가장 최근 백업을 `state\planner.db` 위에 복사합니다. 파일 이름의 날짜는 `state\backups\`에서 가장 최근 것으로 바꿉니다. 옛 DB의 WAL 파일이 남아 있으면 먼저 지웁니다. 다시 시작해도 같은 알림이 오면 하루 앞 백업으로 다시 해 봅니다.
+   ```powershell
+   Remove-Item state\planner.db-wal, state\planner.db-shm -ErrorAction SilentlyContinue
+   Copy-Item state\backups\planner-2026-10-23.db state\planner.db -Force
+   ```
+3. 알림 표식을 지웁니다. 다음에 또 문제가 생기면 다시 알리게 됩니다.
+   ```powershell
+   Remove-Item state\integrity_notice_sent
+   ```
+4. 다시 시작합니다.
+   ```powershell
+   Enable-ScheduledTask -TaskName my-planner
+   Start-ScheduledTask -TaskName my-planner
+   ```
+
+백업 날짜 뒤에 나눈 대화는 `data\transcripts\`에 남아 있지만, 그 사이에 바뀐 할 일과 컨디션은 백업 시점으로 돌아갑니다.
 
 ## 알아 둘 점
 
