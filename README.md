@@ -72,6 +72,8 @@ OWNER_TELEGRAM_ID=...
 
 **등록**
 
+콘솔에서 `python -m my_planner`로 띄워 둔 비서가 있으면 먼저 Ctrl+C로 끕니다. 켜 둔 채 등록하면 작업이 띄운 프로세스가 단일 실행 잠금 때문에 바로 끝나고, 점검에서 `State is Running`이 `FAIL`로 나옵니다.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
 ```

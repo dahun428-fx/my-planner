@@ -36,3 +36,17 @@ def test_wake_times_review_added_when_it_differs(tmp_path):
     assert out.stdout.splitlines() == [
         "weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 17:55", "weekend 19:55",
     ]
+
+
+def test_wake_times_follow_changed_run_times(tmp_path):
+    (tmp_path / "config.toml").write_text(
+        '[schedule.morning_brief]\nweekday = "07:30"\nweekend = "11:00"\n'
+        '[schedule.evening_checkin]\nweekday = "21:00"\nweekend = "19:10"\n',
+        encoding="utf-8",
+    )
+    out = run_cli(tmp_path)
+    assert out.returncode == 0, out.stderr
+    # 회고(일 18:00 기본)는 주말 저녁 19:10과 달라서 따로 나온다
+    assert out.stdout.splitlines() == [
+        "weekday 07:25", "weekday 20:55", "weekend 10:55", "weekend 17:55", "weekend 19:05",
+    ]

@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import sys
 import time
@@ -9,20 +10,44 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 class FakeUpdater:
+    """PTB Updater처럼 `running`을 둔다. 멈춘 것을 다시 멈추면 RuntimeError.
+
+    `fail_starts`번까지 `start_polling`이 예외를 내고 `running=False`로 남는다(복귀 직후 네트워크 없음).
+    `stop_yields`만큼 양보한 뒤 멈춤을 마친다(롱폴 요청이 끝나기를 기다리는 동안). `running`은 먼저 False가 된다.
+    """
+
     def __init__(self, calls):
         self.calls = calls
+        self.running = False
+        self.fail_starts = 0
+        self.stop_yields = 0
+        self.stopping = False
 
     async def start_polling(self, **kw):
         self.calls.append(("start_polling", kw))
+        if self.fail_starts:
+            self.fail_starts -= 1
+            raise ConnectionError("network down")
+        self.running = True
 
     async def stop(self):
+        if not self.running:
+            raise RuntimeError("This Updater is not running!")
         self.calls.append(("updater.stop", None))
+        self.running = False
+        self.stopping = True
+        for _ in range(self.stop_yields):
+            await asyncio.sleep(0)
+        self.stopping = False
 
 
 class FakeApplication:
+    last = None
+
     def __init__(self, calls):
         self.calls = calls
         self.updater = FakeUpdater(calls)
+        FakeApplication.last = self
 
     async def __aenter__(self):
         self.calls.append(("app.initialize", None))
@@ -480,3 +505,64 @@ def test_resume_restarts_polling(started, monkeypatch):
     polling = {"allowed_updates": ["message", "callback_query"], "drop_pending_updates": False}
     assert calls[2][1] == polling and calls[4][1] == polling
     assert any(e["msg"] == "polling_restarted" for e in _log_entries(root))
+
+
+def test_restart_after_failed_restart_skips_stop_and_shutdown_stays_in_order(started, monkeypatch):
+    app, _root, calls = started
+    runners = []
+    real_init = app.Runner.__init__
+
+    def spy_init(self, **kw):
+        real_init(self, **kw)
+        runners.append(self)
+
+    async def two_resumes():
+        updater = FakeApplication.last.updater
+        updater.fail_starts = 1  # 복귀 직후 첫 재시작은 네트워크가 없어 안 된다
+        with pytest.raises(ConnectionError):
+            await runners[0]._on_resume()
+        assert not updater.running
+        await runners[0]._on_resume()  # 다음 기회: 멈춘 것을 다시 멈추지 않고 바로 시작한다
+        assert updater.running
+
+    monkeypatch.setattr(app.Runner, "__init__", spy_init)
+    monkeypatch.setattr(app, "_wait_for_shutdown", two_resumes)
+    assert app.main() == 0
+    assert [c[0] for c in calls] == [
+        "app.initialize", "app.start", "start_polling",
+        "updater.stop", "start_polling",  # 첫 재시작(안 됨)
+        "start_polling",  # 두 번째 재시작: stop 없이
+        "updater.stop", "app.stop", "app.shutdown",
+    ]
+
+
+def test_shutdown_during_restart_waits_for_it_and_keeps_order(started, monkeypatch):
+    app, _root, calls = started
+
+    async def forever_resumes(self, interval=60):  # tick 루프가 절전 복귀로 폴링을 다시 시작하는 중
+        await self._on_resume()
+        await asyncio.Event().wait()
+
+    async def shutdown_mid_restart():  # Ctrl+C가 재시작의 updater.stop() 대기 중에 온다
+        updater = FakeApplication.last.updater
+        updater.stop_yields = 20
+        while not updater.stopping:
+            await asyncio.sleep(0)
+
+    real_stop = app.Dispatcher.stop
+
+    async def spy_stop(self, timeout=30):
+        calls.append(("dispatcher.stop", timeout))
+        await real_stop(self, timeout)
+
+    monkeypatch.setattr(app.Runner, "run_forever", forever_resumes)
+    monkeypatch.setattr(app, "_wait_for_shutdown", shutdown_mid_restart)
+    monkeypatch.setattr(app.Dispatcher, "stop", spy_stop)
+    assert app.main() == 0
+    # 재시작은 끝까지 마치고(멈춘 채 남은 폴링 작업이 없게), 그다음 종료 순서 그대로
+    assert [c[0] for c in calls] == [
+        "app.initialize", "app.start", "start_polling",
+        "updater.stop", "start_polling",
+        "updater.stop", "app.stop", "dispatcher.stop", "app.shutdown",
+    ]
+    assert not FakeApplication.last.updater.running
