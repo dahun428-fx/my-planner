@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>인터페이스 정의서</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="index.html">
+      <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
+      my-planner <span class="brand__sub">산출물</span>
+    </a>
+    <div class="topbar__doc"><span>인터페이스 정의서</span></div>
+    <button class="navtoggle" type="button" aria-controls="docnav" aria-expanded="false">
+      <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>문서 목록
+    </button>
+  </div>
+</header>
+
+<div class="shell shell--doc" data-doc="interfaces">
+
+  <nav class="docnav" id="docnav" aria-label="문서 목록">
+    <div class="docnav__group">
+      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>산출물 지도</a></li></ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">1 요구</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="requirements" href="requirements.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>요구사항 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">2 설계</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 정의서</a></li>
+        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</a></li>
+        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>시퀀스·상태 다이어그램</a></li>
+        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg>화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>ERD · 테이블 정의서</a></li>
+        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">3 구현 · 시험</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</a></li>
+        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>테스트 계획·결과서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">4 운영</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">공통</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="glossary" href="glossary.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어집</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="doc">
+
+    <header class="doc-head">
+      <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</span>
+      <h1>SP1 인터페이스 정의서</h1>
+      <p class="doc-head__lede">비서가 바깥과 주고받는 접점 다섯 가지를 한 문서로 모았습니다. 두뇌가 부르는 도구 12개, 텔레그램, Claude 호출 계약, 설정과 실행 명령, 윈도우 작업 스케줄러입니다.</p>
+      <div class="doc-head__meta">
+        <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">인터페이스 정의서(ID · 호출자→제공자 · 입력/출력 · 오류)</span></span>
+        <span class="pill doc" data-s="review">검토 중</span>
+      </div>
+      <dl class="docinfo">
+        <div><dt>문서 ID</dt><dd class="mono">MP-SP1-IF</dd></div>
+        <div><dt>버전</dt><dd class="tnum">1.0</dd></div>
+        <div><dt>작성일</dt><dd class="tnum">2026-10-23</dd></div>
+        <div><dt>기준 문서</dt><dd>SP1 스펙 v4, 구현 계획, main <code>0336f4d</code> 코드(SP1-00~14, #35 병합)</dd></div>
+      </dl>
+    </header>
+
+    <nav class="jumpbar" data-auto aria-label="바로 가기"></nav>
+
+    <section class="section">
+      <div class="section__head"><h2 id="summary"><span class="section__no">1</span>요약</h2><p class="section__lede">인터페이스 ID 체계와 구현 상태를 먼저 봅니다.</p></div>
+
+<aside class="summary">
+  <span class="summary__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>한눈에 보기</span>
+  <p class="summary__title">두뇌가 데이터에 닿는 길은 도구 12개뿐이고, 사용자와는 텔레그램 하나로만 만납니다.</p>
+  <div class="summary__body"><ul>
+    <li>도구 12개가 <strong>모두 main에 있습니다</strong>(SP1-03·04·06·07). <code>TOOL_NAMES</code>에 12개가 다 들어 있습니다.</li>
+    <li>텔레그램은 롱폴링으로 받고 일반 글자로 보냅니다. 명령 7개와 버튼 형식 4종이 모두 구현됐습니다. 명령 답과 고정 안내도 바로 3회(사이 1초, 2초)까지 보내고, 보낸 뒤에만 처리 완료로 기록합니다.</li>
+    <li>두뇌는 <strong>도구 외 모든 기능이 꺼진 상태</strong>로 호출됩니다(파일, 셸, 웹, 사용자 설정, 외부 커넥터 없음). 결과는 5가지 상태로 분류되고 문자열 매칭은 쓰지 않습니다. 호출 한 번은 최대 300초이고, 넘으면 <code>error</code>로 봅니다.</li>
+    <li>설정은 <code>.env</code> 2개 키(와 선택 환경변수 1개)와 <code>config.toml</code> 25개 키입니다. 윈도우 작업은 2개(상시 실행, 깨우기)입니다.</li>
+  </ul></div>
+</aside>
+
+<div class="kpis">
+  <div class="kpi kpi--accent">
+    <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-plug"/></svg>두뇌 도구</div>
+    <div class="kpi__value">12<span class="kpi__unit">개</span></div>
+    <div class="kpi__note">모두 구현 (SP1-03·04·06·07)</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg>텔레그램 명령</div>
+    <div class="kpi__value">7<span class="kpi__unit">개</span></div>
+    <div class="kpi__note">모두 구현 · 버튼 형식 4종 구현</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg>호출당 턴 상한</div>
+    <div class="kpi__value">10<span class="kpi__unit">턴</span></div>
+    <div class="kpi__note">하루 60회 · 회차당 2회</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg>작업 스케줄러</div>
+    <div class="kpi__value">2<span class="kpi__unit">개</span></div>
+    <div class="kpi__note">my-planner · my-planner-wake (병합 · 노트북 점검 대기 #16)</div>
+  </div>
+</div>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="context"><span class="section__no">2</span>문맥도와 목록</h2><p class="section__lede">한 장으로 보는 접점 지도입니다.</p></div>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">인터페이스 문맥도</span><span class="fig__std">C4 Context 변형 · SP1 스펙 4장, 마스터 설계 5장</span></div>
+  <div class="fig__body">
+<svg class="svg-wide" viewBox="0 0 800 560" role="img" aria-label="인터페이스 문맥도: 사용자는 텔레그램을 거쳐 하네스와 대화하고, 하네스는 Claude Agent SDK로 두뇌를 호출하며 두뇌는 MCP 도구로 하네스의 도구 함수를 부른다. 설정 파일과 작업 스케줄러가 하네스를 설정하고 시작시키며, 하네스는 SQLite와 파일에 저장한다.">
+  <rect class="d-plain" x="1" y="1" width="798" height="558" rx="2"/>
+  <!-- owner -->
+  <rect class="d-box-2" x="10" y="40" width="130" height="70" rx="8" stroke-width="1.5"/>
+  <use href="#i-user" x="20" y="48" width="24" height="24"/>
+  <text class="d-text" x="52" y="66">사용자</text>
+  <text class="d-text-sm" x="20" y="92">Dahun · 휴대폰 텔레그램</text>
+  <!-- telegram -->
+  <rect class="d-plain" x="10" y="185" width="130" height="80" rx="8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <use href="#i-telegram" x="20" y="193" width="24" height="24"/>
+  <text class="d-text" x="52" y="211">텔레그램</text>
+  <text class="d-text-sm" x="20" y="236">Bot API 서버</text>
+  <text class="d-text-sm" x="20" y="252">(인터넷)</text>
+  <!-- config -->
+  <rect class="d-box-2" x="270" y="30" width="290" height="70" rx="8" stroke-width="1.5"/>
+  <use href="#i-lock" x="280" y="38" width="22" height="22"/>
+  <text class="d-text" x="310" y="55">설정</text>
+  <text class="d-mono" x="280" y="76">.env (비밀) · config.toml (값)</text>
+  <text class="d-mono" x="280" y="91">MY_PLANNER_ROOT (환경변수)</text>
+  <!-- scheduler -->
+  <rect class="d-box-2" x="650" y="30" width="140" height="80" rx="8" stroke-width="1.5"/>
+  <use href="#i-scheduler" x="660" y="38" width="24" height="24"/>
+  <text class="d-text" x="692" y="55">작업 스케줄러</text>
+  <text class="d-text-sm" x="660" y="80">Windows</text>
+  <text class="d-text-sm" x="660" y="96">로그온 · 복귀 · 5분</text>
+  <!-- harness -->
+  <rect class="d-box" x="270" y="150" width="290" height="230" rx="10" stroke-width="2"/>
+  <use href="#i-harness" x="280" y="156" width="22" height="22"/>
+  <text class="d-text" x="308" y="172">하네스 · python -m my_planner</text>
+  <rect class="d-plain" x="290" y="185" width="115" height="44" rx="6" stroke-width="1.3"/>
+  <text class="d-text" x="347" y="205" text-anchor="middle">봇</text>
+  <text class="d-text-sm" x="347" y="220" text-anchor="middle">수신 · 필터 · 전송</text>
+  <rect class="d-plain" x="425" y="185" width="115" height="44" rx="6" stroke-width="1.3"/>
+  <text class="d-text" x="482" y="205" text-anchor="middle">디스패처</text>
+  <text class="d-text-sm" x="482" y="220" text-anchor="middle">직렬 큐 · 두뇌 호출</text>
+  <rect class="d-plain" x="290" y="250" width="115" height="44" rx="6" stroke-width="1.3"/>
+  <text class="d-text" x="347" y="270" text-anchor="middle">루프 tick</text>
+  <text class="d-text-sm" x="347" y="285" text-anchor="middle">회차 · 따라잡기</text>
+  <rect class="d-plain" x="425" y="250" width="115" height="44" rx="6" stroke-width="1.3"/>
+  <text class="d-text" x="482" y="270" text-anchor="middle">도구 함수</text>
+  <text class="d-text-sm" x="482" y="285" text-anchor="middle">MCP 서버 planner</text>
+  <rect class="d-plain" x="357" y="315" width="115" height="44" rx="6" stroke-width="1.3"/>
+  <text class="d-text" x="414" y="335" text-anchor="middle">저장소</text>
+  <text class="d-text-sm" x="414" y="350" text-anchor="middle">SQLite · 파일</text>
+  <!-- brain -->
+  <rect class="d-plain" x="650" y="170" width="140" height="120" rx="8" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <use href="#i-brain" x="660" y="178" width="24" height="24"/>
+  <text class="d-text" x="692" y="196">두뇌</text>
+  <text class="d-text-sm" x="660" y="224">Claude</text>
+  <text class="d-text-sm" x="660" y="240">Agent SDK</text>
+  <text class="d-text-sm" x="660" y="256">(번들 CLI)</text>
+  <text class="d-text-sm" x="660" y="272">구독 로그인</text>
+  <!-- storage -->
+  <rect class="d-box-2" x="270" y="450" width="130" height="80" rx="8" stroke-width="1.5"/>
+  <use href="#i-database" x="280" y="458" width="24" height="24"/>
+  <text class="d-text" x="312" y="476">SQLite</text>
+  <text class="d-mono" x="280" y="500">state/planner.db</text>
+  <text class="d-mono" x="280" y="516">state/backups/</text>
+  <rect class="d-box-2" x="430" y="450" width="130" height="80" rx="8" stroke-width="1.5"/>
+  <use href="#i-folder" x="440" y="458" width="24" height="24"/>
+  <text class="d-text" x="472" y="476">파일</text>
+  <text class="d-mono" x="440" y="500">data/ (md)</text>
+  <text class="d-mono" x="440" y="516">state/logs/</text>
+  <!-- arrows -->
+  <path class="d-line" d="M75 110 V185" stroke-width="1.5"/>
+  <path class="d-accent" d="M75 190 l-4 -7 h8 z M75 105 l-4 7 h8 z"/>
+  <text class="d-text-sm" x="83" y="152">메시지 · 버튼</text>
+  <path class="d-line" d="M145 207 H285" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <path class="d-accent" d="M290 207 l-7 -4 v8 z M140 207 l7 -4 v8 z"/>
+  <text class="d-text-sm" x="215" y="198" text-anchor="middle">IF-TG-01~06</text>
+  <path class="d-line" d="M415 100 V145" stroke-width="1.5"/>
+  <path class="d-accent" d="M415 150 l-4 -7 h8 z"/>
+  <text class="d-text-sm" x="423" y="128">IF-CFG-01·02</text>
+  <path class="d-line" d="M700 110 L564 168" stroke-width="1.5"/>
+  <path class="d-accent" d="M560 170 l9 -1 l-3 -7 z"/>
+  <text class="d-text-sm" x="640" y="150" text-anchor="middle">IF-SCH-01~04</text>
+  <path class="d-line" d="M540 207 H645" stroke-width="1.5"/>
+  <path class="d-accent" d="M650 207 l-7 -4 v8 z"/>
+  <text class="d-text-sm" x="595" y="198" text-anchor="middle">IF-SDK-01~03</text>
+  <path class="d-line" d="M650 272 H545" stroke-width="1.5"/>
+  <path class="d-accent" d="M540 272 l7 -4 v8 z"/>
+  <text class="d-text-sm" x="595" y="263" text-anchor="middle">IF-TOOL-01~12</text>
+  <path class="d-line" d="M335 380 V445" stroke-width="1.5"/>
+  <path class="d-accent" d="M335 450 l-4 -7 h8 z"/>
+  <path class="d-line" d="M495 380 V445" stroke-width="1.5"/>
+  <path class="d-accent" d="M495 450 l-4 -7 h8 z"/>
+  <text class="d-text-sm" x="414" y="415" text-anchor="middle">내부 저장 (데이터베이스 설계서)</text>
+</svg>
+  </div>
+  <figcaption class="fig__cap">바깥과 닿는 선은 모두 점선 상자(인터넷의 텔레그램, Claude) 또는 설정·스케줄러 상자와 이어집니다. 두뇌는 하네스가 만든 MCP 서버 <code>planner</code>의 도구로만 데이터를 건드립니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure>
+
+<div class="legend">
+  <div class="legend__title">범례 · 문맥도</div>
+  <ul class="legend__list">
+    <li><span class="legend__term">실선 상자</span><span class="legend__desc">노트북 안에 있는 것</span></li>
+    <li><span class="legend__term">점선 상자</span><span class="legend__desc">노트북 밖 서비스(텔레그램 서버, Claude)</span></li>
+    <li><span class="legend__term">점선 화살표</span><span class="legend__desc">인터넷을 건너는 연결</span></li>
+    <li><span class="legend__term">IF-…</span><span class="legend__desc">아래 표의 인터페이스 ID. 화살촉이 호출 방향</span></li>
+  </ul>
+</div>
+<div class="table-wrap table-wrap--scroll">
+  <table class="dt">
+    <caption>인터페이스 목록</caption>
+    <thead><tr><th>ID</th><th>이름</th><th>호출자 → 제공자</th><th>방식</th><th>상태</th><th>절</th></tr></thead>
+    <tbody>
+<tr><td><span class="rid">IF-TOOL-01~12</span></td><td>플래너 도구 12개</td><td>두뇌 → 하네스</td><td>MCP(in-process 서버 <code>planner</code>)</td><td><span class="pill impl" data-s="done">구현됨</span> 12</td><td>3장</td></tr>
+<tr><td><span class="rid">IF-TG-01</span></td><td>업데이트 수신</td><td>텔레그램 → 하네스</td><td>롱폴링 <code>getUpdates</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>4장</td></tr>
+<tr><td><span class="rid">IF-TG-02</span></td><td>메시지 전송</td><td>하네스 → 텔레그램</td><td><code>sendMessage</code>, <code>sendChatAction</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>4장</td></tr>
+<tr><td><span class="rid">IF-TG-03</span></td><td>명령</td><td>사용자 → 하네스</td><td>슬래시 명령 7개</td><td><span class="pill impl" data-s="done">구현됨</span> 7 (SP1-04·10·11)</td><td>4장</td></tr>
+<tr><td><span class="rid">IF-TG-04</span></td><td>버튼(콜백) 데이터</td><td>사용자 → 하네스</td><td>인라인 키보드 <code>callback_data</code></td><td><span class="pill impl" data-s="done">구현됨 · SP1-06</span> · <span class="pill impl" data-s="done">구현됨 · SP1-07</span></td><td>4장</td></tr>
+<tr><td><span class="rid">IF-TG-05</span></td><td>업데이트 걸러내기 규칙</td><td>하네스 내부</td><td>판정 순서 7단계</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>4장</td></tr>
+<tr><td><span class="rid">IF-TG-06</span></td><td>고정 안내 문구</td><td>하네스 → 사용자</td><td>정해진 문장</td><td><span class="pill impl" data-s="done">구현됨</span> (SP1-10·12)</td><td>4장</td></tr>
+<tr><td><span class="rid">IF-SDK-01</span></td><td>두뇌 호출 계약</td><td>하네스 → Claude Agent SDK</td><td><code>query(prompt, options)</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>5장</td></tr>
+<tr><td><span class="rid">IF-SDK-02</span></td><td>호출 결과 BrainResult</td><td>SDK → 하네스</td><td>데이터 클래스</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>5장</td></tr>
+<tr><td><span class="rid">IF-SDK-03</span></td><td>오류 판별 규칙</td><td>하네스 내부</td><td>5단계 순서 판정</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>5장</td></tr>
+<tr><td><span class="rid">IF-CFG-01</span></td><td>.env 비밀값</td><td>사용자 → 하네스</td><td>파일/환경변수 2개 키</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>6장</td></tr>
+<tr><td><span class="rid">IF-CFG-02</span></td><td>config.toml 설정</td><td>사용자 → 하네스</td><td>TOML 파일</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>6장</td></tr>
+<tr><td><span class="rid">IF-CFG-03</span></td><td>실행 명령 <code>python -m my_planner</code></td><td>작업 스케줄러·사용자 → 하네스</td><td>프로세스 시작, 종료 코드 4종</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>6장</td></tr>
+<tr><td><span class="rid">IF-CFG-04</span></td><td><code>python -m my_planner.wake_times</code></td><td>등록 스크립트 → 설정</td><td>표준 출력 목록</td><td><span class="pill impl" data-s="done">구현됨 · SP1-13</span></td><td>6장</td></tr>
+<tr><td><span class="rid">IF-SCH-01</span></td><td>상시 작업 <code>my-planner</code></td><td>작업 스케줄러 → 하네스</td><td>작업 XML</td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기 (#16)</span></td><td>7장</td></tr>
+<tr><td><span class="rid">IF-SCH-02</span></td><td>깨우기 작업 <code>my-planner-wake</code></td><td>작업 스케줄러 → OS</td><td>작업 XML</td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기 (#16)</span></td><td>7장</td></tr>
+<tr><td><span class="rid">IF-SCH-03</span></td><td>등록 스크립트</td><td>사용자 → 작업 스케줄러</td><td>PowerShell</td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기 (#16)</span></td><td>7장</td></tr>
+<tr><td><span class="rid">IF-SCH-04</span></td><td>윈도우 API 호출</td><td>하네스 → OS</td><td>잠금, 절전 방지, 콘솔 숨김</td><td><span class="pill impl" data-s="done">구현됨</span></td><td>7장</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">IF-TOOL-NN은 의뢰서가 정한 ID이고, 나머지 ID(TG, SDK, CFG, SCH)는 이 문서가 같은 방식으로 붙였습니다. 스펙·계획에는 인터페이스 ID가 없습니다.</p>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="tools"><span class="section__no">3</span>플래너 도구 (두뇌 → 하네스)</h2><p class="section__lede">두뇌가 부를 수 있는 유일한 길입니다. 각 항목을 펼치면 입력 필드, 출력, 오류, 부수효과, 확인 문구가 있습니다.</p></div>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>플래너 도구 요약</caption>
+    <thead><tr><th>ID</th><th>도구</th><th>상태</th><th>하는 일</th><th>ToolEvent</th><th>확인 문구</th></tr></thead>
+    <tbody>
+<tr><td><span class="rid">IF-TOOL-01</span></td><td><code>add_task</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>사용자가 직접 추가해 달라고 한 할 일을 바로 open으로 추가</td><td><code>task_added</code></td><td><q class="src">✓ 추가: {title}</q> (+일정/날짜)</td></tr>
+<tr><td><span class="rid">IF-TOOL-02</span></td><td><code>propose_tasks</code></td><td><span class="pill impl" data-s="done">구현됨 · SP1-06</span></td><td>비서가 제안하는 할 일을 draft로 저장</td><td><code>tasks_proposed</code></td><td>없음(버튼이 대신함)</td></tr>
+<tr><td><span class="rid">IF-TOOL-03</span></td><td><code>confirm_tasks</code></td><td><span class="pill impl" data-s="done">구현됨 · SP1-06</span></td><td>초안을 open으로 확정</td><td><code>tasks_confirmed</code></td><td><q class="src">✓ 확정: {title}</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-04</span></td><td><code>update_task</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>제목, 영역, 메모, 시각 바꾸기</td><td><code>task_updated</code></td><td><q class="src">✓ 바꿈: {title}</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-05</span></td><td><code>move_task</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>하려는 날만 옮기기(날짜 없음 가능)</td><td><code>task_moved</code></td><td><q class="src">✓ 옮김: {title} → {…}</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-06</span></td><td><code>complete_task</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>완료로 바꾸기</td><td><code>task_completed</code></td><td><q class="src">✓ 완료: {title}</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-07</span></td><td><code>reopen_task</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>완료·내려놓음 되돌리기</td><td><code>task_reopened</code></td><td><q class="src">✓ 되돌림: {title}</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-08</span></td><td><code>drop_task</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>내려놓기</td><td><code>task_dropped</code></td><td><q class="src">✓ 내려놓음: {title}</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-09</span></td><td><code>list_tasks</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>조회(최대 50개)</td><td>없음</td><td>없음</td></tr>
+<tr><td><span class="rid">IF-TOOL-10</span></td><td><code>set_priorities</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>기간의 우선순위(≤3)를 통째로 교체</td><td><code>priorities_set</code></td><td><q class="src">✓ 우선순위({기간}): 1. … 2. … 3. …</q></td></tr>
+<tr><td><span class="rid">IF-TOOL-11</span></td><td><code>record_condition</code></td><td><span class="pill impl" data-s="done">구현됨 · SP1-07</span></td><td>컨디션 1~5 기록</td><td>없음</td><td>없음</td></tr>
+<tr><td><span class="rid">IF-TOOL-12</span></td><td><code>read_transcript</code></td><td><span class="pill impl" data-s="done">구현됨</span></td><td>원문 기록 읽기(최대 7일)</td><td>없음</td><td>없음</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">도구 순서와 이름은 스펙 5.5 표를 따릅니다. 이름 앞에 <code>mcp__planner__</code>가 붙어 두뇌에 보입니다. main의 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/tools/mcp_adapter.py" target="_blank" rel="noopener"><code>TOOL_NAMES</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>에 12개가 모두 들어 있습니다.</p>
+
+<h3 id="tool-common">공통 계약</h3>
+<ul>
+  <li><strong>서버</strong> Agent SDK의 in-process MCP 서버 <code>planner</code>(버전 1.0.0). 호출마다 새로 만들고 호출 맥락(<code>RunContext</code>)을 핸들러 안에 넣습니다. 허용 패턴은 <code>mcp__planner__*</code> 하나입니다. (<a href="architecture.html">아키텍처 정의서</a>의 보안 경계와 같은 규칙)</li>
+  <li><strong>입력 검사</strong> 도구마다 JSON 스키마(<code>additionalProperties: false</code>)가 있고, 값 규칙은 도구 함수가 다시 검사합니다. 날짜는 논리적 날짜 <code>YYYY-MM-DD</code>, 시각은 한국 시간 ISO 8601(<code>2026-10-25T14:00</code>, 시간대가 없으면 Asia/Seoul로 봄)입니다.</li>
+  <li><strong>성공</strong> 결과 JSON을 글자로 돌려줍니다. <strong>실패</strong>는 예외 대신 <code>{"error": "&lt;한국어 이유&gt;"}</code>를 돌려주고 MCP 결과는 <code>is_error=true</code>가 됩니다. 두뇌는 이 이유를 읽고 사용자에게 다시 묻습니다.</li>
+  <li><strong>변경 도구의 공통 부수효과</strong> (1) 데이터 변경과 <code>tool_events_log</code> 한 줄을 <em>같은 트랜잭션</em>에서 씁니다. 사용자 메시지 처리 중이면 <code>RunContext.inbound_id</code>와 확인 문구 재료(<code>data_json</code>)도 함께 남깁니다(migration 005). (2) <code>ToolEvent</code>를 <code>RunContext.events</code>에 쌓습니다. (3) <code>data/exports/tasks.md</code>를 다시 만듭니다(실패해도 데이터는 저장되고 로그만 남김). 단 <code>set_priorities</code>는 다시 만들지 않습니다(tasks.md에 우선순위가 없음). (4) 부른 도구 이름이 원문 기록의 <code>&gt; 도구: 이름</code> 줄과 두뇌 호출 로그의 <code>tool_names</code>에 남습니다(인자는 남기지 않음).</li>
+  <li><strong>확인 문구</strong>는 도구가 아니라 하네스가 <code>ToolEvent</code>로 만들어 두뇌 답변 아래 한 메시지로 붙입니다. 두뇌가 같은 말을 해도 항상 붙습니다. 도구를 안 불렀으면 빈 줄도 붙지 않습니다.</li>
+  <li><strong>호출 한도</strong> 한 호출의 턴 상한이 10이라 한 번에 도구를 9번 넘게 부르는 일괄 정리는 “정리하다가 길어졌어요…” 문구로 끝나고 사용자가 이어 말하면 계속합니다(스펙 5.3, 스파이크 S2: 12번 호출에 13턴).</li>
+</ul>
+<div class="more-tools"><button class="btn" type="button" data-toggle-all="main">모두 펼치기</button></div>
+<details class="more" id="IF-TOOL-01">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-01 <code>add_task</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">사용자가 직접 요청한 할 일을 바로 추가</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>add_task 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>title</code></td><td>string</td><td>필수</td><td>1~200자</td></tr>
+<tr><td><code>areas</code></td><td>string[]</td><td>필수</td><td>1개 이상, 각각 Area 6값 중 하나(career, finance, health, relationships, learning, quality_of_life)</td></tr>
+<tr><td><code>planned_for</code></td><td>string|null</td><td>선택</td><td>논리적 날짜. 시각(scheduled_at)만 주면 그 시각의 논리적 날짜(04:00 경계)로 자동 설정</td></tr>
+<tr><td><code>scheduled_at</code></td><td>string|null</td><td>선택</td><td>시각이 정해진 일. 한국 시간 ISO 8601</td></tr>
+<tr><td><code>parent_id</code></td><td>integer|null</td><td>선택</td><td>첫 걸음이면 부모 할 일 번호. 존재해야 함</td></tr>
+<tr><td><code>note</code></td><td>string|null</td><td>선택</td><td>메모</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{id, title, status, areas[], planned_for, scheduled_at, parent_id, note, completed_at}</code> 할 일 객체. <code>scheduled_at</code>과 <code>completed_at</code>은 한국 시간 ISO(분 단위)로 돌려줌 (status는 open)</td></tr>
+<tr><td>오류 사례</td><td>제목이 비어 있음 / 201자 이상 · 영역이 없거나 모르는 값 · 날짜·시각 형식이 틀림 · parent_id가 없는 할 일</td></tr>
+<tr><td>DB</td><td><code>tasks</code> +1(open), <code>task_areas</code> +영역 수, <code>task_events</code>(created), <code>tool_events_log</code>(task_added)</td></tr>
+<tr><td>파일</td><td><code>tasks.md</code> 재생성</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 추가: {title}</q>. 일정이 있으면 <q class="src"> ({M/D} {HH:MM})</q>, 날짜만 있으면 <q class="src"> → {오늘|내일|M/D}</q>. 예: <q class="src">✓ 추가: 치과 (10/25 14:00)</q></td></tr>
+<tr><td>쓰는 때</td><td>사용자가 직접 추가해 달라고 말했을 때만. 비서가 제안하는 것은 propose_tasks</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-02">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-02 <code>propose_tasks</code> <span class="pill impl" data-s="done">구현됨 · SP1-06</span> <span class="more__meta">비서의 제안을 초안(draft)으로 저장</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>propose_tasks 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>tasks</code></td><td>object[]</td><td>필수</td><td>각 항목은 add_task와 같은 필드(title, areas, planned_for?, scheduled_at?, parent_id?, note?)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{"proposed": [할 일 객체…]}</code>. 할 일 객체는 <code>id</code>, <code>title</code>, <code>status</code>(draft), <code>areas</code>, <code>planned_for</code>, <code>scheduled_at</code>, <code>parent_id</code> 등</td></tr>
+<tr><td>오류 사례</td><td>목록이 비었음(<q class="src">제안할 할 일 목록을 하나 이상 알려 주세요.</q>) · 10개 초과(<q class="src">한 번에 10개까지 제안할 수 있어요.</q>) · 항목 형식·모르는 필드 · 각 항목은 add_task와 같은 검증(<q class="src">{i}번째 제안: …</q>). 하나라도 틀리면 아무것도 만들지 않음</td></tr>
+<tr><td>DB</td><td><code>tasks</code> +N(draft), <code>task_events</code>(proposed), <code>tool_events_log</code>(tasks_proposed). 초안은 우선순위에 못 오르고 /today, 아침 브리핑, tasks.md에 안 보임</td></tr>
+<tr><td>하네스 동작</td><td>하네스가 <code>tasks_proposed</code>의 id를 <code>Outbound.draft_task_ids</code>에 넣고 메시지 마지막 조각 아래에 <q class="src">✓ 추가</q> <q class="src">✗ 빼기</q> 버튼과 <q class="src">전부 추가</q> 버튼을 붙임</td></tr>
+<tr><td>확인 문구</td><td>없음. 버튼이 대신함</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-03">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-03 <code>confirm_tasks</code> <span class="pill impl" data-s="done">구현됨 · SP1-06</span> <span class="more__meta">초안을 open으로 확정</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>confirm_tasks 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>ids</code></td><td>integer[]</td><td>필수</td><td>확정할 초안의 할 일 번호</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{"confirmed": […], "skipped_ids": […]}</code> (draft가 아니어서 건너뛴 번호는 skipped_ids)</td></tr>
+<tr><td>오류 사례</td><td>ids가 숫자 목록이 아님(<q class="src">ids는 할 일 번호(숫자) 목록이에요.</q>). 없는 번호나 draft가 아닌 번호는 오류가 아니라 <code>skipped_ids</code>로 돌려줌</td></tr>
+<tr><td>DB</td><td><code>tasks.status</code> draft→open, <code>task_events</code>(confirmed), <code>tool_events_log</code>(tasks_confirmed)</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 확정: {title}</q></td></tr>
+<tr><td>다른 경로</td><td>버튼 <code>d:c:&lt;task_id&gt;</code>, <code>d:all:&lt;conversation_id&gt;</code>은 두뇌를 거치지 않고 하네스가 이 함수를 직접 부름</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-04">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-04 <code>update_task</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">제목, 영역, 메모, 시각 바꾸기</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>update_task 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>id</code></td><td>integer</td><td>필수</td><td>존재하는 할 일</td></tr>
+<tr><td><code>title</code></td><td>string</td><td>선택</td><td>1~200자</td></tr>
+<tr><td><code>areas</code></td><td>string[]</td><td>선택</td><td>1개 이상, Area 값</td></tr>
+<tr><td><code>note</code></td><td>string</td><td>선택</td><td>메모</td></tr>
+<tr><td><code>scheduled_at</code></td><td>string|null</td><td>선택</td><td>바꾸면 planned_for도 새 시각의 논리적 날짜로 다시 정함</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{id, title, status, areas[], planned_for, scheduled_at, parent_id, note, completed_at}</code> 할 일 객체. <code>scheduled_at</code>과 <code>completed_at</code>은 한국 시간 ISO(분 단위)로 돌려줌</td></tr>
+<tr><td>오류 사례</td><td>{id}번 할 일 없음 · 바꿀 항목이 하나도 없음 · 허용 밖 항목(planned_for를 보내면 “날짜는 move_task로 바꿔 주세요”) · 제목/영역/날짜·시각/메모 형식 오류</td></tr>
+<tr><td>DB</td><td><code>tasks</code> 갱신, <code>task_events</code>(updated), <code>tool_events_log</code>(task_updated)</td></tr>
+<tr><td>파일</td><td><code>tasks.md</code> 재생성</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 바꿈: {title}</q></td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-05">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-05 <code>move_task</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">하려는 날만 옮기기</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>move_task 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>id</code></td><td>integer</td><td>필수</td><td>존재하는 할 일</td></tr>
+<tr><td><code>planned_for</code></td><td>string|null</td><td>필수 (null 허용)</td><td>새 하려는 날. <strong>null이면 날짜 없음</strong>: planned_for와 scheduled_at을 모두 지움. 시각이 있는 일은 날짜만 옮기고 한국 시간 시각은 그대로(시각이 00:00~03:59이면 새 논리적 날짜가 되도록 달력 날짜는 하루 뒤)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{id, title, status, areas[], planned_for, scheduled_at, parent_id, note, completed_at}</code> 할 일 객체. <code>scheduled_at</code>과 <code>completed_at</code>은 한국 시간 ISO(분 단위)로 돌려줌</td></tr>
+<tr><td>오류 사례</td><td>{id}번 할 일 없음 · 날짜 형식 오류</td></tr>
+<tr><td>DB</td><td><code>tasks</code> 갱신, <code>task_events</code>(moved), <code>tool_events_log</code>(task_moved)</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 옮김: {title} → {오늘|내일|M/D|날짜 없음}</q> 예: <q class="src">✓ 옮김: 운동 → 내일</q></td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-06">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-06 <code>complete_task</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">완료로 바꾸기</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>complete_task 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>id</code></td><td>integer</td><td>필수</td><td>존재하는 할 일</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{id, title, status, areas[], planned_for, scheduled_at, parent_id, note, completed_at}</code> 할 일 객체. <code>scheduled_at</code>과 <code>completed_at</code>은 한국 시간 ISO(분 단위)로 돌려줌</td></tr>
+<tr><td>오류 사례</td><td>{id}번 할 일 없음 · “열린 할 일만 완료로 바꿀 수 있어요.”</td></tr>
+<tr><td>DB</td><td><code>tasks.status</code> open→done, completed_at 기록, <code>task_events</code>(completed), <code>tool_events_log</code>(task_completed)</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 완료: {title}</q></td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-07">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-07 <code>reopen_task</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">완료·내려놓음 되돌리기</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>reopen_task 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>id</code></td><td>integer</td><td>필수</td><td>존재하는 할 일</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{id, title, status, areas[], planned_for, scheduled_at, parent_id, note, completed_at}</code> 할 일 객체. <code>scheduled_at</code>과 <code>completed_at</code>은 한국 시간 ISO(분 단위)로 돌려줌</td></tr>
+<tr><td>오류 사례</td><td>{id}번 할 일 없음 · “완료했거나 내려놓은 할 일만 되돌릴 수 있어요.”</td></tr>
+<tr><td>DB</td><td><code>tasks.status</code> done·dropped→open, completed_at 비움, <code>task_events</code>(reopened), <code>tool_events_log</code>(task_reopened)</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 되돌림: {title}</q></td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-08">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-08 <code>drop_task</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">내려놓기</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>drop_task 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>id</code></td><td>integer</td><td>필수</td><td>존재하는 할 일</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{id, title, status, areas[], planned_for, scheduled_at, parent_id, note, completed_at}</code> 할 일 객체. <code>scheduled_at</code>과 <code>completed_at</code>은 한국 시간 ISO(분 단위)로 돌려줌</td></tr>
+<tr><td>오류 사례</td><td>{id}번 할 일 없음 · “열려 있거나 초안인 할 일만 내려놓을 수 있어요.”</td></tr>
+<tr><td>DB</td><td><code>tasks.status</code> open·draft→dropped, 우선순위(<code>priorities</code>)에 올라 있으면 그 행도 지움, <code>task_events</code>(dropped), <code>tool_events_log</code>(task_dropped)</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 내려놓음: {title}</q></td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-09">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-09 <code>list_tasks</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">할 일 조회</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>list_tasks 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>status</code></td><td>enum</td><td>선택</td><td>draft, open, done, dropped. 안 주면 open과 draft</td></tr>
+<tr><td><code>from</code></td><td>string|null</td><td>선택</td><td>시작 날짜(포함). done은 완료한 날, 그 외는 하려는 날에 적용</td></tr>
+<tr><td><code>to</code></td><td>string|null</td><td>선택</td><td>끝 날짜(포함)</td></tr>
+<tr><td><code>area</code></td><td>enum</td><td>선택</td><td>Area 값</td></tr>
+<tr><td><code>limit</code></td><td>integer</td><td>선택</td><td>1~50. 기본 20. 50 초과는 50으로 줄임</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{"tasks": [할 일 객체…], "count": N}</code>. 소프트 삭제한 할 일은 뺌</td></tr>
+<tr><td>오류 사례</td><td>알 수 없는 조건 이름 · status가 4값이 아님 · 영역 모름 · 날짜 형식 · limit이 1 미만이거나 숫자가 아님</td></tr>
+<tr><td>부수효과</td><td>없음(읽기). ToolEvent도 tool_events_log도 없음</td></tr>
+<tr><td>확인 문구</td><td>없음</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-10">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-10 <code>set_priorities</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">기간의 우선순위를 통째로 교체</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>set_priorities 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>cadence</code></td><td>enum</td><td>필수</td><td>day, week, month, quarter, year</td></tr>
+<tr><td><code>period</code></td><td>string</td><td>필수</td><td>cadence에 맞는 형식. 일 <code>2026-10-23</code>, 주 <code>2026-W43</code>(ISO 주), 월 <code>2026-10</code>, 분기 <code>2026-Q4</code>, 년 <code>2026</code>. 실제로 있는 날짜·주·월이어야 함</td></tr>
+<tr><td><code>task_ids</code></td><td>integer[]</td><td>필수</td><td>최대 3개, 순서가 순위(1위부터). 빈 목록이면 그 기간의 우선순위를 비움</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{"cadence": "…", "period": "…", "priorities": [할 일 객체 …]}</code> (순위 순서)</td></tr>
+<tr><td>오류 사례</td><td>cadence가 5값이 아님 · period 형식 오류(“period 형식이 맞지 않아요. week는 2026-W43 같은 형식이에요.”) · task_ids가 목록이 아님 · 4개 이상(“우선순위는 3개까지 정할 수 있어요.”) · 숫자가 아닌 항목 · 같은 할 일 중복 · 없는 할 일 · open이 아닌 할 일(초안, 완료, 내려놓음)</td></tr>
+<tr><td>DB</td><td><code>priorities</code>에서 해당 (cadence, period) 행을 모두 지우고 새로 씀, <code>tool_events_log</code>(priorities_set, task_id는 NULL). <code>task_events</code>에는 쓰지 않음</td></tr>
+<tr><td>확인 문구</td><td><q class="src">✓ 우선순위({오늘|이번 주|이번 달|이번 분기|올해}): 1. … 2. … 3. …</q>, 비웠으면 <q class="src">✓ 우선순위(오늘): 비움</q></td></tr>
+<tr><td>쓰는 때</td><td>사용자가 정해 달라고 하거나 확인한 뒤에만. 주간 회고에서는 사용자가 확정하고 “이걸로 해”라고 한 뒤</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-11">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-11 <code>record_condition</code> <span class="pill impl" data-s="done">구현됨 · SP1-07</span> <span class="more__meta">컨디션 1~5 기록</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>record_condition 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>score</code></td><td>integer</td><td>필수</td><td>1~5</td></tr>
+<tr><td><code>date</code></td><td>string|null</td><td>선택</td><td>논리적 날짜. 안 주면 논리적 오늘</td></tr>
+<tr><td><code>note</code></td><td>string|null</td><td>선택</td><td>한 줄 메모</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{"date": "YYYY-MM-DD", "score": n, "note": …}</code></td></tr>
+<tr><td>오류 사례</td><td>점수가 1~5 정수가 아님(<q class="src">컨디션은 1~5 사이의 숫자로 알려 주세요.</q>) · 날짜 형식 · 미래 날짜(<q class="src">아직 오지 않은 날의 컨디션은 기록할 수 없어요.</q>)</td></tr>
+<tr><td>DB</td><td><code>conditions</code> upsert(같은 날 다시 기록하면 점수를 덮어씀. 메모를 주지 않으면 기존 메모 유지). <code>tool_events_log</code>에는 쓰지 않음</td></tr>
+<tr><td>확인 문구</td><td>없음(ToolEvent 없음). 버튼으로 기록할 때 하네스의 응답은 <q class="src">컨디션 {n} 기록했어요.</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td></tr>
+<tr><td>다른 경로</td><td>버튼 <code>c:&lt;YYYY-MM-DD&gt;:&lt;1-5&gt;</code>은 두뇌를 거치지 않고 하네스가 이 함수를 직접 부름</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<details class="more" id="IF-TOOL-12">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>IF-TOOL-12 <code>read_transcript</code> <span class="pill impl" data-s="done">구현됨</span> <span class="more__meta">원문 기록 읽기(쓰기는 하네스만)</span>
+    <svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+<div class="table-wrap">
+  <table class="dt">
+    <caption>read_transcript 입력 필드</caption>
+    <thead><tr><th>이름</th><th>타입</th><th>필수</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr><td><code>from</code></td><td>string</td><td>필수</td><td>시작 논리적 날짜</td></tr>
+<tr><td><code>to</code></td><td>string</td><td>필수</td><td>끝 날짜(포함). from과 같거나 뒤</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="table-wrap">
+  <table class="dt">
+    <caption>출력 · 오류 · 부수효과</caption>
+    <thead><tr><th>항목</th><th>내용</th></tr></thead>
+    <tbody>
+<tr><td>출력</td><td><code>{"from": "…", "to": "…", "text": "날짜별 원문 기록을 이어 붙인 글"}</code>. 날짜별로 <code># YYYY-MM-DD</code> 제목을 붙이고, 없는 날은 건너뛰며, 합쳐서 앞 20000자까지만</td></tr>
+<tr><td>오류 사례</td><td>from/to 누락 · to가 from보다 앞 · 7일 초과(“원문 기록은 최대 7일까지 읽을 수 있어요.”) · 날짜 형식</td></tr>
+<tr><td>부수효과</td><td>없음(읽기)</td></tr>
+<tr><td>확인 문구</td><td>없음</td></tr>
+    </tbody>
+  </table>
+</div>
+
+  </div>
+</details>
+<aside class="callout callout--info">
+  <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+  <div class="callout__body"><span class="callout__title">출처와 상태 표시</span><span>12개 도구의 입력 규칙, 출력, 오류 문구는 main <code>0336f4d</code>의 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/tools/core.py" target="_blank" rel="noopener"><code>tools/core.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>, <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/tools/mcp_adapter.py" target="_blank" rel="noopener"><code>tools/mcp_adapter.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>, <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/tools/confirmations.py" target="_blank" rel="noopener"><code>tools/confirmations.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>에서 가져왔습니다. 오류 문구는 두뇌가 읽는 글이라 사용자에게 그대로 보이지 않을 수 있습니다.</span></div>
+</aside>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="telegram"><span class="section__no">4</span>텔레그램 인터페이스</h2><p class="section__lede">사용자와의 유일한 통로입니다. 사용자 한 명의 개인 채팅 외에는 아무 반응도 하지 않습니다.</p></div>
+<h3 id="tg-recv">수신과 걸러내기 (IF-TG-01, IF-TG-05)</h3>
+<p>python-telegram-bot 롱폴링(<code>getUpdates</code>)으로 받습니다. 허용 업데이트 종류는 <code>message</code>와 <code>callback_query</code> 둘이며, 시작할 때 쌓여 있던 업데이트도 버리지 않고 처리합니다(<code>drop_pending_updates=False</code>). 텔레그램은 받아 가지 않은 업데이트를 최대 24시간만 보관하므로 그보다 오래 꺼져 있으면 그 사이 메시지는 사라질 수 있습니다.</p>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>업데이트 판정 순서 (accept_update)</caption>
+    <thead><tr><th>단계</th><th>조건</th><th>결과</th><th>처리</th></tr></thead>
+    <tbody>
+<tr><td>1</td><td>이미 처리를 마친 <code>update_id</code>(<code>telegram_updates</code>에 있음) 또는 이미 받아 <code>inbound_pending</code>에 적어 둔 것</td><td><code>duplicate</code></td><td>아무것도 하지 않음(남은 행은 시작 때 다시 넣음)</td></tr>
+<tr><td>2</td><td>버튼 누름(<code>callback_query</code>)</td><td><code>callback</code></td><td>버튼 처리기로. 누른 사람 확인은 처리기가 함(IF-TG-04)</td></tr>
+<tr><td>3</td><td>일반 메시지가 아님(편집된 메시지, 채널 글 등)</td><td><code>ignore</code></td><td>로그에 <code>from_id</code>와 사유만 남기고 처리 완료로 기록</td></tr>
+<tr><td>4</td><td>보낸 사람 ID ≠ <code>OWNER_TELEGRAM_ID</code></td><td><code>ignore</code></td><td>위와 같음. 본문·이름·사용자명은 남기지 않음</td></tr>
+<tr><td>5</td><td>채팅 종류가 개인 채팅이 아님(그룹 등)</td><td><code>ignore</code></td><td>위와 같음</td></tr>
+<tr><td>6</td><td>글이 없음(사진, 스티커, 음성, 캡션만 있는 사진)</td><td><code>non_text</code></td><td><q class="src">지금은 글로만 이야기할 수 있어요.</q>를 보내고(3회까지), 보낸 뒤에 처리 완료로 기록하고 원문 기록에 <code>[글이 아닌 메시지]</code>와 이 문구를 남김</td></tr>
+<tr><td>7</td><td>그 밖(개인 채팅의 사용자 글)</td><td><code>accept</code></td><td>명령 7개 중 하나면 <code>command</code>로 보고 두뇌 없이 바로 답함(<code>/plan</code>은 디스패처로). 아니면 가린 글을 <code>inbound_pending</code>에 적은 뒤 디스패처 큐로, 답을 보낸 뒤 update_id 기록</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">판정 자체는 DB에 쓰지 않습니다. 보낸 시각이 6시간(<code>stale_message_hours</code>)보다 오래된 메시지는 두뇌에 “약 N시간 전에 보낸 메시지예요”라고 알려 넘깁니다. 처리 중에 연달아 온 메시지는 두 줄 바꿈으로 이어 붙여 두뇌 호출 한 번으로 처리하고 update_id를 모두 기록합니다. 입력은 8000자까지만 넘깁니다.</p>
+<h3 id="tg-send">전송 (IF-TG-02)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>전송 규칙</caption>
+    <thead><tr><th>규칙</th><th>내용</th><th>출처</th></tr></thead>
+    <tbody>
+<tr><td>서식</td><td>일반 글자(parse_mode 없음). 확인 문구의 ✓ ✗는 글자 그대로</td><td>main <code>send_message</code> 호출</td></tr>
+<tr><td>길이 나누기</td><td>한 조각 4096 이하. 텔레그램 규칙대로 UTF-16 코드 단위로 셈(이모지 같은 큰 글자는 2). 자를 곳은 빈 줄 → 줄바꿈 → 글자 순서. 구분자는 앞 조각 끝에 남겨 조각을 이으면 원문이 됨</td><td>스펙 Review Focus 3, <code>split_message</code></td></tr>
+<tr><td>버튼 위치</td><td>버튼은 마지막 조각에만 붙임</td><td>계획 티켓 06</td></tr>
+<tr><td>입력 중 표시</td><td>두뇌를 부르는 동안 5초마다 “입력 중”(<code>sendChatAction typing</code>)</td><td>계획 티켓 01</td></tr>
+<tr><td>전송 재시도(회차)</td><td>바로 3회(사이 1초, 2초). 그래도 안 되면 회차를 failed로 두고 5분 뒤 <strong>전송만</strong> 한 번 더(되면 done). 두뇌는 다시 부르지 않음. 사용자에게 실패를 알리지 않음</td><td>스펙 v4 5.4-2</td></tr>
+<tr><td>전송 재시도(사용자 답·명령·고정 안내)</td><td>같은 3회(<code>send_with_retry</code>, 실패하면 <code>message_send_failed</code> 로그). 사용자 답은 보내기 전에 <code>inbound_pending</code>에 저장해 두고, 끝내 안 되면 처리 완료로 두지 않아 다음 시작 때 저장한 답만 다시 보냄. 명령 답은 저장하지 않으므로 끝내 안 되면 다시 보내지 않음(명령을 다시 보내면 됨)</td><td>스펙 v4 5.2, #35</td></tr>
+<tr><td>하루 상한</td><td>비서가 먼저 보내는 메시지는 하루 3회. 고정 안내는 세지 않음</td><td>스펙 5.3, 마스터 5.5</td></tr>
+<tr><td>받는 사람</td><td><code>OWNER_TELEGRAM_ID</code> 한 사람의 개인 채팅</td><td>스펙 5.2</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">두뇌 호출과 전송이 진행되는 동안은 절전을 막습니다(IF-SCH-04).</p>
+<h3 id="tg-cmd">명령 (IF-TG-03)</h3>
+<p>명령은 <strong>두뇌를 거치지 않고</strong> 하네스가 도구 함수를 직접 불러 답합니다. 명령과 응답도 원문 기록에 대화 밖 표식 <code>[-]</code>로 남습니다.</p>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>텔레그램 명령</caption>
+    <thead><tr><th>명령</th><th>인자</th><th>동작</th><th>응답 · 오류</th><th>상태</th></tr></thead>
+    <tbody>
+<tr><td><code>/today</code></td><td>없음</td><td>오늘 우선순위(오늘 기준, open만), 일정(오늘 시각이 있는 일, 시각순), 열린 할 일(오늘 하려는 일과 그 전부터 열려 있는 일). 초안·내려놓음·완료는 안 보임</td><td>제목 <q class="src">오늘 (M/D 요일)</q> 아래 <q class="src">우선순위</q> · <q class="src">일정</q> · <q class="src">열린 할 일</q> 묶음. 아무것도 없으면 <q class="src">아직 비어 있어요. 하고 싶은 일을 말씀해 주세요.</q></td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td><code>/week</code></td><td>없음</td><td>이번 주(월~일) 우선순위와 요일별 열린 할 일(시각이 있는 일이 먼저)</td><td>제목 <q class="src">이번 주 (M/D~M/D)</q>, 요일별 묶음. 비었을 때 위와 같은 문구</td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td><code>/help</code></td><td>없음</td><td>명령 목록</td><td><q class="src">쓸 수 있는 명령이에요.</q> 아래 명령 7개 한 줄씩과 <q class="src">그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요.</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td><code>/pause &lt;일수&gt;</code></td><td>정수 1~14</td><td>지금부터 N×24시간 동안 아침 브리핑, 저녁 체크인, 주간 회고를 멈춤. 끝 시각을 <code>app_state.pause_until</code>에 저장, 멈춘 회차는 skipped(paused). 사용자 메시지에는 계속 답함</td><td>성공: <q class="src">{M}월 {D}일 {HH:MM}까지 먼저 연락하지 않을게요. 그동안에도 말씀하시면 답해요. 다시 시작하려면 /unpause를 보내 주세요.</q> 범위 밖·숫자 아님: <q class="src">쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨 · SP1-10</span></td></tr>
+<tr><td><code>/unpause</code></td><td>없음</td><td>멈춤 해제</td><td><q class="src">멈춤을 풀었어요. 다시 정해진 시각에 연락할게요.</q> 멈춤 중이 아니면 <q class="src">지금은 멈춤 중이 아니에요.</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨 · SP1-10</span></td></tr>
+<tr><td><code>/plan [주제]</code></td><td>선택</td><td>계획 모드 시작(대화 종류 plan). 주제가 있으면 그 주제를, 없으면 “계획 모드 시작”을 계획 지시문과 함께 디스패처에 넘김</td><td>두뇌가 첫 질문을 함. 주제가 없을 때 넘기는 글 <q class="src">계획 모드 시작</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨 · SP1-11</span></td></tr>
+<tr><td><code>/done</code></td><td>없음</td><td>계획 모드 끝내기</td><td><q class="src">계획 대화를 마칠게요. 다시 함께 정리하고 싶으면 /plan을 보내 주세요.</q> 열린 계획 대화가 없으면 <q class="src">지금 열린 계획 대화가 없어요.</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨 · SP1-11</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">명령 7개의 처리: <code>/today@봇이름</code>처럼 봇 이름이 붙어도, 대소문자가 달라도, 뒤에 인자가 붙어도 같은 명령으로 봅니다. 응답을 3회까지 보내고, 보낸 뒤에만 update_id를 처리 완료로 기록하고 명령과 응답을 원문 기록 <code>[-]</code>에 남깁니다(기록이 실패해도 두 번 답하지 않음). 목록에 없는 <code>/</code> 글은 일반 글로 두뇌에 넘어갑니다. 문구는 모두 구현 중 만든 것이라 스펙 부록 A에서 Dahun 확인을 기다립니다. 이후 하위 프로젝트에서 <code>/status</code>(SP3)와 <code>/memory</code>(SP2)가 더해집니다.</p>
+<h3 id="tg-cb">버튼 callback_data (IF-TG-04)</h3>
+<p>인라인 키보드 버튼이 누를 때 하네스로 돌려주는 값입니다. 모두 64바이트 이하이고 두뇌를 거치지 않습니다.</p>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>callback_data 형식</caption>
+    <thead><tr><th>형식</th><th>버튼</th><th>의미</th><th>하네스 동작</th><th>응답</th><th>상태</th></tr></thead>
+    <tbody>
+<tr><td><code>d:c:&lt;task_id&gt;</code></td><td><q class="src">✓ 추가</q></td><td>초안 한 건 확정</td><td><code>confirm_tasks</code> 직접 호출</td><td>확정 시 <q class="src">✓ 확정: {title}</q>. 이미 정리된 할 일이면 <q class="src">이미 정리된 할 일이에요.</q> <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨 · SP1-06</span></td></tr>
+<tr><td><code>d:x:&lt;task_id&gt;</code></td><td><q class="src">✗ 빼기</q></td><td>초안 한 건 빼기</td><td><code>drop_task</code> 직접 호출</td><td>뺐으면 <q class="src">✗ 뺐어요: {title}</q>. 이미 정리된 할 일이면 같은 안내 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td><td><span class="pill impl" data-s="done">구현됨 · SP1-06</span></td></tr>
+<tr><td><code>d:all:&lt;conversation_id&gt;</code></td><td><q class="src">전부 추가</q></td><td>그 대화에서 제안된 초안 전부 확정</td><td><code>tool_events_log</code>에서 그 대화의 tasks_proposed 할 일을 찾아 아직 draft인 것만 확정</td><td>확정한 건수만큼 확인 문구</td><td><span class="pill impl" data-s="done">구현됨 · SP1-06</span></td></tr>
+<tr><td><code>c:&lt;YYYY-MM-DD&gt;:&lt;1-5&gt;</code></td><td><code>1</code> <code>2</code> <code>3</code> <code>4</code> <code>5</code></td><td>그 날짜의 컨디션</td><td><code>record_condition</code> 직접 호출. 지난 날짜 버튼은 그 날짜에 기록</td><td><q class="src">컨디션 {n} 기록했어요.</q></td><td><span class="pill impl" data-s="done">구현됨 · SP1-07</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">공통 규칙: 누른 사람이 사용자가 아니면 무시, 항상 <code>query.answer()</code>를 불러 로딩 표시를 끔, 원문 기록에 <code>[버튼] 확정: {title}</code>처럼 남김. 버튼 배치(컨디션 5개 한 줄, 초안마다 두 버튼과 전부 추가)는 <a href="screens.html">화면설계서</a>를 참고하세요.</p>
+<h3 id="tg-fixed">고정 안내 문구 (IF-TG-06)</h3>
+<p>두뇌를 거치지 않고 하네스가 정해진 글자로 보내는 문장입니다. 하루 3회 상한에 세지 않습니다.</p>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>고정 안내 문구 원문</caption>
+    <thead><tr><th>언제</th><th>문구</th><th>상태</th></tr></thead>
+    <tbody>
+<tr><td>글이 아닌 메시지</td><td><q class="src">지금은 글로만 이야기할 수 있어요.</q></td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td>두뇌 오류·300초 시간 초과(사용자 메시지), 도구 이벤트가 없을 때 지수 백오프 2·4·8초로 3번 다시 부른 뒤</td><td><q class="src">지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요.</q></td><td><span class="pill impl" data-s="done">구현됨</span> (재시도 <span class="pill impl" data-s="done">구현됨 · SP1-10</span>)</td></tr>
+<tr><td>max_turns</td><td><q class="src">정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요.</q> (그 아래 빈 줄과 확인 문구)</td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td>Claude 로그인 풀림(사용자 메시지에는 매번, 회차 안내는 하루 한 번)</td><td><q class="src">Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요.</q></td><td><span class="pill impl" data-s="done">구현됨 · SP1-10</span></td></tr>
+<tr><td>Claude 계정·결제(사용자 메시지에는 매번, 회차 안내는 하루 한 번)</td><td><q class="src">Claude 계정이나 결제 상태를 확인해야 해요. PC에서 Claude 계정을 살펴봐 주세요.</q></td><td><span class="pill impl" data-s="done">구현됨 · SP1-10</span></td></tr>
+<tr><td>사용 한도(사용자 메시지에는 매번, 회차 안내는 구간당 한 번)</td><td><q class="src">지금은 Claude 사용 한도에 닿았어요. {재개}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요.</q> {재개}는 오늘이면 <code>HH:MM</code>, 아니면 <code>M월 D일 HH:MM</code></td><td><span class="pill impl" data-s="done">구현됨 · SP1-10</span></td></tr>
+<tr><td>하루 두뇌 호출 상한(60회)</td><td><q class="src">오늘은 여기까지 생각을 아껴 둘게요. 명령(/today)은 계속 쓸 수 있어요.</q></td><td><span class="pill impl" data-s="done">구현됨 · SP1-10</span></td></tr>
+<tr><td>DB 손상(<code>quick_check</code> 실패 또는 잠김이 아닌 DB 오류) · 안전 모드, 한 번</td><td><q class="src">데이터베이스에 문제가 있어요. 최신 백업으로 복구해야 해요. PC에서 README의 복구 절차를 따라 주세요.</q></td><td><span class="pill impl" data-s="done">구현됨 · SP1-12</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">출처: 스펙 v4 5.1, 5.3, 7장, main <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/harness/dispatcher.py" target="_blank" rel="noopener"><code>harness/dispatcher.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>·<a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/bot/telegram_io.py" target="_blank" rel="noopener"><code>bot/telegram_io.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>·<a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/bot/commands.py" target="_blank" rel="noopener"><code>bot/commands.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>·<a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/bot/callbacks.py" target="_blank" rel="noopener"><code>bot/callbacks.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>. 위 문구는 스펙 원문에 있는 것입니다. 명령·버튼 문구처럼 구현 중 만든 문구는 스펙 부록 A에 모여 있고 Dahun 확인을 기다립니다.</p>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="sdk"><span class="section__no">5</span>Claude Agent SDK 호출 계약</h2><p class="section__lede">하네스가 두뇌를 부르는 약속입니다. 두뇌가 할 수 있는 일을 도구 12개로만 좁히는 것이 핵심입니다.</p></div>
+<h3 id="sdk-call">호출 방식 (IF-SDK-01)</h3>
+<p>하네스는 <code>claude_agent_sdk.query(prompt=문자열, options=ClaudeAgentOptions(…))</code>를 부르고 돌아오는 메시지를 모두 모읍니다(스파이크 S2: 문자열 prompt로 충분, 스트리밍 입력 불필요). SDK는 <code>&gt;=0.2.173,&lt;0.3</code>이고 PATH의 <code>claude</code>가 아니라 SDK 번들 CLI를 씁니다(<code>cli_path</code> 미지정). 인증은 노트북 Claude Code의 사용자 구독 로그인입니다(ADR 0001).</p>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>두뇌 실행 옵션 (스펙 5.3 그대로)</caption>
+    <thead><tr><th>옵션</th><th>값</th><th>이유</th></tr></thead>
+    <tbody>
+<tr><td><code>tools</code></td><td><code>[]</code></td><td>기본 도구(파일, 셸, 웹 등)를 전부 제거</td></tr>
+<tr><td><code>mcp_servers</code></td><td><code>{"planner": planner_server}</code></td><td>유일한 도구원: in-process MCP 서버</td></tr>
+<tr><td><code>allowed_tools</code></td><td><code>["mcp__planner__*"]</code></td><td>자동 승인 목록. 이것만으로는 도구를 막지 못해 위 옵션과 함께 씀</td></tr>
+<tr><td><code>permission_mode</code></td><td><code>"dontAsk"</code></td><td>허용 목록 밖은 묻지 않고 거부</td></tr>
+<tr><td><code>strict_mcp_config</code></td><td><code>True</code></td><td>다른 MCP 설정 무시</td></tr>
+<tr><td><code>setting_sources</code></td><td><code>[]</code></td><td>사용자·프로젝트·로컬 설정(CLAUDE.md, 스킬, 플러그인) 안 읽음</td></tr>
+<tr><td><code>cwd</code></td><td><code>state/brain-workdir</code></td><td>빈 전용 폴더, 절대경로</td></tr>
+<tr><td><code>max_turns</code></td><td><code>10</code></td><td>호출당 턴 상한(<code>limits.max_turns</code>)</td></tr>
+<tr><td>(하네스) 시간 상한</td><td><code>anyio.fail_after(300)</code></td><td>SDK 옵션이 아니라 디스패처가 호출을 감쌈(<code>limits.brain_timeout_s</code>). 넘으면 <code>BrainResult(status="error", error="timeout")</code></td></tr>
+<tr><td><code>system_prompt</code></td><td><code>prompts/system.md</code></td><td>항상 시스템 프롬프트. 한국어 존댓말, 압박 금지, 변경은 도구로만 등 8원칙</td></tr>
+<tr><td><code>resume</code></td><td>session_id 또는 없음</td><td>대화를 이을 때 같은 두뇌 세션을 이어 받음</td></tr>
+<tr><td><code>env</code></td><td><code>CLAUDE_CODE_DISABLE_AUTO_MEMORY=1</code><br><code>ENABLE_CLAUDEAI_MCP_SERVERS=false</code></td><td>auto memory와 claude.ai 커넥터는 setting_sources와 무관하게 로드되므로 환경변수로 끔</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">스파이크 S2·S3 결과: 이 설정에서 보이는 도구는 <code>mcp__planner__*</code> 12개뿐이고, 사용자 CLAUDE.md의 지시, claude.ai 커넥터, 사용자 플러그인은 나타나지 않았습니다.</p>
+<h3 id="sdk-prompt">프롬프트 구성</h3>
+<ul>
+  <li>맨 앞 <code>## 알림</code>(해당 있을 때만, 새 세션·이어받기 모두): <q class="src">인증·식별 정보를 가렸어요</q>, <q class="src">약 N시간 전에 보낸 메시지예요</q>, <q class="src">메시지가 길어 앞 8000자만 넘겼어요</q></li>
+  <li>새 세션이면: 대화 종류별 지시문(<code>chat.md</code> 등)과 앞머리 컨텍스트(<code>## 지금</code>, <code>## 우선순위</code>, <code>## 열린 할 일</code>(최대 30개), <code>## 오늘 일정</code>, <code>## 어제 컨디션</code>, <code>## 함께 처리할 회차</code>, <code>## 멈춤</code>, 빈 섹션은 뺌)</li>
+  <li>마지막에 <code>## 메시지</code> 본문. 이어받는 세션이면 알림과 본문만. 회차 대화에 답할 때는 지시문 없이 메시지만 넘기고, 그 대화에 세션이 없으면 최근 원문 20개를 <code>## 최근 대화</code>로 붙입니다.</li>
+  <li>resume이 실패하면 새 세션을 열고 앞머리를 다시 조립한 뒤 그 대화의 최근 원문 20개를 <code>## 최근 대화</code>로 붙여 한 번 더 부릅니다.</li>
+</ul>
+<h3 id="sdk-result">호출 결과 BrainResult (IF-SDK-02)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>BrainResult 필드</caption>
+    <thead><tr><th>필드</th><th>타입</th><th>설명</th></tr></thead>
+    <tbody>
+<tr><td><code>text</code></td><td>string</td><td>두뇌 답변(status가 ok일 때만 채움). 도구 이벤트는 여기가 아니라 <code>RunContext.events</code>에 쌓임(확인 문구의 재료)</td></tr>
+<tr><td><code>session_id</code></td><td>string|null</td><td>이 호출의 세션 번호. 대화에 저장</td></tr>
+<tr><td><code>turns</code></td><td>integer</td><td>쓴 턴 수</td></tr>
+<tr><td><code>status</code></td><td>enum</td><td>아래 5가지</td></tr>
+<tr><td><code>error</code></td><td>string|null</td><td>auth_error면 <code>"login"</code> 또는 <code>"billing"</code>. error면 예외 종류(로그용, 본문 없음), 시간 초과면 <code>"timeout"</code></td></tr>
+<tr><td><code>resume_failed</code></td><td>boolean</td><td>resume이 실패했는지. <code>detect_resume_failed</code>: 세션 ID로 이으려 했고, status가 error이고, 두뇌 답 메시지가 없고, 한 턴도 돌지 않았으면 true(#25)</td></tr>
+<tr><td><code>retry_at</code></td><td>datetime|null</td><td>rate_limited일 때 재개 시각(UTC). 디스패처가 <code>app_state.limited_until</code>에 저장</td></tr>
+    </tbody>
+  </table>
+</div>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>status별 사용자 처리</caption>
+    <thead><tr><th>status</th><th>뜻</th><th>사용자에게</th><th>회차에서는</th></tr></thead>
+    <tbody>
+<tr><td><code>ok</code></td><td>정상</td><td>두뇌 답변 + 확인 문구</td><td>outbound_text 저장 후 전송</td></tr>
+<tr><td><code>max_turns</code></td><td>턴 상한 도달</td><td><q class="src">정리하다가 길어졌어요…</q> + 확인 문구</td><td>도구 이벤트가 있으면 같은 문구 + 확인 문구 + 버튼을 보내고 done. 없으면 failed(max_turns)</td></tr>
+<tr><td><code>auth_error</code></td><td>로그인 풀림(login) 또는 계정·결제(billing)</td><td>매번 해당 고정 안내</td><td>skipped(auth), 재실행 안 함. 안내는 하루 한 번</td></tr>
+<tr><td><code>rate_limited</code></td><td>사용 한도</td><td>매번 안내. <code>limited_until</code>까지는 두뇌를 부르지 않고 같은 안내로 답함. 명령은 계속 동작. SDK가 재개 시각을 안 주면 지금+1시간</td><td>skipped(rate_limit), 재실행 안 함. 안내는 한도 구간당 한 번</td></tr>
+<tr><td><code>error</code></td><td>그 밖의 오류, 300초 시간 초과</td><td>도구 이벤트가 없을 때만 2, 4, 8초 간격으로 최대 3번 다시 호출(각 호출이 하루 호출 수에 포함), 그래도 안 되면 <q class="src">지금 잠깐 생각이 안 돼요…</q></td><td>백오프 없이 재실행 규칙만(도구 이벤트가 없고 한계 안이면 한 번 다시, 회차당 호출 최대 2회). 문구 없이 failed</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">상태 분류(<code>classify</code>), BrainResult, 오류 시 사용자 문구·백오프·안내 제한은 모두 main에 구현되어 있습니다(SP1-02·10, #35). 호출마다 <code>usage_state.brain_calls</code>가 1 늘고 하루 60회를 넘으면 두뇌를 부르지 않습니다.</p>
+<h3 id="sdk-classify">오류 판별 규칙 (IF-SDK-03)</h3>
+<p>호출 중 받은 메시지를 모두 보고, <code>ResultError</code>/<code>ProcessError</code> 예외는 잡은 뒤 아래 순서로 판정합니다. <strong>문자열 매칭은 쓰지 않습니다.</strong></p>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>판별 순서 (먼저 맞는 것)</caption>
+    <thead><tr><th>순서</th><th>조건</th><th>결과</th></tr></thead>
+    <tbody>
+<tr><td>1</td><td><code>AssistantMessage.error</code>가 <code>authentication_failed</code> 또는 <code>billing_error</code> (뒤따르는 예외보다 우선)</td><td><code>auth_error</code> (login / billing)</td></tr>
+<tr><td>2</td><td><code>RateLimitEvent.rate_limit_info.status == "rejected"</code> 또는 <code>AssistantMessage.error == "rate_limit"</code></td><td><code>rate_limited</code>. <code>retry_at</code>은 rejected 이벤트의 <code>resets_at</code>(Unix 초). 없거나 이미 지났으면 지금+1시간. <code>allowed_warning</code>은 로그만</td></tr>
+<tr><td>3</td><td><code>ResultMessage.subtype == "error_max_turns"</code>(예외의 subtype·terminal_reason이 max_turns인 경우 포함)</td><td><code>max_turns</code></td></tr>
+<tr><td>4</td><td>그 밖의 예외, 또는 <code>ResultMessage.is_error = True</code></td><td><code>error</code></td></tr>
+<tr><td>5</td><td>위에 해당 없음</td><td><code>ok</code></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">미검증(스펙 5.3): 사용 한도에 실제로 닿았을 때의 이벤트 순서와 실제 토큰 만료. 규칙에 안 맞는 오류는 4번 error로 떨어져 안전하고, 처음 일어나면 로그의 status와 SDK 오류 필드로 규칙을 고칩니다.</p>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="config"><span class="section__no">6</span>설정 인터페이스</h2><p class="section__lede">사용자가 손으로 바꾸는 값과 실행 명령입니다.</p></div>
+<h3 id="cfg-env">.env 와 환경변수 (IF-CFG-01)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>비밀값 키</caption>
+    <thead><tr><th>키</th><th>타입</th><th>필수</th><th>설명</th></tr></thead>
+    <tbody>
+<tr><td><code>TELEGRAM_BOT_TOKEN</code></td><td>문자열(<code>SecretStr</code>)</td><td>필수</td><td>BotFather에서 받은 봇 토큰. 로그와 화면에 찍히지 않음</td></tr>
+<tr><td><code>OWNER_TELEGRAM_ID</code></td><td>정수</td><td>필수</td><td>사용자의 텔레그램 숫자 ID(@userinfobot 등으로 확인). 이 계정의 개인 채팅만 받음</td></tr>
+<tr><td><code>MY_PLANNER_ROOT</code></td><td>경로</td><td>선택</td><td>저장소 루트. 없으면 패키지 위치에서 두 단계 위. 항상 절대경로로 풀어 씀. <code>.env</code> 파일이 아니라 프로세스 환경변수</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note"><code>.env</code>는 루트에 두고 Git에 넣지 않습니다(<code>.env.example</code>을 복사). 같은 이름의 환경변수가 있으면 환경변수가 이깁니다. 두 키는 <code>config.toml</code>에 두면 시작이 거부됩니다. 저장소 폴더는 OneDrive 같은 동기화 폴더 밖에 둡니다.</p>
+<h3 id="cfg-toml">config.toml (IF-CFG-02)</h3>
+<p>Git에 포함되고 개인값은 없습니다. 시각은 <code>"HH:MM"</code> 문자열이며 <code>timezone</code> 기준입니다. 모르는 키가 있으면 시작이 거부됩니다. 경로(<code>root</code>, <code>data/</code>, <code>state/</code>)는 설정 항목이 아니라 루트에서 정해집니다.</p>
+<div class="table-wrap table-wrap--scroll">
+  <table class="dt">
+    <caption>config.toml 키와 기본값</caption>
+    <thead><tr><th>키</th><th>타입</th><th>기본값</th><th>설명</th></tr></thead>
+    <tbody>
+<tr class="group"><th colspan="4">일반</th></tr>
+<tr><td><code>timezone</code></td><td>string</td><td>"Asia/Seoul"</td><td>시간대</td></tr>
+<tr><td><code>day_boundary</code></td><td>HH:MM</td><td>"04:00"</td><td>논리적 날짜의 하루 경계. 00:00~03:59는 전날</td></tr>
+<tr class="group"><th colspan="4">회차 시각 (주말 = 토, 일)</th></tr>
+<tr><td><code>schedule.morning_brief.weekday</code></td><td>HH:MM</td><td>"09:00"</td><td>아침 브리핑 평일</td></tr>
+<tr><td><code>schedule.morning_brief.weekend</code></td><td>HH:MM</td><td>"10:00"</td><td>아침 브리핑 주말</td></tr>
+<tr><td><code>schedule.evening_checkin.weekday</code></td><td>HH:MM</td><td>"17:30"</td><td>저녁 체크인 평일</td></tr>
+<tr><td><code>schedule.evening_checkin.weekend</code></td><td>HH:MM</td><td>"18:00"</td><td>저녁 체크인 주말</td></tr>
+<tr><td><code>schedule.review.week.day</code></td><td>mon~sun</td><td>"sun"</td><td>주간 회고 요일</td></tr>
+<tr><td><code>schedule.review.week.time</code></td><td>HH:MM</td><td>"18:00"</td><td>주간 회고 시각(일요일 저녁 체크인과 합쳐 한 메시지)</td></tr>
+<tr class="group"><th colspan="4">한도 (limits)</th></tr>
+<tr><td><code>limits.daily_brain_calls</code></td><td>int</td><td>60</td><td>하루 두뇌 호출 상한</td></tr>
+<tr><td><code>limits.max_turns</code></td><td>int</td><td>10</td><td>호출당 턴 상한</td></tr>
+<tr><td><code>limits.daily_proactive_messages</code></td><td>int</td><td>3</td><td>비서가 먼저 보내는 메시지 하루 상한</td></tr>
+<tr><td><code>limits.chat_resume_minutes</code></td><td>int</td><td>30</td><td>chat 대화 이어가기(분)</td></tr>
+<tr><td><code>limits.plan_idle_hours</code></td><td>int</td><td>2</td><td>계획 모드 유휴 만료(시간)</td></tr>
+<tr><td><code>limits.draft_ttl_days</code></td><td>int</td><td>3</td><td>초안 만료(일)</td></tr>
+<tr><td><code>limits.stale_message_hours</code></td><td>int</td><td>6</td><td>이보다 오래된 메시지는 “몇 시간 전” 알림</td></tr>
+<tr><td><code>limits.input_max_chars</code></td><td>int</td><td>8000</td><td>두뇌에 넘기는 입력 상한(글자)</td></tr>
+<tr><td><code>limits.brain_timeout_s</code></td><td>float</td><td>300</td><td>두뇌 호출 한 번의 상한(초). 넘으면 오류로 보고 재시도 규칙을 따름(#35)</td></tr>
+<tr class="group"><th colspan="4">답장 창 (limits.reply_window)</th></tr>
+<tr><td><code>limits.reply_window.morning_brief_until</code></td><td>HH:MM</td><td>"12:00"</td><td>당일. 이 시각까지 답하면 같은 회차 대화로 이음</td></tr>
+<tr><td><code>limits.reply_window.evening_checkin_until</code></td><td>HH:MM</td><td>"04:00"</td><td>다음 날(논리적 날짜 끝)</td></tr>
+<tr><td><code>limits.reply_window.review_hours</code></td><td>int</td><td>24</td><td>회고 답장 창(시간)</td></tr>
+<tr class="group"><th colspan="4">따라잡기 한계 (limits.catchup_limit)</th></tr>
+<tr><td><code>limits.catchup_limit.morning_brief_until</code></td><td>HH:MM</td><td>"12:00"</td><td>당일. 이 시각이 지나면 보내지 않음(skipped late)</td></tr>
+<tr><td><code>limits.catchup_limit.evening_checkin_until</code></td><td>HH:MM</td><td>"04:00"</td><td>다음 날</td></tr>
+<tr><td><code>limits.catchup_limit.review_days</code></td><td>int</td><td>3</td><td>회고는 예정 시각 + N일</td></tr>
+<tr class="group"><th colspan="4">보관 (retention)</th></tr>
+<tr><td><code>retention.log_days</code></td><td>int</td><td>30</td><td>로그 보관 일수</td></tr>
+<tr><td><code>retention.backup_count</code></td><td>int</td><td>14</td><td>DB 백업 보관 개수</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">출처: main의 <code>config.py</code>와 <code>config.toml</code>(기본값이 코드와 파일에서 같음). 값 범위 검사(예: 음수 금지)는 코드에 없습니다. <code>/pause</code>의 1~14일은 설정이 아니라 코드 상수입니다. 회차 시각을 바꾸면 깨우기 작업을 다시 등록해야 합니다(IF-SCH-03).</p>
+<h3 id="cfg-cli">실행 명령 (IF-CFG-03, IF-CFG-04)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>CLI</caption>
+    <thead><tr><th>명령</th><th>하는 일</th><th>출력 · 종료 코드</th><th>상태</th></tr></thead>
+    <tbody>
+<tr><td><code>python -m my_planner</code></td><td>비서 프로세스를 띄운다. 창 숨김 → 단일 실행 잠금 → 설정 읽기 → 로그 → DB 열기·<code>quick_check</code>·마이그레이션 → 시작 시 복구(회차, <code>inbound_pending</code>) → 봇·두뇌·디스패처 조립 → 폴링 시작. 콘솔에서 실행했을 때 Ctrl+C로 종료(진행 중 호출을 최대 30초 기다림)</td><td>종료 코드 <code>0</code> 정상, <code>1</code> 치명적 오류(DB 잠김 같은 <code>OperationalError</code> 포함, <code>fatal_error</code> 로그), <code>2</code> 설정 오류(<code>settings_invalid</code> 로그에 키 이름만), <code>3</code> 이미 실행 중(둘째 프로세스는 바로 끝남)</td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td><code>python -m my_planner.wake_times</code></td><td><code>config.toml</code>의 회차 시각보다 5분 이른 시각을 한 줄에 하나씩 <code>weekday HH:MM</code> / <code>weekend HH:MM</code> 형식으로 출력한다. 등록 스크립트가 깨우기 작업의 트리거를 만들 때 읽음</td><td>기본 설정이면 <code>weekday 08:55</code>, <code>weekday 17:25</code>, <code>weekend 09:55</code>, <code>weekend 17:55</code></td><td><span class="pill impl" data-s="done">구현됨 · SP1-13</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">DB가 손상됐으면(<code>quick_check</code> 실패, 잠김이 아닌 DB 오류) 끝내지 않고 안전 모드로 기다립니다. 출처: main <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/app.py" target="_blank" rel="noopener"><code>app.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>(종료 코드), 계획 티켓 13(wake_times). 일요일 18:00 회고는 저녁 체크인과 합쳐지므로 별도 깨우기 시각이 없습니다.</p>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="scheduler"><span class="section__no">7</span>Windows 작업 스케줄러 인터페이스</h2><p class="section__lede">비서를 늘 켜 두고, 노트북이 잠들었다 깨어도 되살리는 두 작업입니다.</p></div>
+<h3 id="sch-main">상시 작업 <code>my-planner</code> (IF-SCH-01)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>작업 정의</caption>
+    <thead><tr><th>구분</th><th>항목</th><th>값</th></tr></thead>
+    <tbody>
+<tr class="group"><th colspan="3">트리거</th></tr>
+<tr><td>트리거</td><td>사용자 로그온</td><td>로그온할 때 시작</td></tr>
+<tr><td>트리거</td><td>절전 복귀</td><td>이벤트 로그 System, 공급자 Power-Troubleshooter, 이벤트 ID 1</td></tr>
+<tr><td>트리거</td><td>워치독</td><td>5분 간격 반복 시간 트리거. 실행 중이면 아무 일도 없음(IgnoreNew)</td></tr>
+<tr class="group"><th colspan="3">동작과 계정</th></tr>
+<tr><td>동작</td><td>실행 파일</td><td><code>E:\my-planner\.venv\Scripts\pythonw.exe -m my_planner</code> (S0: Store판 Python 3.12 venv)</td></tr>
+<tr><td>동작</td><td>작업 폴더</td><td>저장소 루트</td></tr>
+<tr><td>계정</td><td>실행 계정</td><td>사용자 본인, “사용자가 로그온한 경우에만 실행”(구독 로그인 자격 증명에 접근하려고)</td></tr>
+<tr class="group"><th colspan="3">조건 · 설정</th></tr>
+<tr><td>조건</td><td>전원</td><td><code>DisallowStartIfOnBatteries=false</code>, <code>StopIfGoingOnBatteries=false</code>, 유휴 조건 없음</td></tr>
+<tr><td>설정</td><td>실행 시간</td><td><code>ExecutionTimeLimit=PT0S</code> (무제한)</td></tr>
+<tr><td>설정</td><td>중복 실행</td><td><code>MultipleInstancesPolicy=IgnoreNew</code></td></tr>
+<tr><td>설정</td><td>재시작</td><td>실패 시 1분 간격 최대 999회. 스파이크 S6에서 실행 중 강제 종료는 이 설정이 다시 띄우지 않았고 5분 워치독이 5분 안에 다시 띄웠음 → <strong>실제 재시작 경로는 워치독</strong></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">출처: 스펙 5.1, 스파이크 S0·S6. SP1-13에서 <code>scripts/task_my-planner.xml.tmpl</code>로 만들어 main에 병합했고, 노트북에서 등록·점검하는 일이 남았습니다(#16).</p>
+<h3 id="sch-wake">깨우기 작업 <code>my-planner-wake</code> (IF-SCH-02)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>작업 정의</caption>
+    <thead><tr><th>항목</th><th>값</th></tr></thead>
+    <tbody>
+<tr><td>트리거</td><td>고정 작업 하나에 트리거 여러 개: 각 회차 기본 시각 5분 전(위 wake_times 출력과 같음)</td></tr>
+<tr><td>설정</td><td>“이 작업을 실행하기 위해 절전 모드 해제”(WakeToRun) 켬, 배터리에서도 실행</td></tr>
+<tr><td>동작</td><td>하는 일이 없음: <code>pythonw -c pass</code> (콘솔 창 없음)</td></tr>
+<tr><td>등록 조건</td><td>스파이크 S4가 실패하면 등록하지 않음. S4 결과: AC 전원에서는 깨어남(성공), 배터리와 덮개 닫힘은 미검증</td></tr>
+<tr><td>제약</td><td>이 노트북은 전원 구성표의 “절전 모드 해제 타이머 허용(배터리)”이 꺼져 있어 배터리에서는 깨우지 못함. 그때는 따라잡기만 쓰며 기능 손실은 없음(사용자가 이 설정을 켜야 하고 하네스는 바꾸지 않음)</td></tr>
+<tr><td>갱신</td><td>회차 시각을 바꾸면 등록 스크립트를 다시 실행</td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">출처: 스펙 5.1, 스파이크 S4.</p>
+<h3 id="sch-reg">등록 스크립트와 OS 호출 (IF-SCH-03, IF-SCH-04)</h3>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>스크립트와 OS 호출</caption>
+    <thead><tr><th>이름</th><th>하는 일</th><th>입력 · 출력</th><th>상태</th></tr></thead>
+    <tbody>
+<tr><td><code>scripts/register_task.ps1 [-Root E:\my-planner] [-NoWake]</code></td><td>템플릿의 <code>{{PYTHONW}}</code>, <code>{{ROOT}}</code>, <code>{{USER}}</code>, <code>{{WAKE_TRIGGERS}}</code>를 채워 UTF-16 LE XML로 저장하고 <code>Register-ScheduledTask -Xml … -Force</code>로 두 작업을 등록. <code>-NoWake</code>면 깨우기 작업 생략</td><td>실행 예: <code>powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1</code></td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기 (#16)</span></td></tr>
+<tr><td><code>scripts/check_tasks.ps1</code></td><td>등록된 값을 점검</td><td>전부 OK이면 통과</td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기 (#16)</span></td></tr>
+<tr><td><code>msvcrt.locking</code></td><td><code>state/my-planner.lock</code>을 비차단 잠금. 실패하면 이미 실행 중이라 종료(종료 코드 3). 크래시하면 OS가 잠금을 풂</td><td>—</td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td><code>SetThreadExecutionState</code></td><td>두뇌 호출과 전송이 진행되는 동안 <code>ES_CONTINUOUS | ES_SYSTEM_REQUIRED</code>, 끝나면 해제(참조 카운트). 깨우기 직후 무인 절전 타임아웃으로 호출이 끊기는 것을 막음</td><td>—</td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+<tr><td><code>AllocConsoleWithOptions</code></td><td><code>pythonw</code>로 떴을 때 창 없는 콘솔을 한 번 만듦(없으면 SDK가 <code>claude.exe</code>를 띄울 때마다 터미널 창이 뜸). 시작 순서 0단계</td><td>결과 <code>created</code>/<code>has_console</code>/<code>unavailable</code>/<code>not_windows</code></td><td><span class="pill impl" data-s="done">구현됨</span></td></tr>
+    </tbody>
+  </table>
+</div>
+<p class="table-note">Windows가 아닌 환경에서는 세 OS 호출이 아무것도 하지 않습니다(개발·테스트용).</p>
+
+    </section>
+
+    <section class="section">
+      <div class="section__head"><h2 id="gaps"><span class="section__no">8</span>모호점</h2><p class="section__lede">처음 쓸 때 “미정”으로 둔 것과, main <code>0336f4d</code>에서 어떻게 정해졌는지입니다.</p></div>
+<div class="table-wrap">
+  <table class="dt">
+    <caption>스펙·계획에서 찾은 모호점</caption>
+    <thead><tr><th>#</th><th>내용</th><th>근거</th><th>영향</th></tr></thead>
+    <tbody>
+<tr><td>1</td><td><code>propose_tasks</code>, <code>confirm_tasks</code>, <code>record_condition</code>의 출력 형식과 오류 문구가 계획에 없습니다(confirm_tasks의 <code>confirmed/skipped_ids</code>만 있음).</td><td>스펙 5.5, 계획 티켓 06·07</td><td>현재: 코드가 정함(3장 각 도구의 출력·오류 사례)</td></tr>
+<tr><td>2</td><td><code>/pause</code> 범위 밖 값, <code>/pause</code>·<code>/unpause</code> 성공 문구, <code>/done</code>(열린 계획 대화 없음)의 응답 문구가 정해지지 않았습니다. 테스트 이름에만 동작이 나옵니다.</td><td>계획 티켓 10·11</td><td>현재: 구현 중 문구를 만들었고(4장), 스펙 v4 부록 A에 모아 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>Dahun 확인 필요</span></td></tr>
+<tr><td>3</td><td><code>record_condition</code>은 “ToolEvent 없음”인데 컨디션을 기록해도 확인 문구가 없습니다. 버튼 응답(<q class="src">컨디션 {n} 기록했어요.</q>)은 있지만 자연어로 컨디션을 말했을 때 사용자 확인이 없는 셈입니다.</td><td>스펙 5.5 표, 계획 티켓 07</td><td>“각 변경 뒤 하네스가 만든 확인 문구” 수용 기준 2는 할 일 변경에 한정됨. 컨디션이 포함되는지 불분명</td></tr>
+<tr><td>4</td><td>SP1-06 전에는 버튼 누름이 “일반 메시지가 아님”으로 버려졌습니다.</td><td>main <code>telegram_io.py</code>, 계획 티켓 06</td><td>현재: 해결. 판정 2단계 <code>callback</code>이 버튼 처리기로 보냄</td></tr>
+<tr><td>5</td><td><code>list_tasks</code>가 status를 안 주면 초안도 돌려줘 “/today와 아침 브리핑은 초안을 보여 주지 않는다”(스펙 5.7)와 어긋날 수 있었습니다.</td><td>main <code>tools/core.py</code>, 스펙 v4 5.5</td><td>현재: 해결. 기본은 <code>open</code>만, 초안은 <code>status="draft"</code>로 물을 때만</td></tr>
+<tr><td>6</td><td>인터페이스 ID 체계가 스펙·계획에 없어 이 문서가 붙였습니다.</td><td>—</td><td>다른 문서(시험 계획서 등)가 같은 ID를 쓰도록 맞출 것</td></tr>
+    </tbody>
+  </table>
+</div>
+
+    </section>
+
+  </main>
+
+  <aside class="toc" data-auto aria-label="이 문서에서"></aside>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__inner">
+    <div>
+      <h2>원천 자료</h2>
+      <p class="muted">저장소 <code>github.com/dahun428-fx/my-planner</code> (main) 안의 경로</p>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 3장, 4장, 5.1~5.8, 7장, 9장, 부록 A <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>구현 계획 티켓 01·02·03·04·06·07·10·11·12·13 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/plans/2026-10-23-sp1-secretary-core.md" target="_blank" rel="noopener"><code>docs/superpowers/plans/2026-10-23-sp1-secretary-core.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>스파이크 S0~S6 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/spikes/2026-10-sp1.md" target="_blank" rel="noopener"><code>docs/spikes/2026-10-sp1.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>ADR 0001, 0002, 0005 <code>docs/adr/</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>main 코드: 도구 <code>src/my_planner/tools/core.py, mcp_adapter.py, confirmations.py</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>main 코드(<code>0336f4d</code>): 텔레그램 <code>src/my_planner/bot/telegram_io.py, src/my_planner/bot/commands.py, src/my_planner/bot/callbacks.py</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>main 코드: 두뇌·디스패처·설정·시작 <code>src/my_planner/harness/brain.py, harness/dispatcher.py, config.py, app.py, platform/windows.py</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>설정 파일 <code>config.toml, .env.example</code></span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>관련 문서</h2>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-schema"/></svg><a href="database.html">ERD · 테이블 정의서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-architecture"/></svg><a href="architecture.html">아키텍처 정의서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-screen"/></svg><a href="screens.html">화면설계서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-manual"/></svg><a href="operations.html">운영자 매뉴얼</a></li>
+      </ul>
+    </div>
+    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23</span><a href="index.html">산출물 지도로</a></div>
+  </div>
+</footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WBS · 일정</title>
+<meta name="description" content="my-planner SP1 티켓 15개의 WBS, 티켓 의존 그래프, 진행 상태, 마일스톤과 SP1~SP4 로드맵.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="index.html">
+      <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
+      my-planner <span class="brand__sub">산출물</span>
+    </a>
+    <div class="topbar__doc"><span>WBS · 일정</span></div>
+    <button class="navtoggle" type="button" aria-controls="docnav" aria-expanded="false">
+      <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>문서 목록
+    </button>
+  </div>
+</header>
+
+<div class="shell shell--doc" data-doc="schedule">
+
+  <nav class="docnav" id="docnav" aria-label="문서 목록">
+    <div class="docnav__group">
+      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>산출물 지도</a></li></ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">1 요구</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="requirements" href="requirements.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>요구사항 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">2 설계</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 정의서</a></li>
+        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</a></li>
+        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>시퀀스·상태 다이어그램</a></li>
+        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg>화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>ERD · 테이블 정의서</a></li>
+        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">3 구현 · 시험</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</a></li>
+        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>테스트 계획·결과서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">4 운영</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">공통</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="glossary" href="glossary.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어집</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="doc">
+
+    <header class="doc-head">
+      <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</span>
+      <h1>SP1 작업 분해와 진행 상태</h1>
+      <p class="doc-head__lede">SP1을 티켓 15개로 나눈 작업 분해 구조(WBS)와 티켓 사이의 선후 관계, 지금의 진행 상태입니다. 계획에 날짜 추정이 없으므로 달력 일정 대신 순서와 상태만 보여 줍니다.</p>
+      <div class="doc-head__meta">
+        <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">WBS(PMBOK) · 선행 관계 그래프 · 마일스톤</span></span>
+        <span class="pill doc" data-s="review">검토 중</span>
+      </div>
+      <dl class="docinfo">
+        <div><dt>문서 ID</dt><dd class="mono">MP-SP1-WBS</dd></div>
+        <div><dt>버전</dt><dd class="tnum">1.0</dd></div>
+        <div><dt>작성일</dt><dd class="tnum">2026-10-23</dd></div>
+        <div><dt>상태</dt><dd>검토 중</dd></div>
+        <div><dt>기준 문서</dt><dd>구현 계획 티켓 지도 · 마스터 §4</dd></div>
+        <div><dt>상태 기준</dt><dd class="mono">main 0336f4d</dd></div>
+      </dl>
+    </header>
+
+    <nav class="jumpbar" data-auto aria-label="바로 가기"></nav>
+
+    <section class="section" aria-label="요약">
+      <aside class="summary">
+        <span class="summary__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>한눈에 보기</span>
+        <p class="summary__title">티켓 15개 중 13개(SP1-00~SP1-12)가 main에 합쳐지고 이슈가 닫혔습니다. 코드는 main에 합쳐졌고 남은 확인 때문에 이슈가 열려 있는 티켓: SP1-13(노트북 점검 대기 (#16)), SP1-14(7일 수용 테스트 대기 (#17)). 마일스톤 6개 중 4개를 지났습니다.</p>
+        <div class="summary__body">
+          <ul>
+            <li>SP1-00에서 SP1-10까지는 한 줄로 이어집니다. 앞 티켓이 끝나야 다음 티켓을 시작할 수 있어, 이 줄이 SP1의 주 경로입니다.</li>
+            <li>옆길은 셋입니다: SP1-11 계획 모드(SP1-06 뒤), SP1-12 오래 돌아도 안전(SP1-05 뒤), SP1-13 늘 돈다(SP1-12 뒤). 세 길은 SP1-14 7일 수용 테스트에서 만납니다.</li>
+            <li>바로 시작할 수 있는 다음 티켓: 없음(모든 티켓의 코드가 main에 있음).</li>
+            <li>PR: 스파이크 #18·#19, 티켓 SP1-01~14 #20~#34, 최종 리뷰 수정 #35, 문서 동기화(스펙 v4·README) #36. 모두 main <code class="mono">0336f4d</code>에 있습니다.</li>
+            <li>SP1이 끝나야 SP2(기억 계층) 스펙을 확정합니다(마스터 §4).</li>
+          </ul>
+        </div>
+      </aside>
+      <div class="kpis">
+        <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>완료</div><div class="kpi__value">13<span class="kpi__unit">/ 15</span></div><div class="kpi__note">이슈 닫힘 · main에 합쳐짐</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg>병합 · 점검 대기</div><div class="kpi__value">2</div><div class="kpi__note">코드는 main, 노트북 점검·7일 수용 테스트 남음</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>예정</div><div class="kpi__value">0</div><div class="kpi__note">아직 시작 전</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>마일스톤</div><div class="kpi__value">4<span class="kpi__unit">/ 6</span></div><div class="kpi__note">스파이크 → 7일 수용</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="wbs"><span class="section__no">1</span>작업 분해 구조 (WBS)</h2>
+        <p class="section__lede">SP1(1)을 작업 묶음 7개(1.1~1.7)로, 묶음을 티켓으로 나눴습니다. 티켓과 내용은 구현 계획 그대로이고, 묶음 이름은 이 문서가 붙였습니다.</p>
+      </div>
+      <figure class="fig">
+        <div class="fig__head"><span class="fig__no"></span><span class="fig__title">SP1 WBS 트리</span><span class="fig__std">WBS · 계획 티켓 지도</span></div>
+        <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A','actorBkg':'#DDEFEC','actorBorder':'#0E6B63','actorTextColor':'#15222A','actorLineColor':'#A9B7BE','signalColor':'#42525B','signalTextColor':'#15222A','labelBoxBkgColor':'#EBF0F2','labelBoxBorderColor':'#A9B7BE','labelTextColor':'#15222A','loopTextColor':'#15222A','noteBkgColor':'#FAEFD3','noteBorderColor':'#8F5C00','noteTextColor':'#15222A','activationBkgColor':'#DFE6E9','activationBorderColor':'#42525B','sequenceNumberColor':'#FFFFFF'}}}%%
+flowchart TD
+W0["1 SP1 비서 코어<br/>티켓 15개"]
+W0 --> W11["1.1 착수 전 검증<br/>00"]
+W0 --> W12["1.2 대화 기반<br/>01 · 02"]
+W0 --> W13["1.3 할 일 관리<br/>03 · 04 · 06 · 11"]
+W0 --> W14["1.4 먼저 말 거는 루프<br/>05 · 07 · 08"]
+W0 --> W15["1.5 따라잡기·예외 처리<br/>09 · 10"]
+W0 --> W16["1.6 운영 강화<br/>12 · 13"]
+W0 --> W17["1.7 수용<br/>14"]
+classDef done fill:#E0F1E5,stroke:#1D7539,color:#15222A
+classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+classDef fail fill:#FBE5E2,stroke:#B3261E,color:#15222A,stroke-width:2px
+classDef warn fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+classDef key  fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px
+classDef ext  fill:#FFFFFF,stroke:#A9B7BE,color:#42525B,stroke-dasharray:2 2
+class W0 key
+class W11 done
+class W12 done
+class W13 done
+class W14 done
+class W15 done
+class W16 warn
+class W17 warn
+</pre>
+        </div>
+        <figcaption class="fig__cap">묶음 안의 숫자는 티켓 번호입니다. 할 일 관리(1.3)는 루프 티켓 사이사이에 끼어 진행됩니다. 실선 초록 = 묶음 완료, 노랑 = 일부 진행, 점선 회색 = 아직 시작 전. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>WBS 사전: 티켓과 주요 산출물</caption>
+          <thead><tr><th class="w-min">WBS</th><th>티켓</th><th>주요 산출물</th><th class="w-min">선행 티켓</th><th class="w-min">상태</th></tr></thead>
+          <tbody>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg> 1.1 착수 전 검증</th></tr>
+            <tr id="SP1-00"><td class="id mono">1.1.1</td><td><span class="mono">SP1-00</span> 착수 전 검증 (S0~S6)<br><span class="muted mono">GitHub #3</span></td><td>docs/spikes/2026-10-sp1.md (S0~S6 결과와 정한 값)</td><td><span class="muted">없음</span></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg> 1.2 대화 기반</th></tr>
+            <tr id="SP1-01"><td class="id mono">1.2.1</td><td><span class="mono">SP1-01</span> 걸어 다니는 뼈대 — 말 걸면 답한다<br><span class="muted mono">GitHub #4</span></td><td>python -m my_planner 실행 뼈대 (app, config, clock, domain)<br>store/migrations/001_core.sql, 원문 기록, 가리기<br>harness/brain.py · dispatcher.py, bot/telegram_io.py<br>README (설치, .env, 실행)</td><td><a class="mono nowrap" href="#SP1-00">SP1-00</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-02"><td class="id mono">1.2.2</td><td><span class="mono">SP1-02</span> 대화 이어가기<br><span class="muted mono">GitHub #5</span></td><td>harness/conversations.py (30분 규칙)<br>harness/context.py 알림<br>TranscriptStore.recent</td><td><a class="mono nowrap" href="#SP1-01">SP1-01</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg> 1.3 할 일 관리</th></tr>
+            <tr id="SP1-03"><td class="id mono">1.3.1</td><td><span class="mono">SP1-03</span> 할 일을 말로 추가·변경<br><span class="muted mono">GitHub #6</span></td><td>store/migrations/002_tasks.sql, TasksRepo<br>tools/core.py 도구 8개, confirmations.py<br>store/exports.py → data/exports/tasks.md<br>context.py 앞머리</td><td><a class="mono nowrap" href="#SP1-02">SP1-02</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-04"><td class="id mono">1.3.2</td><td><span class="mono">SP1-04</span> 우선순위와 /today /week /help<br><span class="muted mono">GitHub #7</span></td><td>Tools.set_priorities, 우선순위 확인 문구<br>bot/commands.py (/today /week /help)</td><td><a class="mono nowrap" href="#SP1-03">SP1-03</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-06"><td class="id mono">1.3.3</td><td><span class="mono">SP1-06</span> 비서 제안은 초안, 버튼으로 확정<br><span class="muted mono">GitHub #9</span></td><td>propose_tasks · confirm_tasks<br>bot/callbacks.py (✓ 추가 ✗ 빼기 전부 추가)<br>초안 3일 만료(하루 한 번 작업)</td><td><a class="mono nowrap" href="#SP1-05">SP1-05</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-11"><td class="id mono">1.3.4</td><td><span class="mono">SP1-11</span> 계획 모드<br><span class="muted mono">GitHub #14</span></td><td>/plan /done, 계획 대화 2시간 규칙<br>prompts/plan.md<br>계획 중 회차 미루기</td><td><a class="mono nowrap" href="#SP1-06">SP1-06</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg> 1.4 먼저 말 거는 루프</th></tr>
+            <tr id="SP1-05"><td class="id mono">1.4.1</td><td><span class="mono">SP1-05</span> 아침 브리핑이 제시간에 온다<br><span class="muted mono">GitHub #8</span></td><td>store/migrations/003_runs.sql, RunsRepo<br>loop/schedule.py · catchup.py(R4·R5) · runner.py<br>prompts/morning_brief.md, 두 단계 회차</td><td><a class="mono nowrap" href="#SP1-04">SP1-04</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-07"><td class="id mono">1.4.2</td><td><span class="mono">SP1-07</span> 저녁 체크인과 컨디션 버튼<br><span class="muted mono">GitHub #10</span></td><td>store/migrations/004_conditions.sql, ConditionsRepo<br>record_condition, 컨디션 버튼<br>prompts/evening_checkin.md</td><td><a class="mono nowrap" href="#SP1-06">SP1-06</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-08"><td class="id mono">1.4.3</td><td><span class="mono">SP1-08</span> 일요일 주간 회고<br><span class="muted mono">GitHub #11</span></td><td>review(week) 예정 시각, 합치기<br>store/reviews.py → data/reviews/week/YYYY-Www.md<br>prompts/review_week.md</td><td><a class="mono nowrap" href="#SP1-07">SP1-07</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-return"/></svg> 1.5 따라잡기·예외 처리</th></tr>
+            <tr id="SP1-09"><td class="id mono">1.5.1</td><td><span class="mono">SP1-09</span> 꺼졌다 켜져도 알맞게 따라잡는다<br><span class="muted mono">GitHub #12</span></td><td>catchup.py R1 · 넘겨 받은 회고 · 하루 3회 상한<br>prompts/return.md<br>시계 이상 처리</td><td><a class="mono nowrap" href="#SP1-08">SP1-08</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-10"><td class="id mono">1.5.2</td><td><span class="mono">SP1-10</span> 멈춤, 상한, 로그인·한도 오류<br><span class="muted mono">GitHub #13</span></td><td>/pause /unpause<br>R2·R3·사용 한도, 로그인·결제 안내<br>사용자 메시지 백오프 재시도</td><td><a class="mono nowrap" href="#SP1-09">SP1-09</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> 1.6 운영 강화</th></tr>
+            <tr id="SP1-12"><td class="id mono">1.6.1</td><td><span class="mono">SP1-12</span> 오래 돌아가도 안전하다<br><span class="muted mono">GitHub #15</span></td><td>store/backup.py (14개 보관)<br>로그 30일 보관<br>시작 시 복구 · 안전 모드<br>README 복구 절차</td><td><a class="mono nowrap" href="#SP1-05">SP1-05</a></td><td><span class="pill ticket" data-s="done">완료</span></td></tr>
+            <tr id="SP1-13"><td class="id mono">1.6.2</td><td><span class="mono">SP1-13</span> 로그온·절전·전원과 상관없이 늘 돈다<br><span class="muted mono">GitHub #16</span></td><td>scripts/register_task.ps1 · check_tasks.ps1<br>작업 XML 템플릿 2개<br>wake_times.py, 절전 복귀 폴링 재시작, keep_awake</td><td><a class="mono nowrap" href="#SP1-12">SP1-12</a></td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기 (#16)</span></td></tr>
+            <tr class="group"><th colspan="5"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> 1.7 수용</th></tr>
+            <tr id="SP1-14"><td class="id mono">1.7.1</td><td><span class="mono">SP1-14</span> 7일 수용 테스트<br><span class="muted mono">GitHub #17</span></td><td>docs/acceptance/sp1-checklist.md (7일 × 완료 조건)<br>발견한 문제 → 새 이슈</td><td><a class="mono nowrap" href="#SP1-10">SP1-10</a>, <a class="mono nowrap" href="#SP1-11">SP1-11</a>, <a class="mono nowrap" href="#SP1-13">SP1-13</a></td><td><span class="pill ticket" data-s="review">병합 · 7일 수용 테스트 대기 (#17)</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">각 티켓은 세로 티켓입니다(<a href="glossary.html#harness">하네스</a> 전 층을 관통해 끝에서 끝까지 확인 가능한 결과 하나). 티켓마다 TDD 슬라이스, <code>pytest -q</code> 전체 통과, 코드 리뷰, 커밋 순서로 닫습니다(계획 TDD 주기).</p>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="deps"><span class="section__no">2</span>티켓 의존 그래프</h2>
+        <p class="section__lede">화살표는 “앞 티켓이 끝나야 뒤 티켓을 시작한다”(Blocked by)입니다.</p>
+      </div>
+      <figure class="fig">
+        <div class="fig__head"><span class="fig__no"></span><span class="fig__title">선행 관계와 주 경로</span><span class="fig__std">선행 관계 그래프 · 계획 티켓 지도</span></div>
+        <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A','actorBkg':'#DDEFEC','actorBorder':'#0E6B63','actorTextColor':'#15222A','actorLineColor':'#A9B7BE','signalColor':'#42525B','signalTextColor':'#15222A','labelBoxBkgColor':'#EBF0F2','labelBoxBorderColor':'#A9B7BE','labelTextColor':'#15222A','loopTextColor':'#15222A','noteBkgColor':'#FAEFD3','noteBorderColor':'#8F5C00','noteTextColor':'#15222A','activationBkgColor':'#DFE6E9','activationBorderColor':'#42525B','sequenceNumberColor':'#FFFFFF'}}}%%
+flowchart TD
+T00["SP1-00 · #3<br/>착수 전 검증"]
+T01["SP1-01 · #4<br/>걸어 다니는 뼈대"]
+T02["SP1-02 · #5<br/>대화 이어가기"]
+T03["SP1-03 · #6<br/>할 일 말로 추가·변경"]
+T04["SP1-04 · #7<br/>우선순위·/today"]
+T05["SP1-05 · #8<br/>아침 브리핑"]
+T06["SP1-06 · #9<br/>초안·버튼 확정"]
+T07["SP1-07 · #10<br/>저녁 체크인·컨디션"]
+T08["SP1-08 · #11<br/>주간 회고"]
+T09["SP1-09 · #12<br/>따라잡기"]
+T10["SP1-10 · #13<br/>멈춤·상한·오류"]
+T11["SP1-11 · #14<br/>계획 모드"]
+T12["SP1-12 · #15<br/>오래 돌아도 안전"]
+T13["SP1-13 · #16<br/>늘 돈다"]
+T14["SP1-14 · #17<br/>7일 수용 테스트"]
+T00 --> T01
+T01 --> T02
+T02 --> T03
+T03 --> T04
+T04 --> T05
+T05 --> T06
+T06 --> T07
+T07 --> T08
+T08 --> T09
+T09 --> T10
+T06 --> T11
+T05 --> T12
+T12 --> T13
+T10 --> T14
+T11 --> T14
+T13 --> T14
+classDef done fill:#E0F1E5,stroke:#1D7539,color:#15222A
+classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+classDef fail fill:#FBE5E2,stroke:#B3261E,color:#15222A,stroke-width:2px
+classDef warn fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+classDef key  fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px
+classDef ext  fill:#FFFFFF,stroke:#A9B7BE,color:#42525B,stroke-dasharray:2 2
+class T00 done
+class T01 done
+class T02 done
+class T03 done
+class T04 done
+class T05 done
+class T06 done
+class T07 done
+class T08 done
+class T09 done
+class T10 done
+class T11 done
+class T12 done
+class T13 warn
+class T14 warn
+</pre>
+        </div>
+        <figcaption class="fig__cap">00→01→…→10이 한 줄로 이어지는 주 경로이고, 11·12·13이 옆길입니다. 14는 10, 11, 13이 모두 끝나야 시작합니다. 굵은 청록 테두리 = 지금 바로 시작할 수 있는 티켓. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+      </figure>
+      <div class="legend">
+        <div class="legend__title">범례 · 티켓 상태</div>
+        <ul class="legend__list">
+          <li><span class="legend__glyph"><span class="pill ticket" data-s="done">완료</span></span><span class="legend__term">완료</span><span class="legend__desc">GitHub 이슈가 닫히고 main에 그 티켓 커밋이 있음 (그림: 실선 초록)</span></li>
+          <li><span class="legend__glyph"><span class="pill ticket" data-s="review">병합 · 점검 대기</span></span><span class="legend__term">병합 · 점검 대기</span><span class="legend__desc">코드는 main에 합쳐졌고 이슈는 노트북 점검을 위해 열려 있음 (그림: 노랑)</span></li>
+          <li><span class="legend__glyph"><span class="pill ticket" data-s="doing">진행 중</span></span><span class="legend__term">진행 중</span><span class="legend__desc">sp1/NN-* 브랜치에 main에 없는 커밋이 있음 (그림: 노랑)</span></li>
+          <li><span class="legend__glyph"><span class="pill ticket" data-s="todo">예정</span></span><span class="legend__term">예정</span><span class="legend__desc">시작 전 (그림: 점선 회색, 선행이 모두 끝났으면 굵은 청록 테두리)</span></li>
+        </ul>
+      </div>
+      <aside class="callout callout--info">
+        <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+        <div class="callout__body"><span class="callout__title">초안과 달라진 선후 관계 (계획 티켓 지도)</span><span>03은 02를 기다린다(새 세션 판단과 <code>context.py</code>를 함께 씀). 07은 06을 기다린다(콜백과 버튼 장치). 08은 07을 거쳐 06의 초안을 쓴다. 10은 09의 R1을 고친다.</span></div>
+      </aside>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="board"><span class="section__no">3</span>상태 보드</h2>
+        <p class="section__lede">GitHub 이슈 #3~#17의 상태와 저장소 브랜치로 정했습니다(main <code class="mono">0336f4d</code>, 2026-10-23 조회).</p>
+      </div>
+      <div class="cols">
+        <div>
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> 완료 <span class="muted tnum">13</span></h3>
+          <p class="table-note">이슈 닫힘 · main에 합쳐짐</p>
+          <ul>
+            <li><a class="mono" href="#SP1-00">SP1-00</a> <span class="muted mono">#3</span> 착수 전 검증 (S0~S6)</li>
+            <li><a class="mono" href="#SP1-01">SP1-01</a> <span class="muted mono">#4</span> 걸어 다니는 뼈대 — 말 걸면 답한다</li>
+            <li><a class="mono" href="#SP1-02">SP1-02</a> <span class="muted mono">#5</span> 대화 이어가기</li>
+            <li><a class="mono" href="#SP1-03">SP1-03</a> <span class="muted mono">#6</span> 할 일을 말로 추가·변경</li>
+            <li><a class="mono" href="#SP1-04">SP1-04</a> <span class="muted mono">#7</span> 우선순위와 /today /week /help</li>
+            <li><a class="mono" href="#SP1-05">SP1-05</a> <span class="muted mono">#8</span> 아침 브리핑이 제시간에 온다</li>
+            <li><a class="mono" href="#SP1-06">SP1-06</a> <span class="muted mono">#9</span> 비서 제안은 초안, 버튼으로 확정</li>
+            <li><a class="mono" href="#SP1-07">SP1-07</a> <span class="muted mono">#10</span> 저녁 체크인과 컨디션 버튼</li>
+            <li><a class="mono" href="#SP1-08">SP1-08</a> <span class="muted mono">#11</span> 일요일 주간 회고</li>
+            <li><a class="mono" href="#SP1-09">SP1-09</a> <span class="muted mono">#12</span> 꺼졌다 켜져도 알맞게 따라잡는다</li>
+            <li><a class="mono" href="#SP1-10">SP1-10</a> <span class="muted mono">#13</span> 멈춤, 상한, 로그인·한도 오류</li>
+            <li><a class="mono" href="#SP1-11">SP1-11</a> <span class="muted mono">#14</span> 계획 모드</li>
+            <li><a class="mono" href="#SP1-12">SP1-12</a> <span class="muted mono">#15</span> 오래 돌아가도 안전하다</li>
+          </ul>
+        </div>
+        <div>
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg> 병합 · 점검 대기 <span class="muted tnum">2</span></h3>
+          <p class="table-note">코드는 main에 합쳐짐 · 이슈는 노트북 점검(#16)과 7일 수용 테스트(#17)를 위해 열림</p>
+          <ul>
+            <li><a class="mono" href="#SP1-13">SP1-13</a> <span class="muted mono">#16</span> 로그온·절전·전원과 상관없이 늘 돈다</li>
+            <li><a class="mono" href="#SP1-14">SP1-14</a> <span class="muted mono">#17</span> 7일 수용 테스트</li>
+          </ul>
+        </div>
+        <div>
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> 진행 중 <span class="muted tnum">0</span></h3>
+          <p class="table-note">브랜치에서 작업 중, PR 전</p>
+          <ul>
+            <li class="muted">없음</li>
+          </ul>
+        </div>
+        <div>
+          <h3><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> 예정 <span class="muted tnum">0</span></h3>
+          <p class="table-note">선행 티켓을 기다림</p>
+          <ul>
+            <li class="muted">없음</li>
+          </ul>
+        </div>
+      </div>
+      <aside class="callout callout--warn">
+        <svg class="ic" aria-hidden="true"><use href="#i-warning"/></svg>
+        <div class="callout__body"><span class="callout__title">스파이크에서 미뤄 둔 확인</span><span>SP1-00은 닫혔지만 S4의 배터리·덮개 닫힘 깨우기와 S5 절전 복귀 폴링은 Dahun 결정으로 나중에 확인합니다(스파이크 기록). SP1-13의 수동 확인 때 함께 보는 것이 자연스럽습니다. 자세한 내용은 <a href="requirements.html#assumptions">요구사항 정의서의 가정</a>.</span></div>
+      </aside>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="milestones"><span class="section__no">4</span>마일스톤</h2>
+        <p class="section__lede">마일스톤은 해당 티켓이 모두 완료되면 지난 것으로 봅니다. 날짜는 정하지 않았습니다.</p>
+      </div>
+      <ol class="steps">
+        <li><span class="steps__title"><span class="mono">M1</span> 스파이크 완료 <span class="pill ticket" data-s="done">완료</span></span><span class="steps__body"><span>노트북에서 S0~S6을 확인하고 뒤 티켓이 쓸 값(Python 경로, SDK 범위, 오류 판별 규칙 등)을 정했다.</span><span>완료 기준 티켓: <a class="mono nowrap" href="#SP1-00">SP1-00</a></span></span></li>
+        <li><span class="steps__title"><span class="mono">M2</span> 걸어 다니는 뼈대 <span class="pill ticket" data-s="done">완료</span></span><span class="steps__body"><span>텔레그램에 쓰면 비서가 답한다. 다른 계정은 무시하고, 원문 기록에 가린 채 남는다.</span><span>완료 기준 티켓: <a class="mono nowrap" href="#SP1-01">SP1-01</a></span></span></li>
+        <li><span class="steps__title"><span class="mono">M3</span> 먼저 말 거는 루프 <span class="pill ticket" data-s="done">완료</span></span><span class="steps__body"><span>아침 브리핑, 저녁 체크인(컨디션 버튼), 일요일 주간 회고가 정해진 시각에 온다.</span><span>완료 기준 티켓: <a class="mono nowrap" href="#SP1-05">SP1-05</a>, <a class="mono nowrap" href="#SP1-07">SP1-07</a>, <a class="mono nowrap" href="#SP1-08">SP1-08</a></span></span></li>
+        <li><span class="steps__title"><span class="mono">M4</span> 따라잡기 <span class="pill ticket" data-s="done">완료</span></span><span class="steps__body"><span>꺼졌다 켜져도 R1~R5대로 처리하고, 멈춤·상한·로그인·한도 오류를 다룬다.</span><span>완료 기준 티켓: <a class="mono nowrap" href="#SP1-09">SP1-09</a>, <a class="mono nowrap" href="#SP1-10">SP1-10</a></span></span></li>
+        <li><span class="steps__title"><span class="mono">M5</span> 운영 강화 <span class="pill ticket" data-s="review">병합 · 점검 대기</span></span><span class="steps__body"><span>백업·로그 보관·시작 복구·안전 모드, 그리고 로그온·절전·전원과 상관없이 늘 돈다.</span><span>완료 기준 티켓: <a class="mono nowrap" href="#SP1-12">SP1-12</a>, <a class="mono nowrap" href="#SP1-13">SP1-13</a></span></span></li>
+        <li><span class="steps__title"><span class="mono">M6</span> 7일 수용 <span class="pill ticket" data-s="review">병합 · 7일 수용 테스트 대기 (#17)</span></span><span class="steps__body"><span>Dahun이 7일 동안 써 보며 스펙 1장 완료 조건 1~5를 확인한다.</span><span>완료 기준 티켓: <a class="mono nowrap" href="#SP1-14">SP1-14</a></span></span></li>
+      </ol>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="roadmap"><span class="section__no">5</span>하위 프로젝트 로드맵 SP1 → SP4</h2>
+        <p class="section__lede">하위 프로젝트마다 스펙 → 구현 계획 → 구현 주기를 따로 가지며, 앞 단계가 끝나야 다음 단계 스펙을 확정합니다(마스터 §4).</p>
+      </div>
+      <figure class="fig">
+        <div class="fig__head"><span class="fig__no"></span><span class="fig__title">하위 프로젝트 의존</span><span class="fig__std">선행 관계 · 마스터 §4</span></div>
+        <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A','actorBkg':'#DDEFEC','actorBorder':'#0E6B63','actorTextColor':'#15222A','actorLineColor':'#A9B7BE','signalColor':'#42525B','signalTextColor':'#15222A','labelBoxBkgColor':'#EBF0F2','labelBoxBorderColor':'#A9B7BE','labelTextColor':'#15222A','loopTextColor':'#15222A','noteBkgColor':'#FAEFD3','noteBorderColor':'#8F5C00','noteTextColor':'#15222A','activationBkgColor':'#DFE6E9','activationBorderColor':'#42525B','sequenceNumberColor':'#FFFFFF'}}}%%
+flowchart LR
+SP1["SP1 비서 코어<br/>봇 · 하네스 · 루프 · 할 일"] --> SP2["SP2 기억 계층<br/>기억 카드 · 의미 회상"]
+SP2 --> SP3["SP3 인생 곡선 + 상태창<br/>월·분기·연 회고 · /status"]
+SP1 --> SP3
+SP3 --> SP4["SP4 웹 대시보드<br/>로컬 · 읽기 전용"]
+classDef done fill:#E0F1E5,stroke:#1D7539,color:#15222A
+classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+classDef fail fill:#FBE5E2,stroke:#B3261E,color:#15222A,stroke-width:2px
+classDef warn fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+classDef key  fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px
+classDef ext  fill:#FFFFFF,stroke:#A9B7BE,color:#42525B,stroke-dasharray:2 2
+class SP1 warn
+class SP2,SP3,SP4 skip
+</pre>
+        </div>
+        <figcaption class="fig__cap">SP1은 코드가 모두 main에 병합됐고 노트북 점검(#16)과 7일 수용 테스트(#17)를 기다립니다(노랑). SP2~SP4는 스펙이 아직 없습니다(점선). SP3는 SP1과 SP2 둘 다 필요합니다.</figcaption>
+      </figure>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>하위 프로젝트별 범위와 완료 조건 (마스터 §4 원문)</caption>
+          <thead><tr><th class="w-min">#</th><th>범위</th><th>완료 조건</th><th class="w-min">의존</th><th class="w-min">상태</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-harness"/></svg> <b>SP1</b> 비서 코어</td><td>봇(본인 잠금), harness core, 두뇌 세션, loop(아침 브리핑, 저녁 체크인, 주간 회고, 따라잡기), 할 일과 컨디션 도구와 SQLite, 원문 기록 저장, 시스템 로그, 작업 스케줄러 등록</td><td>7일간 <code>runs</code> 테이블의 예정 회차가 모두 <code>done</code> 또는 따라잡기 규칙에 맞는 <code>skipped</code>이고, 텔레그램으로 할 일을 추가·완료·이동할 수 있다</td><td>없음</td><td><span class="pill ticket" data-s="review">코드 병합 · 수용 테스트 대기</span></td></tr>
+            <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> <b>SP2</b> 기억 계층</td><td>정리 루프, 기억 카드 생성·갱신·감쇠, 로컬 임베딩 + sqlite-vec + FTS5, <code>search_memory</code>, <code>/memory</code></td><td>2주 사용 후 “예전에 ~했을 때”류 질문에 근거 카드와 함께 답한다</td><td>SP1</td><td><span class="pill ticket" data-s="todo">예정</span></td></tr>
+            <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-quality-of-life"/></svg> <b>SP3</b> 인생 곡선 + 상태창</td><td>과거 그래프 인터뷰, 월·분기·연 회고 루프, 사다리 점수와 영역 점수 초안, 사건과 챕터, 레벨·경험치·스탯·디버프·퀘스트, <code>/status</code>, 차트 이미지</td><td>첫 월간 회고에서 점수 초안과 레이더 차트를, 첫 분기 회고에서 곡선 그래프를 받는다</td><td>SP1, SP2</td><td><span class="pill ticket" data-s="todo">예정</span></td></tr>
+            <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg> <b>SP4</b> 웹 대시보드</td><td>로컬 웹 화면: 상태창, 인생 곡선, 퀘스트, 기억 카드 열람</td><td>브라우저에서 <code>/status</code>와 같은 데이터를 보고, 곡선을 기간별로 확대·축소할 수 있다</td><td>SP3</td><td><span class="pill ticket" data-s="todo">예정</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <aside class="callout callout--tbd">
+        <svg class="ic" aria-hidden="true"><use href="#i-question"/></svg>
+        <div class="callout__body"><span class="callout__title">아직 정하지 않은 것</span><span>SP2~SP4의 티켓 분해와 순서는 각 스펙에서 정합니다: <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미정(SP2~SP4 스펙에서 결정)</span>. SP2 착수 전에 <code>bge-m3</code> 용량과 GPU 사용을, SP4 착수 전에 UI UX Pro Max 스킬 설치 여부를 확인합니다(마스터 §7).</span></div>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="toc" data-auto aria-label="이 문서에서"></aside>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__inner">
+    <div>
+      <h2>원천 자료</h2>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>구현 계획 티켓 지도 · 티켓 00~14(Blocked by, Files) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/plans/2026-10-23-sp1-secretary-core.md" target="_blank" rel="noopener"><code>docs/superpowers/plans/2026-10-23-sp1-secretary-core.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>마스터 설계 §4 하위 프로젝트 · §7 미결 사항 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-my-planner-master-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-my-planner-master-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>스파이크 결과 S4·S5 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/spikes/2026-10-sp1.md" target="_blank" rel="noopener"><code>docs/spikes/2026-10-sp1.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tool"/></svg><span>진행 상태: <code>git log main</code> (0336f4d docs: sync SP1 spec and README with shipped code (#36)), 브랜치 목록, GitHub 이슈 #3~#17 상태</span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>관련 문서</h2>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-requirements"/></svg><a href="requirements.html#rtm">요구사항 추적 매트릭스</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-test"/></svg><a href="test-report.html">테스트 계획·결과서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-glossary"/></svg><a href="glossary.html">용어집</a></li>
+      </ul>
+    </div>
+    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23</span><a href="index.html">산출물 지도로</a></div>
+  </div>
+</footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

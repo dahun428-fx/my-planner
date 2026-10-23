@@ -1,0 +1,994 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>업무 흐름도</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="index.html">
+      <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
+      my-planner <span class="brand__sub">산출물</span>
+    </a>
+    <div class="topbar__doc"><span>업무 흐름도</span></div>
+    <button class="navtoggle" type="button" aria-controls="docnav" aria-expanded="false">
+      <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>문서 목록
+    </button>
+  </div>
+</header>
+
+<div class="shell shell--doc" data-doc="process-flows">
+
+  <nav class="docnav" id="docnav" aria-label="문서 목록">
+    <div class="docnav__group">
+      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>산출물 지도</a></li></ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">1 요구</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="requirements" href="requirements.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>요구사항 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">2 설계</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 정의서</a></li>
+        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</a></li>
+        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>시퀀스·상태 다이어그램</a></li>
+        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg>화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>ERD · 테이블 정의서</a></li>
+        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">3 구현 · 시험</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</a></li>
+        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>테스트 계획·결과서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">4 운영</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">공통</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="glossary" href="glossary.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어집</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="doc">
+    <header class="doc-head">
+      <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</span>
+      <h1>비서의 하루 업무 흐름 8가지</h1>
+      <p class="doc-head__lede">누가 언제 무엇을 하는지를 BPMN 2.0 표기로 그렸습니다. 프로세스마다 목적 한 줄, 그림, 단계표, 예외 순서로 읽습니다.</p>
+      <div class="doc-head__meta">
+        <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">BPMN 2.0 (풀/레인, 이벤트, 게이트웨이)</span></span>
+        <span class="pill doc" data-s="review">검토 중</span>
+      </div>
+      <dl class="docinfo">
+        <div><dt>문서 ID</dt><dd class="mono">MP-SP1-BPM</dd></div>
+        <div><dt>버전</dt><dd class="tnum">1.0</dd></div>
+        <div><dt>작성일</dt><dd class="tnum">2026-10-23</dd></div>
+        <div><dt>상태</dt><dd>검토 중 (main <code>0336f4d</code> 기준)</dd></div>
+        <div><dt>기준 문서</dt><dd>SP1 스펙 v4, main <code>0336f4d</code></dd></div>
+      </dl>
+    </header>
+
+    <nav class="jumpbar" data-auto aria-label="바로 가기"></nav>
+
+<section class="section" aria-label="요약">
+  <aside class="summary">
+    <span class="summary__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>요약</span>
+    <p class="summary__title">비서의 하루는 8개 업무 흐름으로 설명됩니다. 먼저 말을 거는 흐름은 3개 루프와 복귀 인사뿐이고, 하루 3회를 넘지 않습니다.</p>
+    <div class="summary__body">
+      <ul>
+        <li>대화(프로세스 1)와 계획 모드(6)는 Dahun이 먼저 시작하고, 아침(2)·저녁(3)·주간(4)·복귀(5)는 비서가 시간에 맞춰 시작합니다.</li>
+        <li>컨디션 버튼과 초안 확정 버튼은 두뇌를 거치지 않고 하네스가 직접 처리합니다.</li>
+        <li>꺼져 있던 시간은 규칙 R1~R5로 정리합니다. 24시간 이상 비면 복귀 인사 하나로 묶습니다.</li>
+        <li>호출 상한, 로그인·결제·한도 문제, DB 이상은 모두 정해진 문구로 한 번만 알립니다.</li>
+      </ul>
+    </div>
+  </aside>
+  <div class="kpis">
+    <div class="kpi kpi--dawn"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>아침 브리핑</div><div class="kpi__value">09:00<span class="kpi__sep"> · </span>10:00</div><div class="kpi__note">평일 · 주말, 한계 당일 12:00</div></div>
+    <div class="kpi kpi--dusk"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>저녁 체크인</div><div class="kpi__value">17:30<span class="kpi__sep"> · </span>18:00</div><div class="kpi__note">평일 · 주말, 한계 다음 날 04:00</div></div>
+    <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>하루 두뇌 호출 상한</div><div class="kpi__value">60<span class="kpi__unit">회</span></div><div class="kpi__note">설정 가능 · 넘으면 명령만 동작</div></div>
+    <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg>먼저 보내는 메시지</div><div class="kpi__value">3<span class="kpi__unit">회/일</span></div><div class="kpi__note">겹치는 회차는 하나로 합침</div></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section__head">
+    <h2 id="legend"><span class="section__no">1</span>읽는 법과 BPMN 범례</h2>
+    <p class="section__lede">BPMN 2.0은 업무 흐름을 그리는 국제 표준 표기입니다. 아래 기호를 한 번만 익히면 8개 그림을 모두 읽을 수 있습니다.</p>
+  </div>
+  <div class="legend">
+    <div class="legend__title">범례 · BPMN 2.0 기호와 이 문서의 그림 모양</div>
+    <ul class="legend__list">
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-start"/></svg></span><span class="legend__term">시작 이벤트</span><span class="legend__desc">흐름이 시작되는 곳. 그림에서는 가는 선의 원(또는 둥근 막대)</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-timer"/></svg></span><span class="legend__term">타이머 시작 이벤트</span><span class="legend__desc">정해진 시각에 저절로 시작. 그림에서는 점선 원 안에 시각을 적음</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-message"/></svg></span><span class="legend__term">메시지 이벤트</span><span class="legend__desc">다른 풀에서 온 메시지로 시작. 그림에서는 첫 노드로 이어지는 점선 화살표</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-task"/></svg></span><span class="legend__term">작업</span><span class="legend__desc">누군가 하는 일 한 단계. 그림에서는 둥근 사각형</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-xor"/></svg></span><span class="legend__term">배타 게이트웨이</span><span class="legend__desc">조건에 따라 길이 하나만 선택됨. 그림에서는 노란 마름모, 화살표에 조건을 적음</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-end"/></svg></span><span class="legend__term">종료 이벤트</span><span class="legend__desc">흐름이 끝나는 곳. 그림에서는 이중 원(mermaid에는 굵은 원이 없어 이중 원으로 표현)</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-flow"/></svg></span><span class="legend__term">시퀀스 흐름</span><span class="legend__desc">같은 풀 안에서 순서. 그림에서는 실선 화살표</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-msgflow"/></svg></span><span class="legend__term">메시지 흐름</span><span class="legend__desc">풀과 풀 사이 전달. 그림에서는 점선 화살표</span></li>
+      <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-lane"/></svg></span><span class="legend__term">풀 / 레인</span><span class="legend__desc">누가 하는지 나눈 칸. 그림에서는 이름 붙은 바깥 상자(풀)와 안쪽 상자(레인)</span></li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+  <table class="dt">
+    <caption>풀과 레인: 이 문서에서 담당을 부르는 이름</caption>
+    <thead><tr><th class="w-min">이름</th><th class="w-min">BPMN 단위</th><th>누구인가</th></tr></thead>
+    <tbody>
+      <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg> Dahun</td><td class="nowrap">풀(외부)</td><td>사용자. 텔레그램에서 말하고 버튼을 누른다.</td></tr>
+      <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg> Telegram</td><td class="nowrap">풀(외부)</td><td>메시지를 나르는 서비스. 아래 그림 3, 4 외에는 Dahun과 하네스 사이의 점선이 모두 Telegram을 거치는 것으로 보고 생략했다.</td></tr>
+      <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-harness"/></svg> 비서 프로그램(하네스)</td><td class="nowrap">레인</td><td>PC에서 늘 도는 프로세스. 시계(tick), 규칙, 전송, 저장을 맡는다. <a href="glossary.html#harness">하네스</a>는 두뇌를 감싸 돌리는 프로그램이다.</td></tr>
+      <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg> 두뇌(Claude)</td><td class="nowrap">레인</td><td>Claude. 말을 이해하고 도구로 할 일을 바꾼다. 도구 밖의 일은 못 한다.</td></tr>
+      <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> 저장소</td><td class="nowrap">레인</td><td>SQLite(<code>state/</code>)와 마크다운 파일(<code>data/</code>).</td></tr>
+      <tr><td class="nowrap"><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg> Windows 작업 스케줄러</td><td class="nowrap">풀(외부)</td><td>운영 흐름(프로세스 8)에서만 나온다. 프로그램을 띄우고 깨운다.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="table-note">Dahun, Telegram은 my-planner 바깥 풀이고, 하네스·두뇌·저장소는 my-planner 풀 안의 레인이다. 시각은 모두 한국 시간이고 하루 경계는 04:00(논리적 날짜)이다.</p>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p1"><span class="section__no">2</span>프로세스 1 · 일상 대화로 할 일 정리</h2>
+    <p class="section__lede">Dahun이 글로 말하면 비서가 도구로 할 일을 바꾸고, 바뀐 내용을 확인 문구로 알려 줍니다.</p>
+  </div>
+  <p><strong>목적</strong> 사용자의 한마디를 할 일의 추가·완료·이동·내려놓기·우선순위로 정리하고, 무엇이 바뀌었는지 확인 문구로 보여 준다.</p>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">일상 대화 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.2, 5.3, 5.5</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1(["메시지 보냄"])
+    d2((("답장 읽음")))
+  end
+  subgraph TG["풀 · Telegram"]
+    t1("메시지 전달")
+    t2("답장 전달")
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      g1{"발신자 = 본인<br/>그리고 개인 채팅?"}
+      x1((("무시 · 발신자 ID만 로그")))
+      h2("update_id 중복 확인<br/>민감 정보 가리기")
+      h3("대화 고르기")
+      h4("직렬 큐에서 두뇌 호출")
+      h5("확인 문구를 답변 아래에 붙여 전송")
+    end
+    subgraph B["레인 · 두뇌 (Claude)"]
+      b1("도구로 할 일 변경<br/>답변 작성")
+    end
+    subgraph S["레인 · 저장소"]
+      s1("tasks 변경 · 원문 기록<br/>tasks.md 다시 만듦")
+    end
+  end
+  d1 -.->|"메시지 흐름"| t1
+  t1 -.-> g1
+  g1 -->|"아니오"| x1
+  g1 -->|"예"| h2
+  h2 --> h3 --> h4
+  h4 --> b1
+  b1 --> s1
+  b1 --> h5
+  h5 -.-> t2
+  t2 -.-> d2
+  class d1 ev
+  class d2,x1 en
+  class g1 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">본인의 개인 채팅 메시지만 통과합니다. 데이터는 두뇌가 도구로만 바꾸고, 확인 문구는 두뇌 답변과 별개로 하네스가 항상 붙입니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 1 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">Dahun</td><td>글 한 줄 (예시: 치과 추가해 줘)</td><td>텔레그램 메시지</td><td>텍스트만 처리한다. 사진·스티커·음성은 <q class="src">지금은 글로만 이야기할 수 있어요.</q>(구현 계획 검토 항목 1)</td></tr>
+<tr><td class="num">2</td><td class="nowrap">Telegram → 하네스</td><td>getUpdates 롱폴링 결과</td><td>Update → InboundMessage</td><td>python-telegram-bot 롱폴링. 발신자 ID = <code>OWNER_TELEGRAM_ID</code> 그리고 개인 채팅만 받고, 나머지는 버리며 발신자 ID만 로그에 남긴다</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스</td><td>update_id</td><td>처리 또는 건너뜀</td><td>이미 <code>telegram_updates</code>에 있거나 <code>inbound_pending</code>에 적어 둔 ID는 건너뛴다. 받은 글은 가린 뒤 <code>inbound_pending</code>에 먼저 적고, 답을 보낸 뒤에만 처리 완료로 기록한다(꺼지면 시작 때 남은 행을 다시 넣음, 3회까지). 여러 메시지는 이어 붙여 한 번에 처리하고 ID를 모두 기록</td></tr>
+<tr><td class="num">4</td><td class="nowrap">하네스</td><td>사용자 글</td><td>가린 글</td><td>원문 기록에 쓰기 전, 두뇌에 넘기기 전에 <code>redact.py</code>: 주민등록번호 형식, 10~14자리 숫자열(휴대전화 번호는 제외), 비밀번호 뒤의 값을 <code>[가림]</code>으로 바꿈. 보낸 지 6시간 넘은 메시지는 "몇 시간 전에 보낸 메시지"로 표시, 8000자 초과는 앞 8000자만 넘김</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스</td><td>열린 대화, 마지막 메시지 시각</td><td>이어 갈 대화 하나</td><td>순서: 열린 plan 대화(마지막 메시지 후 2시간 이내) &gt; 회차의 답장 창 안 &gt; 30분 이내 chat 대화 &gt; 새 chat 대화. 회차 답장 창은 메시지를 보낸 시각으로 판단</td></tr>
+<tr><td class="num">6</td><td class="nowrap">하네스 → 두뇌</td><td>chat.md, 앞머리 컨텍스트 또는 resume=session_id</td><td>BrainResult</td><td>직렬 큐에서 한 번에 하나. 새 세션이면 현재 시각·우선순위·열린 할 일(최대 30개)·어제 컨디션을 앞에 붙임. <code>max_turns=10</code>, 호출 한 번 최대 300초(넘으면 error)</td></tr>
+<tr><td class="num">7</td><td class="nowrap">두뇌 → 저장소</td><td>도구 호출</td><td>데이터 변경 + ToolEvent</td><td>직접 해 달라고 한 일은 <code>add_task</code>, 비서가 제안한 일은 <code>propose_tasks</code>. 변경 뒤 <code>data/exports/tasks.md</code>를 다시 만듦</td></tr>
+<tr><td class="num">8</td><td class="nowrap">하네스 → Telegram</td><td>ToolEvent, 두뇌 답변</td><td>답변 + 확인 문구 한 메시지</td><td>예: <q class="src">✓ 추가: 치과 (10/25 14:00)</q>, <q class="src">✓ 옮김: 운동 → 내일</q>. 두뇌가 같은 말을 해도 확인 문구는 항상 붙임. 4096자 넘으면 문단 경계에서 나눠 보내고 버튼은 마지막 조각에만. 답은 보내기 전에 저장하고 바로 3회(사이 1초, 2초)까지 보냄. 끝내 안 되면 다음 시작 때 저장한 답만 다시 보냄</td></tr>
+<tr><td class="num">9</td><td class="nowrap">하네스 → 저장소</td><td>사용자·비서 메시지, 도구 호출</td><td>원문 기록</td><td>data/transcripts/YYYY/MM/YYYY-MM-DD.md에 덧붙이기만 함(수정 없음)</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>두뇌 호출 실패(error, 300초 시간 초과 포함): 도구 이벤트가 없을 때만 2, 4, 8초 백오프로 최대 3회 다시 호출(호출마다 하루 상한에 포함). 그래도 실패하면 <q class="src">지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요.</q></li>
+<li>한 호출에서 도구를 9번 넘게 부르면 max_turns로 끝난다. <q class="src">정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요.</q> 아래 빈 줄과 확인 문구를 붙인다.</li>
+<li>이어 가던 세션을 못 열면(resume 실패) 새 세션을 열고 그 대화의 최근 원문 20개 메시지를 함께 붙인다.</li>
+<li>편집된 메시지는 무시한다. 같은 update_id가 다시 오면 무시한다.</li>
+<li>가린 정보가 있으면 두뇌에 알리고, 두뇌는 저장되지 않았다고 짧게 알린다(시스템 프롬프트 원칙 8).</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p2"><span class="section__no">3</span>프로세스 2 · 아침 브리핑</h2>
+    <p class="section__lede">매일 아침 정해진 시각에 비서가 먼저 말을 걸고, 제안한 할 일은 버튼으로 확정받습니다.</p>
+  </div>
+  <p><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침 브리핑</span> <strong>목적</strong> 오늘 우선순위 1~3개와 첫 걸음을 제안하고 오늘 일정을 알린다. 제안은 초안이며 Dahun이 버튼으로 정한다.</p>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">아침 브리핑 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.4, 5.7</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1("브리핑을 읽고 버튼을 누름")
+  end
+  subgraph TG["풀 · Telegram"]
+    t1("브리핑 + 초안 버튼 전달")
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      m0(("평일 09:00<br/>주말 10:00"))
+      h1("tick: runs에 회차 만들기")
+      g1{"건너뛸 이유?<br/>멈춤 · 상한 · 12:00 지남"}
+      x1((("skipped 기록")))
+      h2("컨텍스트 조립<br/>어제 컨디션 기록 확인")
+      h3("outbound_text 저장 후 전송<br/>필요하면 어제 컨디션 버튼")
+      g2{"누른 버튼"}
+      tm(("초안 3일 미확정"))
+      x2((("끝")))
+    end
+    subgraph B["레인 · 두뇌 (Claude)"]
+      b1("우선순위 1~3 + 첫 걸음 제안<br/>propose_tasks")
+    end
+    subgraph S["레인 · 저장소"]
+      s1("tasks: draft 저장")
+      s2("tasks: open 또는 dropped")
+    end
+  end
+  m0 --> h1 --> g1
+  g1 -->|"예"| x1
+  g1 -->|"아니오"| h2
+  h2 --> b1
+  b1 --> s1
+  b1 --> h3
+  h3 -.-> t1
+  t1 -.-> d1
+  d1 -.->|"버튼"| g2
+  g2 -->|"✓ 추가 · 전부 추가<br/>confirm_tasks"| s2
+  g2 -->|"✗ 빼기<br/>drop_task"| s2
+  s1 --> tm
+  tm -->|"조용히 dropped"| s2
+  s2 --> x2
+  class m0 tm
+  class tm tm
+  class x2,x1 en
+  class g1,g2 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">타이머가 회차를 시작하고, 초안은 버튼으로 확정되거나 3일 뒤 조용히 dropped가 됩니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 2 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">하네스</td><td>타이머: 평일 09:00 / 주말 10:00 (토, 일)</td><td>runs 행(pending)</td><td>tick이 (창 시작, 지금] 구간의 예정 시각을 계산해 runs에 없는 것만 만든다. 창 시작 = max(last_seen_at, installed_at, 지금 − 7일)</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스</td><td>회차, 멈춤·상한 상태</td><td>실행 또는 skipped</td><td>한계는 당일 12:00. 멈춤 skipped(paused), 상한 skipped(daily_cap), 한계 밖 skipped(late)</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스</td><td>현재 시각, 우선순위, 열린 할 일, 어제 컨디션</td><td>두뇌 입력</td><td>morning_brief.md 지시문. 어제 컨디션 기록이 없고 어제 저녁 체크인이 done이 아니면 어제 날짜 컨디션 버튼을 붙일 준비</td></tr>
+<tr><td class="num">4</td><td class="nowrap">두뇌 → 저장소</td><td>지시문</td><td>초안(draft) 할 일, 브리핑 본문</td><td>우선순위는 최대 3개, 첫 걸음은 15~30분. 제안은 <code>propose_tasks</code>로 draft 저장</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스 → Telegram</td><td>본문(outbound_text)</td><td>텔레그램 메시지 + 버튼</td><td>본문을 runs.outbound_text에 먼저 저장하고 전송(바로 3회, 사이 1초·2초). 초안마다 <q class="src">✓ 추가</q> <q class="src">✗ 빼기</q>, 그리고 "전부 추가"</td></tr>
+<tr><td class="num">6</td><td class="nowrap">Dahun → 하네스</td><td>버튼 누름</td><td>confirm_tasks 또는 drop_task 호출</td><td>버튼은 두뇌를 거치지 않고 하네스가 직접 도구를 부른다</td></tr>
+<tr><td class="num">7</td><td class="nowrap">하네스 → 저장소</td><td>도구 호출</td><td>tasks.status 갱신</td><td>draft → open(확정) 또는 dropped. 우선순위에는 open 할 일만 올릴 수 있다</td></tr>
+<tr><td class="num">8</td><td class="nowrap">하네스 → 저장소</td><td>3일 지난 draft</td><td>dropped</td><td>3일 동안 확정하지 않은 초안은 알림 없이 dropped. 아침 브리핑과 /today는 초안을 보여 주지 않음</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>12:00을 넘겨 깨어나면 skipped(late). 10:30에 깨어나면 늦게라도 실행(따라잡기 표 참고).</li>
+<li>같은 tick에 다른 회차가 함께 실행될 때는 하나로 합쳐 보낸다(우선순위: return &gt; evening_checkin &gt; morning_brief &gt; review(week)).</li>
+<li>그날 복귀 인사(return)가 아침 브리핑 예정 시각 전에 나가면 아침 브리핑은 skipped(merged_into_return).</li>
+<li>아침 브리핑의 답장 창은 당일 12:00까지. 그 안의 사용자 답은 브리핑 대화로 이어진다.</li>
+<li>전송이 3회 모두 실패하면 failed로 두고 5분 뒤 전송만 한 번 더 한다. 두뇌는 다시 부르지 않는다. 사용자에게 실패를 알리지 않는다.</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p3"><span class="section__no">4</span>프로세스 3 · 저녁 체크인과 컨디션</h2>
+    <p class="section__lede">저녁에 컨디션을 버튼 한 번으로 받고, 기록이 비면 다음 날 아침에 어제 것을 물어봅니다.</p>
+  </div>
+  <p><span class="loop loop--evening"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-moon"/></svg>저녁 체크인</span> <strong>목적</strong> 컨디션을 1~5 버튼으로 받고, 한 줄 메모·오늘 한 일 정리·내일로 옮길 일 제안을 한다.</p>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">저녁 체크인 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.4, 5.5</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1("컨디션 1~5 버튼을 누름")
+  end
+  subgraph TG["풀 · Telegram"]
+    t1("체크인 + 컨디션 버튼 전달")
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      v0(("평일 17:30<br/>주말 18:00"))
+      h1("tick: runs에 회차 만들기")
+      g1{"건너뛸 이유?<br/>멈춤 · 상한 · 다음 날 04:00 지남"}
+      x1((("skipped 기록")))
+      h2("컨텍스트 조립")
+      h3("outbound_text 저장 후 전송<br/>버튼 1~5")
+      h4("record_condition 직접 호출<br/>두뇌를 거치지 않음")
+      n0(("다음 날 아침 브리핑"))
+      g2{"어제 컨디션 기록 없음<br/>그리고 어제 저녁 체크인이 done 아님?"}
+      h5("브리핑에 어제 날짜<br/>컨디션 버튼을 붙임")
+      x2((("끝")))
+    end
+    subgraph B["레인 · 두뇌 (Claude)"]
+      b1("오늘 한 일 정리<br/>내일로 옮길 일 제안")
+    end
+    subgraph S["레인 · 저장소"]
+      s1("conditions: date, score<br/>같은 날은 덮어씀")
+    end
+  end
+  v0 --> h1 --> g1
+  g1 -->|"예"| x1
+  g1 -->|"아니오"| h2
+  h2 --> b1
+  b1 --> h3
+  h3 -.-> t1
+  t1 -.-> d1
+  d1 -.->|"버튼"| h4
+  h4 --> s1
+  n0 --> g2
+  s1 -.->|"기록 조회"| g2
+  g2 -->|"예"| h5
+  g2 -->|"아니오"| x2
+  h5 --> x2
+  class v0,n0 tm
+  class x1,x2 en
+  class g1,g2 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">컨디션 버튼은 두뇌를 거치지 않고 저장됩니다. 기록이 비었을 때만 다음 날 아침 브리핑이 어제 날짜 버튼을 붙입니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 3 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">하네스</td><td>타이머: 평일 17:30 / 주말 18:00</td><td>runs 행</td><td>한계는 다음 날 04:00(논리적 날짜의 끝). 일요일이면 주간 회고와 합침(프로세스 4)</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스</td><td>회차, 멈춤·상한 상태</td><td>실행 또는 skipped</td><td>skipped 사유: paused, daily_cap, late</td></tr>
+<tr><td class="num">3</td><td class="nowrap">두뇌</td><td>evening_checkin.md, 컨텍스트</td><td>체크인 본문</td><td>오늘 한 일 정리, 내일로 옮길 일 제안(제안은 draft + 버튼)</td></tr>
+<tr><td class="num">4</td><td class="nowrap">하네스 → Telegram</td><td>본문, 버튼</td><td>메시지 + 컨디션 버튼 1~5</td><td>본문을 outbound_text에 저장 후 전송</td></tr>
+<tr><td class="num">5</td><td class="nowrap">Dahun → 하네스</td><td>버튼 누름 (점수 1~5)</td><td>record_condition 직접 호출</td><td>두뇌를 거치지 않음. 지난 날짜의 버튼은 그 날짜에 기록</td></tr>
+<tr><td class="num">6</td><td class="nowrap">하네스 → 저장소</td><td>date, score, note</td><td>conditions 행</td><td>PK = date. score는 1~5만 허용. 같은 날 다시 기록하면 덮어쓴다</td></tr>
+<tr><td class="num">7</td><td class="nowrap">Dahun → 두뇌</td><td>한 줄 메모, 답장</td><td>메모·정리 대화</td><td>답장 창 안(다음 날 04:00까지)이면 체크인 대화로 이어진다. 자정을 넘긴 답장도 같은 논리적 날짜의 체크인에 속한다</td></tr>
+<tr><td class="num">8</td><td class="nowrap">하네스</td><td>다음 날 아침 브리핑 시점의 어제 기록</td><td>어제 날짜 컨디션 버튼(조건부)</td><td>어제 컨디션 기록이 없고 어제 저녁 체크인이 done이 아니면(늦음·복귀 인사·멈춤 등 이유 불문) 아침 브리핑에 어제 날짜 버튼을 붙인다</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>컨디션이 2 이하이면 비서가 할 일을 줄이자고 먼저 제안한다(시스템 프롬프트 원칙 4).</li>
+<li>04:00을 넘겨 깨어나면 그날 저녁 체크인은 skipped(late)이고, 다음 날 아침 브리핑이 어제 컨디션을 묻는다(따라잡기 표: 월 17:00 → 화 05:00).</li>
+<li>01:00에 깨어나면 아직 한계(04:00) 안이므로 월요일 저녁 체크인이 실행된다.</li>
+<li>컨디션 점수로 HP/MP 같은 값을 계산하는 규칙은 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미정(SP3에서 결정)</span>.</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p4"><span class="section__no">5</span>프로세스 4 · 일요일 주간 회고</h2>
+    <p class="section__lede">일요일 저녁 체크인에 회고를 합쳐 한 메시지로 보내고, 결과를 주 단위 파일로 남깁니다.</p>
+  </div>
+  <p><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>주간 회고</span> <strong>목적</strong> 지난주를 돌아보고 다음 주 우선순위 1~3개를 제안한다. 메시지는 하루 3회 상한을 지키도록 일요일 저녁 체크인과 합친다.</p>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">주간 회고 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.4</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1("이걸로 해")
+  end
+  subgraph TG["풀 · Telegram"]
+    t1("합친 메시지 전달")
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      w0(("일요일 18:00"))
+      h1("tick: review(week)와<br/>evening_checkin을 하나로 합침")
+      h2("전송")
+      c0(["R1 복귀 인사 뒤:<br/>공백 중 회고가 있었음"])
+      g2{"지금이 회고 예정 시각<br/>+ 3일 이내?"}
+      h4("pending 유지<br/>carry_review_run_id 표시")
+      h5("다음 정규 연락에<br/>회고를 합쳐 전송")
+      x2((("skipped late<br/>표시 지움")))
+      x3((("끝")))
+    end
+    subgraph B["레인 · 두뇌 (Claude)"]
+      b1("지난주 돌아보기<br/>다음 주 우선순위 1~3 제안")
+      b2("set_priorities<br/>open 할 일만")
+    end
+    subgraph S["레인 · 저장소"]
+      s1("data/reviews/week/<br/>YYYY-Www.md")
+      s2("priorities: week 기간")
+    end
+  end
+  w0 --> h1 --> b1
+  b1 --> s1
+  b1 --> h2
+  h2 -.-> t1
+  t1 -.-> d1
+  d1 -.-> b2
+  b2 --> s2
+  s2 --> x3
+  c0 --> g2
+  g2 -->|"예"| h4
+  g2 -->|"아니오"| x2
+  h4 --> h5
+  h5 --> x3
+  class w0 tm
+  class c0 ev
+  class x2,x3 en
+  class g2 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">위쪽은 일요일 정상 흐름, 아래쪽은 복귀 인사 뒤에 회고를 넘겨 받는 흐름입니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 4 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">하네스</td><td>타이머: 일요일 18:00 (평일·주말 구분 없음)</td><td>review(week) + evening_checkin 합친 회차</td><td>저녁 체크인(주말 18:00)과 같은 시각이라 한 메시지로 합친다</td></tr>
+<tr><td class="num">2</td><td class="nowrap">두뇌</td><td>review_week.md가 evening_checkin.md 뒤에 이어 붙은 지시문</td><td>회고 본문</td><td>지난주 돌아보기. 다음 주 우선순위 1~3개 제안, 새 할 일은 draft</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스 → 저장소</td><td>두뇌 답</td><td>data/reviews/week/YYYY-Www.md</td><td>주(Www)는 실행일이 아니라 회고 회차 scheduled_for의 논리적 날짜로 정한다</td></tr>
+<tr><td class="num">4</td><td class="nowrap">하네스 → Telegram</td><td>본문, 버튼</td><td>합친 메시지 한 통</td><td>답장 창은 24시간(review(week)). 한계는 예정 시각 + 3일</td></tr>
+<tr><td class="num">5</td><td class="nowrap">Dahun → 두뇌</td><td>"이걸로 해"</td><td>set_priorities 호출</td><td>사용자가 확정해야 우선순위가 된다. open 할 일만 받고 4개 이상이면 거절. 주 기간 형식 2026-W43</td></tr>
+<tr><td class="num">6</td><td class="nowrap">하네스</td><td>복귀 인사 R1 처리 중, 공백 중 review(week)가 있었음</td><td>carry_review_run_id 표시</td><td>지금이 그 회차 + 3일 이내이면 pending으로 두고 따라잡기 판정에서 뺀다. 혼자 실행하지 않는다</td></tr>
+<tr><td class="num">7</td><td class="nowrap">하네스 → Telegram</td><td>다음 정규 연락(아침 브리핑 또는 저녁 체크인)</td><td>회고가 합쳐진 메시지</td><td>합쳐 보낸다. 다음 정규 연락 없이 +3일이 지나면 skipped(late)이고 표시를 지운다</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>회고 + 체크인 + 아침 브리핑이 겹쳐도 하루 먼저 보내는 메시지는 최대 3회. 하루 4번째가 될 회차는 pending으로 기다리고, 한계 안에 다음 정규 연락이 있으면 거기 합치며 한계를 넘으면 skipped(late).</li>
+<li>공백 3일 초과(금 22:00 → 목 08:00)이면 일요일 회고는 skipped(merged_into_return).</li>
+<li>멈춤 기간이면 review(week)도 skipped(paused).</li>
+<li>일요일 17:00 → 18:10 깨어나면 review(week)와 evening_checkin을 하나로 합쳐 실행.</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p5"><span class="section__no">6</span>프로세스 5 · 꺼졌다 켜졌을 때 따라잡기</h2>
+    <p class="section__lede">노트북이 꺼져 있던 동안의 회차를 규칙 R1~R5로 정리하고, 복귀 인사 하나로 부드럽게 돌아옵니다.</p>
+  </div>
+  <p><span class="loop loop--return"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-return"/></svg>복귀 인사</span> <strong>목적</strong> 꺼져 있던 시간 때문에 생긴 회차를 규칙으로 처리해 메시지를 쏟아내지 않고, 하루 먼저 보내는 메시지를 3회로 지킨다.</p>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">따라잡기 판정 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.4</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1((("복귀 인사 받음")))
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      a0(["깨어난 뒤 첫 tick"])
+      a1("공백 = 지금 − last_seen_at")
+      g0{"시계 이상?"}
+      a2("뒤로 간 시계<br/>공백 0 · 경고 로그")
+      a3("크게 앞선 시계<br/>창을 7일로 자름")
+      g1{"멈춤 기간 안?"}
+      x2((("R2 skipped paused<br/>return 없음")))
+      g2{"공백 ≥ 24시간?"}
+      a4("R1 공백 회차는 모두<br/>skipped merged_into_return<br/>return 하나 만듦")
+      g3{"하루 두뇌 호출<br/>상한 도달?"}
+      x3((("R3 skipped daily_cap")))
+      g4{"루프별 한계 안?"}
+      x5((("R5 skipped late")))
+      a5("R4 늦게라도 실행<br/>같은 tick 회차는 하나로 합침")
+    end
+  end
+  a0 --> a1 --> g0
+  g0 -->|"정상"| g1
+  g0 -->|"뒤로 감"| a2
+  g0 -->|"크게 앞섬"| a3
+  a2 --> g1
+  a3 --> a4
+  g1 -->|"예"| x2
+  g1 -->|"아니오"| g2
+  g2 -->|"예"| a4
+  g2 -->|"아니오"| g3
+  g3 -->|"예"| x3
+  g3 -->|"아니오"| g4
+  g4 -->|"예"| a5
+  g4 -->|"아니오"| x5
+  a4 -.-> d1
+  class a0 ev
+  class d1,x2,x3,x5 en
+  class g0,g1,g2,g3,g4 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">멈춤 기간은 공백 길이와 상관없이 가장 먼저 봅니다. 위에서부터 처음 맞는 규칙이 이깁니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure>
+<div class="table-wrap">
+<table class="dt">
+<caption>따라잡기 결정표 (위에서부터 먼저 적용)</caption>
+<thead><tr><th class="w-min">규칙</th><th>조건</th><th>결정</th></tr></thead>
+<tbody>
+<tr><td class="id"><span class="rid">R1</span></td><td>공백 ≥ 24시간이고 지금 멈춤 기간이 아님</td><td>공백 동안 모든 회차를 skipped(merged_into_return)로 기록하고 return 회차 하나를 만든다. 그날 아침 브리핑 전에 나가면 그날 아침 브리핑도 skipped(merged_into_return). 공백 중 review(week)가 있었고 지금이 그 회차 + 3일 이내이면 다음 정규 연락에 합쳐 보낸다(없이 +3일이 지나면 skipped(late))</td></tr>
+<tr><td class="id"><span class="rid">R2</span></td><td>멈춤 기간 안 (R1보다 먼저 판정)</td><td>skipped(paused). return 없음</td></tr>
+<tr><td class="id"><span class="rid">R3</span></td><td>하루 두뇌 호출 상한 도달</td><td>skipped(daily_cap)</td></tr>
+<tr><td class="id"><span class="rid">R4</span></td><td>루프별 한계 안</td><td>늦게라도 실행</td></tr>
+<tr><td class="id"><span class="rid">R5</span></td><td>루프별 한계 밖</td><td>skipped(late)</td></tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrap">
+<table class="dt">
+<caption>루프별 한계</caption>
+<thead><tr><th class="w-min">루프</th><th>한계</th></tr></thead>
+<tbody>
+<tr><td class="nowrap"><code>morning_brief</code></td><td>당일 12:00</td></tr>
+<tr><td class="nowrap"><code>evening_checkin</code></td><td>다음 날 04:00 (논리적 날짜의 끝)</td></tr>
+<tr><td class="nowrap"><code>review(week)</code></td><td>예정 시각 + 3일</td></tr>
+</tbody>
+</table>
+</div>
+<details class="more" id="catchup-expected">
+  <summary><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg>기대 결과 사례 10개 <span class="more__meta">SP1 스펙 §8 표(일부)</span><svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+  <div class="more__body">
+  <div class="table-wrap">
+  <table class="dt">
+  <caption>따라잡기 기대 결과표 (전체는 구현 계획에서 확장)</caption>
+  <thead><tr><th class="w-min">마지막 tick</th><th class="w-min">깨어난 시각</th><th>기대</th></tr></thead>
+  <tbody>
+<tr><td class="nowrap">월 08:00</td><td class="nowrap">월 10:30</td><td>morning_brief 실행</td></tr>
+<tr><td class="nowrap">월 08:00</td><td class="nowrap">월 13:00</td><td>morning_brief skipped(late)</td></tr>
+<tr><td class="nowrap">월 17:00</td><td class="nowrap">화 01:00</td><td>evening_checkin(월) 실행</td></tr>
+<tr><td class="nowrap">월 17:00</td><td class="nowrap">화 05:00</td><td>evening_checkin(월) skipped(late), 화 아침 브리핑이 어제 컨디션을 묻는다</td></tr>
+<tr><td class="nowrap">토 17:00</td><td class="nowrap">일 18:30 (25.5시간)</td><td>R1: return 하나, 일요일 회고는 다음 정규 연락에 합침</td></tr>
+<tr><td class="nowrap">금 22:00</td><td class="nowrap">화 08:00 (3.4일)</td><td>R1: return 하나(08:00), 화 아침 브리핑은 skipped(merged_into_return), 일요일 18:00 회고는 +3일(수 18:00) 이내라 화 17:30 저녁 체크인에 합침, 화 아침 브리핑을 건너뛰므로 월요일 컨디션 버튼은 붙지 않음</td></tr>
+<tr><td class="nowrap">금 22:00</td><td class="nowrap">목 08:00 (5.4일)</td><td>R1: return 하나, 일요일 회고는 3일 초과라 skipped(merged_into_return)</td></tr>
+<tr><td class="nowrap">금 22:00 (멈춤 ~월)</td><td class="nowrap">일 12:00</td><td>R2: 공백 동안의 회차 모두 skipped(paused), return 없음</td></tr>
+<tr><td class="nowrap">일 17:00</td><td class="nowrap">일 18:10</td><td>review(week)와 evening_checkin을 하나로 합쳐 실행</td></tr>
+<tr><td class="nowrap">금 18:00</td><td class="nowrap">토 09:30</td><td>아직 보낼 회차 없음. 토요일 아침 브리핑은 10:00(주말 시각)에 실행</td></tr>
+  </tbody>
+  </table>
+  </div>
+  </div>
+</details>
+<div class="table-wrap">
+<table class="dt">
+<caption>프로세스 5 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">하네스</td><td>tick마다 last_seen_at 갱신</td><td>공백 = 지금 − last_seen_at</td><td>깨어난 뒤 첫 tick에서 공백을 잰다</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스</td><td>last_seen_at, 지금</td><td>공백 보정</td><td>시계가 뒤로 가면(last_seen_at이 미래) 공백 0 + 경고 로그. 크게 앞서면 창을 7일로 자르고 R1을 적용해 복귀 인사 하나만 보낸다. 어느 쪽이든 회차를 한꺼번에 쏟아내지 않음</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스</td><td>멈춤 상태, 공백, 호출 수, 한계</td><td>R2, R1, R3, R4, R5 결정</td><td>결정표 참고. 문구에 "놓쳤어요", "밀렸어요", "늦었지만"을 쓰지 않는다(P2)</td></tr>
+<tr><td class="num">4</td><td class="nowrap">하네스</td><td>같은 tick에서 실행할 회차 둘 이상</td><td>회차 하나로 합침</td><td>우선순위 return &gt; evening_checkin &gt; morning_brief &gt; review(week). 합쳐진 회차는 실행된 회차의 merged_run_ids에 기록되고 전송이 성공하면 함께 done</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스</td><td>오늘 먼저 보낸 메시지 수</td><td>전송 또는 pending 대기</td><td>먼저 보내는 메시지는 하루 최대 3회. 4번째가 될 회차는 pending으로 기다림. 한계 안에 다음 정규 연락이 있으면 합치고, 한계를 넘으면 skipped(late)</td></tr>
+<tr><td class="num">6</td><td class="nowrap">하네스 → Dahun</td><td>return 회차</td><td>복귀 인사 한 통</td><td>"다시 이어서 해 볼까요"와 오늘 할 것만 담는다</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>고정 안내(로그인·결제, 사용 한도, 하루 상한, 텍스트 아님, DB 문제)는 먼저 보내는 메시지 하루 3회에 세지 않는다.</li>
+<li>텔레그램은 받아 가지 않은 업데이트를 최대 24시간만 보관한다. 그보다 오래 꺼져 있었다면 그 사이 메시지는 사라질 수 있다.</li>
+<li>시작할 때 쌓여 있던 업데이트는 처리한다. 받은 지 6시간 넘은 것은 두뇌에 "몇 시간 전에 보낸 메시지"로 표시해서 넘긴다.</li>
+<li>절전 깨우기 작업이 성공하면 깨어난 뒤 따라잡기가 짧게 끝난다. 깨우기가 안 되어도 이 표가 기본 경로다(깨우기는 보너스).</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p6"><span class="section__no">7</span>프로세스 6 · 계획 모드</h2>
+    <p class="section__lede">/plan으로 시작해 /done 또는 2시간 침묵으로 끝나는, 비서와 함께 의논하는 대화입니다.</p>
+  </div>
+  <p><span class="loop"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-plan"/></svg>계획 모드</span> <strong>목적</strong> 할 일이나 목표를 함께 의논한다. 비서가 일방적으로 목록을 만들지 않고, 사용자가 동의한 것만 목록에 오른다.</p>
+<figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">계획 모드 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.7</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1(["/plan 주제"])
+    d2("질문에 답함")
+    d3("버튼 ✓ 추가 · ✗ 빼기")
+    d4("/done 보냄")
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      h1("plan 대화를 열고<br/>이후 메시지는 이 대화가 먼저 이어받음")
+      h2("초안마다 인라인 버튼")
+      tm(("마지막 메시지 뒤 2시간"))
+      h3("plan 대화 닫기")
+      h4("미뤄 둔 회차 실행<br/>한계 넘으면 skipped late")
+      x1((("끝")))
+    end
+    subgraph B["레인 · 두뇌 (Claude)"]
+      b1("질문을 한 번에 하나씩<br/>무엇을 · 왜 · 언제쯤")
+      b2("의논이 모이면<br/>propose_tasks로 초안 제시")
+    end
+    subgraph S["레인 · 저장소"]
+      s1("tasks: draft에서 open 또는 dropped")
+    end
+  end
+  d1 -.-> h1
+  h1 --> b1
+  b1 -.->|"질문"| d2
+  d2 -.-> b1
+  b1 --> b2
+  b2 --> h2
+  h2 -.-> d3
+  d3 -.->|"confirm_tasks · drop_task"| s1
+  d4 -.-> h3
+  tm --> h3
+  h3 --> h4 --> x1
+  class d1 ev
+  class tm tm
+  class x1 en
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">질문-답이 오가는 고리가 핵심입니다. 이 그림은 Dahun과 하네스 사이의 Telegram을 생략했습니다. 계획 중 시작된 회차는 대화가 닫힐 때까지 미룹니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 6 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">Dahun → 하네스</td><td>/plan [주제]</td><td>plan 대화 열림</td><td>자연어 "같이 계획 세우자"만으로는 모드가 바뀌지 않는다. 비서가 /plan을 안내한다</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스</td><td>열린 plan 대화</td><td>이어받을 대화 결정</td><td>열린 plan 대화(마지막 메시지 후 2시간 이내)가 대화 선택 규칙 중 가장 먼저. 30분 규칙은 쓰지 않음</td></tr>
+<tr><td class="num">3</td><td class="nowrap">두뇌 → Dahun</td><td>plan.md</td><td>질문 하나</td><td>질문은 한 번에 하나씩: 무엇을, 왜, 언제쯤. 큰 목표는 우선순위와 15~30분짜리 첫 걸음으로 쪼갬</td></tr>
+<tr><td class="num">4</td><td class="nowrap">두뇌</td><td>의논이 모인 내용</td><td>초안 목록(propose_tasks)</td><td>우선순위 지정도 사용자 확인 후에 한다</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스 → Dahun</td><td>초안 목록</td><td>초안마다 인라인 버튼</td><td>버튼은 두뇌를 거치지 않고 confirm_tasks / drop_task를 직접 부른다</td></tr>
+<tr><td class="num">6</td><td class="nowrap">Dahun → 하네스</td><td>/done 또는 "여기까지"</td><td>plan 대화 닫힘</td><td>"여기까지"라고 하면 비서가 /done을 안내한다</td></tr>
+<tr><td class="num">7</td><td class="nowrap">하네스</td><td>마지막 메시지 후 2시간</td><td>plan 대화 자동 닫힘</td><td>타이머. 하네스는 2시간을 센다</td></tr>
+<tr><td class="num">8</td><td class="nowrap">하네스</td><td>닫힌 뒤</td><td>미뤄 둔 회차 실행</td><td>계획 모드 동안 시작되는 회차는 닫힐 때까지 미룬다. 한계를 넘으면 5.4 규칙대로 skipped(late)</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>반복 할 일(매일 운동 등)은 SP1에서 만들지 않는다. 필요해지면 계획 모드에서 의논해 별도 설계로 추가한다.</li>
+<li>계획 모드 중에도 /pause, 명령은 동작한다(명령은 두뇌를 거치지 않는다).</li>
+<li>초안은 우선순위에 올릴 수 없다. set_priorities는 open 할 일만 받는다.</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p7"><span class="section__no">8</span>프로세스 7 · 멈춤, 상한, 오류</h2>
+    <p class="section__lede">쉬어도 되고, 호출은 아껴 쓰고, 계정 문제는 하루 한 번만 알립니다.</p>
+  </div>
+  <p><span class="loop"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-pause"/></svg>멈춤·상한</span> <strong>목적</strong> 쉬는 것을 정당하게 다루고(P3), 두뇌 호출 비용과 폭주를 막고, 로그인·결제·사용 한도 문제를 조용히 한 번만 알린다.</p>
+<h3>7-1 멈춤 (/pause, /unpause)</h3><figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">멈춤 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.6</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1(["/pause 3"])
+    d2(["/unpause"])
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      h1("pause_until = 지금 + N×24시간<br/>N은 1~14")
+      h2("아침 · 저녁 · 주간 회차는<br/>skipped paused")
+      h3("사용자 메시지에는<br/>계속 답함")
+      tm(("pause_until 도달"))
+      h4("멈춤 해제")
+      x1((("끝")))
+    end
+    subgraph S["레인 · 저장소"]
+      s1("app_state.pause_until")
+    end
+  end
+  d1 -.-> h1
+  h1 --> s1
+  h1 --> h2
+  h1 --> h3
+  d2 -.-> h4
+  tm --> h4
+  h4 -->|"pause_until 지움"| s1
+  h4 --> x1
+  class d1,d2 ev
+  class tm tm
+  class x1 en
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">멈춤 중에도 사용자 메시지에는 계속 답합니다. 멈추는 것은 아침·저녁·주간 회차뿐입니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 7-1 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">Dahun → 하네스</td><td>/pause &lt;일수&gt; (1~14)</td><td>pause_until 저장</td><td>지금부터 N×24시간. morning_brief, evening_checkin, review(week)를 멈춘다</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스</td><td>회차</td><td>skipped(paused)</td><td>멈춘 회차는 skipped(paused). 쉬는 것도 정당하다(P3)</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스</td><td>사용자 메시지</td><td>일반 답장</td><td>계속 답한다. 명령도 동작</td></tr>
+<tr><td class="num">4</td><td class="nowrap">Dahun → 하네스</td><td>/unpause 또는 pause_until 도달</td><td>멈춤 해제</td><td>pause_until을 지운다</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스</td><td>멈춤 중 오래 비어 있다가 깨어남</td><td>R2</td><td>공백이 24시간 이상이어도 모두 skipped(paused), return 없음</td></tr>
+</tbody>
+</table>
+</div><h3>7-2 상한과 오류 (두뇌 호출 결과)</h3><figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">두뇌 호출 결과 분기</span><span class="fig__std">BPMN 2.0 · SP1 §5.3, 7</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      r0(["두뇌 호출 요청"])
+      g1{"오늘 호출 수 ≥ 60?"}
+      x1((("상한 문구 · 회차 skipped daily_cap")))
+      g3{"BrainResult.status"}
+      o1("ok: 답변 + 확인 문구")
+      o2("max_turns: 확인 문구 +<br/>정리하다가 길어졌어요")
+      o3("auth_error: 하루 한 번만 안내<br/>회차 skipped auth")
+      o4("rate_limited: 한도 구간당 한 번만 안내<br/>limited_until 기록 · 회차 skipped rate_limit")
+      o5("error: 메시지는 2·4·8초 백오프 최대 3회<br/>회차는 failed 처리 · 문구 없음")
+      x3((("끝")))
+    end
+    subgraph B["레인 · 두뇌 (Claude)"]
+      b1("호출 · 결과 판정")
+    end
+    subgraph S["레인 · 저장소"]
+      u1("usage_state: brain_calls 하루 +1")
+    end
+  end
+  r0 --> g1
+  g1 -->|"예"| x1
+  g1 -->|"아니오"| b1
+  b1 --> u1
+  b1 --> g3
+  g3 -->|"ok"| o1
+  g3 -->|"max_turns"| o2
+  g3 -->|"auth_error"| o3
+  g3 -->|"rate_limited"| o4
+  g3 -->|"error"| o5
+  o1 --> x3
+  o2 --> x3
+  o3 --> x3
+  o4 --> x3
+  o5 --> x3
+  class r0 ev
+  class x1,x3 en
+  class g1,g3 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">상한 60회가 먼저, 그다음 결과 5가지입니다. 고정 안내는 먼저 보내는 메시지 하루 3회에 세지 않습니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 7-2 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">하네스 → 저장소</td><td>두뇌 호출 요청</td><td>usage_state.brain_calls</td><td>논리적 날짜별 카운터를 저장해 재시작 뒤에도 유지. 상한 <strong>60회</strong>(설정 가능)</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스 → Dahun</td><td>상한 도달</td><td>고정 안내</td><td>대화: <q class="src">오늘은 여기까지 생각을 아껴 둘게요. 명령(/today)은 계속 쓸 수 있어요.</q> 회차는 skipped(daily_cap). 명령만 동작</td></tr>
+<tr><td class="num">3</td><td class="nowrap">두뇌 → 하네스</td><td>호출 중 받은 메시지 전부</td><td>status 판정</td><td>순서: 1) authentication_failed / billing_error → auth_error, 2) rate_limit → rate_limited, 3) error_max_turns → max_turns, 4) 그 밖의 예외나 is_error → error, 5) 아니면 ok. 문자열 매칭은 쓰지 않음</td></tr>
+<tr><td class="num">4</td><td class="nowrap">하네스 → Dahun</td><td>auth_error</td><td>사용자 메시지에는 매번, 회차 안내는 하루 한 번</td><td>로그인: <q class="src">Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요.</q> 결제: <q class="src">Claude 계정이나 결제 상태를 확인해야 해요. PC에서 Claude 계정을 살펴봐 주세요.</q> 회차 skipped(auth)</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스 → Dahun</td><td>rate_limited</td><td>사용자 메시지에는 매번, 회차 안내는 구간당 한 번</td><td><q class="src">지금은 Claude 사용 한도에 닿았어요. {재개}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요.</q> 재개 시각이 오늘이면 HH:MM, 아니면 M월 D일 HH:MM. limited_until 기록(SDK가 주지 않으면 지금 + 1시간), 그때까지 회차 skipped(rate_limit)</td></tr>
+<tr><td class="num">6</td><td class="nowrap">하네스 → Dahun</td><td>max_turns</td><td>안내 + 확인 문구</td><td><q class="src">정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요.</q> 아래 빈 줄과 확인 문구. 회차는 도구 이벤트가 있으면 같은 문구 + 확인 문구 + 버튼을 보내고 done, 없으면 failed</td></tr>
+<tr><td class="num">7</td><td class="nowrap">하네스</td><td>error</td><td>재시도 후 안내 또는 failed</td><td>300초 시간 초과도 error. 사용자 메시지: 도구 이벤트가 없을 때만 2, 4, 8초 백오프로 최대 3회 다시 호출 후 <q class="src">지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요.</q> 회차: 백오프 없이 재실행 규칙만 적용(회차당 두뇌 호출 최대 2회), 문구 없이 failed</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>이미 지난 resets_at은 없는 것으로 본다. 사용 한도는 7일까지 있을 수 있다.</li>
+<li>사용 한도에 실제로 닿았을 때의 이벤트 순서와 실제 토큰 만료는 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미검증</span>이다. 규칙에 맞지 않는 오류는 error로 떨어지므로 안전하다.</li>
+<li>텔레그램 전송 실패는 바로 3회(사이 1초, 2초) 후 회차 failed, 5분 뒤 전송만 한 번 더(되면 done). 사용자에게 알리지 않는다.</li>
+<li>도구 이벤트가 하나라도 있는 중단된 회차는 다시 실행하지 않고 failed로 둔다(중복 쓰기 방지).</li>
+</ul>
+</section>
+<section class="section">
+  <div class="section__head">
+    <h2 id="p8"><span class="section__no">9</span>프로세스 8 · 운영: 시작, 재시작, 백업</h2>
+    <p class="section__lede">작업 스케줄러가 프로그램을 띄우고, 하나만 돌게 하고, DB가 이상하면 스스로 멈춰 사용자에게 알립니다.</p>
+  </div>
+  <p><span class="loop"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-scheduler"/></svg>운영</span> <strong>목적</strong> 사용자가 아무것도 하지 않아도 로그온, 절전 복귀, 전원 변화 뒤에 비서가 다시 동작하게 하고, 데이터를 매일 백업한다.</p>
+<h3>8-1 시작과 재시작</h3><figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">시작·재시작 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.1</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph DA["풀 · Dahun"]
+    d1(["README 복구 절차 수행"])
+  end
+  subgraph SC["풀 · Windows 작업 스케줄러"]
+    o1(("사용자 로그온"))
+    o2(("절전 복귀<br/>Power-Troubleshooter ID 1"))
+    o3(("5분 반복 워치독"))
+    o4("작업 my-planner 실행<br/>pythonw -m my_planner · IgnoreNew")
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      g1{"state/my-planner.lock<br/>잠금 성공?"}
+      x1((("종료 · 이미 실행 중")))
+      h2("로그 설정 · DB 열기 · 마이그레이션")
+      g2{"PRAGMA quick_check<br/>통과?"}
+      g3{"integrity_notice_sent<br/>표식 있음?"}
+      h3("텔레그램으로 DB 문제 안내 1회<br/>표식 만듦")
+      x2((("안전 모드 · 폴링 tick 없이 살아 있음")))
+      h4("queued · running 회차는 interrupted<br/>전송 실패분은 전송만 재시도<br/>남은 메시지 다시 넣기(4b)")
+      h5("installed_at 기록 · 따라잡기 판정")
+      h6((("봇 폴링 + 1분 tick 시작")))
+    end
+  end
+  o1 --> o4
+  o2 --> o4
+  o3 --> o4
+  o4 --> g1
+  g1 -->|"아니오"| x1
+  g1 -->|"예"| h2
+  h2 --> g2
+  g2 -->|"실패"| g3
+  g2 -->|"통과"| h4
+  g3 -->|"없음"| h3
+  g3 -->|"있음"| x2
+  h3 --> x2
+  h3 -.-> d1
+  h4 --> h5 --> h6
+  class o1,o2,o3 tm
+  class d1 ev
+  class x1,x2,h6 en
+  class g1,g2,g3 gw
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">세 타이머 모두 같은 작업을 부르고, 이미 실행 중이면 아무 일도 없습니다. DB 손상은 자동 복구하지 않고 안전 모드로 갑니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 8-1 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">작업 스케줄러</td><td>트리거: 사용자 로그온 / 절전 복귀(System, Power-Troubleshooter, ID 1) / 5분 반복 워치독</td><td>작업 my-planner 실행</td><td>IgnoreNew라 실행 중이면 아무 일도 없다. 사용자가 로그온한 경우에만 실행. 실패 시 1분 간격 최대 999회 재시작. 실제 재시작은 워치독이 맡는다</td></tr>
+<tr><td class="num">2</td><td class="nowrap">하네스</td><td>pythonw 실행</td><td>창 없는 콘솔 생성(0단계)</td><td>콘솔이 없을 때만. 없으면 claude.exe를 띄울 때마다 터미널 창이 뜬다</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스 → 저장소</td><td>state/my-planner.lock</td><td>단일 실행 잠금(1단계)</td><td>msvcrt.locking. 실패하면 이미 실행 중이므로 종료. 크래시하면 OS가 잠금을 푼다</td></tr>
+<tr><td class="num">4</td><td class="nowrap">하네스</td><td>설정</td><td>로그, DB 열기, 무결성 검사, 마이그레이션(2~3단계)</td><td>로그는 파일 핸들러만 사용(pythonw에는 stdout 없음). PRAGMA quick_check. 잠김 같은 OperationalError는 fatal_error 로그 뒤 코드 1로 끝나고 워치독이 다시 띄움</td></tr>
+<tr><td class="num">5</td><td class="nowrap">하네스 → Telegram</td><td>DB 손상(quick_check 실패, 잠김이 아닌 DB 오류)</td><td>안전 모드</td><td>표식 파일 integrity_notice_sent가 없을 때만 <q class="src">데이터베이스에 문제가 있어요. 최신 백업으로 복구해야 해요. PC에서 README의 복구 절차를 따라 주세요.</q>를 한 번 보내고 표식을 만든다. 이후 폴링과 tick 없이 프로세스만 살아 있다. 복구 뒤 표식을 지우고 다시 시작</td></tr>
+<tr><td class="num">6</td><td class="nowrap">하네스 → 저장소</td><td>queued · running 회차</td><td>interrupted(4단계)</td><td>failed이면서 outbound_text가 있고 아직 재전송하지 않은 회차는 답장 창 안이면 전송만 한 번 다시</td></tr>
+<tr><td class="num">7</td><td class="nowrap">하네스 → 저장소</td><td>inbound_pending 남은 행</td><td>디스패처에 다시 넣기(4b단계)</td><td>답하지 못한 사용자 메시지를 받은 순서대로 하나씩. 3회를 넘으면 버리고 inbound_dropped 로그</td></tr>
+<tr><td class="num">8</td><td class="nowrap">하네스 → 저장소</td><td>app_state.installed_at 없음</td><td>지금으로 기록(5단계)</td><td>첫 실행 표시</td></tr>
+<tr><td class="num">9</td><td class="nowrap">하네스</td><td>-</td><td>따라잡기 판정 → 봇 폴링 시작 → tick 시작(6단계)</td><td>tick은 1분 간격</td></tr>
+<tr><td class="num">10</td><td class="nowrap">하네스</td><td>두뇌 호출·전송 진행 중</td><td>절전 방지</td><td>SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)를 걸고 끝나면 푼다</td></tr>
+</tbody>
+</table>
+</div><h3>8-2 매일 백업과 깨우기</h3><figure class="fig">
+  <div class="fig__head"><span class="fig__no"></span><span class="fig__title">백업·깨우기 흐름</span><span class="fig__std">BPMN 2.0 · SP1 §5.1, 7</span></div>
+  <div class="fig__body">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A'}}}%%
+flowchart TD
+  subgraph SC["풀 · Windows 작업 스케줄러"]
+    w0(("회차 기본 시각 5분 전"))
+    w1("my-planner-wake: 절전 모드 해제<br/>pythonw -c pass · 하는 일 없음")
+    w2((("깨어남 · 따라잡기가 이어받음")))
+  end
+  subgraph PL["풀 · my-planner"]
+    subgraph H["레인 · 비서 프로그램 (하네스)"]
+      b0(("매일 첫 tick"))
+      h1("SQLite 백업 API로 복사")
+      x1((("끝")))
+    end
+    subgraph S["레인 · 저장소"]
+      s1("state/backups/planner-YYYY-MM-DD.db")
+      s2("14개 보관")
+    end
+  end
+  w0 --> w1 --> w2
+  b0 --> h1
+  h1 --> s1 --> s2 --> x1
+  class w0,b0 tm
+  class w2,x1 en
+classDef ev fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:1.5px
+  classDef tm fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px,stroke-dasharray:4 3
+  classDef en fill:#FFFFFF,stroke:#15222A,color:#15222A,stroke-width:3px
+  classDef gw fill:#FAEFD3,stroke:#8F5C00,color:#15222A
+  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
+</pre>
+  </div>
+  <figcaption class="fig__cap">두 흐름은 서로 독립입니다. 깨우기 작업은 하는 일이 없고, 깬 뒤의 처리는 따라잡기가 맡습니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+</figure><div class="table-wrap">
+<table class="dt">
+<caption>프로세스 8-2 단계표</caption>
+<thead><tr><th class="w-min num">단계</th><th class="w-min">담당 레인</th><th>입력</th><th>출력</th><th>규칙·수치</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td class="nowrap">하네스 → 저장소</td><td>매일 첫 tick</td><td>state/backups/planner-YYYY-MM-DD.db</td><td>SQLite 백업 API. <strong>14개</strong> 보관. 로컬 디스크만. data/는 사용자가 원하는 백업 도구로 복사</td></tr>
+<tr><td class="num">2</td><td class="nowrap">작업 스케줄러</td><td>각 회차 기본 시각 5분 전 (시각 목록은 wake_times가 config.toml에서 계산)</td><td>my-planner-wake 실행</td><td>"이 작업을 실행하기 위해 절전 모드 해제"를 켜고 배터리에서도 실행. 하는 일은 없다(pythonw -c pass). S4가 실패하면 등록하지 않음</td></tr>
+<tr><td class="num">3</td><td class="nowrap">하네스</td><td>tick 간격 차이 3분 초과</td><td>폴링 재시작</td><td>절전 복귀 감지(S5). 롱폴링은 라이브러리가 재연결</td></tr>
+</tbody>
+</table>
+</div><h3>예외와 특수 경우</h3>
+<ul>
+<li>배터리에서 전원 구성표의 "절전 모드 해제 타이머 허용"이 꺼져 있으면 깨우지 못한다(S4에서 이 노트북은 꺼짐). 그때는 따라잡기만 쓴다.</li>
+<li>회차 시각을 바꾸면 등록 스크립트(scripts/register_task.ps1)를 다시 실행한다.</li>
+<li>pythonw 실행 중 로그오프나 작업 종료는 강제 종료로 보고 다음 시작의 4단계 복구에 맡긴다. 콘솔에서 Ctrl+C를 받으면 진행 중 두뇌 호출을 최대 30초 기다리고, 끝나지 않으면 해당 회차를 interrupted로 기록.</li>
+<li>저장소 폴더는 OneDrive 같은 동기화 폴더 밖에 둔다(SQLite WAL 손상 위험). 기본 위치 E:\my-planner.</li>
+<li>로그는 state/logs/my-planner.jsonl, 하루 단위 회전, 30일 보관. 메시지 본문과 도구 인자는 남기지 않는다.</li>
+</ul>
+</section>
+  </main>
+
+  <aside class="toc" data-auto aria-label="이 문서에서"></aside>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__inner">
+    <div>
+      <h2>원천 자료</h2>
+      <ul class="sources">
+<li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 §5.1~5.7, §7, §8 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+<li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 구현 계획 검토 항목(비텍스트 메시지, 시계 이상) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/plans/2026-10-23-sp1-secretary-core.md" target="_blank" rel="noopener"><code>docs/superpowers/plans/2026-10-23-sp1-secretary-core.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+<li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>마스터 설계 §5.5(하루 3회, 논리적 날짜) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-my-planner-master-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-my-planner-master-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>관련 문서</h2>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-behavior"/></svg><a href="behavior.html">시퀀스·상태 다이어그램</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-requirements"/></svg><a href="requirements.html">요구사항 정의서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-manual"/></svg><a href="operations.html">운영자 매뉴얼</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-glossary"/></svg><a href="glossary.html">용어집</a></li>
+      </ul>
+    </div>
+    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23</span><a href="index.html">산출물 지도로</a></div>
+  </div>
+</footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

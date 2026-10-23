@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>요구사항 정의서</title>
+<meta name="description" content="my-planner SP1 비서 코어의 기능·비기능 요구사항, MoSCoW 우선순위, 인수 기준, 요구사항 추적 매트릭스.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="index.html">
+      <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
+      my-planner <span class="brand__sub">산출물</span>
+    </a>
+    <div class="topbar__doc"><span>요구사항 정의서</span></div>
+    <button class="navtoggle" type="button" aria-controls="docnav" aria-expanded="false">
+      <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>문서 목록
+    </button>
+  </div>
+</header>
+
+<div class="shell shell--doc" data-doc="requirements">
+
+  <nav class="docnav" id="docnav" aria-label="문서 목록">
+    <div class="docnav__group">
+      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>산출물 지도</a></li></ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">1 요구</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="requirements" href="requirements.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>요구사항 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">2 설계</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 정의서</a></li>
+        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</a></li>
+        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>시퀀스·상태 다이어그램</a></li>
+        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg>화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>ERD · 테이블 정의서</a></li>
+        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">3 구현 · 시험</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</a></li>
+        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>테스트 계획·결과서</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">4 운영</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">공통</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="glossary" href="glossary.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어집</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main id="main" class="doc">
+
+    <header class="doc-head">
+      <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>요구사항 정의서</span>
+      <h1>SP1 비서 코어 요구사항</h1>
+      <p class="doc-head__lede">SP1이 끝났다고 말하려면 무엇이 참이어야 하는지를 검증 가능한 문장 103개로 정리하고, 각 문장을 스펙 절 → 티켓 → 테스트로 추적합니다.</p>
+      <div class="doc-head__meta">
+        <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">ISO/IEC/IEEE 29148:2018 · MoSCoW · RTM</span></span>
+        <span class="pill doc" data-s="review">검토 중</span>
+      </div>
+      <dl class="docinfo">
+        <div><dt>문서 ID</dt><dd class="mono">MP-SP1-REQ</dd></div>
+        <div><dt>버전</dt><dd class="tnum">1.0</dd></div>
+        <div><dt>작성일</dt><dd class="tnum">2026-10-23</dd></div>
+        <div><dt>상태</dt><dd>검토 중</dd></div>
+        <div><dt>기준 문서</dt><dd>SP1 스펙 v4 · 마스터 설계 v2 · ADR 0001~0006</dd></div>
+        <div><dt>구현 상태 기준</dt><dd class="mono">main 0336f4d</dd></div>
+      </dl>
+    </header>
+
+    <nav class="jumpbar" data-auto aria-label="바로 가기"></nav>
+
+    <section class="section" aria-label="요약">
+      <aside class="summary">
+        <span class="summary__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>한눈에 보기</span>
+        <p class="summary__title">SP1 요구사항은 103건이고 그중 91건이 Must입니다. 지금 main에는 티켓 13개(SP1-00~SP1-12)가 합쳐져 100건이 구현 완료, 0건이 일부 구현 상태입니다.</p>
+        <div class="summary__body">
+          <ul>
+            <li>범위 안 요구사항(100건, Won’t 제외)의 85%에 구현 계획의 자동 테스트 이름이 연결되어 있습니다. 나머지는 노트북에서 하는 수동 확인·검토로 판정합니다.</li>
+            <li>가장 큰 묶음은 대화·두뇌 세션과 루프·회차(각 12건)입니다. 따라잡기 9건은 스펙 8장 기대 결과표 10행으로 그대로 시험합니다.</li>
+            <li>완료 판정의 마지막 관문은 <a class="rid rid--nfr" href="#NFR-REL-01">NFR-REL-01</a> 7일 수용 테스트(SP1-14)입니다.</li>
+            <li>스파이크 미검증 항목(배터리·덮개 닫힘 깨우기, 절전 복귀 폴링, 실제 사용 한도 이벤트)은 <a href="#assumptions">가정</a>으로 남아 있습니다.</li>
+          </ul>
+        </div>
+      </aside>
+      <div class="kpis">
+        <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>요구사항</div><div class="kpi__value">103<span class="kpi__unit">건</span></div><div class="kpi__note">기능 73 · 비기능 30</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-priority"/></svg>MoSCoW</div><div class="kpi__value">91<span class="kpi__sep">·</span>9<span class="kpi__sep">·</span>3</div><div class="kpi__note">Must · Should · Won’t (Could 0)</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg>자동 테스트 연결</div><div class="kpi__value">85<span class="kpi__unit">%</span></div><div class="kpi__note">범위 안 100건 중 85건</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>구현 완료</div><div class="kpi__value">100<span class="kpi__unit">건</span></div><div class="kpi__note">일부 구현 0 · 예정 0</div></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="scope"><span class="section__no">1</span>범위</h2>
+        <p class="section__lede">SP1은 비서의 뼈대입니다. SP2~SP4는 이 위에 도구, 표, 루프를 더하는 방식으로만 확장합니다(SP1 스펙 §1).</p>
+      </div>
+      <div class="cols">
+        <div class="table-wrap">
+          <table class="dt">
+            <caption>SP1에 포함 (SP1 스펙 §2)</caption>
+            <thead><tr><th>포함</th><th class="w-min">요구 묶음</th></tr></thead>
+            <tbody>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg> 텔레그램 봇, 사용자 잠금</td><td class="nowrap"><a href="#g-CH">FR-CH</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-harness"/></svg> 하네스 코어, 대화와 두뇌 세션 관리</td><td class="nowrap"><a href="#g-CONV">FR-CONV</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> 루프: 아침 브리핑, 저녁 체크인, 주간 회고, 따라잡기</td><td class="nowrap"><a href="#g-LOOP">FR-LOOP</a> <a href="#g-CATCH">FR-CATCH</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg> 할 일, 우선순위, 첫 걸음, 일정 시각</td><td class="nowrap"><a href="#g-TASK">FR-TASK</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-draft"/></svg> 초안 할 일과 계획 모드</td><td class="nowrap"><a href="#g-DRAFT">FR-DRAFT</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-condition"/></svg> 컨디션 기록</td><td class="nowrap"><a href="#g-COND">FR-COND</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg> 원문 기록과 가리기 필터</td><td class="nowrap"><a href="#g-REC">FR-REC</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg> 시스템 로그, 백업, 사용량 상한</td><td class="nowrap"><a href="#g-OPS">NFR-OPS</a> <a href="#g-REL">NFR-REL</a> <a href="#g-PERF">NFR-PERF</a></td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg> 작업 스케줄러 등록 스크립트</td><td class="nowrap"><a href="#g-PLAT">FR-PLAT</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table class="dt">
+            <caption>SP1에서 제외 (SP1 스펙 §2 · 마스터 §4)</caption>
+            <thead><tr><th>제외</th><th class="w-min">담당</th></tr></thead>
+            <tbody>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg> 기억 카드, 의미 회상, 정리 루프, <code>/memory</code></td><td class="nowrap">SP2 기억 계층</td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg> 월·분기·연 회고, 인생 곡선, 상태창, <code>/status</code></td><td class="nowrap">SP3 인생 곡선 + 상태창</td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-condition"/></svg> 컨디션의 HP/MP 계산</td><td class="nowrap">SP3</td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg> 웹 대시보드(로컬, 읽기 전용)</td><td class="nowrap">SP4 웹 대시보드</td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> 반복 할 일</td><td class="nowrap">사용자와 의논해 나중에 결정</td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg> 다른 캘린더 연동</td><td class="nowrap">계획 없음</td></tr>
+              <tr><td><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg> 클라우드 백업</td><td class="nowrap">금지 (마스터 §6)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="table-note">하위 프로젝트 순서와 각 완료 조건은 <a href="schedule.html#roadmap">WBS·일정의 로드맵</a>에 있습니다. 마스터 설계 §1.3의 “하지 않는 것”(다른 사람에게 제공, 클라우드 서버, 그래프 DB, 클라우드 임베딩 API, 모바일 앱)은 모든 하위 프로젝트의 범위 밖입니다.</p>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="assumptions"><span class="section__no">2</span>가정과 제약</h2>
+        <p class="section__lede">가정은 깨지면 요구사항을 다시 봐야 하는 전제이고, 제약은 설계가 따라야 하는 고정 조건입니다.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>가정</caption>
+          <thead><tr><th class="w-min">ID</th><th>가정</th><th class="w-min">상태</th><th class="w-min">근거</th></tr></thead>
+          <tbody>
+            <tr id="AS-01"><td class="id mono">AS-01</td><td>사용자는 Dahun 한 사람이다. 봇은 이 텔레그램 계정에만 응답한다.</td><td>확정</td><td class="nowrap">마스터 §1.3 · 용어집 사용자</td></tr>
+            <tr id="AS-02"><td class="id mono">AS-02</td><td>실행 환경은 MSI GP76 노트북(Windows 11 Home) 한 대이고, 늘 켜져 있지 않다. 꺼진 동안의 회차는 따라잡기로 처리한다.</td><td>확정</td><td class="nowrap">마스터 §2 · ADR 0004</td></tr>
+            <tr id="AS-03"><td class="id mono">AS-03</td><td>두뇌는 사용자 본인의 Claude 구독 로그인으로 돈다. 다른 사람이 쓰게 될 때, 구독 사용량이 사용자의 Claude Code 사용을 방해할 때, Anthropic 정책이 바뀔 때는 API 키 인증으로 바꾼다.</td><td>확정(조건부)</td><td class="nowrap">ADR 0001 · 마스터 §5.6</td></tr>
+            <tr id="AS-04"><td class="id mono">AS-04</td><td>메시지가 텔레그램 서버를 거치는 것을 받아들인다. 텔레그램은 받아 가지 않은 업데이트를 최대 24시간만 보관하므로, 그보다 오래 꺼져 있던 동안 보낸 메시지는 사라질 수 있다.</td><td>확정</td><td class="nowrap">ADR 0002 · SP1 §5.2</td></tr>
+            <tr id="AS-05"><td class="id mono">AS-05</td><td>깨우기 타이머는 AC 전원에서만 확인됐다. 배터리·덮개 닫힘은 미검증이고, 이 노트북의 배터리 깨우기 타이머 설정은 “사용 안 함”이다. 그때는 따라잡기만 쓴다.</td><td><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미검증</span></td><td class="nowrap">스파이크 S4 · SP1 §5.1</td></tr>
+            <tr id="AS-06"><td class="id mono">AS-06</td><td>텔레그램 롱폴링이 절전 복귀 뒤 다시 연결되는지는 확인하지 못했다(봇 토큰 없음). 스펙의 대안(복귀 감지 시 폴링 재시작, <a class="rid" href="#FR-PLAT-04">FR-PLAT-04</a>)을 기본으로 둔다.</td><td><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미검증</span></td><td class="nowrap">스파이크 S5 · SP1 §7</td></tr>
+            <tr id="AS-07"><td class="id mono">AS-07</td><td>사용 한도에 실제로 닿았을 때의 이벤트 순서와 실제 토큰 만료는 확인하지 못했다. 규칙에 맞지 않는 오류는 <code>error</code>로 떨어지므로 안전하며, 처음 실제로 일어나면 로그로 확인하고 규칙을 고친다.</td><td><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미검증</span></td><td class="nowrap">SP1 §5.3</td></tr>
+            <tr id="AS-08"><td class="id mono">AS-08</td><td><code>max_turns=10</code>이면 도구를 9번 넘게 부르는 일괄 정리는 <code>max_turns</code> 문구로 끝난다. 7일 수용 테스트에서 이 문구가 자주 나오면 15로 올린다.</td><td>확정(재검토 조건)</td><td class="nowrap">SP1 §5.3</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>제약</caption>
+          <thead><tr><th class="w-min">ID</th><th>제약</th><th class="w-min">근거</th></tr></thead>
+          <tbody>
+            <tr id="CN-01"><td class="id mono">CN-01</td><td>두뇌는 하네스 도구(<code>mcp__planner__*</code>)로만 데이터에 접근한다. 파일·셸·웹 도구는 하나도 없다.</td><td class="nowrap">마스터 P7 · ADR 0005</td></tr>
+            <tr id="CN-02"><td class="id mono">CN-02</td><td>할 일과 회차의 원본은 SQLite <code>state/planner.db</code>이고, <code>data/exports/tasks.md</code>는 매번 다시 만드는 사본이다. 원문 기록·회고는 md가 원본이다.</td><td class="nowrap">ADR 0003 · 마스터 §5.2</td></tr>
+            <tr id="CN-03"><td class="id mono">CN-03</td><td>상시 실행은 Windows 작업 스케줄러가 맡는다. Windows 서비스는 로그인 세션 밖이라 구독 자격 증명에 접근할 수 없어 쓰지 않는다.</td><td class="nowrap">ADR 0004</td></tr>
+            <tr id="CN-04"><td class="id mono">CN-04</td><td>클라우드 서버, 모바일 앱, 그래프 DB, 클라우드 임베딩 API, 클라우드 백업을 쓰지 않는다.</td><td class="nowrap">마스터 §1.3 · §6</td></tr>
+            <tr id="CN-05"><td class="id mono">CN-05</td><td>벌주는 게임 장치(체력 피해, 연속 기록, 기간 한정 보상)를 두지 않는다. SP1은 이를 위해 할 일 상태 변경 이벤트만 기록해 둔다.</td><td class="nowrap">ADR 0006 · 마스터 P4</td></tr>
+            <tr id="CN-06"><td class="id mono">CN-06</td><td>실제 Claude를 부르는 것은 스파이크와 수동 수용 테스트뿐이다. 자동 테스트는 가짜 두뇌(FakeBrain), 가짜 시계, 임시 DB로 정해진 테스트 경계에서만 쓴다.</td><td class="nowrap">SP1 §8 · 계획 테스트 경계</td></tr>
+            <tr id="CN-07"><td class="id mono">CN-07</td><td>시간대는 Asia/Seoul, 저장은 UTC ISO 8601, 하루 경계는 04:00이다.</td><td class="nowrap">마스터 §5.5 · SP1 §5.5</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="id-scheme"><span class="section__no">3</span>ID 체계와 표기</h2>
+        <p class="section__lede">다른 문서는 이 ID를 그대로 씁니다. 행마다 <code>id</code>가 있어 <code>requirements.html#FR-LOOP-01</code>처럼 링크할 수 있습니다.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>요구사항 ID 규칙</caption>
+          <thead><tr><th class="w-min">형식</th><th>뜻</th><th class="w-min">예</th></tr></thead>
+          <tbody>
+            <tr><td class="mono nowrap">FR-&lt;영역&gt;-NN</td><td>기능 요구사항. 영역은 CH, CONV, LOOP, CATCH, TASK, DRAFT, COND, CMD, REC, PLAT</td><td><span class="rid">FR-CATCH-01</span></td></tr>
+            <tr><td class="mono nowrap">NFR-&lt;범주&gt;-NN</td><td>비기능 요구사항. 범주는 PERF(성능), REL(신뢰성), SEC(보안·개인정보), OPS(운영성), PORT(이식성), USE(사용성)</td><td><span class="rid rid--nfr">NFR-OPS-02</span></td></tr>
+            <tr><td class="mono nowrap">AS-NN · CN-NN</td><td>가정 · 제약</td><td class="mono">AS-05</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <div class="legend__title">범례 · 우선순위(MoSCoW)와 구현 상태</div>
+        <ul class="legend__list">
+          <li><span class="legend__glyph"><span class="pill mo" data-s="must"><span class="mo__k">M</span></span></span><span class="legend__term">Must</span><span class="legend__desc">없으면 SP1 완료가 아님 (채움)</span></li>
+          <li><span class="legend__glyph"><span class="pill mo" data-s="should"><span class="mo__k">S</span></span></span><span class="legend__term">Should</span><span class="legend__desc">중요하지만 대안이 있음 (옅은 채움)</span></li>
+          <li><span class="legend__glyph"><span class="pill mo" data-s="could"><span class="mo__k">C</span></span></span><span class="legend__term">Could</span><span class="legend__desc">이 문서에는 없음 (점선)</span></li>
+          <li><span class="legend__glyph"><span class="pill mo" data-s="wont"><span class="mo__k">W</span></span></span><span class="legend__term">Won’t (이번엔)</span><span class="legend__desc">SP1 범위에서 제외, 경계를 분명히 하려고 적음 (취소선)</span></li>
+          <li><span class="legend__glyph"><span class="pill impl" data-s="done">구현 완료</span></span><span class="legend__term">구현 완료</span><span class="legend__desc">연결된 티켓의 코드가 모두 main에 합쳐짐 (찬 삼각)</span></li>
+          <li><span class="legend__glyph"><span class="pill impl" data-s="partial">일부 구현</span></span><span class="legend__term">일부 구현</span><span class="legend__desc">연결된 티켓 중 일부만 합쳐짐 (반 찬 삼각)</span></li>
+          <li><span class="legend__glyph"><span class="pill impl" data-s="planned">예정</span></span><span class="legend__term">예정</span><span class="legend__desc">연결된 티켓이 아직 main에 없음 (옅은 삼각)</span></li>
+          <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></span><span class="legend__term">main에 있음</span><span class="legend__desc">그 이름의 테스트 함수가 main의 <code>tests/</code>에 있음(통과 여부는 <a href="test-report.html">테스트 결과서</a>)</span></li>
+        </ul>
+      </div>
+      <p class="table-note">처음 나오는 용어: <a href="glossary.html#run">회차</a>는 루프가 한 시점에 한 번 실행되는 것, <a href="glossary.html#catch_up">따라잡기</a>는 꺼져 있던 동안의 회차를 깨어난 뒤 처리하는 것, <a href="glossary.html#harness">하네스</a>는 두뇌 바깥의 모든 것(봇, 루프, 저장소, 도구)입니다. 전체는 <a href="glossary.html">용어집</a>.</p>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="functional"><span class="section__no">4</span>기능 요구사항</h2>
+        <p class="section__lede">기능 73건을 능력 단위 10개로 묶었습니다. 문구와 수치는 스펙 원문 그대로입니다.</p>
+      </div>
+      <div class="areas">
+        <a class="areas__item" href="#g-CH"><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg><span><span class="areas__ko">채널·사용자 잠금</span><span class="areas__key">FR-CH · 6건</span></span></a>
+        <a class="areas__item" href="#g-CONV"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg><span><span class="areas__ko">대화·두뇌 세션</span><span class="areas__key">FR-CONV · 12건</span></span></a>
+        <a class="areas__item" href="#g-LOOP"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span><span class="areas__ko">루프·회차</span><span class="areas__key">FR-LOOP · 12건</span></span></a>
+        <a class="areas__item" href="#g-CATCH"><svg class="ic" aria-hidden="true"><use href="#i-return"/></svg><span><span class="areas__ko">따라잡기</span><span class="areas__key">FR-CATCH · 9건</span></span></a>
+        <a class="areas__item" href="#g-TASK"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg><span><span class="areas__ko">할 일·우선순위</span><span class="areas__key">FR-TASK · 10건</span></span></a>
+        <a class="areas__item" href="#g-DRAFT"><svg class="ic" aria-hidden="true"><use href="#i-draft"/></svg><span><span class="areas__ko">초안·계획 모드</span><span class="areas__key">FR-DRAFT · 8건</span></span></a>
+        <a class="areas__item" href="#g-COND"><svg class="ic" aria-hidden="true"><use href="#i-condition"/></svg><span><span class="areas__ko">컨디션</span><span class="areas__key">FR-COND · 3건</span></span></a>
+        <a class="areas__item" href="#g-CMD"><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg><span><span class="areas__ko">텔레그램 명령</span><span class="areas__key">FR-CMD · 4건</span></span></a>
+        <a class="areas__item" href="#g-REC"><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg><span><span class="areas__ko">원문 기록·가리기</span><span class="areas__key">FR-REC · 3건</span></span></a>
+        <a class="areas__item" href="#g-PLAT"><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg><span><span class="areas__ko">상시 실행</span><span class="areas__key">FR-PLAT · 6건</span></span></a>
+      </div>
+      <h3 id="g-CH"><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg> 채널·사용자 잠금 <span class="muted mono">FR-CH</span></h3>
+      <p class="section__lede">텔레그램 봇이 사용자 한 사람의 개인 채팅만 받는다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>채널·사용자 잠금 요구사항 (6건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-CH-01"><td class="id"><span class="rid">FR-CH-01</span></td><td class="nowrap">기능</td><td>봇은 텔레그램 <code>getUpdates</code> 롱폴링으로만 메시지를 받아야 한다(웹훅·자체 앱 없음).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.2 · ADR 0002</td><td>공개 주소 없이 python-telegram-bot 폴링으로 개인 채팅 메시지를 받는다.</td></tr>
+            <tr id="FR-CH-02"><td class="id"><span class="rid">FR-CH-02</span></td><td class="nowrap">기능</td><td>발신자 ID가 <code>OWNER_TELEGRAM_ID</code>이고 채팅 종류가 개인 채팅인 메시지만 받아야 하며, 나머지는 버리고 로그에 발신자 ID만 남겨야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.2 · §1-3</td><td>다른 계정·그룹 채팅의 메시지에 응답이 0건이고, 로그 줄에는 발신자 ID만 있고 본문은 없다.</td></tr>
+            <tr id="FR-CH-03"><td class="id"><span class="rid">FR-CH-03</span></td><td class="nowrap">기능</td><td>처리를 마친 <code>update_id</code>를 <code>telegram_updates</code>에 기록하고, 이미 있는 ID와 <code>inbound_pending</code>에 있는 ID는 건너뛰어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.2</td><td>같은 update_id를 두 번 받으면 두 번째는 duplicate로 무시되고, 전송 성공 뒤에만 기록된다.</td></tr>
+            <tr id="FR-CH-04"><td class="id"><span class="rid">FR-CH-04</span></td><td class="nowrap">기능</td><td>시작할 때 쌓여 있던 업데이트를 처리하고, 6시간보다 오래된 메시지는 두뇌에 “몇 시간 전에 보낸 메시지”라고 알려야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §5.2 · §5.3</td><td>sent_at이 7시간 전인 메시지의 프롬프트에 “약 7시간 전” 알림이 붙는다.</td></tr>
+            <tr id="FR-CH-05"><td class="id"><span class="rid">FR-CH-05</span></td><td class="nowrap">기능</td><td>텍스트가 아닌 메시지(사진, 스티커, 음성, 캡션만 있는 사진)에는 <q class="src">지금은 글로만 이야기할 수 있어요.</q>라고 답하고, 편집된 메시지는 무시해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>계획 Review Focus 1 · SP1 §5.3</td><td>사진을 보내면 고정 문구 1건이 오고, 편집 메시지에는 반응이 없다.</td></tr>
+            <tr id="FR-CH-06"><td class="id"><span class="rid">FR-CH-06</span></td><td class="nowrap">기능</td><td>4096자를 넘는 답은 문단 경계에서 나눠 보내고, 버튼은 마지막 조각에만 붙여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>계획 Review Focus 3</td><td>9000자 답이 3조각(각 4096자 이하)으로 가고, 이어 붙이면 원문과 같으며, 버튼은 마지막 조각에만 있다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-CONV"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg> 대화·두뇌 세션 <span class="muted mono">FR-CONV</span></h3>
+      <p class="section__lede">메시지를 대화로 묶고, 두뇌 세션을 열고 잇고, 결과 상태에 따라 답한다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>대화·두뇌 세션 요구사항 (12건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-CONV-01"><td class="id"><span class="rid">FR-CONV-01</span></td><td class="nowrap">기능</td><td>사용자 메시지는 열린 <code>plan</code> 대화(2시간 이내) → 회차의 답장 창 → 30분 이내 <code>chat</code> 대화 → 새 <code>chat</code> 순서로 이을 <a href="glossary.html#conversation">대화</a>를 정해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 대화 규칙</td><td>30분 안의 두 번째 메시지는 같은 session_id, 31분 뒤에는 새 대화이고, 답장 창이 30분 규칙보다 먼저다.</td></tr>
+            <tr id="FR-CONV-02"><td class="id"><span class="rid">FR-CONV-02</span></td><td class="nowrap">기능</td><td>답장 창은 <code>morning_brief</code> 당일 12:00, <code>evening_checkin</code> 다음 날 04:00, <code>review(week)</code> 24시간이어야 하며, 받은 시각이 아니라 텔레그램의 보낸 시각(<code>message.date</code>)으로 판정해야 한다(보낸 시각 전에 열리고 전달된 가장 최근 회차 대화 하나만 본다).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 (v4, 스펙 갭 7)</td><td>자정 넘어 04:00 전에 답하면 같은 체크인 대화로, 04:00 뒤에는 새 chat으로 이어진다. 03:00에 보내 09:30에 받은 답도 저녁 체크인 대화로 간다.</td></tr>
+            <tr id="FR-CONV-03"><td class="id"><span class="rid">FR-CONV-03</span></td><td class="nowrap">기능</td><td>대화 하나는 두뇌 세션 하나를 쓰고 <code>resume=session_id</code>로 이어야 하며, resume이 실패하면 새 세션에 컨텍스트와 그 대화의 최근 원문 20개를 붙여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3</td><td>원문 25개 중 최근 20개만 새 세션 프롬프트에 들어간다.</td></tr>
+            <tr id="FR-CONV-04"><td class="id"><span class="rid">FR-CONV-04</span></td><td class="nowrap">기능</td><td>처리하는 동안 연달아 온 메시지는 다음 두뇌 호출 한 번으로 이어 붙이고, 그 update_id를 모두 처리 완료로 기록해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.2 · 계획 Review Focus 5</td><td>처리 중 메시지 2개가 더 오면 두뇌 호출은 모두 2회이고, 두 번째 프롬프트에 두 문장이 다 있으며 세 ID가 기록된다.</td></tr>
+            <tr id="FR-CONV-05"><td class="id"><span class="rid">FR-CONV-05</span></td><td class="nowrap">기능</td><td>매 호출 맨 앞에 해당하는 알림(가린 정보 있음, 몇 시간 전 메시지, 앞 8000자만 넘김)을 붙여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 매 호출 알림</td><td>9000자 입력이면 본문 8000자와 “앞 8000자만” 알림이 가고, resume한 호출에도 알림이 붙는다.</td></tr>
+            <tr id="FR-CONV-06"><td class="id"><span class="rid">FR-CONV-06</span></td><td class="nowrap">기능</td><td>새 세션 앞머리에 현재 시각·요일·논리적 날짜, 우선순위, 열린 할 일(최대 30개), 오늘 일정, 어제 컨디션, 묶음 회차, 멈춤 상태를 넣어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 앞머리 컨텍스트</td><td>열린 할 일이 30개를 넘어도 30개만, 오늘 → 이번 주 → 나머지 순서로 들어간다.</td></tr>
+            <tr id="FR-CONV-07"><td class="id"><span class="rid">FR-CONV-07</span></td><td class="nowrap">기능</td><td>지시문은 대화 종류와 회차로 고르고(<code>chat.md</code>, <code>plan.md</code>, 루프 파일), 회차 대화에 사용자가 답할 때는 지시문 없이 메시지만 넘겨야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 프롬프트 선택</td><td>회차 대화에 대한 답장 프롬프트에 루프 지시문이 없고, 계획 대화는 plan.md를 쓴다.</td></tr>
+            <tr id="FR-CONV-08"><td class="id"><span class="rid">FR-CONV-08</span></td><td class="nowrap">기능</td><td>두뇌 결과 상태(<code>ok</code> <code>max_turns</code> <code>auth_error</code> <code>rate_limited</code> <code>error</code>)는 SDK 메시지 필드로 정해진 순서대로 판정하고, 문자열 매칭은 쓰지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 오류 판별 규칙 · 스파이크 S1</td><td>가짜 SDK 메시지로 authentication_failed → auth_error(login), rejected → rate_limited(retry_at=resets_at), error_max_turns → max_turns.</td></tr>
+            <tr id="FR-CONV-09"><td class="id"><span class="rid">FR-CONV-09</span></td><td class="nowrap">기능</td><td><code>max_turns</code>이면 <q class="src">정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요.</q>를 먼저, 그 아래 확인 문구만 보내야 한다. 회차는 도구가 썼으면 이 문구 + 확인 문구 + 버튼을 보내고 done, 아니면 failed(max_turns)로 둔다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 호출 결과 처리 (v4, 스펙 갭 1)</td><td>status=max_turns일 때 Sender가 받은 본문이 고정 문구와 확인 문구다. 도구를 쓴 저녁 체크인은 버튼까지 보낸다.</td></tr>
+            <tr id="FR-CONV-10"><td class="id"><span class="rid">FR-CONV-10</span></td><td class="nowrap">기능</td><td>사용자 메시지 처리 중 <code>error</code>이면 2·4·8초 백오프로 최대 3회 다시 부르고, 그래도 안 되면 <q class="src">지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요.</q>로 답해야 한다. 두뇌 호출 한 번이 <code>limits.brain_timeout_s</code>(300초)를 넘으면 <code>error</code>("timeout")로 센다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 (v4, 최종 리뷰 Important 3)</td><td>두뇌 호출 4회, brain_calls +4, 마지막에 고정 문구 1건. 멈춘 호출은 300초 뒤 같은 규칙을 탄다.</td></tr>
+            <tr id="FR-CONV-11"><td class="id"><span class="rid">FR-CONV-11</span></td><td class="nowrap">기능</td><td>두뇌를 부르는 동안 5초마다 입력 중 표시(typing)를 보내야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>계획 티켓 01 디스패처</td><td>FakeBrain이 12초 걸리면 typing이 3회 간다.</td></tr>
+            <tr id="FR-CONV-12"><td class="id"><span class="rid">FR-CONV-12</span></td><td class="nowrap">기능</td><td>메시지와 회차는 사용자 한 명 기준으로 직렬 처리하고, 사용자 메시지가 대기 중인 회차보다 먼저여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>마스터 §5.5 · 계획 티켓 05</td><td>회차 처리 중 들어온 메시지는 그 회차가 끝난 뒤, 대기 중인 다른 회차보다 먼저 처리된다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-LOOP"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> 루프·회차 <span class="muted mono">FR-LOOP</span></h3>
+      <p class="section__lede">정해진 시각에 비서가 먼저 연락하고, 회차를 두 단계로 실행한다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>루프·회차 요구사항 (12건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-LOOP-01"><td class="id"><span class="rid">FR-LOOP-01</span></td><td class="nowrap">기능</td><td>기본 회차 시각은 평일 <code>morning_brief</code> 09:00 · <code>evening_checkin</code> 17:30, 주말(토·일) 10:00 · 18:00, <code>review(week)</code> 일요일 18:00이어야 하며 <code>config.toml</code>에서 바꿀 수 있어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 회차 정의 · §10</td><td>2026-10-26(월)은 09:00·17:30, 2026-10-24(토)는 10:00·18:00, 2026-10-25(일)은 회고 18:00이 나온다.</td></tr>
+            <tr id="FR-LOOP-02"><td class="id"><span class="rid">FR-LOOP-02</span></td><td class="nowrap">기능</td><td>tick은 회차를 미리 만들지 않고 <code>(창 시작, 지금]</code> 구간의 예정 시각 중 <code>runs</code>에 없는 것만 만들어야 하며, 창 시작은 <code>max(last_seen_at, installed_at, 지금 - 7일)</code>이어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 회차 만들기</td><td>첫 실행은 installed_at부터, 공백이 길면 7일로 잘리고, 미래 last_seen_at은 지금으로 당겨진다.</td></tr>
+            <tr id="FR-LOOP-03"><td class="id"><span class="rid">FR-LOOP-03</span></td><td class="nowrap">기능</td><td>tick마다 <code>app_state.last_seen_at</code>을 지금으로 바꾸고(하트비트), 깨어난 뒤 첫 tick에서 공백을 계산해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 하트비트</td><td>보낼 회차가 없어도 tick 뒤 last_seen_at이 갱신된다.</td></tr>
+            <tr id="FR-LOOP-04"><td class="id"><span class="rid">FR-LOOP-04</span></td><td class="nowrap">기능</td><td><a href="glossary.html#run">회차</a> 실행은 (a) 두뇌 호출 → <code>runs.outbound_text</code> 저장, (b) 전송의 두 단계여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 재시도와 재실행 1</td><td>outbound_text가 저장된 뒤 전송되고, 상태는 done, proactive 카운터는 1이다.</td></tr>
+            <tr id="FR-LOOP-05"><td class="id"><span class="rid">FR-LOOP-05</span></td><td class="nowrap">기능</td><td>전송은 즉시 3회(1초·2초 간격) 시도하고, 그래도 안 되면 <span class="pill run" data-s="failed">failed</span>로 둔 뒤 5분 뒤 전송만 한 번 더 해야 한다(두뇌 재호출 없음). 사용자 메시지·명령·글이 아닌 메시지의 답도 같은 3회 규칙으로 보내고, 원문 기록의 비서 줄은 보낸 뒤에만 쓴다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4-2 · §7 (v4)</td><td>Sender가 계속 실패하면 3회 시도 후 failed, 5분 뒤 1회 재전송, 두뇌 호출 수는 그대로다. 메시지 답이 끝내 안 가면 처리 완료로 기록하지 않는다.</td></tr>
+            <tr id="FR-LOOP-06"><td class="id"><span class="rid">FR-LOOP-06</span></td><td class="nowrap">기능</td><td>두뇌 단계에서 실패한 회차는 그 회차의 도구 이벤트가 없을 때만 한계 안에서 한 번 다시 실행하고, 있으면 failed로 두며, 사용자에게 실패를 알리지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4-3 · §5.4-4</td><td>도구 이벤트 없음 → 재실행 1회, 있음 → 재실행 0회, 어느 경우든 사용자 메시지 0건.</td></tr>
+            <tr id="FR-LOOP-07"><td class="id"><span class="rid">FR-LOOP-07</span></td><td class="nowrap">기능</td><td><a href="glossary.html#morning_brief">아침 브리핑</a>은 오늘 우선순위 1~3개와 첫 걸음 제안, 오늘 일정 알림을 담아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 회차 정의</td><td>다음 날 아침 실제로 브리핑을 받고 세 요소가 들어 있는지 본다.</td></tr>
+            <tr id="FR-LOOP-08"><td class="id"><span class="rid">FR-LOOP-08</span></td><td class="nowrap">기능</td><td><a href="glossary.html#evening_checkin">저녁 체크인</a>은 컨디션 버튼 1~5와 함께 한 줄 메모, 오늘 한 일, 내일로 옮길 일 제안을 담아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 회차 정의</td><td>저녁 회차의 Outbound에 그 회차 논리적 날짜의 컨디션 버튼(ask_condition_for)이 붙는다.</td></tr>
+            <tr id="FR-LOOP-09"><td class="id"><span class="rid">FR-LOOP-09</span></td><td class="nowrap">기능</td><td>주간 <a href="glossary.html#review">회고</a>는 일요일 저녁 체크인과 합쳐 한 메시지로 보내고, 두뇌 답을 <code>data/reviews/week/&lt;YYYY-Www&gt;.md</code>에 저장해야 한다(주는 회고 회차 scheduled_for의 논리적 날짜로 정함).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 회차 정의</td><td>data/reviews/week/2026-W43.md가 생기고, 메시지는 1개, 두 회차 모두 done이다.</td></tr>
+            <tr id="FR-LOOP-10"><td class="id"><span class="rid">FR-LOOP-10</span></td><td class="nowrap">기능</td><td>같은 tick에 실행할 회차가 둘 이상이면 <code>return</code> &gt; <code>evening_checkin</code> &gt; <code>morning_brief</code> &gt; <code>review(week)</code> 순서로 하나를 고르고, 나머지는 <code>merged_run_ids</code>에 기록해 전송 성공 시 함께 done이 되어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 합치기</td><td>일 17:00 → 일 18:10이면 저녁 체크인이 primary, 회고는 merged이고 전송 뒤 둘 다 done.</td></tr>
+            <tr id="FR-LOOP-11"><td class="id"><span class="rid">FR-LOOP-11</span></td><td class="nowrap">기능</td><td>비서가 먼저 보내는 메시지는 하루 최대 3회여야 하며, 4번째가 될 회차는 보내지 않고 <span class="pill run" data-s="pending">pending</span>으로 기다리다 다음 정규 연락에 합치거나 한계를 넘으면 <span class="pill run" data-s="skipped">skipped <span class="reason">late</span></span>여야 한다. 고정 안내는 세지 않는다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 합치기 · §5.3 · 마스터 §5.5</td><td>proactive_today=3이면 primary가 비고 skip도 기록되지 않으며, 다음 판정에서 합쳐지거나 late가 된다.</td></tr>
+            <tr id="FR-LOOP-12"><td class="id"><span class="rid">FR-LOOP-12</span></td><td class="nowrap">기능</td><td>모든 “오늘”은 <a href="glossary.html#logical_date">논리적 날짜</a>(Asia/Seoul, 하루 경계 04:00)여야 한다. 하루 단위 카운터와 하루 한 번 작업도 이를 따른다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 · 마스터 §5.5 · §8</td><td>KST 03:59 메시지는 전날 파일, 04:00은 당일 파일. 하루 한 번 작업은 04:00 경계로 다음 날 다시 돈다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-CATCH"><svg class="ic" aria-hidden="true"><use href="#i-return"/></svg> 따라잡기 <span class="muted mono">FR-CATCH</span></h3>
+      <p class="section__lede">노트북이 꺼졌다 켜졌을 때 회차를 규칙 R1~R5로 처리한다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>따라잡기 요구사항 (9건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-CATCH-01"><td class="id"><span class="rid">FR-CATCH-01</span></td><td class="nowrap">기능</td><td>R1: 공백이 24시간 이상이고 멈춤 기간이 아니면 공백 동안의 회차를 모두 <span class="pill run" data-s="skipped">skipped <span class="reason">merged_into_return</span></span>로 두고 <a href="glossary.html#return">복귀 인사</a> 회차 하나만 만들어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 따라잡기 R1</td><td>25시간 공백 뒤 첫 tick에서 return 회차가 정확히 1개 생긴다.</td></tr>
+            <tr id="FR-CATCH-02"><td class="id"><span class="rid">FR-CATCH-02</span></td><td class="nowrap">기능</td><td>복귀 인사가 그날 아침 브리핑 예정 시각 전에 나가면, 그날 아침 브리핑도 skipped(merged_into_return)여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 R1 · §8 표 6행</td><td>화 08:00 복귀 → 화 09:00 tick에 제출이 없고 월요일 컨디션 버튼도 붙지 않는다.</td></tr>
+            <tr id="FR-CATCH-03"><td class="id"><span class="rid">FR-CATCH-03</span></td><td class="nowrap">기능</td><td>공백 중 주간 회고가 있었고 그 회차 + 3일 이내면 복귀 인사 다음 정규 연락에 합쳐야 하며, 넘겨 받은 회고는 <code>app_state.carry_review_run_id</code>로 표시해 혼자 실행하지 않고, +3일이 지나면 skipped(late)여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 R1 · §8 표 5~7행</td><td>금 22:00 → 화 08:00이면 회고가 화 17:30 체크인에 합쳐지고, 목 08:00이면 merged_into_return이다.</td></tr>
+            <tr id="FR-CATCH-04"><td class="id"><span class="rid">FR-CATCH-04</span></td><td class="nowrap">기능</td><td>R2: <a href="glossary.html#pause">멈춤</a> 기간 안의 회차는 <span class="pill run" data-s="skipped">skipped <span class="reason">paused</span></span>이고, 멈춤 중에는 공백이 24시간을 넘어도 복귀 인사를 만들지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 R1·R2 · §8 표 8행</td><td>금 22:00(멈춤 ~월) → 일 12:00이면 공백 회차 모두 paused, return 없음.</td></tr>
+            <tr id="FR-CATCH-05"><td class="id"><span class="rid">FR-CATCH-05</span></td><td class="nowrap">기능</td><td>R3: 하루 두뇌 호출 상한에 닿으면 회차는 <span class="pill run" data-s="skipped">skipped <span class="reason">daily_cap</span></span>여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 R3 · §7</td><td>brain_calls_today ≥ 60이면 판정 결과가 daily_cap이다.</td></tr>
+            <tr id="FR-CATCH-06"><td class="id"><span class="rid">FR-CATCH-06</span></td><td class="nowrap">기능</td><td>R4·R5: 루프별 한계(아침 당일 12:00, 저녁 다음 날 04:00, 회고 예정 시각 + 3일) 안이면 늦게라도 실행하고, 밖이면 <span class="pill run" data-s="skipped">skipped <span class="reason">late</span></span>여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 R4·R5 · §8 표 1~4행</td><td>월 08:00 → 월 10:30 실행, → 월 13:00 late, 월 17:00 → 화 01:00 실행, → 화 05:00 late.</td></tr>
+            <tr id="FR-CATCH-07"><td class="id"><span class="rid">FR-CATCH-07</span></td><td class="nowrap">기능</td><td>아침 브리핑 때 어제 컨디션 기록이 없고 어제 저녁 체크인이 done이 아니면(이유와 상관없이), 아침 브리핑에 어제 날짜의 컨디션 버튼을 붙여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 어제 컨디션</td><td>어제 체크인이 late일 때와 merged_into_return일 때 모두 버튼이 붙고, 기록이 있으면 붙지 않는다.</td></tr>
+            <tr id="FR-CATCH-08"><td class="id"><span class="rid">FR-CATCH-08</span></td><td class="nowrap">기능</td><td>시계가 뒤로 가면(last_seen_at이 미래) 공백을 0으로 보고 경고 로그를 남기고, 크게 앞서면 판정 창을 7일로 잘라 복귀 인사 하나만 보내야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §8 시계 역행 · 계획 Review Focus 4</td><td>역행 시 R1이 아니고 clock_backwards=True, 30일 앞으로 가면 return 1개·판정 대상 7일치.</td></tr>
+            <tr id="FR-CATCH-09"><td class="id"><span class="rid">FR-CATCH-09</span></td><td class="nowrap">기능</td><td>보낼 회차가 아직 없는 공백(예: 금 18:00 → 토 09:30)에는 아무것도 보내지 않고, 주말 시각(10:00)에 아침 브리핑을 실행해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §8 표 10행</td><td>금 18:00 → 토 09:30 판정 결과에 보낼 회차가 없다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-TASK"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg> 할 일·우선순위 <span class="muted mono">FR-TASK</span></h3>
+      <p class="section__lede">말로 할 일을 추가·변경하고, 하네스가 확인 문구를 붙인다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>할 일·우선순위 요구사항 (10건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-TASK-01"><td class="id"><span class="rid">FR-TASK-01</span></td><td class="nowrap">기능</td><td>사용자가 직접 추가해 달라고 한 <a href="glossary.html#task">할 일</a>은 <code>add_task</code>로 바로 <span class="pill task" data-s="open">open</span>이 되어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7 · §5.5 도구</td><td>add_task 결과에 id가 있고 tasks.md에 제목이 있으며 tool_events_log에 행이 있다.</td></tr>
+            <tr id="FR-TASK-02"><td class="id"><span class="rid">FR-TASK-02</span></td><td class="nowrap">기능</td><td>할 일 제목은 1~200자, <a href="glossary.html#area">영역</a>은 6개 값 중 하나 이상, parent_id는 있는 할 일이어야 하며, 잘못된 입력에는 예외 대신 한국어 이유가 든 error dict를 돌려줘야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 표 · 계획 티켓 03</td><td>빈 제목·201자·영역 없음·없는 영역(sports)·없는 parent가 모두 error dict로 거절된다.</td></tr>
+            <tr id="FR-TASK-03"><td class="id"><span class="rid">FR-TASK-03</span></td><td class="nowrap">기능</td><td>두뇌는 <code>mcp__planner__*</code> 도구 12개(add·propose·confirm·update·move·complete·reopen·drop·list_tasks, set_priorities, record_condition, read_transcript)로 할 일을 추가, 완료, 날짜 이동, 내려놓기, 되돌리기, 조회할 수 있어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 도구 · §1-2 · 마스터 §5.3</td><td>완료 뒤 되돌리면 completed_at이 지워지고, list_tasks는 최대 50개이며 소프트 삭제는 빠진다.</td></tr>
+            <tr id="FR-TASK-04"><td class="id"><span class="rid">FR-TASK-04</span></td><td class="nowrap">기능</td><td><code>move_task</code>는 일정 시각의 한국 시간을 유지한 채 날짜만 옮기고, 날짜를 NULL로 옮기면 planned_for와 scheduled_at을 모두 지우며, scheduled_at을 바꾸는 update_task는 planned_for를 새 시각의 논리적 날짜로 다시 정해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 날짜와 시각 규칙</td><td>planned_for=None으로 옮기면 결과의 planned_for가 null이다.</td></tr>
+            <tr id="FR-TASK-05"><td class="id"><span class="rid">FR-TASK-05</span></td><td class="nowrap">기능</td><td>데이터를 바꾼 뒤에는 하네스가 ToolEvent로 만든 확인 문구(예: <q class="src">✓ 추가: 치과 (10/25 14:00)</q>, <q class="src">✓ 옮김: 운동 → 내일</q>)를 두뇌 답변 아래에 한 메시지로 붙여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 확인 문구 · §1-2</td><td>Sender 본문에서 답 다음 줄에 ✓ 문구가 있고, 도구 호출이 없으면 빈 줄도 붙지 않는다.</td></tr>
+            <tr id="FR-TASK-06"><td class="id"><span class="rid">FR-TASK-06</span></td><td class="nowrap">기능</td><td><a href="glossary.html#priority">우선순위</a>는 주기당 1~3개이고 <span class="pill task" data-s="open">open</span> 할 일만 올릴 수 있어야 하며, set_priorities는 그 기간을 통째로 바꾸고 4개 이상·중복·초안·완료를 거절하고, dropped가 되면 해당 우선순위를 지워야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 priorities · §5.7 · 마스터 P1</td><td>4개 → error, 같은 할 일 두 순위 → error, drop → 우선순위 행 삭제, 확인 문구 ✓ 우선순위(이번 주).</td></tr>
+            <tr id="FR-TASK-07"><td class="id"><span class="rid">FR-TASK-07</span></td><td class="nowrap">기능</td><td>변경 도구 호출 뒤마다 <code>data/exports/tasks.md</code>(초안 제외)를 다시 만들어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 · ADR 0003</td><td>add_task 뒤 tasks.md에 그 제목이 있다.</td></tr>
+            <tr id="FR-TASK-08"><td class="id"><span class="rid">FR-TASK-08</span></td><td class="nowrap">기능</td><td>할 일 상태 변경은 <code>task_events</code>에, 변경 도구 호출은 같은 트랜잭션에서 <code>tool_events_log</code>에 기록해야 한다(SP3 경험치 원장과 재실행 판정의 근거).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 표</td><td>add_task 뒤 tool_events_log에 run_id·conversation_id·task_id가 든 행이 있다.</td></tr>
+            <tr id="FR-TASK-09"><td class="id"><span class="rid">FR-TASK-09</span></td><td class="nowrap">기능</td><td><code>read_transcript</code>는 최대 7일 범위만 읽어야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §5.5 도구</td><td>8일 범위를 요청하면 error dict.</td></tr>
+            <tr id="FR-TASK-10"><td class="id"><span class="rid">FR-TASK-10</span></td><td class="nowrap">기능</td><td>반복 할 일(매일 운동 등)은 SP1에서 만들지 않는다.</td><td><span class="pill mo" data-s="wont"><span class="mo__k">W</span><span class="mo__t">Won’t</span></span></td><td>SP1 §2 · §5.7</td><td>해당 없음(필요해지면 사용자와 의논해 별도 설계).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-DRAFT"><svg class="ic" aria-hidden="true"><use href="#i-draft"/></svg> 초안·계획 모드 <span class="muted mono">FR-DRAFT</span></h3>
+      <p class="section__lede">비서의 제안은 초안이고, 사용자가 확정해야 목록에 오른다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>초안·계획 모드 요구사항 (8건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-DRAFT-01"><td class="id"><span class="rid">FR-DRAFT-01</span></td><td class="nowrap">기능</td><td>비서가 브리핑·체크인·회고·계획 모드에서 제안한 할 일은 <code>propose_tasks</code>로 <span class="pill task" data-s="draft">draft</span>가 되어야 하며, 확정 전에는 목록·우선순위·/today·아침 브리핑에 나오지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7 · §1-2 · 용어집 초안 할 일</td><td>propose_tasks 결과는 draft, set_priorities에 draft를 넣으면 error, /today에 draft가 없다.</td></tr>
+            <tr id="FR-DRAFT-02"><td class="id"><span class="rid">FR-DRAFT-02</span></td><td class="nowrap">기능</td><td>초안마다 <q class="src">✓ 추가</q> <q class="src">✗ 빼기</q> 인라인 버튼과 <q class="src">전부 추가</q> 버튼을 붙이고, 버튼은 두뇌를 거치지 않고 하네스가 confirm_tasks·drop_task를 직접 불러야 한다(콜백 데이터 64바이트 이하).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7 · 계획 티켓 06</td><td>d:all 콜백이 64바이트 이하이고 그 대화에서 제안된 초안 중 draft인 것만 확정한다.</td></tr>
+            <tr id="FR-DRAFT-03"><td class="id"><span class="rid">FR-DRAFT-03</span></td><td class="nowrap">기능</td><td>이미 정리된 초안의 버튼을 누르면 상태를 바꾸지 않고 <q class="src">이미 정리된 할 일이에요.</q>라고 답하고, 사용자 외 계정의 버튼은 무시해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>계획 Review Focus 2 · 티켓 06</td><td>open이 된 초안의 버튼 → 상태 그대로 + 안내, 다른 ID의 콜백 → 무시.</td></tr>
+            <tr id="FR-DRAFT-04"><td class="id"><span class="rid">FR-DRAFT-04</span></td><td class="nowrap">기능</td><td>3일 동안 확정하지 않은 초안은 알리지 않고 <span class="pill task" data-s="dropped">dropped</span>로 바꿔야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7</td><td>2일 23시간이면 그대로, 3일이면 dropped.</td></tr>
+            <tr id="FR-DRAFT-05"><td class="id"><span class="rid">FR-DRAFT-05</span></td><td class="nowrap">기능</td><td><code>/plan [주제]</code>로 <a href="glossary.html#plan_mode">계획 모드</a> 대화를 열고, 비서는 질문을 한 번에 하나씩 하며 의논이 모이면 초안을 버튼으로 확정받아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7 계획 모드 1~3</td><td>/plan이 plan 대화를 열고 plan.md로 두뇌를 부른다.</td></tr>
+            <tr id="FR-DRAFT-06"><td class="id"><span class="rid">FR-DRAFT-06</span></td><td class="nowrap">기능</td><td>계획 모드는 <code>/done</code>으로 닫히거나 마지막 메시지 뒤 2시간이 지나면 저절로 닫혀야 한다(30분 규칙을 쓰지 않음).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7 계획 모드 4</td><td>2시간 안에는 plan 대화가 먼저, 지나면 새 chat. 열린 계획이 없을 때 /done은 그렇다고 안내.</td></tr>
+            <tr id="FR-DRAFT-07"><td class="id"><span class="rid">FR-DRAFT-07</span></td><td class="nowrap">기능</td><td>계획 모드 동안 시작되는 회차는 계획 대화가 닫힐 때까지 미루고, 한계를 넘으면 skipped(late)여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.7 계획 모드 5</td><td>16:50 /plan → 17:30 체크인 대기 → 18:00 /done 뒤 다음 tick에 실행.</td></tr>
+            <tr id="FR-DRAFT-08"><td class="id"><span class="rid">FR-DRAFT-08</span></td><td class="nowrap">기능</td><td>사용자가 글로 “같이 계획 세우자”, “여기까지”라고 하면 비서가 /plan·/done을 안내해야 한다(하네스는 자연어로 모드를 바꾸지 않음).</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §5.7 계획 모드 1·4</td><td>plan.md·chat.md 지시문에 안내 규칙이 있다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-COND"><svg class="ic" aria-hidden="true"><use href="#i-condition"/></svg> 컨디션 <span class="muted mono">FR-COND</span></h3>
+      <p class="section__lede">저녁 체크인에서 1~5 버튼으로 그날 컨디션을 기록한다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>컨디션 요구사항 (3건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-COND-01"><td class="id"><span class="rid">FR-COND-01</span></td><td class="nowrap">기능</td><td>컨디션 버튼 1~5를 누르면 하네스가 두뇌를 거치지 않고 <code>record_condition</code>을 불러 버튼에 든 날짜로 기록하고 “컨디션 {n} 기록했어요.”라고 답해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 · 계획 티켓 07 · Review Focus 2</td><td>10/23 버튼을 10/24에 눌러도 10/23에 기록된다.</td></tr>
+            <tr id="FR-COND-02"><td class="id"><span class="rid">FR-COND-02</span></td><td class="nowrap">기능</td><td><code>record_condition</code>은 날짜가 없으면 논리적 오늘로, 점수는 1~5만 받고, 같은 날 다시 기록하면 덮어써야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.5 conditions · 도구</td><td>KST 01:30 기록은 전날로, 점수 6은 error dict.</td></tr>
+            <tr id="FR-COND-03"><td class="id"><span class="rid">FR-COND-03</span></td><td class="nowrap">기능</td><td>컨디션의 HP/MP 계산은 SP1에서 하지 않는다.</td><td><span class="pill mo" data-s="wont"><span class="mo__k">W</span><span class="mo__t">Won’t</span></span></td><td>SP1 §2 (SP3 담당)</td><td>해당 없음.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-CMD"><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg> 텔레그램 명령 <span class="muted mono">FR-CMD</span></h3>
+      <p class="section__lede">명령은 두뇌를 거치지 않고 하네스가 바로 답한다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>텔레그램 명령 요구사항 (4건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-CMD-01"><td class="id"><span class="rid">FR-CMD-01</span></td><td class="nowrap">기능</td><td><code>/today</code>(오늘 우선순위·일정·열린 할 일), <code>/week</code>, <code>/help</code>는 두뇌를 거치지 않고 하네스가 바로 답해야 하며 초안은 보여 주지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.6 · 마스터 §5.5</td><td>/today 응답에 우선순위·일정·open 할 일이 있고 draft는 없으며, 두뇌 호출은 0회.</td></tr>
+            <tr id="FR-CMD-02"><td class="id"><span class="rid">FR-CMD-02</span></td><td class="nowrap">기능</td><td><code>/pause &lt;일수&gt;</code>(1~14)는 지금부터 N×24시간 동안 세 루프를 멈추고 끝 시각을 <code>app_state.pause_until</code>에 저장해야 하며, 멈춤 중에도 사용자 메시지에는 답하고 <code>/unpause</code>로 풀 수 있어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.6 · 마스터 P3</td><td>/pause 15는 거절, 끝나기 1분 전 회차는 paused·1분 뒤 회차는 실행, 멈춤 중 메시지에 답이 간다.</td></tr>
+            <tr id="FR-CMD-03"><td class="id"><span class="rid">FR-CMD-03</span></td><td class="nowrap">기능</td><td>명령과 그 응답도 원문 기록에 <code>[-]</code>로 남겨야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.8 형식 · 계획 티켓 04</td><td>/today 뒤 원문 기록에 [-] 블록이 있다.</td></tr>
+            <tr id="FR-CMD-04"><td class="id"><span class="rid">FR-CMD-04</span></td><td class="nowrap">기능</td><td><code>/status</code>(SP3)와 <code>/memory</code>(SP2)는 SP1에 넣지 않는다.</td><td><span class="pill mo" data-s="wont"><span class="mo__k">W</span><span class="mo__t">Won’t</span></span></td><td>SP1 §5.6</td><td>해당 없음.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-REC"><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg> 원문 기록·가리기 <span class="muted mono">FR-REC</span></h3>
+      <p class="section__lede">모든 대화를 날짜별 md로 남기고, 인증·식별 정보는 가린다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>원문 기록·가리기 요구사항 (3건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-REC-01"><td class="id"><span class="rid">FR-REC-01</span></td><td class="nowrap">기능</td><td>하네스는 모든 대화를 <code>data/transcripts/YYYY/MM/YYYY-MM-DD.md</code>(논리적 날짜)에 <code>### HH:MM 사용자|비서 [대화 ID] (회차 키)</code> 머리글로 덧붙이기만 해야 한다(수정 금지, 두뇌는 읽기만).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.8 · §1-5</td><td>메시지 왕복 뒤 원문 기록 파일에 사용자·비서 블록이 있고, KST 01:00 메시지는 전날 파일에 있다.</td></tr>
+            <tr id="FR-REC-02"><td class="id"><span class="rid">FR-REC-02</span></td><td class="nowrap">기능</td><td>도구 호출은 인자 없이 <code>&gt; 도구: add_task</code> 한 줄로, 버튼은 <code>[버튼] 컨디션 4</code>처럼 남겨야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.8 형식</td><td>add_task 뒤 원문 기록에 > 도구: add_task, 버튼 뒤 [버튼] 줄이 있다.</td></tr>
+            <tr id="FR-REC-03"><td class="id"><span class="rid">FR-REC-03</span></td><td class="nowrap">기능</td><td>사용자 메시지는 원문 기록에 쓰기 전, 두뇌에 넘기기 전에 주민등록번호 형식, 계좌번호로 보이는 10~14자리 숫자열, 비밀번호/비번/password/PIN 뒤의 값(ASCII 영문자나 숫자가 있을 때)을 <code>[가림]</code>으로 바꿔야 한다. 휴대전화, 하이픈이 있는 유선·070 번호, +82 번호는 가리지 않는다(카드번호 15~16자리는 대상 아님).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.8 가리기 · §1-5 · 마스터 §5.4</td><td>“비번은 hunter2”가 원문 기록과 두뇌 프롬프트 모두에서 [가림]이고, 010-1234-5678·02-1234-5678·+82 번호·날짜·시각과 “비밀번호 변경했어?”는 그대로다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-PLAT"><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg> 상시 실행 <span class="muted mono">FR-PLAT</span></h3>
+      <p class="section__lede">Windows 작업 스케줄러로 로그온·절전·전원과 상관없이 돈다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>상시 실행 요구사항 (6건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="FR-PLAT-01"><td class="id"><span class="rid">FR-PLAT-01</span></td><td class="nowrap">기능</td><td>등록 스크립트는 작업 <code>my-planner</code>를 로그온·절전 복귀(Power-Troubleshooter ID 1)·5분 워치독 트리거, 배터리에서도 실행, <code>ExecutionTimeLimit=PT0S</code>, <code>IgnoreNew</code>, 1분 간격 최대 999회 재시작으로 만들어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 작업 스케줄러 · ADR 0004</td><td>XML 템플릿에 해당 값이 있고, 등록 뒤 schtasks /query /xml 결과가 같다.</td></tr>
+            <tr id="FR-PLAT-02"><td class="id"><span class="rid">FR-PLAT-02</span></td><td class="nowrap">기능</td><td>깨우기 작업 <code>my-planner-wake</code>는 각 회차 기본 시각 5분 전에 노트북을 깨우고 <code>pythonw -c pass</code>만 실행해야 하며, S4가 실패하면 등록하지 않는다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §5.1 깨우기 작업 · 스파이크 S4</td><td>기본 설정이면 weekday 08:55·17:25, weekend 09:55·17:55가 출력된다.</td></tr>
+            <tr id="FR-PLAT-03"><td class="id"><span class="rid">FR-PLAT-03</span></td><td class="nowrap">기능</td><td>프로세스는 창 없는 콘솔 → 단일 실행 잠금 → 로그 → DB 검사·마이그레이션 → 남은 회차 정리 → installed_at → 따라잡기 → 폴링 → tick 순서로 시작해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 시작 순서 0~6</td><td>호출 순서가 hide_console → 잠금 → 로그이고, 두 번째 인스턴스는 AlreadyRunning으로 바로 끝나며, installed_at은 한 번만 기록된다.</td></tr>
+            <tr id="FR-PLAT-04"><td class="id"><span class="rid">FR-PLAT-04</span></td><td class="nowrap">기능</td><td>직전 tick과 지금의 차이가 3분을 넘으면 절전 복귀로 보고 텔레그램 폴링을 다시 시작해야 한다(시작 뒤 첫 tick은 제외).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §7 롱폴링 끊김 · 스파이크 S5</td><td>공백 뒤 tick에서 on_resume이 1회 불리고, 시작 직후 첫 tick에서는 불리지 않는다.</td></tr>
+            <tr id="FR-PLAT-05"><td class="id"><span class="rid">FR-PLAT-05</span></td><td class="nowrap">기능</td><td>두뇌 호출과 전송 동안 <code>SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)</code>로 절전을 막고 끝나면 풀어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 절전 방지</td><td>가짜 keep_awake가 두뇌 호출과 전송 동안만 잡히고, 겹쳐도 마지막에 한 번 풀린다.</td></tr>
+            <tr id="FR-PLAT-06"><td class="id"><span class="rid">FR-PLAT-06</span></td><td class="nowrap">기능</td><td>콘솔 실행 중 Ctrl+C를 받으면 진행 중 두뇌 호출을 최대 30초 기다리고, 끝나지 않으면 그 회차를 interrupted로 기록해야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §5.1 종료</td><td>Ctrl+C 뒤 30초 안에 종료되고, 남은 회차가 interrupted다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="nonfunctional"><span class="section__no">5</span>비기능 요구사항</h2>
+        <p class="section__lede">비기능 30건을 29148의 품질 범주 6개로 나눴습니다.</p>
+      </div>
+      <div class="areas">
+        <a class="areas__item" href="#g-PERF"><svg class="ic" aria-hidden="true"><use href="#i-timer"/></svg><span><span class="areas__ko">성능</span><span class="areas__key">NFR-PERF · 3건</span></span></a>
+        <a class="areas__item" href="#g-REL"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg><span><span class="areas__ko">신뢰성</span><span class="areas__key">NFR-REL · 7건</span></span></a>
+        <a class="areas__item" href="#g-SEC"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span><span class="areas__ko">보안·개인정보</span><span class="areas__key">NFR-SEC · 5건</span></span></a>
+        <a class="areas__item" href="#g-OPS"><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg><span><span class="areas__ko">운영성</span><span class="areas__key">NFR-OPS · 6건</span></span></a>
+        <a class="areas__item" href="#g-PORT"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg><span><span class="areas__ko">이식성</span><span class="areas__key">NFR-PORT · 4건</span></span></a>
+        <a class="areas__item" href="#g-USE"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span><span class="areas__ko">사용성</span><span class="areas__key">NFR-USE · 5건</span></span></a>
+      </div>
+      <h3 id="g-PERF"><svg class="ic" aria-hidden="true"><use href="#i-timer"/></svg> 성능 <span class="muted mono">NFR-PERF</span></h3>
+      <p class="section__lede">두뇌 호출 횟수와 턴 수에 상한을 둔다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>성능 요구사항 (3건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="NFR-PERF-01"><td class="id"><span class="rid rid--nfr">NFR-PERF-01</span></td><td class="nowrap">비기능</td><td>하루 두뇌 호출 상한은 60회(설정 가능)여야 하며, 카운터는 <code>usage_state(date, brain_calls)</code>에 저장해 재시작 뒤에도 유지하고, 넘으면 명령만 동작하고 대화에는 <q class="src">오늘은 여기까지 생각을 아껴 둘게요. 명령(/today)은 계속 쓸 수 있어요.</q>로 답해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §7 · 마스터 §5.6</td><td>61번째 메시지에 고정 문구, 두뇌 호출 0회, /today는 그대로 동작.</td></tr>
+            <tr id="NFR-PERF-02"><td class="id"><span class="rid rid--nfr">NFR-PERF-02</span></td><td class="nowrap">비기능</td><td>두뇌 호출은 호출당 <code>max_turns=10</code>, 회차당 최대 2회여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 · 계획 Global Constraints</td><td>build_options의 max_turns가 10이고, 회차 오류 시 두뇌 호출이 2회를 넘지 않는다.</td></tr>
+            <tr id="NFR-PERF-03"><td class="id"><span class="rid rid--nfr">NFR-PERF-03</span></td><td class="nowrap">비기능</td><td>러너는 1분 간격 tick으로 회차를 판정해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §4 runner.py · 계획 티켓 05</td><td>FakeClock 월 09:00:30 tick에서 morning_brief가 queued로 제출되고, 다음 tick에 다시 제출되지 않는다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-REL"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg> 신뢰성 <span class="muted mono">NFR-REL</span></h3>
+      <p class="section__lede">크래시·손상·재부팅 뒤에도 회차와 데이터가 맞게 남는다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>신뢰성 요구사항 (7건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="NFR-REL-01"><td class="id"><span class="rid rid--nfr">NFR-REL-01</span></td><td class="nowrap">비기능</td><td>연속 7일 동안 <code>runs</code>의 <code>morning_brief</code>·<code>evening_checkin</code>·<code>review(week)</code> 예정 회차가 모두 <span class="pill run" data-s="done">done</span>이거나 따라잡기 규칙에 맞는 skip_reason을 가진 skipped여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §1-1 · 마스터 §4</td><td>docs/acceptance/sp1-checklist.md의 7일 표와 확인 SQL(loop, status, skip_reason 집계)로 확인한다.</td></tr>
+            <tr id="NFR-REL-02"><td class="id"><span class="rid rid--nfr">NFR-REL-02</span></td><td class="nowrap">비기능</td><td>시작 시 <span class="pill run" data-s="queued">queued</span>·<span class="pill run" data-s="running">running</span>으로 남은 회차는 <span class="pill run" data-s="interrupted">interrupted</span>로 바꾸고 재실행 규칙을 적용하며, outbound_text가 있는 미재전송 failed 회차는 답장 창 안이면 한 번 다시 보내야 한다. 받았지만 답하지 못한 메시지(<code>inbound_pending</code>)는 그다음에 받은 순서대로 다시 넣고, 같은 일을 두 번 하지 않으며, 3회 넘게 다시 넣은 행은 버린다(<code>inbound_dropped</code>).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1-4·4b · §5.2 전달 보장 · §5.4-3 (v4)</td><td>add_task 뒤 크래시하고 다시 시작해도 할 일은 1개다. 두뇌 호출 중 강제 종료 뒤 다시 시작하면 답은 정확히 한 번이다.</td></tr>
+            <tr id="NFR-REL-03"><td class="id"><span class="rid rid--nfr">NFR-REL-03</span></td><td class="nowrap">비기능</td><td>DB는 WAL 모드로 열고 시작 시 <code>PRAGMA quick_check</code>를 하며, 손상(결과가 ok가 아니거나 <code>OperationalError</code>가 아닌 <code>DatabaseError</code>)이면 자동 복구하지 않고 안전 모드(표식 파일로 알림 1회, 폴링·tick 없이 대기)로 들어가야 한다. <code>OperationalError</code>는 손상이 아니므로 0이 아닌 코드로 끝내 워치독에 맡긴다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1-3 · §7</td><td>손상된 DB로 두 번 시작해도 알림은 1회이고 폴링은 시작하지 않는다.</td></tr>
+            <tr id="NFR-REL-04"><td class="id"><span class="rid rid--nfr">NFR-REL-04</span></td><td class="nowrap">비기능</td><td>마이그레이션은 <code>PRAGMA user_version</code>과 <code>migrations/NNN_*.sql</code>로 번호순·트랜잭션 안에서 적용되어야 하며, 0 → 최신이 반복 실행에도 같아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §4 store/db.py · §8 저장소</td><td>새 DB에 적용하면 최신 버전, 다시 실행해도 같고, WAL과 foreign_keys가 켜져 있다.</td></tr>
+            <tr id="NFR-REL-05"><td class="id"><span class="rid rid--nfr">NFR-REL-05</span></td><td class="nowrap">비기능</td><td>재부팅 후 로그인, 절전 복귀, 전원 케이블 분리 뒤에도 사용자가 아무것도 하지 않아 하네스가 다시 동작해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §1-4</td><td>로그오프/로그온, 절전/복귀, 전원 분리 뒤 state/logs에 시작·복귀 로그가 남는다.</td></tr>
+            <tr id="NFR-REL-06"><td class="id"><span class="rid rid--nfr">NFR-REL-06</span></td><td class="nowrap">비기능</td><td>매일 첫 tick에 SQLite 백업 API로 <code>state/backups/planner-YYYY-MM-DD.db</code>를 만들고 14개를 남겨야 한다(로컬 디스크만).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §7 백업 · 마스터 §5.4</td><td>15일 연속 tick 뒤 백업이 14개 남고 이름이 planner-2026-10-23.db 형식이다.</td></tr>
+            <tr id="NFR-REL-07"><td class="id"><span class="rid rid--nfr">NFR-REL-07</span></td><td class="nowrap">비기능</td><td>프로세스가 비정상 종료되면 5분 반복 워치독 트리거가 다시 띄워야 한다(RestartOnFailure는 Stop-Process 뒤 다시 띄우지 않음).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 · 스파이크 S6</td><td>XML에 5분 반복 TimeTrigger가 있고, Stop-Process 뒤 5분 안에 다시 뜬다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-SEC"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> 보안·개인정보 <span class="muted mono">NFR-SEC</span></h3>
+      <p class="section__lede">두뇌의 접근 범위를 좁히고, 데이터는 노트북에만 둔다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>보안·개인정보 요구사항 (5건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="NFR-SEC-01"><td class="id"><span class="rid rid--nfr">NFR-SEC-01</span></td><td class="nowrap">비기능</td><td>두뇌는 <code>mcp__planner__*</code> 도구만 볼 수 있어야 한다: <code>tools=[]</code>, <code>permission_mode="dontAsk"</code>, <code>strict_mcp_config=True</code>, <code>setting_sources=[]</code>, 빈 전용 작업 폴더, auto memory·claude.ai 커넥터 끄는 환경 변수.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 두뇌 실행 설정 · ADR 0005 · 스파이크 S2·S3</td><td>build_options 값이 스펙 블록과 같고, cwd는 state_dir/brain-workdir로 끝나는 절대경로다.</td></tr>
+            <tr id="NFR-SEC-02"><td class="id"><span class="rid rid--nfr">NFR-SEC-02</span></td><td class="nowrap">비기능</td><td>원본 데이터는 노트북에만 두고 <code>data/</code>·<code>state/</code>·<code>.env</code>는 Git에서 빼야 하며, 백업은 로컬·외장 디스크만 허용한다(클라우드 백업 금지).</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>마스터 P5 · §6 · SP1 §2 · §7</td><td>.gitignore에 세 경로가 있고, 백업 경로가 로컬 state/backups다.</td></tr>
+            <tr id="NFR-SEC-03"><td class="id"><span class="rid rid--nfr">NFR-SEC-03</span></td><td class="nowrap">비기능</td><td>로그에는 메시지 본문과 도구 인자를 남기지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §7 로그 · 계획 Global Constraints</td><td>처리 뒤 로그 파일에 본문 문자열이 없고, tool_names만 있고 인자는 없다.</td></tr>
+            <tr id="NFR-SEC-04"><td class="id"><span class="rid rid--nfr">NFR-SEC-04</span></td><td class="nowrap">비기능</td><td>비밀값 <code>TELEGRAM_BOT_TOKEN</code>·<code>OWNER_TELEGRAM_ID</code>는 사용자가 직접 넣는 <code>.env</code>에만 두고, Git에 포함되는 <code>config.toml</code>에는 개인값을 두지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §9 · 마스터 §5.6</td><td>.env.example만 커밋되고 config.toml에 토큰·ID가 없다.</td></tr>
+            <tr id="NFR-SEC-05"><td class="id"><span class="rid rid--nfr">NFR-SEC-05</span></td><td class="nowrap">비기능</td><td>두뇌는 사용자 본인의 Claude 구독 로그인으로 실행하고, 작업은 “사용자가 로그온한 경우에만 실행”이어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>ADR 0001 · SP1 §5.1 · 스파이크 S1</td><td>XML에 InteractiveToken이 있고, 스파이크에서 apiKeySource가 none이었다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-OPS"><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg> 운영성 <span class="muted mono">NFR-OPS</span></h3>
+      <p class="section__lede">로그·고정 안내·등록 스크립트로 운영자가 상태를 알 수 있다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>운영성 요구사항 (6건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="NFR-OPS-01"><td class="id"><span class="rid rid--nfr">NFR-OPS-01</span></td><td class="nowrap">비기능</td><td>로그는 <code>state/logs/my-planner.jsonl</code>에 하루 단위로 회전·30일 보관하고, 두뇌 호출마다 소요 시간, 턴 수, 도구 이름 목록, 결과 상태를 남겨야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §7 로그</td><td>로그 줄에 duration_ms·turns·status가 있고, 31개 로그 중 정리 뒤 30개가 남는다.</td></tr>
+            <tr id="NFR-OPS-02"><td class="id"><span class="rid rid--nfr">NFR-OPS-02</span></td><td class="nowrap">비기능</td><td>로그인·결제 오류(<code>auth_error</code>)는 하루 한 번만 고정 문구로 알리고 그 사이 회차는 <span class="pill run" data-s="skipped">skipped <span class="reason">auth</span></span>로 두며 다시 실행하지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 · 마스터 §5.6 · ADR 0001</td><td>같은 날 두 번째 auth_error에는 알림이 없고, error=billing이면 결제 문구다.</td></tr>
+            <tr id="NFR-OPS-03"><td class="id"><span class="rid rid--nfr">NFR-OPS-03</span></td><td class="nowrap">비기능</td><td>사용 한도(<code>rate_limited</code>)는 한도 구간당 한 번만 재개 시각과 함께 알리고, <code>app_state.limited_until</code>까지 회차는 <span class="pill run" data-s="skipped">skipped <span class="reason">rate_limit</span></span>, 명령은 계속 동작해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.3 호출 결과 처리</td><td>재개가 오늘 21:30이면 “21:30쯤”, 10/30 09:00이면 “10월 30일 09:00쯤”, 지난 시각이면 지금+1시간.</td></tr>
+            <tr id="NFR-OPS-04"><td class="id"><span class="rid rid--nfr">NFR-OPS-04</span></td><td class="nowrap">비기능</td><td><code>register_task.ps1</code>로 두 작업을 등록하고 <code>check_tasks.ps1</code>로 등록 값을 점검할 수 있어야 하며, 회차 시각을 바꾸면 등록 스크립트를 다시 실행한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 · §8 반자동 점검</td><td>check_tasks.ps1이 전부 OK를 출력한다.</td></tr>
+            <tr id="NFR-OPS-05"><td class="id"><span class="rid rid--nfr">NFR-OPS-05</span></td><td class="nowrap">비기능</td><td>처리한 <code>update_id</code> 기록은 2일 뒤 지워야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>계획 티켓 12</td><td>하루 한 번 작업으로 prune_updates(2일)가 돈다.</td></tr>
+            <tr id="NFR-OPS-06"><td class="id"><span class="rid rid--nfr">NFR-OPS-06</span></td><td class="nowrap">비기능</td><td>README에 설치·BotFather 토큰·본인 ID 확인·실행법, 텔레그램 24시간 보관, ~/.claude/projects/ 세션 사본, OneDrive 밖 저장, 백업 복구 절차를 적어야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §5.1 · §5.2 · §5.3 · 계획 티켓 01·12</td><td>README에 다섯 항목이 모두 있다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-PORT"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg> 이식성 <span class="muted mono">NFR-PORT</span></h3>
+      <p class="section__lede">검증된 실행 환경(Windows 11, Python 3.12, SDK 범위)에 고정한다.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>이식성 요구사항 (4건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="NFR-PORT-01"><td class="id"><span class="rid rid--nfr">NFR-PORT-01</span></td><td class="nowrap">비기능</td><td>실행 환경은 Windows 11 노트북의 Microsoft Store판 Python 3.12 venv <code>E:\my-planner\.venv</code>여야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §3 S0 · §5.1 · 스파이크 S0</td><td>pythonw.exe가 실제 파일이고 sqlite 확장 로드가 된다(스파이크 기록).</td></tr>
+            <tr id="NFR-PORT-02"><td class="id"><span class="rid rid--nfr">NFR-PORT-02</span></td><td class="nowrap">비기능</td><td>의존성은 <code>claude-agent-sdk&gt;=0.2.173,&lt;0.3</code>(번들 CLI, cli_path 미지정), python-telegram-bot(비동기), pydantic, pytest, pytest-asyncio이고 스케줄러는 직접 구현해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §9 · §3 S1·S3</td><td>build_options가 cli_path를 넘기지 않고, PATH에 claude가 없어도 동작한다(스파이크).</td></tr>
+            <tr id="NFR-PORT-03"><td class="id"><span class="rid rid--nfr">NFR-PORT-03</span></td><td class="nowrap">비기능</td><td><code>pythonw</code>로 실행될 때 SDK가 띄우는 <code>claude.exe</code> 터미널 창이 보이지 않도록 시작 순서 0에서 창 없는 콘솔을 만들어야 하며, Windows가 아니면 아무것도 하지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 시작 순서 0 · 스파이크 S1</td><td>unavailable이면 로그에 경고 한 줄, Linux에서는 Windows 전용 테스트가 skipped.</td></tr>
+            <tr id="NFR-PORT-04"><td class="id"><span class="rid rid--nfr">NFR-PORT-04</span></td><td class="nowrap">비기능</td><td>저장소 폴더는 OneDrive 같은 동기화 폴더 밖(기본 <code>E:\my-planner</code>)에 두어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.1 저장소 위치 제약</td><td>README 안내와 실제 설치 경로가 동기화 폴더 밖이다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 id="g-USE"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg> 사용성 <span class="muted mono">NFR-USE</span></h3>
+      <p class="section__lede">피로를 늘리지 않는 짧은 존댓말, 압박 없는 문구.</p>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>사용성 요구사항 (5건)</caption>
+          <thead><tr><th class="w-min">ID</th><th class="w-min">유형</th><th>요구사항</th><th class="w-min">우선순위</th><th class="w-min">출처</th><th>인수 기준</th></tr></thead>
+          <tbody>
+            <tr id="NFR-USE-01"><td class="id"><span class="rid rid--nfr">NFR-USE-01</span></td><td class="nowrap">비기능</td><td>비서는 한국어 존댓말로 짧게 말하고, 한 메시지는 휴대폰 한 화면 안이어야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §6-1 · 계획 Global Constraints</td><td>system.md에 원칙이 있고, 7일 수용 테스트에서 긴 메시지가 없다.</td></tr>
+            <tr id="NFR-USE-02"><td class="id"><span class="rid rid--nfr">NFR-USE-02</span></td><td class="nowrap">비기능</td><td>사용자에게 보이는 문구와 프롬프트에 <q class="src">놓쳤어요</q>, <q class="src">밀렸어요</q>, <q class="src">늦었지만</q>, <q class="src">실패</q> 같은 지연·압박 표현을 쓰지 않아야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §5.4 문구 규칙 · §6-3 · 마스터 P2</td><td>확인 문구 전 종류와 프롬프트 파일(금지어 목록 블록 제외)에 금지어가 없다.</td></tr>
+            <tr id="NFR-USE-03"><td class="id"><span class="rid rid--nfr">NFR-USE-03</span></td><td class="nowrap">비기능</td><td>우선순위는 최대 3개, 첫 걸음은 15~30분 크기로 제안해야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §6-2 · 마스터 P1</td><td>set_priorities가 4개를 거절하고, system.md에 첫 걸음 크기 원칙이 있다.</td></tr>
+            <tr id="NFR-USE-04"><td class="id"><span class="rid rid--nfr">NFR-USE-04</span></td><td class="nowrap">비기능</td><td>컨디션이 2 이하면 비서가 할 일을 줄이자고 먼저 제안해야 한다.</td><td><span class="pill mo" data-s="should"><span class="mo__k">S</span>Should</span></td><td>SP1 §6-4 · 계획 티켓 07</td><td>evening_checkin.md·system.md에 규칙이 있다.</td></tr>
+            <tr id="NFR-USE-05"><td class="id"><span class="rid rid--nfr">NFR-USE-05</span></td><td class="nowrap">비기능</td><td>비서는 도구 없이 “저장했어요”라고 말하지 않고, <code>[가림]</code>으로 바뀐 정보는 저장되지 않았다고 짧게 알려야 한다.</td><td><span class="pill mo" data-s="must"><span class="mo__k">M</span>Must</span></td><td>SP1 §6-7·8</td><td>system.md에 두 원칙이 있다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="coverage"><span class="section__no">6</span>시험 연결 현황</h2>
+        <p class="section__lede">요구사항마다 구현 계획의 자동 테스트가 이름으로 연결돼 있는지 봅니다. 수동 확인은 노트북에서 사람이 확인하는 항목입니다.</p>
+      </div>
+      <div class="legend">
+        <div class="legend__title">범례 · 막대</div>
+        <ul class="legend__list">
+          <li><span class="legend__glyph"><svg width="22" height="12" aria-hidden="true"><rect class="d-box" x="1" y="1" width="20" height="10" rx="2"/></svg></span><span class="legend__term">자동 테스트 있음</span><span class="legend__desc">계획 Slices의 테스트 이름이 연결됨</span></li>
+          <li><span class="legend__glyph"><svg width="22" height="12" aria-hidden="true"><rect class="d-box-2" x="1" y="1" width="20" height="10" rx="2"/></svg></span><span class="legend__term">수동·검토</span><span class="legend__desc">수동 확인, 반자동 점검, 문서·코드 검토</span></li>
+          <li><span class="legend__glyph"><svg width="22" height="12" aria-hidden="true"><rect class="d-plain" x="1" y="1" width="20" height="10" rx="2" stroke-dasharray="3 2"/></svg></span><span class="legend__term">Won’t</span><span class="legend__desc">범위 밖이라 시험 대상 아님</span></li>
+        </ul>
+      </div>
+      <figure class="fig">
+        <div class="fig__head"><span class="fig__no"></span><span class="fig__title">묶음별 요구사항 수와 자동 테스트 연결</span><span class="fig__std">막대 · 숫자 = 자동/범위 안</span></div>
+        <div class="fig__body">
+<svg class="svg-wide" viewBox="0 0 680 458" role="img" aria-label="영역별 요구사항 수와 자동 테스트가 연결된 수. 표 보기가 아래에 있습니다.">
+<rect class="d-plain" x="0.5" y="0.5" width="679" height="457" rx="2"/>
+<path class="d-rule" d="M170.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="170.0" y="440" text-anchor="middle">0</text>
+<path class="d-rule" d="M240.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="240.0" y="440" text-anchor="middle">2</text>
+<path class="d-rule" d="M310.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="310.0" y="440" text-anchor="middle">4</text>
+<path class="d-rule" d="M380.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="380.0" y="440" text-anchor="middle">6</text>
+<path class="d-rule" d="M450.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="450.0" y="440" text-anchor="middle">8</text>
+<path class="d-rule" d="M520.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="520.0" y="440" text-anchor="middle">10</text>
+<path class="d-rule" d="M590.0 8 V424" stroke-width="1"/>
+<text class="d-mono" x="590.0" y="440" text-anchor="middle">12</text>
+<text class="d-text-sm" x="380" y="454" text-anchor="middle">요구사항 수(건)</text>
+<g><title>FR-CH 채널·사용자 잠금: 모두 6건, 자동 테스트 6건, 수동·검토 0건</title>
+<text class="d-text" x="160" y="26" text-anchor="end">채널·사용자 잠금</text>
+<rect class="d-box" x="170.0" y="13" width="208.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="386.0" y="26">6/6</text>
+</g>
+<g><title>FR-CONV 대화·두뇌 세션: 모두 12건, 자동 테스트 12건, 수동·검토 0건</title>
+<text class="d-text" x="160" y="52" text-anchor="end">대화·두뇌 세션</text>
+<rect class="d-box" x="170.0" y="39" width="418.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="596.0" y="52">12/12</text>
+</g>
+<g><title>FR-LOOP 루프·회차: 모두 12건, 자동 테스트 11건, 수동·검토 1건</title>
+<text class="d-text" x="160" y="78" text-anchor="end">루프·회차</text>
+<rect class="d-box" x="170.0" y="65" width="383.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="555.0" y="65" width="33.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="596.0" y="78">11/12</text>
+</g>
+<g><title>FR-CATCH 따라잡기: 모두 9건, 자동 테스트 9건, 수동·검토 0건</title>
+<text class="d-text" x="160" y="104" text-anchor="end">따라잡기</text>
+<rect class="d-box" x="170.0" y="91" width="313.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="491.0" y="104">9/9</text>
+</g>
+<g><title>FR-TASK 할 일·우선순위: 모두 10건, 자동 테스트 9건, 수동·검토 0건, 제외 1건</title>
+<text class="d-text" x="160" y="130" text-anchor="end">할 일·우선순위</text>
+<rect class="d-box" x="170.0" y="117" width="313.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-plain" x="485.0" y="117" width="33.0" height="16" rx="2" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="d-mono" x="526.0" y="130">9/9</text>
+</g>
+<g><title>FR-DRAFT 초안·계획 모드: 모두 8건, 자동 테스트 7건, 수동·검토 1건</title>
+<text class="d-text" x="160" y="156" text-anchor="end">초안·계획 모드</text>
+<rect class="d-box" x="170.0" y="143" width="243.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="415.0" y="143" width="33.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="456.0" y="156">7/8</text>
+</g>
+<g><title>FR-COND 컨디션: 모두 3건, 자동 테스트 2건, 수동·검토 0건, 제외 1건</title>
+<text class="d-text" x="160" y="182" text-anchor="end">컨디션</text>
+<rect class="d-box" x="170.0" y="169" width="68.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-plain" x="240.0" y="169" width="33.0" height="16" rx="2" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="d-mono" x="281.0" y="182">2/2</text>
+</g>
+<g><title>FR-CMD 텔레그램 명령: 모두 4건, 자동 테스트 3건, 수동·검토 0건, 제외 1건</title>
+<text class="d-text" x="160" y="208" text-anchor="end">텔레그램 명령</text>
+<rect class="d-box" x="170.0" y="195" width="103.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-plain" x="275.0" y="195" width="33.0" height="16" rx="2" stroke-width="1" stroke-dasharray="3 2"/>
+<text class="d-mono" x="316.0" y="208">3/3</text>
+</g>
+<g><title>FR-REC 원문 기록·가리기: 모두 3건, 자동 테스트 3건, 수동·검토 0건</title>
+<text class="d-text" x="160" y="234" text-anchor="end">원문 기록·가리기</text>
+<rect class="d-box" x="170.0" y="221" width="103.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="281.0" y="234">3/3</text>
+</g>
+<g><title>FR-PLAT 상시 실행: 모두 6건, 자동 테스트 5건, 수동·검토 1건</title>
+<text class="d-text" x="160" y="260" text-anchor="end">상시 실행</text>
+<rect class="d-box" x="170.0" y="247" width="173.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="345.0" y="247" width="33.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="386.0" y="260">5/6</text>
+</g>
+<path class="d-line" d="M8 268 H672" stroke-width="1" stroke-dasharray="4 3"/>
+<g><title>NFR-PERF 성능: 모두 3건, 자동 테스트 3건, 수동·검토 0건</title>
+<text class="d-text" x="160" y="286" text-anchor="end">성능</text>
+<rect class="d-box" x="170.0" y="273" width="103.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="281.0" y="286">3/3</text>
+</g>
+<g><title>NFR-REL 신뢰성: 모두 7건, 자동 테스트 5건, 수동·검토 2건</title>
+<text class="d-text" x="160" y="312" text-anchor="end">신뢰성</text>
+<rect class="d-box" x="170.0" y="299" width="173.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="345.0" y="299" width="68.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="421.0" y="312">5/7</text>
+</g>
+<g><title>NFR-SEC 보안·개인정보: 모두 5건, 자동 테스트 3건, 수동·검토 2건</title>
+<text class="d-text" x="160" y="338" text-anchor="end">보안·개인정보</text>
+<rect class="d-box" x="170.0" y="325" width="103.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="275.0" y="325" width="68.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="351.0" y="338">3/5</text>
+</g>
+<g><title>NFR-OPS 운영성: 모두 6건, 자동 테스트 3건, 수동·검토 3건</title>
+<text class="d-text" x="160" y="364" text-anchor="end">운영성</text>
+<rect class="d-box" x="170.0" y="351" width="103.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="275.0" y="351" width="103.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="386.0" y="364">3/6</text>
+</g>
+<g><title>NFR-PORT 이식성: 모두 4건, 자동 테스트 2건, 수동·검토 2건</title>
+<text class="d-text" x="160" y="390" text-anchor="end">이식성</text>
+<rect class="d-box" x="170.0" y="377" width="68.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="240.0" y="377" width="68.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="316.0" y="390">2/4</text>
+</g>
+<g><title>NFR-USE 사용성: 모두 5건, 자동 테스트 2건, 수동·검토 3건</title>
+<text class="d-text" x="160" y="416" text-anchor="end">사용성</text>
+<rect class="d-box" x="170.0" y="403" width="68.0" height="16" rx="2" stroke-width="1"/>
+<rect class="d-box-2" x="240.0" y="403" width="103.0" height="16" rx="2" stroke-width="1"/>
+<text class="d-mono" x="351.0" y="416">2/5</text>
+</g>
+</svg>
+        </div>
+        <figcaption class="fig__cap">기능 요구사항은 거의 모두 자동 테스트로 확인하고, 수동 확인은 비기능(운영·이식성·사용성)과 아침 브리핑 내용처럼 두뇌 답변 품질에 달린 항목에 몰려 있습니다. 점선 위는 기능, 아래는 비기능입니다. 막대에 마우스를 올리면 수치가 보입니다. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
+      </figure>
+      <details class="more" id="coverage-table">
+        <summary><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg>표로 보기 <span class="more__meta">묶음 16개</span><svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+        <div class="more__body">
+          <div class="table-wrap">
+            <table class="dt">
+              <caption>묶음별 우선순위와 자동 테스트 연결</caption>
+              <thead><tr><th>묶음</th><th class="w-min">접두</th><th class="num">전체</th><th class="num">Must</th><th class="num">Should</th><th class="num">Won’t</th><th class="num">자동 테스트</th><th class="num">연결률</th></tr></thead>
+              <tbody>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg> 채널·사용자 잠금</td><td class="mono nowrap">FR-CH</td><td class="num">6</td><td class="num">5</td><td class="num">1</td><td class="num">0</td><td class="num">6</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg> 대화·두뇌 세션</td><td class="mono nowrap">FR-CONV</td><td class="num">12</td><td class="num">11</td><td class="num">1</td><td class="num">0</td><td class="num">12</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> 루프·회차</td><td class="mono nowrap">FR-LOOP</td><td class="num">12</td><td class="num">12</td><td class="num">0</td><td class="num">0</td><td class="num">11</td><td class="num">92%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-return"/></svg> 따라잡기</td><td class="mono nowrap">FR-CATCH</td><td class="num">9</td><td class="num">9</td><td class="num">0</td><td class="num">0</td><td class="num">9</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg> 할 일·우선순위</td><td class="mono nowrap">FR-TASK</td><td class="num">10</td><td class="num">8</td><td class="num">1</td><td class="num">1</td><td class="num">9</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-draft"/></svg> 초안·계획 모드</td><td class="mono nowrap">FR-DRAFT</td><td class="num">8</td><td class="num">7</td><td class="num">1</td><td class="num">0</td><td class="num">7</td><td class="num">88%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-condition"/></svg> 컨디션</td><td class="mono nowrap">FR-COND</td><td class="num">3</td><td class="num">2</td><td class="num">0</td><td class="num">1</td><td class="num">2</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg> 텔레그램 명령</td><td class="mono nowrap">FR-CMD</td><td class="num">4</td><td class="num">3</td><td class="num">0</td><td class="num">1</td><td class="num">3</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg> 원문 기록·가리기</td><td class="mono nowrap">FR-REC</td><td class="num">3</td><td class="num">3</td><td class="num">0</td><td class="num">0</td><td class="num">3</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg> 상시 실행</td><td class="mono nowrap">FR-PLAT</td><td class="num">6</td><td class="num">4</td><td class="num">2</td><td class="num">0</td><td class="num">5</td><td class="num">83%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-timer"/></svg> 성능</td><td class="mono nowrap">NFR-PERF</td><td class="num">3</td><td class="num">3</td><td class="num">0</td><td class="num">0</td><td class="num">3</td><td class="num">100%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg> 신뢰성</td><td class="mono nowrap">NFR-REL</td><td class="num">7</td><td class="num">7</td><td class="num">0</td><td class="num">0</td><td class="num">5</td><td class="num">71%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> 보안·개인정보</td><td class="mono nowrap">NFR-SEC</td><td class="num">5</td><td class="num">5</td><td class="num">0</td><td class="num">0</td><td class="num">3</td><td class="num">60%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg> 운영성</td><td class="mono nowrap">NFR-OPS</td><td class="num">6</td><td class="num">4</td><td class="num">2</td><td class="num">0</td><td class="num">3</td><td class="num">50%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg> 이식성</td><td class="mono nowrap">NFR-PORT</td><td class="num">4</td><td class="num">4</td><td class="num">0</td><td class="num">0</td><td class="num">2</td><td class="num">50%</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg> 사용성</td><td class="mono nowrap">NFR-USE</td><td class="num">5</td><td class="num">4</td><td class="num">1</td><td class="num">0</td><td class="num">2</td><td class="num">40%</td></tr>
+            <tr class="group"><th colspan="2">합계</th><th class="num">103</th><th class="num">91</th><th class="num">9</th><th class="num">3</th><th class="num">85</th><th class="num">85%</th></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">연결률 = 자동 테스트가 연결된 요구사항 ÷ 범위 안(Won’t 제외) 요구사항.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="rtm"><span class="section__no">7</span>요구사항 추적 매트릭스 (RTM)</h2>
+        <p class="section__lede">요구사항 → 스펙 절 → 티켓(GitHub 이슈) → 테스트 → 구현 상태. 구현 상태는 main <code class="mono">0336f4d</code>와 이슈 상태(2026-10-23 조회)로 정했습니다.</p>
+      </div>
+      <aside class="callout callout--info">
+        <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+        <div class="callout__body"><span class="callout__title">지금 상태</span><span>main에 합쳐진 티켓: SP1-00, SP1-01, SP1-02, SP1-03, SP1-04, SP1-05, SP1-06, SP1-07, SP1-08, SP1-09, SP1-10, SP1-11, SP1-12. 티켓별 진행은 <a href="schedule.html#board">WBS·일정의 상태 보드</a>에 있습니다.</span></div>
+      </aside>
+      <div class="table-wrap table-wrap--scroll">
+        <table class="dt">
+          <caption>요구사항 추적 매트릭스 (103건)</caption>
+          <thead><tr><th class="w-min">요구사항</th><th class="w-min">스펙 절</th><th class="w-min">티켓 · 이슈</th><th>테스트 (계획 Slices · main의 추가 테스트)</th><th class="w-min">상태</th></tr></thead>
+          <tbody>
+            <tr><td class="id"><a class="rid" href="#FR-CH-01">FR-CH-01</a></td><td>SP1 §5.2 · ADR 0002</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_accept_owner_private_text</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CH-02">FR-CH-02</a></td><td>SP1 §5.2 · §1-3</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_ignore_other_user</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_ignore_group_chat_from_owner</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_ignored_update_logs_sender_id_only</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CH-03">FR-CH-03</a></td><td>SP1 §5.2</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_duplicate_update_id_ignored</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_update_ids_marked_after_send</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_fresh_message_reusing_old_update_id_calls_brain</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CH-04">FR-CH-04</a></td><td>SP1 §5.2 · §5.3</td><td><a class="mono nowrap" href="schedule.html#SP1-02">SP1-02</a> <span class="muted nowrap">#5</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_stale_message_notice</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CH-05">FR-CH-05</a></td><td>계획 Review Focus 1 · SP1 §5.3</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_non_text_message_gets_polite_reply</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_edited_message_ignored</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CH-06">FR-CH-06</a></td><td>계획 Review Focus 3</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_split_long_reply</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_split_counts_utf16_units</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_buttons_only_on_last_chunk</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-01">FR-CONV-01</a></td><td>SP1 §5.3 대화 규칙</td><td><a class="mono nowrap" href="schedule.html#SP1-02">SP1-02</a> <span class="muted nowrap">#5</span><br><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span><br><a class="mono nowrap" href="schedule.html#SP1-11">SP1-11</a> <span class="muted nowrap">#14</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_chat_resumes_within_30_minutes</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_chat_new_after_31_minutes</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_window_beats_30_minutes</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_takes_precedence_and_expires_after_2h</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-02">FR-CONV-02</a></td><td>SP1 §5.3 (v4, 스펙 갭 7)</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span><br><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_limits_and_reply_windows</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_to_evening_checkin_after_midnight_continues</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_after_0400_opens_new_chat</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_within_morning_window_continues_run_conversation</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_window_routed_by_sent_time</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_sent_before_catchup_run_joins_the_earlier_run</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-03">FR-CONV-03</a></td><td>SP1 §5.3</td><td><a class="mono nowrap" href="schedule.html#SP1-02">SP1-02</a> <span class="muted nowrap">#5</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_resume_failure_falls_back_to_new_session_with_last_20_messages</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-04">FR-CONV-04</a></td><td>SP1 §5.2 · 계획 Review Focus 5</td><td><a class="mono nowrap" href="schedule.html#SP1-02">SP1-02</a> <span class="muted nowrap">#5</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_queued_messages_coalesce</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_coalesced_updates_not_done_when_send_fails</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-05">FR-CONV-05</a></td><td>SP1 §5.3 매 호출 알림</td><td><a class="mono nowrap" href="schedule.html#SP1-02">SP1-02</a> <span class="muted nowrap">#5</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_truncate_huge_input</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redaction_notice_on_resumed_session</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-06">FR-CONV-06</a></td><td>SP1 §5.3 앞머리 컨텍스트</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span><br><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span><br><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span><br><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_preamble_lists_at_most_30_open_tasks_in_order</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_preamble_today_schedule</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_preamble_includes_today_and_week_priorities</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_preamble_priorities_skip_tasks_no_longer_open</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-07">FR-CONV-07</a></td><td>SP1 §5.3 프롬프트 선택</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span><br><a class="mono nowrap" href="schedule.html#SP1-11">SP1-11</a> <span class="muted nowrap">#14</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reply_to_run_has_no_loop_prompt</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_uses_plan_prompt</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-08">FR-CONV-08</a></td><td>SP1 §5.3 오류 판별 규칙 · 스파이크 S1</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_classify_auth_error</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_classify_rate_limited</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_classify_max_turns_and_error</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-09">FR-CONV-09</a></td><td>SP1 §5.3 호출 결과 처리 (v4, 스펙 갭 1)</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_max_turns_sends_confirmations_and_fixed_text</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_evening_run_hitting_max_turns_after_tools_sends_confirmations_and_buttons</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_evening_run_hitting_max_turns_without_tools_stays_failed</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-10">FR-CONV-10</a></td><td>SP1 §5.3 (v4, 최종 리뷰 Important 3)</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_error_retries_3_times_with_backoff_then_fixed_text</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_hung_brain_call_times_out_and_message_retries</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_brain_timeout_defaults_to_300_seconds</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-11">FR-CONV-11</a></td><td>계획 티켓 01 디스패처</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_typing_every_5_seconds_during_brain_call</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CONV-12">FR-CONV-12</a></td><td>마스터 §5.5 · 계획 티켓 05</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_run_and_message_serialized</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-01">FR-LOOP-01</a></td><td>SP1 §5.4 회차 정의 · §10</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span><br><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span><br><a class="mono nowrap" href="schedule.html#SP1-08">SP1-08</a> <span class="muted nowrap">#11</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_weekday_times</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_weekend_times</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_sunday_has_review_at_1800</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-02">FR-LOOP-02</a></td><td>SP1 §5.4 회차 만들기</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_half_open_interval</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_window_start_first_run_uses_installed_at</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_window_start_capped_7_days</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_window_start_future_last_seen_clamped_to_now</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_tick_creates_runs_and_submits_due</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-03">FR-LOOP-03</a></td><td>SP1 §5.4 하트비트</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_tick_updates_last_seen_even_when_nothing_due</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-04">FR-LOOP-04</a></td><td>SP1 §5.4 재시도와 재실행 1</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_morning_run_two_phase</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-05">FR-LOOP-05</a></td><td>SP1 §5.4-2 · §7 (v4)</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_send_retries_3_then_failed_then_resend_once</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_message_reply_retried_until_sent</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_message_reply_final_send_failure_leaves_update_unmarked</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_command_reply_retried_until_sent</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-06">FR-LOOP-06</a></td><td>SP1 §5.4-3 · §5.4-4</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_brain_failure_without_tool_events_reruns_once</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_brain_failure_with_tool_events_not_rerun</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_run_failure_sends_nothing_to_user</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-07">FR-LOOP-07</a></td><td>SP1 §5.4 회차 정의</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><span class="muted">수동 확인(티켓 05 마무리)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-08">FR-LOOP-08</a></td><td>SP1 §5.4 회차 정의</td><td><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_evening_run_sets_ask_condition_for_logical_date</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-09">FR-LOOP-09</a></td><td>SP1 §5.4 회차 정의</td><td><a class="mono nowrap" href="schedule.html#SP1-08">SP1-08</a> <span class="muted nowrap">#11</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_weekly_review_saved_when_merged_into_evening</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-10">FR-LOOP-10</a></td><td>SP1 §5.4 합치기</td><td><a class="mono nowrap" href="schedule.html#SP1-08">SP1-08</a> <span class="muted nowrap">#11</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_9</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_merged_runs_marked_done_after_send</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-11">FR-LOOP-11</a></td><td>SP1 §5.4 합치기 · §5.3 · 마스터 §5.5</td><td><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_fourth_proactive_message_waits_then_merges_or_late</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_deferred_run_reconsidered_next_tick</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-LOOP-12">FR-LOOP-12</a></td><td>SP1 §5.3 · 마스터 §5.5 · §8</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_logical_date_boundary_in_transcript</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_daily_jobs_run_once_per_logical_day</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-01">FR-CATCH-01</a></td><td>SP1 §5.4 따라잡기 R1</td><td><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_5</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_tick_after_25h_gap_creates_single_return_run</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-02">FR-CATCH-02</a></td><td>SP1 §5.4 R1 · §8 표 6행</td><td><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_6</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_return_before_morning_skips_that_morning</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-03">FR-CATCH-03</a></td><td>SP1 §5.4 R1 · §8 표 5~7행</td><td><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_7</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_carried_review_not_executed_alone</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_carried_review_late_after_3_days</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_r1_carried_review_merges_into_next_contact</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-04">FR-CATCH-04</a></td><td>SP1 §5.4 R1·R2 · §8 표 8행</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_8</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_paused_skips_with_reason</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-05">FR-CATCH-05</a></td><td>SP1 §5.4 R3 · §7</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_daily_cap_skips_with_reason</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-06">FR-CATCH-06</a></td><td>SP1 §5.4 R4·R5 · §8 표 1~4행</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span><br><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_1</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_2</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_3</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_4</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-07">FR-CATCH-07</a></td><td>SP1 §5.4 어제 컨디션</td><td><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_morning_asks_yesterday_condition_when_evening_not_done</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_morning_no_ask_when_condition_exists</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-08">FR-CATCH-08</a></td><td>SP1 §8 시계 역행 · 계획 Review Focus 4</td><td><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_clock_went_backwards</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_clock_jumped_far_ahead_is_capped_at_7_days</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_clock_backwards_logs_warning</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CATCH-09">FR-CATCH-09</a></td><td>SP1 §8 표 10행</td><td><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_spec_table_row_10</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-01">FR-TASK-01</a></td><td>SP1 §5.7 · §5.5 도구</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_creates_open_task_and_exports</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-02">FR-TASK-02</a></td><td>SP1 §5.5 표 · 계획 티켓 03</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_bad_area_returns_error_dict</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_requires_area</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_title_length_limits</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_parent_must_exist</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_migrate_to_2_with_constraints</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-03">FR-TASK-03</a></td><td>SP1 §5.5 도구 · §1-2 · 마스터 §5.3</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span><br><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span><br><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span><br><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_complete_then_reopen_clears_completed_at</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_list_tasks_limit_capped_at_50</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_list_excludes_soft_deleted</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_two_servers_keep_separate_contexts</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-04">FR-TASK-04</a></td><td>SP1 §5.5 날짜와 시각 규칙</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_move_task_to_no_date</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_move_task_keeps_local_time_of_scheduled_task</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_move_task_to_no_date_clears_schedule</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_update_scheduled_at_rederives_planned_for</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_move_early_morning_schedule_keeps_logical_date</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_early_morning_schedule_belongs_to_previous_logical_day</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-05">FR-TASK-05</a></td><td>SP1 §5.5 확인 문구 · §1-2</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span><br><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span><br><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmation_add_with_schedule</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmation_move_to_tomorrow</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmation_move_to_no_date</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmations_appended_below_reply</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_no_tool_calls_no_confirmation_block</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmation_one_digit_month_day_schedule</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmation_priorities_set</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-06">FR-TASK-06</a></td><td>SP1 §5.5 priorities · §5.7 · 마스터 P1</td><td><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_replaces_whole_period</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_four_returns_error</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_rejects_draft_and_done</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_priority_unique_task_per_period</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_drop_removes_from_priorities</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_rejects_bad_cadence_or_period</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_unhashable_id_returns_error</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_reachable_through_mcp_handler</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-07">FR-TASK-07</a></td><td>SP1 §5.5 · ADR 0003</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_creates_open_task_and_exports</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_tasks_md_reflects_complete_and_move_and_skips_drafts</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-08">FR-TASK-08</a></td><td>SP1 §5.5 표</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_creates_open_task_and_exports</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_crash_mid_run_no_duplicate_task</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_every_mutating_tool_writes_tool_events_log</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_add_task_rolls_back_when_event_log_write_fails</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_complete_rolls_back_when_event_log_write_fails</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_reopen_dropped_task_records_reopened_event</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-09">FR-TASK-09</a></td><td>SP1 §5.5 도구</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_read_transcript_more_than_7_days_returns_error</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-TASK-10">FR-TASK-10</a></td><td>SP1 §2 · §5.7</td><td><span class="muted">—</span></td><td><span class="muted">해당 없음</span></td><td><span class="pill impl" data-s="none">해당 없음</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-01">FR-DRAFT-01</a></td><td>SP1 §5.7 · §1-2 · 용어집 초안 할 일</td><td><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_propose_tasks_creates_drafts</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_drafts_cannot_be_priorities</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_today_hides_drafts</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-02">FR-DRAFT-02</a></td><td>SP1 §5.7 · 계획 티켓 06</td><td><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_draft_buttons_layout</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_draft_all_callback_fits_64_bytes_and_confirms_conversation_drafts</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirm_tasks_only_drafts</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-03">FR-DRAFT-03</a></td><td>계획 Review Focus 2 · 티켓 06</td><td><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_stale_draft_button</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_callback_from_other_user_ignored</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-04">FR-DRAFT-04</a></td><td>SP1 §5.7</td><td><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_expire_drafts_after_3_days</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-05">FR-DRAFT-05</a></td><td>SP1 §5.7 계획 모드 1~3</td><td><a class="mono nowrap" href="schedule.html#SP1-11">SP1-11</a> <span class="muted nowrap">#14</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_command_opens_plan_conversation</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_uses_plan_prompt</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-06">FR-DRAFT-06</a></td><td>SP1 §5.7 계획 모드 4</td><td><a class="mono nowrap" href="schedule.html#SP1-11">SP1-11</a> <span class="muted nowrap">#14</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_takes_precedence_and_expires_after_2h</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_done_without_plan_says_nothing_open</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-07">FR-DRAFT-07</a></td><td>SP1 §5.7 계획 모드 5</td><td><a class="mono nowrap" href="schedule.html#SP1-11">SP1-11</a> <span class="muted nowrap">#14</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_open_defers_within_limit</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_open_past_limit_is_late</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_plan_mode_defers_run</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-DRAFT-08">FR-DRAFT-08</a></td><td>SP1 §5.7 계획 모드 1·4</td><td><a class="mono nowrap" href="schedule.html#SP1-11">SP1-11</a> <span class="muted nowrap">#14</span></td><td><span class="muted">수동 확인(프롬프트 검토)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-COND-01">FR-COND-01</a></td><td>SP1 §5.4 · 계획 티켓 07 · Review Focus 2</td><td><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_condition_buttons_layout</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_condition_button_records_original_date</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-COND-02">FR-COND-02</a></td><td>SP1 §5.5 conditions · 도구</td><td><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_record_condition_defaults_to_logical_today</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_record_condition_out_of_range_error</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-COND-03">FR-COND-03</a></td><td>SP1 §2 (SP3 담당)</td><td><span class="muted">—</span></td><td><span class="muted">해당 없음</span></td><td><span class="pill impl" data-s="none">해당 없음</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CMD-01">FR-CMD-01</a></td><td>SP1 §5.6 · 마스터 §5.5</td><td><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_today_command_shows_priorities_schedule_open_no_drafts</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_week_and_help_commands</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_command_from_other_user_ignored</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_commands_use_logical_date_before_boundary</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_build_application_gets_tools</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CMD-02">FR-CMD-02</a></td><td>SP1 §5.6 · 마스터 P3</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_pause_sets_until_and_rejects_15</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_unpause</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_pause_boundary</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_paused_still_answers_messages</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CMD-03">FR-CMD-03</a></td><td>SP1 §5.8 형식 · 계획 티켓 04</td><td><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_command_logged_to_transcript</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_command_transcript_failure_does_not_resend_on_redelivery</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-CMD-04">FR-CMD-04</a></td><td>SP1 §5.6</td><td><span class="muted">—</span></td><td><span class="muted">해당 없음</span></td><td><span class="pill impl" data-s="none">해당 없음</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-REC-01">FR-REC-01</a></td><td>SP1 §5.8 · §1-5</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_message_roundtrip_writes_transcript_both_sides</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_logical_date_boundary_in_transcript</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-REC-02">FR-REC-02</a></td><td>SP1 §5.8 형식</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span><br><a class="mono nowrap" href="schedule.html#SP1-06">SP1-06</a> <span class="muted nowrap">#9</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmations_appended_below_reply</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_button_logged_to_transcript</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-REC-03">FR-REC-03</a></td><td>SP1 §5.8 가리기 · §1-5 · 마스터 §5.4</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_rrn</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_account_number</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_password_context</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_password_context_more_forms</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_keeps_phone_and_dates</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redacted_text_reaches_neither_transcript_nor_brain</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_keeps_landline_numbers</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_keeps_plus82_numbers</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_redact_password_keyword_without_secret_value</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-PLAT-01">FR-PLAT-01</a></td><td>SP1 §5.1 작업 스케줄러 · ADR 0004</td><td><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_task_settings</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_task_triggers</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_task_working_directory_is_root</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-PLAT-02">FR-PLAT-02</a></td><td>SP1 §5.1 깨우기 작업 · 스파이크 S4</td><td><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_wake_task_has_wake_to_run_battery_and_noop_action</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_wake_times_output</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-PLAT-03">FR-PLAT-03</a></td><td>SP1 §5.1 시작 순서 0~6</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span><br><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_hides_console_first</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_second_instance_exits</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_installed_at_set_once</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-PLAT-04">FR-PLAT-04</a></td><td>SP1 §7 롱폴링 끊김 · 스파이크 S5</td><td><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_resume_detected_after_gap_calls_on_resume</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_first_tick_after_start_does_not_call_on_resume</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-PLAT-05">FR-PLAT-05</a></td><td>SP1 §5.1 절전 방지</td><td><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_keep_awake_held_during_brain_and_send</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid" href="#FR-PLAT-06">FR-PLAT-06</a></td><td>SP1 §5.1 종료</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><span class="muted">수동 확인(콘솔 실행)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PERF-01">NFR-PERF-01</a></td><td>SP1 §7 · 마스터 §5.6</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_daily_cap_reply_without_brain_call</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PERF-02">NFR-PERF-02</a></td><td>SP1 §5.3 · 계획 Global Constraints</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_build_options_locks_down_tools</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_run_error_no_backoff_max_two_calls</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PERF-03">NFR-PERF-03</a></td><td>SP1 §4 runner.py · 계획 티켓 05</td><td><a class="mono nowrap" href="schedule.html#SP1-05">SP1-05</a> <span class="muted nowrap">#8</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_tick_creates_runs_and_submits_due</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_run_not_resubmitted_while_queued</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-01">NFR-REL-01</a></td><td>SP1 §1-1 · 마스터 §4</td><td><a class="mono nowrap" href="schedule.html#SP1-14">SP1-14</a> <span class="muted nowrap">#17</span></td><td><span class="muted">수동 수용 테스트(7일)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-02">NFR-REL-02</a></td><td>SP1 §5.1-4·4b · §5.2 전달 보장 · §5.4-3 (v4)</td><td><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_startup_marks_queued_and_running_as_interrupted</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_interrupted_without_tool_events_reruns_within_limit</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_crash_mid_run_no_duplicate_task</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_failed_run_resent_on_start_within_reply_window</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_kill_between_submit_and_send_then_restart_replies_exactly_once</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_kill_after_tools_ran_then_restart_sends_confirmation_without_brain</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_pending_row_dropped_after_3_attempts</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-03">NFR-REL-03</a></td><td>SP1 §5.1-3 · §7</td><td><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_integrity_failure_notifies_once_and_idles</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_damaged_pages_fail_quick_check_and_enter_safe_mode</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_operational_error_exits_without_safe_mode</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-04">NFR-REL-04</a></td><td>SP1 §4 store/db.py · §8 저장소</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_migrate_fresh_then_again</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_migrate_to_2_with_constraints</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-05">NFR-REL-05</a></td><td>SP1 §1-4</td><td><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span><br><a class="mono nowrap" href="schedule.html#SP1-14">SP1-14</a> <span class="muted nowrap">#17</span></td><td><span class="muted">수동 확인(티켓 13) · 수용 테스트</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-06">NFR-REL-06</a></td><td>SP1 §7 백업 · 마스터 §5.4</td><td><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_backup_name_and_keeps_14</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-REL-07">NFR-REL-07</a></td><td>SP1 §5.1 · 스파이크 S6</td><td><a class="mono nowrap" href="schedule.html#SP1-00">SP1-00</a> <span class="muted nowrap">#3</span><br><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_task_triggers</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-SEC-01">NFR-SEC-01</a></td><td>SP1 §5.3 두뇌 실행 설정 · ADR 0005 · 스파이크 S2·S3</td><td><a class="mono nowrap" href="schedule.html#SP1-00">SP1-00</a> <span class="muted nowrap">#3</span><br><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_build_options_locks_down_tools</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_build_options_resume_passthrough</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-SEC-02">NFR-SEC-02</a></td><td>마스터 P5 · §6 · SP1 §2 · §7</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><span class="muted">검토(.gitignore, 코드 리뷰)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-SEC-03">NFR-SEC-03</a></td><td>SP1 §7 로그 · 계획 Global Constraints</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_logging_drops_message_bodies</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_brain_call_log_has_tool_names</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_third_party_fstring_message_dropped</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-SEC-04">NFR-SEC-04</a></td><td>SP1 §9 · 마스터 §5.6</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><span class="muted">검토(저장소 파일)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-SEC-05">NFR-SEC-05</a></td><td>ADR 0001 · SP1 §5.1 · 스파이크 S1</td><td><a class="mono nowrap" href="schedule.html#SP1-00">SP1-00</a> <span class="muted nowrap">#3</span><br><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_task_settings</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-OPS-01">NFR-OPS-01</a></td><td>SP1 §7 로그</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_logging_drops_message_bodies</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_logging_survives_none_stderr</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_log_cleanup_keeps_30_days</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-OPS-02">NFR-OPS-02</a></td><td>SP1 §5.3 · 마스터 §5.6 · ADR 0001</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_auth_error_notice_once_per_day</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_billing_error_uses_billing_copy</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_run_auth_error_marked_skipped_not_rerun</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-OPS-03">NFR-OPS-03</a></td><td>SP1 §5.3 호출 결과 처리</td><td><a class="mono nowrap" href="schedule.html#SP1-10">SP1-10</a> <span class="muted nowrap">#13</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_rate_limited_notice_once_per_window</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_rate_limited_resume_text_formats</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_rate_limited_until_skips_with_reason</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-OPS-04">NFR-OPS-04</a></td><td>SP1 §5.1 · §8 반자동 점검</td><td><a class="mono nowrap" href="schedule.html#SP1-13">SP1-13</a> <span class="muted nowrap">#16</span></td><td><span class="muted">반자동 점검(schtasks /query /xml 비교)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-OPS-05">NFR-OPS-05</a></td><td>계획 티켓 12</td><td><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><span class="muted">검토(register_daily 등록)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-OPS-06">NFR-OPS-06</a></td><td>SP1 §5.1 · §5.2 · §5.3 · 계획 티켓 01·12</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-12">SP1-12</a> <span class="muted nowrap">#15</span></td><td><span class="muted">검토(README)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PORT-01">NFR-PORT-01</a></td><td>SP1 §3 S0 · §5.1 · 스파이크 S0</td><td><a class="mono nowrap" href="schedule.html#SP1-00">SP1-00</a> <span class="muted nowrap">#3</span></td><td><span class="muted">스파이크 S0 (완료)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PORT-02">NFR-PORT-02</a></td><td>SP1 §9 · §3 S1·S3</td><td><a class="mono nowrap" href="schedule.html#SP1-00">SP1-00</a> <span class="muted nowrap">#3</span><br><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_build_options_locks_down_tools</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PORT-03">NFR-PORT-03</a></td><td>SP1 §5.1 시작 순서 0 · 스파이크 S1</td><td><a class="mono nowrap" href="schedule.html#SP1-00">SP1-00</a> <span class="muted nowrap">#3</span><br><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_main_hides_console_first</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-PORT-04">NFR-PORT-04</a></td><td>SP1 §5.1 저장소 위치 제약</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><span class="muted">검토(README, 설치 경로)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-USE-01">NFR-USE-01</a></td><td>SP1 §6-1 · 계획 Global Constraints</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span><br><a class="mono nowrap" href="schedule.html#SP1-14">SP1-14</a> <span class="muted nowrap">#17</span></td><td><span class="muted">수동 확인(프롬프트 · 수용 테스트)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-USE-02">NFR-USE-02</a></td><td>SP1 §5.4 문구 규칙 · §6-3 · 마스터 P2</td><td><a class="mono nowrap" href="schedule.html#SP1-03">SP1-03</a> <span class="muted nowrap">#6</span><br><a class="mono nowrap" href="schedule.html#SP1-09">SP1-09</a> <span class="muted nowrap">#12</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_confirmations_have_no_banned_words</code><br><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_prompts_have_no_banned_words</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-USE-03">NFR-USE-03</a></td><td>SP1 §6-2 · 마스터 P1</td><td><a class="mono nowrap" href="schedule.html#SP1-04">SP1-04</a> <span class="muted nowrap">#7</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-check"/></svg><code>test_set_priorities_four_returns_error</code></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-USE-04">NFR-USE-04</a></td><td>SP1 §6-4 · 계획 티켓 07</td><td><a class="mono nowrap" href="schedule.html#SP1-07">SP1-07</a> <span class="muted nowrap">#10</span></td><td><span class="muted">수동 확인(프롬프트 검토)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+            <tr><td class="id"><a class="rid rid--nfr" href="#NFR-USE-05">NFR-USE-05</a></td><td>SP1 §6-7·8</td><td><a class="mono nowrap" href="schedule.html#SP1-01">SP1-01</a> <span class="muted nowrap">#4</span></td><td><span class="muted">수동 확인(프롬프트 검토)</span></td><td><span class="pill impl" data-s="done">구현 완료</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">스펙 1장 완료 조건 대응: 1 → <a class="rid rid--nfr" href="#NFR-REL-01">NFR-REL-01</a> · 2 → <a class="rid" href="#FR-DRAFT-01">FR-DRAFT-01</a> <a class="rid" href="#FR-TASK-03">FR-TASK-03</a> <a class="rid" href="#FR-TASK-05">FR-TASK-05</a> · 3 → <a class="rid" href="#FR-CH-02">FR-CH-02</a> · 4 → <a class="rid rid--nfr" href="#NFR-REL-05">NFR-REL-05</a> · 5 → <a class="rid" href="#FR-REC-01">FR-REC-01</a> <a class="rid" href="#FR-REC-03">FR-REC-03</a> · 6(8장 자동 테스트 모두 통과) → 각 티켓의 <code>pytest -q</code>.</p>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="review-notes"><span class="section__no">8</span>검토 메모: 원천 자료 사이의 차이</h2>
+        <p class="section__lede">요구사항을 뽑다가 찾은 모호점입니다. 이 문서는 아래 “이 문서의 처리”대로 적었습니다. 확정은 스펙을 고쳐서 합니다.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>모호점과 처리</caption>
+          <thead><tr><th class="w-min">#</th><th>내용</th><th>이 문서의 처리</th><th class="w-min">관련</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>SP1 §5.1 설정 표는 “실패 시 1분 간격 최대 999회 재시작”을 요구하지만, 같은 칸과 스파이크 S6은 <code>Stop-Process</code> 뒤 이 설정이 다시 띄우지 않았고 실제 재시작은 5분 워치독이 맡는다고 적었다.</td><td>설정값은 <a class="rid" href="#FR-PLAT-01">FR-PLAT-01</a>에 그대로 두고, 재시작 보장은 워치독(<a class="rid rid--nfr" href="#NFR-REL-07">NFR-REL-07</a>)으로 적었다.</td><td class="nowrap">§5.1 · S6</td></tr>
+            <tr><td class="num">2</td><td>금지어 목록이 곳마다 다르다. §5.4 문구 규칙: “놓쳤어요”, “밀렸어요”, “늦었지만”. §6-3: “밀렸다”, “놓쳤다”, “실패”. 계획 Global Constraints는 넷(“실패” 포함)을 사용자 문구 전체에 적용한다.</td><td>넷을 합친 목록을 모든 사용자 문구와 프롬프트에 적용(<a class="rid rid--nfr" href="#NFR-USE-02">NFR-USE-02</a>). 스펙 v4 §5.4에서 <code>system.md</code>의 <code>banned-words</code> 블록 6개(밀렸다, 놓쳤다, 실패, 놓쳤어요, 밀렸어요, 늦었지만)로 통일했고, 실행 중 답을 검사하지는 않는다.</td><td class="nowrap">§5.4 · §6 · 계획</td></tr>
+            <tr><td class="num">3</td><td>§5.3은 “텍스트 아님”을 고정 안내로 꼽지만 문구와 동작은 스펙에 없고, 계획 Review Focus 1에만 있다(“지금은 글로만 이야기할 수 있어요.”, 편집 메시지 무시).</td><td>계획 문구를 출처로 적었다(<a class="rid" href="#FR-CH-05">FR-CH-05</a>). 스펙 v4 부록 A에 <code>NON_TEXT_REPLY</code>로 실렸다(Dahun 확인 필요).</td><td class="nowrap">§5.3 · 계획 RF1</td></tr>
+            <tr><td class="num">4</td><td>§5.1은 “S4가 실패하면 깨우기 작업을 등록하지 않는다”고 하는데, S4 결과는 AC 성공·배터리와 덮개 닫힘 미검증(부분 성공)이다. 등록 여부 판단 기준이 없다.</td><td>Should로 두었다(<a class="rid" href="#FR-PLAT-02">FR-PLAT-02</a>). 등록 스크립트에 <code>-NoWake</code> 선택지가 있다(계획 티켓 13).</td><td class="nowrap">§5.1 · S4</td></tr>
+            <tr><td class="num">5</td><td>마스터 §4의 SP1 완료 조건은 두 문장(7일 회차, 할 일 추가·완료·이동)이고, SP1 스펙 §1은 여섯 개다.</td><td>더 자세한 SP1 스펙 §1을 따랐다.</td><td class="nowrap">마스터 §4 · SP1 §1</td></tr>
+            <tr><td class="num">6</td><td>사용자 메시지가 회차보다 먼저라는 큐 우선순위, 5초 typing, 4096자 분할, 초안 버튼의 “이미 정리된 할 일이에요.”는 스펙이 아니라 계획에만 있다.</td><td>계획 절을 출처로 적었다(<a class="rid" href="#FR-CONV-12">FR-CONV-12</a> <a class="rid" href="#FR-CONV-11">FR-CONV-11</a> <a class="rid" href="#FR-CH-06">FR-CH-06</a> <a class="rid" href="#FR-DRAFT-03">FR-DRAFT-03</a>).</td><td class="nowrap">계획</td></tr>
+            <tr><td class="num">7</td><td>§5.1 종료 규칙(Ctrl+C 30초 대기 후 interrupted)과 update_id 2일 정리에는 계획의 테스트 슬라이스가 없다.</td><td>수동 확인·검토로 표시했다(<a class="rid" href="#FR-PLAT-06">FR-PLAT-06</a> <a class="rid rid--nfr" href="#NFR-OPS-05">NFR-OPS-05</a>).</td><td class="nowrap">§5.1 · 계획 12</td></tr>
+            <tr><td class="num">8</td><td>마스터 설계는 “초안 v2, Dahun 검토 대기”인데 SP1 스펙 v3(구현 뒤 v4)가 그 위에서 확정되었다.</td><td>두 문서가 겹치면 SP1 스펙을 따랐다.</td><td class="nowrap">마스터 머리말</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <aside class="toc" data-auto aria-label="이 문서에서"></aside>
+</div>
+
+<footer class="site-foot">
+  <div class="site-foot__inner">
+    <div>
+      <h2>원천 자료</h2>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 §1~§10, 부록 A, 변경 기록 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>마스터 설계 v2 §1.2·§1.3·§4·§5·§6 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-my-planner-master-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-my-planner-master-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>구현 계획 Global Constraints · Review Focus · 티켓 00~14 Slices <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/plans/2026-10-23-sp1-secretary-core.md" target="_blank" rel="noopener"><code>docs/superpowers/plans/2026-10-23-sp1-secretary-core.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>결정 기록 ADR 0001~0006 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/adr/" target="_blank" rel="noopener"><code>docs/adr/</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>스파이크 결과 S0~S6 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/spikes/2026-10-sp1.md" target="_blank" rel="noopener"><code>docs/spikes/2026-10-sp1.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>용어집 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/GLOSSARY.md" target="_blank" rel="noopener"><code>GLOSSARY.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tool"/></svg><span>구현 상태: <code>git log main</code> (0336f4d docs: sync SP1 spec and README with shipped code (#36)), GitHub 이슈 #3~#17 상태, <code>tests/</code>의 테스트 함수 이름</span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>관련 문서</h2>
+      <ul class="sources">
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-schedule"/></svg><a href="schedule.html">WBS · 일정</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-test"/></svg><a href="test-report.html">테스트 계획·결과서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-flow"/></svg><a href="process-flows.html">업무 흐름도</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-glossary"/></svg><a href="glossary.html">용어집</a></li>
+      </ul>
+    </div>
+    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23</span><a href="index.html">산출물 지도로</a></div>
+  </div>
+</footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>
