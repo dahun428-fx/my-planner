@@ -81,7 +81,8 @@ async def test_logical_date_boundary_in_transcript(tmp_path, conn, state):
     env.dispatcher.submit_message(env.inbound("새벽 세 시 오십구 분", update_id=1))
     await env.dispatcher.stop(timeout=5)
 
-    env.clock.set(kst(2026, 10, 23, 4, 31))  # 30분이 지나 새 대화
+    env.clock.set(kst(2026, 10, 23, 4, 0))
+    env.convs.close(1)  # 경계 확인을 위해 앞 대화를 닫아 새 대화로 시작한다
     env.dispatcher.start()
     env.dispatcher.submit_message(env.inbound("네 시 정각", update_id=2))
     await env.dispatcher.stop(timeout=5)
@@ -89,7 +90,7 @@ async def test_logical_date_boundary_in_transcript(tmp_path, conn, state):
     before = env.day_file("2026-10-22").read_text(encoding="utf-8")
     after = env.day_file("2026-10-23").read_text(encoding="utf-8")
     assert "### 03:59 사용자 [1]" in before and "새벽 세 시 오십구 분" in before and "첫 답" in before
-    assert "### 04:31 사용자 [2]" in after and "네 시 정각" in after and "둘째 답" in after
+    assert "### 04:00 사용자 [2]" in after and "네 시 정각" in after and "둘째 답" in after
     assert "네 시 정각" not in before and "새벽" not in after
 
 

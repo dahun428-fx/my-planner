@@ -169,25 +169,23 @@ class Dispatcher:
         body = f"## 메시지\n{text}"
         with self._keep_awake():
             fell_back = False
-            try:
-                resumed = conv.session_id is not None
-                prompt = _join(notices, "" if resumed else prompts.load("chat.md"), body)
-                result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
-                if resumed and result.resume_failed:
-                    # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(지금 메시지는 아직 기록 전).
-                    history = self.transcripts.recent(conv.id, 20)
-                    prompt = _join(
-                        notices,
-                        prompts.load("chat.md"),
-                        f"## 최근 대화\n{history}" if history else "",
-                        body,
-                    )
-                    fell_back = True
-                    run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
-                    result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
-            finally:
-                for m in batch:
-                    self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
+            for m in batch:
+                self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
+            resumed = conv.session_id is not None
+            prompt = _join(notices, "" if resumed else prompts.load("chat.md"), body)
+            result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
+            if resumed and result.resume_failed:
+                # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
+                history = self.transcripts.recent(conv.id, 20, skip_last=len(batch))
+                prompt = _join(
+                    notices,
+                    prompts.load("chat.md"),
+                    f"## 최근 대화\n{history}" if history else "",
+                    body,
+                )
+                fell_back = True
+                run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
+                result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             if result.session_id or fell_back:  # 대체 경로가 세션을 못 얻었으면 깨진 세션 ID를 지운다
                 self.convs.set_session(conv.id, result.session_id)
             self.convs.touch(conv.id)

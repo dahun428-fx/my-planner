@@ -128,3 +128,23 @@ async def test_resume_failure_falls_back_to_new_session_with_last_20_messages(tm
     assert [o.text for o in env.sender.sent] == ["하나", "다시 정리했어요"]
     assert env.convs.get(conv_id).session_id == "s9"
     assert state.is_seen_update(2)
+
+
+async def test_coalesced_updates_not_done_when_send_fails(tmp_path, conn, state):
+    from fakes import FakeSender
+
+    env = Env(
+        tmp_path, conn, state,
+        script=[FakeTurn([], "첫 답", delay=1), FakeTurn([], "묶은 답")],
+        start=kst(2026, 10, 23, 10, 0),
+        sender=FakeSender(fail=True),
+    )
+    env.dispatcher.start()
+    env.dispatcher.submit_message(env.inbound("첫 문장", update_id=1))
+    while not env.brain.calls:
+        await asyncio.sleep(0)
+    env.dispatcher.submit_message(env.inbound("둘째", update_id=2))
+    env.dispatcher.submit_message(env.inbound("셋째", update_id=3))
+    await env.dispatcher.stop(timeout=5)
+
+    assert not any(state.is_seen_update(i) for i in (1, 2, 3))

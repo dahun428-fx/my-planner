@@ -46,17 +46,21 @@ class TranscriptStore:
         with path.open("a", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines))
 
-    def recent(self, conversation_id: int, n: int = 20) -> str:
-        """그 대화의 최근 n개 메시지를 시간순으로 `[HH:MM] 사용자: 본문` 형태로 돌려준다. 없으면 `""`."""
+    def recent(self, conversation_id: int, n: int = 20, *, skip_last: int = 0) -> str:
+        """그 대화의 최근 n개 메시지를 시간순으로 `[HH:MM] 사용자: 본문` 형태로 돌려준다. 없으면 `""`.
+
+        `skip_last`: 가장 최근 몇 개를 뺀다(방금 기록한 현재 메시지를 중복해 넣지 않으려고).
+        """
+        want = n + skip_last
         found: list[str] = []  # 최신 것부터
         for path in sorted(self.root.rglob("*.md"), reverse=True):
-            if len(found) >= n:
+            if len(found) >= want:
                 break
             for hhmm, speaker, body in reversed(_entries(path, conversation_id)):
                 found.append(f"[{hhmm}] {speaker}: {body}")
-                if len(found) >= n:
+                if len(found) >= want:
                     break
-        return "\n".join(reversed(found))
+        return "\n".join(reversed(found[skip_last:]))
 
 
 _HEADER = re.compile(r"^### (\d{2}:\d{2}) (사용자|비서) \[(\d+|-)\](?: \(.*\))?$")
