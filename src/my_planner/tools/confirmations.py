@@ -55,3 +55,8 @@ def render_confirmations(events: list[ToolEvent], today: date) -> str:
     """이벤트마다 한 줄. 문구가 없는 종류(조회 등)는 건너뛴다. 없으면 빈 문자열."""
     lines = [ln for e in events if (ln := _line(e, today)) is not None]
     return "\n".join(lines)
+
+
+def draft_dropped_reply(title: str) -> str:
+    """`✗ 빼기` 버튼을 눌렀을 때의 알림. 버튼 낱말에 맞춘다(`drop_task`의 "내려놓음"과 다르다)."""
+    return f"✗ 뺐어요: {title}"

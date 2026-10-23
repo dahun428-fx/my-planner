@@ -13,7 +13,7 @@ from telegram import CallbackQuery
 from my_planner.clock import Clock
 from my_planner.domain import RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
-from my_planner.tools.confirmations import render_confirmations
+from my_planner.tools.confirmations import draft_dropped_reply, render_confirmations
 from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
@@ -44,42 +44,56 @@ async def handle_callback(
     1. 사용자가 아니면 무시한다. 2. 이미 초안이 아니면 바꾸지 않고 "이미 정리된 할 일이에요."라고 답한다.
     3. 바꾼 것은 원문 기록(`[-]`)에 `[버튼] 확정: {제목}`, `[버튼] 빼기: {제목}`으로 남긴다.
     """
-    if query.from_user is None or query.from_user.id != owner_id:
-        # 사용자가 아니면 아무것도 바꾸지 않는다. 발신자 ID만 남긴다(본문, 이름 없이).
-        log.info("callback_ignored", extra={"from_id": query.from_user.id if query.from_user else None})
-        await query.answer()
-        return "ignored"
-    parsed = _parse(query.data)
-    if parsed is None:
-        log.info("callback_unknown")
-        await query.answer()
-        return "unknown"
-    action, n = parsed
-    if action == "all":
-        ids = [i for i in tools.tasks.proposed_task_ids(n) if _is_draft(tools, i)]
-    else:
-        ids = [n] if _is_draft(tools, n) else []
-    if not ids:  # 이미 정리됐다: 상태를 바꾸지 않는다
-        await query.answer(STALE_REPLY)
-        return "stale"
+    reply: str | None = None  # finally에서 꼭 한 번 보낸다
+    try:
+        if query.from_user is None or query.from_user.id != owner_id:
+            # 사용자가 아니면 아무것도 바꾸지 않는다. 발신자 ID만 남긴다(본문, 이름 없이).
+            log.info("callback_ignored", extra={"from_id": query.from_user.id if query.from_user else None})
+            return "ignored"
+        parsed = _parse(query.data)
+        if parsed is None:
+            log.info("callback_unknown")
+            return "unknown"
+        action, n = parsed
+        if action == "all":
+            ids = [i for i in tools.tasks.proposed_task_ids(n) if _is_draft(tools, i)]
+        else:
+            ids = [n] if _is_draft(tools, n) else []
+        if not ids:  # 이미 정리됐다: 상태를 바꾸지 않는다
+            reply = STALE_REPLY
+            return "stale"
 
-    ctx = RunContext(conversation_id=None, run_id=None)
-    if action == "x":
-        out = tools.drop_task(ctx, id=n)
-        result: CallbackResult = "dropped"
-        lines = [f"[버튼] 빼기: {out['title']}"] if "error" not in out else []
-    else:
-        out = tools.confirm_tasks(ctx, ids=ids)
-        result = "confirmed"
-        lines = [f"[버튼] 확정: {t['title']}" for t in out.get("confirmed", [])]
-    await query.answer(render_confirmations(ctx.events, tools.today()) or None)
-    log.info("callback_handled", extra={"action": action, "task_ids": ids})
-    if lines:
-        try:
-            transcripts.append(clock.now(), "사용자", None, None, "\n".join(lines))
-        except OSError as e:
-            log.warning("callback_transcript_failed", extra={"error_type": type(e).__name__})
-    return result
+        # 순서: 상태 커밋 → 원문 기록 → (finally) answer. answer가 안 돼도 기록은 남는다.
+        ctx = RunContext(conversation_id=None, run_id=None)
+        if action == "x":
+            out = tools.drop_task(ctx, id=n)
+            result: CallbackResult = "dropped"
+            lines = [f"[버튼] 빼기: {out['title']}"] if "error" not in out else []
+        else:
+            out = tools.confirm_tasks(ctx, ids=ids)
+            result = "confirmed"
+            lines = [f"[버튼] 확정: {t['title']}" for t in out.get("confirmed", [])]
+        if action == "x":
+            reply = draft_dropped_reply(out["title"]) if "error" not in out else None
+        else:
+            reply = render_confirmations(ctx.events, tools.today()) or None
+        log.info("callback_handled", extra={"action": action, "task_ids": ids})
+        if lines:
+            try:
+                transcripts.append(clock.now(), "사용자", None, None, "\n".join(lines))
+            except OSError as e:
+                log.warning("callback_transcript_failed", extra={"error_type": type(e).__name__})
+        return result
+    finally:
+        await _answer(query, reply)
+
+
+async def _answer(query: CallbackQuery, text: str | None) -> None:
+    """콜백에 답한다. 늦게 받은 누름("Query is too old")이나 네트워크 오류는 종류만 남기고 넘어간다."""
+    try:
+        await query.answer(text)
+    except Exception as e:  # noqa: BLE001 - 답은 로딩 표시를 끄는 것뿐이다. 상태와 기록은 이미 끝났다
+        log.warning("callback_answer_failed", extra={"error_type": type(e).__name__})
 
 
 def _is_draft(tools: Tools, task_id: int) -> bool:

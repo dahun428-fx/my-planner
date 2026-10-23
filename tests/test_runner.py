@@ -154,23 +154,29 @@ def test_expire_drafts_after_3_days(tmp_path, conn, state):
     env = Env(tmp_path, conn, state, mon_0400, installed=mon_0400 - timedelta(days=7), last_seen=mon_0400)
     repo = TasksRepo(conn, env.clock)
     env.runner.register_daily(expire_drafts(repo, env.clock))
+    env.clock.set(kst(2026, 10, 26, 3, 58))
+    older = repo.create("목 03:59에 3일이 넘는 초안", [Area.career], TaskStatus.draft)
+    env.clock.set(mon_0400)
     three_days = repo.create("사흘 된 초안", [Area.career], TaskStatus.draft)
     env.clock.set(kst(2026, 10, 26, 5, 0))
     almost = repo.create("2일 23시간 된 초안", [Area.career], TaskStatus.draft)
     opened = repo.create("열린 일", [Area.career], TaskStatus.open)
 
-    env.clock.set(kst(2026, 10, 29, 3, 59))  # 아직 수요일(논리적 날짜). 하루 한 번 작업은 수요일 몫이 이미 돌았다고 둔다
-    state.set("last_daily_jobs_date", "2026-10-28")
-    state.set("last_seen_at", to_iso(env.clock.now()))
-    env.runner.tick()
-    assert repo.get(three_days.id).status is TaskStatus.draft
-    env.clock.set(kst(2026, 10, 29, 4, 0))  # 목 04:00: 하루 한 번 작업. 첫째는 정확히 3일, 둘째는 2일 23시간
-    env.runner.tick()
+    def tick_at(at):  # 1분 전에도 tick이 돌았던 것처럼(따라잡기 없이) tick한다
+        state.set("last_seen_at", to_iso(at - timedelta(minutes=1)))
+        env.clock.set(at)
+        env.runner.tick()
 
+    tick_at(kst(2026, 10, 28, 5, 0))  # 수요일 몫의 하루 한 번 작업: 아직 3일 된 초안이 없다
+    assert state.get("last_daily_jobs_date") == "2026-10-28"
+    tick_at(kst(2026, 10, 29, 3, 59))  # 아직 수요일(논리적 날짜): 작업이 다시 돌지 않는다
+    assert repo.get(older.id).status is TaskStatus.draft  # 다시 돌았다면 3일 1분이라 dropped였다
+    tick_at(kst(2026, 10, 29, 4, 0))  # 목 04:00: 하루 한 번 작업. 사흘 된 것은 정확히 3일, 다음 것은 2일 23시간
+
+    assert repo.get(older.id).status is TaskStatus.dropped
     assert repo.get(three_days.id).status is TaskStatus.dropped
     assert repo.get(almost.id).status is TaskStatus.draft
     assert repo.get(opened.id).status is TaskStatus.open
     assert env.dispatcher.submitted == []  # 조용히: 아무것도 보내지 않는다
-    env.clock.set(kst(2026, 10, 30, 4, 0))
-    env.runner.tick()
+    tick_at(kst(2026, 10, 30, 4, 0))
     assert repo.get(almost.id).status is TaskStatus.dropped

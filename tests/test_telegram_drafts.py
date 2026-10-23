@@ -201,7 +201,7 @@ async def test_button_logged_to_transcript(denv):
         TaskStatus.open, TaskStatus.dropped, TaskStatus.open, TaskStatus.draft,
     ]
     assert [t for _, t in denv.bot.answers] == [
-        "✓ 확정: 목차 쓰기", "✓ 내려놓음: 자료 모으기", "✓ 확정: 산책", "이미 정리된 할 일이에요.",
+        "✓ 확정: 목차 쓰기", "✗ 뺐어요: 자료 모으기", "✓ 확정: 산책", "이미 정리된 할 일이에요.",
     ]
     day = (denv.tmp / "data" / "transcripts" / "2026" / "10" / "2026-10-24.md").read_text(encoding="utf-8")
     assert day == (
@@ -259,3 +259,58 @@ async def test_today_hides_drafts(denv):
     text = denv.bot.sent[-1][0]
     assert "열린 일" in text
     assert "초안" not in text
+
+
+class TooOldBot(FakeBot):
+    """노트북이 잠든 사이 눌린 버튼: 늦게 받으면 answer가 BadRequest를 낸다."""
+
+    async def answer_callback_query(self, callback_query_id, text=None, **kw):
+        from telegram.error import BadRequest
+
+        self.answers.append((callback_query_id, text))
+        raise BadRequest("Query is too old and response timeout expired or query id is invalid")
+
+
+async def test_late_press_answer_failure_keeps_transcript_and_marks_done(denv):
+    import functools
+
+    from test_telegram_io import _NoDispatch
+
+    from my_planner.bot.callbacks import handle_callback
+    from my_planner.bot.telegram_io import handle_update
+    from my_planner.domain import TaskStatus
+
+    (a,) = denv.propose("목차 쓰기")
+    denv.bot = TooOldBot()
+    callbacks = functools.partial(
+        handle_callback, owner_id=OWNER, tools=denv.tools, transcripts=denv.transcripts, clock=denv.clock
+    )
+    assert await handle_callback(
+        _callback(denv.bot, f"d:c:{a}", update_id=1000).callback_query, OWNER, denv.tools,
+        transcripts=denv.transcripts, clock=denv.clock,
+    ) == "confirmed"
+    assert denv.repo.get(a).status is TaskStatus.open
+    day = (denv.tmp / "data" / "transcripts" / "2026" / "10" / "2026-10-24.md").read_text(encoding="utf-8")
+    assert "[버튼] 확정: 목차 쓰기" in day
+
+    (b,) = denv.propose("자료 모으기")
+    verdict = await handle_update(
+        _callback(denv.bot, f"d:x:{b}", update_id=1001), bot=denv.bot, owner_id=OWNER, state=denv.state,
+        dispatcher=_NoDispatch(), transcripts=denv.transcripts, clock=denv.clock, tools=denv.tools,
+        callbacks=callbacks,
+    )
+    assert verdict == "callback" and denv.state.is_seen_update(1001)
+    assert denv.repo.get(b).status is TaskStatus.dropped
+    assert len(denv.bot.answers) == 2  # 누를 때마다 정확히 한 번
+
+
+async def test_tool_error_still_answers_once(denv, monkeypatch):
+    (a,) = denv.propose("목차 쓰기")
+
+    def boom(ctx, ids=None):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(denv.tools, "confirm_tasks", boom)
+    with pytest.raises(RuntimeError):
+        await press(denv, f"d:c:{a}", update_id=1100)
+    assert denv.bot.answers == [("cb1100", None)]  # 로딩 표시를 남기지 않는다

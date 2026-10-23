@@ -500,7 +500,14 @@ class Dispatcher:
 
 def _outbound(text: str, run_ctx: RunContext) -> Outbound:
     """이번 호출에서 제안한 초안이 있으면 버튼을 붙이도록 id와 대화를 싣는다(스펙 5.7)."""
-    ids = [i for e in run_ctx.events if e.kind == "tasks_proposed" for i in e.data.get("ids", [])]
+    confirmed = {e.task_id for e in run_ctx.events if e.kind == "tasks_confirmed"}
+    ids = [
+        i
+        for e in run_ctx.events
+        if e.kind == "tasks_proposed"
+        for i in e.data.get("ids", [])
+        if i not in confirmed  # 같은 턴에 이미 확정한 것에는 버튼을 붙이지 않는다
+    ]
     return Outbound(
         text=text,
         draft_conversation_id=run_ctx.conversation_id if ids else None,

@@ -92,3 +92,15 @@ async def test_morning_brief_preamble_hides_drafts(tmp_path, conn, state):
 
     assert "열린 일" in env.brain.prompts[0]
     assert "제안한 초안" not in env.brain.prompts[0]
+
+
+async def test_ids_confirmed_in_same_turn_get_no_buttons(tmp_path, conn, state):
+    env = Env(
+        tmp_path, conn, state, start=kst(2026, 10, 24, 10, 0), with_tools=True,
+        script=[FakeTurn([propose("목차 쓰기", "자료 모으기"), ("confirm_tasks", {"ids": [1]})], "하나는 넣었어요.")],
+    )
+    await env.process(env.inbound("목차는 바로 넣어 줘"))
+
+    out = env.sender.sent[0]
+    assert out.draft_task_ids == [2]
+    assert out.text.endswith("✓ 확정: 목차 쓰기")
