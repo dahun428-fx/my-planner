@@ -143,6 +143,7 @@ async def _serve(settings: Settings) -> None:
             tools=tools,
             runs=runs,
             conditions=conditions,
+            data_dir=paths.data_dir,
             keep_awake=keep_awake,
         )
         runner = Runner(clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher)

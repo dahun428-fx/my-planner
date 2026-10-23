@@ -60,8 +60,14 @@ class ConversationRouter:
         run = self.runs.get(conv.run_id)
         if run is None or run.status is not RunStatus.done:  # 보내지 않은 회차에는 답할 것이 없다
             return None
+        # 합쳐 보낸 회차(merged_run_ids)가 있으면 그 가운데 가장 늦은 답장 창 끝까지 잇는다
+        # (예: 일요일 저녁 + 회고 → 회고의 24시간).
         s = self.settings
-        end = reply_window_end(Due(run.loop, run.scheduled_for, run.cadence), s.timezone, s.day_boundary, cfg=s)
+        bundled = [run, *(r for i in run.merged_run_ids if (r := self.runs.get(i)) is not None)]
+        end = max(
+            reply_window_end(Due(r.loop, r.scheduled_for, r.cadence), s.timezone, s.day_boundary, cfg=s)
+            for r in bundled
+        )
         return conv if at <= end else None
 
     def for_run(self, run: Run) -> Conversation:

@@ -108,3 +108,28 @@ def test_reply_window_reads_config(tmp_path):
     review = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
     assert reply_window_end(morning, cfg.timezone, cfg.day_boundary, cfg=cfg) == kst(2026, 10, 26, 11, 0)
     assert reply_window_end(review, cfg.timezone, cfg.day_boundary, cfg=cfg) == kst(2026, 10, 26, 0, 0)
+
+
+def test_sunday_has_review_at_1800(cfg):
+    # 앱이 켜는 루프(ENABLED_LOOPS)에 회고가 든다. 2026-10-25(일): 아침 10:00, 저녁 18:00, 회고(week) 18:00
+    from my_planner.loop.schedule import ENABLED_LOOPS
+
+    got = due_between(kst(2026, 10, 25, 4, 0), kst(2026, 10, 26, 4, 0), cfg, cfg.timezone, ENABLED_LOOPS)
+    assert got == [
+        Due(LoopKey.morning_brief, kst(2026, 10, 25, 10, 0)),
+        Due(LoopKey.evening_checkin, kst(2026, 10, 25, 18, 0)),
+        Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week),
+    ]
+
+
+def test_review_week_day_must_be_sunday(tmp_path):
+    # 회고 주 계산(이번 회고 주 = 회고 날짜가 든 ISO 주, 다음 주 = 그다음 주)은 일요일 회고만 맞다
+    from datetime import time
+
+    from pydantic import ValidationError
+
+    from my_planner.config import ReviewSchedule, ScheduleConfig, WeeklyTime
+
+    with pytest.raises(ValidationError):
+        make_settings(tmp_path, schedule=ScheduleConfig(review=ReviewSchedule(week=WeeklyTime(day="mon", time=time(18, 0)))))
+    assert make_settings(tmp_path).schedule.review.week.day == "sun"

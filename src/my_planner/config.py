@@ -42,7 +42,16 @@ class WeeklyTime(_Model):
 
 
 class ReviewSchedule(_Model):
+    """주간 회고는 일요일만 지원한다. 회고 주(회고 날짜가 든 ISO 주)와 다음 주 계산이 일요일을 전제한다."""
+
     week: WeeklyTime = WeeklyTime(day="sun", time=time(18, 0))
+
+    @field_validator("week")
+    @classmethod
+    def _sunday_only(cls, v: WeeklyTime) -> WeeklyTime:
+        if v.day != "sun":
+            raise ValueError("schedule.review.week.day는 sun만 지원한다")
+        return v
 
 
 class ScheduleConfig(_Model):
