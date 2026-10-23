@@ -205,6 +205,8 @@ class Dispatcher:
         self._timers.clear()
 
     def submit_message(self, m: Inbound) -> None:
+        # 받은 때를 활동으로 기록한다. 앞선 두뇌 호출을 기다리는 동안 tick이 대화를 만료로 닫지 않는다
+        self.router.keep_alive(m.at)
         self._queue.put_nowait((_PRIORITY_MESSAGE, next(self._seq), m))
 
     def submit_run(self, run: Run, merged: list[Run], *, carried_ids: Iterable[int] = ()) -> None:
@@ -288,6 +290,8 @@ class Dispatcher:
             truncated=truncated,
         )
         conv = self.router.for_user_message(batch[0].at)
+        # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
+        self.convs.touch(conv.id)
 
         run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
         body = _join(self._recorded_condition(), f"## 메시지\n{text}")
@@ -461,11 +465,13 @@ class Dispatcher:
             return
         if self.router.plan_open():
             # 큐에 든 뒤 계획 대화가 열렸다: 건너뛰지 않고 pending으로 돌려 놓는다. 다음 tick이 다시 판정한다
-            # (닫힐 때까지 기다리고, 한계를 넘으면 late). 넘겨 받은 회고는 표시를 되돌려 혼자 실행되지 않게 한다
+            # (닫힐 때까지 기다리고, 한계를 넘으면 late). 넘겨 받은 회고는 표시를 먼저 되돌린다: 되돌리기 도중
+            # 멈춰도 회고가 표시 없이 pending이 되어 혼자 실행되는 일이 없다(queued 회고의 표시는 러너가 지우지 않는다)
             for r in live:
-                runs.mark_pending(r.id)
                 if r.id in carried_ids:
                     self.state.set(CARRY_REVIEW_KEY, str(r.id))
+            for r in live:
+                runs.mark_pending(r.id)
             log.info("run_deferred_plan_open", extra={"run_ids": [r.id for r in live]})
             return
         if live[0] is not run:  # primary가 늦었으면 남은 회차 중 합치기 우선순위가 가장 높은 것이 primary

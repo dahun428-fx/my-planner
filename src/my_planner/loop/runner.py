@@ -81,11 +81,16 @@ class Runner:
         return from_iso(v) if v else None
 
     def _carried_review(self) -> Run | None:
-        """`app_state.carry_review_run_id`가 가리키는, 아직 pending인 회고 회차."""
+        """`app_state.carry_review_run_id`가 가리키는, 아직 pending인 회고 회차.
+
+        queued면 표시를 남겨 두고 None이다(계획 모드로 pending에 되돌아가는 중일 수 있다).
+        """
         v = self.state.get(CARRY_REVIEW_KEY)
         if not v:
             return None
         run = self.runs.get(int(v))
+        if run is not None and run.status is RunStatus.queued:
+            return None
         if run is None or run.status is not RunStatus.pending:
             self.state.set(CARRY_REVIEW_KEY, None)  # 낡은 표시는 지운다
             return None

@@ -162,6 +162,7 @@ async def _serve(settings: Settings) -> None:
             tools=tools,
             transcripts=transcripts,
             clock=clock,
+            router=router,
         )
         application = build_application(
             settings, dispatcher, state, transcripts,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from telegram import CallbackQuery
 
@@ -18,6 +18,9 @@ from my_planner.domain import RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.confirmations import draft_dropped_reply, render_confirmations
 from my_planner.tools.core import Tools
+
+if TYPE_CHECKING:
+    from my_planner.harness.conversations import ConversationRouter
 
 log = logging.getLogger(__name__)
 
@@ -59,11 +62,13 @@ async def handle_callback(
     *,
     transcripts: TranscriptStore,
     clock: Clock,
+    router: ConversationRouter | None = None,
 ) -> CallbackResult:
     """버튼 하나를 처리한다. 무엇을 하든 `query.answer()`를 꼭 한 번 부른다.
 
     1. 사용자가 아니면 무시한다. 2. 이미 초안이 아니면 바꾸지 않고 "이미 정리된 할 일이에요."라고 답한다.
     3. 바꾼 것은 원문 기록(`[-]`)에 `[버튼] 확정: {제목}`, `[버튼] 빼기: {제목}`으로 남긴다.
+    4. 계획 대화에서 제안한 초안의 버튼이면 그 계획 대화의 활동으로 기록한다(2시간 만료, 스펙 5.7).
     """
     reply: str | None = None  # finally에서 꼭 한 번 보낸다
     try:
@@ -85,6 +90,8 @@ async def handle_callback(
             log.info("callback_unknown")
             return "unknown"
         action, n = parsed
+        if router is not None:
+            router.touch_plan(n if action == "all" else tools.tasks.proposed_conversation_id(n))
         if action == "all":
             ids = [i for i in tools.tasks.proposed_task_ids(n) if _is_draft(tools, i)]
         else:

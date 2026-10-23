@@ -74,3 +74,41 @@ async def test_done_without_plan_says_nothing_open(penv):
     assert len(penv.dispatcher.got) == 1  # /done은 두뇌를 거치지 않는다
     for word in ("놓쳤어요", "밀렸어요", "늦었지만", "실패"):
         assert word not in NO_PLAN_REPLY + PLAN_DONE_REPLY
+
+
+async def test_draft_button_in_plan_counts_as_plan_activity(tmp_path, conn, state):
+    # 계획 대화의 초안 버튼을 누르는 것도 계획 활동이다: 버튼만 눌러도 2시간 만료가 뒤로 밀린다
+    from datetime import timedelta
+
+    from test_telegram_drafts import DraftEnv, _callback
+
+    from my_planner.bot.callbacks import handle_callback
+    from my_planner.domain import RunContext
+
+    denv = DraftEnv(tmp_path, conn, state)
+    convs = ConversationsRepo(conn, denv.clock)
+    router = ConversationRouter(convs, RunsRepo(conn, denv.clock), clock=denv.clock, settings=make_settings(tmp_path))
+    plan = router.start_plan()
+    chat = convs.open(ConversationKind.chat, NOW.date())
+    out = denv.tools.propose_tasks(
+        RunContext(conversation_id=plan.id, run_id=None),
+        tasks=[{"title": t, "areas": ["career"]} for t in ("목차", "자료", "초안")],
+    )
+    a, b, _c = (t["id"] for t in out["proposed"])
+    (other,) = denv.propose("다른 대화 초안", conv=chat.id)
+
+    async def press(data, uid):
+        q = _callback(denv.bot, data, update_id=uid).callback_query
+        return await handle_callback(
+            q, OWNER, denv.tools, transcripts=denv.transcripts, clock=denv.clock, router=router
+        )
+
+    for i, data in enumerate((f"d:c:{a}", f"d:x:{b}", f"d:all:{plan.id}")):
+        denv.clock.advance(timedelta(hours=1, minutes=50))
+        await press(data, 600 + i)
+        assert router.plan_open(), data
+    # 다른 대화의 초안 버튼은 계획 대화를 늘리지 않는다
+    denv.clock.advance(timedelta(hours=1, minutes=50))
+    await press(f"d:c:{other}", 700)
+    denv.clock.advance(timedelta(minutes=11))
+    assert not router.plan_open()

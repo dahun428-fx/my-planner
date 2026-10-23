@@ -384,12 +384,13 @@ def test_plan_open_defers_within_limit(cfg):
     evening = Due(LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30))
     d = _decide10(cfg, kst(2026, 10, 26, 17, 29), kst(2026, 10, 26, 17, 30), plan_open=True)
     assert d.primary is None and d.merged == [] and d.skipped == []
-    # 닫힌 뒤 다음 판정에서는 기다리던 같은 회차를 실행한다
+    # 넘겨 받은 회고(한계 안)도 그대로 둔다: 다음 정규 연락에 합치지도, 건너뛰지도 않는다
+    review = Due(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
     d = decide(
-        kst(2026, 10, 26, 18, 0), kst(2026, 10, 26, 17, 59), [evening],
-        plan_open=False, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary,
+        kst(2026, 10, 26, 17, 31), kst(2026, 10, 26, 17, 30), [evening], carried_review=review,
+        plan_open=True, cfg=cfg, tz=cfg.timezone, boundary=cfg.day_boundary,
     )
-    assert d.primary == evening
+    assert d.primary is None and d.merged == [] and d.skipped == [] and d.carry_review is None
 
 
 def test_plan_open_past_limit_is_late(cfg):

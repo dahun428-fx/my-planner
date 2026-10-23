@@ -65,6 +65,24 @@ class ConversationRouter:
     def plan_open(self) -> bool:
         return self._open_plan(self.clock.now()) is not None
 
+    def keep_alive(self, at: datetime) -> None:
+        """사용자 메시지가 도착했다: 아직 만료 전인 `plan`·`chat` 대화를 활동으로 기록한다.
+
+        메시지가 큐에서 기다리는 동안 tick이 그 대화를 만료로 닫지 않게 한다. 새 대화는 열지 않는다.
+        """
+        plan = self._open_plan(at)
+        if plan is not None:
+            self.convs.touch(plan.id)
+        chat = self.convs.latest_open(ConversationKind.chat)
+        if chat is not None and at - chat.last_message_at <= self._idle():
+            self.convs.touch(chat.id)
+
+    def touch_plan(self, conversation_id: int | None) -> None:
+        """그 대화가 만료 전의 열린 `plan` 대화면 활동으로 기록한다(계획 대화의 초안 버튼 누름)."""
+        plan = self._open_plan(self.clock.now())
+        if plan is not None and plan.id == conversation_id:
+            self.convs.touch(plan.id)
+
     def for_user_message(self, at: datetime) -> Conversation:
         """2시간 이내의 열린 `plan` 대화가 있으면 그것을 잇는다(가장 먼저).
 
