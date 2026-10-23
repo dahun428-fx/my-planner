@@ -261,11 +261,9 @@ class Dispatcher:
             return
         limited = self._state_time(LIMITED_UNTIL_KEY)
         if limited is not None and self.clock.now() < limited:
-            # 사용 한도 구간 안: 두뇌를 부르지 않는다. 이 구간에 아직 안내하지 않았으면 안내한다
-            for m in batch:
-                self.transcripts.append(m.at, "사용자", None, None, redact(m.text)[0])
-            # 사용자 메시지에는 매번 답한다. 기록된 재개 시각을 쓰고, 회차 안내의 구간 한 번 몫은 쓰지 않는다
-            await self._send_notice(rate_limit_notice(self._resume_text(limited)))
+            # 사용 한도 구간 안: 두뇌를 부르지 않고 매번 답한다. 기록된 재개 시각을 쓰고,
+            # 회차 안내의 구간 한 번 몫은 쓰지 않는다
+            await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)))
             self.state.mark_updates_done(update_ids)
             log.info("message_rate_limited_window", extra={"update_ids": update_ids})
             return
@@ -323,11 +321,13 @@ class Dispatcher:
             for delay in MESSAGE_RETRY_DELAYS_S:
                 if result.status != "error":
                     break
+                if run_ctx.events:  # 도구가 이미 데이터를 바꿨다: 다시 부르지 않는다(중복 쓰기 방지, 스펙 5.4-3)
+                    break
                 if self._capped():  # 다시 부르기 전마다 하루 상한을 본다
                     capped = True
                     break
                 await self._sleep(delay)
-                run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[])
+                # run_ctx는 그대로 쓴다(여기까지 온 호출들은 도구 이벤트가 없다)
                 result = await self._call_brain(
                     prompt, session_id=None if fell_back else conv.session_id, run_ctx=run_ctx
                 )
@@ -338,16 +338,22 @@ class Dispatcher:
             # 로그인·결제와 사용 한도: 사용자 메시지에는 매번 고정 문구로 답한다(하루·구간 한 번은 회차 안내에만)
             if result.status == "rate_limited":
                 until = self._set_limited(result.retry_at)
-                await self._send_notice(rate_limit_notice(self._resume_text(until)))
+                await self._fixed_reply([], rate_limit_notice(self._resume_text(until)))
                 self.state.mark_updates_done(update_ids)
                 log.info("message_rate_limited", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if result.status == "auth_error":
-                await self._send_notice(_auth_copy(result.error))
+                await self._fixed_reply([], _auth_copy(result.error))
                 self.state.mark_updates_done(update_ids)
                 log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
-            reply = DAILY_CAP_REPLY if capped else _reply_for(result)
+            if capped:  # 백오프 중 하루 상한: 고정 안내로(대화 밖 `[-]`), 모인 확인 문구를 붙여 답한다
+                confirmations = render_confirmations(run_ctx.events, self._today())
+                await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations))
+                self.state.mark_updates_done(update_ids)
+                log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
+                return
+            reply = _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
                 reply = f"{reply}\n\n{confirmations}"
@@ -367,7 +373,11 @@ class Dispatcher:
         )
 
     async def _fixed_reply(self, batch: list[Inbound], text: str) -> None:
-        """두뇌 없이 고정 안내로 답한다. 원문 기록에는 대화 밖(`[-]`)으로 남긴다."""
+        """사용자 메시지에 고정 안내로 답한다. 원문 기록에는 대화 밖(`[-]`)으로 남긴다.
+
+        `batch`의 메시지도 `[-]`로 기록한다(이미 대화에 기록했으면 빈 목록). 전송 오류는 그대로 올린다:
+        호출한 쪽은 전송이 된 뒤에만 처리 완료로 기록한다.
+        """
         for m in batch:
             self.transcripts.append(m.at, "사용자", None, None, redact(m.text)[0])
         await self.sender.send(Outbound(text=text))
@@ -434,6 +444,10 @@ class Dispatcher:
             if self._past_limit(r) or (primary_late and r.id in carried_ids):
                 runs.mark_skipped(r.id, SkipReason.late)
                 log.info("run_skipped_late_at_start", extra={"run_id": r.id})
+            elif (blocked := self._run_blocked(r)) is not None:
+                # 큐에 든 뒤에 생긴 멈춤, 하루 상한, 사용 한도도 다시 본다(판정은 tick 때 했다)
+                runs.mark_skipped(r.id, blocked)
+                log.info("run_skipped_at_start", extra={"run_id": r.id, "reason": blocked.value})
             else:
                 live.append(r)
         if not live:
@@ -478,6 +492,13 @@ class Dispatcher:
         ask = self._ask_condition_for(run, merged)
         result, run_ctx = await self._run_brain(run, merged, conv, ask)
         if not _run_ok(result) and self._may_rerun(run, result):
+            blocked = self._run_blocked(run)
+            if blocked is not None:  # 두 번째 호출 전에도 멈춤, 하루 상한, 사용 한도를 본다
+                for r in (run, *merged):
+                    runs.mark_skipped(r.id, blocked)
+                self.convs.close(conv.id)
+                log.info("run_rerun_skipped", extra={"run_id": run.id, "reason": blocked.value})
+                return None
             runs.mark_running(run.id)
             result, run_ctx = await self._run_brain(run, merged, conv, ask)
         if result.status in ("auth_error", "rate_limited"):
@@ -597,6 +618,18 @@ class Dispatcher:
         if current is None or current.attempt >= MAX_RUN_ATTEMPTS or self.runs.has_tool_events(run.id):
             return False
         return not self._past_limit(run)
+
+    def _run_blocked(self, run: Run) -> SkipReason | None:
+        """지금 이 회차가 두뇌를 부를 수 없는 이유(R2 멈춤, R3 하루 상한, 사용 한도). 없으면 None."""
+        paused_until = self._state_time(PAUSE_UNTIL_KEY)
+        if paused_until is not None and run.scheduled_for < paused_until:
+            return SkipReason.paused
+        if self._capped():
+            return SkipReason.daily_cap
+        limited = self._state_time(LIMITED_UNTIL_KEY)
+        if limited is not None and self.clock.now() < limited:
+            return SkipReason.rate_limit
+        return None
 
     def _past_limit(self, run: Run) -> bool:
         s = self.settings

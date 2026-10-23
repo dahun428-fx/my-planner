@@ -361,3 +361,19 @@ def test_pause_ended_during_gap_counts_gap_from_pause_end(cfg):
     assert d.create_return is False
     assert d.primary == Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
     assert all(reason is SkipReason.paused for _, reason in d.skipped) and len(d.skipped) == 5  # 토·일 아침·저녁 + 일요일 회고
+
+
+def test_pause_boundary_equal_runs(cfg):
+    # 멈춤 끝 시각과 예정 시각이 같으면(09:00 == 09:00) 멈춤이 끝났다고 보고 실행한다
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    d = _decide10(cfg, kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 9, 30), paused_until=kst(2026, 10, 26, 9, 0))
+    assert d.primary == morning and d.skipped == []
+
+
+def test_daily_cap_and_rate_limit_win_over_late(cfg):
+    # R3과 사용 한도는 R4·R5보다 먼저다: 한계를 넘은 회차도 late가 아니라 daily_cap / rate_limit
+    morning = Due(LoopKey.morning_brief, kst(2026, 10, 26, 9, 0))
+    last, woke = kst(2026, 10, 26, 8, 0), kst(2026, 10, 26, 13, 0)  # 아침 한계(12:00) 뒤
+    assert _decide10(cfg, last, woke, brain_calls_today=60).skipped == [(morning, SkipReason.daily_cap)]
+    d = _decide10(cfg, last, woke, limited_until=kst(2026, 10, 26, 14, 0))
+    assert d.skipped == [(morning, SkipReason.rate_limit)]

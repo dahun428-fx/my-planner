@@ -123,39 +123,37 @@ def _rate_copy(when):
 
 
 async def test_rate_limited_notice_once_per_window(tmp_path, conn, state):
+    # 회차가 연 한도 구간: 안내는 구간마다 한 번. 사용자 메시지에는 구간 안에서도 매번 답한다
     from my_planner.clock import from_iso
-    from my_planner.domain import LoopKey
+    from my_planner.domain import LoopKey, RunStatus
 
     reset = kst(2026, 10, 26, 21, 30)
-    env = _env(
-        tmp_path, conn, state,
-        [_limited(reset), _limited(reset), _limited(reset), FakeTurn([], "다시 이야기해요.")],
-    )
-    await env.process(env.inbound("안녕", update_id=1))
+    env = _env(tmp_path, conn, state, [_limited(reset), FakeTurn([], "다시 이야기해요.")])
+    await env.process_run(_queued(env))  # 아침 브리핑이 한도에 닿았다
     assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")]
     assert from_iso(state.get("limited_until")) == reset
-    assert state.get("last_rate_limit_notice_until") is None  # 답장은 구간 한 번 몫을 쓰지 않는다
+    assert from_iso(state.get("last_rate_limit_notice_until")) == reset
 
     # 같은 구간 안의 메시지: 두뇌를 부르지 않고, 기록된 재개 시각으로 매번 답한다
-    env.clock.set(kst(2026, 10, 26, 15, 0))
-    await env.process(env.inbound("아직이야?", update_id=2))
+    for i in (1, 2):
+        await env.process(env.inbound("아직이야?", update_id=i))
     assert len(env.brain.calls) == 1
-    assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")] * 2
+    assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")] * 3
     assert state.is_seen_update(1) and state.is_seen_update(2)
 
-    # 회차의 안내는 구간마다 한 번
+    # 같은 구간 안의 다음 회차: 두뇌 없이 skipped(rate_limit), 안내를 다시 보내지 않는다
     env.clock.set(kst(2026, 10, 26, 17, 31))
-    await env.process_run(_queued(env, LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30)))
-    assert len(env.sender.sent) == 3
-    assert from_iso(state.get("last_rate_limit_notice_until")) == reset
-    await env.process_run(_queued(env, LoopKey.review, kst(2026, 10, 25, 18, 0)))
-    assert len(env.sender.sent) == 3
+    evening = _queued(env, LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30))
+    await env.process_run(evening)
+    after = env.runs.get(evening.id)
+    assert after.status is RunStatus.skipped and after.skip_reason == "rate_limit"
+    assert len(env.sender.sent) == 3 and len(env.brain.calls) == 1
     assert state.usage(MON).proactive_messages == 0
 
     # 풀린 뒤에는 다시 두뇌로 간다
     env.clock.set(kst(2026, 10, 26, 21, 31))
     await env.process(env.inbound("이제 될까", update_id=3))
-    assert len(env.brain.calls) == 4
+    assert len(env.brain.calls) == 2
     assert env.sender.sent[-1].text == "다시 이야기해요."
 
 
@@ -308,3 +306,83 @@ async def test_backoff_stops_at_daily_cap(tmp_path, conn, state):
     assert state.usage(MON).brain_calls == 60
     assert [o.text for o in env.sender.sent] == [DAILY_CAP_REPLY]
     assert state.is_seen_update(1)
+    day = env.day_file("2026-10-26").read_text(encoding="utf-8")
+    assert f"비서 [-]\n\n{DAILY_CAP_REPLY}" in day  # 고정 안내는 대화 밖으로 기록한다
+    assert "비서 [1]" not in day
+
+
+# --- 리뷰 지적 반영 (fix round 1) ---
+
+
+async def test_error_after_tool_event_not_retried(tmp_path, conn, state):
+    # 도구가 이미 데이터를 바꿨으면 다시 부르지 않는다(중복 쓰기 방지). 확인 문구는 남긴다
+    from my_planner.harness.dispatcher import FALLBACK_REPLY
+
+    add = ("add_task", {"title": "운동", "areas": ["health"]})
+    env = _env(
+        tmp_path, conn, state,
+        [FakeTurn([add], "", status="error", session_id=None), FakeTurn([add], "넣었어요.")],
+    )
+    slept = _record_sleeps(env)
+    await env.process(env.inbound("운동 추가해 줘"))
+
+    assert len(env.brain.calls) == 1 and slept == []
+    assert [t.title for t in env.tools.tasks.list()] == ["운동"]
+    (out,) = env.sender.sent
+    assert out.text.startswith(FALLBACK_REPLY) and "✓ 추가: 운동" in out.text
+
+
+async def test_reply_send_failure_leaves_update_unmarked(tmp_path, conn, state):
+    # 사용자 메시지에 대한 고정 답이 안 갔으면 처리 완료로 기록하지 않는다(다시 받으면 다시 답한다)
+    from fakes import FakeSender
+
+    env = _env(tmp_path, conn, state, [_auth(), _limited(kst(2026, 10, 26, 21, 30))])
+    env.sender = env.dispatcher.sender = FakeSender(fail=True)
+    await env.process(env.inbound("안녕", update_id=1))  # auth_error
+    await env.process(env.inbound("또", update_id=2))  # rate_limited
+    await env.process(env.inbound("아직?", update_id=3))  # 알려진 구간 안
+    assert not any(state.is_seen_update(i) for i in (1, 2, 3))
+
+
+async def test_rate_limited_resume_text_uses_logical_date(tmp_path, conn, state):
+    # 월 22:00: 화 02:30은 아직 같은 논리적 날짜(04:00 경계)라 시각만, 화 05:00은 다음 날이라 날짜를 붙인다
+    cases = [(kst(2026, 10, 27, 2, 30), "02:30"), (kst(2026, 10, 27, 5, 0), "10월 27일 05:00")]
+    for i, (retry_at, text) in enumerate(cases, start=1):
+        state.set("limited_until", None)
+        env = _env(tmp_path, conn, state, [_limited(retry_at)], start=kst(2026, 10, 26, 22, 0))
+        await env.process(env.inbound("안녕", update_id=i))
+        assert env.sender.sent[-1].text == _rate_copy(text)
+
+
+async def test_run_rechecks_pause_cap_and_limit_at_dequeue(tmp_path, conn, state):
+    # 큐에 든 뒤에 /pause, 하루 상한, 사용 한도가 생기면 두뇌를 부르지 않고 그 이유로 건너뛴다
+    from my_planner.domain import LoopKey, RunStatus
+
+    setups = [
+        ("paused", lambda: state.set("pause_until", to_iso(kst(2026, 10, 27, 10, 0)))),
+        ("daily_cap", lambda: _use_brain_calls(state, 60, MON - timedelta(days=1))),  # i=1: 10/25
+        ("rate_limit", lambda: state.set("limited_until", to_iso(kst(2026, 10, 26, 12, 0)))),
+    ]
+    env = _env(tmp_path, conn, state, [])
+    for i, (reason, setup) in enumerate(setups):
+        for k in ("pause_until", "limited_until"):
+            state.set(k, None)
+        run = _queued(env, LoopKey.morning_brief, kst(2026, 10, 26, 9, 0) - timedelta(days=i))
+        env.clock.set(kst(2026, 10, 26, 10, 30) - timedelta(days=i))
+        setup()
+        await env.process_run(run)
+        after = env.runs.get(run.id)
+        assert after.status is RunStatus.skipped and after.skip_reason == reason, reason
+    assert env.brain.calls == [] and env.sender.sent == []
+
+
+async def test_run_second_call_checks_daily_cap(tmp_path, conn, state):
+    from my_planner.domain import RunStatus
+
+    env = _env(tmp_path, conn, state, [_error(), _error()])
+    _use_brain_calls(state, 59)
+    run = _queued(env)
+    await env.process_run(run)
+    assert len(env.brain.calls) == 1  # 첫 호출로 60회: 다시 실행하지 않는다
+    after = env.runs.get(run.id)
+    assert after.status is RunStatus.skipped and after.skip_reason == "daily_cap"
