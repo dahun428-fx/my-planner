@@ -135,6 +135,18 @@ def classify(
     return "ok", None, None
 
 
+def detect_resume_failed(session_id: str | None, messages: list[object], status: BrainStatus) -> bool:
+    """resume 호출이 한 턴도 돌기 전에 오류로 끝났는지(세션 파일 없음 등, 스펙 5.3).
+
+    문자열 매칭 대신 모양으로 판단한다: AssistantMessage가 없고 num_turns>0인 결과도 없다.
+    """
+    if session_id is None or status != "error":
+        return False
+    if any(isinstance(m, AssistantMessage) for m in messages):
+        return False
+    return not any(isinstance(m, ResultMessage) and m.num_turns > 0 for m in messages)
+
+
 # --- Agent SDK 구현 ---
 
 
@@ -189,6 +201,7 @@ class ClaudeBrain:
             tool_events=list(run_ctx.events),
             status=status,
             error=error,
+            resume_failed=detect_resume_failed(session_id, messages, status),
             retry_at=retry_at,
         )
 
