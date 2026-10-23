@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta, tzinfo
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from my_planner.clock import local, logical_date, period_of
 from my_planner.domain import Cadence, TaskStatus
 from my_planner.store.exports import format_task
 
 if TYPE_CHECKING:
+    from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.tasks import Task, TasksRepo
 
 OPEN_TASKS_MAX = 30
+NO_CONDITION = "기록 없음"
 _WEEKDAY = "월화수목금토일"
 
 
@@ -36,11 +38,11 @@ def build_preamble(
     tz: str | tzinfo,
     boundary: time,
     tasks: TasksRepo,
-    conditions: Any = None,
+    conditions: ConditionsRepo | None = None,
     paused_until: datetime | None = None,
     merged: list[str] | None = None,
 ) -> str:
-    """새 세션의 앞머리. 빈 섹션은 뺀다. 컨디션(07), 멈춤(10)은 그 티켓에서 채운다."""
+    """새 세션의 앞머리. 빈 섹션은 뺀다. 멈춤(10)은 그 티켓에서 채운다."""
     today = logical_date(now, tz, boundary)
     lt = local(now, tz)
     sections = [
@@ -81,4 +83,12 @@ def build_preamble(
             "## 오늘 일정\n"
             + "\n".join(f"- {local(t.scheduled_at, tz):%H:%M} {t.title} (#{t.id})" for t in scheduled)  # type: ignore[arg-type]
         )
+
+    if conditions is not None:
+        y = conditions.get(today - timedelta(days=1))
+        if y is None:
+            line = NO_CONDITION
+        else:
+            line = f"{y.score}/5" + (f" (메모: {y.note})" if y.note else "")
+        sections.append(f"## 어제 컨디션\n{line}")
     return "\n\n".join(sections)
