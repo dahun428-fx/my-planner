@@ -32,3 +32,12 @@ def test_redact_password_context_more_forms():
     assert redact("비번은 사랑해123이야") == ("비번은 [가림]이야", True)
     # 한글만으로 된 말은 값으로 보지 않는다
     assert redact("비번은 바꿨어요") == ("비번은 바꿨어요", False)
+
+
+def test_redact_password_keyword_without_secret_value():
+    # 키워드 뒤 덩어리에 영문자나 숫자가 없으면 값으로 보지 않는다(질문, 문장부호)
+    for text in ["비밀번호 변경했어?", "비번 바꿨어?", "비밀번호는?", "password?", "PIN 번호 뭐였지?!"]:
+        assert redact(text) == (text, False)
+    # 값에 영문자나 숫자가 하나라도 있으면 그대로 가린다
+    assert redact("비번은 !!a!!") == ("비번은 [가림]", True)
+    assert redact("비번 ****1") == ("비번 [가림]", True)
