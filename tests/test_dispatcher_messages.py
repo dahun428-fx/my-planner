@@ -6,6 +6,7 @@ from my_planner.clock import FakeClock
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher, Inbound
 from my_planner.store.repos.conversations import ConversationsRepo
+from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
@@ -18,6 +19,7 @@ class Env:
         self.sender = sender or FakeSender()
         self.state = state
         self.convs = ConversationsRepo(conn, self.clock)
+        self.runs = RunsRepo(conn, self.clock)
         self.transcripts = TranscriptStore(
             self.settings.paths.data_dir, self.settings.timezone, self.settings.day_boundary
         )
@@ -42,8 +44,9 @@ class Env:
             transcripts=self.transcripts,
             clock=self.clock,
             settings=self.settings,
-            router=ConversationRouter(convs=self.convs, clock=self.clock, settings=self.settings),
+            router=ConversationRouter(self.convs, self.runs, clock=self.clock, settings=self.settings),
             tools=self.tools,
+            runs=self.runs,
             sleep=fake_sleep(self.clock),
         )
 
@@ -55,6 +58,11 @@ class Env:
         self.dispatcher.start()
         for m in messages:
             self.dispatcher.submit_message(m)
+        await self.dispatcher.stop(timeout=5)
+
+    async def process_run(self, run, merged=()):
+        self.dispatcher.start()
+        self.dispatcher.submit_run(run, list(merged))
         await self.dispatcher.stop(timeout=5)
 
     def day_file(self, ymd):

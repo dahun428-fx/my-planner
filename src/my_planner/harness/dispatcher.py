@@ -1,4 +1,4 @@
-"""직렬 디스패처: 메시지(와 이후 티켓의 회차) → 두뇌 → 응답 (스펙 4, 5.3)."""
+"""직렬 디스패처: 메시지와 회차 → 두뇌 → 응답 (스펙 4, 5.3, 5.4)."""
 
 from __future__ import annotations
 
@@ -14,17 +14,19 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from my_planner.clock import Clock, logical_date
-from my_planner.domain import RunContext
+from my_planner.domain import ConversationKind, LoopKey, RunContext
 from my_planner.harness import prompts
 from my_planner.harness.brain import Brain, BrainResult
 from my_planner.harness.context import build_notices, build_preamble
 from my_planner.harness.redact import redact
+from my_planner.loop.schedule import Due, limit_for
 from my_planner.tools.confirmations import render_confirmations
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
-    from my_planner.store.repos.conversations import ConversationsRepo
+    from my_planner.store.repos.conversations import Conversation, ConversationsRepo
+    from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.store.transcripts import TranscriptStore
     from my_planner.tools.core import Tools
@@ -54,11 +56,39 @@ class Sender(Protocol):
     async def typing(self) -> None: ...
 
 
-# 큐 우선순위(작을수록 먼저). 회차는 티켓 05에서 들어온다.
-_PRIORITY_MESSAGE = 10
+@dataclass
+class _RunJob:
+    run: Run
+    merged: list[Run]
+
+
+@dataclass
+class _ResendJob:
+    """전송이 끝내 안 된 회차를 5분 뒤 전송만 한 번 더 한다. 두뇌는 다시 부르지 않는다."""
+
+    run: Run
+    merged: list[Run]
+    tool_names: list[str]
+
+
+# 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
+_PRIORITY_MESSAGE = 0  # 사용자 메시지가 회차보다 먼저
+_PRIORITY_RUN = 1
 _PRIORITY_STOP = 1_000_000
 
+# 루프별 지시문 파일 (스펙 5.3 "프롬프트 선택")
+LOOP_PROMPTS = {
+    LoopKey.morning_brief: "morning_brief.md",
+    LoopKey.evening_checkin: "evening_checkin.md",
+    LoopKey.review: "review_week.md",
+    LoopKey.return_: "return.md",
+}
+
 TYPING_INTERVAL_S = 5
+SEND_ATTEMPTS = 3  # 회차 전송은 바로 3회까지(스펙 5.4, 7)
+SEND_RETRY_DELAYS_S = (1, 2, 4)  # 시도 사이 간격. 3회라 앞의 두 값(1, 2초)만 쓰인다
+RESEND_DELAY_S = 5 * 60
+MAX_RUN_ATTEMPTS = 2  # 회차당 두뇌 호출 최대 2회
 
 FALLBACK_REPLY = "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요."
 MAX_TURNS_REPLY = "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
@@ -79,6 +109,7 @@ class Dispatcher:
         settings: Settings,
         router: ConversationRouter,
         tools: Tools | None = None,
+        runs: RunsRepo | None = None,
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
@@ -91,11 +122,13 @@ class Dispatcher:
         self.settings = settings
         self.router = router
         self.tools = tools
+        self.runs = runs
         self._keep_awake = keep_awake
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
         self._seq = itertools.count()
         self._worker: asyncio.Task[None] | None = None
+        self._timers: set[asyncio.Task[None]] = set()
 
     # --- 수명 ---
 
@@ -105,6 +138,10 @@ class Dispatcher:
 
     async def stop(self, timeout: float = 30) -> None:
         """큐에 든 것까지 처리하고 멈춘다. `timeout`초 안에 끝나지 않으면 작업을 취소한다."""
+        # 아직 기다리는 5분 뒤 재전송은 취소한다. 시작 시 복구(스펙 5.1 4단계, 티켓 12)가 이어받는다.
+        for t in list(self._timers):
+            t.cancel()
+        self._timers.clear()
         worker = self._worker
         if worker is None:
             return
@@ -121,11 +158,27 @@ class Dispatcher:
     def submit_message(self, m: Inbound) -> None:
         self._queue.put_nowait((_PRIORITY_MESSAGE, next(self._seq), m))
 
+    def submit_run(self, run: Run, merged: list[Run]) -> None:
+        """러너가 `queued`로 바꾼 회차를 넣는다. `merged`는 이 회차에 합쳐 함께 처리할 회차다."""
+        self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), _RunJob(run, list(merged))))
+
     async def _work(self) -> None:
         while True:
             _, _, item = await self._queue.get()
             if item is None:
                 return
+            if isinstance(item, _RunJob):
+                try:
+                    await self._handle_run(item.run, item.merged)
+                except Exception:
+                    log.exception("run_handling_error", extra={"run_id": item.run.id})
+                continue
+            if isinstance(item, _ResendJob):
+                try:
+                    await self._resend_run(item)
+                except Exception:
+                    log.exception("run_resend_error", extra={"run_id": item.run.id})
+                continue
             batch = [item, *self._drain_messages()]
             try:
                 await self._handle_messages(batch)
@@ -176,16 +229,16 @@ class Dispatcher:
             for m in batch:
                 self.transcripts.append(m.at, "사용자", conv.id, None, redact(m.text)[0])
             resumed = conv.session_id is not None
-            prompt = _join(
-                notices, "" if resumed else prompts.load("chat.md"), self._preamble(resumed), body
-            )
+            # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택").
+            instructions = "" if conv.kind is ConversationKind.run else prompts.load("chat.md")
+            prompt = _join(notices, "" if resumed else instructions, self._preamble(resumed), body)
             result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
             if resumed and result.resume_failed:
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
                 history = self.transcripts.recent(conv.id, 20, skip_last=len(batch))
                 prompt = _join(
                     notices,
-                    prompts.load("chat.md"),
+                    instructions,
                     self._preamble(False),
                     f"## 최근 대화\n{history}" if history else "",
                     body,
@@ -216,11 +269,120 @@ class Dispatcher:
             },
         )
 
+    # --- 회차 실행 (스펙 5.4: 두 단계) ---
+
+    async def _handle_run(self, run: Run, merged: list[Run]) -> None:
+        assert self.runs is not None, "회차를 실행하려면 runs가 있어야 한다"
+        runs = self.runs
+        with self._keep_awake():
+            # (a) 두뇌 호출 → 보낼 본문을 outbound_text에 저장
+            runs.mark_running(run.id)
+            conv = self.router.for_run(run)
+            runs.set_conversation(run.id, conv.id)
+            result, run_ctx = await self._run_brain(run, merged, conv)
+            if not _run_ok(result) and self._may_rerun(run, result):
+                runs.mark_running(run.id)
+                result, run_ctx = await self._run_brain(run, merged, conv)
+            if not _run_ok(result):
+                # 사용자에게는 아무것도 보내지 않는다(스펙 5.4 재실행 규칙 4). 로그만 남긴다.
+                for r in (run, *merged):
+                    runs.mark_failed(r.id, result.status)
+                self.convs.close(conv.id)
+                log.warning("run_brain_failed", extra={"run_id": run.id, "status": result.status})
+                return
+            if result.session_id:
+                self.convs.set_session(conv.id, result.session_id)
+            text = result.text
+            confirmations = render_confirmations(run_ctx.events, self._today())
+            if confirmations:
+                text = f"{text}\n\n{confirmations}"
+            runs.save_outbound(run.id, text)
+            # (b) 전송: 바로 3회까지. 그래도 안 되면 failed로 두고 5분 뒤 전송만 한 번 더
+            if await self._send_run(text, run.id, attempts=SEND_ATTEMPTS):
+                self._run_delivered(run, merged, conv, text, list(run_ctx.tool_names))
+                return
+            for r in (run, *merged):
+                runs.mark_failed(r.id, "send")
+            self._later(RESEND_DELAY_S, _ResendJob(run, merged, list(run_ctx.tool_names)))
+
+    async def _run_brain(
+        self, run: Run, merged: list[Run], conv: Conversation
+    ) -> tuple[BrainResult, RunContext]:
+        """루프 지시문(합친 회차의 지시문을 뒤에 이어 붙임)과 앞머리로 새 세션을 연다."""
+        run_ctx = RunContext(conversation_id=conv.id, run_id=run.id, events=[])
+        prompt = _join(
+            *(prompts.load(LOOP_PROMPTS[r.loop]) for r in (run, *merged)),
+            self._preamble(False, merged=[m.loop.value for m in merged] or None),
+        )
+        return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
+
+    def _may_rerun(self, run: Run, result: BrainResult) -> bool:
+        """두뇌 단계 오류는 도구 이벤트가 하나도 없고 한계 안일 때만 한 번 다시 실행한다.
+
+        `auth_error`, `rate_limited`, `max_turns`는 다시 실행하지 않는다(티켓 10이 따로 다룬다).
+        """
+        assert self.runs is not None
+        if result.status != "error":
+            return False
+        current = self.runs.get(run.id)
+        if current is None or current.attempt >= MAX_RUN_ATTEMPTS or self.runs.has_tool_events(run.id):
+            return False
+        s = self.settings
+        due = Due(run.loop, run.scheduled_for, run.cadence)
+        return self.clock.now() <= limit_for(due, s, s.timezone, s.day_boundary)
+
+    async def _send_run(self, text: str, run_id: int, *, attempts: int) -> bool:
+        for i in range(attempts):
+            try:
+                await self.sender.send(Outbound(text=text))
+                return True
+            except Exception as e:  # noqa: BLE001 - 어떤 전송 오류든 다시 시도한다. 본문 없이 종류만 남긴다
+                log.warning(
+                    "run_send_error", extra={"run_id": run_id, "try": i + 1, "error_type": type(e).__name__}
+                )
+                if i + 1 < attempts:
+                    await self._sleep(SEND_RETRY_DELAYS_S[i])
+        return False
+
+    def _later(self, delay: float, job: _ResendJob) -> None:
+        async def wait_then_put() -> None:
+            await self._sleep(delay)
+            self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
+
+        t = asyncio.create_task(wait_then_put(), name=f"resend-{job.run.id}")
+        self._timers.add(t)
+        t.add_done_callback(self._timers.discard)
+
+    async def _resend_run(self, job: _ResendJob) -> None:
+        assert self.runs is not None
+        run = self.runs.get(job.run.id)
+        if run is None or run.status != "failed" or not run.outbound_text or run.resent:
+            return
+        self.runs.mark_resent(run.id)
+        conv = self.convs.get(run.conversation_id) if run.conversation_id is not None else None
+        with self._keep_awake():
+            if await self._send_run(run.outbound_text, run.id, attempts=1) and conv is not None:
+                self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names)
+
+    def _run_delivered(
+        self, run: Run, merged: list[Run], conv: Conversation, text: str, tool_names: list[str]
+    ) -> None:
+        """전송이 끝난 회차: 원문 기록, 대화 갱신, primary와 merged 모두 done, 먼저 보낸 메시지 수 +1."""
+        assert self.runs is not None
+        self.transcripts.append(
+            self.clock.now(), "비서", conv.id, run.loop.value, redact(text)[0], tools=tool_names
+        )
+        self.convs.touch(conv.id)
+        for r in (run, *merged):
+            self.runs.mark_done(r.id)
+        self.state.incr_usage(self._today(), "proactive_messages")
+        log.info("run_done", extra={"run_id": run.id, "loop": run.loop.value, "conversation_id": conv.id})
+
     def _today(self) -> date:
         return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
 
-    def _preamble(self, resumed: bool) -> str:
-        """새 세션일 때만 붙인다: 지금 시각, 열린 할 일, 오늘 일정."""
+    def _preamble(self, resumed: bool, *, merged: list[str] | None = None) -> str:
+        """새 세션일 때만 붙인다: 지금 시각, 열린 할 일, 오늘 일정(, 함께 처리하는 회차)."""
         if resumed or self.tools is None:
             return ""
         return build_preamble(
@@ -229,6 +391,7 @@ class Dispatcher:
             boundary=self.settings.day_boundary,
             tasks=self.tools.tasks,
             conditions=self.tools.conditions,
+            merged=merged,
         )
 
     async def _call_brain(
@@ -263,13 +426,17 @@ class Dispatcher:
         while True:
             try:
                 await self.sender.typing()
-            except Exception as e:  # 입력 중 표시는 없어도 된다
+            except Exception as e:  # noqa: BLE001 - 입력 중 표시는 없어도 된다
                 log.warning("typing_error", extra={"error_type": type(e).__name__})
             await self._sleep(TYPING_INTERVAL_S)
 
 
 def _join(*parts: str) -> str:
     return "\n\n".join(p for p in parts if p)
+
+
+def _run_ok(result: BrainResult) -> bool:
+    return result.status == "ok" and bool(result.text.strip())
 
 
 def _reply_for(result: BrainResult) -> str:
