@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 
-from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
+from my_planner.clock import Clock, from_iso, local, to_iso
 from my_planner.domain import Area, Cadence, TaskStatus
 
 
@@ -163,9 +163,6 @@ class TasksRepo:
 
         tz = ZoneInfo(self.tz) if isinstance(self.tz, str) else self.tz
         return datetime.combine(d, self.boundary, tzinfo=tz)
-
-    def logical_date_of(self, dt: datetime) -> date:
-        return logical_date(dt, self.tz, self.boundary)
 
     # --- 쓰기 ---
 

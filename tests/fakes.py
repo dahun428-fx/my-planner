@@ -65,7 +65,6 @@ class FakeBrain:
             text=turn.text,
             session_id=turn.session_id,
             turns=1 + len(turn.tool_calls),
-            tool_events=list(run_ctx.events),
             status=turn.status,  # type: ignore[arg-type]
             error=turn.error,
             resume_failed=turn.resume_failed,

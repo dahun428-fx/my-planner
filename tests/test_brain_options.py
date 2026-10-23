@@ -196,3 +196,14 @@ async def test_claude_brain_sets_resume_failed(tmp_path, monkeypatch):
     assert resumed.resume_failed is True
     fresh = await b.run("hi", session_id=None, run_ctx=ctx)
     assert fresh.resume_failed is False
+
+
+def test_brain_result_carries_no_tool_events():
+    # 도구 이벤트는 run_ctx.events 하나로만 읽는다(디스패처). BrainResult에 사본을 두지 않는다
+    from dataclasses import fields
+
+    from my_planner.harness.brain import BrainResult
+
+    assert [f.name for f in fields(BrainResult)] == [
+        "text", "session_id", "turns", "status", "error", "resume_failed", "retry_at",
+    ]
