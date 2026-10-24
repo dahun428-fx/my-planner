@@ -28,6 +28,7 @@ export function DateChoice({ props, data, ctx }: PartProps<Props>) {
   const [asking, setAsking] = useState<Asking | null>(null);
   const [sent, setSent] = useState(false);
   const lock = useRef(false);
+  const card = useRef<HTMLElement>(null);
 
   if (data === undefined) {
     return (
@@ -79,7 +80,7 @@ export function DateChoice({ props, data, ctx }: PartProps<Props>) {
   };
 
   return (
-    <Part readOnly={ctx.readOnly}>
+    <Part readOnly={ctx.readOnly} focusRef={card}>
       <MiniText md={props.question} />
       <p className={styles.todoTitle}>{todo.title}</p>
       <div className={styles.candidates}>
@@ -106,7 +107,7 @@ export function DateChoice({ props, data, ctx }: PartProps<Props>) {
         </button>
       </div>
       {asking && (
-        <ConfirmSheet summary={asking.summary} busy={busy} onKeep={() => setAsking(null)} onChange={() => void move(asking.date, asking.token)} />
+        <ConfirmSheet summary={asking.summary} busy={busy} returnFocusTo={card} onKeep={() => setAsking(null)} onChange={() => void move(asking.date, asking.token)} />
       )}
     </Part>
   );

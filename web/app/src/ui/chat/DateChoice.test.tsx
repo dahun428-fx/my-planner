@@ -104,6 +104,8 @@ describe("DateChoice", () => {
     expect(bodies[1].client_msg_id).not.toBe(bodies[0].client_msg_id);
     await waitFor(() => expect(candidate(/^10월 27일/)).toHaveAttribute("aria-pressed", "true"));
     expect(ctx.onAfterAction).toHaveBeenCalledTimes(1);
+    // The pressed candidate is off now, so focus comes back to the card, not to the page.
+    await waitFor(() => expect(document.querySelector("section")).toHaveFocus());
   });
 
   it("confirm then rejected", async () => {
