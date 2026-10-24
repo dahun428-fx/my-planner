@@ -184,7 +184,7 @@ export const copy = {
   },
 
   parts: {
-    unknown: "이 카드는 아직 이 앱에서 보여 줄 수 없어요.",
+    unknown: "이 화면 조각은 아직 앱이 그릴 줄 몰라요",
     todoCount: (n: number) => `할 일 ${n}개`,
     more: (n: number) => `${n}개 더`,
     less: "접기",

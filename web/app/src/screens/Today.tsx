@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet } from "../api/client";
 import type { CheckinDetail, Today as TodayData, TodayTodo } from "../api/types.gen";
-import { useAction } from "../api/actions";
+import { type ActionOutcome, useAction } from "../api/actions";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher } from "../components/ChatLauncher";
 import { ConfirmSheet } from "../components/ConfirmSheet";
@@ -67,29 +67,36 @@ export function Today() {
   const live = view.kind === "live";
 
   // Block 3: the ui_confirm cards of every pending check-in (read again after any write on them).
-  const [confirms, setConfirms] = useState<{ key: string; props: unknown }[]>([]);
+  type ConfirmCard = { key: string; props: unknown };
+  const [byCheckin, setByCheckin] = useState<Readonly<Record<number, ConfirmCard[]>>>({});
   const [reread, setReread] = useState(0);
-  const liveData = view.kind === "live" ? view.data : null;
-  const pendingKey = liveData ? liveData.checkins.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
+  const pendingKey = view.kind === "live" ? view.data.checkins.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
+  const pendingIds = pendingKey === "" ? [] : pendingKey.split(",").map(Number);
+  // Read again only when the set of pending check-ins changes or after a write on a part (not on every poll).
   useEffect(() => {
-    const ids = pendingKey === "" ? [] : pendingKey.split(",").map(Number);
-    if (ids.length === 0) {
-      setConfirms([]);
-      return;
-    }
+    if (pendingKey === "") return;
+    const ids = pendingKey.split(",").map(Number);
     let alive = true;
     void Promise.all(ids.map((id) => apiGet<CheckinDetail>(`/checkins/${id}`, "CheckinDetail"))).then((results) => {
-      if (!alive || results.some((r) => r.kind !== "ok")) return; // a failed read keeps what is shown
-      setConfirms(
-        results.flatMap((r, i) =>
-          r.kind === "ok" ? r.data.cards.filter((c) => c.component === "ui_confirm").map((c) => ({ key: `${ids[i]}:${c.toolCallId}`, props: c.props })) : [],
-        ),
-      );
+      if (!alive) return;
+      setByCheckin((prev) => {
+        const next = { ...prev };
+        results.forEach((r, i) => {
+          const id = ids[i];
+          if (r.kind === "ok") {
+            next[id] = r.data.cards.filter((c) => c.component === "ui_confirm").map((c) => ({ key: `${id}:${c.toolCallId}`, props: c.props }));
+          } else if (r.kind === "error" && r.status === 404) {
+            delete next[id]; // gone
+          } // any other failure keeps what that check-in showed before
+        });
+        return next;
+      });
     });
     return () => {
       alive = false;
     };
-  }, [pendingKey, liveData, reread]);
+  }, [pendingKey, reread]);
+  const confirms = pendingIds.flatMap((id) => byCheckin[id] ?? []);
   const afterPartAction = useCallback(() => {
     void refresh();
     setReread((n) => n + 1);
@@ -161,9 +168,18 @@ export function Today() {
     }
   };
 
+  // useAction toasts applied / rejected / failed; a card that changed under us (conflict) or an
+  // unexpected confirm question gets the failure sentence, and the screen reads again.
+  const notAllowed = async (out: ActionOutcome | null) => {
+    if (out?.kind !== "conflict" && out?.kind !== "needs_confirm") return;
+    toast.show({ text: copy.actions.failed });
+    await refresh();
+  };
+
   const unpin = async (id: number) => {
     const out = await run("unpin_card", { id });
     if (out?.kind === "applied") await refresh();
+    else await notAllowed(out);
   };
 
   const move = async (ids: number[], at: number, by: -1 | 1) => {
@@ -171,6 +187,7 @@ export function Today() {
     [next[at], next[at + by]] = [next[at + by], next[at]];
     const out = await run("reorder_cards", { ids: next });
     if (out?.kind === "applied") await refresh();
+    else await notAllowed(out);
   };
 
   const record = async (score: number) => {

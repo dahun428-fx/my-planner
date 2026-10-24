@@ -21,7 +21,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const { state, conn } = useConnection();
   const beUrl = conn?.beUrl ?? null;
   const version = state?.kind === "online" ? state.health.version.ui_catalog : null;
-  const ready = state?.kind === "online" || state?.kind === "offline";
+  const ready = state !== null; // any known connection state: a catalog that cannot be had settles as null
   const [loaded, setLoaded] = useState<{ beUrl: string; catalog: Catalog | null } | null>(null);
 
   useEffect(() => {

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useToast } from "../../components/Toast";
 import { type ActionName, useAction } from "../../api/actions";
 import { copy } from "../../lib/copy";
 import type { PartProps } from "../types";
@@ -13,14 +14,27 @@ export function Confirm({ props, ctx }: PartProps<ConfirmProps>) {
   const { run } = useAction();
   const [gone, setGone] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const toast = useToast();
 
   const send = async (action: ActionName, args: object, token?: string) => {
-    const out = await run(action, args, token ? { confirmToken: token } : undefined);
-    if (out?.kind === "applied") {
-      setFinished(true);
-      ctx.onAfterAction();
-    } else if (out?.kind === "conflict") {
-      setGone(true);
+    if (inFlight.current) return; // one request at a time, whichever button it came from
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      const out = await run(action, args, token ? { confirmToken: token } : undefined);
+      if (out?.kind === "applied") {
+        setFinished(true);
+        ctx.onAfterAction();
+      } else if (out?.kind === "conflict") {
+        setGone(true);
+      } else if (out?.kind === "needs_confirm") {
+        toast.show({ text: copy.actions.failed }); // asked again: the card stays so the person can try or keep
+      }
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
   };
 
@@ -31,7 +45,7 @@ export function Confirm({ props, ctx }: PartProps<ConfirmProps>) {
       </Part>
     );
   }
-  const off = ctx.readOnly || finished;
+  const off = ctx.readOnly || finished || busy;
   return (
     <Part variant="confirm" readOnly={ctx.readOnly}>
       <p className={styles.text}>{props.summary}</p>

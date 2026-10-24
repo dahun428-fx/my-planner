@@ -1,9 +1,8 @@
 import { screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
-import type { Todo } from "../../api/types.gen";
 import { copy } from "../../lib/copy";
-import { makeCtx } from "../../test/parts";
+import { makeCtx, makeTodo as t } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
 import { AreaScores } from "./AreaScores";
 import { ChapterDraft } from "./ChapterDraft";
@@ -16,9 +15,6 @@ import { TodoDraft } from "./TodoDraft";
 import { TodoList } from "./TodoList";
 
 const ctx = makeCtx({ readOnly: true });
-const t = (id: number, status: Todo["status"]): Todo => ({
-  id, title: `일 ${id}`, status, planned_for: "2026-10-24", scheduled_at: null, parent_id: null, areas: [], note: "", priority: null, completed_at: null,
-});
 
 const cases: [string, ReactElement][] = [
   ["TodoList", <TodoList key="a" props={{ title: "t", task_ids: [1] }} data={{ todos: [t(1, "open")] }} ctx={ctx} />],

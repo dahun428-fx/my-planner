@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
+import type { Todo } from "../api/types.gen";
 import type { PartContext } from "../ui/types";
 import { BASE, server } from "./server";
 
@@ -22,3 +23,16 @@ export function serveActions(answer?: (body: Record<string, unknown>) => Respons
 
 export const applied = () =>
   HttpResponse.json({ status: "applied", activity_id: 901, undo_id: 901, result: {}, confirmation: "✓ 처리했어요" });
+
+export const makeTodo = (id: number, title: string, status: Todo["status"] = "open"): Todo => ({
+  id,
+  title,
+  status,
+  planned_for: "2026-10-24",
+  scheduled_at: null,
+  parent_id: null,
+  areas: [],
+  note: "",
+  priority: null,
+  completed_at: null,
+});

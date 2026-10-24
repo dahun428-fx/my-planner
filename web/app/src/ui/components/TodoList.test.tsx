@@ -1,24 +1,10 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { Todo } from "../../api/types.gen";
 import { copy } from "../../lib/copy";
-import { makeCtx, serveActions } from "../../test/parts";
+import { makeCtx, makeTodo as todo, serveActions } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
 import { TodoList } from "./TodoList";
-
-const todo = (id: number, title: string, status: "open" | "done" = "open"): Todo => ({
-  id,
-  title,
-  status,
-  planned_for: "2026-10-24",
-  scheduled_at: null,
-  parent_id: null,
-  areas: [],
-  note: "",
-  priority: null,
-  completed_at: null,
-});
 
 describe("TodoList", () => {
   it("checks complete_task", async () => {

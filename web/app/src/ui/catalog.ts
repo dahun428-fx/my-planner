@@ -37,13 +37,17 @@ export async function loadCatalog(currentVersion: string | null): Promise<Catalo
 export function makePropsCheck(catalog: Catalog): (name: string, props: unknown) => boolean {
   const validators = new Map<string, Validator>();
   return (name, props) => {
-    const entry = catalog.components[name];
+    const entry = Object.hasOwn(catalog.components, name) ? catalog.components[name] : undefined;
     if (!entry) return false;
-    let v = validators.get(name);
-    if (!v) {
-      v = new Validator(entry.schema as Schema, "2020-12", true);
-      validators.set(name, v);
+    try {
+      let v = validators.get(name);
+      if (!v) {
+        v = new Validator(entry.schema as Schema, "2020-12", true);
+        validators.set(name, v);
+      }
+      return v.validate(props).valid;
+    } catch {
+      return false; // a schema the checker cannot read means "cannot draw", never a crash while rendering
     }
-    return v.validate(props).valid;
   };
 }

@@ -1,10 +1,12 @@
 import "fake-indexeddb/auto";
 import { screen, waitFor } from "@testing-library/react";
 import { clear } from "idb-keyval";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { copy } from "../lib/copy";
 import { makeCtx } from "../test/parts";
 import { renderWithProviders } from "../test/render";
+import { BASE, server } from "../test/server";
 import { UiPart } from "./registry";
 
 afterEach(async () => {
@@ -31,6 +33,12 @@ describe("UiPart", () => {
     renderWithProviders(<UiPart name="ui_choice" props={choice} ctx={makeCtx()} />, { catalog: true });
     expect(await screen.findByRole("button", { name: "독서" })).toBeInTheDocument();
     expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("settles in every connection state", async () => {
+    server.use(http.get(`${BASE}/ui/catalog`, () => HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 })));
+    renderWithProviders(<UiPart name="ui_choice" props={choice} ctx={makeCtx()} />, { catalog: true, conn: "unauthorized" });
+    expect(await screen.findByText(copy.parts.unknown)).toBeInTheDocument();
   });
 
   it("same component in three contexts", async () => {

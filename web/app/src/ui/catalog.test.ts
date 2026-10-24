@@ -75,6 +75,16 @@ describe("catalog", () => {
     expect(check("ui_choice", null)).toBe(false);
   });
 
+  it("a broken schema checks as false instead of throwing", () => {
+    const broken: Catalog = {
+      version: "x",
+      components: { ui_bad: { origin: "brain", schema: { type: "object", properties: { a: { $ref: "#/$defs/missing" } } } } },
+    };
+    const check = makePropsCheck(broken);
+    expect(() => check("ui_bad", { a: 1 })).not.toThrow();
+    expect(check("ui_bad", { a: 1 })).toBe(false);
+  });
+
   it("catalog names match registry", () => {
     expect(catalog.version).toBe("2026-10-24.2");
     expect(Object.keys(catalog.components).sort()).toEqual([...registryNames].sort());

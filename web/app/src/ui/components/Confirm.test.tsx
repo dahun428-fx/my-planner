@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { copy } from "../../lib/copy";
-import { makeCtx, serveActions } from "../../test/parts";
+import { applied, makeCtx, serveActions } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
 import { Confirm } from "./Confirm";
 
@@ -48,6 +48,29 @@ describe("Confirm", () => {
     await userEvent.dblClick(b);
     await waitFor(() => expect(bodies).toHaveLength(1));
     await new Promise((r) => setTimeout(r, 50));
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("needs_confirm answer shows the failure toast and keeps the card", async () => {
+    serveActions(() => HttpResponse.json({ status: "needs_confirm", confirm_token: "tok-2", summary: "또 확인해요", expires_at: "2026-10-24T10:00:00Z" }));
+    renderWithProviders(<Confirm props={props} ctx={makeCtx()} />);
+    await userEvent.click(screen.getByRole("button", { name: copy.todos.change }));
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.todos.change })).toBeEnabled());
+    expect(screen.getByText(props.summary)).toBeInTheDocument();
+  });
+
+  it("tapping both buttons sends one request", async () => {
+    const bodies = serveActions(async () => {
+      await new Promise((r) => setTimeout(r, 80));
+      return applied();
+    });
+    renderWithProviders(<Confirm props={props} ctx={makeCtx()} />);
+    await userEvent.click(screen.getByRole("button", { name: copy.todos.change }));
+    expect(screen.getByRole("button", { name: copy.todos.keep })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: copy.todos.keep }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 150));
     expect(bodies).toHaveLength(1);
   });
 });

@@ -55,16 +55,16 @@ export function TodoDraft({ props, data, ctx }: PartProps<{ task_ids: number[] }
       ) : (
         <p className={styles.text}>{copy.parts.todoCount(props.task_ids.length)}</p>
       )}
-      <div className={styles.buttons}>
-        {todos && (
+      {todos && (
+        <div className={styles.buttons}>
           <button type="button" className={styles.button} disabled={off || ids.length === 0} onClick={() => void drop()}>
             {copy.parts.dropChecked}
           </button>
-        )}
-        <button type="button" className={`${styles.button} ${styles.primary}`} disabled={off || ids.length === 0} onClick={() => void confirm()}>
-          {copy.parts.confirmCount(ids.length)}
-        </button>
-      </div>
+          <button type="button" className={`${styles.button} ${styles.primary}`} disabled={off || ids.length === 0} onClick={() => void confirm()}>
+            {copy.parts.confirmCount(ids.length)}
+          </button>
+        </div>
+      )}
     </Part>
   );
 }

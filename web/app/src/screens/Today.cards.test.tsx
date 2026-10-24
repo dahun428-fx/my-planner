@@ -106,4 +106,43 @@ describe("Today cards", () => {
     await waitFor(() => expect(bodies).toHaveLength(3));
     expect(bodies[2]).toMatchObject({ action: "unpin_card", args: { id: 7 } });
   });
+
+  it("unpin conflict shows a toast and reads again", async () => {
+    serveActions(() => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 }));
+    let reads = 0;
+    server.use(http.get(`${BASE}/today`, () => (reads++, HttpResponse.json(todayCards as TodayData))));
+    renderWithProviders(<Today />, { catalog: true });
+    await screen.findByText("이번 주에 챙길 것");
+    const before = reads;
+    await userEvent.click(screen.getByRole("button", { name: copy.today.pinnedMore("이번 주에 챙길 것") }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: copy.today.unpin }));
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+  });
+
+  it("reorder needs_confirm shows a toast", async () => {
+    serveActions(() => HttpResponse.json({ status: "needs_confirm", confirm_token: "t", summary: "s", expires_at: "2026-10-24T10:00:00Z" }));
+    serve(todayCards);
+    renderWithProviders(<Today />, { catalog: true });
+    await screen.findByText("이번 주에 챙길 것");
+    await userEvent.click(screen.getByRole("button", { name: copy.today.pinnedMore("이번 주에 챙길 것") }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: copy.today.moveDown }));
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+  });
+
+  it("a check-in that is gone does not freeze the block", async () => {
+    const data = { ...todayPlain, checkins: [pending(341), pending(342)] };
+    serve(data, { 341: checkin341 });
+    server.use(http.get(`${BASE}/checkins/342`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
+    renderWithProviders(<Today />, { catalog: true });
+    expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
+  });
+
+  it("reads each pending check-in once", async () => {
+    const asked = serve({ ...todayPlain }, { 341: checkin341 });
+    renderWithProviders(<Today />, { catalog: true });
+    await screen.findByText("‘장보기’를 할 일에서 뺄까요?");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(asked).toEqual([341]);
+  });
 });

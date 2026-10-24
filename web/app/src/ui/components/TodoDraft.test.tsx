@@ -1,24 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import type { Todo } from "../../api/types.gen";
 import { copy } from "../../lib/copy";
-import { makeCtx, serveActions } from "../../test/parts";
+import { makeCtx, makeTodo, serveActions } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
 import { TodoDraft } from "./TodoDraft";
 
-const draft = (id: number, title: string): Todo => ({
-  id,
-  title,
-  status: "draft",
-  planned_for: "2026-10-25",
-  scheduled_at: null,
-  parent_id: null,
-  areas: [],
-  note: "",
-  priority: null,
-  completed_at: null,
-});
+const draft = (id: number, title: string) => makeTodo(id, title, "draft");
 const data = { todos: [draft(55, "빨래 개기"), draft(56, "우편물 확인")] };
 
 describe("TodoDraft", () => {
@@ -51,5 +39,6 @@ describe("TodoDraft", () => {
     renderWithProviders(<TodoDraft props={{ task_ids: [55, 56] }} ctx={makeCtx()} />);
     expect(screen.getByText(copy.parts.todoCount(2))).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
