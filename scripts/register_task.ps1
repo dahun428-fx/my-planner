@@ -38,6 +38,12 @@ $DaysXml = @{
 # Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
+# 개발용 체크아웃을 운영 작업 이름으로 등록하면 운영 my-planner·my-planner-wake를 덮어쓴다
+$localCfg = Join-Path $Root 'config.local.toml'
+if ($TaskName -eq 'my-planner' -and (Test-Path -LiteralPath $localCfg) -and
+    (Select-String -LiteralPath $localCfg -Pattern '^\s*role\s*=\s*"dev"' -Quiet)) {
+    throw "개발용 체크아웃입니다(role = dev). -TaskName my-planner-dev로 등록하세요: $Root"
+}
 $python = Join-Path $Root '.venv\Scripts\python.exe'
 $pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
 foreach ($exe in @($python, $pythonw)) {

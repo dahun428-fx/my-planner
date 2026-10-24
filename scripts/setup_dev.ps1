@@ -11,6 +11,8 @@
   5. 작업 스케줄러에 my-planner-dev 등록(깨우기 작업 없음)
   6. tailscale serve로 https://<노트북>.<tailnet>.ts.net:<HttpsPort> → 127.0.0.1:<Port>
   토큰 값은 화면에 출력하지 않습니다. 스테이징 앱에 넣을 때는 .env에서 복사합니다.
+  medic-dev(config.medic.local.toml, my-planner-medic-dev 작업, staging/be)는 SP6 후속 티켓이 들어오면 따로 설치합니다.
+  그 전까지 개발용 BE는 손으로 git pull 후 작업을 다시 시작해야 갱신됩니다(배포 흐름 스펙 6.3).
 
 .EXAMPLE
   git clone https://github.com/dahun428-fx/my-planner.git -b develop E:\my-planner-dev
@@ -34,6 +36,8 @@ Set-StrictMode -Version Latest
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
 Set-Location -LiteralPath $Root
+# powershell -File은 -CorsOrigins a,b를 문자열 하나로 넘긴다
+$CorsOrigins = @($CorsOrigins | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # 1. develop 체크아웃인지
 $branch = (& git -C $Root rev-parse --abbrev-ref HEAD).Trim()
@@ -88,5 +92,14 @@ if (-not (Test-Path -LiteralPath $envPath)) {
 # 6. tailnet HTTPS (운영 443과 따로)
 & tailscale serve --bg "--https=$HttpsPort" "http://127.0.0.1:$Port"
 if ($LASTEXITCODE -ne 0) { throw 'tailscale serve 실패' }
-$dns = (& tailscale status --json | ConvertFrom-Json).Self.DNSName.TrimEnd('.')
+$savedEncoding = [Console]::OutputEncoding
+try {
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8  # 장치 이름에 한글이 있어도 JSON이 깨지지 않게
+    $status = (& tailscale status --json | Out-String) | ConvertFrom-Json
+} finally {
+    [Console]::OutputEncoding = $savedEncoding
+}
+$dns = ''
+if ($status.PSObject.Properties['Self'] -and $status.Self.PSObject.Properties['DNSName']) { $dns = "$($status.Self.DNSName)".TrimEnd('.') }
+if (-not $dns) { throw 'tailnet 이름을 못 읽었습니다(MagicDNS와 HTTPS 인증서가 켜져 있는지 확인)' }
 Write-Output "개발용 BE 주소: https://${dns}:$HttpsPort  (스테이징 앱 연결 화면에 넣고, 토큰은 .env의 API_TOKEN)"
