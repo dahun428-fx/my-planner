@@ -133,6 +133,31 @@ describe("Today", () => {
     expect(bodies[0]).toMatchObject({ action: "record_condition", args: { date: "2026-10-24", score: 3 } });
   });
 
+  it("a conflict on the condition says it failed and reads again", async () => {
+    const hits = serve();
+    actions(() => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 }));
+    renderWithProviders(<Today />);
+    const pill = await screen.findByRole("button", { name: copy.today.conditionScore(3) });
+    await waitFor(() => expect(pill).toBeEnabled());
+    const read = hits.today;
+    await userEvent.setup().click(pill);
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+    await waitFor(() => expect(hits.today).toBe(read + 1));
+  });
+
+  it("writes and the launcher go off together when the BE stops taking writes", async () => {
+    serve();
+    actions(() => HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 }));
+    renderWithProviders(<Today />);
+    const pill = await screen.findByRole("button", { name: copy.today.conditionScore(3) });
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
+    expect(pill).toBeEnabled();
+    await userEvent.setup().click(pill);
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled());
+    expect(screen.getByRole("button", { name: copy.today.conditionScore(3) })).toBeDisabled();
+    expect(screen.queryByRole("checkbox", { name: copy.today.checkLabel("운동 30분") })).toBeNull(); // a read-only row has no check
+  });
+
   it("existing condition is filled and can be changed", async () => {
     serve({ ...today, condition: { date: "2026-10-24", score: 4, note: null } });
     renderWithProviders(<Today />);

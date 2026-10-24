@@ -13,7 +13,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { TodoRow } from "../components/TodoRow";
 import { useToast } from "../components/Toast";
-import { useConnection } from "../lib/ConnectionProvider";
+import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
@@ -54,7 +54,7 @@ export function Today() {
   useEffect(() => onTodayRefresh(() => void refresh()), [refresh]);
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
-  const live = view.kind === "live";
+  const writable = useWritable(view.kind === "live");
 
   // Block 3: the ui_confirm cards of every pending check-in (read again after any write on them).
   const pendingKey = view.kind === "live" ? view.data.checkins.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
@@ -98,7 +98,7 @@ export function Today() {
     if (out?.kind === "applied") {
       setChanging(false);
       await refresh();
-    }
+    } else await notAllowed(out);
   };
 
   let body: React.ReactNode;
@@ -151,7 +151,7 @@ export function Today() {
     // Open rows keep the BE's order; rows that are done go to the end of the list (spec 5.5.1).
     const display = [...list.filter((i) => i.todo.status !== "done"), ...list.filter((i) => i.todo.status === "done")];
     const openCount = display.filter((i) => i.todo.status !== "done").length;
-    const readOnly = !live;
+    const readOnly = !writable;
     const pinned = [...t.cards].sort((a, b) => a.order - b.order);
     const pinnedIds = pinned.map((c) => c.id);
 
@@ -279,7 +279,7 @@ export function Today() {
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
       {dropSheet}
-      <ChatLauncher disabled={!live} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
+      <ChatLauncher disabled={!writable} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

@@ -16,7 +16,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { TodoRow } from "../components/TodoRow";
 import { useToast } from "../components/Toast";
-import { useConnection } from "../lib/ConnectionProvider";
+import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays } from "../lib/time";
@@ -187,6 +187,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const weekOffline = weekView.kind === "snapshot" || weekView.kind === "none";
   const offline = offlineConn || (tab === "week" && weekOffline);
   const live = !offline;
+  const writable = useWritable(live);
 
   let body: React.ReactNode = null;
   if (offline && tab !== "week") {
@@ -220,7 +221,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       body = null;
     } else {
       const w = weekView.data;
-      const readOnly = weekView.kind !== "live";
+      const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
           {w.priorities.length > 0 && <Group heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
@@ -245,7 +246,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   } else if (tab === "day") {
     if (todayView.kind === "live") {
       const list = openFirst(todayView.data.todos.map((t) => show(t.todo)));
-      body = <Group heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, false)}</Group>;
+      body = <Group heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, !writable)}</Group>;
     } else if (todayView.kind === "blocked") {
       body = (
         <Group>
@@ -262,7 +263,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   } else if (shownPrio) {
     body = (
       <Group heading={copy.todos.periodPriorities(LABEL[tab])}>
-        {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, false)}
+        {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
       </Group>
     );
   } else if (prioErr) {
@@ -289,7 +290,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         trailing={
           <span className={styles.trailing}>
             {state && <StatusDot state={state} />}
-            <button type="button" className={styles.add} aria-label={copy.todos.add} disabled={!live || !todayDate} onClick={() => setAdding(true)}>
+            <button type="button" className={styles.add} aria-label={copy.todos.add} disabled={!writable || !todayDate} onClick={() => setAdding(true)}>
               <Icon name="plus" />
             </button>
           </span>
@@ -313,7 +314,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
               <button
                 type="button"
                 className={styles.bulk}
-                disabled={draftBusy}
+                disabled={draftBusy || !writable}
                 onClick={() => void confirmDrafts(draftList.map((d) => d.todo.id))}
               >
                 {copy.todos.confirmAll}
@@ -325,14 +326,14 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
           {draftList.map(({ todo }) => (
             <div key={todo.id} className={styles.draftRow}>
               <span className={styles.draftTitle}>{todo.title}</span>
-              <button type="button" className={styles.draftButton} aria-label={copy.todos.dropLabel(todo.title)} disabled={draftBusy} onClick={() => void dropDraft(todo.id)}>
+              <button type="button" className={styles.draftButton} aria-label={copy.todos.dropLabel(todo.title)} disabled={draftBusy || !writable} onClick={() => void dropDraft(todo.id)}>
                 {copy.todos.drop}
               </button>
               <button
                 type="button"
                 className={`${styles.draftButton} ${styles.confirm}`}
                 aria-label={copy.todos.confirmLabel(todo.title)}
-                disabled={draftBusy}
+                disabled={draftBusy || !writable}
                 onClick={() => void confirmDrafts([todo.id])}
               >
                 {copy.todos.confirm}
@@ -349,7 +350,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       {dropSheet}
       {todayDate && <AddTodoSheet open={adding} onClose={() => setAdding(false)} defaultDate={todayDate} onAdded={() => void refreshAll()} />}
       <EditTodoSheet edit={edit} onClose={() => setEdit(null)} onDone={refreshAll} guard={guard} />
-      <ChatLauncher disabled={!online} offline={offlineConn} reason={launcherReason(state?.kind)} onOpen={chat.open} />
+      <ChatLauncher disabled={!writable} offline={offlineConn} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

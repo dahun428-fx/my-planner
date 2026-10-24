@@ -13,7 +13,7 @@ import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { useToast } from "../components/Toast";
-import { useConnection } from "../lib/ConnectionProvider";
+import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
 import { addDays, formatKst, logicalDateOf } from "../lib/time";
@@ -86,6 +86,7 @@ function mergeById(first: ActivityItem[], older: ActivityItem[]): ActivityItem[]
 // Spec 5.5.6, F8: what the secretary and I changed, newest first, with undo.
 export function Activity() {
   const { state, recheck } = useConnection();
+  const writable = useWritable();
   const toast = useToast();
   const { result, refresh } = usePolling<FirstPage>(loadFirst);
   const checkins = usePolling<CheckinList>(() => apiGet<CheckinList>("/checkins", "CheckinList"));
@@ -281,7 +282,7 @@ export function Activity() {
     <main className={`${page.main} ${styles.main}`}>
       <LargeTitle title={copy.activity.title} sub={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
       {body}
-      <ChatLauncher disabled={state?.kind !== "online"} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
+      <ChatLauncher disabled={!writable} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

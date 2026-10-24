@@ -34,6 +34,14 @@ export function useConnection(): ConnectionValue {
   return useContext(ConnectionContext);
 }
 
+/**
+ * Whether a screen takes writes and opens the chat: the connection is online and what the screen
+ * shows is live (`live` false: a snapshot, or a read that was refused). The one rule for both.
+ */
+export function useWritable(live = true): boolean {
+  return useConnection().state?.kind === "online" && live;
+}
+
 const HEALTH_EVERY_MS = 30_000;
 const HEALTH_ERRORS_TO_OFFLINE = 3;
 const isVisible = () => typeof document === "undefined" || document.visibilityState === "visible";
