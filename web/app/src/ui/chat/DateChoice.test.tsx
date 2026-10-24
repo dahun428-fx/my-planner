@@ -104,6 +104,41 @@ describe("DateChoice", () => {
     expect(ctx.onAfterAction).toHaveBeenCalledTimes(1);
   });
 
+  it("confirm then rejected", async () => {
+    // Review Focus 3: the to-do was finished elsewhere between the question and "바꾸기".
+    for (const [message, said] of [["열린 할 일만 날짜를 옮길 수 있어요.", "열린 할 일만 날짜를 옮길 수 있어요."], ["", copy.actions.failed]]) {
+      serveActions((b) =>
+        b.confirm_token
+          ? HttpResponse.json({ error: { code: "rejected", message } }, { status: 422 })
+          : HttpResponse.json({ status: "needs_confirm", confirm_token: "tok-1", summary: "날짜를 옮겨요: 치과 예약 → 10월 27일 (화)", expires_at: "" }),
+      );
+      const ctx = makeCtx();
+      const { unmount } = renderWithProviders(<DateChoice props={props} data={data()} ctx={ctx} />);
+      await userEvent.click(candidate(/^10월 27일/));
+      await userEvent.click(await screen.findByRole("button", { name: copy.todos.change }));
+      expect(await screen.findByText(said)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText("날짜를 옮겨요: 치과 예약 → 10월 27일 (화)")).toBeNull());
+      await waitFor(() => expect(candidate(/^10월 27일/)).toBeEnabled());
+      expect(candidate(/^10월 27일/)).toHaveAttribute("aria-pressed", "false");
+      expect(ctx.onAfterAction).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it("confirm that expired says so", async () => {
+    serveActions((b) =>
+      b.confirm_token
+        ? HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 })
+        : HttpResponse.json({ status: "needs_confirm", confirm_token: "tok-1", summary: "날짜를 옮겨요: 치과 예약 → 10월 27일 (화)", expires_at: "" }),
+    );
+    renderWithProviders(<DateChoice props={props} data={data()} ctx={makeCtx()} />);
+    await userEvent.click(candidate(/^10월 27일/));
+    await userEvent.click(await screen.findByRole("button", { name: copy.todos.change }));
+    expect(await screen.findByText(copy.todos.confirmExpired)).toBeInTheDocument();
+    expect(screen.queryByText(copy.actions.failed)).toBeNull();
+    await waitFor(() => expect(candidate(/^10월 27일/)).toBeEnabled());
+  });
+
   it("keeping the date sends nothing and re-enables", async () => {
     const bodies = serveActions(() =>
       HttpResponse.json({ status: "needs_confirm", confirm_token: "tok-1", summary: "날짜를 옮겨요: 치과 예약 → 10월 27일 (화)", expires_at: "" }),

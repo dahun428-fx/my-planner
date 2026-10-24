@@ -202,6 +202,20 @@ describe("Checkin", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("confirm then rejected says why and reads again", async () => {
+    const hits = serve();
+    actions((b) => (b.confirm_token ? HttpResponse.json({ error: { code: "rejected", message: "열린 할 일만 날짜를 옮길 수 있어요." } }, { status: 422 }) : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: "날짜를 옮겨요: 운동 30분 → 10월 25일 (일)", expires_at: "2026-10-24T09:00:00Z" })));
+    const user = userEvent.setup();
+    renderWithProviders(<Checkin id={341} />);
+    await user.click(await screen.findByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const sheet = await screen.findByRole("dialog");
+    const before = hits.today;
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.change }));
+    expect(await screen.findByText("열린 할 일만 날짜를 옮길 수 있어요.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(hits.today).toBeGreaterThan(before));
+  });
+
   it("double tap sends one request and reads again after the answer", async () => {
     const hits = serve();
     let release: () => void = () => {};

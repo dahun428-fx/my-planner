@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ConfirmSheet } from "../../components/ConfirmSheet";
+import { useToast } from "../../components/Toast";
 import { copy } from "../../lib/copy";
 import { Part } from "../components/Part";
 import { candidateLabel } from "../primitives/dates";
@@ -21,6 +22,7 @@ type Asking = { date: string; token: string; summary: string };
  */
 export function DateChoice({ props, data, ctx }: PartProps<Props>) {
   const act = usePartAction();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [chosen, setChosen] = useState<string | null>(null);
   const [asking, setAsking] = useState<Asking | null>(null);
@@ -47,14 +49,19 @@ export function DateChoice({ props, data, ctx }: PartProps<Props>) {
 
   const off = ctx.readOnly || ctx.restored === true || busy || chosen !== null || sent || asking !== null;
 
+  // A 409 to "바꾸기" is the question's token gone stale (10 minutes), not a failure.
+  const expired = () => toast.show({ text: copy.todos.confirmExpired });
+
   const move = async (date: string, confirmToken?: string) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
     try {
       const onNeedsConfirm = (o: NeedsConfirm) => setAsking({ date, token: o.confirmToken, summary: o.summary });
-      const out = await act("move_task", { id: todo.id, planned_for: date }, { confirmToken, onNeedsConfirm });
+      const out = await act("move_task", { id: todo.id, planned_for: date }, { confirmToken, onNeedsConfirm, onConflict: confirmToken === undefined ? undefined : expired });
       if (out?.kind !== "needs_confirm") setAsking(null);
+      // A refusal with no sentence of its own is not said by useAction.
+      if (out?.kind === "rejected" && out.message === "") toast.show({ text: copy.actions.failed });
       if (out?.kind === "applied") {
         setChosen(date);
         ctx.onAfterAction();

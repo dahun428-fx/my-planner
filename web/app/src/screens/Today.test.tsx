@@ -272,6 +272,24 @@ describe("Today", () => {
     expect(bodies).toHaveLength(3);
   });
 
+  it("confirm then rejected says why and reads again", async () => {
+    // Review Focus 3: the to-do changed between the question and "바꾸기" (done elsewhere, say).
+    for (const [message, said] of [["열린 할 일만 날짜를 옮길 수 있어요.", "열린 할 일만 날짜를 옮길 수 있어요."], ["", copy.actions.failed]]) {
+      const hits = serve();
+      actions((b) => (b.confirm_token ? HttpResponse.json({ error: { code: "rejected", message: message } }, { status: 422 }) : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: "날짜를 옮겨요: 운동 30분 → 10월 25일 (일)", expires_at: "2026-10-24T09:00:00Z" })));
+      const { unmount } = renderWithProviders(<Today />);
+      fireEvent.contextMenu(await screen.findByText("운동 30분"));
+      fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+      const sheet = await screen.findByRole("dialog");
+      const before = hits.today;
+      await userEvent.setup().click(within(sheet).getByRole("button", { name: copy.todos.change }));
+      expect(await screen.findByText(said)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(hits.today).toBeGreaterThan(before));
+      unmount();
+    }
+  });
+
   it("drop needs confirm opens sheet", async () => {
     serve();
     const bodies = actions((b) =>

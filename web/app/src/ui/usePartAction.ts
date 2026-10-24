@@ -14,10 +14,11 @@ export function usePartAction() {
   return async (
     action: ActionName,
     args: object,
-    opts?: { confirmToken?: string; onNeedsConfirm?(o: NeedsConfirm): void },
+    opts?: { confirmToken?: string; onNeedsConfirm?(o: NeedsConfirm): void; onConflict?(): void },
   ): Promise<ActionOutcome | null> => {
     const out = await run(action, args, opts?.confirmToken === undefined ? undefined : { confirmToken: opts.confirmToken });
     if (out?.kind === "needs_confirm" && opts?.onNeedsConfirm) opts.onNeedsConfirm(out);
+    else if (out?.kind === "conflict" && opts?.onConflict) opts.onConflict();
     else if (out?.kind === "conflict" || out?.kind === "needs_confirm") toast.show({ text: copy.actions.failed });
     return out;
   };

@@ -132,6 +132,12 @@ export function useConfirmedAction(refresh: () => Promise<void>) {
       if (out.kind === "conflict") toast.show({ text: copy.todos.confirmExpired });
       setConfirm(null);
       if (out.kind === "applied") await refresh();
+      else if (out.kind === "rejected") {
+        // The to-do changed since the question (Review Focus 3): a refusal without its own
+        // sentence still says it failed, and the screen reads again either way.
+        await notAllowed(out);
+        if (out.message !== "") await refresh();
+      }
     } finally {
       lock.current = false;
       setBusy(false);
