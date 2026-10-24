@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 OUTSIDE = "<외부>"
 LOG_KEYS = ("ts", "level", "logger", "msg", "exc_type", "exc_where")
-_DETAIL_SCALARS = ("exc_type", "event", "app", "version", "route", "error_name")
+_DETAIL_SCALARS = ("exc_type", "event", "app", "version", "route", "error_name", "rollback_range")
 _MAX_FRAMES = 5
 _MAX_LIST = 10
 
@@ -170,6 +170,8 @@ def issue_body(incident: Incident, rows: list[dict[str, Any]], health: dict[str,
         f"| 발생 수 | {int(incident.count)} |",
         f"| 배포된 커밋 | {_code(safe_token(sha))} |",
     ]
+    if "rollback_range" in detail:  # 4.4: 사람 커밋을 롤백해 연 이슈에 롤백한 커밋 범위
+        lines.append(f"| 롤백한 커밋 범위 | {_code(detail['rollback_range'])} |")
     exc_type = detail.get("exc_type")
     exc_where = detail.get("exc_where")
     if exc_type is None:

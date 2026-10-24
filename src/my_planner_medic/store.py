@@ -141,6 +141,10 @@ class MedicStore:
         )
         self._db.commit()
 
+    def kv_delete(self, key: str) -> None:
+        self._db.execute("DELETE FROM kv WHERE key=?", (key,))
+        self._db.commit()
+
     def kv_json_get(self, key: str) -> Any | None:
         raw = self.kv_get(key)
         return None if raw is None else json.loads(raw)

@@ -133,6 +133,13 @@ class GitHub:
     def remove_label(self, n: int, label: str) -> None:
         self._call("DELETE", f"/issues/{n}/labels/{quote(label, safe='')}", ok_missing=True)
 
+    def issue_labels(self, n: int) -> list[str]:
+        body = self._call("GET", f"/issues/{n}")
+        return _labels(body) if isinstance(body, dict) else []
+
+    def issue_url(self, n: int) -> str:
+        return f"https://github.com/{self.repo}/issues/{n}"
+
     def close(self, n: int) -> None:
         self._call("PATCH", f"/issues/{n}", json={"state": "closed", "state_reason": "completed"})
 
@@ -169,9 +176,13 @@ class GitHub:
             raise GitHubUnavailable("server", 200)
         return sha
 
-    def ci_conclusion(self, sha: str) -> CiConclusion:
-        """`main` 푸시의 `ci` 실행 결과. `"unknown"`은 그런 실행이 없다는 뜻뿐이고, 조회 실패는 예외다."""
-        body = self._call("GET", "/actions/runs", query={"head_sha": sha, "event": "push", "per_page": 100})
+    def ci_conclusion(self, sha: str, branch: str | None = None) -> CiConclusion:
+        """푸시의 `ci` 실행 결과(`branch`를 주면 그 브랜치 푸시만). `"unknown"`은 그런 실행이 없다는 뜻뿐이고,
+        조회 실패는 예외다."""
+        query: dict[str, Any] = {"head_sha": sha, "event": "push", "per_page": 100}
+        if branch is not None:
+            query["branch"] = branch
+        body = self._call("GET", "/actions/runs", query=query)
         runs = body.get("workflow_runs") if isinstance(body, dict) else None
         ci = [r for r in runs or [] if isinstance(r, dict) and r.get("name") == "ci"]
         if not ci:
