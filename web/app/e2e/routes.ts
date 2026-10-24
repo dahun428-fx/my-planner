@@ -43,6 +43,32 @@ const HABITS = [
   { id: 3, title: "독서", area: "learning", kind: "weekly", target_per_week: 2, status: "active", checked: true, week_count: 2 },
 ];
 
+/** SP7 6.2: the habits screen reads every status at once; one paused, one archived. */
+const ALL_HABITS = [
+  ...HABITS,
+  { id: 4, title: "아주 긴 습관 제목도 줄을 넘겨 접혀야 해요 아주 긴 습관 제목", area: "career", kind: "weekly", target_per_week: 5, status: "active", checked: false, week_count: 1 },
+  { id: 5, title: "명상", area: "quality_of_life", kind: "daily", target_per_week: null, status: "paused", checked: false, week_count: 0 },
+  { id: 6, title: "피아노", area: "learning", kind: "weekly", target_per_week: 2, status: "archived", checked: false, week_count: 0 },
+];
+
+/** GET /habits/{id}?weeks=4 for 10/24: checked days only, weeks with checks only (5.5). */
+function habitHistory(id: number): Record<string, unknown> | null {
+  const habit = ALL_HABITS.find((h) => h.id === id);
+  if (!habit) return null;
+  return {
+    habit,
+    from: "2026-09-28",
+    to: "2026-10-24",
+    checked_dates: ["2026-09-29", "2026-10-01", "2026-10-06", "2026-10-13", "2026-10-15", "2026-10-21", "2026-10-22"],
+    weeks: [
+      { week: "2026-W40", count: 2 },
+      { week: "2026-W41", count: 1 },
+      { week: "2026-W42", count: 2 },
+      { week: "2026-W43", count: 2 },
+    ],
+  };
+}
+
 /** The evening check-in with its habit card (SP7 6.3: after the confirm card). */
 function checkin341(): Record<string, unknown> {
   const c = fixture("checkin-341") as { cards: unknown[] };
@@ -90,6 +116,12 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/activity") {
       if (q.has("since")) return json(route, { items: [], next_before: null, next_since: null });
       return json(route, fixture(q.has("before") ? "activity-desc-2" : "activity-desc-1"));
+    }
+    if (get && path === "/habits") return json(route, { date: "2026-10-24", week: "2026-W43", items: ALL_HABITS });
+    const habitPath = /^\/habits\/(\d+)$/.exec(path);
+    if (get && habitPath) {
+      const h = habitHistory(Number(habitPath[1]));
+      if (h) return json(route, h);
     }
     if (get && path === "/conversations") return json(route, { items: [] });
     if (get && path === "/settings/notify") return json(route, fixture("notify"));

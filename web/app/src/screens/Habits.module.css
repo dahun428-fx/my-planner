@@ -1,0 +1,158 @@
+/* SP7 6.2 habits screen and its detail sheet: theme tokens only. */
+.main {
+  padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
+}
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
+.add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+}
+.add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.empty {
+  margin: 0 var(--pad) var(--gap);
+  padding: 0 0.25rem;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--row);
+  padding: 0.25rem var(--pad);
+}
+.row + .row {
+  border-top: 1px solid var(--rule);
+}
+.rowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rowTitle {
+  font-size: var(--size-body);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.rowMeta {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.resume,
+.action {
+  flex: none;
+  min-height: var(--control-h);
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  font: inherit;
+  font-size: var(--size-body);
+  color: var(--text);
+  cursor: pointer;
+}
+.resume:disabled,
+.action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.archived {
+  margin: 0 var(--pad) var(--gap);
+}
+.fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-section);
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+.foldMark {
+  display: inline-flex;
+  transform: rotate(0deg);
+}
+.foldOpen {
+  transform: rotate(90deg);
+}
+.foldBody {
+  margin-top: 0.5rem;
+  background: var(--surface);
+  border-radius: var(--radius-group);
+  overflow: hidden;
+}
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.detailMeta {
+  margin: 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.weekLines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--size-meta);
+  line-height: 1.6;
+  color: var(--muted);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.action {
+  flex: 1;
+}
+.archive {
+  color: var(--negative);
+}
+.back:focus-visible,
+.add:focus-visible,
+.resume:focus-visible,
+.action:focus-visible,
+.fold:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .foldMark {
+    transition: transform 0.2s ease;
+  }
+}

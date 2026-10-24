@@ -5,6 +5,8 @@ import type { Habit, Todo } from "../api/types.gen";
 // Later tickets add entries to these groups.
 
 const CHAT_LATER = "비서가 다시 연결되면 말할 수 있어요";
+// The back link of a screen off the tabs (check-in detail, habits).
+const BACK_TODAY = "‹ 오늘";
 
 export const copy = {
   appName: "비서",
@@ -85,7 +87,7 @@ export const copy = {
   },
 
   checkin: {
-    back: "‹ 오늘",
+    back: BACK_TODAY,
     canReply: "답장할 수 있어요",
     answeredVia: (channel: string) => `${channel}에서 답했어요`,
     answered: "답했어요",
@@ -328,6 +330,30 @@ export const copy = {
     week: (n: number) => `이번 주 ${n}번`,
     lastWeek: (n: number) => `지난주 ${n}번`,
     weekOf: (m: number, d: number, n: number) => `${m}월 ${d}일 주 ${n}번`,
+    // 6.2 habits screen and its sheets.
+    back: BACK_TODAY,
+    add: "습관 추가",
+    editTitle: "습관 고치기",
+    active: "챙기는 습관",
+    paused: "쉬는 습관",
+    archived: "그만둔 습관",
+    resume: "다시 시작",
+    resumeLabel: (title: string) => `${title} 다시 시작`,
+    edit: "고치기",
+    pause: "쉬어 가기",
+    archive: "그만두기",
+    daily: "매일",
+    weekly: "주 N회",
+    weeklyN: (n: number) => `주 ${n}회`,
+    detailMeta: (area: string, cadence: string) => `${area} · ${cadence}`,
+    gridLabel: "지난 4주",
+    titleLabel: "제목",
+    areaLabel: "영역",
+    cadenceLabel: "주기",
+    targetLabel: "주 몇 회",
+    addSubmit: "추가",
+    save: "저장",
+    close: "닫기",
   },
 
   areas: {

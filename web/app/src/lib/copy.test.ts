@@ -72,6 +72,23 @@ describe("copy", () => {
     expect(copy.habits.weekOf(10, 5, 1)).toBe("10월 5일 주 1번");
   });
 
+  it("habit screen copy is spec 6.2 verbatim", () => {
+    expect(copy.habits.back).toBe("‹ 오늘");
+    expect(copy.habits.back).toBe(copy.checkin.back);
+    expect(copy.habits.active).toBe("챙기는 습관");
+    expect(copy.habits.paused).toBe("쉬는 습관");
+    expect(copy.habits.archived).toBe("그만둔 습관");
+    expect(copy.habits.resume).toBe("다시 시작");
+    expect(copy.habits.edit).toBe("고치기");
+    expect(copy.habits.pause).toBe("쉬어 가기");
+    expect(copy.habits.archive).toBe("그만두기");
+    expect(copy.habits.daily).toBe("매일");
+    expect(copy.habits.weekly).toBe("주 N회");
+    expect(copy.habits.weeklyN(3)).toBe("주 3회");
+    expect(copy.habits.addSubmit).toBe("추가");
+    expect(copy.habits.save).toBe("저장");
+  });
+
   it("habit copy has no banned word, ratio or what is left", () => {
     const values = texts(copy.habits);
     expect(values.length).toBeGreaterThan(5);
