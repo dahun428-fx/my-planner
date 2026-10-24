@@ -96,6 +96,33 @@ describe("apiFetch", () => {
     }
   });
 
+  it("a longer timeout of its own: waits that long, and running out does not report offline", async () => {
+    vi.useFakeTimers();
+    const seen: string[] = [];
+    const off = subscribeResults((r) => seen.push(r.kind));
+    try {
+      vi.stubGlobal(
+        "fetch",
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+          }),
+      );
+      const p = apiFetch("POST", "/push/test", { timeoutMs: 30_000 });
+      let settled = false;
+      void p.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(await p).toEqual({ kind: "offline" });
+      expect(seen).toEqual([]);
+    } finally {
+      off();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
   it("caller abort is not offline", async () => {
     const seen: ApiResult<unknown>[] = [];
     const off = subscribeResults((r) => seen.push(r));
