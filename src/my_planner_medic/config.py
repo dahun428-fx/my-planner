@@ -103,7 +103,8 @@ def load_config(root: Path, environ: Mapping[str, str] | None = None) -> MedicCo
         len(token) >= API_TOKEN_MIN_CHARS
     )
     # [runtime] role = "dev"(개발용 체크아웃): 개발용 .env에 운영 텔레그램 값이 잘못 들어가도 알리지 않는다
-    dev = base.get("runtime", {}).get("role") == "dev"
+    runtime = base.get("runtime")
+    dev = isinstance(runtime, dict) and runtime.get("role") == "dev"
     known = {f.name for f in fields(MedicConfig)}
     overrides = {k: v for k, v in medic.items() if k in known and k not in _RESERVED}
     return MedicConfig(

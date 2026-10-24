@@ -1455,3 +1455,78 @@ def test_watch_incidents_false_rollback_makes_no_issue_calls(tmp_path: Path) -> 
     env.tick()  # 사람 커밋 롤백: 범위를 적은 이슈를 열지 않는다
     assert env.has(f"reset --hard --quiet {PREV}")
     assert _issue_requests(env) == []
+
+
+# --- fix round 1: 실패한 코드 위의 빨리감기, 첫 시작 -----------------------------------
+
+NEW2 = "c" * 40
+
+
+def _next_docs_head(env: Env, base: str) -> None:
+    """`base` 위에 문서만 바꾼 develop 새 머리 NEW2."""
+    env.shell.on("git", "rev-parse", "--verify", f"refs/remotes/origin/{env.cfg.branch}", returns=(0, NEW2 + "\n"))
+    env.shell.on("git", "merge-base", "--is-ancestor", NEW2, base, returns=(1, ""))
+    env.shell.on("git", "merge-base", "--is-ancestor", base, NEW2, returns=(0, ""))
+    env.shell.on("git", "diff", "--name-only", "-z", base, NEW2, returns=(0, "docs/x.md\0"))
+    env.server.compares[(base, NEW2)] = ["docs: x"]
+    env.ci(NEW2)
+
+
+def test_staging_be_ff_on_top_of_kept_failed_code_is_failure(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    deployed(env)
+    env.shell.enabled = False  # 확인 도중 손으로 꺼서 롤백이 거부된다: 실패한 NEW 코드가 남는다
+    env.signal(FP)
+    env.tick(4)
+    env.tick(5)
+    assert env.dip() is None and _statuses(env) == [(NEW, "failure")]
+    env.shell.enabled = True
+    _next_docs_head(env, NEW)
+    env.tick(60)
+    for _ in range(4):
+        env.tick(5)
+    assert (NEW2, "success") not in _statuses(env)
+    assert (NEW2, "failure") in _statuses(env)
+
+
+def test_staging_be_first_start_posts_for_current_head(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.shell.on("git", "rev-parse", "--verify", f"refs/remotes/origin/{env.cfg.branch}", returns=(0, PREV + "\n"))
+    env.ci(PREV)
+    env.tick()  # 새 커밋 없음(HEAD == 원격): 현재 머리의 확인 창을 연다
+    assert env.store.kv_json_get("staging_ff") is not None
+    assert _statuses(env) == []
+    for _ in range(3):
+        env.tick(5)
+    assert _statuses(env) == [(PREV, "success")]
+    for _ in range(3):  # 한 번만
+        env.tick(5)
+    assert _statuses(env) == [(PREV, "success")]
+
+
+def test_staging_be_no_window_for_head_with_record_or_bad_sha(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.shell.on("git", "rev-parse", "--verify", f"refs/remotes/origin/{env.cfg.branch}", returns=(0, PREV + "\n"))
+    env.ci(PREV)
+    env.store.kv_json_set("bad_shas", [PREV])
+    env.tick()
+    assert env.store.kv_json_get("staging_ff") is None
+    env.store.kv_json_set("bad_shas", [])
+    env.store.kv_json_set("staging_be_posted", {PREV: "success"})
+    env.tick(5)
+    assert env.store.kv_json_get("staging_ff") is None
+
+
+def test_staging_be_pending_is_capped(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.http.queue("POST", f"/repos/{REPO}/statuses/{NEW}", FakeResponse(403, {}))
+    for i in range(updater_mod.STAGING_KEEP + 5):
+        env.updater._queue_staging(f"{i:040x}", "success")
+    assert len(env.store.kv_json_get("staging_be_pending")) == updater_mod.STAGING_KEEP
+
+
+def test_malformed_staging_window_does_not_stop_deploys(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.store.kv_json_set("staging_ff", {"sha": NEW, "elapsed_s": "x", "last_tick_at": 5})
+    env.tick()
+    assert env.has("merge --ff-only")  # 창이 깨져도 배포는 간다

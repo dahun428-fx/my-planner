@@ -55,8 +55,8 @@ if ($TaskName -eq 'my-planner' -and (Test-Path -LiteralPath $localCfg) -and
     throw "개발용 체크아웃입니다(role = dev). -TaskName my-planner-dev로 등록하세요: $Root"
 }
 # 개발용 medic 이름은 개발용 작업에만 쓴다: 운영 my-planner-medic을 덮어쓰지 않게
-if ($MedicTaskName -and ($TaskName -eq 'my-planner' -or $MedicTaskName -eq 'my-planner-medic')) {
-    throw '-MedicTaskName은 개발용 작업(-TaskName이 my-planner가 아님)에만 쓸 수 있고, my-planner-medic은 운영 이름입니다'
+if ($MedicTaskName -and ($TaskName -eq 'my-planner' -or $MedicTaskName -notmatch '^my-planner-medic-.+' -or $NoMedic)) {
+    throw '-MedicTaskName은 개발용 작업(-TaskName이 my-planner가 아님)에만, my-planner-medic-<이름> 꼴로만 쓸 수 있고 -NoMedic과 함께 쓸 수 없습니다(운영 이름 보호)'
 }
 $python = Join-Path $Root '.venv\Scripts\python.exe'
 $pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'

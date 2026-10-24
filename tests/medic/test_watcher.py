@@ -583,7 +583,7 @@ def test_watch_incidents_false_makes_no_issue_calls(tmp_path: Path) -> None:
     env.tick(2)
     env.tick(40)  # 가져오기(30분)·하트비트(30분) 주기를 넘긴다
     assert _issue_calls(env) == []
-    assert [r for r in env.http.requests if "/repos/" in r.path and r.path.split("/")[3] != "issues"] == []
+    assert not [r for r in env.http.requests if "/repos/" in r.path]  # 저장소 API 호출 자체가 없다
     inc = env.store.get(EXC_FP)  # 로그 신호 수집과 로컬 상태는 그대로
     assert inc is not None and inc.state == "open" and inc.issue_number is None
 

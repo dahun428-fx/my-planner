@@ -165,3 +165,9 @@ def test_prod_role_keeps_telegram(tmp_path: Path) -> None:
     (tmp_path / "config.local.toml").unlink()
     cfg = load_config(tmp_path)  # role이 없으면 "prod"
     assert (cfg.telegram_token, cfg.owner_telegram_id) == (TG, "42")
+
+
+def test_runtime_that_is_not_a_table_does_not_crash(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    (tmp_path / "config.local.toml").write_text('runtime = "dev"\n', encoding="utf-8")
+    assert load_config(tmp_path).telegram_token == TG

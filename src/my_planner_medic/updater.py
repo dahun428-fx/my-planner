@@ -171,7 +171,11 @@ class Updater:
                     self.recover_on_start()
                 return
             self._refresh_suppression(self._clock.now())
-            self._staging_ff_tick()
+            try:
+                self._staging_ff_tick()
+            except Exception as exc:  # noqa: BLE001 - 깨진 확인 창이 배포를 막지 않게: 창을 버리고 종류만 남긴다
+                log.warning("staging_ff_failed %s", type(exc).__name__)
+                self._store.kv_delete(STAGING_FF)
             self._check()
         except GitError as exc:
             log.warning("updater_git_failed %s", exc)
@@ -218,6 +222,7 @@ class Updater:
             return
         prev = self._git.head()
         if new == prev:
+            self._staging_for_current_head(prev, now)
             return
         if self._git.current_ref() != f"refs/heads/{self._cfg.branch}":
             self._daily(BRANCH_TEXT, "wrong_branch")
@@ -266,9 +271,11 @@ class Updater:
         self._store.kv_set("deployed_sha", new)
         now = self._clock.now()
         if self._cfg.post_commit_status:  # 재시작이 없어도 그 머리 SHA의 `staging/be`가 필요하다(승격이 본다)
-            self._store.kv_json_set(STAGING_FF, {
-                "sha": new, "window_from": iso_utc(now), "elapsed_s": 0, "last_tick_at": iso_utc(now),
-            })
+            if self._running_code_failed(prev):  # 실패한 코드가 그대로 도는 위의 커밋: 새 머리도 실패다(그 코드를 담는다)
+                self._queue_staging(new, "failure")
+                self._flush_staging()
+            else:
+                self._open_staging_ff(new, now)
         for inc in self._by_issue(repairs):
             if inc.part == "be":
                 self._resolve(inc, now)
@@ -776,7 +783,7 @@ class Updater:
         items = [x for x in (pending if isinstance(pending, list) else []) if isinstance(x, dict)]
         if not any(x.get("sha") == sha and x.get("state") == state for x in items):
             items.append({"sha": sha, "state": state})
-            self._store.kv_json_set(STAGING_PENDING, items)
+            self._store.kv_json_set(STAGING_PENDING, items[-STAGING_KEEP:])  # 403이 계속돼도 끝없이 쌓지 않는다
 
     def _flush_staging(self) -> None:
         """못 올린 상태를 올린다. 실패(403·네트워크)는 종류만 로그에 남기고 다음 tick에 다시 한다. 틱을 멈추지 않는다."""
@@ -810,6 +817,34 @@ class Updater:
             self._store.kv_json_set(STAGING_PENDING, left)
         else:
             self._store.kv_delete(STAGING_PENDING)
+
+    def _running_code_failed(self, sha: str) -> bool:
+        """지금 도는 코드(`sha`)가 확인에 실패한 채 남았나: 나쁜 커밋으로 적혔거나 그 SHA에 `failure`를 올렸다."""
+        posted = self._store.kv_json_get(STAGING_POSTED)
+        return sha in self._bad_shas() or (isinstance(posted, dict) and posted.get(sha) == "failure")
+
+    def _open_staging_ff(self, sha: str, now: datetime) -> None:
+        self._store.kv_json_set(STAGING_FF, {
+            "sha": sha, "window_from": iso_utc(now), "elapsed_s": 0, "last_tick_at": iso_utc(now),
+        })
+
+    def _staging_for_current_head(self, head: str, now: datetime) -> None:
+        """새 커밋이 없을 때: 현재 머리에 `staging/be` 기록이 없으면(첫 시작, `medic.db`를 잃음) 확인 창을 연다(스펙 6.3)."""
+        if not self._cfg.post_commit_status or self._store.kv_json_get(STAGING_FF) is not None:
+            return
+        posted = self._store.kv_json_get(STAGING_POSTED)
+        pending = self._store.kv_json_get(STAGING_PENDING)
+        if (isinstance(posted, dict) and head in posted) or self._running_code_failed(head) or any(
+            isinstance(x, dict) and x.get("sha") == head for x in (pending if isinstance(pending, list) else [])
+        ):
+            return
+        try:
+            if self._gh.ci_conclusion(head) != "success":
+                return
+        except GitHubUnavailable as exc:
+            log.warning("updater_ci_unavailable %s (%d)", exc.kind, exc.status)
+            return
+        self._open_staging_ff(head, now)
 
     def _staging_ff_tick(self) -> None:
         """재시작 없이 빨리감기만 한 머리: `verify_minutes` 동안 헬스 정상·새 오류 지문 없음이면 `success`, 아니면 `failure`.
@@ -875,7 +910,7 @@ class Updater:
 
     def _flush_issue_ops(self) -> None:
         ops = self._store.kv_json_get(ISSUE_OPS)
-        if not isinstance(ops, list) or not ops:
+        if not self._cfg.watch_incidents or not isinstance(ops, list) or not ops:
             return
         while ops:
             op = ops[0]

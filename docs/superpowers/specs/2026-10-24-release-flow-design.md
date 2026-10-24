@@ -178,7 +178,7 @@ post_commit_status = true     # staging/be 올림
 
 - medic-dev는 develop 머리를 끌어와 개발용 BE를 재시작하고(BE 파일이 바뀐 경우), SP6의 확인 절차(헬스, 로그 오류)로 본다.
 - 그 뒤 `verify_minutes`(30분) 동안 헬스가 정상이고 새 오류 지문이 없으면 그 SHA에 `POST /statuses/{sha}` `context=staging/be, state=success`. 확인 실패·롤백이면 `failure`.
-- 30분 안에 develop 머리가 바뀌면 그 SHA에는 아무것도 올리지 않고 새 머리로 다시 시작한다.
+- 30분 안에 develop 머리가 바뀌면 그 SHA에는 아무것도 올리지 않고 새 머리로 다시 시작한다. (구현: 재시작 없는 빨리감기 창은 그렇게 버린다. 재시작한 배포의 확인은 끝까지 가서 그 SHA에도 올리며, 승격은 머리 SHA의 상태만 보므로 해가 없다.)
 - BE 파일이 안 바뀐 develop 커밋(웹·문서만)도 재시작 없이 같은 방식으로 30분 뒤 `success`를 올린다. 그래서 승격 트리거가 하나로 통일된다.
 
 **SP6 후속(티켓 12)이 들어오기 전에는**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows·Vercel 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
@@ -189,7 +189,7 @@ post_commit_status = true     # staging/be 올림
 
 ## 7. 핫픽스와 동기화 (SP6 자동 수리)
 
-- 자동 수리는 계속 `main`을 대상으로 한다(장애 대응, SP6 그대로). 기본 브랜치가 `main`이라 `repair.yml`의 checkout과 PR base도 `main`이다. 혹시 모를 변경에 대비해 SP6 후속에서 `actions/checkout`에 `ref: main`, PR 생성에 base `main`을 명시한다.
+- 자동 수리는 계속 `main`을 대상으로 한다(장애 대응, SP6 그대로). 기본 브랜치가 `main`이라 `repair.yml`의 checkout과 PR base도 `main`이다. 혹시 모를 변경에 대비해 `actions/checkout`에 `ref: main`, PR 생성에 base `main`을 명시했다(들어옴: 티켓 10).
 - `sync-develop.yml` (`push: branches: [main]`, `RELEASE_PAT`):
   - `main`이 이미 `develop`의 조상이면(빨리감기 승격 뒤의 보통 경우) 아무것도 하지 않는다.
   - 아니면 `POST /merges {base: develop, head: main}`로 `develop`에 merge commit을 만든다(PAT 푸시라 develop push CI가 돈다). 리뷰는 없다(이미 `main`에서 리뷰·CI를 거친 변경).

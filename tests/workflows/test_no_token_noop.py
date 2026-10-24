@@ -48,3 +48,13 @@ def test_repair_gate_outputs_a_skip_decision(monkeypatch, tmp_path):
     assert repair_gate.main() == 0
     text = out.read_text(encoding="utf-8")
     assert "decision=stop_no_token" in text  # fix·publish·merge 작업은 'go'/'merge_only'만 받는다
+
+
+def test_repair_gate_does_not_pass_a_non_numeric_issue_to_the_output(monkeypatch, tmp_path):
+    out = tmp_path / "out"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    monkeypatch.setenv("REPAIR_PAT", "")
+    monkeypatch.setenv("ISSUE", "7\ndecision=go")
+    assert repair_gate.main() == 0
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert lines == ["decision=stop_no_token", "issue="]
