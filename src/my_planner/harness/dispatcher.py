@@ -53,6 +53,7 @@ from my_planner.store.repos.state import (
 )
 from my_planner.store.reviews import save_weekly_review
 from my_planner.store.transcripts import app_secretary_message_id, app_user_message_id
+from my_planner.store.views import chapter_refs, milestone_refs
 from my_planner.tools.actions import ActionDeps, ActionRequest, ActionResult
 from my_planner.tools.actions import apply_action as _apply_action
 from my_planner.tools.activity import undoable_now
@@ -114,6 +115,13 @@ class Outbound:
     streamed: bool = False
     # 앱 초안 카드 `ui_todo_draft`의 `data.todos`(지금 값 `TodoRef`, 초안 포함, 6.4.1). `_reply_out`이 채운다
     draft_todos: list[dict[str, Any]] | None = None
+    # 이번 차례에 꺼낸 사건·챕터 초안(11.3). 텔레그램 `m:`·`h:` 버튼 줄(할 일 초안 줄 다음), 앱 `ui_milestone_draft`·
+    # `ui_chapter_draft`. `전부 저장`(`m:all`)은 `draft_conversation_id`를 쓴다
+    draft_milestone_ids: list[int] = field(default_factory=list)
+    draft_chapter_ids: list[int] = field(default_factory=list)
+    # 앱 사건·챕터 초안 카드의 `data.milestones`, `data.chapters`(6.4.7). `_reply_out`이 채운다
+    draft_milestones: list[dict[str, Any]] | None = None
+    draft_chapters: list[dict[str, Any]] | None = None
 
 
 class Sender(Protocol):
@@ -181,6 +189,8 @@ class _ResendJob:
     draft_task_ids: list[int] = field(default_factory=list)
     ask_condition_for: date | None = None
     confirms: list[tuple[str, str]] = field(default_factory=list)  # 회차 차례의 확인 토큰(10.1 A5)
+    draft_milestone_ids: list[int] = field(default_factory=list)  # 사건·챕터 초안 버튼(11.3)
+    draft_chapter_ids: list[int] = field(default_factory=list)
 
 
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
@@ -572,19 +582,31 @@ class Dispatcher:
         """시작 시 복구: 전송이 끝내 안 된 회차(`failed`, `outbound_text` 있음)를 전송만 한 번 다시 한다.
 
         5분 뒤 재전송과 같은 길로 간다(답장 창, `resent` 확인). 버튼은 DB에서 다시 만든다: 그 대화에서 제안해
-        아직 초안인 할 일, 그리고 그 회차의 컨디션 버튼 날짜.
+        아직 초안인 할 일과 사건·챕터, 그리고 그 회차의 컨디션 버튼 날짜.
         """
         assert self.runs is not None
         merged = [m for m in (self.runs.get(i) for i in run.merged_run_ids) if m is not None]
         drafts: list[int] = []
+        milestones: list[int] = []
+        chapters: list[int] = []
         if self.tools is not None and run.conversation_id is not None:
-            tasks = self.tools.tasks
+            tasks, curve, cid = self.tools.tasks, self.tools.curve, run.conversation_id
             drafts = [
                 i
-                for i in tasks.proposed_task_ids(run.conversation_id)
+                for i in tasks.proposed_task_ids(cid)
                 if (t := tasks.get(i)) is not None and t.status is TaskStatus.draft
             ]
-        job = _ResendJob(run, merged, [], drafts, self._ask_condition_for(run, merged))
+            if curve is not None:
+                milestones = [
+                    i for i in tasks.proposed_curve_ids("milestone_proposed", conversation_id=cid)
+                    if (m := curve.get_milestone(i)) is not None and m.status == "draft"
+                ]
+                chapters = [
+                    i for i in tasks.proposed_curve_ids("chapter_proposed", conversation_id=cid)
+                    if (c := curve.get_chapter(i)) is not None and c.status == "draft"
+                ]
+        job = _ResendJob(run, merged, [], drafts, self._ask_condition_for(run, merged),
+                         draft_milestone_ids=milestones, draft_chapter_ids=chapters)
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:
@@ -972,6 +994,12 @@ class Dispatcher:
         out.undo_ids = list(undo_ids)
         if out.draft_task_ids and self.tools is not None:
             out.draft_todos = self.tools.ui_todo_refs(out.draft_task_ids, drafts=True)
+        curve = self.tools.curve if self.tools is not None else None
+        if curve is not None:
+            if out.draft_milestone_ids:
+                out.draft_milestones = milestone_refs(out.draft_milestone_ids, curve)
+            if out.draft_chapter_ids:
+                out.draft_chapters = chapter_refs(out.draft_chapter_ids, curve)
         return out
 
     def _log_user_lines(
@@ -1228,7 +1256,7 @@ class Dispatcher:
             self._later(
                 RESEND_DELAY_S,
                 _ResendJob(run, merged, tool_names, list(out.draft_task_ids), out.ask_condition_for,
-                           list(out.confirms)),
+                           list(out.confirms), list(out.draft_milestone_ids), list(out.draft_chapter_ids)),
             )
 
     async def _prepare_run(
@@ -1433,10 +1461,14 @@ class Dispatcher:
         with self._awake.hold():
             out = Outbound(
                 text=run.outbound_text,
-                draft_conversation_id=run.conversation_id if job.draft_task_ids else None,
+                draft_conversation_id=(
+                    run.conversation_id if job.draft_task_ids or job.draft_milestone_ids else None
+                ),
                 draft_task_ids=list(job.draft_task_ids),
                 ask_condition_for=job.ask_condition_for,
                 confirms=list(job.confirms),
+                draft_milestone_ids=list(job.draft_milestone_ids),
+                draft_chapter_ids=list(job.draft_chapter_ids),
             )
             # 전달이 하나도 안 된 회차(failed)만 여기 온다. 같은 D2~D4 순서로 한 번(7.3 D7)
             outcome = await self._send_run(out, run, attempts=1)
@@ -1654,15 +1686,26 @@ def _outbound(text: str, run_ctx: RunContext) -> Outbound:
         for i in e.data.get("ids", [])
         if i not in confirmed  # 같은 턴에 이미 확정한 것에는 버튼을 붙이지 않는다
     ]
+    milestones = _curve_drafts(run_ctx.events, "milestone_proposed", ("milestones_confirmed", "milestone_dropped"))
+    chapters = _curve_drafts(run_ctx.events, "chapter_proposed", ("chapters_confirmed", "chapter_dropped"))
     return Outbound(
         text=text,
-        draft_conversation_id=run_ctx.conversation_id if ids else None,
+        draft_conversation_id=run_ctx.conversation_id if ids or milestones else None,
         draft_task_ids=ids,
+        draft_milestone_ids=milestones,
+        draft_chapter_ids=chapters,
         # 회차 차례에서만 생긴다(10.1 A2). 사용자 차례의 답에는 늘 비어 있다
         confirms=[
             (e.data["confirm_token"], e.data["button"]) for e in run_ctx.events if e.kind == "confirm_requested"
         ],
     )
+
+
+def _curve_drafts(events: list[ToolEvent], proposed: str, settled: tuple[str, ...]) -> list[int]:
+    """이번 차례에 꺼낸 사건·챕터 초안 번호(꺼낸 순서). 같은 차례에 이미 확정하거나 뺀 것은 버튼을 붙이지 않는다."""
+    done = {e.data.get("id") for e in events if e.kind in settled}
+    out = [e.data["id"] for e in events if e.kind == proposed and isinstance(e.data.get("id"), int)]
+    return [i for i in dict.fromkeys(out) if i not in done]
 
 
 def _condition_buttons_note(d: date | None) -> str:

@@ -237,6 +237,14 @@ class CurveRepo:
         r = self.conn.execute("SELECT * FROM curve_chapters WHERE id = ?", (id,)).fetchone()
         return _chapter(r) if r else None
 
+    def draft_milestone_ids(self, conversation_id: int) -> list[int]:
+        """그 대화에서 꺼내 아직 초안인 사건(텔레그램 `전부 저장`, `m:all:<대화 id>`), 꺼낸 순서."""
+        rows = self.conn.execute(
+            "SELECT id FROM curve_milestones WHERE conversation_id = ? AND status = 'draft' ORDER BY id",
+            (conversation_id,),
+        ).fetchall()
+        return [r["id"] for r in rows]
+
     def confirmed_chapters(self) -> list[Chapter]:
         rows = self.conn.execute(
             "SELECT * FROM curve_chapters WHERE status = 'confirmed' ORDER BY start_month, id"
