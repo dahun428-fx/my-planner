@@ -1,0 +1,3 @@
+# 대시보드는 Vercel의 정적 페이지이고, 데이터는 브라우저가 Tailscale로 BE에서 바로 가져온다
+
+마스터 설계는 로컬 웹 대시보드를 `127.0.0.1`에 두려 했지만, Dahun은 폰에서도 보고 싶다. 그래서 대시보드를 Vercel에 정적 내보내기(서버 함수 없음)로 올리고, 브라우저가 `tailscale serve`(tailnet 안의 HTTPS, Funnel은 쓰지 않음)로 노트북 BE의 `GET /api/v1/*`를 API 토큰과 함께 직접 부른다. Vercel은 HTML과 JS만 내려 주고 데이터를 보지도 저장하지도 않으며, 클라우드 DB는 두지 않는다(마스터 P5). 토큰과 BE URL은 빌드에 넣지 않고 사용자가 기기마다 넣어 그 브라우저의 `localStorage`에 둔다. 대시보드는 읽기 전용이고, 바꾸는 일은 텔레그램이나 운영 앱으로 한다. 대가: 노트북이 꺼져 있으면 아무 데이터도 볼 수 없고, "BE 꺼짐 · 마지막 응답" 시각은 그 브라우저가 마지막으로 BE에 닿은 때(`localStorage`)라 기기마다 다르다. 출처 허용 목록(CORS)과 Chrome의 사설 네트워크 접근 규칙을 맞춰야 한다. 상세는 [SP3-4 스펙](../superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md) 13장, 14장.
