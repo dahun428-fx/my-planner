@@ -28,6 +28,11 @@ describe("connection", () => {
     expect(normalizeBeUrl("https://a.b.example.ts.net", ALLOWED)).toEqual({ ok: false, reason: "out_of_range" });
     expect(normalizeBeUrl("https://desk.example.ts.net.evil.com", ALLOWED)).toEqual({ ok: false, reason: "out_of_range" });
     expect(normalizeBeUrl("https://desk.example.ts.net:8443/api/v1", ALLOWED)).toEqual({ ok: false, reason: "out_of_range" });
+    // Staging BE behind `tailscale serve --https=8443` (release flow spec 5.1): the port must match the source
+    const STAGING = "https://*.example.ts.net:8443";
+    expect(normalizeBeUrl("https://desk.example.ts.net:8443/api/v1", STAGING)).toEqual({ ok: true, url: "https://desk.example.ts.net:8443" });
+    expect(normalizeBeUrl("https://desk.example.ts.net/api/v1", STAGING)).toEqual({ ok: false, reason: "out_of_range" });
+    expect(normalizeBeUrl("https://desk.example.ts.net:9443/api/v1", STAGING)).toEqual({ ok: false, reason: "out_of_range" });
 
     expect(normalizeBeUrl("https://user:pw@desk.example.ts.net", ALLOWED)).toEqual({ ok: false, reason: "invalid" });
     expect(normalizeBeUrl("https://desk.example.ts.net/api/v1?token=x", ALLOWED)).toEqual({ ok: false, reason: "invalid" });

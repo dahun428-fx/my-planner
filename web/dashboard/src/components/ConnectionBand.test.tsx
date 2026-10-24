@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
@@ -72,7 +72,8 @@ describe("ConnectionBand", () => {
     saveConn();
     server.use(healthAnswers.unauthorized());
     renderBand();
-    expect(await screen.findByRole("status")).toHaveTextContent(/^BE 켜짐$/);
+    // the status region exists from the first render ("연결 확인 중"), so wait for its text, not for the element
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^BE 켜짐$/));
     expect(document.querySelector(".band-text")).toHaveTextContent(/^BE 켜짐$/);
   });
 

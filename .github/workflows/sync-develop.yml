@@ -1,0 +1,55 @@
+name: sync-develop
+
+# main(핫픽스)을 develop에 합친다 (배포 흐름 스펙 7장). 빨리감기 승격 뒤에는 할 일이 없다.
+# RELEASE_PAT으로 합쳐야 develop push CI가 돈다(GITHUB_TOKEN 푸시는 워크플로를 깨우지 않는다).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sync-develop
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge main into develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$REPO/branches/develop" >/dev/null 2>&1; then
+            echo "no develop branch yet"
+            exit 0
+          fi
+          ahead=$(gh api "repos/$REPO/compare/develop...main" --jq .ahead_by)
+          if [ "$ahead" = "0" ]; then
+            echo "develop already contains main"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/merge.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $RELEASE_PAT" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/merges" \
+            -d "{\"base\":\"develop\",\"head\":\"main\",\"commit_message\":\"Merge main into develop (hotfix sync)\"}")
+          echo "merge: $code"
+          case "$code" in
+            201|204) exit 0 ;;
+            409)
+              line="동기화 충돌: main(${GITHUB_SHA::7})을 develop에 자동으로 못 합쳤어요. sync/main-to-develop 브랜치에서 풀어 주세요."
+              num=$(gh api "repos/$REPO/issues?state=open&labels=release:blocked" --jq '.[0].number // empty')
+              if [ -z "$num" ]; then
+                gh api "repos/$REPO/issues" -f title="develop → main 승격이 막혔어요" -f body="$line" -f "labels[]=release:blocked" >/dev/null
+              else
+                gh api "repos/$REPO/issues/$num/comments" -f body="$line" >/dev/null
+              fi
+              exit 1 ;;
+            *) cat /tmp/merge.json; exit 1 ;;
+          esac

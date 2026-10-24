@@ -13,10 +13,13 @@ EXPECTED = """\
               - 'scripts/**'
               - 'requirements.lock'
               - 'pyproject.toml'
+              - 'config.toml'
             workflow:
               - '.github/workflows/ci.yml'
             web:
               - 'web/app/**'
+            dashboard:
+              - 'web/dashboard/**'
 """
 
 
@@ -28,5 +31,5 @@ def test_paths_filter_definitions_present() -> None:
 def test_job_names_and_workflow_name() -> None:
     text = CI.read_text(encoding="utf-8")
     assert text.startswith("name: ci\n")
-    for name in ("be (ubuntu-latest)", "be (windows-latest)", "web-app"):
+    for name in ("be (ubuntu-latest)", "be (windows-latest)", "web-app", "web-dashboard"):
         assert f"    name: {name}\n" in text
