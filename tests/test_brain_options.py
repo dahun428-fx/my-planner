@@ -225,7 +225,7 @@ def test_app_system_prompt_appends_channel_app(tmp_path):
     assert brain.system_prompt_for("telegram") == prompts.load("system.md")
     app = brain.system_prompt_for("app")
     assert app.startswith(prompts.load("system.md"))
-    assert app.endswith(prompts.load("channel_app.md"))  # 지금은 빈 자리(티켓 09가 채운다)
+    assert app.endswith(prompts.load("channel_app.md"))
 
 
 # --- 티켓 06b: 글 조각 스트리밍 (SP3-4 S11. 필드 경로는 SDK 소스 기준, 노트북 S11 시험으로 확인할 것) ---

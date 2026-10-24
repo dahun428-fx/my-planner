@@ -55,6 +55,7 @@ from my_planner.platform.windows import (
 )
 from my_planner.store.db import integrity_ok, migrate, open_db, open_ro
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo, IdempotencyRepo
+from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
@@ -239,6 +240,7 @@ def build_be(
         boundary=settings.day_boundary,
         conditions=conditions,
         activity=activity,
+        cards=CardsRepo(conn, clock),  # 고정 카드(앱 대화의 카드 도구, `/actions`, SP3-4 10장)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다

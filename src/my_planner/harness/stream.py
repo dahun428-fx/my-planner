@@ -6,8 +6,8 @@
   기억에만 남고 오류를 올리지 않는다(M7).
 - `UiMessageWriter`: 조각 모양(`start`, `text-*`, `tool-*`, `data-activity`, `finish`)을 만든다. 싱크가 없어도
   (`sink=None`, 시작 때 다시 넣은 행) 상태만 따라가고 아무 데도 쓰지 않는다.
-- `AppReplySender`: 디스패처가 앱 답을 보내는 곳(M4). 두뇌 글 → `data-activity`(확인 문구 `confirmation`) →
-  `finish`. 앱 통로에는 `h-confirm` 글 조각이 없다(6.4.1).
+- `AppReplySender`: 디스패처가 앱 답을 보내는 곳(M4). 두뇌 글·도구 → 하네스 화면 조각(`h_draft_<n>`, `h_cond_<n>`)
+  → `data-activity`(확인 문구 `confirmation`) → `finish`. 앱 통로에는 `h-confirm` 글 조각이 없다(6.4.1).
 
 로그에는 조각 종류와 개수만 남기고 본문, 도구 인자, 결과는 남기지 않는다.
 """
@@ -260,17 +260,42 @@ class UiMessageWriter:
         return "".join(self._streamed)
 
 
+HarnessCard = tuple[str, str, dict[str, Any], dict[str, Any]]  # (toolCallId 앞머리, 컴포넌트, props, 출력)
+
+
+def harness_cards(out: Outbound) -> list[HarnessCard]:
+    """하네스 화면 조각(6.4.1, 6.4.7). 텔레그램 버튼 줄과 같은 재료, 같은 순서(초안 → 컨디션).
+
+    초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
+    `out.draft_todos`), 컨디션 고르기는 `{"ok": true}`다.
+    """
+    cards: list[HarnessCard] = []
+    if out.draft_task_ids:
+        todos = list(out.draft_todos or [])
+        cards.append(("h_draft", "ui_todo_draft", {"task_ids": list(out.draft_task_ids)},
+                      {"ok": True, "data": {"todos": todos}}))
+    if out.ask_condition_for is not None:
+        cards.append(("h_cond", "ui_condition_picker", {"date": out.ask_condition_for.isoformat()}, {"ok": True}))
+    return cards
+
+
 def write_reply(
     writer: UiMessageWriter, text: str, *, activity_ids: list[int] | None = None, undo_ids: list[int] | None = None,
     confirmation: str | None = None, metadata: dict[str, Any] | None = None, streamed: bool = False,
+    cards: list[HarnessCard] | None = None,
 ) -> None:
-    """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생, 조각이 오지 않은 두뇌 답: S11 대체 경로). 순서: start-step → 글 → finish-step → data-activity → finish.
+    """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생, 조각이 오지 않은 두뇌 답: S11 대체 경로).
 
-    활동도 확인 문구도 없으면 `data-activity`를 보내지 않는다(6.4.1).
+    순서: start-step → 글 → 하네스 화면 조각 → finish-step → data-activity → finish. 하네스 조각의 `toolCallId`는
+    `<앞머리>_<n>`이고 `n`은 그 답 안의 순번(1부터)이다. 활동도 확인 문구도 없으면 `data-activity`를 보내지 않는다(6.4.1).
     """
     writer.start_step()
     if text and not streamed:  # streamed: 두뇌 글이 이미 조각으로 나갔다(상태가 ok일 때만, 고정 안내는 늘 보낸다)
         writer.text(writer.next_text_id(), text)
+    for n, (prefix, component, props, output) in enumerate(cards or [], start=1):
+        call_id = f"{prefix}_{n}"
+        writer.tool_input(call_id, component, props)
+        writer.tool_output(call_id, output)
     writer.finish_step()
     if activity_ids or confirmation:
         writer.data_activity(list(activity_ids or []), list(undo_ids or []), confirmation)
@@ -287,7 +312,7 @@ class AppReplySender:
         try:
             write_reply(
                 w, out.text, activity_ids=out.activity_ids, undo_ids=out.undo_ids, confirmation=out.confirmation,
-                streamed=out.streamed,
+                streamed=out.streamed, cards=harness_cards(out),
             )
         except Exception as e:  # noqa: BLE001 - 앱 답은 오류를 올리지 않는다(M7)
             log.warning("app_reply_error", extra={"error_type": type(e).__name__})

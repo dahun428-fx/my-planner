@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from my_planner.domain import ToolEvent
 
@@ -50,6 +51,10 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         "task_dropped": f"✓ 내려놓음: {title}",
         "task_updated": f"✓ 바꿈: {title}",
         "tasks_confirmed": f"✓ 확정: {title}",
+        # 고정 카드(SP3-4 10장). `title`은 `card_label`
+        "card_pinned": f"✓ 카드 고정: {title}",
+        "card_unpinned": f"✓ 카드 고정 해제: {title}",
+        "cards_reordered": "✓ 카드 순서 바꿈",
     }.get(e.kind)
 
 
@@ -69,6 +74,16 @@ def condition_summary(score: int) -> str:
     return f"컨디션 {score} 기록했어요."
 
 
+_CARD_LABEL = {"ui_todo_list": "할 일 목록", "ui_choice": "고르기", "ui_summary_card": "요약"}
+
+
+def card_label(component: str, props: Any) -> str:
+    """카드 확인 문구의 이름: props의 제목(`title`, `ui_choice`는 `question`), 없으면 컴포넌트 이름."""
+    p = props if isinstance(props, dict) else {}
+    name = p.get("title") if component != "ui_choice" else p.get("question")
+    return name.strip() if isinstance(name, str) and name.strip() else _CARD_LABEL.get(component, component)
+
+
 def drafts_expired_summary(count: int) -> str:
     return f"✓ 초안 정리: {count}개"
 
@@ -82,6 +97,7 @@ _UNDO_VERB = {"되돌림": "다시 열기"}  # `✓ 되돌림: 운동`(다시 �
 _DATE_TAIL = re.compile(r"( → (오늘|내일|날짜 없음|\d{1,2}/\d{1,2})| \(\d{1,2}/\d{1,2} \d{2}:\d{2}\))$")
 _DATE_TAIL_VERBS = frozenset({"추가", "옮김"})
 _SUMMARY = re.compile(r"^✓ (?P<verb>[^:]+): (?P<rest>.*)$")
+_BARE = re.compile(r"^✓ (?P<verb>[^:]+)$")  # 대상 이름이 없는 한 줄(`✓ 카드 순서 바꿈`)
 _CONDITION = re.compile(r"^(?P<what>컨디션 \d+) 기록했어요\.$")
 
 
@@ -98,6 +114,8 @@ def undo_summary(summary: str) -> str:
             if verb in _DATE_TAIL_VERBS:
                 rest = _DATE_TAIL.sub("", rest)
             gist = f"{rest} {_UNDO_VERB.get(verb, verb)}"
+    elif (b := _BARE.match(summary)) is not None:
+        gist = b["verb"]
     elif (c := _CONDITION.match(summary)) is not None:
         gist = f"{c['what']} 기록"
     else:

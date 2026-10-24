@@ -247,3 +247,34 @@ async def test_push_delivery_and_fallback(tmp_path):
     assert sunday["notify"] == {"primary": "app", "effective": "telegram"}
     (sun,) = [r for r in sunday["runs_today"] if r["loop"] == "morning_brief"]
     assert sun["delivered_via"] == ["telegram"]
+
+
+async def test_pin_card_from_app_chat(tmp_path):
+    """앱 대화의 두뇌가 할 일 목록을 그리고 고정한다(SP3-4 티켓 09) → `/today.cards` → 되돌리면 카드가 없다."""
+    from ui_stream import parse_sse
+
+    add = ("add_task", {"title": "꾸민 산책", "areas": ["health"], "planned_for": "2026-10-24"})
+    listing = ("ui_todo_list", {"title": "오늘 할 일", "task_ids": [1]})
+    pin = ("pin_card", {"component": "ui_todo_list", "props": {"title": "오늘 할 일", "task_ids": [1]}})
+    script = [FakeTurn([add], "넣었어요"), FakeTurn([listing, pin], "목록을 고정해 둘게요.")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=script) as env:
+        await env.chat("오늘 산책 추가해 줘")
+        _, raw = await env.chat("오늘 할 일 목록 고정해 줘")
+        chunks = parse_sse(raw)
+        today = await (await env.get("/today")).json()
+        (pinned,) = [r for r in env.activity() if r["kind"] == "card_pinned"]
+        resp = await env.post(f"/activity/{pinned['id']}/undo", json={"client_msg_id": "e2e-card-undo"})
+        after = await (await env.get("/today")).json()
+
+    ui = [c for c in chunks if c.get("toolCallId") == "tc_01"]
+    assert ui[0]["type"] == "tool-input-available" and ui[0]["toolName"] == "ui_todo_list"
+    assert ui[1]["output"] == {"ok": True, "data": {"todos": [
+        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "open"}]}}
+    (activity,) = [c for c in chunks if c["type"] == "data-activity"]
+    assert activity["data"]["undo_ids"] == [pinned["id"]]
+    (card,) = today["cards"]
+    assert (card["component"], card["order"]) == ("ui_todo_list", 1)
+    assert card["data"]["todos"][0]["title"] == "꾸민 산책"
+    assert (pinned["actor"], pinned["channel"]) == ("secretary", "app")
+    assert resp.status == 200
+    assert after["cards"] == []

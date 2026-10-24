@@ -9,6 +9,7 @@ from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_serv
 
 from my_planner.domain import Channel, RunContext
 from my_planner.timefmt import to_api_times
+from my_planner.tools.ui import BRAIN_COMPONENTS, UI_COMPONENTS
 
 SERVER_NAME = "planner"
 
@@ -27,6 +28,9 @@ TOOL_NAMES: list[str] = [
     "record_condition",
     "read_transcript",
 ]
+
+# 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다
+APP_ONLY_TOOLS: list[str] = [*BRAIN_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
@@ -163,32 +167,84 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
 }
 
 
-def tool_names_for(channel: Channel) -> list[str]:
-    """그 통로 대화에 주는 도구(SP3-4 10장). 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 생긴다(티켓 09·13).
+_CARD_ID = {"type": "integer", "description": "고정 카드 번호"}
+_SPECS.update({
+    "ui_todo_list": (
+        (
+            "앱 화면에 할 일 목록 조각을 그립니다(그리기만 합니다). task_ids는 할 일 번호이고 최대 30개입니다. "
+            "제목과 상태는 앱이 지금 값으로 보여 줍니다. 같은 뜻을 답 글에도 씁니다."
+        ),
+        UI_COMPONENTS["ui_todo_list"]["schema"],
+    ),
+    "ui_choice": (
+        (
+            "앱 화면에 고르기 조각을 그립니다(그리기만 합니다). 보기는 2~4개이고, 사용자가 고르면 그 label이 "
+            "새 메시지로 옵니다. 같은 질문을 답 글에도 씁니다."
+        ),
+        UI_COMPONENTS["ui_choice"]["schema"],
+    ),
+    "ui_summary_card": (
+        "앱 화면에 요약 카드를 그립니다(그리기만 합니다). lines는 최대 8줄, 줄마다 120자까지입니다.",
+        UI_COMPONENTS["ui_summary_card"]["schema"],
+    ),
+    "pin_card": (
+        (
+            "화면 조각(ui_todo_list, ui_choice, ui_summary_card)을 앱의 고정 카드로 맨 뒤에 둡니다. "
+            "props는 그 조각의 형식과 같아야 합니다. 사용자가 고정해 달라고 할 때만 부릅니다."
+        ),
+        _schema(
+            {"component": {"enum": list(BRAIN_COMPONENTS)}, "props": {"type": "object"}},
+            ["component", "props"],
+        ),
+    ),
+    "unpin_card": ("고정 카드를 내립니다.", _schema({"id": _CARD_ID}, ["id"])),
+    "reorder_cards": (
+        "고정 카드의 순서를 바꿉니다. ids에는 고정한 카드 번호를 모두 새 순서로 넣습니다.",
+        _schema({"ids": {"type": "array", "items": _CARD_ID, "minItems": 1}}, ["ids"]),
+    ),
+})
 
-    지금은 두 통로 모두 `TOOL_NAMES`다.
-    """
-    return list(TOOL_NAMES)
+
+def tool_names_for(channel: Channel) -> list[str]:
+    """그 통로 대화에 주는 도구(SP3-4 10장). 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7)."""
+    return [*TOOL_NAMES, *APP_ONLY_TOOLS] if channel == "app" else list(TOOL_NAMES)
+
+
+def _stream_output(tools: Any, name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """스트림에 보낼 도구 출력(6.4.1). 할 일을 가리키는 `ui_todo_list`는 `data.todos`(지금 값 `TodoRef`, 초안·
+    소프트 삭제 뺌)를 붙인다. 두뇌가 받는 결과는 `{"ok": true}` 그대로다."""
+    if name == "ui_todo_list":
+        return {**result, "data": {"todos": tools.ui_todo_refs(args.get("task_ids"), drafts=False)}}
+    return result
 
 
 def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> dict[str, Any]:
     """도구 하나를 부른다. `ctx.stream`(앱 채팅)이 있으면 입력 검증을 지난 뒤 `tool-input-available`을, 끝나면
     `tool-output-available`(결과의 시각은 UTC로, 6.1) 또는 `tool-output-error`(도구 오류 문구)를 쓴다(6.4.1).
 
+    화면 도구(`ui_*`)는 부작용이 없으므로 먼저 부르고, props가 스키마에 맞을 때만 두 조각을 쓴다. 맞지 않으면 도구
+    오류로 돌려주고 조각을 보내지 않는다(6.4.7).
+
     두뇌가 받는 결과는 그대로(현지 시각)다. 로그에는 아무것도 남기지 않는다.
     """
     w = ctx.stream
-    call_id = w.next_tool_call_id() if w is not None else None
-    if w is not None:
+    ui = name in BRAIN_COMPONENTS
+    call_id = w.next_tool_call_id() if w is not None and not ui else None  # 화면 도구는 조각을 쓸 때 받는다
+    if w is not None and not ui:
         w.tool_input(call_id, name, args)
     try:
         result = getattr(tools, name)(ctx, **args)
     except Exception:
-        if w is not None:
+        if w is not None and not ui:
             w.tool_error(call_id, "도구를 실행하지 못했어요.")
         raise
     if w is not None:
-        if "error" in result:
+        if ui:
+            if "error" not in result:
+                call_id = w.next_tool_call_id()
+                w.tool_input(call_id, name, args)
+                w.tool_output(call_id, to_api_times(_stream_output(tools, name, args, result)))
+        elif "error" in result:
             w.tool_error(call_id, str(result["error"]))
         else:
             w.tool_output(call_id, to_api_times(result))

@@ -14,7 +14,12 @@ from my_planner.domain import RunContext
 from my_planner.harness.dispatcher import Inbound
 from my_planner.harness.stream import QueueSink
 from my_planner.loop.runner import resubmit_inbound
-from my_planner.tools.mcp_adapter import TOOL_NAMES, build_planner_tools, tool_names_for
+from my_planner.tools.mcp_adapter import (
+    APP_ONLY_TOOLS,
+    TOOL_NAMES,
+    build_planner_tools,
+    tool_names_for,
+)
 
 START = kst(2026, 10, 24, 13, 0)
 DENTIST = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-25"})
@@ -143,8 +148,8 @@ async def test_recovered_app_row_accepts_new_stream(tmp_path):
 
 def test_app_tool_set_is_channel_specific():
     assert tool_names_for("telegram") == TOOL_NAMES
-    assert tool_names_for("app") == TOOL_NAMES
-    # 화면 도구와 카드 도구는 텔레그램 대화에 주지 않는다(10장. 앱에는 티켓 09·13이 더한다)
+    assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
+    # 화면 도구와 카드 도구는 텔레그램 대화에 주지 않는다(10장, 티켓 09)
     banned = {"pin_card", "unpin_card", "reorder_cards"}
     assert not [n for n in tool_names_for("telegram") if n.startswith("ui_") or n in banned]
 

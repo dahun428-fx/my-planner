@@ -166,6 +166,12 @@ def todo_ref(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
     }
 
 
-def todo_refs(ids: Iterable[int], tasks: TasksRepo, today: date) -> list[dict[str, Any]]:
-    """`ids` 순서대로 `TodoRef`. 없거나 소프트 삭제한 할 일은 뺀다(`dropped`는 행이 남아 있어 넣는다)."""
-    return [todo_ref(t, tasks, today) for i in ids if (t := tasks.get(i)) is not None]
+def todo_refs(ids: Iterable[int], tasks: TasksRepo, today: date, *, drafts: bool = True) -> list[dict[str, Any]]:
+    """`ids` 순서대로 `TodoRef`. 없거나 소프트 삭제한 할 일은 뺀다(`dropped`는 행이 남아 있어 넣는다).
+
+    `drafts=False`면 초안도 뺀다(두뇌의 `ui_todo_list`, 고정 카드: 초안은 초안 카드와 `/drafts`에만, 6.3)."""
+    return [
+        todo_ref(t, tasks, today)
+        for i in ids
+        if (t := tasks.get(i)) is not None and (drafts or t.status is not TaskStatus.draft)
+    ]
