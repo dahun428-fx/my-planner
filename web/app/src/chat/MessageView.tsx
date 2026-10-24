@@ -1,11 +1,17 @@
+import { registerChatParts } from "../ui/chat/registerChatParts";
 import type { UIMessage } from "ai";
 import { useState } from "react";
 import { type UndoBlockReason, useUndo } from "../api/actions";
 import { Markdown } from "../components/Markdown";
 import { copy } from "../lib/copy";
+import type { OpenScreen } from "../ui/primitives/types";
 import { UiPart } from "../ui/registry";
+import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
 import styles from "./ChatSheet.module.css";
+
+// SP6 11.2: the chat cards join the registry with the chat sheet's bundle, before anything draws.
+registerChatParts();
 
 type UndoState = { kind: "idle" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
 
@@ -55,11 +61,14 @@ export function MessageView({
   parts,
   readOnly = false,
   onChoose,
+  onOpen,
 }: {
   message: UIMessage;
   parts: ViewPart[];
   readOnly?: boolean;
   onChoose?(label: string): void;
+  /** SP6 8: an `open` button on a part (the sheet moves there and closes). */
+  onOpen?(screen: OpenScreen): void;
 }) {
   if (message.role === "user") {
     return (
@@ -68,16 +77,19 @@ export function MessageView({
       </div>
     );
   }
+  // 11.4: a box that ui_result already shows is left out, but never in a restored message.
+  const restored = parts.some((p) => p.kind === "ui" && p.restored === true);
+  const shown = restored ? parts : hideCoveredActivity(parts);
   return (
     <div className={styles.theirs} data-message={message.id}>
-      {parts.map((p, i) => {
+      {shown.map((p, i) => {
         if (p.kind === "text") {
           return <Markdown key={i} text={p.text} className={styles.text} />;
         }
         if (p.kind === "ui") {
           return (
             <div key={p.toolCallId} className={styles.part}>
-              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose }} />
+              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose, onOpen }} />
             </div>
           );
         }

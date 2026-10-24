@@ -17,7 +17,7 @@ describe("localParts", () => {
   beforeEach(() => saveConn({ beUrl: BE, token: "t" }));
 
   it("saves only ui parts", async () => {
-    await saveParts("m-1-1", [{ kind: "text", text: "안녕" }, ui, { kind: "activity", confirmation: "✓ 추가: 치과", undoIds: [1] }], BE); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    await saveParts("m-1-1", [{ kind: "text", text: "안녕" }, ui, { kind: "activity", confirmation: "✓ 추가: 치과", undoIds: [1], activityIds: [1] }], BE); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(await loadParts("m-1-1")).toEqual([ui]);
     expect(await keys()).toEqual(["parts:m-1-1"]);
   });

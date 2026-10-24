@@ -326,6 +326,27 @@ describe("ChatSheet", () => {
     expect(message.id).not.toBe((bodies[0].message as { id: string }).id);
   });
 
+  it("an open button moves the app there and closes the sheet", async () => {
+    serveHistory();
+    const period = { week: "2026-W43" };
+    const days = ["월", "화", "수", "목", "금", "토", "일"].map((weekday, i) => ({ date: `2026-10-${19 + i}`, weekday, is_today: i === 5, todos: [] }));
+    serveChat(() =>
+      sseResponse(
+        textAnswer("m-1-1", 1, "이번 주예요.", [
+          { type: "tool-input-available", toolCallId: "tc_1", toolName: "ui_period_list", input: period },
+          { type: "tool-output-available", toolCallId: "tc_1", output: { ok: true, data: { today: "2026-10-24", start: "2026-10-19", end: "2026-10-25", days, outside: [] } } },
+        ]),
+      ),
+    );
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { router } = renderWithProviders(<ChatSheet open onClose={onClose} conversationId={null} />);
+    await sendText(user, "이번 주 보여 줘");
+    await user.click(await screen.findByRole("button", { name: copy.parts.openTodos }));
+    expect(router.push).toHaveBeenCalledWith("/todos/?tab=week");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("send disabled while streaming", async () => {
     serveHistory();
     const gate = gatedResponse(golden("chat_add_task.sse"), [2]);

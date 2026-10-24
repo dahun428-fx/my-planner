@@ -54,12 +54,20 @@ describe("toViewParts", () => {
 
   it("activity with confirmation", () => {
     const parts = toViewParts(msg([{ type: "data-activity", data: { activity_ids: [1], undo_ids: [1], confirmation: "✓ 추가: 치과 → 내일" } }] as UIMessage["parts"])); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
-    expect(parts).toEqual([{ kind: "activity", confirmation: "✓ 추가: 치과 → 내일", undoIds: [1] }]); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    expect(parts).toEqual([{ kind: "activity", confirmation: "✓ 추가: 치과 → 내일", undoIds: [1], activityIds: [1] }]); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
   });
 
   it("activity without confirmation keeps undo", () => {
     const parts = toViewParts(msg([{ type: "data-activity", data: { activity_ids: [1], undo_ids: [1] } }] as UIMessage["parts"]));
-    expect(parts).toEqual([{ kind: "activity", confirmation: null, undoIds: [1] }]);
+    expect(parts).toEqual([{ kind: "activity", confirmation: null, undoIds: [1], activityIds: [1] }]);
+  });
+
+  it("reads activity_ids", () => {
+    const parts = toViewParts(msg([{ type: "data-activity", data: { activity_ids: [931, 932], undo_ids: [931], confirmation: "옮겼어요" } }] as UIMessage["parts"]));
+    expect(parts).toEqual([{ kind: "activity", confirmation: "옮겼어요", undoIds: [931], activityIds: [931, 932] }]);
+    // Before SP6 the app did not read them; a BE without them gives [].
+    const none = toViewParts(msg([{ type: "data-activity", data: { undo_ids: [931], activity_ids: ["x"] } }] as UIMessage["parts"]));
+    expect(none).toEqual([{ kind: "activity", confirmation: null, undoIds: [931], activityIds: [] }]);
   });
 
   it("input-streaming ui part is not rendered yet", () => {
