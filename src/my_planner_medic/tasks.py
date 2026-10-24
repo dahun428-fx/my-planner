@@ -84,9 +84,13 @@ class TaskControl:
     def _run(self, command: str, timeout: int = 60) -> tuple[int, str]:
         return self._shell.run(_ps(command), cwd=self._root, timeout=timeout)
 
-    def is_enabled(self, name: str | None = None) -> bool:
+    def is_enabled(self, name: str | None = None) -> bool | None:
+        """켜짐 True, 꺼짐 False, 조회 실패·알 수 없는 답 None."""
         rc, out = self._run(TASK_ENABLED.format(name=self._name(name)))
-        return rc == 0 and out.strip().lower() == "true"
+        value = out.strip().lower()
+        if rc != 0 or value not in ("true", "false"):
+            return None
+        return value == "true"
 
     def _state(self, name: str) -> str | None:
         rc, out = self._run(TASK_STATE.format(name=name))
@@ -106,8 +110,8 @@ class TaskControl:
         """
         n = self._name(name)
         rc, _ = self._run(DISABLE_STOP.format(name=n))
-        if rc != 0 and self.is_enabled(n):
-            raise TaskControlError(f"disable failed ({rc})")  # 켜진 채면 작업이 BE를 다시 띄운다
+        if self.is_enabled(n) is not False:  # 꺼졌다고 확인될 때만 이어 간다(켜진 채면 작업이 BE를 다시 띄운다)
+            raise TaskControlError(f"disable not confirmed ({rc})")
         deadline = self._monotonic() + STOP_WAIT_S
         while self._state(n) == RUNNING and self._monotonic() < deadline:
             self._sleep(POLL_S)

@@ -124,6 +124,12 @@ class GitOps:
                 return False
         return True
 
+    def current_ref(self) -> str | None:
+        """`HEAD`가 가리키는 브랜치 ref(`refs/heads/…`). 분리된 HEAD나 실패는 None."""
+        rc, out = self._git("symbolic-ref", "-q", "HEAD")
+        ref = out.strip()
+        return ref if rc == 0 and ref else None
+
     def merge_ff(self, sha: str) -> bool:
         rc, _ = self._git("merge", "--ff-only", "--quiet", _check_sha(sha))
         if rc != 0:
@@ -132,6 +138,13 @@ class GitOps:
 
     def reset_hard(self, sha: str) -> None:
         self._must("reset", "--hard", "--quiet", _check_sha(sha))
+
+    def reset_keep(self, sha: str) -> bool:
+        """손으로 고친 파일을 남기는 리셋. 그 파일이 두 커밋 사이에 바뀌었으면 git이 거부한다(False)."""
+        rc, _ = self._git("reset", "--keep", _check_sha(sha))
+        if rc != 0:
+            log.warning("git_reset_keep_failed rc=%d", rc)
+        return rc == 0
 
     def checkout_paths(self, sha: str, paths: list[str]) -> None:
         self._must("checkout", _check_sha(sha), "--", *paths)

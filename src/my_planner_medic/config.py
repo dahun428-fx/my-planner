@@ -41,6 +41,7 @@ class MedicConfig:
     repo: str = "dahun428-fx/my-planner"
     branch: str = "main"  # 업데이터가 따라가는 브랜치(스테이징 인스턴스는 develop)
     be_task_name: str = "my-planner"  # 업데이터가 끄고 켜는 BE 작업 스케줄러 작업
+    db_restore_max_age_minutes: int = 60  # 배포 뒤 이보다 늦은 확인 실패에는 바뀐 DB를 되돌리지 않는다
 
     def __repr__(self) -> str:
         parts = []

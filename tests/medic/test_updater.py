@@ -18,7 +18,13 @@ from my_planner_medic.github import GitHub
 from my_planner_medic.gitops import GitOps
 from my_planner_medic.signals import Signal
 from my_planner_medic.store import MedicStore, iso_utc
-from my_planner_medic.tasks import FIND_BE_PIDS, POWERSHELL, TaskControl
+from my_planner_medic.tasks import (
+    DISABLE_STOP,
+    FIND_BE_PIDS,
+    POWERSHELL,
+    TASK_ENABLED,
+    TaskControl,
+)
 from my_planner_medic.updater import Updater
 from my_planner_medic.watcher import Watcher
 
@@ -45,12 +51,25 @@ FP = "be:KeyError src/my_planner/tools/todos.py:list_todos"
 
 
 class GitShell(FakeShell):
-    """머지·리셋이 성공하면 `HEAD`를 옮기는 FakeShell."""
+    """머지·리셋이 성공하면 `HEAD`를 옮기고, 작업 스케줄러 작업의 켜짐 상태를 흉내 내는 FakeShell."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.enabled = True
 
     def run(self, args: list[str], **kw: Any) -> tuple[int, str]:  # type: ignore[override]
         rc, out = super().run(args, **kw)
-        if rc == 0 and args[:3] in (["git", "merge", "--ff-only"], ["git", "reset", "--hard"]):
+        moves = (["git", "merge", "--ff-only"], ["git", "reset", "--hard"], ["git", "reset", "--keep"])
+        if rc == 0 and args[:3] in moves:
             self.on("git", "rev-parse", "HEAD", returns=(0, args[-1] + "\n"))
+        if args[0] == "powershell":
+            cmd = args[-1]
+            if rc == 0 and "Disable-ScheduledTask" in cmd:
+                self.enabled = False
+            elif rc == 0 and "Enable-ScheduledTask" in cmd:
+                self.enabled = True
+            elif rc == 0 and out == "" and ".Settings.Enabled" in cmd:
+                return 0, "True\r\n" if self.enabled else "False\r\n"
         return rc, out
 
 
@@ -142,6 +161,7 @@ def make_env(tmp_path: Path, *, repairs: list[int] | None = None, **cfg: Any) ->
     shell.on("git", "rev-parse", "--verify", remote, returns=(0, NEW + "\n"))
     shell.on("git", "rev-parse", "HEAD", returns=(0, PREV + "\n"))
     shell.on("git", "merge-base", "--is-ancestor", NEW, PREV, returns=(1, ""))
+    shell.on("git", "symbolic-ref", returns=(0, f"refs/heads/{config.branch}\n"))
     store = MedicStore(tmp_path / "state" / "medic.db")
     gh = GitHub(http, TOKEN, REPO)
     watcher = Watcher(config, store, gh, http, clock)
@@ -363,7 +383,8 @@ def test_staging_branch_and_task_name_are_configurable(tmp_path: Path) -> None:
     assert "-TaskName my-planner-dev |" in disable and "Stop-ScheduledTask -TaskName my-planner-dev" in disable
     assert "Start-ScheduledTask -TaskName my-planner-dev" in enable
     assert not any("-TaskName my-planner " in c or c.endswith("-TaskName my-planner") for c in env.cmds)
-    assert env.http.calls("GET", RUNS)[0].query["branch"] == "develop"
+    assert "branch" not in env.http.calls("GET", RUNS)[0].query  # CI는 SHA로만 본다(develop에서 통과한 SHA)
+    assert env.has("symbolic-ref -q HEAD")
 
 
 def test_be_process_filter_matches_root_and_excludes_medic(tmp_path: Path) -> None:
@@ -389,8 +410,7 @@ def test_be_still_running_after_kill_aborts_deploy(tmp_path: Path) -> None:
 
 def test_disable_failure_aborts_deploy_and_reenables(tmp_path: Path) -> None:
     env = make_env(tmp_path)
-    env.shell.on("powershell", "-NoProfile", "-NonInteractive", "-Command",
-                 returns=(1, "Access is denied."))
+    env.shell.on(*POWERSHELL, DISABLE_STOP.format(name="my-planner"), returns=(1, "Access is denied."))
     env.tick()
     assert not env.has("merge --ff-only")
     assert "Enable-ScheduledTask" in env.cmds[-1]
@@ -413,6 +433,7 @@ def test_always_reenables_when_deploy_raises(tmp_path: Path, monkeypatch: pytest
 
     monkeypatch.setattr(updater_mod.dbfile, "backup_to", boom)
     env.tick()
+    assert [k for _, k in env.notifier.daily_calls] == ["backup_failed"]
     assert env.has("Disable-ScheduledTask")
     assert not env.has("merge --ff-only")
     assert "Enable-ScheduledTask" in env.cmds[-1] and "Start-ScheduledTask" in env.cmds[-1]
@@ -630,7 +651,9 @@ def test_startup_after_finished_rollback_actions_does_not_restore_again(tmp_path
         "prev_sha": PREV, "new_sha": NEW, "schema_before": 1, "started_at": iso_utc(START), "phase": "rollback",
         "actions_done": True, "repaired": [FP], "blamed": [FP],
     })
-    env.updater.recover_on_start()  # 켠 직후 끊겼다: BE가 이미 새 기록을 썼을 수 있다
+    env.store.kv_json_set("be_task_disabled_by_medic", True)  # actions_done을 적고 켜기 전에 끊겼다
+    env.shell.enabled = False
+    env.updater.recover_on_start()
     assert not env.has("reset --hard") and not env.has("Disable-ScheduledTask")
     assert "Enable-ScheduledTask" in env.cmds[-1]
     assert env.dip()["phase"] == "rollback_verify"
@@ -641,6 +664,8 @@ def test_startup_with_unmerged_deploy_only_reenables(tmp_path: Path) -> None:
     env.store.kv_json_set("deploy_in_progress", {
         "prev_sha": PREV, "new_sha": NEW, "schema_before": 1, "started_at": iso_utc(START), "phase": "deploy",
     })
+    env.store.kv_json_set("be_task_disabled_by_medic", True)
+    env.shell.enabled = False
     env.updater.recover_on_start()  # HEAD == prev: 머지 전에 죽었다
     assert not env.has("reset --hard")
     assert "Enable-ScheduledTask" in env.cmds[-1]
@@ -772,3 +797,193 @@ def test_watcher_suppressed_during_deploy_and_3_minutes_after(tmp_path: Path) ->
     assert env.watcher.suppressed is True
     env.tick(2)
     assert env.watcher.suppressed is False
+
+
+# --- 고침 1회차 ------------------------------------------------------------------
+
+
+def test_install_failure_rollback_marks_repaired_incident(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    py = str(updater_mod.venv_python(tmp_path))
+    env.shell.on(py, "-m", "pip", "install", "-e", returns=[(1, "error"), (0, "")])
+    env.tick()  # 머지 뒤 설치 실패 → 배포 롤백
+    assert env.has(f"reset --hard --quiet {PREV}")
+    labels = env.server.labels(17)
+    assert "rolled-back" in labels and "failed-1" in labels and "merged" not in labels
+    assert env.server.titled("[incident] deploy:install") == []
+    assert env.store.get("deploy:install") is None
+
+
+def test_tick_does_not_deploy_when_task_disabled_by_hand(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.shell.enabled = False  # Dahun이 손으로 껐다
+    env.tick()
+    assert not env.has("Disable-ScheduledTask") and not env.has("Enable-ScheduledTask")
+    assert not env.has("merge --ff-only")
+    assert env.dip() is None
+    assert [k for _, k in env.notifier.daily_calls] == ["task_disabled"]
+
+
+def test_tick_does_not_deploy_when_task_state_unknown(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.shell.on(*POWERSHELL, TASK_ENABLED.format(name="my-planner"), returns=(1, "error"))
+    env.tick()
+    assert not env.has("Disable-ScheduledTask") and not env.has("Enable-ScheduledTask")
+    assert [k for _, k in env.notifier.daily_calls] == ["task_disabled"]
+
+
+def test_disable_fails_closed_when_enabled_state_unknown_after_disable(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.shell.on(*POWERSHELL, TASK_ENABLED.format(name="my-planner"), returns=[(0, "True"), (1, "error")])
+    env.tick()  # 끈 뒤 꺼졌다고 확인 못 하면 배포하지 않는다
+    assert env.has("Disable-ScheduledTask")
+    assert not env.has("merge --ff-only")
+    assert "Enable-ScheduledTask" in env.cmds[-1]
+    assert [k for _, k in env.notifier.daily_calls] == ["deploy_blocked"]
+
+
+def test_rollback_gives_up_without_enabling_task_disabled_by_hand(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    env.shell.enabled = False  # 확인 도중 Dahun이 손으로 껐다
+    n = len(env.cmds)
+    env.signal(FP)
+    env.tick(4)
+    later = env.cmds[n:]
+    assert not any("reset" in c or "Enable-ScheduledTask" in c or "Disable-ScheduledTask" in c for c in later)
+    assert env.notifier.gave_up_calls == [(FP, False, f"https://github.com/{REPO}/issues/17", True)]
+    assert env.dip() is None
+
+
+def test_rollback_with_hand_edits_uses_reset_keep(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    env.shell.on("git", "status", returns=(0, " M README.md\0"))  # 배포 뒤 손으로 고침
+    env.signal(FP)
+    env.tick(4)
+    assert env.has(f"reset --keep {PREV}")
+    assert not env.has("reset --hard")
+    assert env.dip()["phase"] == "rollback_verify"
+
+
+def test_rollback_reset_keep_failure_gives_up_and_keeps_task_enabled(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    env.shell.on("git", "status", returns=(0, " M src/my_planner/app.py\0"))
+    env.shell.on("git", "reset", "--keep", returns=(128, "error: Entry would be overwritten"))
+    env.signal(FP)
+    env.tick(4)
+    assert not env.has("reset --hard")
+    assert env.notifier.gave_up_calls == [(FP, False, f"https://github.com/{REPO}/issues/17", True)]
+    assert "Enable-ScheduledTask" in env.cmds[-1]
+    assert env.store.kv_get("deployed_sha") == NEW  # 새 코드가 그대로 돈다
+    assert not (tmp_path / "state" / "backups" / f"failed-{NEW}").exists()
+
+
+def test_sleep_during_health_poll_restarts_grace(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.health(503)
+    slept = {"n": 0}
+
+    def sleep(s: float) -> None:
+        slept["n"] += 1
+        env.clock.advance(minutes=30 if slept["n"] == 2 else 0, seconds=s)  # 두 번째 쉼 동안 잠듦
+
+    env.updater._sleep = sleep
+    env.tick()
+    assert not env.has("reset --hard")
+    dip = env.dip()
+    assert dip["phase"] == "verify" and dip["verify_started_at"] is None and dip["grace_until"] is not None
+    env.health(200, HEALTHY)
+    env.tick(5)  # 유예 안
+    env.tick(6)  # 유예 끝 → 헬스 통과
+    assert env.dip()["verify_started_at"] is not None
+    assert not env.has("reset --hard")
+
+
+def test_stale_verify_failure_keeps_changed_db_and_gives_up(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    live = sqlite3.connect(env.db)
+    live.execute("PRAGMA wal_autocheckpoint=0")
+    live.execute("INSERT INTO t VALUES(100)")
+    live.execute("PRAGMA user_version=2")
+    live.commit()
+    env.tick(5)
+    env.tick(90)  # 잠듦
+    env.tick(5)
+    env.tick(6)  # 유예 끝, 헬스 통과: 배포 뒤 1시간이 지났다
+    env.signal(FP)
+    env.tick(4)
+    assert not env.has("reset --")
+    assert not (tmp_path / "state" / "backups" / f"failed-{NEW}").exists()
+    check = sqlite3.connect(env.db)
+    assert check.execute("PRAGMA user_version").fetchone() == (2,)
+    check.close()
+    live.close()
+    assert env.notifier.gave_up_calls == [(FP, False, f"https://github.com/{REPO}/issues/17", True)]
+    assert "needs-dahun" in env.server.labels(17)
+    assert any("DB" in c for c in env.server.comments[17])
+    assert env.dip() is None
+
+
+def test_mark_rolled_back_runs_once_on_resume(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17, labels=("incident", "be", "rolled-back", "failed-1"))
+    env.store.kv_json_set("deploy_in_progress", {
+        "prev_sha": PREV, "new_sha": NEW, "schema_before": 1, "started_at": iso_utc(START), "phase": "rollback",
+        "actions_done": True, "marked": True, "repaired": [FP], "blamed": [FP],
+    })
+    env.updater.recover_on_start()
+    assert "failed-2" not in env.server.labels(17)
+    assert env.store.kv_json_get("issue_ops") in (None, [])
+    assert env.dip()["phase"] == "rollback_verify"
+
+
+def test_missing_backup_with_schema_change_gives_up(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    (tmp_path / "state" / "backups" / f"pre-deploy-{PREV}.db").unlink()
+    conn = sqlite3.connect(env.db)
+    conn.execute("PRAGMA user_version=2")
+    conn.commit()
+    conn.close()
+    env.signal(FP)
+    env.tick(4)
+    assert not env.has("reset --")
+    assert env.dip() is None
+    assert env.notifier.gave_up_calls == [(FP, False, f"https://github.com/{REPO}/issues/17", True)]
+    assert "Enable-ScheduledTask" in env.cmds[-1]
+
+
+def test_wrong_local_branch_is_not_deployed(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.shell.on("git", "symbolic-ref", returns=(0, "refs/heads/feature\n"))
+    env.tick()
+    assert not env.has("merge --ff-only") and not env.has("Disable-ScheduledTask")
+    assert [k for _, k in env.notifier.daily_calls] == ["wrong_branch"]
+
+
+def test_tick_swallows_unexpected_errors_logging_type_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    env = make_env(tmp_path)
+
+    def boom() -> str:
+        raise RuntimeError("detail-that-must-not-be-logged")
+
+    monkeypatch.setattr(env.updater._git, "fetch_main", boom)
+    env.tick()
+    assert "RuntimeError" in caplog.text
+    assert "detail-that-must-not-be-logged" not in caplog.text
+
+
+def test_backup_and_stop_failures_have_distinct_notices(tmp_path: Path) -> None:
+    assert updater_mod.BACKUP_TEXT != updater_mod.BLOCKED_TEXT
+    assert "백업" in updater_mod.BACKUP_TEXT
