@@ -42,4 +42,20 @@ describe("shell", () => {
     expect(screen.getByText("화면 내용")).toBeInTheDocument();
     expect(router.replace).not.toHaveBeenCalled();
   });
+
+  it("links every screen in the nav, marking the open one", async () => {
+    localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
+    renderShell("/tasks/");
+    await screen.findByText("화면 내용");
+    const nav = screen.getByRole("navigation", { name: "화면" });
+    const links = Array.from(nav.querySelectorAll("ul a")).map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual([
+      ["비서 상태", "/"],
+      ["할 일", "/tasks/"],
+      ["상태창", "/status/"],
+      ["설정", "/settings/"],
+    ]);
+    expect(screen.getByRole("link", { name: "할 일" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "상태창" })).not.toHaveAttribute("aria-current");
+  });
 });

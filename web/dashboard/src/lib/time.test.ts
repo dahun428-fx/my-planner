@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { formatKst } from "./time";
+import { formatDay, formatKst } from "./time";
 
 const original = process.env.TZ;
 
@@ -27,5 +27,13 @@ describe("formatKst", () => {
 
   it("returns a dash for an unreadable time", () => {
     expect(formatKst("어제", "HH:mm")).toBe("—");
+  });
+});
+
+describe("formatDay", () => {
+  it("drops the year and leading zeros", () => {
+    expect(formatDay("2026-10-04")).toBe("10/4");
+    expect(formatDay("2026-01-25")).toBe("1/25");
+    expect(formatDay("10/4")).toBe("—");
   });
 });

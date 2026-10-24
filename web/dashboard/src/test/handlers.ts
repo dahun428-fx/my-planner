@@ -1,6 +1,10 @@
 import { delay, http, HttpResponse } from "msw";
+import conditions from "./fixtures/conditions.json";
 import health from "./fixtures/health.json";
 import safeMode from "./fixtures/health-safe-mode.json";
+import status from "./fixtures/status.json";
+import today from "./fixtures/today.json";
+import week from "./fixtures/week.json";
 
 // Fixture tailnet host (invented, not a real machine). Tests save ORIGIN as the BE URL.
 export const ORIGIN = "https://desk.example.ts.net";
@@ -23,4 +27,22 @@ export const healthAnswers = {
     }),
 };
 
-export const handlers = [healthAnswers.ok()];
+// The same states for a screen's own GET (`/today`, `/week`, `/conditions`, `/status`).
+export function answersFor(path: string, fixture: object) {
+  const url = `${BASE}${path}`;
+  return {
+    ok: (body: object = fixture) => http.get(url, () => HttpResponse.json(body as Record<string, unknown>)),
+    unauthorized: () => http.get(url, () => error(401, "unauthorized")),
+    tooMany: () => http.get(url, () => error(429, "too_many_auth_failures")),
+    safeMode: () => http.get(url, () => error(503, "safe_mode")),
+    internal: () => http.get(url, () => error(500, "internal")),
+    unreachable: () => http.get(url, () => HttpResponse.error()),
+  };
+}
+
+export const todayAnswers = answersFor("/today", today);
+export const weekAnswers = answersFor("/week", week);
+export const conditionsAnswers = answersFor("/conditions", conditions);
+export const statusAnswers = answersFor("/status", status);
+
+export const handlers = [healthAnswers.ok(), todayAnswers.ok(), weekAnswers.ok(), conditionsAnswers.ok(), statusAnswers.ok()];

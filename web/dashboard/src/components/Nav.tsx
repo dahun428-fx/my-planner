@@ -4,12 +4,14 @@ import { NAV_TEXT } from "../lib/labels";
 
 const LINKS = [
   { href: "/", label: NAV_TEXT.status },
+  { href: "/tasks/", label: NAV_TEXT.tasks },
+  { href: "/status/", label: NAV_TEXT.window },
   { href: "/settings/", label: NAV_TEXT.settings },
 ] as const;
 
 const same = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
-/** Wordmark and the screens. Later screens (할 일, 인생곡선, 상태창) add a link each. */
+/** Wordmark and the screens. The life-curve screen (ticket 18) adds its link between 할 일 and 상태창. */
 export function Nav() {
   const { asPath } = useRouter();
   const path = asPath.split(/[?#]/)[0];

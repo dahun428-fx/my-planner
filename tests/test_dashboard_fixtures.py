@@ -81,7 +81,19 @@ CASES: dict[str, tuple[str, Callable[[BeEnv], Awaitable[None]], dict[str, Any]]]
     "health": ("/health", _seeded, {"push": True}),
     "health-degraded": ("/health", _degraded, {"push": True}),
     "health-quiet": ("/health", _quiet, {}),
+    # 티켓 17: (b) 할 일 + 컨디션, (d) 상태창. `-empty`는 설치 직후 빈 DB다.
+    "today": ("/today", _seeded, {}),
+    "today-empty": ("/today", _quiet, {}),
+    "week": ("/week", _seeded, {}),
+    "week-empty": ("/week", _quiet, {}),
+    "conditions": ("/conditions", _seeded, {}),
+    "conditions-empty": ("/conditions", _quiet, {}),
+    "status": ("/status", _seeded, {}),
+    "status-empty": ("/status", _quiet, {}),
 }
+# 경로마다 응답 모델(고정 자료가 계약 모양인지 본다)
+PATH_MODELS = {"/health": "Health", "/today": "Today", "/week": "Week", "/conditions": "Conditions",
+               "/status": "Status"}
 
 
 async def _record(tmp_path: Path, name: str) -> Any:
@@ -123,9 +135,9 @@ def _compare(name: str, body: Any, update: bool) -> None:
 @pytest.mark.parametrize("name", list(CASES))
 async def test_fixture_matches_be_response(tmp_path, name, update_dashboard_fixtures):
     body = await _record(tmp_path, name)
-    model = MODELS["Health"] if CASES[name][0] == "/health" else None
-    if model is not None:
-        model.model_validate(body)
+    path = CASES[name][0]
+    MODELS[PATH_MODELS[path]].model_validate(body)
+    if path == "/health":
         assert body["version"]["schema"] == LATEST_VERSION
     _compare(name, body, update_dashboard_fixtures)
 
@@ -152,6 +164,25 @@ def test_seed_is_invented_and_shaped(tmp_path, conn):
     assert conn.execute("SELECT min(amount) FROM status_xp_ledger").fetchone()[0] > 0
     titles = [r[0] for r in conn.execute("SELECT title FROM curve_milestones")]
     assert titles and all(t.startswith("꾸민") for t in titles)
+
+
+async def test_seeded_status_is_level_six_with_one_debuff(tmp_path):
+    """대시보드 상태창 테스트가 기대하는 값(Lv. 6, 130 / 400 XP, HP 4/5, 건강 4 ↓ Q3 6)이 원장과 점수에서 나온다."""
+    body = await _record(tmp_path, "status")
+    assert (body["level"], body["xp_total"], body["xp_into_level"], body["xp_for_next"]) == (6, 1380, 130, 400)
+    assert body["hp"]["score"] == 4
+    debuffs = [(s["area"], s["score"], s["prev_period"], s["prev_score"]) for s in body["stats"] if s["debuff"]]
+    assert debuffs == [("health", 4, "2026-Q3", 6)]
+    assert [q["first_steps"] for q in body["main_quests"]] == [{"open": 2, "done": 3}]
+    assert len(body["daily_quests"]) == 1
+
+
+async def test_seeded_week_has_empty_days(tmp_path):
+    """`/week`은 할 일이 없는 날도 7칸 모두 준다(대시보드가 빈 날을 같은 칸으로 그린다)."""
+    body = await _record(tmp_path, "week")
+    assert len(body["days"]) == 7
+    assert any(d["todos"] == [] for d in body["days"])
+    assert any(d["todos"] for d in body["days"])
 
 
 def test_schema_json_matches_bundle():

@@ -1,7 +1,7 @@
 // The browser calls the BE directly (ADR 0008). One result type for every screen, mapped from the
 // common states table of spec 13.1. Shapes are checked by hand: a field the BE adds later is ignored,
 // a field a screen needs that is missing or of the wrong type is `broken("shape")`.
-import type { Health, SafeModeHealth } from "../api/types.gen";
+import type { Conditions, Health, SafeModeHealth, Status, Today, Week } from "../api/types.gen";
 import type { Conn } from "./connection";
 
 export type ApiResult<T> =
@@ -138,4 +138,85 @@ export function isHealth(v: unknown): v is Health {
 
 export function isSafeModeHealth(v: unknown): v is SafeModeHealth {
   return isObj(v) && v.status === "safe_mode" && str(v.now) && isVersion(v.version);
+}
+
+// ---- (b) 할 일 + 컨디션, (d) 상태창 (6.3.2~6.3.4, 6.3.6): only the fields the screens draw ----------
+
+const arr = <T>(v: unknown, each: (x: unknown) => boolean): v is T[] => Array.isArray(v) && v.every(each);
+const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+function isTodo(v: unknown): boolean {
+  if (!isObj(v)) return false;
+  const p = v.priority;
+  return (
+    int(v.id) &&
+    str(v.title) &&
+    str(v.status) &&
+    strOrNull(v.planned_for) &&
+    strOrNull(v.scheduled_at) &&
+    intOrNull(v.parent_id) &&
+    (p === null || (isObj(p) && str(p.cadence) && int(p.rank)))
+  );
+}
+
+const isCondition = (v: unknown) => isObj(v) && str(v.date) && int(v.score) && strOrNull(v.note);
+
+export function isToday(v: unknown): v is Today {
+  if (!isObj(v)) return false;
+  const b = v.brief;
+  return (
+    str(v.date) &&
+    str(v.weekday) &&
+    (b === null || (isObj(b) && str(b.loop) && str(b.text) && strOrNull(b.sent_at))) &&
+    (v.condition === null || isCondition(v.condition)) &&
+    arr(v.todos, (t) => isObj(t) && (t.group === "priority" || t.group === "scheduled" || t.group === "open") && isTodo(t.todo))
+  );
+}
+
+export function isWeek(v: unknown): v is Week {
+  return (
+    isObj(v) &&
+    str(v.week) &&
+    str(v.start) &&
+    str(v.end) &&
+    arr(v.priorities, isTodo) &&
+    arr(v.days, (d) => isObj(d) && str(d.date) && str(d.weekday) && typeof d.is_today === "boolean" && arr(d.todos, isTodo))
+  );
+}
+
+export function isConditions(v: unknown): v is Conditions {
+  return isObj(v) && str(v.from) && str(v.to) && arr(v.items, isCondition) && int(v.days_logged) && (v.average === null || num(v.average));
+}
+
+export function isStatus(v: unknown): v is Status {
+  if (!isObj(v)) return false;
+  const hp = v.hp;
+  return (
+    int(v.level) &&
+    int(v.xp_total) &&
+    int(v.xp_into_level) &&
+    int(v.xp_for_next) &&
+    isObj(hp) &&
+    intOrNull(hp.score) &&
+    arr(
+      v.stats,
+      (s) =>
+        isObj(s) &&
+        str(s.area) &&
+        str(s.label) &&
+        intOrNull(s.score) &&
+        strOrNull(s.period) &&
+        intOrNull(s.prev_score) &&
+        strOrNull(s.prev_period) &&
+        typeof s.debuff === "boolean" &&
+        strOrNull(s.recovery_quest),
+    ) &&
+    arr(
+      v.main_quests,
+      (q) => isObj(q) && int(q.task_id) && str(q.title) && int(q.rank) && isObj(q.first_steps) && int(q.first_steps.open) && int(q.first_steps.done),
+    ) &&
+    arr(v.daily_quests, (q) => isObj(q) && int(q.task_id) && str(q.title) && strOrNull(q.parent_title)) &&
+    arr(v.titles, (t) => isObj(t) && int(t.milestone_id) && str(t.title)) &&
+    arr(v.recent_xp, (x) => isObj(x) && str(x.at) && str(x.label) && int(x.amount))
+  );
 }

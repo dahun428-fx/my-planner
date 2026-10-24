@@ -7,7 +7,14 @@ import safeMode from "../test/fixtures/health-safe-mode.json";
 import { BASE, ORIGIN } from "../test/handlers";
 import { healthAnswers } from "../test/handlers";
 import { server } from "../test/server";
-import { fetchApi, getHealth, isHealth, isSafeModeHealth } from "./api";
+import conditionsEmpty from "../test/fixtures/conditions-empty.json";
+import conditions from "../test/fixtures/conditions.json";
+import statusEmpty from "../test/fixtures/status-empty.json";
+import status from "../test/fixtures/status.json";
+import todayEmpty from "../test/fixtures/today-empty.json";
+import today from "../test/fixtures/today.json";
+import week from "../test/fixtures/week.json";
+import { fetchApi, getHealth, isConditions, isHealth, isSafeModeHealth, isStatus, isToday, isWeek } from "./api";
 
 const conn = { beUrl: ORIGIN, token: "fake-token-abc" };
 
@@ -113,5 +120,19 @@ describe("api", () => {
     expect(isHealth({ ...health, errors: { ...health.errors, by_event: { x: "1" } } })).toBe(false);
     expect(isHealth({ ...health, runs_today: [{ ...health.runs_today[0], delivered_via: "app" }] })).toBe(false);
     expect(isHealth(null)).toBe(false);
+  });
+});
+
+describe("screen shapes", () => {
+  it("accept the BE fixtures and refuse a missing field", () => {
+    const fx = { today, todayEmpty, week, conditions, conditionsEmpty, status, statusEmpty };
+    expect([isToday(fx.today), isToday(fx.todayEmpty), isWeek(fx.week)]).toEqual([true, true, true]);
+    expect([isConditions(fx.conditions), isConditions(fx.conditionsEmpty)]).toEqual([true, true]);
+    expect([isStatus(fx.status), isStatus(fx.statusEmpty)]).toEqual([true, true]);
+    expect(isToday({ ...fx.today, todos: [{ group: "later", todo: fx.today.todos[0].todo }] })).toBe(false);
+    expect(isWeek({ ...fx.week, days: [{ date: "2026-10-19" }] })).toBe(false);
+    expect(isConditions({ ...fx.conditions, items: [{ date: "2026-10-01", score: "4", note: null }] })).toBe(false);
+    expect(isStatus({ ...fx.status, xp_into_level: undefined })).toBe(false);
+    expect(isStatus({ ...fx.status, extra_field_added_later: 1 })).toBe(true);
   });
 });
