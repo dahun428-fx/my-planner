@@ -6,7 +6,8 @@ import { useToast } from "../../components/Toast";
 import { copy, habitMeta } from "../../lib/copy";
 import type { PartProps } from "../types";
 import { usePartAction } from "../usePartAction";
-import { CheckRow, Part } from "./Part";
+import { CheckRow } from "../primitives/CheckRow";
+import { Part } from "./Part";
 import styles from "./parts.module.css";
 
 const isHabit = (v: unknown): v is Habit =>
@@ -94,7 +95,7 @@ export function HabitList({
   };
 
   return (
-    <ul className={`${styles.rows} ${styles.habitRows} ${readOnly ? styles.readOnly : ""}`}>
+    <ul className={`${styles.rows} ${styles.habitRows}`} data-read-only={readOnly ? "" : undefined}>
       {rows.map((given) => {
         const h = answered.get(given.id) ?? given;
         return (

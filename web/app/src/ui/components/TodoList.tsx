@@ -2,12 +2,13 @@ import { useState } from "react";
 import { copy } from "../../lib/copy";
 import type { PartProps } from "../types";
 import { usePartAction } from "../usePartAction";
-import { CheckRow, Part } from "./Part";
+import { CheckRow } from "../primitives/CheckRow";
+import { Part } from "./Part";
 import styles from "./parts.module.css";
 
 const FOLD_AT = 6;
 
-// ui_todo_list: a title and up to 30 to-dos; checking one completes it.
+// ui_todo_list: a title and up to 30 to-dos as CheckRows (SP6 6.1); checking one completes it.
 export function TodoList({ props, data, ctx }: PartProps<{ title: string; task_ids: number[] }>) {
   const act = usePartAction();
   const [done, setDone] = useState<ReadonlySet<number>>(new Set());
@@ -36,7 +37,7 @@ export function TodoList({ props, data, ctx }: PartProps<{ title: string; task_i
       <ul className={styles.rows}>
         {shown.map((t) => {
           const isDone = t.status === "done" || done.has(t.id);
-          return <CheckRow key={t.id} title={t.title} checked={isDone} done={isDone} disabled={ctx.readOnly || isDone} onToggle={() => void check(t.id)} />;
+          return <CheckRow key={t.id} title={t.title} checked={isDone} struck={isDone} disabled={ctx.readOnly || isDone} onToggle={() => void check(t.id)} />;
         })}
       </ul>
       {todos.length > FOLD_AT && (
