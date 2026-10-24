@@ -15,16 +15,19 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, local, logical_date, to_iso
+from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
+from my_planner.store.repos.conditions import Condition
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.activity import (
+    SUPERSEDED,
     condition_target,
     priorities_target,
     record_activity,
+    register_undo,
     task_target,
     tasks_target,
 )
@@ -498,7 +501,9 @@ class Tools:
             if t.status is not TaskStatus.open:
                 return _err(f"{t.id}번 할 일은 열린 할 일이 아니라서 우선순위에 올릴 수 없어요.")
         ids: list[int] = list(task_ids)
-        before = [t.id for _, t in self.tasks.priority_ranks(c, period)]
+        ranked = self.tasks.priority_ranks(c, period)
+        before = [t.id for _, t in ranked]
+        before_status = [t.status.value for _, t in ranked]  # 되돌릴 때 그 뒤에 상태가 바뀌었는지 본다(6.4.3)
         with self.tasks.transaction():
             self.tasks.set_priorities(c, period, ids)
             picked = self.tasks.priorities(c, period)
@@ -509,7 +514,7 @@ class Tools:
             self._record(
                 ctx, "priorities_set", priorities_target(c.value, period),
                 confirmation_line(ToolEvent("priorities_set", None, data), self.today()),
-                {"cadence": c.value, "period": period, "task_ids": before},
+                {"cadence": c.value, "period": period, "task_ids": before, "statuses": before_status},
                 # 목록과 함께, 빠지거나 들어온 할 일도 바뀐 대상이다(그 할 일의 확인 토큰이 stale이 된다)
                 targets=[priorities_target(c.value, period), *(task_target(i) for i in dict.fromkeys([*before, *ids]))],
             )
@@ -633,3 +638,110 @@ class Tools:
             return _err(f"원문 기록은 최대 {TRANSCRIPT_MAX_DAYS}일까지 읽을 수 있어요.")
         text = self.transcripts.read_range(start, end)
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
+
+
+# --- 종류별 되돌리기 (SP3-4 스펙 6.4.3). `undo`는 그 활동의 `undo_json`(바꾸기 전 값, 시각은 UTC ISO) ---
+
+
+def _dt(v: Any) -> datetime | None:
+    return from_iso(v) if v else None
+
+
+def _undo_task_added(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """소프트 삭제(`deleted_at` = 지금). 상태와 완료 시각은 그대로 둔다."""
+    t = tools.tasks.get(undo["task_id"])
+    if t is not None:
+        tools.tasks.restore(t.id, status=t.status, completed_at=t.completed_at, deleted_at=tools.clock.now())
+    return None
+
+
+def _undo_task_updated(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """바뀐 필드만 이전 값으로."""
+    before: dict[str, Any] = undo["before"]
+    changes: dict[str, Any] = {k: before[k] for k in ("title", "note", "areas") if k in before}
+    if "planned_for" in before:
+        changes["planned_for"] = date.fromisoformat(before["planned_for"]) if before["planned_for"] else None
+    if "scheduled_at" in before:
+        changes["scheduled_at"] = _dt(before["scheduled_at"])
+    tools.tasks.update(undo["task_id"], **changes)
+    return None
+
+
+def _undo_task_moved(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    pf = undo["planned_for"]
+    tools.tasks.update(
+        undo["task_id"], event_kind="moved", planned_for=date.fromisoformat(pf) if pf else None,
+        scheduled_at=_dt(undo["scheduled_at"]),
+    )
+    return None
+
+
+def _undo_task_status(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """완료·다시 열기·내려놓기: 이전 상태와 이전 `completed_at` 그대로. 내려놓기로 지워진 우선순위 칸은 비어 있을
+    때만 되살리고, 차 있으면 `superseded`(쓴 것은 바깥이 되돌린다)."""
+    tid = undo["task_id"]
+    tools.tasks.restore(tid, status=undo["status"], completed_at=_dt(undo["completed_at"]), deleted_at=None)
+    for cadence, period, rank in undo.get("priorities", []):
+        if not tools.tasks.restore_priority(cadence, period, rank, tid):
+            return SUPERSEDED
+    return None
+
+
+def _undo_tasks_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """확정한 할 일 가운데 아직 `open`이고 나중 변경이 없는 것만 `draft`로(일부 되돌리기, 6.4.3). 나머지는 그대로.
+
+    `proposed` 이벤트를 새로 써서 초안 만료 시계가 되돌린 시각부터 다시 센다. 하나도 못 돌리면 superseded.
+    """
+    live = set(undo["targets"])
+    reverted: list[Task] = []
+    for i in undo["task_ids"]:
+        t = tools.tasks.get(i)
+        if task_target(i) in live and t is not None and t.status is TaskStatus.open:
+            tools.tasks.restore(t.id, status=TaskStatus.draft, completed_at=None, deleted_at=None)
+            reverted.append(t)
+    undo["targets"] = [task_target(t.id) for t in reverted]
+    if not reverted:
+        return SUPERSEDED
+    # 확인 문구는 실제로 되돌린 할 일만 적는다(확정 때와 같은 모양: 하나면 `✓ 확정: 제목`, 여럿이면 제목 목록)
+    undo["summary"] = (
+        f"✓ 확정: {reverted[0].title}" if len(reverted) == 1 else titles_summary("확정", [t.title for t in reverted])
+    )
+    return None
+
+
+def _undo_priorities_set(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """이전 목록으로. 이전 목록의 할 일 가운데 지워졌거나, 내려놓았거나, 그 목록 변경 뒤에 상태가 바뀐 것이 있으면
+    superseded. 그때 이미 `done`이던 할 일은 그대로 되살린다(완료한 할 일이 목록에 남는 것은 정상이다).
+    U3은 목록 대상만 본다(할 일 대상은 지켜보기만 한다)."""
+    ids = list(undo["task_ids"])
+    statuses = undo.get("statuses")  # 티켓 05 전 행에는 없다: 그때는 `open`이었다고 본다(set_priorities 규칙)
+    for k, i in enumerate(ids):
+        t = tools.tasks.get(i)
+        then = statuses[k] if isinstance(statuses, list) and k < len(statuses) else TaskStatus.open.value
+        if t is None or t.status is TaskStatus.dropped or t.status.value != then:
+            return SUPERSEDED
+    tools.tasks.set_priorities(undo["cadence"], undo["period"], ids)
+    return None
+
+
+def _undo_condition_recorded(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """이전 행 그대로(`recorded_at` 포함). 없었으면 행을 지운다."""
+    d = date.fromisoformat(undo["date"])
+    b = undo["before"]
+    before = Condition(d, b["score"], b["note"], from_iso(b["recorded_at"])) if b else None
+    tools.conditions.restore(d, before)
+    return None
+
+
+for _kind, _handler in (
+    ("task_added", _undo_task_added),
+    ("task_updated", _undo_task_updated),
+    ("task_moved", _undo_task_moved),
+    ("task_completed", _undo_task_status),
+    ("task_reopened", _undo_task_status),
+    ("task_dropped", _undo_task_status),
+    ("tasks_confirmed", _undo_tasks_confirmed),
+    ("priorities_set", _undo_priorities_set),
+    ("condition_recorded", _undo_condition_recorded),
+):
+    register_undo(_kind, _handler)

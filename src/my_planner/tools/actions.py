@@ -16,6 +16,11 @@
    - 그 밖에는 도구를 부른다. 도구가 거절하면 `422 rejected`(도구의 오류 문구).
    - 응답을 `api_idempotency`에 쓴다(`client_msg_id`가 있을 때).
 
+되돌리기 `undo`(6.4.3)는 `POST /activity/{id}/undo`만 부르는 내부 동작이다(`endpoint="undo"`). 없는 활동은 `404`,
+이미 되돌린 활동은 아무것도 바꾸지 않고 `200 already_undone`(U4: 같은 `client_msg_id`로 다시 와도 같은 답),
+U1~U3에 걸리면 `422 not_undoable`·`409 undo_expired`·`409 superseded`. 되돌리면 대상 복원, 새 활동(`kind="undo"`,
+`undo_json = NULL`), 원래 행의 `undone_at`·`undone_by`를 한 트랜잭션에 쓴다(U5). 경험치 원장은 건드리지 않는다(U6).
+
 로그에는 동작 이름과 결과만 남긴다(제목, 인자, 토큰 없이).
 """
 
@@ -36,11 +41,22 @@ from my_planner.timefmt import (  # API 경계의 시각 변환(6.1). 도구 결
     api_time,
     to_api_times,
 )
-from my_planner.tools.activity import priorities_target, record_activity, task_target
+from my_planner.tools.activity import (
+    SUPERSEDED,
+    UNDO_HANDLERS,
+    UNDO_KIND,
+    live_targets,
+    priorities_target,
+    record_activity,
+    task_target,
+    undo_block,
+    watched_targets,
+)
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
     period_label,
     render_confirmations,
+    undo_summary,
 )
 
 if TYPE_CHECKING:
@@ -64,8 +80,17 @@ TOKEN_MISMATCH = "확인한 제안과 요청이 달라요."
 UNKNOWN_ACTION = "알 수 없는 동작이에요."
 BAD_ARGS = "args 형식이 맞지 않아요."
 REUSED_ID = "이미 다른 요청에 쓴 client_msg_id예요."
+NO_ACTIVITY = "없는 활동이에요."
+UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문구)
+    "not_undoable": (422, "되돌릴 수 없는 변경이에요."),
+    "undo_expired": (409, "되돌릴 수 있는 24시간이 지났어요."),
+    "superseded": (409, "그 뒤에 바뀐 내용이 있어서 되돌릴 수 없어요."),
+}
 
-ActionStatus = Literal["applied", "needs_confirm", "rejected", "invalid", "conflict"]
+ActionStatus = Literal[
+    "applied", "needs_confirm", "rejected", "invalid", "conflict",
+    "undone", "already_undone", "not_found", "not_undoable", "undo_expired", "superseded",
+]
 
 
 @dataclass
@@ -109,6 +134,7 @@ class ActionSpec:
     """`tool`: `Tools` 메서드 이름 또는 처리 함수. `needs_confirm`: 확인이 필요하면 확인 문구 한 줄.
 
     `target`: 확인 토큰의 `stale` 판정에 쓰는 활동 대상(5.2). `public=False`는 하루 한 번 작업 같은 내부 동작이다.
+    `endpoint`가 있으면 그 경로(`ActionRequest.endpoint`)에서만 부른다(`undo`).
     """
 
     tool: str | Handler
@@ -116,6 +142,7 @@ class ActionSpec:
     public: bool = True
     target: Callable[[Tools, dict[str, Any]], list[str]] | None = None
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
+    endpoint: Endpoint | None = None
 
 
 # --- 확인이 필요한가 (6.4.2 위험 칸) ---
@@ -176,6 +203,11 @@ def _decline_confirm(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) ->
     raise AssertionError("decline_confirm은 apply_action이 처리한다")
 
 
+def _undo_stub(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """처리는 `_undo`가 한다(응답 모양이 다르다). 여기 오지 않는다."""
+    raise AssertionError("undo는 apply_action이 처리한다")
+
+
 def _expire_drafts(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     return deps.tools.expire_drafts(ctx, args["older_than"])
 
@@ -206,6 +238,8 @@ ACTIONS: dict[str, ActionSpec] = {
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
+    # 내부(`POST /activity/{id}/undo`)
+    "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),
 }
 
 
@@ -310,7 +344,54 @@ def _with_token(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: di
     return res
 
 
+class _Superseded(Exception):
+    """되돌리기 처리 함수가 `"superseded"`를 돌려줬다: 그 안의 쓰기를 되돌린다(안쪽 SAVEPOINT)."""
+
+
+def _already_undone(undo_activity_id: int | None) -> ActionResult:
+    return ActionResult("already_undone", 200, {"status": "already_undone", "activity_id": undo_activity_id})
+
+
+def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionResult:
+    """되돌리기 한 번(6.4.3). 바깥 트랜잭션 안에서 부른다."""
+    aid = _int(args.get("activity_id"))
+    a = deps.activity.get(aid) if deps.activity is not None and aid is not None else None
+    if a is None:
+        return _error("not_found", 404, "not_found", NO_ACTIVITY)
+    assert deps.activity is not None
+    if a.undone_at is not None:
+        return _already_undone(a.undone_by)  # U4
+    block = undo_block(a, deps.activity, deps.clock.now())
+    if block is not None:
+        http, message = UNDO_ERRORS[block]
+        return _error(block, http, block, message)
+    assert a.undo is not None
+    ctx = _context(req)
+    payload = {**a.undo, "targets": live_targets(a, deps.activity)[1]}  # 처리 함수가 되돌린 대상만 남긴다
+    try:
+        with transaction(deps.conn):
+            if UNDO_HANDLERS[a.kind](deps.tools, payload, ctx) == SUPERSEDED:
+                raise _Superseded
+    except _Superseded:
+        http, message = UNDO_ERRORS[SUPERSEDED]
+        return _error("superseded", http, "superseded", message)
+    summary = undo_summary(payload.get("summary", a.summary))  # 일부만 되돌렸으면 처리 함수가 좁힌 문구
+    new_id = record_activity(
+        deps.activity, ctx, kind=UNDO_KIND, target=a.target, summary=summary, risk="low", undo=None,
+        # 되돌리기도 그 대상을 바꾼 활동이다(U3): 실제로 되돌린 대상과, 원래 행의 지켜보는 대상(확인 토큰 stale용)
+        targets=[*payload["targets"], *watched_targets(a, deps.activity)],
+    )
+    assert new_id is not None
+    deps.activity.mark_undone(a.id, new_id)  # U5
+    deps.tools._export()
+    return ActionResult(
+        "undone", 200, {"status": "undone", "activity_id": new_id, "undone": a.id, "confirmation": summary}
+    )
+
+
 def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[str, Any]) -> ActionResult:
+    if req.action == UNDO_KIND:
+        return _undo(deps, req, args)
     if req.action == "decline_confirm":
         return _decline(deps, req, args)
     if req.confirm_token is not None:
@@ -332,17 +413,36 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
     return _call(deps, spec, _context(req), args)
 
 
+_REQUEST_KEY = "_request"  # 저장한 undo 응답 옆에 둔 요청(활동 id). 다시 돌려줄 때 뺀다
+
+
+def _request_key(req: ActionRequest) -> Any:
+    return req.args.get("activity_id") if isinstance(req.args, dict) else None
+
+
+def _callable_from(spec: ActionSpec, req: ActionRequest) -> bool:
+    """`endpoint`가 정해진 동작은 그 경로에서만, 그 밖의 내부 동작은 하루 한 번 작업(`scheduler`)에서만."""
+    if spec.endpoint is not None:
+        return req.endpoint == spec.endpoint
+    return spec.public or req.channel == "scheduler"
+
+
 def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     """즉시 갈래 하나(동기). 모듈 설명의 순서대로."""
     spec = ACTIONS.get(req.action)
-    if spec is None or (not spec.public and req.channel != "scheduler"):
+    if spec is None or not _callable_from(spec, req):
         return _error("invalid", 400, "invalid_request", UNKNOWN_ACTION)
     if req.client_msg_id is not None and deps.idempotency is not None:
         stored = deps.idempotency.get(req.client_msg_id)
         if stored is not None:
             if stored.endpoint != req.endpoint:
                 return _error("conflict", 409, "conflict", REUSED_ID)
-            body = stored.body or {}
+            body = dict(stored.body or {})
+            asked = body.pop(_REQUEST_KEY, None)
+            if asked is not None and asked != _request_key(req):
+                return _error("conflict", 409, "conflict", REUSED_ID)  # 같은 id를 다른 대상에 다시 썼다
+            if req.endpoint == "undo" and body.get("status") == "undone":
+                return _already_undone(body.get("activity_id"))  # U4: 같은 client_msg_id여도 두 번째는 already_undone
             return ActionResult(body.get("status", "conflict"), stored.status_code, body)
     args = req.args if req.args is not None else {}
     if not isinstance(args, dict) or not _accepts(deps, spec, args):
@@ -351,7 +451,8 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
         with transaction(deps.conn):
             res = _decide(deps, spec, req, args)
             if req.client_msg_id is not None and deps.idempotency is not None:
-                deps.idempotency.put(req.client_msg_id, req.endpoint, res.http_status, res.body)
+                stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
+                deps.idempotency.put(req.client_msg_id, req.endpoint, res.http_status, stored_body)
     except Exception:
         # 적용과 응답 기록이 함께 되돌려졌다. `tasks.md`는 트랜잭션 밖 파일이라 지금 값으로 다시 만든다
         deps.tools._export()

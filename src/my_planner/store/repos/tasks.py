@@ -255,6 +255,56 @@ class TasksRepo:
         assert task is not None
         return task
 
+    def restore(
+        self, id: int, *, status: TaskStatus | str, completed_at: datetime | None, deleted_at: datetime | None
+    ) -> None:
+        """되돌리기(SP3-4 스펙 6.4.3): 상태, `completed_at`, `deleted_at`을 넘긴 값 그대로 둔다(시각을 새로 찍지 않는다).
+
+        `task_added` 되돌리기는 `deleted_at`에 지금을, `task_reopened` 되돌리기는 이전 `done`과 `completed_at`을 넘긴다.
+        이벤트: 소프트 삭제는 `updated`, `draft`로 돌리면 `proposed`(초안 만료 시계가 다시 센다), `done`은 `completed`,
+        `dropped`는 `dropped`(우선순위 칸도 지운다, `set_status`와 같다), `open`은 `reopened`.
+        """
+        new = TaskStatus(status)
+        row = self.conn.execute("SELECT status FROM tasks WHERE id = ?", (id,)).fetchone()
+        if row is None:
+            raise KeyError(id)
+        if deleted_at is not None:
+            kind = "updated"
+        else:
+            kind = {
+                TaskStatus.draft: "proposed", TaskStatus.done: "completed", TaskStatus.dropped: "dropped",
+                TaskStatus.open: "reopened",
+            }[new]
+        with self.transaction():
+            self.conn.execute(
+                "UPDATE tasks SET status = ?, completed_at = ?, deleted_at = ?, updated_at = ? WHERE id = ?",
+                (
+                    new.value, to_iso(completed_at) if completed_at else None,
+                    to_iso(deleted_at) if deleted_at else None, to_iso(self.clock.now()), id,
+                ),
+            )
+            if new == TaskStatus.dropped:
+                self.conn.execute("DELETE FROM priorities WHERE task_id = ?", (id,))
+            payload: dict[str, object] = {"from": row["status"], "to": new.value, "undo": True}
+            if deleted_at is not None:
+                payload["deleted"] = True
+            self._event(id, kind, payload)
+
+    def restore_priority(self, cadence: Cadence | str, period: str, rank: int, task_id: int) -> bool:
+        """지워졌던 우선순위 칸 하나를 되살린다. 그 칸이 비어 있고 그 할 일이 그 목록에 없을 때만. 되살렸으면 True."""
+        c = Cadence(cadence).value
+        taken = self.conn.execute(
+            "SELECT 1 FROM priorities WHERE cadence = ? AND period = ? AND (rank = ? OR task_id = ?)",
+            (c, period, rank, task_id),
+        ).fetchone()
+        if taken is not None:
+            return False
+        with self.transaction():
+            self.conn.execute(
+                "INSERT INTO priorities (cadence, period, rank, task_id) VALUES (?, ?, ?, ?)", (c, period, rank, task_id)
+            )
+        return True
+
     def expire_drafts(self, older_than: datetime) -> list[int]:
         """`proposed_at`이 `older_than`이거나 그보다 먼저인 초안을 조용히 `dropped`로 바꾼다(딱 3일이 된 것도 포함).
 

@@ -6,13 +6,15 @@
 
 from __future__ import annotations
 
-from datetime import date
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.domain import ActivityChannel, Actor, Risk, RunContext
 
 if TYPE_CHECKING:
-    from my_planner.store.repos.activity import ActivityRepo
+    from my_planner.store.repos.activity import Activity, ActivityRepo
+    from my_planner.tools.core import Tools
 
 
 def activity_origin(ctx: RunContext) -> tuple[Actor, ActivityChannel]:
@@ -66,3 +68,81 @@ def record_activity(
     if risk == "low" and undo is not None:
         ctx.undo_ids.append(aid)
     return aid
+
+
+# --- 되돌리기 (6.4.3) ---
+
+UNDO_WINDOW = timedelta(hours=24)  # U2: 활동 뒤 24시간이 되면(딱 24시간 포함) 되돌릴 수 없다
+UNDO_KIND = "undo"
+SUPERSEDED = "superseded"
+
+# 종류별 되돌리기: (도구, 입력, 맥락) → None(되돌림) 또는 `"superseded"`(되돌릴 수 없게 됐다).
+# 입력은 활동의 `undo_json`에 `targets`(U3에서 나중에 바뀌지 않은 대상, `live_targets`)를 더한 것이다. 처리 함수는
+# 실제로 되돌린 대상만 남기도록 `targets`를 좁힐 수 있다(되돌리기 활동이 그 대상을 적는다). 일부만 되돌리면
+# `summary`(원래 활동 모양의 확인 문구)를 넣어, 되돌림 확인이 되돌린 것만 적게 한다.
+# 처리 함수는 바깥 트랜잭션 안에서 불리고, `"superseded"`를 돌려주면 그 쓰기는 모두 되돌려진다.
+UndoHandler = Callable[["Tools", dict[str, Any], RunContext], str | None]
+UNDO_HANDLERS: dict[str, UndoHandler] = {}
+
+# (종류, 대상 접두): 그 종류 행의 그 대상은 "지켜보는" 대상이다. 확인 토큰 stale 판정(티켓 04)에는 쓰지만
+# U3("같은 target을 바꾼")에서는 보지 않는다. 우선순위 목록 변경은 목록만 바꾸고 그 안의 할 일은 바꾸지 않는다.
+WATCH_ONLY_TARGETS: tuple[tuple[str, str], ...] = (("priorities_set", "task:"),)
+# 대상마다 U3를 판정하는 종류: 나중에 바뀌지 않은 대상만 되돌리고, 하나도 없을 때만 superseded(6.4.3 표)
+U3_PER_TARGET = frozenset({"tasks_confirmed"})
+
+UndoBlock = Literal["not_undoable", "undo_expired", "superseded"]
+
+
+def register_undo(kind: str, handler: UndoHandler) -> None:
+    """활동 종류 하나의 되돌리기를 더한다(`tools/core.py`가 할 일·우선순위·컨디션을, 티켓 09·11이 나머지를)."""
+    if kind == UNDO_KIND:
+        raise ValueError("되돌리기는 되돌리지 않는다(U5)")
+    UNDO_HANDLERS[kind] = handler
+
+
+def _handlers() -> dict[str, UndoHandler]:
+    """등록된 되돌리기. 할 일·우선순위·컨디션 처리 함수는 `tools.core`가 등록하므로, 누가 먼저 무엇을 가져왔든
+    여기서 그 모듈을 불러온다(가져오는 순서에 따라 `undo_id`가 조용히 모두 비지 않게)."""
+    import my_planner.tools.core  # noqa: F401 - 등록(순환 가져오기를 피해 함수 안에서)
+
+    return UNDO_HANDLERS
+
+
+def _watch_only(kind: str, target: str) -> bool:
+    return any(kind == k and target.startswith(p) for k, p in WATCH_ONLY_TARGETS)
+
+
+def watched_targets(a: Activity, repo: ActivityRepo) -> list[str]:
+    """그 활동의 지켜보는 대상. 되돌리기 행도 적는다: 확인 토큰의 stale 판정이 그 되돌림을 보게(U3은 거른다)."""
+    return [t for t in repo.targets(a.id) if _watch_only(a.kind, t)]
+
+
+def live_targets(a: Activity, repo: ActivityRepo) -> tuple[list[str], list[str]]:
+    """(U3이 보는 대상, 그 가운데 나중에 바뀌지 않은 것). 나중 행은 `(at, id)`가 큰 되돌리지 않은 행이고,
+    다른 행의 지켜보는 대상(`WATCH_ONLY_TARGETS`)은 바꾼 것으로 세지 않는다."""
+    own = [t for t in repo.targets(a.id) if not _watch_only(a.kind, t)]
+    live = [
+        t for t in own
+        if not repo.changed_after(t, a.at, after_id=a.id, skip_undone=True, ignore=WATCH_ONLY_TARGETS)
+    ]
+    return own, live
+
+
+def undo_block(a: Activity, repo: ActivityRepo, now: datetime) -> UndoBlock | None:
+    """U1~U3을 `now`로 판정한다. 되돌릴 수 있으면 None. 이미 되돌린 행(U4)은 따로 본다."""
+    if a.risk != "low" or a.undo is None or a.kind not in _handlers():
+        return "not_undoable"  # U1. 되돌리기 활동은 `undo_json`이 없다(U5)
+    if now >= a.at + UNDO_WINDOW:
+        return "undo_expired"  # U2
+    own, live = live_targets(a, repo)
+    if a.kind in U3_PER_TARGET:
+        if own and not live:
+            return "superseded"  # U3. 대상마다: 하나도 남지 않았을 때만
+    elif len(live) != len(own):
+        return "superseded"  # U3. 여러 대상 활동은 하나라도 나중에 바뀌면
+    return None
+
+
+def undoable_now(a: Activity, repo: ActivityRepo, now: datetime) -> bool:
+    """지금 되돌릴 수 있다(U1~U3, 아직 되돌리지 않았다). `GET /activity`의 `undo_id`(6.4.4)."""
+    return a.undone_at is None and undo_block(a, repo, now) is None

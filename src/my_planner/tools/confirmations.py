@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 
 from my_planner.domain import ToolEvent
@@ -74,6 +75,34 @@ def drafts_expired_summary(count: int) -> str:
 
 def confirm_declined_summary(summary: str) -> str:
     return f"✗ 그대로 뒀어요 ({summary})"
+
+
+_UNDO_VERB = {"되돌림": "다시 열기"}  # `✓ 되돌림: 운동`(다시 연 것)을 되돌리면 "운동 되돌림"이 겹친다
+# `confirmation_line`이 `추가`·`옮김` 뒤에 붙이는 날짜 꼬리. 제목 안의 "→ X"는 건드리지 않는다
+_DATE_TAIL = re.compile(r"( → (오늘|내일|날짜 없음|\d{1,2}/\d{1,2})| \(\d{1,2}/\d{1,2} \d{2}:\d{2}\))$")
+_DATE_TAIL_VERBS = frozenset({"추가", "옮김"})
+_SUMMARY = re.compile(r"^✓ (?P<verb>[^:]+): (?P<rest>.*)$")
+_CONDITION = re.compile(r"^(?P<what>컨디션 \d+) 기록했어요\.$")
+
+
+def undo_summary(summary: str) -> str:
+    """되돌림 확인(부록 A): `↩ 되돌림: {확인 문구 요지}`. `✓ 완료: 운동` → `↩ 되돌림: 운동 완료`.
+
+    요지는 원래 활동의 확인 문구에서 만든다: 날짜 꼬리(`→ 내일`, `(10/25 14:00)`)는 떼고, 우선순위는 목록 이름만.
+    """
+    if (m := _SUMMARY.match(summary)) is not None:
+        verb, rest = m["verb"], m["rest"]
+        if verb.startswith("우선순위"):
+            gist = verb
+        else:
+            if verb in _DATE_TAIL_VERBS:
+                rest = _DATE_TAIL.sub("", rest)
+            gist = f"{rest} {_UNDO_VERB.get(verb, verb)}"
+    elif (c := _CONDITION.match(summary)) is not None:
+        gist = f"{c['what']} 기록"
+    else:
+        gist = summary
+    return f"↩ 되돌림: {gist}"
 
 
 def period_label(cadence: str, period: str, current: str) -> str:

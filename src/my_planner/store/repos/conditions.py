@@ -61,3 +61,16 @@ class ConditionsRepo:
             )
             for r in rows
         ]
+
+    def restore(self, d: date, before: Condition | None) -> None:
+        """되돌리기(SP3-4 스펙 6.4.3): 그 날을 이전 행 그대로(`recorded_at` 포함) 둔다. 이전 행이 없었으면 지운다."""
+        with transaction(self.conn):
+            if before is None:
+                self.conn.execute("DELETE FROM conditions WHERE date = ?", (d.isoformat(),))
+                return
+            self.conn.execute(
+                "INSERT INTO conditions (date, score, note, recorded_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (date) DO UPDATE SET score = excluded.score, note = excluded.note, "
+                "recorded_at = excluded.recorded_at",
+                (d.isoformat(), before.score, before.note, to_iso(before.recorded_at)),
+            )
