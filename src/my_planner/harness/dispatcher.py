@@ -34,7 +34,10 @@ from my_planner.harness.context import build_notices, build_preamble
 from my_planner.harness.redact import MASK, redact
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
+from my_planner.store.db import transaction
 from my_planner.store.repos.state import (
+    BRAIN_AUTH_CHECKED_AT_KEY,
+    BRAIN_AUTH_STATE_KEY,
     CARRY_REVIEW_KEY,
     LAST_AUTH_NOTICE_KEY,
     LAST_RATE_LIMIT_NOTICE_KEY,
@@ -47,6 +50,7 @@ from my_planner.tools.confirmations import render_confirmations
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import Conversation, ConversationsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
@@ -190,6 +194,7 @@ class Dispatcher:
         data_dir: Path | None = None,
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        deliveries: DeliveriesRepo | None = None,
     ) -> None:
         self.brain = brain
         self.sender = sender
@@ -203,6 +208,7 @@ class Dispatcher:
         self.runs = runs
         self.conditions = conditions
         self.data_dir = data_dir
+        self.deliveries = deliveries  # None이면 SP1과 같다(전달 기록 없음)
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
         self._awake = _AwakeRefs(keep_awake, lambda: not self._queue.empty())
@@ -210,6 +216,12 @@ class Dispatcher:
         self._worker: asyncio.Task[None] | None = None
         self._timers: set[asyncio.Task[None]] = set()
         self._stopping = False
+        self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
+
+    @property
+    def idle(self) -> bool:
+        """큐가 비었고 처리 중인 항목이 없다(기다리는 5분 뒤 재전송 타이머는 세지 않는다)."""
+        return self._queue.empty() and not self._busy
 
     # --- 수명 ---
 
@@ -288,25 +300,33 @@ class Dispatcher:
             _, _, item = await self._queue.get()
             if item is None:
                 return
-            if isinstance(item, _RunJob):
-                try:
-                    await self._handle_run(item.run, item.merged, item.carried_ids)
-                except Exception:
-                    log.exception("run_handling_error", extra={"run_id": item.run.id})
-                continue
-            if isinstance(item, _ResendJob):
-                try:
-                    await self._resend_run(item)
-                except Exception:
-                    log.exception("run_resend_error", extra={"run_id": item.run.id})
-                continue
-            # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다)
-            batch = [item] if item.recovered else [item, *self._drain_messages()]
+            self._busy = True
             try:
-                await self._handle_messages(batch)
+                await self._process(item)
+            finally:
+                self._busy = False
+
+    async def _process(self, item: Any) -> None:
+        """작업 하나: 회차, 재전송, 또는 쌓인 메시지 묶음."""
+        if isinstance(item, _RunJob):
+            try:
+                await self._handle_run(item.run, item.merged, item.carried_ids)
             except Exception:
-                ids = [i for m in batch for i in m.update_ids]
-                log.exception("message_handling_error", extra={"update_ids": ids})
+                log.exception("run_handling_error", extra={"run_id": item.run.id})
+            return
+        if isinstance(item, _ResendJob):
+            try:
+                await self._resend_run(item)
+            except Exception:
+                log.exception("run_resend_error", extra={"run_id": item.run.id})
+            return
+        # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다)
+        batch = [item] if item.recovered else [item, *self._drain_messages()]
+        try:
+            await self._handle_messages(batch)
+        except Exception:
+            ids = [i for m in batch for i in m.update_ids]
+            log.exception("message_handling_error", extra={"update_ids": ids})
 
     def _drain_messages(self) -> list[Inbound]:
         """쌓여 있는 메시지를 모두 꺼낸다(도착 순서). 메시지가 아닌 항목은 제자리로 돌려 놓는다."""
@@ -893,11 +913,22 @@ class Dispatcher:
     ) -> None:
         """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1, 그다음 원문 기록, 대화 갱신, 회고 저장."""
         assert self.runs is not None
-        # 사용자는 이미 받았다. 상태와 카운터를 먼저 기록해 다음 시작 때 다시 보내지 않게 한다.
-        for r in (run, *merged):
-            self.runs.mark_done(r.id)
-        self._release_carry([run, *merged])
-        self.state.incr_usage(self._today(), "proactive_messages")
+        # 사용자는 이미 받았다. 상태, 카운터, 전달 기록을 한 트랜잭션에 먼저 적어 다음 시작 때 다시 보내지 않게 한다.
+        try:
+            with transaction(self.runs.conn):
+                for r in (run, *merged):
+                    self.runs.mark_done(r.id)
+                self._release_carry([run, *merged])
+                self.state.incr_usage(self._today(), "proactive_messages")
+                if self.deliveries is not None:  # 지금은 텔레그램 전송뿐이다(앱·대체는 티켓 08)
+                    self.deliveries.record(run.id, "telegram", "full", "sent")
+        except Exception:
+            # 한 트랜잭션이 안 됐다(디스크, 잠금 등). 회차가 running으로 남으면 다음 시작 때 다시 보낼 수 있으니
+            # done만 따로 적는다(중복 전송 방지). 카운터와 전달 기록은 비운 채 둔다. 이것도 안 되면 그대로 올린다
+            log.exception("run_delivered_record_error", extra={"run_id": run.id})
+            for r in (run, *merged):
+                self.runs.mark_done(r.id)
+            self._release_carry([run, *merged])
         try:
             self.transcripts.append(
                 self.clock.now(), "비서", conv.id, run.loop.value, redact(text)[0], tools=tool_names
@@ -969,6 +1000,7 @@ class Dispatcher:
             typing.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await typing
+        self._record_brain_auth(result)
         # 본문과 도구 인자는 남기지 않는다. 소요 시간, 턴 수, 도구 이름, 결과 상태만.
         log.info(
             "brain_call",
@@ -984,6 +1016,24 @@ class Dispatcher:
             },
         )
         return result
+
+    def _record_brain_auth(self, result: BrainResult) -> None:
+        """`GET /health`의 `brain.auth`(SP3-4 6.3.1): 로그인·결제 문제면 그 종류, 두뇌가 답했으면 `ok`.
+
+        그 밖의 오류(시간 초과, 연결 오류)는 인증 상태를 알려 주지 않으므로 지난 값을 그대로 둔다.
+        """
+        if result.status == "auth_error":
+            auth = "billing" if result.error == "billing" else "login"
+        elif result.status == "error":
+            return
+        else:
+            auth = "ok"
+        try:
+            with transaction(self.state.conn):
+                self.state.set(BRAIN_AUTH_STATE_KEY, auth)
+                self.state.set(BRAIN_AUTH_CHECKED_AT_KEY, to_iso(self.clock.now()))
+        except Exception as e:  # noqa: BLE001 - 상태 표시일 뿐이다. 답은 그대로 간다
+            log.warning("brain_auth_record_error", extra={"error_type": type(e).__name__})
 
     async def _typing_loop(self) -> None:
         while True:

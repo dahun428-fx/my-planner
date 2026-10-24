@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from my_planner.clock import Clock, from_iso, to_iso
+from my_planner.store.db import transaction
 
 
 @dataclass
@@ -24,7 +25,7 @@ class ConditionsRepo:
 
     def upsert(self, d: date, score: int, note: str | None) -> Condition:
         """그 날의 점수를 덮어쓴다. 메모는 새로 준 것이 있으면 바꾸고, 없으면(버튼) 가장 최근 메모를 둔다."""
-        with self.conn:
+        with transaction(self.conn):
             self.conn.execute(
                 "INSERT INTO conditions (date, score, note, recorded_at) VALUES (?, ?, ?, ?) "
                 "ON CONFLICT (date) DO UPDATE SET score = excluded.score, "

@@ -1,5 +1,5 @@
-"""`python -m my_planner`"""
+"""`python -m my_planner [명령]`"""
 
-from my_planner.app import main
+from my_planner.cli import main
 
 raise SystemExit(main())

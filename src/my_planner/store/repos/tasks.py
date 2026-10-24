@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 
 from my_planner.clock import Clock, from_iso, local, to_iso
 from my_planner.domain import Area, Cadence, TaskStatus
+from my_planner.store.db import transaction
 
 
 @dataclass
@@ -47,30 +47,12 @@ class TasksRepo:
         self.clock = clock
         self.tz = tz
         self.boundary = boundary
-        self._depth = 0
 
     # --- 트랜잭션 ---
 
-    @contextmanager
-    def transaction(self) -> Iterator[None]:
-        """바깥 트랜잭션이 있으면 거기에 합류한다. 가장 바깥에서만 커밋·롤백한다."""
-        if self._depth:
-            self._depth += 1
-            try:
-                yield
-            finally:
-                self._depth -= 1
-            return
-        self.conn.execute("BEGIN IMMEDIATE")
-        self._depth = 1
-        try:
-            yield
-            self.conn.commit()
-        except BaseException:
-            self.conn.rollback()
-            raise
-        finally:
-            self._depth = 0
+    def transaction(self) -> AbstractContextManager[None]:
+        """연결 단위 트랜잭션(`store.db.transaction`)에 위임한다. 바깥이 있으면 합류하고 가장 바깥에서만 커밋한다."""
+        return transaction(self.conn)
 
     # --- 읽기 ---
 

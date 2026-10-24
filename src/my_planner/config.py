@@ -113,6 +113,25 @@ class RetentionConfig(_Model):
     backup_count: int = 14
 
 
+API_TOKEN_MIN_CHARS = 43  # secrets.token_urlsafe(32)의 길이. 이보다 짧으면 API를 열지 않는다(계획 빈 곳 4)
+
+
+class ApiConfig(_Model):
+    """HTTP API (SP3-4 스펙 6.1, 14, 15). 127.0.0.1에만 열고 밖에서는 `tailscale serve`로만 닿는다."""
+
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8787
+    cors_origins: list[str] = []  # 정확한 문자열 목록. `*.vercel.app` 같은 와일드카드는 받지 않는다
+    cors_origin_regex: str = ""  # 비우면 쓰지 않는다(팀 범위 미리보기 주소용). 전체 일치로 본다
+    # 출처 값의 검사는 CorsPolicy가 한다: 틀려도 API만 열지 않고 BE는 돈다(스펙 15)
+    max_body_kb: int = 64
+
+
+class NotifyConfig(_Model):
+    default_primary: Literal["telegram", "app"] = "app"  # app_state.notify_primary가 없을 때
+
+
 class Settings(_Model):
     telegram_bot_token: SecretStr
     owner_telegram_id: int
@@ -122,6 +141,9 @@ class Settings(_Model):
     limits: LimitsConfig = LimitsConfig()
     paths: PathsConfig
     retention: RetentionConfig = RetentionConfig()
+    api: ApiConfig = ApiConfig()
+    notify: NotifyConfig = NotifyConfig()
+    api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
 
 
 class _Secrets(BaseSettings):
@@ -131,6 +153,7 @@ class _Secrets(BaseSettings):
 
     telegram_bot_token: SecretStr = Field(validation_alias="TELEGRAM_BOT_TOKEN")
     owner_telegram_id: int = Field(validation_alias="OWNER_TELEGRAM_ID")
+    api_token: SecretStr | None = Field(default=None, validation_alias="API_TOKEN")
 
 
 def resolve_root() -> Path:
@@ -148,13 +171,14 @@ def load_settings(root: Path) -> Settings:
     if toml_path.exists():
         with toml_path.open("rb") as f:
             data = tomllib.load(f)
-    for key in ("telegram_bot_token", "owner_telegram_id", "paths"):
+    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "paths"):
         if key in data:
             raise ValueError(f"config.toml에 {key}를 두지 않는다")
     secrets = _Secrets(_env_file=root / ".env")  # type: ignore[call-arg]
     return Settings(
         telegram_bot_token=secrets.telegram_bot_token,
         owner_telegram_id=secrets.owner_telegram_id,
+        api_token=secrets.api_token,
         paths=PathsConfig.for_root(root),
         **data,
     )

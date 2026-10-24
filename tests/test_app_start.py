@@ -1,5 +1,4 @@
 import asyncio
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -70,7 +69,10 @@ def started(tmp_path, monkeypatch):
 
     root = tmp_path / "root"
     root.mkdir()
-    shutil.copy(REPO / "config.toml", root / "config.toml")
+    # SP1 시험은 API를 끈 설정으로 돈다(스펙 15 "api.enabled = false면 SP1과 똑같이 돈다"). API 시험은 _enable_api
+    toml = (REPO / "config.toml").read_text(encoding="utf-8")
+    assert "[api]\nenabled = true\n" in toml
+    (root / "config.toml").write_text(toml.replace("[api]\nenabled = true\n", "[api]\nenabled = false\n"), encoding="utf-8")
     (root / ".env").write_text("TELEGRAM_BOT_TOKEN=123:test-token\nOWNER_TELEGRAM_ID=42\n", encoding="utf-8")
     monkeypatch.setenv("MY_PLANNER_ROOT", str(root))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
@@ -627,3 +629,237 @@ def test_resubmit_error_does_not_stop_start(started, monkeypatch):
     assert "start_polling" in [c[0] for c in calls]
     errors = [e for e in _log_entries(root) if e["msg"] == "inbound_resubmit_error"]
     assert len(errors) == 1 and errors[0]["exc_type"] == "ValueError"
+
+
+# --- SP3-4 티켓 01: API 시작·종료 (스펙 15) ---
+
+API_TOKEN = "a" * 43  # 꾸며 낸 값
+
+
+def _enable_api(root, *, token=API_TOKEN, port=8787):
+    toml = root / "config.toml"
+    text = toml.read_text(encoding="utf-8").replace("[api]\nenabled = false\n", "[api]\nenabled = true\n")
+    toml.write_text(text.replace("port = 8787", f"port = {port}"), encoding="utf-8")
+    env = root / ".env"
+    if token is not None:
+        env.write_text(env.read_text(encoding="utf-8") + f"API_TOKEN={token}\n", encoding="utf-8")
+
+
+def _fake_api(monkeypatch, app, calls, apps=None):
+    async def fake_start(web_app, host, port):
+        calls.append(("start_api", (host, port)))
+        if apps is not None:
+            apps.append(web_app)
+        return "api-runner"
+
+    async def fake_stop(runner):
+        calls.append(("stop_api", runner))
+
+    monkeypatch.setattr(app, "start_api", fake_start)
+    monkeypatch.setattr(app, "stop_api", fake_stop)
+
+
+def test_api_starts_after_polling_and_stops_before_updater(started, monkeypatch):
+    app, root, calls = started
+    _enable_api(root)
+    _fake_api(monkeypatch, app, calls)
+    real_stop = app.Dispatcher.stop
+
+    async def spy_stop(self, timeout=30):
+        calls.append(("dispatcher.stop", timeout))
+        await real_stop(self, timeout)
+
+    monkeypatch.setattr(app.Dispatcher, "stop", spy_stop)
+    assert app.main() == 0
+    assert [c[0] for c in calls] == [
+        "app.initialize", "app.start", "start_polling", "start_api", "serving",
+        "stop_api", "updater.stop", "app.stop", "dispatcher.stop", "app.shutdown",
+    ]
+    assert ("start_api", ("127.0.0.1", 8787)) in calls
+    assert ("stop_api", "api-runner") in calls
+    assert not [e for e in _log_entries(root) if e["level"] == "WARNING" and e["msg"].startswith("api_")]
+
+
+def test_api_disabled_runs_like_sp1(started, monkeypatch):
+    app, root, calls = started  # 기본 시험 설정은 api.enabled = false
+    (root / ".env").write_text((root / ".env").read_text(encoding="utf-8") + f"API_TOKEN={API_TOKEN}\n",
+                               encoding="utf-8")
+    _fake_api(monkeypatch, app, calls)
+    assert app.main() == 0
+    assert "start_api" not in [c[0] for c in calls]
+    assert [c[0] for c in calls][:4] == ["app.initialize", "app.start", "start_polling", "serving"]
+    assert "api_token_missing" not in [e["msg"] for e in _log_entries(root)]
+
+
+@pytest.mark.parametrize(("token", "reason"), [(None, "missing"), ("", "missing"), ("b" * 42, "too_short")])
+def test_missing_or_short_token_logs_and_skips_api(started, monkeypatch, token, reason):
+    app, root, calls = started
+    _enable_api(root, token=token)
+    _fake_api(monkeypatch, app, calls)
+    assert app.main() == 0
+    names = [c[0] for c in calls]
+    assert "start_api" not in names and "serving" in names  # 텔레그램과 루프는 그대로
+    warned = [e for e in _log_entries(root) if e["msg"] == "api_token_missing"]
+    assert len(warned) == 1 and warned[0]["level"] == "WARNING" and warned[0]["reason"] == reason
+    raw = (root / "state" / "logs" / "my-planner.jsonl").read_text(encoding="utf-8")
+    assert "b" * 42 not in raw
+
+
+def test_port_in_use_logs_api_bind_error_and_keeps_polling(started):
+    import socket
+
+    app, root, calls = started
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        _enable_api(root, port=port)
+        assert app.main() == 0
+    names = [c[0] for c in calls]
+    assert names[:4] == ["app.initialize", "app.start", "start_polling", "serving"]
+    errors = [e for e in _log_entries(root) if e["msg"] == "api_bind_error"]
+    assert len(errors) == 1 and errors[0]["port"] == port and errors[0]["error_type"]
+
+
+def test_safe_mode_opens_health_only_api(started, monkeypatch):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    app, root, calls = started
+    monkeypatch.setattr(app, "Bot", lambda token: FakeBot())
+    _corrupt_db(root)
+    _enable_api(root)
+    apps = []
+    _fake_api(monkeypatch, app, calls, apps)
+    assert app.main() == 0
+    assert [c[0] for c in calls] == ["start_api", "serving", "stop_api"]
+
+    async def probe():
+        client = TestClient(TestServer(apps[0]))
+        await client.start_server()
+        try:
+            auth = {"Authorization": f"Bearer {API_TOKEN}"}
+            health = await client.get("/api/v1/health", headers=auth)
+            today = await client.get("/api/v1/today", headers=auth)
+            return health.status, (await health.json())["status"], today.status
+        finally:
+            await client.close()
+
+    assert asyncio.run(probe()) == (200, "safe_mode", 503)
+
+
+def test_build_be_same_wiring_as_serve(started, monkeypatch):
+    app, _root, calls = started
+    built = []
+    seen = {}
+    real = app.build_be
+
+    def spy_build_be(*a, **kw):
+        parts = real(*a, **kw)
+        built.append((parts, kw))
+        return parts
+
+    def fake_build(settings, dispatcher, state, transcripts, **kw):
+        seen.update(dispatcher=dispatcher, state=state, transcripts=transcripts, **kw)
+        return FakeApplication(calls)
+
+    monkeypatch.setattr(app, "build_be", spy_build_be)
+    monkeypatch.setattr(app, "build_application", fake_build)
+    assert app.main() == 0
+    assert len(built) == 1
+    parts, kw = built[0]
+    assert seen["dispatcher"] is parts.dispatcher and seen["state"] is parts.state
+    assert seen["callbacks"] is parts.callbacks and seen["tools"] is parts.tools and seen["router"] is parts.router
+    assert parts.dispatcher.deliveries is parts.deliveries
+    assert parts.dispatcher.tools is parts.tools and parts.tools.conditions is parts.conditions
+    assert parts.runner._on_resume is kw["on_resume"]
+    assert isinstance(parts.sender, app.TelegramSender) and parts.sender.tasks is parts.tasks
+    assert isinstance(parts.dispatcher.brain, app.ClaudeBrain)
+
+
+async def test_start_api_serves_on_loopback_and_stops(tmp_path):
+    import socket
+
+    import aiohttp
+    from fakes import make_settings
+
+    from my_planner.api.health import ErrorCounter
+    from my_planner.api.server import ApiDeps, build_app, start_api, stop_api
+    from my_planner.clock import SystemClock
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    clock = SystemClock()
+    deps = ApiDeps(settings=make_settings(tmp_path), clock=clock, token=API_TOKEN, read_conn=None, dispatcher=None,
+                   errors=ErrorCounter(clock), polling_state=lambda: "stopped", started_at=clock.now(), safe_mode=True)
+    runner = await start_api(build_app(deps), "127.0.0.1", port)
+    assert runner is not None
+    try:
+        auth = {"Authorization": f"Bearer {API_TOKEN}"}
+        async with aiohttp.ClientSession() as http, http.get(f"http://127.0.0.1:{port}/api/v1/health",
+                                                             headers=auth) as resp:
+            assert resp.status == 200
+    finally:
+        await stop_api(runner)
+    with socket.socket() as again:  # 닫았으니 같은 포트를 다시 잡을 수 있다
+        again.bind(("127.0.0.1", port))
+
+
+def test_api_build_error_keeps_polling(started, monkeypatch):
+    app, root, calls = started
+    _enable_api(root)
+
+    def broken(deps):
+        raise RuntimeError("조립 실패")
+
+    monkeypatch.setattr(app, "build_app", broken)
+    assert app.main() == 0
+    assert "serving" in [c[0] for c in calls]
+    assert [e["exc_type"] for e in _log_entries(root) if e["msg"] == "api_start_error"] == ["RuntimeError"]
+
+
+@pytest.mark.parametrize("bad", ['cors_origin_regex = "(["', 'cors_origins = ["https://*.vercel.app"]'])
+def test_bad_cors_config_keeps_be_running_with_api_closed(started, monkeypatch, bad):
+    app, root, calls = started
+    _enable_api(root)
+    toml = root / "config.toml"
+    key = bad.split(" =")[0]
+    lines = [bad if line.startswith(key + " ") else line for line in toml.read_text(encoding="utf-8").splitlines()]
+    toml.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    started_api = []
+
+    async def fake_start(web_app, host, port):
+        started_api.append(port)
+
+    monkeypatch.setattr(app, "start_api", fake_start)
+    assert app.main() == 0  # 설정 오류로 끝나지 않는다
+    names = [c[0] for c in calls]
+    assert names[:4] == ["app.initialize", "app.start", "start_polling", "serving"]  # 텔레그램과 루프는 돈다
+    assert started_api == []  # API만 열지 않았다
+    errs = [e for e in _log_entries(root) if e["msg"] == "api_start_error"]
+    assert [e["exc_type"] for e in errs] == ["ValueError"]
+
+
+async def test_be_env_telegram_and_press(tmp_path):
+    from datetime import date
+
+    from be_env import BeEnv
+    from fakes import FakeTurn
+    from test_dispatcher_messages import kst
+
+    from my_planner.bot.commands import today_text
+
+    start = kst(2026, 10, 24, 13, 0)
+    async with BeEnv.start(tmp_path, start=start, script=[FakeTurn([], "반가워요")]) as env:
+        assert await env.telegram("/today") == "command"
+        tools = env.parts.tools
+        assert env.bot.sent[-1] == (42, today_text(tools.tasks, env.clock.now(), tools.tz, tools.boundary))
+
+        assert await env.press("c:2026-10-24:4") == "recorded"
+        cond = env.parts.conditions.get(date(2026, 10, 24))
+        assert cond is not None and cond.score == 4
+        assert env.bot.answers[-1][1] == "컨디션 4 기록했어요."
+
+        await env.telegram("안녕")  # 보통 글은 디스패처 → 가짜 두뇌 → 가짜 전송
+        assert [o.text for o in env.sender.sent] == ["반가워요"]
+        assert env.brain.calls and not env.parts.state.pending_inbound()
