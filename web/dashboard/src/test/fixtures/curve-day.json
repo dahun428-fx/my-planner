@@ -1,0 +1,285 @@
+{
+  "zoom": "day",
+  "from": "2026-09-25",
+  "to": "2026-10-24",
+  "chapters": [
+    {
+      "id": 1,
+      "title": "꾸민 새 출발",
+      "theme": "꾸민 주제",
+      "start": "2025-03",
+      "end": null,
+      "sketch": "↗",
+      "certainty": "estimate"
+    }
+  ],
+  "milestones": [],
+  "ladder": [
+    {
+      "period": "2026-09",
+      "now": 6,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-10",
+      "now": 6,
+      "future": 8,
+      "note": null
+    }
+  ],
+  "areas": [
+    {
+      "period": "2026-Q3",
+      "scores": {
+        "career": 6,
+        "finance": 5,
+        "health": 6,
+        "learning": 6,
+        "quality_of_life": 5,
+        "relationships": 7
+      }
+    },
+    {
+      "period": "2026-Q4",
+      "scores": {
+        "career": 6,
+        "finance": 5,
+        "health": 4,
+        "learning": 6,
+        "quality_of_life": 5,
+        "relationships": 7
+      }
+    }
+  ],
+  "condition": [
+    {
+      "bucket": "2026-09-25",
+      "start": "2026-09-25",
+      "end": "2026-09-25",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-09-26",
+      "start": "2026-09-26",
+      "end": "2026-09-26",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-09-27",
+      "start": "2026-09-27",
+      "end": "2026-09-27",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-09-28",
+      "start": "2026-09-28",
+      "end": "2026-09-28",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-09-29",
+      "start": "2026-09-29",
+      "end": "2026-09-29",
+      "average": 2.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-09-30",
+      "start": "2026-09-30",
+      "end": "2026-09-30",
+      "average": 5.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-01",
+      "start": "2026-10-01",
+      "end": "2026-10-01",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-02",
+      "start": "2026-10-02",
+      "end": "2026-10-02",
+      "average": 3.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-03",
+      "start": "2026-10-03",
+      "end": "2026-10-03",
+      "average": 3.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-04",
+      "start": "2026-10-04",
+      "end": "2026-10-04",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-05",
+      "start": "2026-10-05",
+      "end": "2026-10-05",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-06",
+      "start": "2026-10-06",
+      "end": "2026-10-06",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-07",
+      "start": "2026-10-07",
+      "end": "2026-10-07",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-08",
+      "start": "2026-10-08",
+      "end": "2026-10-08",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-09",
+      "start": "2026-10-09",
+      "end": "2026-10-09",
+      "average": 2.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-10",
+      "start": "2026-10-10",
+      "end": "2026-10-10",
+      "average": 5.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-11",
+      "start": "2026-10-11",
+      "end": "2026-10-11",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-12",
+      "start": "2026-10-12",
+      "end": "2026-10-12",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-13",
+      "start": "2026-10-13",
+      "end": "2026-10-13",
+      "average": 3.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-14",
+      "start": "2026-10-14",
+      "end": "2026-10-14",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-15",
+      "start": "2026-10-15",
+      "end": "2026-10-15",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-16",
+      "start": "2026-10-16",
+      "end": "2026-10-16",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-17",
+      "start": "2026-10-17",
+      "end": "2026-10-17",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-18",
+      "start": "2026-10-18",
+      "end": "2026-10-18",
+      "average": 3.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-19",
+      "start": "2026-10-19",
+      "end": "2026-10-19",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-20",
+      "start": "2026-10-20",
+      "end": "2026-10-20",
+      "average": 5.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-21",
+      "start": "2026-10-21",
+      "end": "2026-10-21",
+      "average": 4.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-22",
+      "start": "2026-10-22",
+      "end": "2026-10-22",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-10-23",
+      "start": "2026-10-23",
+      "end": "2026-10-23",
+      "average": 3.0,
+      "days_logged": 1
+    },
+    {
+      "bucket": "2026-10-24",
+      "start": "2026-10-24",
+      "end": "2026-10-24",
+      "average": 4.0,
+      "days_logged": 1
+    }
+  ],
+  "reassurance": [
+    {
+      "period": "2026-09",
+      "ladder_now": 6,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 4,
+      "gap": null
+    },
+    {
+      "period": "2026-10",
+      "ladder_now": 6,
+      "condition_average": 3.7,
+      "condition_scaled": 6.8,
+      "days_logged": 17,
+      "gap": 0.8
+    }
+  ]
+}

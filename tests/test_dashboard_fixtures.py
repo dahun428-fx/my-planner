@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -90,10 +90,18 @@ CASES: dict[str, tuple[str, Callable[[BeEnv], Awaitable[None]], dict[str, Any]]]
     "conditions-empty": ("/conditions", _quiet, {}),
     "status": ("/status", _seeded, {}),
     "status-empty": ("/status", _quiet, {}),
+    # 티켓 18: (c) 인생곡선. 화면이 보내는 질의 그대로다(년 확대는 `from`을 준다: `CurveScreen`의 YEAR_FROM).
+    "curve-day": ("/curve?zoom=day", _seeded, {}),
+    "curve-week": ("/curve?zoom=week", _seeded, {}),
+    "curve-month": ("/curve?zoom=month", _seeded, {}),
+    "curve-month-sensitive": ("/curve?zoom=month&include_sensitive=true", _seeded, {}),
+    "curve-quarter": ("/curve?zoom=quarter", _seeded, {}),
+    "curve-year": ("/curve?zoom=year&from=1900-01-01", _seeded, {}),
+    "curve-empty": ("/curve?zoom=month", _quiet, {}),
 }
 # 경로마다 응답 모델(고정 자료가 계약 모양인지 본다)
 PATH_MODELS = {"/health": "Health", "/today": "Today", "/week": "Week", "/conditions": "Conditions",
-               "/status": "Status"}
+               "/status": "Status", "/curve": "Curve"}
 
 
 async def _record(tmp_path: Path, name: str) -> Any:
@@ -135,7 +143,7 @@ def _compare(name: str, body: Any, update: bool) -> None:
 @pytest.mark.parametrize("name", list(CASES))
 async def test_fixture_matches_be_response(tmp_path, name, update_dashboard_fixtures):
     body = await _record(tmp_path, name)
-    path = CASES[name][0]
+    path = CASES[name][0].split("?")[0]
     MODELS[PATH_MODELS[path]].model_validate(body)
     if path == "/health":
         assert body["version"]["schema"] == LATEST_VERSION
@@ -157,9 +165,10 @@ def test_seed_uses_logical_date_before_four(tmp_path, conn):
 
 
 def test_seed_is_invented_and_shaped(tmp_path, conn):
-    """30일 가운데 21일 컨디션, 오늘 회차 둘, 원장은 양수만."""
+    """지난 30일 가운데 21일 컨디션, 오늘 회차 둘, 원장은 양수만."""
     seed_dashboard_db(conn, FakeClock(START))
-    assert conn.execute("SELECT count(*) FROM conditions").fetchone()[0] == 21
+    since = (date(2026, 10, 24) - timedelta(days=29)).isoformat()
+    assert conn.execute("SELECT count(*) FROM conditions WHERE date >= ?", (since,)).fetchone()[0] == 21
     assert conn.execute("SELECT count(*) FROM runs").fetchone()[0] == 2
     assert conn.execute("SELECT min(amount) FROM status_xp_ledger").fetchone()[0] > 0
     titles = [r[0] for r in conn.execute("SELECT title FROM curve_milestones")]
@@ -190,3 +199,20 @@ def test_schema_json_matches_bundle():
     assert json.loads(SCHEMA.read_text(encoding="utf-8")) == schema_bundle(), (
         "schema.json이 BE와 다르다: cd web/dashboard && npm run gen:types"
     )
+
+
+async def test_seeded_curve_covers_every_reassurance_copy(tmp_path):
+    """곡선 화면 테스트가 기대하는 것: 안심 보기의 네 갈래(8.3), 빈 달, 5년 뒤만 있는 달, 민감 사건은 켤 때만,
+    가장 이른 챕터보다 앞선 사건은 년 확대(`from=1900-01-01`)에만."""
+    month = await _record(tmp_path / "m", "curve-month")
+    gaps = {r["period"]: r["gap"] for r in month["reassurance"]}
+    assert gaps["2026-07"] <= -1.0 and gaps["2026-08"] >= 1.0
+    assert -1.0 < gaps["2026-10"] < 1.0 and gaps["2026-09"] is None
+    periods = [x["period"] for x in month["ladder"]]
+    assert "2026-04" not in periods and {"period": "2026-03", "now": None, "future": 7, "note": None} in month["ladder"]
+    assert not any(m["sensitive"] for m in month["milestones"])
+    sensitive = await _record(tmp_path / "s", "curve-month-sensitive")
+    assert [m["title"] for m in sensitive["milestones"] if m["sensitive"]] == ["꾸민 조용한 겨울"]
+    year = await _record(tmp_path / "y", "curve-year")
+    assert "꾸민 첫 자전거" in [m["title"] for m in year["milestones"]]
+    assert min(c["start"] for c in year["chapters"]) > "2019"
