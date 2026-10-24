@@ -245,6 +245,37 @@ def _expire_drafts(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> d
     return deps.tools.expire_drafts(ctx, args["older_than"])
 
 
+def _expire_curve_drafts(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    return deps.tools.expire_curve_drafts(ctx, args["older_than"])
+
+
+MILESTONE_GONE = "이미 정리된 사건이에요."  # 부록 A "지난 사건 버튼"
+CHAPTER_GONE = "이미 정리된 챕터예요."  # 문구 C3 비고
+
+
+def _drop_one(deps: ActionDeps, ctx: RunContext, args: dict[str, Any], *, chapter: bool) -> dict[str, Any]:
+    """`drop_milestone`·`drop_chapter`(6.4.2): 초안 하나를 뺀다(행 삭제, 되돌릴 수 없음). 확정한 것은 도구가 거절하고,
+    없는 번호(이미 빠졌거나 만료된 초안)는 "이미 정리된 …"으로 거절한다."""
+    i = _int(args.get("id"))
+    if i is None:
+        return {"error": BAD_ARGS}
+    key = "chapter_ids" if chapter else "milestone_ids"
+    out = deps.tools.drop_curve_drafts(ctx, **{key: [i]})
+    if "error" in out:
+        return out
+    if not out["dropped_chapter_ids" if chapter else "dropped_milestone_ids"]:
+        return {"error": CHAPTER_GONE if chapter else MILESTONE_GONE}
+    return out
+
+
+def _drop_milestone(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    return _drop_one(deps, ctx, args, chapter=False)
+
+
+def _drop_chapter(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    return _drop_one(deps, ctx, args, chapter=True)
+
+
 def _prune_api_state(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """하루 한 번 작업: 만료된 토큰 닫기, 7일 지난 토큰과 2일 지난 `api_idempotency` 지우기. 활동은 없다."""
     now = deps.clock.now()
@@ -363,6 +394,13 @@ ACTIONS: dict[str, ActionSpec] = {
     "confirm_tasks": ActionSpec("confirm_tasks"),
     "set_priorities": ActionSpec("set_priorities", needs_confirm=priorities_need_confirm, target=_priorities_target),
     "record_condition": ActionSpec("record_condition"),
+    # 인생 곡선(6.4.2, 10장). 빼기는 되돌릴 수 없다(행을 지운다)
+    "record_ladder_score": ActionSpec("record_ladder_score"),
+    "record_area_scores": ActionSpec("record_area_scores"),
+    "confirm_milestones": ActionSpec("confirm_milestones"),
+    "confirm_chapters": ActionSpec("confirm_chapters"),
+    "drop_milestone": ActionSpec(_drop_milestone, accepts=frozenset({"id"})),
+    "drop_chapter": ActionSpec(_drop_chapter, accepts=frozenset({"id"})),
     # 고정 카드(6.4.2, 10장). 확인이 필요 없다(stale 대상이 필요 없다)
     "pin_card": ActionSpec("pin_card"),
     "unpin_card": ActionSpec("unpin_card"),
@@ -370,6 +408,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
+    "expire_curve_drafts": ActionSpec(_expire_curve_drafts, public=False, accepts=frozenset({"older_than"})),
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),

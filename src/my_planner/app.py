@@ -11,7 +11,7 @@ import sqlite3
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, ExitStack, nullcontext
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ from my_planner.api.health import ErrorCounter
 from my_planner.api.server import ApiDeps, build_app, start_api, stop_api
 from my_planner.bot.callbacks import handle_callback
 from my_planner.bot.telegram_io import TelegramSender, build_application
-from my_planner.clock import Clock, SystemClock, to_iso
+from my_planner.clock import Clock, SystemClock, logical_date, to_iso
 from my_planner.config import (
     API_TOKEN_MIN_CHARS,
     PathsConfig,
@@ -32,6 +32,7 @@ from my_planner.config import (
     load_settings,
     resolve_root,
 )
+from my_planner.domain import ConversationKind, LoopKey, RunContext
 from my_planner.harness.brain import Brain, ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.delivery import Delivery, PushSender, WebPushSender
@@ -42,6 +43,7 @@ from my_planner.loop.runner import (
     Runner,
     backup_daily,
     cleanup_logs_daily,
+    expire_curve_drafts,
     expire_drafts,
     prune_api_state_daily,
     prune_updates_daily,
@@ -60,9 +62,11 @@ from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
+from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
+from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
@@ -195,6 +199,8 @@ class BeParts:
     confirms: ConfirmsRepo
     delivery: Delivery
     pushes: PushRepo
+    curve: CurveRepo
+    status: StatusRepo
 
 
 def build_be(
@@ -226,6 +232,8 @@ def build_be(
     tasks = TasksRepo(conn, clock, tz=settings.timezone, boundary=settings.day_boundary)
     sender = sender_factory(tasks)
     pushes = PushRepo(conn, clock)
+    curve = CurveRepo(conn, clock)
+    status = StatusRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -245,6 +253,10 @@ def build_be(
         # 회차 차례의 확인(SP3-4 10.1): 토큰 만료는 그 회차 답장 창 끝(합친 회차는 가장 늦은 끝)
         confirms=confirms,
         reply_until=lambda run_id: _reply_until(runs, settings, run_id),
+        # 인생 곡선(SP3-4 10장): 쓰기는 즉시 갈래와 두뇌 도구로만. 기간 기본값은 회고 회차의 대화면 그 회고 날짜
+        curve=curve,
+        status=status,
+        review_date_for=lambda ctx: review_date_for(convs, runs, settings, ctx),
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -277,6 +289,8 @@ def build_be(
     )
     # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
+    # 사건·챕터 초안은 draft_since에서 같은 일수가 지나면 행을 지운다(SP3-4 5.4)
+    runner.register_daily(expire_curve_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
     runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
     runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다
@@ -298,8 +312,24 @@ def build_be(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
-        pushes=pushes,
+        pushes=pushes, curve=curve, status=status,
     )
+
+
+def review_date_for(convs: ConversationsRepo, runs: RunsRepo, settings: Settings, ctx: RunContext) -> date | None:
+    """곡선 도구의 기간 기본값(SP3-4 10장): 지금 대화가 회차 대화이고 그 회차(합친 회차 포함)에 주간 회고가 있으면
+    그 회고 `scheduled_for`의 논리적 날짜. R1로 넘겨 받은 회고는 합친 회차에 들어 있어 원래 날짜가 나온다."""
+    conv = convs.get(ctx.conversation_id) if ctx.conversation_id is not None else None
+    if conv is None or conv.kind is not ConversationKind.run or conv.run_id is None:
+        return None
+    run = runs.get(conv.run_id)
+    if run is None:
+        return None
+    group = [run, *(r for i in run.merged_run_ids if (r := runs.get(i)) is not None)]
+    review = next((r for r in group if r.loop is LoopKey.review), None)
+    if review is None:
+        return None
+    return logical_date(review.scheduled_for, settings.timezone, settings.day_boundary)
 
 
 def _reply_until(runs: RunsRepo, settings: Settings, run_id: int) -> datetime:

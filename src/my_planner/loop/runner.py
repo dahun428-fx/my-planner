@@ -74,6 +74,26 @@ def expire_drafts(target: ActionApplier, clock: Clock, *, days: int = DRAFT_EXPI
     return job
 
 
+def expire_curve_drafts(target: ActionApplier, clock: Clock, *, days: int = DRAFT_EXPIRE_DAYS) -> Callable[[date], None]:
+    """하루 한 번 작업: `draft_since`에서 `days`일이 지난 사건·챕터 초안의 **행을 지운다**(알리지 않음, SP3-4 5.4).
+
+    즉시 갈래(`apply_action`, `secretary`/`scheduler`)로 부른다. 활동 `milestone_drafts_expired`,
+    `chapter_drafts_expired`가 같은 트랜잭션에 남는다.
+    """
+
+    def job(today: date) -> None:
+        older_than = clock.now() - timedelta(days=days)
+        res = target.apply_action(_scheduler("expire_curve_drafts", {"older_than": older_than}))
+        result = res.body.get("result", {}) if res.status == "applied" else {}
+        log.info("curve_drafts_expired", extra={
+            "milestones": len(result.get("expired_milestone_ids", [])),
+            "chapters": len(result.get("expired_chapter_ids", [])),
+        })
+
+    job.__name__ = "expire_curve_drafts"
+    return job
+
+
 def prune_api_state_daily(target: ActionApplier) -> Callable[[date], None]:
     """하루 한 번 작업: 확인 토큰 만료·정리(7일), `api_idempotency` 정리(2일). 즉시 갈래로(SP3-4 스펙 4.3, 5.2)."""
 

@@ -21,10 +21,13 @@ from zoneinfo import ZoneInfo
 
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
+from my_planner.status.xp import title_name
 from my_planner.store.db import transaction
-from my_planner.store.exports import export_tasks
+from my_planner.store.exports import export_curve, export_tasks
 from my_planner.store.repos.cards import Card, CardsRepo
 from my_planner.store.repos.conditions import Condition
+from my_planner.store.repos.curve import AreaScore, CurveRepo, Ladder
+from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.store.views import todo_refs
@@ -32,8 +35,13 @@ from my_planner.timefmt import api_time
 from my_planner.tools.activity import (
     CARDS_ORDER_TARGET,
     SUPERSEDED,
+    areas_target,
     card_target,
+    chapter_target,
     condition_target,
+    ladder_target,
+    many_target,
+    milestone_target,
     priorities_target,
     record_activity,
     register_undo,
@@ -41,7 +49,9 @@ from my_planner.tools.activity import (
     tasks_target,
 )
 from my_planner.tools.confirmations import (
+    area_scores_line,
     card_label,
+    chapter_confirmed_line,
     condition_summary,
     confirm_button_drop,
     confirm_button_move,
@@ -54,6 +64,9 @@ from my_planner.tools.confirmations import (
     confirm_schedule_summary,
     confirmation_line,
     drafts_expired_summary,
+    dropped_line,
+    ladder_line,
+    milestone_confirmed_line,
     period_label,
     titles_summary,
 )
@@ -71,6 +84,10 @@ TRANSCRIPT_MAX_DAYS = 7
 PRIORITY_MAX = 3
 SCORE_MIN, SCORE_MAX = 1, 5  # 컨디션 점수
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")  # fromisoformat은 20261023, 2026-W43-5도 받는다
+LADDER_MIN, LADDER_MAX = 0, 10  # 사다리(5.4)
+AREA_SCORE_MIN, AREA_SCORE_MAX = 1, 10  # 영역 점수(5.4)
+RECOVERY_QUEST_MAX = 80
+TITLE_KINDS = frozenset({"high", "turning_point"})  # 칭호를 주는 사건 종류(9.4). 저점에는 주지 않는다
 PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
 _NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
 # 확인 저장소는 있는데 답장 창을 알 수 없을 때(조립하지 않은 시험)의 회차 토큰 만료. `/actions` 토큰과 같다
@@ -114,6 +131,10 @@ class Tools:
         cards: CardsRepo | None = None,
         confirms: ConfirmsRepo | None = None,
         reply_until: Callable[[int], datetime] | None = None,
+        curve: CurveRepo | None = None,
+        status: StatusRepo | None = None,
+        review_date_for: Callable[[RunContext], date | None] | None = None,
+        curve_export_path: Path | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -127,6 +148,15 @@ class Tools:
         # `ConfirmsRepo`(SP3-4 10.1). None이면 회차 차례에서도 SP1처럼 바로 적용한다(SP1 시험)
         self.confirms = confirms
         self.reply_until = reply_until  # 회차 id → 그 회차 답장 창 끝(합친 회차는 가장 늦은 끝). 토큰 만료
+        # 인생 곡선(SP3-4 5.4, 10장). None이면 곡선 도구가 거절한다
+        self.curve = curve
+        self.status = status  # 칭호(`status_titles`, 9.4)
+        # 지금 대화가 회고 회차의 대화면 그 회고 `scheduled_for`의 논리적 날짜(10장 "기간 기본값"), 아니면 None
+        self.review_date_for = review_date_for
+        self.curve_export_path = (
+            Path(curve_export_path) if curve_export_path is not None
+            else self.export_path.parent.parent / "curve" / "chapters.md"  # data/exports/tasks.md → data/curve/
+        )
 
     # --- 공통 ---
 
@@ -236,10 +266,20 @@ class Tools:
         self._export()
 
     def _export(self) -> None:
+        """`tasks.md`, 곡선 저장소가 있으면 `curve/chapters.md`도. 되돌리기와 실패한 즉시 갈래도 이것을 부른다."""
         try:
             export_tasks(self.tasks, self.export_path, self.today())
         except OSError as e:  # 데이터는 이미 저장됐다. 내보내기는 다음 변경 때 다시 만든다.
             log.warning("export_failed", extra={"error_type": type(e).__name__})
+        self._export_curve()
+
+    def _export_curve(self) -> None:
+        if self.curve is None:
+            return
+        try:
+            export_curve(self.curve, self.curve_export_path)
+        except OSError as e:
+            log.warning("curve_export_failed", extra={"error_type": type(e).__name__})
 
     def _get(self, id: Any) -> Task | str:
         t = self.tasks.get(id) if isinstance(id, int) and not isinstance(id, bool) else None
@@ -667,6 +707,216 @@ class Tools:
             self._export()
         return {"expired_ids": ids}
 
+    # --- 인생 곡선 (SP3-4 10장, 5.4). 사용자가 말한 점수만 기록하고, 초안의 확정과 빼기만 한다 ---
+
+    def _curve_period(self, ctx: RunContext, cadence: Cadence) -> str:
+        """기간 기본값(10장): 회고 회차의 대화면 그 회고 날짜가 든 달·분기, 아니면 오늘이 든 달·분기."""
+        review = self.review_date_for(ctx) if self.review_date_for is not None else None
+        return period_of(cadence, review if review is not None else self.today())
+
+    def _curve_event(self, ctx: RunContext, kind: str, data: dict[str, Any]) -> ToolEvent:
+        """트랜잭션 안에서: 호출 기록(`tool_events_log`, 중단 뒤 다시 처리할 때 두 번 쓰지 않게)과 ToolEvent."""
+        self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
+        return ToolEvent(kind=kind, task_id=None, data=data)
+
+    @staticmethod
+    def _score(v: Any, lo: int, hi: int) -> int | None:
+        return v if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi else None
+
+    @_tool
+    def record_ladder_score(
+        self, ctx: RunContext, period: Any = None, now: Any = None, future: Any = None, note: Any = None
+    ) -> dict[str, Any]:
+        """사용자가 말한 사다리 점수(0~10). 없는 쪽은 그 달 기존 값을 둔다. 미래 달은 거절한다."""
+        if self.curve is None:
+            return _err("사다리 점수를 기록할 수 없어요.")
+        if now is None and future is None:
+            return _err("now(지금)나 future(5년 뒤) 가운데 하나는 알려 주세요.")
+        for name, v in (("now", now), ("future", future)):
+            if v is not None and self._score(v, LADDER_MIN, LADDER_MAX) is None:
+                return _err(f"{name}은(는) {LADDER_MIN}~{LADDER_MAX} 사이의 숫자로 알려 주세요.")
+        if note is not None and not isinstance(note, str):
+            return _err("메모는 글로 알려 주세요.")
+        if period is None:
+            period = self._curve_period(ctx, Cadence.month)
+        elif not isinstance(period, str) or not self._valid_period(Cadence.month, period):
+            return _err(f"period는 {PERIOD_EXAMPLE[Cadence.month]} 같은 달 형식이에요.")
+        if period > period_of(Cadence.month, self.today()):
+            return _err("아직 오지 않은 달의 사다리 점수는 기록할 수 없어요.")
+        before = self.curve.ladder(period)
+        with transaction(self.curve.conn):
+            row = self.curve.set_ladder(period, now=now, future=future, note=note)
+            data = {"period": period, "now": row.now, "future": row.future}  # 메모는 넣지 않는다
+            event = self._curve_event(ctx, "ladder_recorded", data)
+            self._record(ctx, "ladder_recorded", ladder_target(period), ladder_line(period, row.now, row.future),
+                         {"period": period, "before": _ladder_dict(before)})
+        ctx.events.append(event)
+        self._export_curve()
+        log.info("ladder_recorded", extra={"period": period})
+        return {"period": row.period, "now": row.now, "future": row.future, "note": row.note}
+
+    @_tool
+    def record_area_scores(
+        self, ctx: RunContext, scores: Any = None, period: Any = None, notes: Any = None, recovery_quests: Any = None
+    ) -> dict[str, Any]:
+        """사용자가 말한 영역 점수(1~10). 회복 퀘스트는 바로 앞 분기보다 내려간 영역에만 받는다(10장, 9.3)."""
+        if self.curve is None:
+            return _err("영역 점수를 기록할 수 없어요.")
+        names = ", ".join(a.value for a in Area)
+        if not isinstance(scores, dict) or not scores:
+            return _err(f"scores는 영역별 점수예요. 예: {{\"career\": 7}}. 쓸 수 있는 영역: {names}")
+        for area, v in scores.items():
+            if area not in {a.value for a in Area}:
+                return _err(f"알 수 없는 영역이에요. 쓸 수 있는 영역: {names}")
+            if self._score(v, AREA_SCORE_MIN, AREA_SCORE_MAX) is None:
+                return _err(f"영역 점수는 {AREA_SCORE_MIN}~{AREA_SCORE_MAX} 사이의 숫자로 알려 주세요.")
+        for name, extra in (("notes", notes), ("recovery_quests", recovery_quests)):
+            if extra is None:
+                continue
+            if not isinstance(extra, dict) or not all(isinstance(v, str) and v.strip() for v in extra.values()):
+                return _err(f"{name}는 영역별 글이에요.")
+            if set(extra) - set(scores):
+                return _err(f"{name}에는 이번에 점수를 넣은 영역만 쓸 수 있어요.")
+        if period is None:
+            period = self._curve_period(ctx, Cadence.quarter)
+        elif not isinstance(period, str) or not self._valid_period(Cadence.quarter, period):
+            return _err(f"period는 {PERIOD_EXAMPLE[Cadence.quarter]} 같은 분기 형식이에요.")
+        if period > period_of(Cadence.quarter, self.today()):
+            return _err("아직 오지 않은 분기의 영역 점수는 기록할 수 없어요.")
+        quests = {a: q.strip() for a, q in (recovery_quests or {}).items()}
+        prev_period = _prev_quarter(period)
+        for area in quests:
+            prev = self.curve.area_score(prev_period, area)
+            if prev is None or scores[area] >= prev.score:
+                return _err("recovery_quests는 지난 분기보다 내려간 영역에만 넣을 수 있어요.")
+        if any(len(q) > RECOVERY_QUEST_MAX for q in quests.values()):
+            return _err(f"회복 퀘스트는 {RECOVERY_QUEST_MAX}자까지 쓸 수 있어요.")
+        before = {a: _area_dict(self.curve.area_score(period, a)) for a in scores}
+        with transaction(self.curve.conn):
+            rows = self.curve.set_area_scores(period, dict(scores), notes=notes, quests=quests)
+            data = {"period": period, "scores": {r.area: r.score for r in rows}}
+            event = self._curve_event(ctx, "area_scores_recorded", data)
+            self._record(ctx, "area_scores_recorded", areas_target(period), area_scores_line(period, data["scores"]),
+                         {"period": period, "before": before})
+        ctx.events.append(event)
+        self._export_curve()
+        log.info("area_scores_recorded", extra={"period": period, "areas": len(rows)})
+        return {"period": period, "scores": data["scores"]}
+
+    @staticmethod
+    def _ids(v: Any) -> list[int] | None:
+        if not isinstance(v, list) or any(not isinstance(i, int) or isinstance(i, bool) for i in v):
+            return None
+        return list(dict.fromkeys(v))
+
+    @_tool
+    def confirm_milestones(self, ctx: RunContext, ids: Any = None) -> dict[str, Any]:
+        """사건 초안을 확정한다. 고점·전환점이면 칭호(9.4). 초안이 아니거나 없는 번호는 `skipped_ids`."""
+        if self.curve is None or self.status is None:
+            return _err("사건을 저장할 수 없어요.")
+        if (wanted := self._ids(ids)) is None:
+            return _err("ids는 사건 번호(숫자) 목록이에요.")
+        events: list[ToolEvent] = []
+        with transaction(self.curve.conn):
+            done = self.curve.confirm_milestones(wanted)
+            now = self.clock.now()
+            for m in done:
+                data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind}
+                events.append(self._curve_event(ctx, "milestones_confirmed", data))
+                if m.kind in TITLE_KINDS:
+                    self.status.add_title(m.id, now)
+                    name = title_name(m.kind, m.title, m.title_label)
+                    events.append(self._curve_event(ctx, "title_granted", {"milestone_id": m.id, "title": name}))
+            if done:
+                target, targets = many_target([milestone_target(m.id) for m in done])
+                lines = [milestone_confirmed_line(m.title, m.date_text, m.kind) for m in done]
+                summary = lines[0] if len(lines) == 1 else "✓ 저장: " + ", ".join(ln.removeprefix("✓ 저장: ") for ln in lines)
+                self._record(ctx, "milestones_confirmed", target, summary, {"milestone_ids": [m.id for m in done]},
+                             targets=targets)
+        ctx.events.extend(events)
+        if done:
+            self._export_curve()
+        got = {m.id for m in done}
+        return {"confirmed": [_milestone_dict(m) for m in done], "skipped_ids": [i for i in wanted if i not in got]}
+
+    @_tool
+    def confirm_chapters(self, ctx: RunContext, ids: Any = None) -> dict[str, Any]:
+        if self.curve is None:
+            return _err("챕터를 저장할 수 없어요.")
+        if (wanted := self._ids(ids)) is None:
+            return _err("ids는 챕터 번호(숫자) 목록이에요.")
+        events: list[ToolEvent] = []
+        with transaction(self.curve.conn):
+            done = self.curve.confirm_chapters(wanted)
+            for c in done:
+                data = {"id": c.id, "title": c.title, "start_month": c.start_month, "end_month": c.end_month}
+                events.append(self._curve_event(ctx, "chapters_confirmed", data))
+            if done:
+                target, targets = many_target([chapter_target(c.id) for c in done])
+                lines = [chapter_confirmed_line(c.title, c.start_month, c.end_month) for c in done]
+                summary = lines[0] if len(lines) == 1 else "✓ 저장: " + ", ".join(ln.removeprefix("✓ 저장: ") for ln in lines)
+                self._record(ctx, "chapters_confirmed", target, summary, {"chapter_ids": [c.id for c in done]},
+                             targets=targets)
+        ctx.events.extend(events)
+        if done:
+            self._export_curve()
+        got = {c.id for c in done}
+        return {"confirmed": [_chapter_dict(c) for c in done], "skipped_ids": [i for i in wanted if i not in got]}
+
+    @_tool
+    def drop_curve_drafts(self, ctx: RunContext, milestone_ids: Any = None, chapter_ids: Any = None) -> dict[str, Any]:
+        """사건·챕터 **초안**을 뺀다(행 삭제, 되돌릴 수 없음). 확정한 것이 하나라도 있으면 아무것도 빼지 않고 거절한다.
+        없는 번호(이미 정리된 것)는 `skipped_*`."""
+        if self.curve is None:
+            return _err("초안을 뺄 수 없어요.")
+        ms = self._ids(milestone_ids if milestone_ids is not None else [])
+        cs = self._ids(chapter_ids if chapter_ids is not None else [])
+        if ms is None or cs is None:
+            return _err("milestone_ids, chapter_ids는 번호(숫자) 목록이에요.")
+        if not ms and not cs:
+            return _err("뺄 사건이나 챕터 초안 번호를 알려 주세요.")
+        found_m = {i: m for i in ms if (m := self.curve.get_milestone(i)) is not None}
+        found_c = {i: c for i in cs if (c := self.curve.get_chapter(i)) is not None}
+        if any(m.status != "draft" for m in found_m.values()) or any(c.status != "draft" for c in found_c.values()):
+            return _err("확정한 사건이나 챕터는 뺄 수 없어요. 초안만 뺄 수 있어요.")
+        events: list[ToolEvent] = []
+        with transaction(self.curve.conn):
+            for m in found_m.values():
+                self.curve.delete_milestone_draft(m.id)
+                event = self._curve_event(ctx, "milestone_dropped", {"id": m.id, "title": m.title})
+                self._record(ctx, "milestone_dropped", milestone_target(m.id), dropped_line(m.title), None)
+                events.append(event)
+            for c in found_c.values():
+                self.curve.delete_chapter_draft(c.id)
+                event = self._curve_event(ctx, "chapter_dropped", {"id": c.id, "title": c.title})
+                self._record(ctx, "chapter_dropped", chapter_target(c.id), dropped_line(c.title), None)
+                events.append(event)
+        ctx.events.extend(events)
+        if events:
+            self._export_curve()
+        return {
+            "dropped_milestone_ids": list(found_m), "dropped_chapter_ids": list(found_c),
+            "skipped_milestone_ids": [i for i in ms if i not in found_m],
+            "skipped_chapter_ids": [i for i in cs if i not in found_c],
+        }
+
+    def expire_curve_drafts(self, ctx: RunContext, older_than: datetime) -> dict[str, Any]:
+        """하루 한 번 작업(`secretary`/`scheduler`): `draft_since`가 `older_than` 이전인 사건·챕터 초안을 조용히
+        지운다(5.4). 활동 `milestone_drafts_expired`, `chapter_drafts_expired`(되돌릴 수 없다). 알리지 않는다."""
+        if self.curve is None:
+            return {"expired_milestone_ids": [], "expired_chapter_ids": []}
+        with transaction(self.curve.conn):
+            ms, cs = self.curve.expire_drafts(older_than)
+            for kind, ids, to_target in (
+                ("milestone_drafts_expired", ms, milestone_target), ("chapter_drafts_expired", cs, chapter_target)
+            ):
+                if ids:
+                    target, targets = many_target([to_target(i) for i in ids])
+                    self._record(ctx, kind, target, drafts_expired_summary(len(ids)), None, targets=targets)
+        if ms or cs:
+            self._export_curve()
+        return {"expired_milestone_ids": ms, "expired_chapter_ids": cs}
+
     # --- 화면 도구 (SP3-4 6.4.7): 그리기만 한다. DB, 파일, `ctx.events`를 건드리지 않는다 ---
 
     def _draw(self, component: str, props: dict[str, Any]) -> dict[str, Any]:
@@ -827,6 +1077,33 @@ class Tools:
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
 
 
+def _prev_quarter(period: str) -> str:
+    year, q = int(period[:4]), int(period[-1])
+    return f"{year}-Q{q - 1}" if q > 1 else f"{year - 1}-Q4"
+
+
+def _ladder_dict(x: Ladder | None) -> dict[str, Any] | None:
+    """되돌릴 때 쓸 이전 행(`recorded_at`은 UTC ISO). 메모는 DB의 `undo_json`에만 있고 요약·로그에는 없다."""
+    if x is None:
+        return None
+    return {"now": x.now, "future": x.future, "note": x.note, "recorded_at": to_iso(x.recorded_at)}
+
+
+def _area_dict(x: AreaScore | None) -> dict[str, Any] | None:
+    if x is None:
+        return None
+    return {"score": x.score, "note": x.note, "recovery_quest": x.recovery_quest, "recorded_at": to_iso(x.recorded_at)}
+
+
+def _milestone_dict(m: Any) -> dict[str, Any]:
+    return {"id": m.id, "date": m.date_text, "kind": m.kind, "title": m.title, "sensitive": m.sensitive,
+            "chapter_id": m.chapter_id, "status": m.status}
+
+
+def _chapter_dict(c: Any) -> dict[str, Any]:
+    return {"id": c.id, "title": c.title, "start": c.start_month, "end": c.end_month, "status": c.status}
+
+
 # --- 종류별 되돌리기 (SP3-4 스펙 6.4.3). `undo`는 그 활동의 `undo_json`(바꾸기 전 값, 시각은 UTC ISO) ---
 
 
@@ -949,6 +1226,46 @@ def _undo_cards_reordered(tools: Tools, undo: dict[str, Any], ctx: RunContext) -
     return None
 
 
+def _undo_ladder_recorded(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """이전 행 그대로(`recorded_at` 포함). 없었으면 지운다."""
+    assert tools.curve is not None
+    b = undo["before"]
+    period = undo["period"]
+    before = Ladder(period, b["now"], b["future"], b["note"], from_iso(b["recorded_at"])) if b else None
+    tools.curve.restore_ladder(period, before)
+    return None
+
+
+def _undo_area_scores_recorded(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """영역마다 이전 행 그대로, 없었으면 지운다."""
+    assert tools.curve is not None
+    period = undo["period"]
+    before = {
+        area: AreaScore(period, area, b["score"], b["note"], b["recovery_quest"], from_iso(b["recorded_at"])) if b else None
+        for area, b in undo["before"].items()
+    }
+    tools.curve.restore_area_scores(period, before)
+    return None
+
+
+def _undo_milestones_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """초안으로, `draft_since` = 되돌린 시각(3일을 다시 센다). 칭호도 지운다(칭호는 원장이 아니다)."""
+    assert tools.curve is not None and tools.status is not None
+    now = tools.clock.now()
+    for i in undo["milestone_ids"]:
+        tools.status.remove_title(i)
+        tools.curve.unconfirm_milestone(i, now)
+    return None
+
+
+def _undo_chapters_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    assert tools.curve is not None
+    now = tools.clock.now()
+    for i in undo["chapter_ids"]:
+        tools.curve.unconfirm_chapter(i, now)
+    return None
+
+
 for _kind, _handler in (
     ("task_added", _undo_task_added),
     ("task_updated", _undo_task_updated),
@@ -962,5 +1279,9 @@ for _kind, _handler in (
     ("card_pinned", _undo_card_pinned),
     ("card_unpinned", _undo_card_unpinned),
     ("cards_reordered", _undo_cards_reordered),
+    ("ladder_recorded", _undo_ladder_recorded),
+    ("area_scores_recorded", _undo_area_scores_recorded),
+    ("milestones_confirmed", _undo_milestones_confirmed),
+    ("chapters_confirmed", _undo_chapters_confirmed),
 ):
     register_undo(_kind, _handler)

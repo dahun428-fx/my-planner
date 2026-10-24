@@ -6,7 +6,8 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from my_planner.domain import ToolEvent
+from my_planner.domain import Area, ToolEvent
+from my_planner.status.xp import AREA_LABELS
 
 
 def _md(d: date) -> str:
@@ -57,7 +58,47 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         "cards_reordered": "✓ 카드 순서 바꿈",
         # 회차 차례의 확인(10.1): 바뀐 것은 없다. 회차 메시지 글에 확인 문구 전부를 남긴다(버튼은 짧다)
         "confirm_requested": confirm_requested_summary(e.data.get("summary", "")),
+        # 인생 곡선(SP3-4 부록 A, 문구 C1~C4)
+        "milestones_confirmed": milestone_confirmed_line(title, e.data.get("date_text", ""), e.data.get("kind", "")),
+        "milestone_dropped": dropped_line(title),
+        "title_granted": f"칭호: {title}",
+        "chapters_confirmed": chapter_confirmed_line(title, e.data.get("start_month", ""), e.data.get("end_month")),
+        "chapter_dropped": dropped_line(title),
+        "ladder_recorded": ladder_line(e.data.get("period", ""), e.data.get("now"), e.data.get("future")),
+        "area_scores_recorded": area_scores_line(e.data.get("period", ""), e.data.get("scores", {})),
     }.get(e.kind)
+
+
+# --- 인생 곡선 (SP3-4 부록 A, 문구 C1~C4) ---
+
+KIND_LABELS = {"high": "고점", "low": "저점", "turning_point": "전환점"}
+
+
+def milestone_confirmed_line(title: str, date_text: str, kind: str) -> str:
+    """부록 A 사건 확정: `✓ 저장: 제주 여행 (2019, 고점)`."""
+    return f"✓ 저장: {title} ({date_text}, {KIND_LABELS.get(kind, kind)})"
+
+
+def chapter_confirmed_line(title: str, start_month: str, end_month: str | None) -> str:
+    """문구 C2: `✓ 저장: {제목} ({시작}~{끝 또는 "지금"})`."""
+    return f"✓ 저장: {title} ({start_month}~{end_month or '지금'})"
+
+
+def dropped_line(title: str) -> str:
+    """부록 A 사건 빼기, 문구 C3 챕터 빼기: `✗ 뺐어요: {제목}`."""
+    return f"✗ 뺐어요: {title}"
+
+
+def ladder_line(period: str, now: int | None, future: int | None) -> str:
+    """문구 C4(두뇌·`/actions`가 `record_ladder_score`로 기록할 때): 없는 쪽은 ` · ` 조각째 뺀다."""
+    bits = [f"지금 {now}" if now is not None else None, f"5년 뒤 {future}" if future is not None else None]
+    return f"✓ 사다리를 기록했어요 ({period}): " + " · ".join(b for b in bits if b is not None)
+
+
+def area_scores_line(period: str, scores: dict[str, int]) -> str:
+    """문구 C1: 넣은 영역만, SP1 영역 순서. `✓ 영역 점수를 기록했어요 (2026-Q4): 커리어 7 · 경제 5`."""
+    parts = [f"{AREA_LABELS[a.value]} {scores[a.value]}" for a in Area if a.value in scores]  # SP1 영역 순서
+    return f"✓ 영역 점수를 기록했어요 ({period}): " + " · ".join(parts)
 
 
 def render_confirmations(events: list[ToolEvent], today: date) -> str:
@@ -152,6 +193,10 @@ _DATE_TAIL_VERBS = frozenset({"추가", "옮김"})
 _SUMMARY = re.compile(r"^✓ (?P<verb>[^:]+): (?P<rest>.*)$")
 _BARE = re.compile(r"^✓ (?P<verb>[^:]+)$")  # 대상 이름이 없는 한 줄(`✓ 카드 순서 바꿈`)
 _CONDITION = re.compile(r"^(?P<what>컨디션 \d+) 기록했어요\.$")
+# 곡선 기록(C1, C4): 점수 줄은 요지에서 빼고 기간만 둔다
+_CURVE_RECORD = re.compile(r"^✓ (?P<what>사다리|영역 점수)를 기록했어요 \((?P<period>[^)]+)\): ")
+# `저장`(사건·챕터 확정) 뒤의 날짜·종류 꼬리: `(2019, 고점)`, `(2019-03~지금)`
+_SAVE_TAIL = re.compile(r" \((\d{4}(-\d{2}){0,2}, (고점|저점|전환점)|\d{4}-\d{2}~(\d{4}-\d{2}|지금))\)")
 
 
 def undo_summary(summary: str) -> str:
@@ -159,8 +204,12 @@ def undo_summary(summary: str) -> str:
 
     요지는 원래 활동의 확인 문구에서 만든다: 날짜 꼬리(`→ 내일`, `(10/25 14:00)`)는 떼고, 우선순위는 목록 이름만.
     """
+    if (cr := _CURVE_RECORD.match(summary)) is not None:
+        return f"↩ 되돌림: {cr['what']} 기록 ({cr['period']})"
     if (m := _SUMMARY.match(summary)) is not None:
         verb, rest = m["verb"], m["rest"]
+        if verb == "저장":
+            rest = _SAVE_TAIL.sub("", rest)
         if verb.startswith("우선순위"):
             gist = verb
         else:
