@@ -59,6 +59,27 @@ describe("copy", () => {
     for (const w of ["밀렸다", "놓쳤다", "실패"]) expect(list).toContain(w);
   });
 
+  it("chat card copy is SP6 appendix A verbatim", () => {
+    const p = copy.parts;
+    expect([p.thisWeek, p.nextWeek, p.lastWeek]).toEqual(["이번 주", "다음 주", "지난주"]);
+    expect(p.weekRange("10월 26일", "11월 1일")).toBe("10월 26일 ~ 11월 1일");
+    expect(p.dayHead(26, "월")).toBe("26일 월");
+    expect(p.dayHeadToday).toBe(" · 오늘");
+    expect(p.otherDay).toBe("다른 날로 할게요");
+    expect(p.alreadySettled).toBe("이미 정리된 할 일이에요");
+    expect(p.noDate).toBe("날짜 없음");
+    expect(Object.values(p.changeChip)).toEqual(["추가", "옮김", "완료", "다시 엶", "뺌", "고침", "확정"]);
+    expect(p.prevTitle("치과")).toBe("이전 제목: 치과");
+    expect(p.editedOnly).toBe("내용을 고쳤어요");
+    expect(p.confirmedDraft).toBe("초안을 확정했어요");
+    expect(p.changeAria("10월 25일 (일)", "10월 27일 (화)")).toBe("이전 10월 25일 (일), 지금 10월 27일 (화)");
+    expect(p.resultCount(2)).toBe("바뀐 할 일 2개");
+    expect(p.outsideHead).toEqual({ moved: "기간 밖으로 옮긴 것", dropped: "뺀 것", noDate: "날짜 없는 것" });
+    expect(p.openTodos).toBe("할 일 화면에서 보기");
+    expect(p.openActivity).toBe("기록에서 보기");
+    expect(p.periodFailed).toBe("할 일을 불러오지 못했어요");
+  });
+
   it("habit copy is appendix A verbatim", () => {
     expect(copy.habits.heading).toBe("습관");
     expect(copy.habits.manage).toBe("관리");

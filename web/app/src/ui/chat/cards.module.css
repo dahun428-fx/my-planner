@@ -134,7 +134,7 @@
   inset: -0.375rem 0;
 }
 .undo:disabled {
-  color: var(--muted);
+  opacity: 0.45;
   cursor: default;
 }
 .undo:focus-visible {
