@@ -26,6 +26,11 @@ class GitHubUnavailable(Exception):
         self.kind = kind
         self.status = status
 
+    @property
+    def rejected(self) -> bool:
+        """예상 밖의 4xx(404·422 등): 그 요청만의 문제다. 연결·인증·한도·5xx는 아니다."""
+        return self.kind == "server" and 400 <= self.status < 500
+
 
 def incident_title(fp: str) -> str:
     return TITLE_PREFIX + fp
@@ -37,8 +42,10 @@ def _kind(status: int, headers: dict[str, str]) -> Kind:
     if status == 429:
         return "rate_limit"
     if status == 403:
-        remaining = {k.lower(): v for k, v in headers.items()}.get("x-ratelimit-remaining")
-        return "rate_limit" if remaining == "0" else "auth"
+        lower = {k.lower(): v for k, v in headers.items()}
+        # 1차 한도(남은 수 0)와 2차 한도(retry-after)는 rate_limit, 그 밖의 403은 권한 문제
+        limited = lower.get("x-ratelimit-remaining") == "0" or "retry-after" in lower
+        return "rate_limit" if limited else "auth"
     if status == 401:
         return "auth"
     return "server"  # 5xx, 그리고 예상 밖의 4xx(404·422 등)도 "이번 회차엔 못 한다"로 다룬다
@@ -156,7 +163,8 @@ class GitHub:
 
     def head_sha(self, branch: str = "main") -> str:
         body = self._call("GET", f"/branches/{quote(branch, safe='')}")
-        sha = body.get("commit", {}).get("sha") if isinstance(body, dict) else None
+        commit = body.get("commit") if isinstance(body, dict) else None
+        sha = commit.get("sha") if isinstance(commit, dict) else None
         if not isinstance(sha, str):
             raise GitHubUnavailable("server", 200)
         return sha
@@ -187,7 +195,8 @@ class GitHub:
         body = self._call("GET", f"/compare/{base}...{head}")
         out: list[int] = []
         for c in body.get("commits", []) if isinstance(body, dict) else []:
-            msg = (c.get("commit") or {}).get("message", "") if isinstance(c, dict) else ""
+            commit = c.get("commit") if isinstance(c, dict) else None
+            msg = commit.get("message", "") if isinstance(commit, dict) else ""
             for num in _REPAIRS_RE.findall(str(msg)):
                 if int(num) not in out:
                     out.append(int(num))

@@ -5,7 +5,7 @@ kv 키(모두 `medic.db`):
   `health_streak`(int), `deployed_sha`(읽기만, 티켓 09가 채운다. 없으면 "unknown").
 - `warn_window` 이벤트 → ISO 시각 목록(최근 1시간), `bind_error_seen` 걸쇠(bool),
   `wake_grace_until`(절전 유예 끝, ISO), `last_import_at`(Actions 이슈 가져오기, ISO),
-  `recent_rows`(허용 열만 남긴 최근 로그 줄, 30분 안 최대 20개).
+  `recent_rows`(허용 열만 남긴 최근 로그 줄, 30분 안 최대 20개, INFO가 아닌 줄 우선).
 
 GitHub이 안 되면(`GitHubUnavailable`) 그 회차의 GitHub 일만 멈춘다. 장애는 `medic.db`에 남아 다음
 회차에 올라간다. 이슈가 없는 장애는 올리기 전에 늘 `find_incident`로 찾는다(응답이 끊긴 생성 보호).
@@ -65,6 +65,17 @@ def _parse(value: Any) -> datetime | None:
 
 def _z(dt: datetime) -> str:
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _trim_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """최대 `ROWS_KEEP`개. INFO가 아닌 줄을 먼저(최근 것부터) 남기고 남는 자리를 최근 INFO 줄로 채운다. 순서는 시간순."""
+    if len(rows) <= ROWS_KEEP:
+        return rows
+    loud = [i for i, r in enumerate(rows) if r.get("level") != "INFO"][-ROWS_KEEP:]
+    quiet = [i for i, r in enumerate(rows) if r.get("level") == "INFO"]
+    room = ROWS_KEEP - len(loud)
+    keep = set(loud) | set(quiet[len(quiet) - room:] if room else [])
+    return [r for i, r in enumerate(rows) if i in keep]
 
 
 def _is_imported(fp: str) -> bool:
@@ -129,11 +140,13 @@ class Watcher:
 
     def _remember_rows(self, records: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
         """허용 열만 남긴 최근 로그 줄(이슈 본문의 "직전 30분 로그")."""
-        kept = self._store.kv_json_get("recent_rows") or []
+        saved = self._store.kv_json_get("recent_rows")
+        kept = saved if isinstance(saved, list) else []
         kept += [allowed_log_row(r, self._cfg.root) for r in records]
         cutoff = now - ROWS_WINDOW
-        kept = [r for r in kept if isinstance(r, dict) and (t := _parse(r.get("ts"))) is not None and t > cutoff]
-        kept = kept[-ROWS_KEEP:]
+        kept = _trim_rows(
+            [r for r in kept if isinstance(r, dict) and (t := _parse(r.get("ts"))) is not None and t > cutoff]
+        )
         self._store.kv_json_set("recent_rows", kept)
         return kept
 
@@ -215,7 +228,12 @@ class Watcher:
     def _sync(self, now: datetime, health: dict[str, Any] | None) -> None:
         sha = self._store.kv_get("deployed_sha") or "unknown"
         try:
-            self._heartbeat(now, sha)
+            try:
+                self._heartbeat(now, sha)
+            except GitHubUnavailable as exc:
+                if not exc.rejected:
+                    raise  # 연결·인증·한도·5xx: 이번 회차의 GitHub 일을 멈춘다
+                log.warning("github_heartbeat_rejected %s (%d)", exc.kind, exc.status)  # 장애 동기화는 계속
             self._sync_incidents(now, health, sha)
             self._import_actions(now)
             self._resolve_ci_main(now)
@@ -239,7 +257,7 @@ class Watcher:
             try:
                 self._sync_one(inc, now, health, sha)
             except GitHubUnavailable as exc:
-                if exc.kind != "server" or not 400 <= exc.status < 500:
+                if not exc.rejected:
                     raise  # 연결·인증·한도·5xx: 이번 회차의 GitHub 일을 멈춘다
                 # 이 이슈만의 문제(지워진 이슈 404, 422 등): 다른 장애는 계속 올린다
                 log.warning("github_incident_rejected %d", exc.status)
@@ -283,7 +301,13 @@ class Watcher:
         today = now.astimezone(zone(ACTIONS_TZ)).date()
         for label in labels:  # 오늘(서울) 표시는 남겨 같은 날 두 번째 알림을 막는다
             m = _STALE_RE.match(label)
-            if m and date.fromisoformat(m[1]) < today:
+            if m is None:
+                continue
+            try:
+                day = date.fromisoformat(m[1])
+            except ValueError:  # stale-2026-13-45 같은 틀만 맞는 라벨은 건드리지 않는다
+                continue
+            if day < today:
                 self._gh.remove_label(n, label)
 
     def _import_actions(self, now: datetime) -> None:
@@ -319,6 +343,7 @@ class Watcher:
         sha = self._gh.head_sha("main")
         if self._gh.ci_conclusion(sha) != "success":
             return
+        # 댓글 → 닫기 → resolved. 어느 단계가 실패해도 resolved가 아니라 다음 회차에 다시 한다
+        self._gh.comment(inc.issue_number, FIXED_COMMENT.format(sha=safe_token(sha)[:12]))
         self._gh.close(inc.issue_number)
         self._store.set_state(CI_MAIN, "resolved", resolved_at=iso_utc(now))
-        self._gh.comment(inc.issue_number, FIXED_COMMENT.format(sha=safe_token(sha)[:12]))

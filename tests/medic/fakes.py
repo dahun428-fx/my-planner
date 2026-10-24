@@ -70,6 +70,12 @@ class FakeHttp:
     def queue(self, method: str, path: str, *responses: FakeResponse | Exception) -> None:
         self._queues[(method.upper(), path)].extend(responses)
 
+    def clear(self, method: str, path: str) -> None:
+        """그 (메서드, 경로)의 큐와 되풀이 응답을 지워 다시 `route`로 보낸다."""
+        key = (method.upper(), path)
+        self._queues.pop(key, None)
+        self._last.pop(key, None)
+
     def lose_next(self, method: str, path: str) -> None:
         self._lose.append((method.upper(), path))
 

@@ -43,6 +43,7 @@ def test_requests_carry_api_headers_and_base() -> None:
         (403, {"x-ratelimit-remaining": "0"}, "rate_limit"),
         (403, {"X-RateLimit-Remaining": "0"}, "rate_limit"),
         (403, {"x-ratelimit-remaining": "4999"}, "auth"),
+        (403, {"Retry-After": "60"}, "rate_limit"),  # 2차 한도
         (429, {}, "rate_limit"),
         (500, {}, "server"),
         (503, {}, "server"),
@@ -170,6 +171,18 @@ def test_head_sha_of_branch() -> None:
     gh, server, _ = make()
     server.branches["main"] = "abc"
     assert gh.head_sha("main") == "abc"
+
+
+def test_null_commit_fields_are_tolerated() -> None:
+    gh, _, http = make()
+    http.queue("GET", f"/repos/{REPO}/branches/main", FakeResponse(200, {"commit": None}))
+    with pytest.raises(GitHubUnavailable) as err:
+        gh.head_sha("main")
+    assert err.value.kind == "server"
+    http.queue("GET", f"/repos/{REPO}/compare/a...b", FakeResponse(200, {"commits": [
+        {"commit": None}, {"commit": {"message": "Repairs #3"}}, None,
+    ]}))
+    assert gh.repairs_in_range("a", "b") == [3]
 
 
 # --- 진짜 urllib ------------------------------------------------------------

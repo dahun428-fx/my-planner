@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +12,7 @@ import pytest
 from my_planner_medic import watcher as watcher_mod
 from my_planner_medic.github import GitHub
 from my_planner_medic.store import MedicStore
-from my_planner_medic.watcher import Watcher
+from my_planner_medic.watcher import Watcher, _trim_rows
 
 from .fakes import FakeClock, FakeGitHub, FakeHttp, FakeResponse, make_config
 
@@ -425,3 +425,80 @@ def test_timezone_fallback_to_utc_warns(tmp_path: Path, caplog: pytest.LogCaptur
 def test_first_tick_has_no_wake_grace_and_sets_last_tick(env: Env) -> None:
     assert env.store.kv_get("last_tick_at") == START.isoformat()
     assert env.store.kv_get("wake_grace_until") is None
+
+
+# --- 리뷰 수정 1회차 ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("offset", "reopened"), [
+    (timedelta(hours=24), True),  # 정확히 24시간은 "24시간 안"이다(포함)
+    (timedelta(hours=24, seconds=1), False),
+])
+def test_recurrence_24h_boundary_is_inclusive(env: Env, offset: timedelta, reopened: bool) -> None:
+    n = _file_and_resolve(env)
+    env.clock.advance(seconds=offset.total_seconds())
+    env.log(env.exc())
+    env.tick()
+    assert (env.store.get(EXC_FP).issue_number == n) is reopened
+    assert len(env.server.titled(f"[incident] {EXC_FP}")) == (1 if reopened else 2)
+
+
+def test_malformed_stale_label_is_left_alone(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    hb = env.heartbeat_issue
+    env.server.issues[hb]["labels"] += [{"name": "stale-2026-13-45"}, {"name": "stale-2026-10-20"}]
+    env.tick()
+    assert env.server.labels(hb) == ["heartbeat", "stale-2026-13-45"]
+    assert env.server.issues[hb]["body"].startswith("last_seen: ")
+
+
+def test_non_list_recent_rows_kv_is_reset(env: Env) -> None:
+    env.store.kv_json_set("recent_rows", {"bad": 1})
+    env.log(env.exc())
+    env.tick(2)
+    rows = env.store.kv_json_get("recent_rows")
+    assert isinstance(rows, list) and len(rows) == 1
+    assert env.store.get(EXC_FP).issue_number is not None
+
+
+def test_ci_main_failed_comment_leaves_incident_unresolved(env: Env) -> None:
+    c = env.server.add_issue("[incident] ci:main", ["incident"])
+    env.server.branches["main"] = "h2"
+    env.server.runs.append({"name": "ci", "head_sha": "h2", "event": "push", "status": "completed",
+                            "conclusion": "success", "id": 2})
+    env.http.queue("POST", f"{ISSUES}/{c}/comments", FakeResponse(502))
+    env.tick(30)
+    assert env.store.get("ci:main").state == "open"
+    assert env.server.issues[c]["state"] == "open"  # 댓글이 먼저라 닫지도 않았다
+    env.http.clear("POST", f"{ISSUES}/{c}/comments")
+    env.tick(2)
+    assert env.store.get("ci:main").state == "resolved"
+    assert env.server.issues[c]["state"] == "closed"
+    assert len(env.server.comments[c]) == 1
+
+
+@pytest.mark.parametrize(("status", "filed"), [(422, True), (404, True), (503, False), (401, False)])
+def test_heartbeat_rejection_does_not_block_incident_sync(tmp_path: Path, status: int, filed: bool) -> None:
+    env = make_env(tmp_path)
+    env.http.queue("PATCH", f"{ISSUES}/{env.heartbeat_issue}", FakeResponse(status))
+    env.tick()
+    env.log(env.exc())
+    env.tick(2)
+    assert (env.store.get(EXC_FP).issue_number is not None) is filed
+    assert env.store.kv_get("last_heartbeat_at") is None  # 다음 회차에 다시 해 본다
+
+
+def _row(i: int, level: str) -> dict[str, Any]:
+    return {"ts": f"2026-10-26T01:{i:02d}:00+00:00", "level": level, "msg": f"e{i}"}
+
+
+def test_trim_rows_keeps_non_info_first_then_newest_info_in_order() -> None:
+    rows = [_row(i, "WARNING" if i in (1, 5, 9) else "INFO") for i in range(30)]
+    out = _trim_rows(rows)
+    assert len(out) == 20
+    assert [r["msg"] for r in out if r["level"] != "INFO"] == ["e1", "e5", "e9"]
+    assert [r["msg"] for r in out if r["level"] == "INFO"] == [f"e{i}" for i in range(13, 30)]
+    assert out == sorted(out, key=lambda r: r["ts"])
+    many = [_row(i, "ERROR") for i in range(25)] + [_row(i, "INFO") for i in range(25, 30)]
+    assert [r["msg"] for r in _trim_rows(many)] == [f"e{i}" for i in range(5, 25)]
+    assert _trim_rows(rows[:3]) == rows[:3]
