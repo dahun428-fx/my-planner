@@ -44,6 +44,12 @@ AREA_EXAMPLE = "예: 커리어 7 경제 5 건강 6 관계 8 배움 7 삶의 질 
 
 STEP_PROMPTS = ("review_month.md", "review_quarter.md", "review_year.md")
 
+# 이 회차에서 하네스가 마지막으로 보낸 단계 `<run_id>:<stage>`(ladder1 | ladder2 | areas). 글로 답해도 다음
+# 단계를 이어 붙이고, 같은 단계를 두 번 보내지 않는다
+REVIEW_STAGE_KEY = "review_step_stage"
+Stage = Literal["ladder1", "ladder2", "areas"]
+
+
 @dataclass(frozen=True)
 class ReviewSteps:
     """그 회고에 더하는 단계. 분기는 월말을, 연말은 분기를 품는다."""
@@ -105,6 +111,9 @@ class NextStep:
     text: str
     ladder: tuple[str, LadderField] | None = None
     conversation_id: int | None = None  # 원문 기록에 남길 회고 대화(보낼 때)
+    stage: Stage | None = None  # 보내면 그 회차의 단계로 적는다
+    run_id: int | None = None  # 단계를 적을 회차(primary)
+    first: bool = False  # 회차마다 한 번인 첫 단계(`ladder_prompted_run_id`)
 
 
 @dataclass(frozen=True)
@@ -140,15 +149,16 @@ def first_step(of: ReviewOf | None, curve: CurveRepo | None) -> NextStep | None:
         return None
     ladder = curve.ladder(of.month)
     if ladder is None or ladder.now is None:
-        return NextStep(LADDER_STEP1, (of.month, "n"))
-    return area_step(of, curve)
+        return NextStep(LADDER_STEP1, (of.month, "n"), stage="ladder1", first=True)
+    area = area_step(of, curve)
+    return replace(area, first=True) if area is not None else None
 
 
 def area_step(of: ReviewOf, curve: CurveRepo) -> NextStep | None:
     """분기 회고이고 그 분기 영역 점수가 아직 없으면 영역 점수 묻기(지난 분기 점수 함께)."""
     if not of.steps.quarter or curve.area_scores(of.quarter):
         return None
-    return NextStep(area_scores_ask(previous_scores(of.quarter, curve)))
+    return NextStep(area_scores_ask(previous_scores(of.quarter, curve)), stage="areas")
 
 
 def previous_scores(period: str, curve: CurveRepo) -> dict[str, int]:
@@ -196,14 +206,55 @@ class ReviewFlow:
     def claimed(self, run_id: int) -> bool:
         return self.state.get(LADDER_PROMPTED_KEY) == str(run_id)
 
-    def claim(self, run_id: int) -> None:
+    def claim(self, run_id: int, stage: Stage | None = "ladder1") -> None:
+        """첫 단계를 물었다(회차마다 한 번). 그 단계도 적는다."""
         self.state.set(LADDER_PROMPTED_KEY, str(run_id))
+        self.set_stage(run_id, stage)
+
+    def release(self, run_id: int) -> None:
+        """첫 단계를 보내지 못했다: 표시를 거둔다(다음 기회에 다시 묻는다)."""
+        if self.claimed(run_id):
+            self.state.set(LADDER_PROMPTED_KEY, None)
+            self.state.set(REVIEW_STAGE_KEY, None)
+
+    def stage(self, run_id: int) -> str | None:
+        v = self.state.get(REVIEW_STAGE_KEY)
+        rid, _, st = (v or "").partition(":")
+        return st if rid == str(run_id) else None
+
+    def set_stage(self, run_id: int, stage: Stage | None) -> None:
+        if stage is not None:
+            self.state.set(REVIEW_STAGE_KEY, f"{run_id}:{stage}")
 
     def pending_step(self, primary: Run) -> NextStep | None:
         """아직 묻지 않은 첫 단계(표시는 하지 않는다)."""
         if self.claimed(primary.id):
             return None
-        return first_step(self.of_run(primary), self.curve)
+        step = first_step(self.of_run(primary), self.curve)
+        return replace(step, run_id=primary.id, conversation_id=primary.conversation_id) if step else None
+
+    def reply_step(self, primary: Run) -> NextStep | None:
+        """회고 대화의 글 답 끝에 붙일 단계(두뇌 차례 **뒤**에 판정한다: 두뇌가 그 글로 기록했을 수 있다).
+
+        - 첫 단계를 아직 묻지 않았으면 첫 단계(그 달 `now`가 이미 있으면 사다리는 건너뛴다, 빈 곳 14).
+        - 1단계를 물었고 `now`가 글로 기록됐는데 `future`가 없으면 2단계(`f` 키보드).
+        - 사다리가 끝났거나(1단계 뒤 `now`가 기록됨, 또는 2단계 뒤 아무 답) 분기 회고이고 그 분기 영역 점수가
+          없으면 영역 점수 묻기(11.1-3: 버튼 대신 글로 답해도 이어진다).
+        """
+        if not self.claimed(primary.id):
+            return self.pending_step(primary)
+        of = self.of_run(primary)
+        if of is None or not of.steps:
+            return None
+        stage = self.stage(primary.id)
+        ladder = self.curve.ladder(of.month)
+        has_now = ladder is not None and ladder.now is not None
+        step: NextStep | None = None
+        if stage == "ladder1" and has_now and ladder is not None and ladder.future is None:
+            step = NextStep(LADDER_STEP2, (of.month, "f"), stage="ladder2")
+        elif (stage == "ladder1" and has_now) or stage == "ladder2":
+            step = area_step(of, self.curve)
+        return replace(step, run_id=primary.id, conversation_id=primary.conversation_id) if step else None
 
     def _open(self, primary: Run, at: datetime) -> bool:
         from my_planner.harness.checkins import reply_until
@@ -221,12 +272,7 @@ class ReviewFlow:
         primary = self.runs.merged_into(run.id) or run
         if not self._open(primary, self.clock.now()):
             return None
-        step = self.pending_step(primary)
-        if step is None:
-            return None
-        self.claim(primary.id)
-        log.info("review_step_prompted", extra={"run_id": primary.id, "where": "condition"})
-        return replace(step, conversation_id=primary.conversation_id)
+        return self.pending_step(primary)  # 표시는 `send`가 보내기 전에 한다
 
     def open_month_review(self, period: str) -> tuple[Run, ReviewOf] | None:
         """그 달(`YYYY-MM`)의 월말 회고 회차(primary)가 지금 답장 창 안이면 (primary, 회고)."""
@@ -243,7 +289,8 @@ class ReviewFlow:
         found = self.open_month_review(period)
         if found is None:
             return None
-        return NextStep(LADDER_STEP2, (period, "f"), found[0].conversation_id)
+        primary = found[0]
+        return NextStep(LADDER_STEP2, (period, "f"), primary.conversation_id, stage="ladder2", run_id=primary.id)
 
     def after_future(self, period: str) -> NextStep | None:
         """`5년 뒤`를 누르거나 건너뛰었다: 열린 월말 회고면 "기록했어요: …"(분기 회고면 이어서 영역 점수 묻기)."""
@@ -252,8 +299,10 @@ class ReviewFlow:
             return None
         primary, of = found
         text = self.recorded_copy(period)
-        area = area_step(of, self.curve)
-        return NextStep(f"{text}\n\n{area.text}" if area is not None else text, None, primary.conversation_id)
+        area = area_step(of, self.curve) if self.stage(primary.id) != "areas" else None
+        if area is None:
+            return NextStep(text, None, primary.conversation_id)
+        return NextStep(f"{text}\n\n{area.text}", None, primary.conversation_id, stage="areas", run_id=primary.id)
 
     def recorded_copy(self, period: str) -> str:
         """부록 A "사다리 기록"(그 달 지금 값으로)."""
@@ -263,12 +312,24 @@ class ReviewFlow:
     # --- 보내기 ---
 
     async def send(self, step: NextStep) -> bool:
-        """단계 메시지를 텔레그램에 보낸다(하루 3회에 세지 않는다). 보냈으면 원문 기록에 비서 줄을 남긴다."""
+        """단계 메시지를 텔레그램에 보낸다(하루 3회에 세지 않는다). 보냈으면 원문 기록에 비서 줄을 남긴다.
+
+        첫 단계는 보내기 **전에** 표시한다(보내는 동안 다른 길이 같은 단계를 또 묻지 않게). 보내지 못하면 거둔다.
+        다음 단계는 보낸 뒤에 그 회차의 단계로 적는다.
+        """
+        if step.first and step.run_id is not None:
+            self.claim(step.run_id, step.stage)
         try:
             await self._send(step)
         except Exception as e:  # noqa: BLE001 - 본문 없이 종류만 남긴다
             log.warning("review_step_send_error", extra={"error_type": type(e).__name__})
+            if step.first and step.run_id is not None:
+                self.release(step.run_id)
             return False
+        if step.run_id is not None:
+            if not step.first:
+                self.set_stage(step.run_id, step.stage)
+            log.info("review_step_prompted", extra={"run_id": step.run_id, "stage": step.stage})
         if self.transcripts is not None:
             try:
                 self.transcripts.append(self.clock.now(), "비서", step.conversation_id, None, step.text)

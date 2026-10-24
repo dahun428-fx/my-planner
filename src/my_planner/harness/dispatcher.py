@@ -340,6 +340,7 @@ class Dispatcher:
         self._no_fork: set[int] = set()
         self._stopping = False
         self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
+        self._run_questions: dict[int, int] = {}  # 회차 id → 그 회고에 실은 열린 시드 질문 id(보내면 `asked`)
         # 회고 단계(SP3-4 11.1): 곡선 저장소가 있을 때만. 텔레그램 버튼 처리기도 같은 것을 쓴다
         curve = tools.curve if tools is not None else None
         self.review_flow: ReviewFlow | None = (
@@ -775,13 +776,16 @@ class Dispatcher:
         if conv.kind is ConversationKind.run and conv.run_id is not None:
             # 회차 대화에 들어온 사용자 메시지는 그 회차의 답이다(6.4.5, 7.5 M3). 처음 한 번만, 보낸 시각으로
             self._answer_by_message(conv.run_id, channel, batch[0].sent_at)
-        # 회고 단계(SP3-4 11.1-1 (b)): 컨디션 버튼 없이 회고 대화에 처음 들어온 글이면 답 끝에 첫 단계를 붙인다
-        review_step = self._reply_review_step(conv, batch[0].sent_at) if app is None else None
+        # 회고 단계(SP3-4 11.1-1 (b), 11.1-3): 텔레그램 회고 대화의 글이면 답 끝에 다음 단계를 붙인다. 두뇌에게는
+        # 지금 판정으로 알리고, 붙일 단계는 두뇌 차례 뒤에 다시 판정한다(그 글로 사다리를 기록했을 수 있다)
+        review_run = self._review_reply_run(conv, batch[0].sent_at) if app is None else None
+        flow = self.review_flow
+        review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
         run_ctx = self._message_ctx(conv.id, lead)
         body = _join(
             self._recorded_condition(), f"## 메시지\n{text}",
-            step_note(review_step[1] if review_step is not None else None, where="답"),
+            step_note(review_step, where="답"),
         )
         with self._awake.hold():
             fell_back = False
@@ -891,7 +895,10 @@ class Dispatcher:
             body_text = app.writer.streamed_reply if streamed else _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             # 두뇌가 제대로 답했을 때만 첫 단계를 붙인다(일반 문구 아래에는 묻지 않는다)
-            step = review_step[1] if review_step is not None and _run_ok(result) else None
+            step = (
+                flow.reply_step(review_run)
+                if flow is not None and review_run is not None and _run_ok(result) else None
+            )
             # 텔레그램: 두뇌 답, 빈 줄, 확인 문구(도구를 안 불렀으면 빈 줄도 없다), 회고 단계. 앱: 확인 문구는
             # `data-activity`로
             reply = _join(body_text, confirmations, step.text if step is not None else "")
@@ -905,8 +912,8 @@ class Dispatcher:
                 out.ladder = step.ladder
             if not await self._send_reply(out, update_ids, conv.id):
                 return
-            if step is not None and review_step is not None:
-                self._claim_review_step(review_step[0], "message")
+            if step is not None:
+                self._claim_review_step(step, "message")
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
             self._messages_done(update_ids, reply=sent_text, confirmation=confirmations, conversation_id=conv.id)
             self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names))
@@ -1361,13 +1368,13 @@ class Dispatcher:
         if step is not None:
             # 컨디션 줄이 없는 회고 메시지(11.1-1 (c)): 첫 단계를 글 끝에 붙이고 회차마다 한 번으로 표시한다
             text = f"{text}\n\n{step.text}"
-            self._claim_review_step(run.id, "run")
+            self._claim_review_step(step, "run")
         runs.save_outbound(run.id, text)
         out = _outbound(text, run_ctx)
         out.ask_condition_for = ask
         out.ladder = step.ladder if step is not None else None
-        if question is not None and self.tools is not None:
-            self.tools.mark_question_asked(question[0])  # 열린 시드 질문은 월말 회고마다 하나(11.1-5)
+        if question is not None:
+            self._run_questions[run.id] = question[0]  # 보낸 뒤에 `asked`(11.1-5, `_run_delivered`)
         return conv, out, list(run_ctx.tool_names)
 
     def _review_extras(
@@ -1387,9 +1394,9 @@ class Dispatcher:
         q = flow.curve.next_open_question()
         return step, ((q.id, q.text) if q is not None else None)
 
-    def _reply_review_step(self, conv: Conversation, sent_at: datetime) -> tuple[int, NextStep] | None:
-        """텔레그램 회고 대화에 보낸 시각 기준 답장 창 안에서 들어온 글이고 첫 단계를 아직 묻지 않았으면
-        (primary 회차 id, 단계). 컨디션 버튼을 먼저 눌렀거나 회고 메시지에 이미 붙였으면 None(회차마다 한 번)."""
+    def _review_reply_run(self, conv: Conversation, sent_at: datetime) -> Run | None:
+        """텔레그램 회차 대화에 보낸 시각 기준 답장 창 안에서 들어온 글이면 그 회차(primary). 단계는
+        `ReviewFlow.reply_step`이 정한다(월말 회고가 아니면 없다)."""
         flow = self.review_flow
         if flow is None or self.runs is None or conv.kind is not ConversationKind.run or conv.run_id is None:
             return None
@@ -1397,15 +1404,18 @@ class Dispatcher:
         if run is None:
             return None
         primary = self.runs.merged_into(run.id) or run
-        if not self.router.run_in_window(primary, sent_at):
-            return None
-        step = flow.pending_step(primary)
-        return (primary.id, step) if step is not None else None
+        return primary if self.router.run_in_window(primary, sent_at) else None
 
-    def _claim_review_step(self, run_id: int, where: str) -> None:
-        if self.review_flow is not None:
-            self.review_flow.claim(run_id)
-            log.info("review_step_prompted", extra={"run_id": run_id, "where": where})
+    def _claim_review_step(self, step: NextStep, where: str) -> None:
+        """보낸(보낼) 단계를 적는다: 첫 단계면 회차마다 한 번 표시, 다음 단계면 그 회차의 단계."""
+        flow = self.review_flow
+        if flow is None or step.run_id is None:
+            return
+        if step.first:
+            flow.claim(step.run_id, step.stage)
+        else:
+            flow.set_stage(step.run_id, step.stage)
+        log.info("review_step_prompted", extra={"run_id": step.run_id, "stage": step.stage, "where": where})
 
     async def _run_brain(
         self, run: Run, merged: list[Run], conv: Conversation, ask: date | None = None, *,
@@ -1622,6 +1632,12 @@ class Dispatcher:
         except Exception:
             log.exception("run_touch_error", extra={"run_id": run.id})
         self._save_review(run, merged, text)
+        question = self._run_questions.pop(run.id, None)
+        if question is not None and self.tools is not None:
+            try:
+                self.tools.mark_question_asked(question)  # 열린 시드 질문은 월말 회고마다 하나(11.1-5)
+            except Exception as e:  # noqa: BLE001 - 질문 표시가 안 되면 다음 월말 회고가 다시 싣는다
+                log.warning("curve_question_mark_error", extra={"error_type": type(e).__name__})
         log.info("run_done", extra={"run_id": run.id, "loop": run.loop.value, "conversation_id": conv.id})
 
     def _save_review(self, run: Run, merged: list[Run], text: str) -> None:

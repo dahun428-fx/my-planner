@@ -406,3 +406,125 @@ async def test_resend_on_start_keeps_ladder_on_review_message(tmp_path):
 
     assert out.text == f"{REVIEW}\n\n{LADDER_STEP1}"
     assert out.ladder == ("2026-11", "n") and out.ask_condition_for is None
+
+
+# --- 고침 1회차: 두뇌 차례 뒤 다시 판정, 글로 답한 사다리 뒤의 단계 ---
+
+
+def _ladder_turn(text, **scores):
+    return FakeTurn([("record_ladder_score", scores)], text)
+
+
+async def test_text_ladder_answer_gets_no_step1_keyboard(tmp_path):
+    # 컨디션 줄만 있는 회고에 "지금 6, 5년 뒤 8"이라고 글로 답했다: 두뇌가 기록했으니 1단계를 묻지 않는다(빈 곳 14)
+    async with _start(tmp_path, script=[_ladder_turn("꾸민 답", now=6, future=8)]) as env:
+        _, mid = await _review(env)
+        env.clock.advance(minutes=5)
+        await env.telegram("지금 6, 5년 뒤 8")
+        reply = env.sender.sent[-1]
+        await env.press("c:2026-11-29:4", message_id=mid)
+        toast = env.bot.answers[-1][1]
+
+    assert reply.text == "꾸민 답\n\n✓ 사다리를 기록했어요 (2026-11): 지금 6 · 5년 뒤 8"
+    assert reply.ladder is None
+    assert toast == "컨디션 4 기록했어요." and len(env.sender.sent) == 2
+
+
+async def test_condition_press_during_brain_turn_asks_step1_once(tmp_path):
+    import asyncio
+
+    gate = asyncio.Event()
+    async with _start(tmp_path, script=[FakeTurn([], "꾸민 답", gate=gate)]) as env:
+        _, mid = await _review(env)
+        env.clock.advance(minutes=5)
+        text_task = asyncio.create_task(env.telegram("꾸민 사용자 글"))
+        for _ in range(1000):
+            await asyncio.sleep(0)
+            if len(env.brain.calls) == 2:
+                break
+        answered = len(env.bot.answers)
+        in_turn = len(env.brain.calls) == 2 and not text_task.done()
+        press_task = asyncio.create_task(env.press("c:2026-11-29:4", message_id=mid))
+        for _ in range(1000):
+            await asyncio.sleep(0)
+            if len(env.bot.answers) > answered:
+                break
+        gate.set()
+        await text_task
+        await press_task
+        steps = [o for o in env.sender.sent if o.ladder is not None]
+
+    assert in_turn  # 누름은 두뇌 차례 도중이었다
+    assert [o.text for o in steps] == [f"컨디션 4 기록했어요.\n\n{LADDER_STEP1}"]
+    assert env.sender.sent[-1].text == "꾸민 답"
+
+
+async def test_quarter_text_ladder_then_area_ask(tmp_path):
+    from curve_sql import area_scores
+
+    # 12/27: 1단계는 버튼으로 받고 사다리를 글로 답했다 → 영역 점수 묻기가 답 끝에 온다(11.1-3). 두 번 묻지 않는다
+    script = [_ladder_turn("꾸민 답", now=6, future=8), FakeTurn([], "꾸민 다음 답")]
+    async with _start(tmp_path, script=script, at=SUN_1227 + timedelta(seconds=30)) as env:
+        area_scores(env.conn, "2026-Q3", career=7, finance=5)
+        env.conn.commit()
+        _, mid = await _review(env)
+        await env.press("c:2026-12-27:4", message_id=mid)
+        env.clock.advance(minutes=5)
+        await env.telegram("6이고 5년 뒤는 8")
+        reply = env.sender.sent[-1]
+        await env.telegram("꾸민 다른 글")
+        later = env.sender.sent[-1]
+
+    assert reply.text == f"꾸민 답\n\n✓ 사다리를 기록했어요 (2026-12): 지금 6 · 5년 뒤 8\n\n{AREA_ASK_Q3}"
+    assert reply.ladder is None
+    assert later.text == "꾸민 다음 답"
+
+
+async def test_quarter_text_now_then_step2_then_button_area_ask(tmp_path):
+    # 1단계에 "6"만 글로 답했다 → 2단계(f 키보드)가 답 끝에 → 5년 뒤 버튼 → 기록 문구와 영역 점수 묻기
+    script = [_ladder_turn("꾸민 답", now=6)]
+    async with _start(tmp_path, script=script, at=SUN_1227 + timedelta(seconds=30)) as env:
+        _, mid = await _review(env)
+        await env.press("c:2026-12-27:4", message_id=mid)
+        env.clock.advance(minutes=5)
+        await env.telegram("6")
+        reply = env.sender.sent[-1]
+        await env.press("l:2026-12:f:8")
+        done = env.sender.sent[-1]
+
+    assert reply.text.endswith(f"\n\n{LADDER_STEP2}") and reply.ladder == ("2026-12", "f")
+    assert done.text.startswith("기록했어요: 지금 6, 5년 뒤 8\n\n이번 분기 영역 점수도 여쭤볼게요.")
+
+
+async def test_ladder_button_across_month_boundary_records_button_month(tmp_path):
+    # Review Focus 5: 5/31(일) 월말 회고. 6/1 01:30(논리적 날짜 5/31)과 6/1 10:00(6월, 답장 창 안)에 누른다
+    async with _start(tmp_path, at=kst(2026, 5, 31, 18, 0) + timedelta(seconds=30)) as env:
+        _, mid = await _review(env)
+        await env.press("c:2026-05-31:4", message_id=mid)
+        env.clock.set(kst(2026, 6, 1, 1, 30))
+        await env.press("l:2026-05:n:6")
+        step2 = env.sender.sent[-1]
+        env.clock.set(kst(2026, 6, 1, 10, 0))
+        await env.press("l:2026-05:f:8")
+        done = env.sender.sent[-1]
+        may, june = env.parts.curve.ladder("2026-05"), env.parts.curve.ladder("2026-06")
+
+    assert step2.text == LADDER_STEP2
+    assert done.text == "기록했어요: 지금 6, 5년 뒤 8"
+    assert (may.now, may.future) == (6, 8) and june is None
+
+
+async def test_step1_send_failure_releases_claim(tmp_path):
+    # 컨디션 다음 1단계 메시지를 보내지 못했다: 토스트로 답하고, 다음 글 답에서 1단계를 다시 묻는다
+    async with _start(tmp_path, script=[FakeTurn([], "꾸민 답")]) as env:
+        _, mid = await _review(env)
+        env.sender.fail = True
+        await env.press("c:2026-11-29:4", message_id=mid)
+        toast = env.bot.answers[-1][1]
+        env.sender.fail = False
+        env.clock.advance(minutes=5)
+        await env.telegram("꾸민 사용자 글")
+        reply = env.sender.sent[-1]
+
+    assert toast == "컨디션 4 기록했어요."
+    assert reply.text == f"꾸민 답\n\n{LADDER_STEP1}" and reply.ladder == ("2026-11", "n")

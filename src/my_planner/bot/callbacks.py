@@ -260,7 +260,7 @@ def _curve(
 def _review_step(
     query: CallbackQuery, deliveries: DeliveriesRepo | None, review: ReviewFlow | None
 ) -> NextStep | None:
-    """누른 컨디션 버튼이 월말 회고 묶음 메시지에 붙어 있고 아직 첫 단계를 묻지 않았으면 그 단계(표시까지 한다)."""
+    """누른 컨디션 버튼이 월말 회고 묶음 메시지에 붙어 있고 아직 첫 단계를 묻지 않았으면 그 단계(표시는 `send`가 한다)."""
     msg = query.message
     if review is None or deliveries is None or msg is None:
         return None
