@@ -510,6 +510,8 @@ class Tools:
                 ctx, "priorities_set", priorities_target(c.value, period),
                 confirmation_line(ToolEvent("priorities_set", None, data), self.today()),
                 {"cadence": c.value, "period": period, "task_ids": before},
+                # 목록과 함께, 빠지거나 들어온 할 일도 바뀐 대상이다(그 할 일의 확인 토큰이 stale이 된다)
+                targets=[priorities_target(c.value, period), *(task_target(i) for i in dict.fromkeys([*before, *ids]))],
             )
         ctx.events.append(
             ToolEvent(

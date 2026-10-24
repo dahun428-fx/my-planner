@@ -366,3 +366,30 @@ def test_needs_confirm_without_confirms_repo_never_applies(tmp_path, conn):
     with pytest.raises(RuntimeError):
         apply_action(deps, ActionRequest("drop_task", {"id": tid}, actor="user", channel="app"))
     assert env.repo.get(tid).status.value == "open"
+
+
+@pytest.mark.parametrize("which", ["old", "new"])
+async def test_drop_token_stale_after_set_priorities_touches_task(tmp_path, which):
+    """`drop_task` 토큰 뒤에 그 할 일이 든(빠지거나 들어온) 목록을 바꾸면 그 토큰은 stale(409)이다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = await _add(env, "가"), await _add(env, "나")
+        day = {"cadence": "day", "period": "2026-10-24"}
+        await env.action("set_priorities", {**day, "task_ids": [a]})
+        await env.action("set_priorities", {"cadence": "week", "period": "2026-W43", "task_ids": [b]})
+        victim = a if which == "old" else b
+        _, nc = await env.action("drop_task", {"id": victim})
+        assert nc["status"] == "needs_confirm"
+        env.clock.advance(minutes=1)
+        # 오늘 목록을 바꾼다: old는 a가 빠지고, new는 b가 들어온다
+        await env.action("set_priorities", {**day, "task_ids": [b] if which == "old" else [a, b]})
+        row = env.activity()[-1]
+        targets = env.parts.activity.targets(row["id"])
+        env.clock.advance(minutes=1)
+        status, err = await env.action("drop_task", {"id": victim}, confirm_token=nc["confirm_token"])
+        resolution = _token_row(env, nc["confirm_token"])["resolution"]
+        state = env.parts.tasks.get(victim).status.value
+
+    assert row["kind"] == "priorities_set" and row["target"] == "priorities:day:2026-10-24"
+    assert set(targets) == {"priorities:day:2026-10-24", f"task:{a}", f"task:{b}"}
+    assert status == 409 and err["error"]["code"] == "conflict"
+    assert resolution == "stale" and state == "open"
