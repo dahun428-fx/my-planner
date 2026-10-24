@@ -195,7 +195,7 @@ async def test_x5_once_for_bundle_and_x8_on_1227(tmp_path):
 
 async def test_mark_answered_and_ledger_atomic(tmp_path, monkeypatch):
     def boom(self, **kw):
-        raise sqlite3.OperationalError("꾸민 실패")
+        raise sqlite3.OperationalError("꾸민 오류")
 
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         run = _sent_run(env, LoopKey.evening_checkin, kst(2026, 10, 24, 18, 0))
@@ -222,7 +222,7 @@ async def test_mark_answered_and_ledger_atomic(tmp_path, monkeypatch):
 async def test_condition_task_and_curve_ledger_roll_back_with_change(tmp_path, monkeypatch):
     """X1/X4가 변경과 한 트랜잭션: 원장 쓰기가 안 되면 변경도 활동도 없다."""
     def boom(self, **kw):
-        raise sqlite3.OperationalError("꾸민 실패")
+        raise sqlite3.OperationalError("꾸민 오류")
 
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         a = await _add(env)

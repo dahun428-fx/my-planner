@@ -1576,18 +1576,11 @@ class Dispatcher:
             log.warning("run_delivery_record_error", extra={"run_id": run.id, "error_type": type(e).__name__})
 
     def _record_deliveries(self, run: Run, outcome: DeliveryOutcome) -> None:
-        """`run_deliveries`: 푸시를 해 봤으면 앱 줄(받았으면 sent), 텔레그램으로 보냈으면(대체 포함) 텔레그램 줄."""
+        """`run_deliveries`는 `harness/delivery.py`가 쓴다(4.3). 회차 상태와 같은 트랜잭션 안에서 부른다."""
+        from my_planner.harness.delivery import record_deliveries
+
         assert self.deliveries is not None
-        status = "sent" if outcome.sent else "not_sent"
-        if outcome.tried_push:
-            app_status = "sent" if outcome.push_ok > 0 else "not_sent"
-            self.deliveries.record(
-                run.id, "app", "full", app_status, push_ok=outcome.push_ok, push_failed=outcome.push_failed
-            )
-        if outcome.channel == "telegram":
-            self.deliveries.record(
-                run.id, "telegram", outcome.mode, status, telegram_message_id=outcome.telegram_message_id
-            )
+        record_deliveries(self.deliveries, run.id, outcome)
 
     def _later(self, delay: float, job: _ResendJob) -> None:
         if self._stopping:

@@ -116,3 +116,21 @@ def test_sp1_tasks_transaction_unchanged():
         check=False, cwd=SRC.parents[1], capture_output=True, text=True, timeout=300,
     )
     assert out.returncode == 0 and "failed" not in out.stdout, out.stdout[-2000:]
+
+
+def test_after_commit_runs_after_outermost_commit_only(conn):
+    from my_planner.store.db import after_commit
+
+    calls: list[str] = []
+    after_commit(conn, lambda: calls.append("outside"))  # 트랜잭션 밖: 바로
+    with transaction(conn):
+        with transaction(conn):
+            after_commit(conn, lambda: calls.append("inner"))
+        assert calls == ["outside"]  # 안쪽이 끝나도 아직 커밋 전이다
+    assert calls == ["outside", "inner"]
+    with pytest.raises(RuntimeError), transaction(conn):
+        after_commit(conn, lambda: calls.append("rolled back"))
+        raise RuntimeError("꾸민 오류")
+    with transaction(conn):
+        pass
+    assert calls == ["outside", "inner"]  # 롤백된 트랜잭션의 일은 버렸다

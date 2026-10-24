@@ -159,3 +159,52 @@ async def test_chat_logs_have_no_body_args_or_token(tmp_path):
     for secret in ("SECRET-BODY", "SECRET-ARG", "SECRET-REPLY", TEST_TOKEN, "cm-log"):
         assert secret not in raw, secret
     assert routes == [("POST", "/api/v1/chat", 200)] * 3
+
+
+async def test_full_scenario_logs_have_no_secrets(tmp_path):
+    """BE 마무리(SP3-4 티켓 15, 1장 완료 조건 3, 14장): 텔레그램·앱·버튼·`/actions`·되돌리기·푸시·회차·하루 한 번
+    작업·`/status`·경험치를 한 번에 돌린 뒤 시스템 로그에 토큰, 메시지 본문, 할 일 제목, 도구 인자 값, 푸시
+    `endpoint`가 없다. 내용은 꾸며 낸 것이다."""
+    from datetime import timedelta
+
+    from fakes import FakePushSender, FakeTurn
+    from test_delivery import tick_at
+
+    sentence = "비밀 문장 7f3a"
+    title = "비밀제목-9c1e"
+    note = "비밀메모-5b2d"
+    reason = "비밀사유-1a8f"
+    endpoint = "https://push.example.invalid/sub/SECRET-ENDPOINT-44d1"
+    add = ("add_task", {"title": title, "areas": ["health"], "planned_for": "2026-10-24", "note": note})
+    grant = ("grant_xp", {"amount": 10, "reason": reason})
+    propose = ("propose_tasks", {"tasks": [{"title": f"{title}-초안", "areas": ["career"]}]})
+    script = [FakeTurn([add, grant], f"답-{sentence}"), FakeTurn([], "비밀답-앱-3e7c"),
+              FakeTurn([propose], "비밀회차본문-6f0a"), FakeTurn([], "비밀회차답-8d2b")]
+    push = FakePushSender()
+    async with BeEnv.start(tmp_path, start=START, script=script, push=push) as env:
+        setup_logging(env.settings.paths.state_dir, 30)
+        await env.telegram(sentence)
+        await env.chat(f"앱-{sentence}")
+        tid = env.parts.tasks.list()[0].id
+        _, done = await env.action("complete_task", {"id": tid})
+        await env.post(f"/activity/{done['activity_id']}/undo", json={"client_msg_id": "SECRET-CMID-0b9e"})
+        await env.action("update_task", {"id": tid, "note": f"{note}-2"})
+        await env.subscribe(endpoint, label="비밀기기-2c4f")
+        await env.post("/push/test", json={})
+        await tick_at(env, kst(2026, 10, 24, 18, 0) + timedelta(seconds=30))  # 저녁 체크인(푸시)
+        env.clock.set(kst(2026, 10, 24, 18, 30))
+        await env.telegram("비밀회차글-4a9d")
+        await env.press("c:2026-10-24:4")
+        draft = env.parts.tasks.list(status="draft")[0].id
+        await env.press(f"d:c:{draft}")
+        await env.telegram("/status")
+        await env.chat("/status")
+        await tick_at(env, kst(2026, 10, 26, 9, 0) + timedelta(seconds=30))  # 하루 한 번 작업(쉬는 날 X9)
+        raw = _raw(env.settings.paths.state_dir)
+        ledger = env.conn.execute("SELECT source_kind FROM status_xp_ledger").fetchall()
+
+    assert {r["source_kind"] for r in ledger} >= {"task_done", "secretary", "condition", "checkin_reply", "rest_day"}
+    for secret in (TEST_TOKEN, "Bearer", sentence, "7f3a", title, note, reason, endpoint, "SECRET-ENDPOINT",
+                   "비밀답-앱", "비밀회차본문", "비밀회차답", "비밀회차글", "비밀기기", "SECRET-CMID", "push.example"):
+        assert secret not in raw, secret
+    assert "xp_granted_by_secretary" in raw and "rest_days_granted" in raw  # 남는 것은 이름과 수만

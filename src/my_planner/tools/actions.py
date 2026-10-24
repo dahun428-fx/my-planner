@@ -655,7 +655,7 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
 
 
 def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
-    """적용한 동작이 답한 회차가 있으면 처음 한 번 적는다(`harness.checkins.run_answered_by`, 동작이 커밋된 뒤)."""
+    """적용한 동작이 답한 회차가 있으면 처음 한 번 적는다(`harness.checkins.run_answered_by`, 같은 트랜잭션의 안쪽 SAVEPOINT, `_answer_in_savepoint`)."""
     if deps.mark_answered is None or deps.runs is None or deps.settings is None:
         return
     from my_planner.harness.checkins import run_answered_by
