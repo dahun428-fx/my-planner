@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 
 class FakeClock:
@@ -24,42 +26,194 @@ class FakeClock:
 class FakeResponse:
     status: int = 200
     body: Any = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class FakeRequest:
     method: str
-    path: str
-    body: Any = None
+    url: str
+    json: Any = None
     headers: dict[str, str] = field(default_factory=dict)
+    timeout: float = 10
+
+    @property
+    def path(self) -> str:
+        return urlsplit(self.url).path
+
+    @property
+    def query(self) -> dict[str, str]:
+        return dict(parse_qsl(urlsplit(self.url).query))
+
+
+Route = Callable[[str, str, Any], tuple[int, Any, dict[str, str]]]
 
 
 class FakeHttp:
-    """(메서드, 경로)별 응답 큐. 큐가 비면 마지막 응답을 되풀이하고, 없으면 404."""
+    """`Http` 프로토콜의 가짜(`my_planner_medic.http`). 받은 요청을 `requests`에 남긴다.
 
-    def __init__(self) -> None:
+    응답 고르는 순서:
+    1. `outage`(상태 코드, 0이면 연결 실패)가 있으면 모든 요청이 그것.
+    2. (메서드, 경로) 큐에 응답이 있으면 하나 꺼낸다. 큐가 비면 마지막 응답을 되풀이한다.
+    3. `lose_next(메서드, 경로)`면 `route`가 처리는 하고 응답은 `(0, None, {})`(응답이 끊김).
+    4. `route`(예: `FakeGitHub.route`)가 있으면 그것, 없으면 404.
+    """
+
+    def __init__(self, route: Route | None = None) -> None:
         self._queues: dict[tuple[str, str], deque[FakeResponse | Exception]] = defaultdict(deque)
         self._last: dict[tuple[str, str], FakeResponse | Exception] = {}
+        self._lose: list[tuple[str, str]] = []
+        self.route = route
+        self.outage: int | None = None
         self.requests: list[FakeRequest] = []
 
     def queue(self, method: str, path: str, *responses: FakeResponse | Exception) -> None:
         self._queues[(method.upper(), path)].extend(responses)
 
+    def clear(self, method: str, path: str) -> None:
+        """그 (메서드, 경로)의 큐와 되풀이 응답을 지워 다시 `route`로 보낸다."""
+        key = (method.upper(), path)
+        self._queues.pop(key, None)
+        self._last.pop(key, None)
+
+    def lose_next(self, method: str, path: str) -> None:
+        self._lose.append((method.upper(), path))
+
+    def calls(self, method: str, path: str) -> list[FakeRequest]:
+        return [r for r in self.requests if r.method == method.upper() and r.path == path]
+
     def request(
         self,
         method: str,
-        path: str,
-        body: Any = None,
+        url: str,
+        *,
         headers: dict[str, str] | None = None,
-    ) -> FakeResponse:
-        key = (method.upper(), path)
-        self.requests.append(FakeRequest(key[0], path, body, dict(headers or {})))
-        q = self._queues[key]
-        item = q.popleft() if q else self._last.get(key, FakeResponse(404))
-        self._last[key] = item
-        if isinstance(item, Exception):
-            raise item
-        return item
+        json: Any = None,
+        timeout: float = 10,
+    ) -> tuple[int, Any, dict[str, str]]:
+        req = FakeRequest(method.upper(), url, json, dict(headers or {}), timeout)
+        self.requests.append(req)
+        key = (req.method, req.path)
+        if self.outage is not None:
+            return self.outage, None, {}
+        q = self._queues.get(key)
+        if q or key in self._last:
+            item = q.popleft() if q else self._last[key]
+            self._last[key] = item
+            if isinstance(item, Exception):
+                raise item
+            return item.status, item.body, dict(item.headers)
+        if self.route is None:
+            return 404, None, {}
+        result = self.route(req.method, url, json)
+        if key in self._lose:
+            self._lose.remove(key)
+            return 0, None, {}
+        return result
+
+
+class FakeGitHub:
+    """api.github.com의 이 저장소 부분만 흉내 내는 상태 있는 가짜. `FakeHttp(route=gh.route)`로 쓴다."""
+
+    def __init__(self, repo: str = "o/r", clock: FakeClock | None = None) -> None:
+        self.repo = repo
+        self.clock = clock
+        self.issues: dict[int, dict[str, Any]] = {}
+        self.comments: dict[int, list[str]] = defaultdict(list)
+        self.runs: list[dict[str, Any]] = []
+        self.statuses: dict[str, list[dict[str, Any]]] = {}
+        self.compares: dict[tuple[str, str], list[str]] = {}
+        self.pulls: list[dict[str, Any]] = []
+        self.branches: dict[str, str] = {}
+        self._next = 1
+
+    # --- 시험 준비 ---
+    def add_issue(
+        self, title: str, labels: list[str], *, state: str = "open", body: str = "",
+        created_at: str = "2026-01-01T00:00:00Z",
+    ) -> int:
+        n = self._next
+        self._next += 1
+        self.issues[n] = {
+            "number": n, "title": title, "body": body, "state": state,
+            "labels": [{"name": x} for x in labels], "created_at": created_at,
+            "html_url": f"https://github.com/{self.repo}/issues/{n}",
+        }
+        return n
+
+    def labels(self, n: int) -> list[str]:
+        return [x["name"] for x in self.issues[n]["labels"]]
+
+    def titled(self, title: str) -> list[dict[str, Any]]:
+        return [i for i in self.issues.values() if i["title"] == title]
+
+    def _now(self) -> str:
+        if self.clock is None:
+            return "2026-01-01T00:00:00Z"
+        return self.clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # --- 라우터 ---
+    def route(self, method: str, url: str, json: Any) -> tuple[int, Any, dict[str, str]]:
+        parts = urlsplit(url)
+        q = dict(parse_qsl(parts.query))
+        prefix = f"/repos/{self.repo}"
+        if parts.netloc != "api.github.com" or not parts.path.startswith(prefix):
+            return 404, {"message": "Not Found"}, {}
+        segs = [unquote(s) for s in parts.path[len(prefix):].split("/")[1:]]
+        ok: dict[str, str] = {}
+        match method, segs:
+            case "GET", ["issues"]:
+                state = q.get("state", "open")
+                want = [x for x in q.get("labels", "").split(",") if x]
+                out = [
+                    i for i in sorted(self.issues.values(), key=lambda i: -i["number"])
+                    if (state == "all" or i["state"] == state)
+                    and all(w in [x["name"] for x in i["labels"]] for w in want)
+                ]
+                return 200, out[: int(q.get("per_page", 30))], ok
+            case "POST", ["issues"]:
+                n = self.add_issue(json["title"], list(json.get("labels", [])), body=json.get("body", ""),
+                                   created_at=self._now())
+                return 201, self.issues[n], ok
+            case "PATCH", ["issues", num] if int(num) in self.issues:
+                issue = self.issues[int(num)]
+                for k in ("title", "body", "state"):
+                    if k in json:
+                        issue[k] = json[k]
+                return 200, issue, ok
+            case "POST", ["issues", num, "labels"] if int(num) in self.issues:
+                have = self.labels(int(num))
+                for name in json["labels"]:
+                    if name not in have:
+                        self.issues[int(num)]["labels"].append({"name": name})
+                return 200, self.issues[int(num)]["labels"], ok
+            case "DELETE", ["issues", num, "labels", name] if int(num) in self.issues:
+                if name not in self.labels(int(num)):
+                    return 404, {"message": "Label does not exist"}, ok
+                self.issues[int(num)]["labels"] = [x for x in self.issues[int(num)]["labels"] if x["name"] != name]
+                return 200, self.issues[int(num)]["labels"], ok
+            case "POST", ["issues", num, "comments"] if int(num) in self.issues:
+                self.comments[int(num)].append(json["body"])
+                return 201, {"id": len(self.comments[int(num)])}, ok
+            case "GET", ["actions", "runs"]:
+                runs = [
+                    r for r in self.runs
+                    if all(r.get(k) == q[k] for k in ("head_sha", "event", "branch") if k in q)
+                ]
+                return 200, {"total_count": len(runs), "workflow_runs": runs}, ok
+            case "GET", ["commits", sha, "status"]:
+                return 200, {"sha": sha, "statuses": self.statuses.get(sha, [])}, ok
+            case "GET", ["compare", rng]:
+                base, _, head = rng.partition("...")
+                msgs = self.compares.get((base, head))
+                if msgs is None:
+                    return 404, {"message": "Not Found"}, ok
+                return 200, {"commits": [{"commit": {"message": m}} for m in msgs]}, ok
+            case "GET", ["pulls"]:
+                return 200, [p for p in self.pulls if q.get("state", "open") in ("all", p["state"])], ok
+            case "GET", ["branches", name] if name in self.branches:
+                return 200, {"name": name, "commit": {"sha": self.branches[name]}}, ok
+        return 404, {"message": "Not Found"}, ok
 
 
 @dataclass
