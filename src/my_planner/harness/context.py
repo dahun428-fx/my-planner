@@ -58,6 +58,7 @@ def build_preamble(
     merged: list[str] | None = None,
     habits: HabitsRepo | None = None,
     include_habits: bool = False,
+    habit_day: date | None = None,
 ) -> str:
     """새 세션의 앞머리. 빈 섹션은 뺀다. `paused_until`이 지금 뒤면 `## 멈춤`(한국 시간)을 붙인다.
 
@@ -115,8 +116,9 @@ def build_preamble(
     if include_habits and habits is not None:
         active = habits.list()
         if active:
-            done = habits.checked_on(today)
-            counts = habits.week_counts(today - timedelta(days=today.weekday()))
+            day = habit_day or today
+            done = habits.checked_on(day)
+            counts = habits.week_counts(day - timedelta(days=day.weekday()))
             sections.append("## 오늘 습관\n" + "\n".join(_today_habit_line(h, done, counts) for h in active))
 
     if paused_until is not None and now < paused_until:

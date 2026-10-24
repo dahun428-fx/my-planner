@@ -10,6 +10,7 @@ from be_env import BeEnv
 from fakes import FakeTurn
 from test_dispatcher_messages import kst
 
+from my_planner.domain import LoopKey
 from my_planner.harness.context import build_preamble, habit_week_block
 from my_planner.harness.dispatcher import _habit_buttons_note
 
@@ -152,3 +153,46 @@ async def test_habit_buttons_note_only_when_rows(tmp_path):
 
     assert out.habit_date is None
     assert "## 습관 버튼" not in prompt and "## 오늘 습관" not in prompt
+
+
+# --- 후속: return 회차, 회차 대화의 답, 습관 버튼 날짜 ---
+
+
+async def test_return_run_prompt_has_no_habits(tmp_path):
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([], "돌아오셨네요")]) as env:
+        habit(env, "물 마시기")
+        run = env.parts.runs.ensure(LoopKey.return_, env.clock.now())
+        env.parts.runs.mark_queued(run.id)
+        env.parts.dispatcher.submit_run(env.parts.runs.get(run.id), [])
+        await env.drain()
+        prompt = env.brain.prompts[0]
+
+    assert "## 지금" in prompt
+    assert "## 오늘 습관" not in prompt and "## 습관 버튼" not in prompt
+
+
+async def test_reply_in_run_conversation_has_today_habits(tmp_path):
+    async with BeEnv.start(
+        tmp_path, start=SAT_EVENING, script=[FakeTurn([], "수고했어요", session_id=None), FakeTurn([], "좋아요")]
+    ) as env:
+        habit(env, "물 마시기")
+        await env.tick()
+        await env.telegram("오늘 물 마셨어요")
+        prompt = env.brain.prompts[1]
+
+    assert "## 오늘 습관\n- 물 마시기 (매일)" in prompt
+
+
+def test_today_habit_block_uses_habit_day(tmp_path):
+    # 체크인 날짜(토)와 지금의 논리적 날짜(일)가 다르면 블록은 체크인 날짜 기준이다
+    import asyncio
+
+    async def go():
+        async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 5, 0)) as env:
+            water = habit(env, "물 마시기")
+            check(env, water, SAT)
+            return preamble(env, include_habits=True), preamble(env, include_habits=True, habit_day=SAT)
+
+    now_day, sat_day = asyncio.run(go())
+    assert "- 물 마시기 (매일)\n" in now_day + "\n" and "오늘 ✓" not in now_day
+    assert "- 물 마시기 (매일): 오늘 ✓" in sat_day

@@ -40,8 +40,11 @@ def test_banned_words_include_new_three():
     block = _BANNED_BLOCK.search(_system()).group(0)
     for word in ("밀렸다", "놓쳤다", "실패", "끊겼", "며칠째", "남음"):  # SP5 목록(블록에 있던 것) + 새 세 낱말
         assert f'"{word}"' in block, word
-    # 새 세 낱말은 다른 지시문과 두뇌 메모에도 없다(원칙 12가 금지 표현을 인용하는 system.md는 뺀다)
+    # 새 세 낱말은 지시문 어디에도 없다. system.md는 금지어 블록과 금지 표현을 인용하는 원칙 12 줄만 뺀다
     for f in sorted(prompts.PROMPTS_DIR.glob("*.md")):
-        if f.name != "system.md":
-            for word in ("끊겼", "며칠째", "남음"):
-                assert word not in f.read_text(encoding="utf-8"), (f.name, word)
+        text = f.read_text(encoding="utf-8")
+        if f.name == "system.md":
+            text = _BANNED_BLOCK.sub("", text)
+            text = "\n".join(line for line in text.splitlines() if not line.startswith("12. "))
+        for word in ("끊겼", "며칠째", "남음"):
+            assert word not in text, (f.name, word)

@@ -1403,8 +1403,8 @@ class Dispatcher:
                 return None
             runs.mark_running(run.id)
             result, run_ctx = await self._run_brain(
-            run, merged, conv, ask, step=step, question=question, habit_date=habit_date
-        )
+                run, merged, conv, ask, step=step, question=question, habit_date=habit_date
+            )
         if result.status in ("auth_error", "rate_limited"):
             # 로그인·결제는 skipped(auth), 사용 한도는 skipped(rate_limit). 다시 실행하지 않고 고정 안내만(스펙 5.3)
             reason = SkipReason.auth if result.status == "auth_error" else SkipReason.rate_limit
@@ -1513,6 +1513,7 @@ class Dispatcher:
                 False,
                 merged=[m.loop.value for m in merged] or None,
                 include_habits=any(r.loop in (LoopKey.evening_checkin, LoopKey.review) for r in (run, *merged)),
+                habit_day=habit_date,
             ),
             self._habit_week_block(run, merged),
             _condition_buttons_note(ask),
@@ -1752,7 +1753,10 @@ class Dispatcher:
     def _today(self) -> date:
         return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
 
-    def _preamble(self, resumed: bool, *, merged: list[str] | None = None, include_habits: bool = False) -> str:
+    def _preamble(
+        self, resumed: bool, *, merged: list[str] | None = None, include_habits: bool = False,
+        habit_day: date | None = None,
+    ) -> str:
         """새 세션일 때만 붙인다: 지금 시각, 열린 할 일, 오늘 일정(, 함께 처리하는 회차, 오늘 습관)."""
         if resumed or self.tools is None:
             return ""
@@ -1766,6 +1770,7 @@ class Dispatcher:
             merged=merged,
             habits=self.tools.habits,
             include_habits=include_habits,
+            habit_day=habit_day,
         )
 
     def _state_time(self, key: str) -> datetime | None:
@@ -1924,8 +1929,6 @@ def _condition_buttons_note(d: date | None) -> str:
     if d is None:
         return ""
     return f"## 컨디션 버튼\n이 메시지 아래에 {d.month}/{d.day}({_WEEKDAY[d.weekday()]}) 컨디션 버튼(1~5)이 붙습니다."
-
-
 
 
 def _habit_buttons_note(day: date | None) -> str:
