@@ -563,7 +563,7 @@ def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
 
     run_id = run_answered_by(
         req, runs=deps.runs, tasks=deps.tools.tasks, settings=deps.settings, now=deps.clock.now(),
-        activity=deps.activity,
+        activity=deps.activity, confirms=deps.confirms,
     )
     if run_id is not None:
         deps.mark_answered(run_id, "app" if req.channel == "app" else "telegram")

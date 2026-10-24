@@ -266,6 +266,9 @@ HarnessCard = tuple[str, str, dict[str, Any], dict[str, Any]]  # (toolCallId 앞
 def harness_cards(out: Outbound) -> list[HarnessCard]:
     """하네스 화면 조각(6.4.1, 6.4.7). 텔레그램 버튼 줄과 같은 재료, 같은 순서(초안 → 컨디션).
 
+    확인 카드 `ui_confirm`(`out.confirms`)은 여기서 만들지 않는다: 회차 차례에서만 생기고 앱은 체크인 상세 `cards`로
+    받는다(10.1 A5, `harness.checkins.checkin_cards`). `/chat`은 늘 사용자 차례라 확인 토큰이 없다.
+
     초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
     `out.draft_todos`), 컨디션 고르기는 `{"ok": true}`다.
     """

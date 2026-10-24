@@ -278,3 +278,32 @@ async def test_pin_card_from_app_chat(tmp_path):
     assert (pinned["actor"], pinned["channel"]) == ("secretary", "app")
     assert resp.status == 200
     assert after["cards"] == []
+
+
+async def test_morning_brief_proposal_needs_confirm(tmp_path):
+    """회차 차례의 확인(SP3-4 10.1): 아침 브리핑(가짜 두뇌)이 꺼낸 우선순위는 그대로이고, 앱이 체크인 상세의
+    `ui_confirm` 카드 값으로 `/actions`에 보내면 바뀐다(활동 `actor = user`)."""
+    # 10/26(월) 09:00 tick. 그 전에 앱으로 할 일 하나를 넣어 둔다(꾸며 낸 제목)
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 9, 0) + timedelta(seconds=30)) as env:
+        _, added = await env.action("add_task", {"title": "꾸민 편지 쓰기", "areas": ["relationships"]})
+        tid = added["result"]["id"]
+        args = {"cadence": "day", "period": "2026-10-26", "task_ids": [tid]}
+        env.brain.script.append(FakeTurn([("set_priorities", args)], "오늘은 편지 쓰기를 먼저 해 보면 어떨까요?"))
+        await env.tick()
+        run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'morning_brief'").fetchone()["id"]
+        before = await (await env.get("/today")).json()
+        assert env.conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0] == 0
+        detail = await (await env.get(f"/checkins/{run_id}")).json()
+        (card,) = [c for c in detail["cards"] if c["component"] == "ui_confirm"]
+        p = card["props"]
+        status, body = await env.action(p["action"], p["args"], confirm_token=p["confirm_token"])
+        after = await (await env.get("/today")).json()
+        rows = [(r["kind"], r["actor"], r["channel"], r["risk"]) for r in env.activity()]
+
+    assert "priority" not in [x["group"] for x in before["todos"]]  # 그대로: 오늘 우선순위가 아니다
+    assert card["toolCallId"] == f"h_confirm_{run_id}_1"
+    assert (p["action"], p["args"]) == ("set_priorities", args)
+    assert status == 200 and body["status"] == "applied"
+    assert [(x["group"], x["todo"]["id"]) for x in after["todos"]] == [("priority", tid)]
+    assert rows[-1] == ("priorities_set", "user", "app", "confirm")
+    assert ("confirm_requested", "secretary", "scheduler", "low") in rows

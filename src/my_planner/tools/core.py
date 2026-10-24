@@ -2,6 +2,10 @@
 
 변경 도구는 데이터 변경, `tool_events_log`, `activity`(SP3-4 스펙 5.2)를 같은 트랜잭션에서 쓰고, `ctx.events`에
 이벤트를 쌓고, `tasks.md`를 다시 만든다. 로그에는 제목이나 인자를 남기지 않는다.
+
+회차 차례(`ctx.run_turn`, SP3-4 10.1 A1)에서는 `drop_task`, `set_priorities`, `scheduled_at`을 바꾸는 `update_task`,
+시각 있는 할 일의 `move_task`가 입력을 검증한 뒤 아무것도 바꾸지 않고 확인 토큰만 만든다(`_request_confirm`, A2).
+사용자 메시지에 답하는 차례는 SP1 그대로 바로 적용한다(A3). `add_task`는 언제나 바로(A4).
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
+from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
@@ -24,6 +28,7 @@ from my_planner.store.repos.conditions import Condition
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.store.views import todo_refs
+from my_planner.timefmt import api_time
 from my_planner.tools.activity import (
     CARDS_ORDER_TARGET,
     SUPERSEDED,
@@ -38,8 +43,14 @@ from my_planner.tools.activity import (
 from my_planner.tools.confirmations import (
     card_label,
     condition_summary,
+    confirm_drop_summary,
+    confirm_move_summary,
+    confirm_priorities_summary,
+    confirm_requested_summary,
+    confirm_schedule_summary,
     confirmation_line,
     drafts_expired_summary,
+    period_label,
     titles_summary,
 )
 from my_planner.tools.ui import BRAIN_COMPONENTS, validate_props
@@ -55,6 +66,8 @@ SCORE_MIN, SCORE_MAX = 1, 5  # 컨디션 점수
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")  # fromisoformat은 20261023, 2026-W43-5도 받는다
 PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
 _NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
+# 확인 저장소는 있는데 답장 창을 알 수 없을 때(조립하지 않은 시험)의 회차 토큰 만료. `/actions` 토큰과 같다
+RUN_CONFIRM_FALLBACK_TTL = timedelta(minutes=10)
 PERIOD_EXAMPLE = {
     Cadence.day: "2026-10-23",
     Cadence.week: "2026-W43",
@@ -92,6 +105,8 @@ class Tools:
         conditions: Any = None,
         activity: Any = None,
         cards: CardsRepo | None = None,
+        confirms: Any = None,
+        reply_until: Callable[[int], datetime] | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -102,6 +117,9 @@ class Tools:
         self.conditions = conditions
         self.activity = activity  # `ActivityRepo`. None이면 활동을 남기지 않는다(SP1 시험)
         self.cards = cards  # `CardsRepo`(고정 카드, SP3-4 5.3). None이면 카드 도구가 거절한다
+        # `ConfirmsRepo`(SP3-4 10.1). None이면 회차 차례에서도 SP1처럼 바로 적용한다(SP1 시험)
+        self.confirms = confirms
+        self.reply_until = reply_until  # 회차 id → 그 회차 답장 창 끝(합친 회차는 가장 늦은 끝). 토큰 만료
 
     # --- 공통 ---
 
@@ -219,6 +237,38 @@ class Tools:
     def _get(self, id: Any) -> Task | str:
         t = self.tasks.get(id) if isinstance(id, int) and not isinstance(id, bool) else None
         return t if t is not None else f"{id}번 할 일을 찾을 수 없어요."
+
+    # --- 회차 차례의 확인 (SP3-4 10.1) ---
+
+    def _confirm_first(self, ctx: RunContext) -> bool:
+        """회차 차례이고 확인 토큰을 둘 곳이 있다(A1·A2)."""
+        return ctx.run_turn and self.confirms is not None
+
+    def _request_confirm(self, ctx: RunContext, action: str, args: dict[str, Any], summary: str) -> dict[str, Any]:
+        """아무것도 바꾸지 않고 확인 토큰을 만든다(A2): `pending_confirms`(`origin = run_turn`, 만료 = 그 회차 답장 창
+        끝), 호출 기록과 활동 `confirm_requested`(되돌릴 것 없음)는 한 트랜잭션. ToolEvent `confirm_requested`.
+
+        `args`는 `/actions`에 그대로 다시 보낼 모양이다(`{"action": …, "args": …, "confirm_token": …}`, 6.4.2).
+        두뇌에게 `needs_confirm`은 오류가 아니다(A7).
+        """
+        assert self.confirms is not None and ctx.run_id is not None
+        expires_at = (
+            self.reply_until(ctx.run_id) if self.reply_until is not None
+            else self.clock.now() + RUN_CONFIRM_FALLBACK_TTL
+        )
+        with self.tasks.transaction():
+            p = self.confirms.create(
+                action=action, args=args, summary=summary, origin="run_turn", expires_at=expires_at,
+                run_id=ctx.run_id, conversation_id=ctx.conversation_id,
+            )
+            data = {"action": action, "summary": summary, "confirm_token": p.token}
+            self.tasks.log_tool_event(
+                ctx.run_id, ctx.conversation_id, None, "confirm_requested", inbound_id=ctx.inbound_id, data=data
+            )
+            self._record(ctx, "confirm_requested", None, confirm_requested_summary(summary), None)
+        ctx.events.append(ToolEvent(kind="confirm_requested", task_id=None, data=data))
+        log.info("confirm_requested", extra={"action": action, "run_id": ctx.run_id})  # 인자, 문구, 토큰 없이
+        return {"status": "needs_confirm", "confirm_token": p.token, "summary": summary}
 
     # --- 변경 도구 ---
 
@@ -375,6 +425,12 @@ class Tools:
             changes["scheduled_at"] = sa
             if sa is not None:  # 시각을 바꾸면 하려는 날도 그 시각의 논리적 날짜로 다시 정한다
                 changes["planned_for"] = logical_date(sa, self.tz, self.boundary)
+        if self._confirm_first(ctx) and "scheduled_at" in changes and changes["scheduled_at"] != t.scheduled_at:
+            sa = changes["scheduled_at"]
+            args = {"id": t.id, **fields, "scheduled_at": api_time(sa) if sa is not None else None}
+            return self._request_confirm(
+                ctx, "update_task", args, confirm_schedule_summary(t.title, local(sa, self.tz) if sa else None)
+            )
         prior = {**self._before(t), "title": t.title, "note": t.note, "areas": [a.value for a in t.areas]}
         before = {k: prior[k] for k in changes}  # 바뀐 필드의 이전 값만
         with self.tasks.transaction():
@@ -391,6 +447,9 @@ class Tools:
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return _err(pf)
+        if self._confirm_first(ctx) and t.scheduled_at is not None:  # 날짜를 옮기면 시각도 바뀐다(A2)
+            args = {"id": t.id, "planned_for": pf.isoformat() if pf is not None else None}
+            return self._request_confirm(ctx, "move_task", args, confirm_move_summary(t.title, pf, self.today()))
         changes: dict[str, Any] = {"planned_for": pf}
         if pf is None:  # 날짜 없음: 시각도 함께 지운다
             changes["scheduled_at"] = None
@@ -455,6 +514,10 @@ class Tools:
 
     @_tool
     def drop_task(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
+        if self._confirm_first(ctx):
+            t = self._get(id)
+            if not isinstance(t, str) and t.status in (TaskStatus.open, TaskStatus.draft):  # 그 밖은 아래가 거절한다
+                return self._request_confirm(ctx, "drop_task", {"id": t.id}, confirm_drop_summary(t.title))
         return self._set_status(
             ctx,
             id,
@@ -509,6 +572,13 @@ class Tools:
             if t.status is not TaskStatus.open:
                 return _err(f"{t.id}번 할 일은 열린 할 일이 아니라서 우선순위에 올릴 수 없어요.")
         ids: list[int] = list(task_ids)
+        if self._confirm_first(ctx):
+            titles = [t.title for i in ids if not isinstance(t := self._get(i), str)]
+            label = period_label(c.value, period, period_of(c, self.today()))
+            return self._request_confirm(
+                ctx, "set_priorities", {"cadence": c.value, "period": period, "task_ids": ids},
+                confirm_priorities_summary(label, titles),
+            )
         ranked = self.tasks.priority_ranks(c, period)
         before = [t.id for _, t in ranked]
         before_status = [t.status.value for _, t in ranked]  # 되돌릴 때 그 뒤에 상태가 바뀌었는지 본다(6.4.3)

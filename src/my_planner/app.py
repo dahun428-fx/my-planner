@@ -11,6 +11,7 @@ import sqlite3
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager, ExitStack, nullcontext
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -241,6 +242,9 @@ def build_be(
         conditions=conditions,
         activity=activity,
         cards=CardsRepo(conn, clock),  # 고정 카드(앱 대화의 카드 도구, `/actions`, SP3-4 10장)
+        # 회차 차례의 확인(SP3-4 10.1): 토큰 만료는 그 회차 답장 창 끝(합친 회차는 가장 늦은 끝)
+        confirms=confirms,
+        reply_until=lambda run_id: _reply_until(runs, settings, run_id),
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -288,6 +292,7 @@ def build_be(
         apply=dispatcher.apply_action,
         deliveries=deliveries,
         mark_answered=dispatcher.mark_answered,
+        confirms=confirms,  # 회차 차례의 확인 버튼 `k:`(SP3-4 10.1 A5)
     )
     return BeParts(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
@@ -295,6 +300,14 @@ def build_be(
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
         pushes=pushes,
     )
+
+
+def _reply_until(runs: RunsRepo, settings: Settings, run_id: int) -> datetime:
+    from my_planner.harness.checkins import reply_until
+
+    run = runs.get(run_id)
+    assert run is not None, "회차 차례의 회차가 있어야 한다"
+    return reply_until(run, runs=runs, settings=settings)
 
 
 def _api_token(settings: Settings) -> str | None:

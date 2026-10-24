@@ -94,3 +94,11 @@ class RunContext:
     undo_ids: list[int] = field(default_factory=list)  # 그 가운데 되돌릴 수 있는 것
     # 앱 채팅의 조각 쓰개(`harness.stream.UiMessageWriter`, 6.4.1). 있으면 도구마다 `tool-*` 조각을 쓴다
     stream: Any = None
+
+    @property
+    def run_turn(self) -> bool:
+        """회차 차례(SP3-4 10.1 A1): 회차를 실행하는 두뇌 호출. 통로와 상관없다.
+
+        사용자 메시지에 답하는 차례(회차 대화의 답 포함)는 `inbound_id`가 있다(A3). 버튼과 `/actions`는 `run_id`가 없다.
+        """
+        return self.run_id is not None and self.inbound_id is None

@@ -313,8 +313,17 @@ class ConfirmsRepo:
 
     def get(self, token: str) -> PendingConfirm | None:
         r = self.conn.execute("SELECT * FROM pending_confirms WHERE token = ?", (token,)).fetchone()
-        if r is None:
-            return None
+        return self._row(r) if r is not None else None
+
+    def for_run(self, run_id: int) -> list[PendingConfirm]:
+        """그 회차의 토큰 전부(닫힌 것 포함), 만든 순서(`created_at`, 같으면 넣은 순서). 확인 카드 번호(6.4.5)."""
+        rows = self.conn.execute(
+            "SELECT * FROM pending_confirms WHERE run_id = ? ORDER BY created_at, rowid", (run_id,)
+        ).fetchall()
+        return [self._row(r) for r in rows]
+
+    @staticmethod
+    def _row(r: sqlite3.Row) -> PendingConfirm:
         return PendingConfirm(
             token=r["token"],
             action=r["action"],

@@ -100,6 +100,9 @@ class Outbound:
     draft_conversation_id: int | None = None
     draft_task_ids: list[int] = field(default_factory=list)
     ask_condition_for: date | None = None
+    # 회차 차례의 확인 토큰(SP3-4 10.1 A5): (토큰, 확인 문구). 텔레그램 `k:` 버튼 줄(초안 줄 다음, 컨디션 줄 앞).
+    # 앱은 체크인 상세 `cards`의 `ui_confirm`으로 받는다(6.4.5). `/chat` 스트림에는 없다(사용자 차례뿐이라 생기지 않는다)
+    confirms: list[tuple[str, str]] = field(default_factory=list)
     # 앱 답(SP3-4 7.5 M4): 확인 문구는 글에 붙이지 않고 `data-activity.confirmation`으로 간다(6.4.1)
     channel: Channel = "telegram"
     confirmation: str | None = None
@@ -176,6 +179,7 @@ class _ResendJob:
     tool_names: list[str]
     draft_task_ids: list[int] = field(default_factory=list)
     ask_condition_for: date | None = None
+    confirms: list[tuple[str, str]] = field(default_factory=list)  # 회차 차례의 확인 토큰(10.1 A5)
 
 
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
@@ -1222,7 +1226,8 @@ class Dispatcher:
                 runs.mark_failed(r.id, "send")
             self._later(
                 RESEND_DELAY_S,
-                _ResendJob(run, merged, tool_names, list(out.draft_task_ids), out.ask_condition_for),
+                _ResendJob(run, merged, tool_names, list(out.draft_task_ids), out.ask_condition_for,
+                           list(out.confirms)),
             )
 
     async def _prepare_run(
@@ -1430,6 +1435,7 @@ class Dispatcher:
                 draft_conversation_id=run.conversation_id if job.draft_task_ids else None,
                 draft_task_ids=list(job.draft_task_ids),
                 ask_condition_for=job.ask_condition_for,
+                confirms=list(job.confirms),
             )
             # 전달이 하나도 안 된 회차(failed)만 여기 온다. 같은 D2~D4 순서로 한 번(7.3 D7)
             outcome = await self._send_run(out, run, attempts=1)
@@ -1638,7 +1644,7 @@ async def _idle() -> None:
 
 
 def _outbound(text: str, run_ctx: RunContext) -> Outbound:
-    """이번 호출에서 제안한 초안이 있으면 버튼을 붙이도록 id와 대화를 싣는다(스펙 5.7)."""
+    """이번 호출에서 제안한 초안이 있으면 버튼을 붙이도록 id와 대화를 싣는다(스펙 5.7). 확인 토큰도(10.1 A5)."""
     confirmed = {e.task_id for e in run_ctx.events if e.kind == "tasks_confirmed"}
     ids = [
         i
@@ -1651,6 +1657,10 @@ def _outbound(text: str, run_ctx: RunContext) -> Outbound:
         text=text,
         draft_conversation_id=run_ctx.conversation_id if ids else None,
         draft_task_ids=ids,
+        # 회차 차례에서만 생긴다(10.1 A2). 사용자 차례의 답에는 늘 비어 있다
+        confirms=[
+            (e.data["confirm_token"], e.data["summary"]) for e in run_ctx.events if e.kind == "confirm_requested"
+        ],
     )
 
 

@@ -36,6 +36,7 @@ from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_ra
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
 from my_planner.status.snapshot import status_snapshot
+from my_planner.store.repos.activity import ConfirmsRepo
 from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
@@ -311,6 +312,7 @@ def get_checkin(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -
         run_id, runs=RunsRepo(conn, deps.clock), convs=ConversationsRepo(conn, deps.clock),
         deliveries=DeliveriesRepo(conn, deps.clock), tasks=_tasks(conn, deps),
         conditions=ConditionsRepo(conn, deps.clock), now=deps.clock.now(), settings=deps.settings,
+        confirms=ConfirmsRepo(conn, deps.clock),  # 열린 확인 토큰마다 `ui_confirm`(10.1 A5). 읽기만 한다
     )
     if body is None:
         raise ApiError(404, "not_found", "없는 회차예요.")
