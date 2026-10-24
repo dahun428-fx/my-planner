@@ -1,6 +1,6 @@
 import styles from "./icons.module.css";
 
-export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close";
+export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send";
 
 // Hand-drawn 24px icons, 1.7px stroke, currentColor (spec 4.3).
 const PATHS: Record<IconName, string[]> = {
@@ -15,6 +15,7 @@ const PATHS: Record<IconName, string[]> = {
   check: ["M5 12.5l4.5 4.5L19 7.5"],
   chevron: ["M9.5 6l6 6-6 6"],
   close: ["M6 6l12 12", "M18 6L6 18"],
+  send: ["M12 19V5", "M6 11l6-6 6 6"],
 };
 
 export function Icon({ name, label }: { name: IconName; label?: string }) {
