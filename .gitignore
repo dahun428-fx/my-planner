@@ -37,3 +37,7 @@ web/dashboard/.next/
 web/dashboard/out/
 web/dashboard/next-env.d.ts
 web/dashboard/tsconfig.tsbuildinfo
+
+# 체크아웃별 설정 덮어쓰기 (개발용 BE, 릴리스 흐름 스펙 5.2)
+config.local.toml
+config.medic.local.toml

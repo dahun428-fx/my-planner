@@ -1,18 +1,29 @@
 """설정: `root/config.toml`(Git 포함, 개인값 없음)과 `root/.env`(비밀값) (스펙 9).
 
+`root/config.local.toml`(Git 밖)이 있으면 `config.toml` 위에 깊은 병합으로 겹친다(릴리스 흐름 스펙 5.2).
+
 값의 기본은 계획의 Global Constraints다. 모든 경로는 `paths.root` 기준 절대경로다.
 """
 
 from __future__ import annotations
 
 import os
-import tomllib
 from datetime import time
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 겹쳐 읽기는 표준 라이브러리만 쓰는 medic 모듈의 것을 함께 쓴다(medic은 my_planner를 가져오지 않는다)
+from my_planner_medic.toml_overlay import read_overlaid
 
 ROOT_ENV = "MY_PLANNER_ROOT"
 
@@ -139,9 +150,16 @@ class VapidConfig(_Model):
     subject: str  # `mailto:` 주소
 
 
+class RuntimeConfig(_Model):
+    """`dev`(노트북 개발용 BE, 릴리스 흐름 스펙 5.2): 텔레그램(폴링·보내기)과 회차 스케줄러·따라잡기를 끈다.
+    API, health, 회차 외 정리는 그대로 돈다."""
+
+    role: Literal["prod", "dev"] = "prod"
+
+
 class Settings(_Model):
-    telegram_bot_token: SecretStr
-    owner_telegram_id: int
+    telegram_bot_token: SecretStr | None  # role = "dev"에서만 None일 수 있다
+    owner_telegram_id: int | None
     timezone: str = "Asia/Seoul"
     day_boundary: time = time(4, 0)
     schedule: ScheduleConfig = ScheduleConfig()
@@ -152,6 +170,13 @@ class Settings(_Model):
     notify: NotifyConfig = NotifyConfig()
     api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
     vapid: VapidConfig | None = None  # .env의 VAPID_*. 없으면 푸시만 꺼진다(`/push/*`는 404, 실제 통로는 telegram)
+    runtime: RuntimeConfig = RuntimeConfig()
+
+    @model_validator(mode="after")
+    def _telegram_required_in_prod(self) -> Settings:
+        if self.runtime.role == "prod" and (self.telegram_bot_token is None or self.owner_telegram_id is None):
+            raise ValueError("role = prod에는 TELEGRAM_BOT_TOKEN, OWNER_TELEGRAM_ID가 있어야 한다")
+        return self
 
 
 class _Secrets(BaseSettings):
@@ -176,6 +201,13 @@ class _Secrets(BaseSettings):
         return VapidConfig(public_key=public, private_key=SecretStr(private), subject=subject)
 
 
+class _DevSecrets(_Secrets):
+    """role = "dev": 텔레그램 값이 없어도 읽는다(있으면 그대로 읽는다)."""
+
+    telegram_bot_token: SecretStr | None = Field(default=None, validation_alias="TELEGRAM_BOT_TOKEN")  # type: ignore[assignment]
+    owner_telegram_id: int | None = Field(default=None, validation_alias="OWNER_TELEGRAM_ID")  # type: ignore[assignment]
+
+
 def resolve_root() -> Path:
     """`MY_PLANNER_ROOT`가 있으면 그 값, 없으면 패키지 위치에서 두 단계 위(`src/my_planner` → 저장소 루트)."""
     env = os.environ.get(ROOT_ENV)
@@ -186,15 +218,13 @@ def resolve_root() -> Path:
 
 def load_settings(root: Path) -> Settings:
     root = Path(root).resolve()
-    toml_path = root / "config.toml"
-    data: dict[str, Any] = {}
-    if toml_path.exists():
-        with toml_path.open("rb") as f:
-            data = tomllib.load(f)
-    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "vapid", "paths"):
+    data: dict[str, Any] = read_overlaid(root / "config.toml", root / "config.local.toml")
+    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "vapid", "paths"):  # 합친 결과에 건다
         if key in data:
             raise ValueError(f"config.toml에 {key}를 두지 않는다")
-    secrets = _Secrets(_env_file=root / ".env")  # type: ignore[call-arg]
+    runtime = data.get("runtime")
+    dev = isinstance(runtime, dict) and runtime.get("role") == "dev"
+    secrets = (_DevSecrets if dev else _Secrets)(_env_file=root / ".env")  # type: ignore[call-arg]
     return Settings(
         telegram_bot_token=secrets.telegram_bot_token,
         owner_telegram_id=secrets.owner_telegram_id,

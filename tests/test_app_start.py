@@ -863,3 +863,85 @@ async def test_be_env_telegram_and_press(tmp_path):
         await env.telegram("안녕")  # 보통 글은 디스패처 → 가짜 두뇌 → 가짜 전송
         assert [o.text for o in env.sender.sent] == ["반가워요"]
         assert env.brain.calls and not env.parts.state.pending_inbound()
+
+
+# --- 릴리스 흐름 5.2: `[runtime] role = "dev"` (텔레그램·회차 스케줄러 끔) ---
+
+
+def _dev(root, monkeypatch, app):
+    (root / "config.local.toml").write_text('[runtime]\nrole = "dev"\n', encoding="utf-8")
+    (root / ".env").write_text("", encoding="utf-8")  # 텔레그램 값 없음
+
+    def no_telegram(*a, **kw):
+        raise AssertionError("dev에서 텔레그램을 띄웠다")
+
+    monkeypatch.setattr(app, "Bot", no_telegram)
+    monkeypatch.setattr(app, "build_application", no_telegram)
+
+
+def test_dev_role_starts_without_telegram_and_checkins(started, monkeypatch):
+    app, root, calls = started
+    _dev(root, monkeypatch, app)
+    _enable_api(root)
+    _fake_api(monkeypatch, app, calls)
+    built = []
+    real = app.build_be
+
+    def spy_build_be(*a, **kw):
+        parts = real(*a, **kw)
+        built.append((parts, kw))
+        return parts
+
+    monkeypatch.setattr(app, "build_be", spy_build_be)
+    jobs = _daily_jobs(monkeypatch)
+    assert app.main() == 0
+    assert [c[0] for c in calls] == ["start_api", "serving", "stop_api"]  # 폴링 없이 API만
+    parts, kw = built[0]
+    assert parts.runner.checkins is False
+    assert kw["on_resume"] is None
+    assert isinstance(parts.sender, app.DisabledTelegramSender)
+    assert {"expire_drafts", "daily_backup", "cleanup_logs"} <= set(jobs)  # 회차 외 정리는 그대로
+    entries = _log_entries(root)
+    assert [e["role"] for e in entries if e["msg"] == "runtime_role"] == ["dev"]
+    assert "polling_started" not in [e["msg"] for e in entries]
+
+    import sqlite3
+
+    conn = sqlite3.connect(root / "state" / "planner.db")
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+        keys = {k for (k,) in conn.execute("SELECT key FROM app_state")}
+    finally:
+        conn.close()
+    assert {"last_seen_at", "last_daily_jobs_date"} <= keys
+
+
+def test_prod_role_logged_at_start(started):
+    app, root, _calls = started
+    assert app.main() == 0
+    assert [e["role"] for e in _log_entries(root) if e["msg"] == "runtime_role"] == ["prod"]
+
+
+async def test_disabled_telegram_sender_only_logs(caplog):
+    import logging
+
+    from my_planner import app
+    from my_planner.harness.dispatcher import Outbound
+
+    sender = app.DisabledTelegramSender()
+    with caplog.at_level(logging.INFO, logger="my_planner"):
+        assert await sender.send(Outbound(text="비밀문구")) is None
+        await sender.typing()
+        await sender.clear_buttons(1)
+    assert [r.msg for r in caplog.records].count("telegram_disabled_dev") == 1
+    assert "비밀문구" not in caplog.text
+
+
+def test_dev_safe_mode_logs_instead_of_telegram(started, monkeypatch):
+    app, root, calls = started
+    _dev(root, monkeypatch, app)
+    _corrupt_db(root)
+    assert app.main() == 0
+    assert calls == [("serving", None)]
+    msgs = [e["msg"] for e in _log_entries(root)]
+    assert "safe_mode" in msgs and "telegram_disabled_dev" in msgs
