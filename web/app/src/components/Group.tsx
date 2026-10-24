@@ -1,11 +1,24 @@
 import type { ReactNode } from "react";
 import styles from "./Group.module.css";
 
-// iOS grouped list: white group (radius 16) on the grey ground, optional heading (with an optional
-// control at its right, e.g. "모두 확정") and footer.
-export function Group({ heading, action, footer, children }: { heading?: ReactNode; action?: ReactNode; footer?: ReactNode; children: ReactNode }) {
+// A section (DESIGN.md): an optional label head (with an optional control at its right, e.g.
+// "모두 확정") and footer. Boxed: the grouped list (--surface, radius 16). `paper`: continuous paper,
+// rows on the ground split by inset hairlines (Today, Todos, Activity).
+export function Group({
+  heading,
+  action,
+  footer,
+  paper = false,
+  children,
+}: {
+  heading?: ReactNode;
+  action?: ReactNode;
+  footer?: ReactNode;
+  paper?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <section className={styles.group}>
+    <section className={paper ? `${styles.group} ${styles.paper}` : styles.group}>
       {heading !== undefined &&
         (action !== undefined ? (
           <div className={styles.headRow}>

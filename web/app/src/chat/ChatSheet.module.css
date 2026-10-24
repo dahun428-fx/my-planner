@@ -1,4 +1,5 @@
-/* Spec 5.5.2: the chat sheet. Tokens only; nothing here is raised (only the launcher is, 5.3). */
+/* Spec 5.5.2 and DESIGN.md 채팅: an asymmetric conversation. The secretary's words are open text
+   across the width, mine a --raised bubble at the right. Tokens only. */
 .frame,
 .embedded {
   flex: 1;
@@ -43,10 +44,17 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.75rem var(--pad);
+  padding: var(--space-4) var(--gutter);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+}
+/* 12px between messages, 20px when the speaker changes. */
+.list > * + * {
+  margin-top: var(--panel-gap);
+}
+.list > .mine + .theirs,
+.list > .theirs + .mine {
+  margin-top: var(--speaker-gap);
 }
 .time,
 .divider {
@@ -63,25 +71,28 @@
   display: flex;
   justify-content: flex-end;
 }
+/* Mine: --raised, --text, 18/18/4/18 (the tail corner at the lower right), 12×18, at most 80%. */
 .bubble {
   margin: 0;
   max-width: 80%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 1.125rem;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--size-section);
+  padding: 0.75rem 1.125rem;
+  border-radius: var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble);
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: var(--lh-callout);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .theirs {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--panel-gap);
 }
-/* The secretary's text: a Markdown block (components/Markdown sets the line breaks). */
+/* The secretary's text: no bubble, the full width, body 17/1.6 Markdown. */
 .text {
-  font-size: var(--size-section);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 .part {
   min-width: 0;
@@ -130,7 +141,7 @@
   font-size: var(--size-meta);
 }
 .reason {
-  padding: 0.5rem var(--pad) 0;
+  padding: 0.5rem var(--gutter) 0;
 }
 .dots {
   margin: 0;
@@ -177,47 +188,81 @@
   color: var(--text-2);
   font-size: var(--size-meta);
 }
+/* DESIGN.md 입력창: min 48px, 12px radius, --surface with a 1px --border that turns 1.5px --primary
+   only while sending is possible (data-ready). One or two rows (the rows attribute), then it
+   scrolls inside. The 36px send circle sits in a 44px button. */
 .composer {
   flex: none;
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0.5rem var(--pad) 0.5rem;
+  gap: var(--space-2);
+  align-items: flex-end;
+  padding: var(--space-2) var(--gutter);
   border-top: 1px solid var(--rule);
 }
 .input {
   flex: 1;
   min-width: 0;
-  min-height: 2.75rem;
-  padding: 0 0.875rem;
-  border: 1px solid var(--control);
-  border-radius: var(--radius-pill);
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: var(--size-body);
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.input[data-ready] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 0.5px var(--primary);
 }
 .send {
-  min-height: 2.75rem;
-  min-width: 2.75rem;
-  padding: 0 0.875rem;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  margin-bottom: 2px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--primary);
+  background: transparent;
   color: var(--on-primary);
-  font-size: var(--size-section);
-  font-weight: 600;
   cursor: pointer;
 }
+.sendMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
 .send:disabled {
-  background: var(--raised);
   color: var(--text-2);
   cursor: default;
+}
+.send:disabled .sendMark {
+  background: var(--raised);
 }
 .close:focus-visible,
 .undo:focus-visible,
 .retry:focus-visible,
-.send:focus-visible,
-.input:focus-visible {
+.send:focus-visible {
   outline: 2px solid var(--text);
+}
+/* The field's focus is its outline going dark, not a second ring around the ready one. */
+.input:focus-visible {
+  outline: none;
+  border-color: var(--text-2);
+}
+.input[data-ready]:focus-visible {
+  border-color: var(--primary);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }

@@ -1,12 +1,20 @@
+/* DESIGN.md Components. A section head is a 13/600 --muted label. Boxed (the default: Settings,
+   check-ins, habits) is the grouped list, --surface with a 16px radius. `paper` (Today, Todos,
+   Activity) is continuous paper: a 1px --rule under the head, the rows straight on the ground and
+   out to the screen's edges (so a swipe and a 44px check reach them), split by inset hairlines.
+   --row-pad-x is the rows' side padding and --row-bg their opaque background (SwipeRow). */
 .group {
-  margin: 0 var(--pad) var(--gap);
+  --row-pad-x: var(--pad);
+  --row-bg: var(--surface);
+  margin: 0 var(--gutter) var(--section-gap);
 }
 .heading {
   margin: 0 0 0.5rem;
   padding: 0 0.25rem;
-  font-size: var(--size-section);
+  font-size: var(--fs-label);
   font-weight: 600;
-  color: var(--text);
+  line-height: var(--lh-label);
+  color: var(--muted);
 }
 .headRow {
   display: flex;
@@ -21,13 +29,44 @@
   padding: 0;
 }
 .body {
-  background: var(--surface);
-  border-radius: var(--radius-group);
+  background: var(--row-bg);
+  border-radius: var(--radius-container);
   overflow: hidden;
 }
 .footer {
   margin-top: 0.5rem;
   padding: 0 0.25rem;
-  font-size: var(--size-meta);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
   color: var(--muted);
+}
+
+.paper {
+  --row-pad-x: var(--gutter);
+  --row-bg: var(--ground);
+  /* SwipeRow's hairline starts where a to-do's title does: past the 22px check in its 44px box. */
+  --rule-inset: calc(var(--row-pad-x) + (var(--control-h) + var(--check)) / 2 + 0.25rem);
+  /* and ends at the gutter, like the head's rule. */
+  --rule-end: var(--gutter);
+}
+.paper > .heading,
+.paper > .headRow {
+  margin: 0;
+  padding: 0 0 0.375rem;
+  border-bottom: 1px solid var(--rule);
+}
+.paper > .headRow > .heading {
+  border-bottom: 0;
+  padding: 0;
+}
+.paper .headRow {
+  min-height: 1.5rem;
+}
+.paper .body {
+  margin: 0 calc(-1 * var(--gutter));
+  border-radius: 0;
+}
+.paper .footer {
+  margin-top: 0;
+  padding: 0;
 }

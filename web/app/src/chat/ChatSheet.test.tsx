@@ -596,3 +596,54 @@ describe("ChatSheet in the app", () => {
     expect(otherChat[0].conversation_id).toBeNull();
   });
 });
+
+// DESIGN.md 입력창: a textarea that grows from one row to two (the rows attribute, never style=),
+// Enter sends (not while a Korean syllable is being composed, not with Shift), and the outline is
+// the strong one only while sending is possible.
+describe("ChatSheet composer", () => {
+  it("is a textarea of one row that grows to two", async () => {
+    history(5, []);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await ready();
+    expect(input.tagName).toBe("TEXTAREA");
+    expect(input).toHaveAttribute("rows", "1");
+    await user.type(input, "첫 줄{Shift>}{Enter}{/Shift}둘째 줄");
+    expect(input).toHaveValue("첫 줄\n둘째 줄");
+    expect(input).toHaveAttribute("rows", "2");
+    await user.type(input, "{Shift>}{Enter}{/Shift}셋째 줄");
+    expect(input).toHaveAttribute("rows", "2");
+    await user.clear(input);
+    expect(input).toHaveAttribute("rows", "1");
+    expect(input).not.toHaveAttribute("style");
+  });
+
+  it("Enter sends; Shift+Enter and Enter while composing do not", async () => {
+    history(5, []);
+    const bodies = serveChat(() => sseResponse(textAnswer("m-1", 5, "네")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await ready();
+    await user.type(input, "안녕");
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(bodies).toHaveLength(0);
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(await screen.findByText("네")).toBeInTheDocument();
+    expect(input).toHaveValue("");
+  });
+
+  it("marks the field ready only while sending is possible", async () => {
+    history(5, []);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await ready();
+    expect(input).not.toHaveAttribute("data-ready");
+    await user.type(input, "   ");
+    expect(input).not.toHaveAttribute("data-ready");
+    await user.type(input, "할 일");
+    expect(input).toHaveAttribute("data-ready");
+    expect(screen.getByRole("button", { name: copy.chat.send })).toBeEnabled();
+  });
+});

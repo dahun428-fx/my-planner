@@ -30,7 +30,7 @@ export function CheckRow({
   return (
     <li className={`${styles.checkRow} ${highlight ? styles.highlight : ""}`}>
       {mark === "circle" ? (
-        <button type="button" role="checkbox" aria-checked={checked} aria-label={copy.parts.checkLabel(title)} className={styles.check} disabled={disabled} onClick={onToggle}>
+        <button type="button" role="checkbox" aria-checked={checked} aria-label={copy.parts.checkLabel(title)} className={`${styles.check} pressable`} disabled={disabled} onClick={onToggle}>
           <span className={styles.circle} />
         </button>
       ) : (

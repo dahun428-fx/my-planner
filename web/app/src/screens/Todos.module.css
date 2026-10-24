@@ -35,21 +35,21 @@
   outline-offset: 2px;
 }
 .tabs {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
 }
 .line {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   font-size: var(--size-meta);
   color: var(--muted);
 }
 .emptyDay {
-  margin: 0 var(--pad) var(--gap);
-  padding: 0 0.25rem;
+  margin: 0 var(--gutter) var(--gap);
+  padding: 0;
   font-size: var(--size-meta);
   color: var(--muted);
 }
 .notice {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   padding: 0.75rem var(--pad);
   background: var(--notice-bg);
   border: 1px solid var(--notice-border);
@@ -74,13 +74,19 @@
   cursor: pointer;
 }
 .draftRow {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   min-height: var(--row);
-  padding: 0.25rem var(--pad);
+  padding: 0.25rem var(--row-pad-x, var(--pad));
 }
-.draftRow + .draftRow {
+.draftRow + .draftRow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--row-pad-x, var(--pad));
   border-top: 1px solid var(--rule);
 }
 .draftTitle {
@@ -94,7 +100,7 @@
   min-height: var(--small-control-h);
   min-width: var(--control-h);
   padding: 0 0.75rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
@@ -118,7 +124,7 @@
 }
 .hint {
   margin: 0;
-  padding: 0.5rem var(--pad);
+  padding: 0.5rem var(--row-pad-x, var(--pad));
   font-size: var(--size-meta);
   color: var(--muted);
 }
@@ -160,7 +166,7 @@
 .input {
   min-height: var(--control-h);
   padding: 0 0.75rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-field);
   background: var(--surface);
   font: inherit;

@@ -220,7 +220,7 @@ export function Activity() {
     );
   } else if (result === null) {
     body = (
-      <Group>
+      <Group paper>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} size="row" />
         ))}
@@ -241,7 +241,7 @@ export function Activity() {
     body = <p className={styles.line}>{copy.status.safeMode}</p>;
   } else if (result.kind === "error") {
     body = (
-      <Group>
+      <Group paper>
         <BlockError code={result.code} onRetry={() => void refresh()} />
       </Group>
     );
@@ -262,7 +262,7 @@ export function Activity() {
           <p className={styles.line}>{copy.activity.empty}</p>
         ) : (
           groups.map((g) => (
-            <Group key={g.day} heading={g.head}>
+            <Group paper key={g.day} heading={g.head}>
               {g.rows.map(renderRow)}
             </Group>
           ))

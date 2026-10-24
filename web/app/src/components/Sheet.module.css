@@ -20,16 +20,21 @@
 .leaving .backdrop {
   animation: fade-out 280ms ease-out forwards;
 }
+/* DESIGN.md sheet: --surface, 20px top corners, a 36×5 --border handle, the sheet shadow. Rows in a
+   sheet are padded like a boxed group, whatever group the sheet is opened from. */
 .panel {
+  --row-pad-x: var(--pad);
+  --row-bg: var(--surface);
+  --rule-inset: 0px;
+  --rule-end: 0px;
   position: relative;
   max-height: calc(100% - 50px - env(safe-area-inset-top));
   display: flex;
   flex-direction: column;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-bottom: 0;
-  border-radius: var(--radius-group) var(--radius-group) 0 0;
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  box-shadow: var(--shadow-sheet);
   padding-bottom: env(safe-area-inset-bottom);
   animation: rise 280ms cubic-bezier(0.32, 0.72, 0, 1);
   transition: transform 200ms ease-out;
@@ -67,13 +72,15 @@
   height: 0.3125rem;
   margin: 0.375rem auto 0;
   border-radius: var(--radius-pill);
-  background: var(--control);
+  background: var(--border);
 }
 .title {
   margin: 0;
   padding: 0 var(--pad) 0.25rem;
-  font-size: var(--size-body);
-  font-weight: 600;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: var(--lh-title);
+  letter-spacing: var(--track-title);
   text-align: center;
 }
 .body {

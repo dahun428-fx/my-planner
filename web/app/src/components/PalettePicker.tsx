@@ -9,7 +9,7 @@ export interface PalettePickerProps<T extends string> {
 }
 
 // A row of colour swatches as a radio group, like Segmented: one tab stop, arrow keys (and
-// Home/End) move the choice. Each swatch carries data-palette, so tokens.css paints it in that
+// Home/End) move the choice. Each swatch carries data-palette, so global.css paints it in that
 // palette's own colours (its ground and hue) in the current theme, whatever palette the page has.
 export function PalettePicker<T extends string>({ options, value, onChange, ariaLabel }: PalettePickerProps<T>) {
   const { index, onKeyDown, ref } = useRadioKeys(options, value, onChange);

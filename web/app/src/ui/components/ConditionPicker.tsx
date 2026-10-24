@@ -38,7 +38,7 @@ export function ConditionPicker({ props, ctx }: PartProps<{ date: string }>) {
           <button
             key={n}
             type="button"
-            className={styles.pill}
+            className={`${styles.pill} pressable`}
             aria-label={copy.today.conditionScore(n)}
             aria-pressed={score === n}
             disabled={ctx.readOnly}

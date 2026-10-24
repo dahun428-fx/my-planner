@@ -55,7 +55,7 @@ export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPr
             role="checkbox"
             aria-checked={done}
             aria-label={done ? copy.today.doneLabel(todo.title) : copy.today.checkLabel(todo.title)}
-            className={styles.check}
+            className={`${styles.check} pressable`}
             onClick={onToggle}
           >
             <span className={`${styles.circle} ${done ? styles.filled : ""}`} />

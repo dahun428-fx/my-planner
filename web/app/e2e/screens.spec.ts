@@ -145,7 +145,7 @@ for (const scheme of ["light", "dark"] as const) {
         await page.goto("/");
         await expect(page.getByText(LONG_TITLE).first()).toBeVisible();
         await page.waitForLoadState("networkidle");
-        expect(await page.evaluate(() => document.documentElement.dataset.palette ?? "ink")).toBe(palette);
+        expect(await page.evaluate(() => document.documentElement.dataset.palette ?? "paper")).toBe(palette);
         await page.screenshot({ path: `e2e/__screens__/palettes/today-${palette}-${scheme}.png` });
         await page.goto("/settings/");
         await expect(page.getByRole("radiogroup", { name: copy.settings.palette })).toBeVisible();

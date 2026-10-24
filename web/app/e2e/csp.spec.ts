@@ -15,6 +15,7 @@ test("chat part renders under CSP", async ({ page }) => {
   // The policy really arrives as a response header (serve-csp), not only as the <meta>.
   const csp = (await res!.headerValue("content-security-policy")) ?? "";
   expect(csp).toContain("script-src 'self'");
+  expect(csp).toContain("font-src 'self'");
   expect(csp).toContain("connect-src 'self' https://*.example.ts.net");
   expect(csp).toContain("frame-ancestors 'none'");
   await page.getByRole("button", { name: copy.chat.launcher }).click();
@@ -142,4 +143,30 @@ test("screens keep their styles after moving between tabs", async ({ page }) => 
   }
   problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)));
   expect(problems).toEqual([]);
+});
+
+// DESIGN.md Typography: Pretendard Variable comes from this origin (font-src 'self'), only the
+// subsets the screen's letters need. The weight of the first load is printed for the PR.
+test("Pretendard loads from this origin on the first screen", async ({ page }) => {
+  const fonts: string[] = [];
+  page.on("requestfinished", (r) => {
+    if (r.url().includes("/fonts/pretendard/")) fonts.push(r.url());
+  });
+  await mockBe(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: copy.today.title })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => document.fonts.ready);
+  expect(await page.evaluate(() => document.fonts.check('700 34px "Pretendard Variable"', "오늘"))).toBe(true);
+  const family = await page.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(family).toMatch(/^"Pretendard Variable"/);
+  expect(fonts.length).toBeGreaterThan(0);
+  expect(fonts.every((u) => new URL(u).origin === new URL(page.url()).origin)).toBe(true);
+  const bytes = await page.evaluate(() =>
+    performance
+      .getEntriesByType("resource")
+      .filter((e) => e.name.includes("/fonts/pretendard/"))
+      .reduce((n, e) => n + (e as PerformanceResourceTiming).encodedBodySize, 0),
+  );
+  console.log(`fonts on the first screen: ${fonts.length} files, ${(bytes / 1024).toFixed(1)} KB`);
 });

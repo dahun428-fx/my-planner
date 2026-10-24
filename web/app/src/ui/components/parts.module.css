@@ -1,20 +1,23 @@
-/* One stylesheet for the screen parts (spec 7장): they look the same in chat, on Today and in a check-in. */
+/* One stylesheet for the screen parts (spec 7장): they look the same in chat, on Today and in a check-in.
+   DESIGN.md 비서 카드: --surface, 1px --rule, radius 16, 16px inside. */
 .card {
   background: var(--surface);
-  border-radius: var(--radius-group);
-  padding: 0.75rem var(--pad);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-container);
+  padding: var(--pad);
   text-align: left;
 }
 .outlined {
-  border: 1px solid var(--border);
+  border-color: var(--rule);
 }
 .confirm {
   border: 1.5px solid var(--hue);
 }
 .title {
   margin: 0 0 0.25rem;
-  font-size: var(--size-section);
+  font-size: var(--fs-headline);
   font-weight: 600;
+  line-height: var(--lh-headline);
   color: var(--text);
 }
 .hint,
@@ -30,7 +33,7 @@
   margin: 0;
   font-size: var(--size-body);
   color: var(--text);
-  line-height: 1.45;
+  line-height: var(--lh-body);
 }
 .rows {
   margin: 0;
@@ -64,12 +67,13 @@
   gap: 0.5rem;
   margin: 0.5rem 0 0;
 }
+/* DESIGN.md 알약 선택 (컨디션, 점수): 44px, 1px --border, the chosen one --primary. */
 .pill {
   position: relative;
   min-width: 2.75rem;
-  min-height: 2.25rem;
+  min-height: var(--control-h);
   padding: 0 0.875rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
@@ -77,12 +81,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--text);
   cursor: pointer;
-}
-/* 9장: looks 36px, hit area 44px. */
-.pill::after {
-  content: "";
-  position: absolute;
-  inset: -0.25rem 0;
 }
 .pill[aria-pressed="true"] {
   background: var(--primary);
@@ -208,8 +206,8 @@
   color: var(--muted);
 }
 .unknown {
-  padding: 0.75rem var(--pad);
-  border-radius: var(--radius-group);
+  padding: var(--pad);
+  border-radius: var(--radius-container);
   background: var(--raised);
   color: var(--text-2);
   font-size: var(--size-meta);

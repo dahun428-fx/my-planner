@@ -2,8 +2,9 @@ import "./zodJitless"; // first: before "@ai-sdk/react" and "ai" build their sch
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { useRouter } from "next/router";
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BlockError } from "../components/BlockError";
+import { Icon } from "../components/icons";
 import { Sheet } from "../components/Sheet";
 import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
@@ -67,6 +68,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState("");
+  const [fieldRows, setFieldRows] = useState(1);
+  const field = useRef<HTMLTextAreaElement>(null);
 
   const sending = useRef(false);
   const autoRetried = useRef(false);
@@ -202,6 +205,25 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     e.preventDefault();
     if (send(text)) setText("");
   };
+  // Enter sends, as the keyboard's send key says; Shift+Enter is a new line, and an Enter that ends
+  // a Korean syllable (IME composition) is not a send. keyCode 229 covers Safari, which can
+  // report isComposing false on the Enter that ends a composition.
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    if (send(text)) setText("");
+  };
+  // DESIGN.md: one row, two when the text breaks a line or no longer fits; past that it scrolls
+  // inside. The rows attribute, never a style height (CSP).
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.rows = 1;
+    const next = text.includes("\n") || el.scrollHeight > el.clientHeight + 1 ? 2 : 1;
+    el.rows = next;
+    setFieldRows(next);
+  }, [text]);
+  const ready = canSend && text.trim() !== "";
 
   // Dividers (5.5.2): the time when the conversation changes or after a gap of more than 10 minutes.
   // Right after the history it was read for, not after what is said now.
@@ -292,18 +314,23 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       </div>
       {reason && <p className={styles.reason}>{reason}</p>}
       <form className={styles.composer} onSubmit={onSubmit}>
-        <input
+        <textarea
+          ref={field}
           className={styles.input}
-          type="text"
+          rows={fieldRows}
           aria-label={copy.chat.inputLabel}
           value={text}
           disabled={readOnly || loading}
           enterKeyHint="send"
           autoComplete="off"
+          data-ready={ready ? "" : undefined}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKeyDown}
         />
-        <button type="submit" className={styles.send} disabled={!canSend || text.trim() === ""}>
-          {copy.chat.send}
+        <button type="submit" className={`${styles.send} pressable`} aria-label={copy.chat.send} disabled={!ready}>
+          <span className={styles.sendMark} aria-hidden="true">
+            <Icon name="send" />
+          </span>
         </button>
       </form>
     </div>
