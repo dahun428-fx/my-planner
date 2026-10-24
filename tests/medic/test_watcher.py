@@ -544,3 +544,12 @@ def test_watcher_ticks_web_verifier(tmp_path: Path) -> None:
     e.tick(2)
     assert e.store.get(fp).state == "resolved"
     assert len(notifier.fixed_calls) == 1
+
+
+def test_heartbeat_only_posts_heartbeat_without_reading_health(tmp_path: Path) -> None:
+    env = make_env(tmp_path, start=datetime(2026, 10, 25, 16, 0, tzinfo=UTC))
+    env.store.kv_set("deployed_sha", "abc1234")
+    env.watcher.heartbeat()
+    hb = env.heartbeat_issue
+    assert env.server.issues[hb]["body"].startswith("last_seen: 2026-10-25T16:00:00Z, sha: abc1234")
+    assert not [r for r in env.http.requests if r.path.endswith("/health")]

@@ -1224,3 +1224,35 @@ def test_keep_enabled_starts_when_task_state_unknown(tmp_path: Path) -> None:
     env.tick(5)  # 포기: 작업은 켜져 있지만 돌고 있는지 모름 → Enable+Start
     assert env.dip() is None
     assert "Enable-ScheduledTask" in env.cmds[-1] and "Start-ScheduledTask" in env.cmds[-1]
+
+
+def test_updater_ignores_pinned_medic_diff_and_cleans_before_merge(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.store.kv_set("medic_pinned", PREV)  # medic_boot가 되돌려 둔 표시
+    env.shell.on("git", "status", returns=(0, " M src/my_planner_medic/updater.py\0"))
+    env.tick()
+    assert env.has("merge --ff-only") and "dirty_tree" not in {k for _, k in env.notifier.daily_calls}
+    checkout = next(i for i, c in enumerate(env.cmds) if "checkout HEAD -- src/my_planner_medic" in c)
+    merge = next(i for i, c in enumerate(env.cmds) if "merge --ff-only" in c)
+    assert checkout < merge
+    assert env.store.kv_get("medic_pinned") is None
+
+
+def test_pinned_does_not_hide_other_hand_edits(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.store.kv_set("medic_pinned", PREV)
+    env.shell.on("git", "status", returns=(0, " M src/my_planner/app.py\0 M src/my_planner_medic/a.py\0"))
+    env.tick()
+    assert not env.has("merge --ff-only")
+    assert {k for _, k in env.notifier.daily_calls} == {"dirty_tree"}
+
+
+def test_verify_ok_of_medic_deploy_keeps_previous_sha_as_last_good(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.changed("src/my_planner_medic/updater.py")
+    deployed(env)
+    for _ in range(3):
+        env.tick(5)
+    assert env.updater.self_updated
+    good = json.loads((tmp_path / "state" / "medic-last-good.json").read_text())
+    assert good == {"sha": PREV, "new_sha": NEW}  # 새 medic이 60초를 넘기기 전까지는 이전 커밋이 마지막 좋은 것

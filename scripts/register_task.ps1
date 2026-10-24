@@ -5,6 +5,8 @@
 .DESCRIPTION
   - 상시 작업 my-planner: 로그온, 절전 복귀(Power-Troubleshooter ID 1), 5분 워치독 트리거.
     배터리에서도 실행, 시간 제한 없음, IgnoreNew, 실패 시 1분 간격 999회 재시작, 작업 폴더는 루트.
+  - 구조 작업 my-planner-medic(SP6 자동 복구): 로그온 + 5분 감시 트리거로 `pythonw scripts\medic_boot.py`(medic 실행기)를 띄웁니다.
+    시간 제한 없음, IgnoreNew. 운영 작업(my-planner)을 등록할 때만 함께 등록합니다. `-NoMedic`이면 등록하지 않고 있으면 지웁니다.
   - 깨우기 작업 my-planner-wake: 회차 시각 5분 전에 깨우고 pythonw -c pass만 실행합니다.
     시각은 `python -m my_planner.wake_times`가 config.toml에서 계산합니다. 회차 시각을 바꾸면 다시 실행하세요.
     S4: 깨우기 타이머는 AC 전원에서만 확인했습니다. 배터리에서는 전원 옵션 "절전 모드 해제 타이머 허용"이 정합니다.
@@ -22,7 +24,8 @@
 param(
     [string]$Root = '',
     [string]$TaskName = 'my-planner',
-    [switch]$NoWake
+    [switch]$NoWake,
+    [switch]$NoMedic
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +33,7 @@ Set-StrictMode -Version Latest
 
 $MainTask = $TaskName
 $WakeTask = 'my-planner-wake'
+$MedicTask = 'my-planner-medic'
 $DaysXml = @{
     weekday = '<Monday /><Tuesday /><Wednesday /><Thursday /><Friday />'
     weekend = '<Saturday /><Sunday />'
@@ -103,7 +107,22 @@ $common = @{
 # 1. 상시 작업
 Register-FromXml $MainTask (Expand-Template 'task_my-planner.xml.tmpl' $common)
 
-# 2. 깨우기 작업 (운영 작업만)
+# 2. 구조 작업 medic (운영 작업만)
+if ($MainTask -ne 'my-planner') {
+    Write-Output "medic 작업은 운영($MedicTask)만 둡니다: $MainTask 는 건너뜀"
+} elseif ($NoMedic) {
+    if (Get-ScheduledTask -TaskName $MedicTask -ErrorAction SilentlyContinue) {
+        Stop-ScheduledTask -TaskName $MedicTask -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $MedicTask -Confirm:$false
+        Write-Output "medic 작업을 지웠습니다(-NoMedic): $MedicTask"
+    } else {
+        Write-Output "medic 작업은 등록하지 않았습니다(-NoMedic)"
+    }
+} else {
+    Register-FromXml $MedicTask (Expand-Template 'task_my-planner-medic.xml.tmpl' $common)
+}
+
+# 3. 깨우기 작업 (운영 작업만)
 if ($MainTask -ne 'my-planner') {
     Write-Output "깨우기 작업은 운영($WakeTask)만 둡니다: $MainTask 는 건너뜀"
 } elseif ($NoWake) {
@@ -123,6 +142,7 @@ if ($MainTask -ne 'my-planner') {
     Register-FromXml $WakeTask (Expand-Template 'task_my-planner-wake.xml.tmpl' $values)
 }
 
-# 3. 지금 바로 한 번 띄웁니다(이미 실행 중이면 IgnoreNew라 아무 일도 없습니다)
+# 4. 지금 바로 한 번 띄웁니다(이미 실행 중이면 IgnoreNew라 아무 일도 없습니다)
 Start-ScheduledTask -TaskName $MainTask
+if (($MainTask -eq 'my-planner') -and -not $NoMedic) { Start-ScheduledTask -TaskName $MedicTask }
 Write-Output "시작했습니다: $MainTask. 점검: powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1"

@@ -108,6 +108,34 @@ Unregister-ScheduledTask -TaskName my-planner -Confirm:$false
 Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 ```
 
+## 자동 복구 (medic)
+
+비서(`my-planner`)와 따로 도는 작은 프로그램 `my-planner-medic`이 비서를 지켜봅니다. 비서 로그에 새 오류가 나거나 `/health`가 나빠지면 GitHub에 `incident` 이슈를 열고, GitHub Actions의 수리 워크플로가 고친 PR이 CI를 통과해 `main`에 머지되면 medic이 노트북에 배포합니다. 배포 뒤 10분 안에 같은 문제가 다시 나면 이전 커밋과 DB로 되돌리고 텔레그램으로 알립니다. medic은 표준 라이브러리만 쓰고 `state\medic.db`만 씁니다(되돌릴 때 `planner.db`를 백업으로 바꾸는 것 하나가 예외입니다). 로그는 `state\logs\medic.log`에 남고 토큰과 메시지 본문은 적지 않습니다.
+
+**처음 한 번 넣어 둘 것**
+
+- 저장소 시크릿 4개(Settings > Secrets and variables > Actions): `CLAUDE_CODE_OAUTH_TOKEN`(노트북에서 `claude setup-token`), `REPAIR_PAT`(fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기), `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`(뒤의 둘은 `.env`와 같은 값).
+- 저장소 변수: `AUTO_REPAIR`(`on`/`off`), `PAT_EXPIRES`(PAT 만료일 `YYYY-MM-DD`). `REPAIR_MAX_FAILURES`(기본 2)와 `REPAIR_MAX_MERGES_PER_DAY`(기본 3)는 바꾸고 싶을 때만 넣습니다.
+- 노트북 `.env`에 1개: `MEDIC_GITHUB_TOKEN`(fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기). 시크릿은 `.env`와 저장소 시크릿에만 둡니다. 이슈·로그·커밋에는 남지 않습니다.
+- 작업 등록: `scripts\register_task.ps1`이 `my-planner`와 함께 `my-planner-medic`도 등록합니다(medic 없이 등록하려면 `-NoMedic`, 점검에도 `-NoMedic`). 이 작업은 로그온할 때와 5분마다 `pythonw scripts\medic_boot.py`를 띄우고, 실행기가 `python -m my_planner_medic`을 자식으로 실행합니다. 점검 출력에 `my-planner-medic` 줄이 `OK`로 나와야 합니다.
+
+**끄기**
+
+- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않습니다.
+- medic 전체 멈추기: `config.medic.toml`에 `enabled = false`를 적고 medic을 다시 띄웁니다(하트비트만 보내고 감시·배포는 하지 않습니다). 작업 자체를 없애려면 `register_task.ps1 -NoMedic`을 다시 실행합니다.
+
+**medic 자신의 갱신**
+
+배포에 `src\my_planner_medic\`이 들어 있으면 medic은 확인을 마친 뒤 종료 코드 3으로 끝나고 실행기가 새 코드로 바로 다시 띄웁니다. 새 medic이 시작 후 60초 안에 연속 3번 죽으면 실행기가 `state\medic-last-good.json`의 커밋으로 `src\my_planner_medic\`만 되돌리고(`git checkout <sha> -- src/my_planner_medic`), 그 배포 커밋을 건너뛸 목록에 넣습니다. 이때 `git status`에 `src\my_planner_medic\` 변경이 보이는 것은 정상이며, 다음 배포 때 medic이 알아서 정리합니다. 이것도 안 되면 medic 하트비트가 끊겨 텔레그램으로 알림이 옵니다.
+
+**`failed-<sha>`에서 손으로 되살리기**
+
+스키마가 바뀐 배포가 되돌려지면 되돌리기 직전의 DB가 `state\backups\failed-<sha>\`(`planner.db`와 WAL 파일)에 남습니다. 되돌린 뒤 사이에 쓴 할 일·컨디션을 살리려면 위 "백업에서 복구하기"와 같은 순서(작업 끄고 멈추기, 지금 DB 옆으로 옮기기, 복사, 켜기)에서 복사할 파일만 `failed-<sha>\planner.db`로 바꿉니다. 옛 코드와 스키마가 달라서 열리지 않을 수 있으니, 필요한 행만 `sqlite3`로 꺼내는 편이 안전합니다. `failed-*`는 최근 3개만 남습니다.
+
+**PAT 만료**
+
+PAT은 만료일을 1년으로 두고 `PAT_EXPIRES` 변수에 같은 날짜를 적습니다. 만료 30일 전부터 하루 한 번 텔레그램으로 알려 줍니다. 새 토큰을 만들어 `REPAIR_PAT` 시크릿, `.env`의 `MEDIC_GITHUB_TOKEN`을 바꾸고 `PAT_EXPIRES`를 고친 뒤 `.env`를 읽도록 medic을 다시 띄웁니다(`Stop-ScheduledTask -TaskName my-planner-medic`, 5분 안에 감시 트리거가 다시 띄웁니다).
+
 ## API 열기
 
 운영 앱이 쓰는 API(`/api/v1/*`)는 BE가 `127.0.0.1:8787`에서만 엽니다. 폰과 다른 기기에서는 Tailscale `serve`로 **내 tailnet 안에만** 엽니다.

@@ -449,12 +449,14 @@ class Updater:
         if dip.get("phase") == "verify":
             new = str(dip["new_sha"])
             self._store.kv_set("deployed_sha", new)
-            self._write_last_good(new)
+            medic_changed = bool(dip.get("medic_changed"))
+            # medic이 바뀐 배포는 새 medic이 60초를 넘길 때까지 이전 커밋이 마지막 좋은 것이다(09 medic_boot가 승격)
+            self._write_last_good(str(dip["prev_sha"]) if medic_changed else new, new if medic_changed else None)
             for fp in dip.get("repaired") or []:
                 inc = self._store.get(fp)
                 if inc is not None and inc.state != "resolved":
                     self._resolve(inc, now)
-            self.self_updated = bool(dip.get("medic_changed"))
+            self.self_updated = medic_changed
             log.info("verify_ok")
         else:
             log.info("rollback_verify_ok")
@@ -839,7 +841,8 @@ class Updater:
         except Exception as exc:  # noqa: BLE001 - 상태 기계가 끝까지 가야 한다
             log.warning("notify_failed %s", type(exc).__name__)
 
-    def _write_last_good(self, sha: str) -> None:
+    def _write_last_good(self, sha: str, new_sha: str | None = None) -> None:
         tmp = self._last_good.with_name(self._last_good.name + ".tmp")
-        tmp.write_text(json.dumps({"sha": sha}), encoding="utf-8")
+        data = {"sha": sha} if new_sha is None else {"sha": sha, "new_sha": new_sha}
+        tmp.write_text(json.dumps(data), encoding="utf-8")
         os.replace(tmp, self._last_good)
