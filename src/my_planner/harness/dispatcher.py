@@ -914,13 +914,21 @@ class Dispatcher:
         """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1, 그다음 원문 기록, 대화 갱신, 회고 저장."""
         assert self.runs is not None
         # 사용자는 이미 받았다. 상태, 카운터, 전달 기록을 한 트랜잭션에 먼저 적어 다음 시작 때 다시 보내지 않게 한다.
-        with transaction(self.runs.conn):
+        try:
+            with transaction(self.runs.conn):
+                for r in (run, *merged):
+                    self.runs.mark_done(r.id)
+                self._release_carry([run, *merged])
+                self.state.incr_usage(self._today(), "proactive_messages")
+                if self.deliveries is not None:  # 지금은 텔레그램 전송뿐이다(앱·대체는 티켓 08)
+                    self.deliveries.record(run.id, "telegram", "full", "sent")
+        except Exception:
+            # 한 트랜잭션이 안 됐다(디스크, 잠금 등). 회차가 running으로 남으면 다음 시작 때 다시 보낼 수 있으니
+            # done만 따로 적는다(중복 전송 방지). 카운터와 전달 기록은 비운 채 둔다. 이것도 안 되면 그대로 올린다
+            log.exception("run_delivered_record_error", extra={"run_id": run.id})
             for r in (run, *merged):
                 self.runs.mark_done(r.id)
             self._release_carry([run, *merged])
-            self.state.incr_usage(self._today(), "proactive_messages")
-            if self.deliveries is not None:  # 지금은 텔레그램 전송뿐이다(앱·대체는 티켓 08)
-                self.deliveries.record(run.id, "telegram", "full", "sent")
         try:
             self.transcripts.append(
                 self.clock.now(), "비서", conv.id, run.loop.value, redact(text)[0], tools=tool_names

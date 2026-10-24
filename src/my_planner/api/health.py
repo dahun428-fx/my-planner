@@ -60,13 +60,19 @@ class ErrorCounter(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         own = record.name == _OWN_PREFIX or record.name.startswith(_OWN_PREFIX + ".")
         name = record.msg if own and isinstance(record.msg, str) else THIRD_PARTY_MSG
-        self._events.append((self.clock.now(), name))
+        now = self.clock.now()
+        self._prune(now)  # 아무도 /health를 읽지 않아도 창 밖 기록은 쌓이지 않는다
+        self._events.append((now, name))
+
+    def _prune(self, now: datetime) -> None:
+        cutoff = now - self.window
+        while self._events and self._events[0][0] < cutoff:
+            self._events.popleft()
 
     def snapshot(self) -> dict[str, Any]:
         now = self.clock.now()
         cutoff = now - self.window
-        while self._events and self._events[0][0] < cutoff:
-            self._events.popleft()
+        self._prune(now)
         by_event = Counter(name for _, name in self._events)
         return {
             "window_hours": int(self.window.total_seconds() // 3600),

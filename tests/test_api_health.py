@@ -210,9 +210,11 @@ async def test_run_delivered_records_delivery_same_transaction(tmp_path, conn, s
     await env.process_run(env.runs.get(run.id))
 
     assert len(env.sender.sent) == 1  # 보내기는 했다
+    # 한 트랜잭션이었다: 카운터와 전달 기록은 둘 다 그대로
     assert state.usage(kst(2026, 10, 26, 9, 0).date()).proactive_messages == 0
     assert conn.execute("SELECT COUNT(*) FROM run_deliveries").fetchone()[0] == 0
-    assert env.runs.get(run.id).status is not RunStatus.done
+    # 회차는 done만 따로 적어 다음 시작 때 다시 보내지 않는다
+    assert env.runs.get(run.id).status is RunStatus.done
 
 
 async def test_run_delivered_records_telegram_delivery(tmp_path, conn, state):
@@ -225,3 +227,40 @@ async def test_run_delivered_records_telegram_delivery(tmp_path, conn, state):
     row = conn.execute("SELECT * FROM run_deliveries").fetchone()
     assert (row["run_id"], row["channel"], row["mode"], row["status"]) == (run.id, "telegram", "full", "sent")
     assert env.runs.get(run.id).status is RunStatus.done
+
+
+def test_to_api_times_converts_time_fields_only():
+    from my_planner.api.models import to_api_times
+
+    got = to_api_times({
+        "now": "2026-10-24T13:00:00+09:00",
+        "scheduled_at": "2026-10-25T14:00:00.000000+09:00",
+        "items": [{"completed_at": "2026-10-24T01:00:00.000000+00:00", "title": "2026-10-25T14:00+09:00"}],
+        "note": "2026-10-25T14:00:00+09:00",
+        "planned_for": "2026-10-25",
+        "updated_at": None,
+    })
+    assert got == {
+        "now": "2026-10-24T04:00:00Z",
+        "scheduled_at": "2026-10-25T05:00:00Z",
+        "items": [{"completed_at": "2026-10-24T01:00:00Z", "title": "2026-10-25T14:00+09:00"}],
+        "note": "2026-10-25T14:00:00+09:00",  # 자유 글은 그대로
+        "planned_for": "2026-10-25",
+        "updated_at": None,
+    }
+
+
+def test_error_counter_prunes_on_emit_without_snapshot():
+    clock = FakeClock(SAT_1300)
+    counter = ErrorCounter(clock)
+    lg = logging.getLogger("my_planner.test_prune")
+    lg.addHandler(counter)
+    lg.propagate = False
+    try:
+        for _ in range(3 * 24 * 60):  # 사흘 동안 1분마다, /health는 한 번도 읽지 않는다
+            lg.warning("tick_error")
+            clock.advance(timedelta(minutes=1))
+        assert len(counter._events) <= 24 * 60 + 1
+    finally:
+        lg.removeHandler(counter)
+        lg.propagate = True

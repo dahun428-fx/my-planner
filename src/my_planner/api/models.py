@@ -32,15 +32,26 @@ def api_time(dt: datetime) -> str:
     return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def to_api_times(value: Any) -> Any:
-    """dict·list 안의 오프셋 붙은 ISO 시각 문자열을 모두 UTC `Z`로 바꾼다(그 밖의 값은 그대로)."""
+# 시각 필드 이름(스펙 6.1 "시각 필드를 변환"). 이 이름이거나 `_at`으로 끝나는 키의 값만 바꾼다
+TIME_KEYS = frozenset({"now", "scheduled_for", "since", "limited_until", "paused_until", "reply_until"})
+
+
+def is_time_key(key: str | None) -> bool:
+    return key is not None and (key in TIME_KEYS or key.endswith("_at"))
+
+
+def to_api_times(value: Any, *, key: str | None = None) -> Any:
+    """dict·list 안의 시각 필드(`is_time_key`) 값 가운데 오프셋 붙은 ISO 문자열을 UTC `Z`로 바꾼다.
+
+    키를 본다: 할 일 제목이나 메모가 우연히 시각 모양이어도 바꾸지 않는다. `datetime` 값은 늘 바꾼다.
+    """
     if isinstance(value, dict):
-        return {k: to_api_times(v) for k, v in value.items()}
+        return {k: to_api_times(v, key=k) for k, v in value.items()}
     if isinstance(value, list | tuple):
-        return [to_api_times(v) for v in value]
+        return [to_api_times(v, key=key) for v in value]
     if isinstance(value, datetime):
         return api_time(value)
-    if isinstance(value, str) and _OFFSET_ISO.match(value):
+    if isinstance(value, str) and is_time_key(key) and _OFFSET_ISO.match(value):
         try:
             return api_time(datetime.fromisoformat(value))
         except ValueError:
