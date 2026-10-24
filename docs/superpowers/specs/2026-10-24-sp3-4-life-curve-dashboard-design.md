@@ -58,7 +58,7 @@ SP1의 S0~S6에 이어 번호를 붙인다. 구현 계획의 첫 작업이고, �
 | S7 | `pythonw`로 띄운 BE 안에서 aiohttp `AppRunner` + `TCPSite("127.0.0.1", 8787)`가 텔레그램 폴링, 1분 tick과 같은 이벤트 루프(Windows Proactor)에서 돈다. 콘솔 창이 뜨지 않는다 | API만 별도 스레드의 이벤트 루프에서 돌리고, 쓰기와 두뇌 갈래 제출은 `asyncio.run_coroutine_threadsafe`로 BE 루프의 디스패처에 넘긴다(단일 작성자 유지). `WindowsSelectorEventLoopPolicy`로 바꾸는 길은 쓰지 않는다: Selector 루프는 Windows에서 하위 프로세스를 못 띄워 Agent SDK(Claude CLI 자식 프로세스)가 멈춘다 |
 | S8 | 사전 조건: tailnet 관리 화면에서 MagicDNS와 HTTPS 인증서를 켠다. `tailscale serve --bg --https=443 http://127.0.0.1:8787`로 폰(셀룰러 + Tailscale)과 노트북 브라우저에서 HTTPS로 닿는다. SSE가 버퍼링 없이 조각마다 도착한다(첫 `text-delta`까지 지연 측정) | 15초 간격 SSE 주석 줄로 버퍼를 민다. 그래도 묶여 오면 응답 끝에 한 번에 보내는 것을 받아들인다(운영 앱 스레드에 알림) |
 | S9 | Vercel 출처(`https://*.vercel.app`)의 페이지가 Tailscale 주소(`*.ts.net`, 100.64.0.0/10)로 `fetch`할 때: Chrome의 Private/Local Network Access 사전 요청(`Access-Control-Request-Private-Network`)과 권한 창, iOS Safari 동작 | BE가 사전 요청에 `Access-Control-Allow-Private-Network: true`로 답한다(기본 구현에 포함). 권한 창은 사용자 안내 문서에 적는다 |
-| S10 | 웹 푸시: `pywebpush`로 VAPID 서명 푸시를 보내 Android Chrome과 iOS(홈 화면에 추가한 PWA, iOS 16.4 이상)에서 받는다. Windows에서 `pywebpush`가 설치되고 돈다 | iOS가 안 되면 iOS 기기는 주 통로를 텔레그램으로 둔다(7.3 D4 대체 경로가 자동으로 처리) |
+| S10 | 웹 푸시: `pywebpush`로 VAPID 서명 푸시를 보내 Android Chrome과 iOS(홈 화면에 추가한 PWA, iOS 16.4 이상)에서 받는다. Windows에서 `pywebpush`가 설치되고 돈다 | iOS 구독이 안 되면 그 구독은 D4가 처리한다(404/410이면 끄고, 받는 구독이 하나도 없으면 텔레그램으로 대체). 주 통로는 기기별 설정이 아니므로(6.4.9) 기기마다 바꾸지 않는다 |
 | S11 | Agent SDK `include_partial_messages=True`로 글 조각(`StreamEvent`)을 받고, `resume=<session>` + `fork_session=True`로 회차 세션을 다른 통로에서 갈라 이어 간다 | 글 조각이 안 되면 두뇌 답 전체를 `text-delta` 하나로 보낸다. 가르기가 안 되면 SP1의 resume 실패 대체 경로(새 세션 + 회차 본문 + 원문 기록 20개)를 쓴다 |
 | S12 | S2 재확인: 도구가 12개에서 22개(앱 대화는 25개)로 늘어도 기본 도구가 하나도 보이지 않고 `mcp__planner__*`만 호출된다 | SP1 S2의 대안(PreToolUse 훅) |
 
@@ -141,7 +141,7 @@ flowchart LR
 | `status_xp_ledger` X9, 할 일·사건·챕터 초안 만료, `api_idempotency` 정리 | 하루 한 번 작업이 `apply_action`을 부른다(`actor = secretary`, `channel = scheduler`) | 즉시 갈래 |
 | `push_subscriptions` 추가·삭제, `app_state.notify_primary` | `POST`/`DELETE /push/subscriptions`, `PUT /settings/notify` → `apply_action` | 즉시 갈래 |
 | `push_subscriptions.last_success_at`·`failure_count`·`disabled_at`, `run_deliveries` | `harness/delivery.py`. 회차 전달은 두뇌 갈래 작업 안에서, `POST /push/test`는 즉시 갈래로 결과를 기록한다(보내기는 `asyncio.to_thread`, 기록은 루프 스레드) | 두뇌 갈래 또는 즉시 갈래 |
-| `api_idempotency` 쓰기, `inbound_pending`(통로 `app`) | `api/chat.py`, `api/actions.py`가 요청을 받을 때와 끝낼 때(7.5) | 해당 요청의 갈래 |
+| `api_idempotency` 쓰기, `inbound_pending`(통로 `app`) | 받을 때 `api/chat.py`(`inbound_pending` 저장), 끝낼 때 디스패처(7.5 M5). `/actions`·`/undo`·명령은 `apply_action`이 결과와 함께 쓴다 | 해당 요청의 갈래 |
 | `runs` 상태, `app_state`(`notify_primary` 빼고), `usage_state`, `telegram_updates`, 백업 | SP1처럼 `loop`와 디스패처가 직접. 하네스가 자기 일을 기록하는 운영 상태다 | 갈래 밖(SP1과 같음) |
 
 갈래 밖의 쓰기는 모두 이벤트 루프 스레드 위의 동기 호출이라 트랜잭션끼리 섞이지 않는다.
@@ -245,7 +245,7 @@ CREATE TABLE api_idempotency (
     client_msg_id   TEXT PRIMARY KEY,
     endpoint        TEXT NOT NULL CHECK (endpoint IN ('chat', 'actions', 'undo')),
     status_code     INTEGER NOT NULL,
-    response_json   TEXT NULL,     -- actions·undo의 응답. chat은 NULL(답은 원문 기록과 inbound_pending.reply_text)
+    response_json   TEXT NULL,     -- actions·undo: 응답 JSON. chat: {"conversation_id", "reply_text"(가린 뒤의 답 글, 확인 문구 포함)}
     conversation_id INTEGER NULL,
     at              TEXT NOT NULL
 );
@@ -297,7 +297,7 @@ CREATE TABLE curve_chapters (
     status      TEXT NOT NULL CHECK (status IN ('draft', 'confirmed')),
     origin      TEXT NOT NULL CHECK (origin IN ('seed', 'chat', 'review')),
     source_ref  TEXT NULL,            -- 시드의 출처 메모. 화면에는 내보내지 않는다
-    draft_since TEXT NULL,            -- 초안 만료 시계의 시작. 초안이면 NOT NULL(제안 시각, 되돌린 시각)
+    draft_since TEXT NULL,            -- 초안 만료 시계의 시작. 초안이면 NOT NULL(제안 시각, 되돌린 시각), 확정하면 NULL로 되돌린다
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
     CHECK (end_month IS NULL OR end_month >= start_month)
@@ -320,7 +320,7 @@ CREATE TABLE curve_milestones (
     title_label    TEXT NULL,         -- 칭호 이름을 사용자가 고쳤을 때(9.4)
     conversation_id INTEGER NULL,     -- 초안을 꺼낸 대화("전부 저장" 버튼)
     source_ref     TEXT NULL,
-    draft_since    TEXT NULL,         -- 초안 만료 시계의 시작(제안 시각, 확정을 되돌린 시각)
+    draft_since    TEXT NULL,         -- 초안 만료 시계의 시작(제안 시각, 확정을 되돌린 시각). 확정하면 NULL
     created_at     TEXT NOT NULL,
     confirmed_at   TEXT NULL,
     updated_at     TEXT NOT NULL,
@@ -449,7 +449,7 @@ CREATE TABLE status_titles (
 | GET | `/push/vapid-public-key` | 운영 앱용 | 없음 | 6.4.8 |
 | POST | `/push/subscriptions` | 운영 앱용 | 즉시 갈래 | 6.4.8 |
 | DELETE | `/push/subscriptions/{id}` | 운영 앱용 | 즉시 갈래 | 6.4.8 |
-| POST | `/push/test` | 운영 앱용 | 없음(보내기만) | 6.4.8 |
+| POST | `/push/test` | 운영 앱용 | 즉시 갈래(결과 기록) | 6.4.8 |
 | GET, PUT | `/settings/notify` | 운영 앱용 | PUT은 즉시 갈래 | 6.4.9 |
 
 대시보드는 표의 `GET` 여섯 개만 쓴다.
@@ -619,7 +619,7 @@ AI SDK `useChat` + `DefaultChatTransport`(`api` = `<BE URL>/api/v1/chat`, `heade
 - `conversation_id`: 앱이 마지막으로 받은 대화 id. 없거나 `null`이면 BE가 고른다. 아래 7.2 규칙으로 **이을 수 없으면 새 대화를 열고** 새 id를 응답 메타데이터로 알린다(오류가 아니다).
 - `checkin_id`: 앱의 체크인 화면에서 답할 때 그 회차 id. 7.2 규칙 1.
 - `parts`의 `text`만 읽고 이어 붙인다. 글이 하나도 없으면(그림 등) SP1 `NON_TEXT_REPLY` 문구로 답한다.
-- `/`로 시작하는 글은 텔레그램과 같은 명령으로 처리한다(`bot/commands.py`의 같은 함수). `/today`, `/week`, `/pause`, `/unpause`, `/done`, `/status`, `/help`는 두뇌 없이 답하고, 답은 글 조각 하나다. **`/plan [주제]`는 예외**다: SP1(`bot/telegram_io.py handle_update`)처럼 앱 통로의 계획 대화를 열고 주제를 두뇌 갈래로 넘기므로, 일반 메시지와 같은 스트림으로 답한다.
+- `/`로 시작하는 글은 텔레그램과 같은 명령으로 처리한다(`bot/commands.py`의 같은 함수). `/today`, `/week`, `/pause`, `/unpause`, `/done`, `/status`, `/help`는 두뇌 없이 답하고, 답은 글 조각 하나다. 이 명령들은 `inbound_pending`과 두뇌 갈래를 타지 않는다: 상태를 바꾸는 `/pause`, `/unpause`, `/done`은 `apply_action`(즉시 갈래)으로 처리하고, 중복 방지는 `api_idempotency`(`endpoint='chat'`, `response_json.reply_text`에 명령의 답)로 한다. 같은 `client_msg_id`가 다시 오면 명령을 다시 실행하지 않고 그 답을 돌려준다. **`/plan [주제]`는 예외**다: SP1(`bot/telegram_io.py handle_update`)처럼 앱 통로의 계획 대화를 열고 주제를 두뇌 갈래로 넘기므로, 일반 메시지와 같은 스트림으로 답한다.
 - 받은 글은 SP1 5.8 가리기를 거친 뒤 `inbound_pending`(통로 `app`, 음수 id)에 먼저 저장하고 두뇌 갈래에 넣는다(SP1 5.2 전달 보장). 두뇌 갈래 안에서 앱 메시지를 어떻게 묶고, 답을 어디로 보내고, 처리 완료를 어디에 적는지는 7.5.
 
 응답: `200`, `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`, `x-vercel-ai-ui-message-stream: v1`, `x-conversation-id: <id>`. 본문은 AI SDK UI message stream 조각(`data: <JSON>\n\n`)이고 `data: [DONE]`으로 끝난다.
@@ -654,7 +654,7 @@ data: [DONE]
 | `finish` | 마지막 조각. 그 뒤 `[DONE]` |
 | `error` | 프로토콜 수준 문제(요청이 잘못돼 스트림 도중 끊을 때)만. 두뇌 오류, 하루 상한, 사용 한도, 로그인 문제는 SP1과 같은 고정 문구를 **글 조각**으로 보내고 정상 `finish`로 끝낸다 |
 
-- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다. 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답(`inbound_pending.reply_text` 또는 원문 기록)을 글 조각 하나로 돌려준다. 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
+- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다. 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
 - 하루 두뇌 호출 상한 60회는 두 통로가 함께 쓴다.
 
 #### 6.4.2 `POST /actions` (운영 앱용)
@@ -877,10 +877,10 @@ SP1 5.8 머리글 끝에 통로를 붙인다: `### 21:05 사용자 [44] (evening
 | M2 | **묶음은 같은 통로끼리만**: `_drain_messages(lead)`는 `lead`와 통로가 같은 메시지만 꺼내고 나머지는 제자리에 둔다. 텔레그램 메시지끼리는 SP1처럼 묶는다. **앱 메시지는 묶지 않는다**: 요청마다 스트림이 하나라 답을 나눠 줄 수 없다. 앱 메시지 하나 = 두뇌 호출 하나다. 다시 넣은 메시지(`recovered`)는 SP1처럼 묶지 않는다 |
 | M3 | **대상 대화**: 묶음의 대화는 7.2 규칙으로 통로마다 고른다. 묶음 안의 메시지는 모두 같은 통로라 같은 대화로 간다. 그 대화가 회차 대화이고 답장 창 안이면 디스패처가 `mark_answered(run, channel)`로 `runs.answered_at`, `answered_via`, X3/X5/X8 원장을 한 트랜잭션에 쓴다(처음 한 번만) |
 | M4 | **답은 통로별 보낼 곳으로**: `Dispatcher`는 `Sender` 하나 대신 `senders: dict[channel, Sender]`를 받는다. `telegram` → `TelegramSender`(SP1). `app` → `AppReplySender`: `Inbound.sink`에 글 조각, 확인 문구, 하네스 화면 조각을 쓴다. `Outbound`에 `channel`을 더해 고정 안내(하루 상한, 사용 한도, 로그인, 글 아님)도 같은 길로 간다. 회차 전달은 이 표가 아니라 7.3(`harness/delivery.py`)이 맡는다 |
-| M5 | **처리 완료 기록**: 텔레그램은 SP1 그대로(`telegram_updates` 기록 + `inbound_pending` 삭제, 한 트랜잭션). 앱은 `telegram_updates`에 쓰지 않는다(음수 id를 넣지 않는다). 대신 답을 싱크에 다 쓴 뒤(싱크가 끊겼으면 답을 `reply_text`에 저장한 뒤) `api_idempotency(client_msg_id, endpoint='chat', conversation_id)` 기록과 `inbound_pending` 행 삭제를 한 트랜잭션으로 한다. 그다음 비서 줄을 원문 기록에 `@app`으로 쓴다 |
+| M5 | **처리 완료 기록**: 텔레그램은 SP1 그대로(`telegram_updates` 기록 + `inbound_pending` 삭제, 한 트랜잭션). 앱은 `telegram_updates`에 쓰지 않는다(음수 id를 넣지 않는다). 대신 답을 싱크에 다 쓴 뒤(싱크가 끊겼으면 답을 `reply_text`에 저장한 뒤) `api_idempotency(client_msg_id, endpoint='chat', conversation_id, response_json = {conversation_id, reply_text})` 기록과 `inbound_pending` 행 삭제를 한 트랜잭션으로 한다. `reply_text`는 가린 뒤의 답 글(확인 문구 포함)이고, 재요청 재생(6.4.1)의 유일한 근거다. 2일 뒤 행과 함께 지워진다. 그다음 비서 줄을 원문 기록에 `@app`으로 쓴다 |
 | M6 | **시작 때 다시 넣기**(SP1 5.1 4b): `channel='app'` 행은 `sink=None`으로 다시 넣는다. SP1 5.2-4의 규칙(사용자 줄, 저장한 답, 도구 기록, 3회 뒤 버림)은 그대로지만, **답을 어디에도 보내지 않는다**: 텔레그램으로 보내지 않고 푸시도 하지 않는다. 답은 원문 기록과 `reply_text`에만 남고 M5로 끝낸다. 운영 앱은 `GET /conversations/{id}/messages`로 읽거나, 같은 `client_msg_id`로 다시 보내면 저장한 답을 받는다(6.4.1) |
 | M7 | **싱크가 끊김**: 앱 요청의 연결이 끊기면 `AppReplySender`는 쓰기를 조용히 그만둔다(오류를 올리지 않는다). 두뇌 호출, 도구 쓰기, 원문 기록, M5는 끝까지 간다 |
-| M8 | **같은 `client_msg_id`가 처리 중에 다시 옴**: 새 `Inbound`를 만들지 않는다. 새 요청의 스트림을 처리 중인 메시지의 싱크에 덧붙여(싱크 하나에 연결 여럿 가능) 같은 조각을 받게 한다. 끝난 뒤라면 6.4.1의 저장한 답 재생이다 |
+| M8 | **같은 `client_msg_id`가 처리 중에 다시 옴**: 새 `Inbound`를 만들지 않는다. 새 요청의 스트림을 처리 중인 메시지의 싱크에 덧붙여(싱크 하나에 연결 여럿 가능) 같은 조각을 받게 한다. 시작 때 다시 넣어 `sink=None`으로 처리 중인 행(M6)이면 새 요청의 싱크를 그 처리에 새로 붙인다. 끝난 뒤라면 6.4.1의 저장한 답 재생이다 |
 
 텔레그램만 쓰면(앱 메시지가 없으면) 동작은 SP1과 같다.
 
@@ -1348,7 +1348,7 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 상황 | 문구 |
 |---|---|
 | 푸시 제목 | 아침 브리핑 / 저녁 체크인 / 주간 회고 / 다시 이어서 (`return`) / 알림 (`notice`) |
-| 사다리 1단계 (회고 메시지 끝) | 이번 달, 가능한 최고의 삶을 10, 최악을 0이라고 하면 지금은 몇 칸인가요? |
+| 사다리 1단계 (컨디션 답 다음, 11.1 1단계) | 이번 달, 가능한 최고의 삶을 10, 최악을 0이라고 하면 지금은 몇 칸인가요? |
 | 사다리 2단계 | 5년 뒤에는 몇 칸일 것 같아요? |
 | 사다리 기록 | 기록했어요: 지금 {n}, 5년 뒤 {m} (건너뛰면 "기록했어요: 지금 {n}") |
 | 영역 점수 묻기 | 이번 분기 영역 점수도 여쭤볼게요. 1~10으로 답해 주세요. 지난 분기: {영역 점수 줄}. 예: 커리어 7 경제 5 건강 6 관계 8 배움 7 삶의 질 6 |
