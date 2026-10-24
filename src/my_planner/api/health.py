@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from my_planner.api.models import api_time, to_api_times
 from my_planner.clock import Clock, from_iso, logical_date
 from my_planner.harness.checkins import runs_today
+from my_planner.harness.delivery import effective_channel
 from my_planner.logging_setup import THIRD_PARTY_MSG
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.push import PushRepo
@@ -136,8 +137,8 @@ def health_view(conn: sqlite3.Connection, deps: ApiDeps) -> dict[str, Any]:
         "proactive": {"sent_today": usage.proactive_messages, "cap": s.limits.daily_proactive_messages},
         "paused_until": _future(state.get(PAUSE_UNTIL_KEY), now),
         "plan_open": _plan_open(conn, now, timedelta(hours=s.limits.plan_idle_hours)),
-        # 앱 통로(푸시) 전달은 티켓 08이다. 그때까지 실제 통로는 언제나 텔레그램(7.3 D1a)
-        "notify": {"primary": primary, "effective": "telegram"},
+        # 실제 통로(7.3 D1a): 주 통로가 app이어도 VAPID와 켜진 구독이 없으면 telegram
+        "notify": {"primary": primary, "effective": effective_channel(primary, push.count_active(), s.vapid is not None)},
         "runs_today": runs_today(runs=runs, deliveries=DeliveriesRepo(conn, deps.clock), now=now, settings=s),
         "errors": deps.errors.snapshot(),
         "push": {"subscriptions": push.count_active(), "last_success_at": last_success},

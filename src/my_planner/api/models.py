@@ -7,12 +7,14 @@
 
 from __future__ import annotations
 
+import base64
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from aiohttp import web
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # 시각 변환의 정본은 `my_planner.timefmt`다. API 쪽 가져오기가 그대로 되도록 다시 내보낸다
 from my_planner.timefmt import TIME_KEYS, api_time, is_time_key, to_api_times  # noqa: F401 - 다시 내보냄
@@ -616,6 +618,87 @@ class ActivityResponse(_Model):
     next_before: str | None
 
 
+class VapidPublicKey(_Model):
+    """`GET /push/vapid-public-key` (6.4.8)."""
+
+    public_key: str
+
+
+def _b64url(v: str) -> bytes:
+    if not re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", v):
+        raise ValueError("base64url이 아니다")
+    return base64.urlsafe_b64decode(v + "=" * (-len(v) % 4))
+
+
+class PushKeys(BaseModel):
+    """구독 키. `p256dh`는 비압축 P-256 공개점 65바이트, `auth`는 16바이트(둘 다 base64url). repr에 나오지 않는다.
+
+    오류 문구에 값이 들어가지 않게 처리기는 `ValidationError`를 고정 문구 400으로 바꾼다(`api/push.py`).
+    """
+
+    model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
+
+    p256dh: str = Field(min_length=1, max_length=512, repr=False)
+    auth: str = Field(min_length=1, max_length=512, repr=False)
+
+    @field_validator("p256dh")
+    @classmethod
+    def _p256dh(cls, v: str) -> str:
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        raw = _b64url(v)
+        if len(raw) != 65 or raw[0] != 0x04:
+            raise ValueError("p256dh는 비압축 P-256 점 65바이트여야 한다")
+        ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw)  # 곡선 위의 점이 아니면 ValueError
+        return v
+
+    @field_validator("auth")
+    @classmethod
+    def _auth(cls, v: str) -> str:
+        if len(_b64url(v)) != 16:
+            raise ValueError("auth는 16바이트여야 한다")
+        return v
+
+
+class PushSubscribeBody(BaseModel):
+    """`POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다.
+
+    `endpoint`와 키는 비밀값처럼 다룬다: repr과 검증 오류에 넣지 않는다.
+    """
+
+    model_config = ConfigDict(extra="ignore", hide_input_in_errors=True)
+
+    endpoint: str = Field(min_length=1, max_length=2048, pattern=r"^https://", repr=False)
+    expirationTime: int | float | None = None
+    keys: PushKeys
+    label: str | None = Field(default=None, max_length=100)
+
+
+class PushSubscribed(_Model):
+    """`201` 구독 id. 같은 `endpoint`면 같은 id."""
+
+    id: int
+
+
+class PushTestResult(_Model):
+    """`POST /push/test`: 받은 구독 수, 못 받은 구독 수."""
+
+    ok: int
+    failed: int
+
+
+class NotifySettings(_Model):
+    """`GET`/`PUT /settings/notify` (6.4.9). `effective`는 7.3 D1a."""
+
+    primary: Literal["telegram", "app"]
+    effective: Literal["telegram", "app"]
+    push_subscriptions: int
+
+
+class NotifyPutBody(_Model):
+    primary: Literal["telegram", "app"]
+
+
 def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -650,6 +733,12 @@ MODELS: dict[str, type[BaseModel]] = {
     "UndoRequestBody": UndoRequestBody,
     "UndoResponse": UndoResponse,
     "ActivityResponse": ActivityResponse,
+    "VapidPublicKey": VapidPublicKey,
+    "PushSubscribeBody": PushSubscribeBody,
+    "PushSubscribed": PushSubscribed,
+    "PushTestResult": PushTestResult,
+    "NotifySettings": NotifySettings,
+    "NotifyPutBody": NotifyPutBody,
 }
 
 

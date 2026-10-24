@@ -22,6 +22,7 @@ EXPECTED_MODELS = {
     "Priorities", "Drafts", "Curve", "Status", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "Messages",
     "UiCatalog", "SchemaBundle", "ActionRequestBody", "ActionApplied", "ActionNeedsConfirm", "ActionRejected",
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
+    "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
 }
 
 

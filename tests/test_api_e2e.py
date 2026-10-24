@@ -200,3 +200,50 @@ async def test_answer_from_app_closes_telegram(tmp_path):
     assert env.sender.cleared == [message_id]
     second = env.brain.calls[1]
     assert (second["session_id"], second["fork_session"]) == ("s-run", True)
+
+
+async def test_push_delivery_and_fallback(tmp_path):
+    """웹 푸시 전달과 텔레그램 대체(SP3-4 티켓 08, 7.3 D1a~D6). 구독 주소는 꾸며 낸 값이다."""
+    from fakes import FakePushSender
+    from test_delivery import tick_at
+
+    from my_planner.store.repos.push import PushRepo
+
+    ep = "https://push.example.invalid/sub/e2e-fake"
+    push = FakePushSender()
+    script = [FakeTurn([], "좋은 아침이에요"), FakeTurn([], "오늘 하루 어떠셨어요?"), FakeTurn([], "일요일 아침이에요")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 9, 0), script=script, push=push) as env:
+        # 10/24(토): 운영 앱이 구독한다 → 10:00 아침 브리핑은 푸시로만
+        await env.subscribe(ep)
+        await tick_at(env, kst(2026, 10, 24, 10, 0) + timedelta(seconds=30))
+        morning = await (await env.get("/health")).json()
+        pushes_after_morning, telegram_after_morning = len(push.sent), len(env.sender.sent)
+
+        # 구독이 만료됐다(410) → 18:00 저녁 체크인은 텔레그램으로, 구독은 꺼진다
+        push.always(ep, 410)
+        await tick_at(env, kst(2026, 10, 24, 18, 0) + timedelta(seconds=30))
+        evening = await (await env.get("/health")).json()
+        active = PushRepo(env.conn).count_active()
+        pushes_after_evening = len(push.sent)
+
+        # 10/25(일) 10:00: 처음부터 텔레그램(푸시는 해 보지도 않는다)
+        await tick_at(env, kst(2026, 10, 25, 10, 0) + timedelta(seconds=30))
+        sunday = await (await env.get("/health")).json()
+
+    assert (pushes_after_morning, telegram_after_morning) == (1, 0)
+    assert morning["proactive"]["sent_today"] == 1
+    assert morning["runs_today"][0]["delivered_via"] == ["app"]
+    assert morning["notify"] == {"primary": "app", "effective": "app"}
+
+    assert pushes_after_evening == 2  # 410은 다시 보내지 않는다
+    assert [o.text for o in env.sender.sent[:1]] == ["오늘 하루 어떠셨어요?"]
+    (ev,) = [r for r in evening["runs_today"] if r["loop"] == "evening_checkin"]
+    assert ev["delivered_via"] == ["telegram"]
+    assert evening["proactive"]["sent_today"] == 2
+    assert active == 0
+    assert evening["notify"]["effective"] == "telegram"
+
+    assert len(push.sent) == 2 and len(env.sender.sent) == 2
+    assert sunday["notify"] == {"primary": "app", "effective": "telegram"}
+    (sun,) = [r for r in sunday["runs_today"] if r["loop"] == "morning_brief"]
+    assert sun["delivered_via"] == ["telegram"]

@@ -2,7 +2,7 @@
 
 미들웨어(바깥 → 안): 접근 로그 → CORS(사전 요청, 오류를 JSON으로) → 본문 상한 → 인증 → 안전 모드.
 - 접근 로그는 aiohttp 기본 것을 끄고(`access_log=None`) 요청마다 `method`, 경로 틀, 상태, 소요 시간만 남긴다.
-  쿼리 문자열, 헤더, 본문, 토큰은 남기지 않는다.
+  쿼리 문자열, 헤더, 본문, 토큰, 푸시 구독 주소는 남기지 않는다.
 - `GET` 처리기는 요청마다 따로 연 읽기 전용 연결(`mode=ro`)만 받는다. 쓰기는 디스패처 경로뿐이다(ADR 0007).
 """
 
@@ -25,6 +25,14 @@ from my_planner.api.chat import post_chat
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
+from my_planner.api.push import (
+    delete_subscription,
+    get_notify,
+    get_vapid_public_key,
+    post_push_test,
+    post_subscription,
+    put_notify,
+)
 from my_planner.api.read import (
     get_checkin,
     get_checkins,
@@ -180,6 +188,8 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/ui/catalog", get_ui_catalog),
     ("/schema", get_schema),
     ("/activity", get_activity),
+    ("/push/vapid-public-key", get_vapid_public_key),
+    ("/settings/notify", get_notify),
 )
 
 
@@ -196,6 +206,8 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
     ("/chat", post_chat),
     ("/actions", post_actions),
     ("/activity/{id}/undo", post_undo),
+    ("/push/subscriptions", post_subscription),
+    ("/push/test", post_push_test),
 )
 
 
@@ -218,6 +230,8 @@ def build_app(deps: ApiDeps) -> web.Application:
         app.router.add_get(API_PREFIX + path, read_handler(view))
     for path, write in WRITE_ROUTES:
         app.router.add_post(API_PREFIX + path, write_handler(write))
+    app.router.add_put(API_PREFIX + "/settings/notify", write_handler(put_notify))
+    app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
     return app
 
 
