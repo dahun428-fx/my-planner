@@ -1,0 +1,109 @@
+/* The secretary's words as Markdown (chat answers, the brief, a check-in). Body size throughout:
+   headings are bold text, not titles. Links are the secretary hue (5.1); the rest is ink. */
+.root {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+/* :where() keeps the reset at zero specificity, so the block spacing below wins over it. */
+:where(.root) :where(p, ul, ol, blockquote, pre) {
+  margin: 0;
+}
+.root > * + * {
+  margin-top: 0.5em;
+}
+.root ul,
+.root ol {
+  padding-left: 1.25em;
+}
+.root li + li {
+  margin-top: 0.125em;
+}
+.heading {
+  font-weight: 600;
+}
+.root blockquote {
+  padding-left: 0.75em;
+  border-left: 3px solid var(--control);
+  color: var(--text-2);
+}
+.root code {
+  padding: 0.0625em 0.3em;
+  border-radius: 4px;
+  background: var(--raised);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.875em;
+}
+.root pre {
+  padding: 0.625em 0.75em;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+.root pre code {
+  padding: 0;
+  background: transparent;
+  white-space: inherit;
+}
+.tableWrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.root table {
+  border-collapse: collapse;
+  font-size: var(--size-meta);
+  overflow-wrap: normal;
+}
+.root th,
+.root td {
+  padding: 0.375em 0.625em;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.root th {
+  font-weight: 600;
+  background: var(--raised);
+}
+.root .alignLeft {
+  text-align: left;
+}
+.root .alignCenter {
+  text-align: center;
+}
+.root .alignRight {
+  text-align: right;
+}
+/* Footnote definitions, gathered after the text. */
+.footnotes {
+  padding-top: 0.5em;
+  border-top: 1px solid var(--rule);
+  font-size: var(--size-meta);
+  color: var(--text-2);
+}
+.root hr {
+  margin: 0.75em 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+.link {
+  color: var(--hue);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.link:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+.task {
+  margin: 0 0.375em 0 -1.25em;
+  vertical-align: -0.125em;
+  accent-color: var(--text);
+}
+.root li:has(> .task) {
+  list-style: none;
+}

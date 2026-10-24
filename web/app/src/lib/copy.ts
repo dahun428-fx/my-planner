@@ -219,6 +219,8 @@ export const copy = {
     pausedUntil: (when: string) => `${when}까지 쉬는 중`,
     resume: "다시 시작",
     theme: "화면",
+    palette: "색감",
+    palettes: { ink: "잉크", paper: "종이", forest: "숲", sea: "바다", sunset: "노을", lavender: "라벤더" },
     disconnectSummary: "이 폰에 저장된 주소, 열쇠, 받아 둔 내용이 지워져요",
     disconnectConfirm: "연결 해제",
     cancel: "그대로 두기",

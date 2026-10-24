@@ -125,6 +125,12 @@ describe("Today", () => {
     expect(screen.getByRole("button", { name: copy.today.lessPlain })).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("the brief is Markdown", async () => {
+    serve({ ...today, brief: { ...today.brief!, text: "좋은 아침이에요. **운동**부터 해요." } });
+    renderWithProviders(<Today />);
+    expect(await screen.findByText("운동", { selector: "strong" })).toBeInTheDocument();
+  });
+
   it("empty todos copy", async () => {
     serve(empty);
     renderWithProviders(<Today />);

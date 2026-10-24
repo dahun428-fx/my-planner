@@ -101,6 +101,12 @@ describe("Checkin", () => {
     expect(text).not.toMatch(/\d+\s*(분|시간)\s*(뒤|남)|남은 시간|마감/);
   });
 
+  it("the check-in text is Markdown", async () => {
+    serve({ ...pending, text: "오늘 **운동**은 했나요?" });
+    renderWithProviders(<Checkin id={341} />);
+    expect(await screen.findByText("운동", { selector: "strong" })).toBeInTheDocument();
+  });
+
   it("cards render as parts", async () => {
     serve();
     renderWithProviders(<Checkin id={341} />);

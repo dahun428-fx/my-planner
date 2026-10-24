@@ -79,11 +79,9 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+/* The secretary's text: a Markdown block (components/Markdown sets the line breaks). */
 .text {
-  margin: 0;
   font-size: var(--size-section);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .part {
   min-width: 0;

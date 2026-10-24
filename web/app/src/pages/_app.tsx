@@ -11,7 +11,7 @@ import { copy } from "../lib/copy";
 import { reportBrowserError } from "../lib/errorReport";
 import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
 import { pruneDeviceData } from "../lib/snapshot";
-import { applyTheme, loadTheme } from "../lib/theme";
+import { applyPalette, applyTheme, loadPalette, loadTheme } from "../lib/theme";
 import { CatalogProvider } from "../ui/CatalogProvider";
 import "../styles/tokens.css";
 import "../styles/globals.css";
@@ -119,15 +119,18 @@ function ChatHost({ children }: { children: ReactNode }) {
   );
 }
 
-// First effect (no inline script under the CSP): the saved theme, then the service worker; a
-// notification tap posts {navigate} to the app router. iOS may have dropped this device's push
-// subscription since the last open: make it again (F7). Then the 7-day sweep of device data (4.7).
+// First effect (no inline script under the CSP): the saved theme and colour preset, then the
+// service worker; a notification tap posts {navigate} to the app router. iOS may have dropped this
+// device's push subscription since the last open: make it again (F7). Then the 7-day sweep of
+// device data (4.7).
 function useAppShell() {
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
   useEffect(() => {
     applyTheme(loadTheme());
+    // Like the theme, the palette comes in this effect: the first paint is ink, then the choice.
+    applyPalette(loadPalette());
     void registerServiceWorker((url) => void routerRef.current.push(url)).then(() => ensurePushSubscription());
     void pruneDeviceData();
     // Uncaught errors and rejected promises go to the BE as name + place, never the message (spec 3.3).

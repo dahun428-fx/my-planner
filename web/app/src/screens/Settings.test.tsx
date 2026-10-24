@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hardReplace } from "../lib/nav";
 import { copy } from "../lib/copy";
+import { PALETTES } from "../lib/theme";
 import { formatKst } from "../lib/time";
 import degraded from "../test/fixtures/health-degraded.json";
 import paused from "../test/fixtures/health-paused.json";
@@ -24,6 +25,7 @@ afterEach(async () => {
   env?.restore();
   env = null;
   resetDevice();
+  delete document.documentElement.dataset.palette;
   await clear();
 });
 
@@ -314,6 +316,8 @@ describe("Settings", () => {
     env = installPush({ permission: "granted", existing: fakeSub() });
     storePushId(3);
     localStorage.setItem("mp.theme", "dark");
+    localStorage.setItem("mp.palette", "sea");
+    document.documentElement.dataset.palette = "sea";
     localStorage.setItem("mp.lastHealthOk", "2026-10-24T08:00:00Z");
     localStorage.setItem("other.key", "kept");
     await set("snap:today", { data: {}, savedAt: "2026-10-24T08:00:00Z", beUrl: TEST_BE_URL });
@@ -336,12 +340,13 @@ describe("Settings", () => {
     expect(hardReplace).toHaveBeenCalledOnce();
     expect(calls.deleted).toEqual(["3"]);
     expect(env.current()?.unsubscribe).toHaveBeenCalledOnce();
-    for (const k of ["mp.beUrl", "mp.token", "mp.lastHealthOk", "mp.pushId", "mp.theme"]) expect(localStorage.getItem(k)).toBeNull();
+    for (const k of ["mp.beUrl", "mp.token", "mp.lastHealthOk", "mp.pushId", "mp.theme", "mp.palette"]) expect(localStorage.getItem(k)).toBeNull();
     expect(localStorage.getItem("other.key")).toBe("kept");
     expect(await get("snap:today")).toBeUndefined();
     expect(await get("parts:1")).toBeUndefined();
     expect(await get("catalog")).toBeUndefined();
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+    expect(document.documentElement.hasAttribute("data-palette")).toBe(false);
   });
 
   it("disconnect goes on when the BE cannot be reached", async () => {
@@ -386,6 +391,44 @@ describe("Settings", () => {
     expect(localStorage.getItem("mp.theme")).toBe("dark");
     await user.click(within(group).getByRole("radio", { name: copy.settings.themeSystem }));
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
+  });
+
+  it("colour presets: six swatches, ink chosen, a tap applies at once", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await screen.findByRole("radiogroup", { name: copy.settings.palette });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios.map((r) => r.textContent)).toEqual(PALETTES.map((p) => copy.settings.palettes[p]));
+    // Each swatch draws its own palette (data-palette on the swatch, colours from tokens.css).
+    expect(radios.map((r) => r.querySelector("[data-palette]")?.getAttribute("data-palette"))).toEqual([...PALETTES]);
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
+    expect(radios.filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(1);
+
+    await user.click(within(group).getByRole("radio", { name: copy.settings.palettes.forest }));
+    expect(document.documentElement.dataset.palette).toBe("forest");
+    expect(localStorage.getItem("mp.palette")).toBe("forest");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.forest })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "false");
+
+    // One tab stop; arrow keys move the choice.
+    expect(radios.filter((r) => r.tabIndex === 0)).toEqual([within(group).getByRole("radio", { name: copy.settings.palettes.forest })]);
+    await user.keyboard("{ArrowRight}");
+    expect(document.documentElement.dataset.palette).toBe("sea");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.sea })).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(document.documentElement.dataset.palette).toBe("lavender");
+    await user.keyboard("{Home}");
+    expect(document.documentElement.hasAttribute("data-palette")).toBe(false);
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("the saved palette shows as chosen", async () => {
+    localStorage.setItem("mp.palette", "lavender");
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await screen.findByRole("radiogroup", { name: copy.settings.palette });
+    await waitFor(() => expect(within(group).getByRole("radio", { name: copy.settings.palettes.lavender })).toHaveAttribute("aria-checked", "true"));
   });
 
   it("about shows app, BE and catalog versions", async () => {

@@ -1,0 +1,57 @@
+/* Six swatches in one row (390px wide: about 59px each). The swatch's colours come from its own
+   data-palette (tokens.css): its ground, with its secretary hue in the lower half. */
+.group {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+.option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 0.25rem 0;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.swatch {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  /* --muted, not --control: the edge of a light swatch must show on a white group (3:1). */
+  border: 1px solid var(--muted);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(to bottom, var(--ground) 50%, var(--hue) 50%);
+}
+/* The ring is outside the swatch, so it is drawn in the page's colours, not the swatch's. */
+.ring {
+  display: block;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+}
+.option[aria-checked="true"] .ring {
+  border-color: var(--text);
+}
+.label {
+  max-width: 100%;
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.option[aria-checked="true"] .label {
+  color: var(--text);
+  font-weight: 600;
+}
+.option:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}

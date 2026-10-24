@@ -7,6 +7,7 @@ import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
@@ -190,7 +191,7 @@ export function Today() {
             }
           >
             <div className={styles.brief}>
-              <p className={`${styles.briefText} ${folded ? styles.folded : ""}`}>{brief.text}</p>
+              <Markdown text={brief.text} className={`${styles.briefText} ${folded ? styles.folded : ""}`} />
               {longBrief && (
                 <button type="button" className={styles.more} aria-expanded={briefOpen} onClick={() => setBriefOpen((o) => !o)}>
                   {briefOpen ? copy.today.lessPlain : copy.today.morePlain}

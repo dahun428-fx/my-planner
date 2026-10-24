@@ -39,17 +39,22 @@
   font-variant-numeric: tabular-nums;
 }
 .briefText {
-  margin: 0;
   font-size: var(--size-body);
   line-height: 1.5;
-  white-space: pre-line;
 }
+/* The brief is Markdown (several blocks): the clamp counts lines across them, and the height cap
+   keeps three lines where a browser clamps only one block. */
 .folded {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
   -webkit-box-orient: vertical;
+  max-height: 4.5em;
   overflow: hidden;
+}
+/* No space between blocks while folded, so the third line is whole, not half cut. */
+.briefText.folded > * + * {
+  margin-top: 0;
 }
 .more {
   position: relative;
