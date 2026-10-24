@@ -1,8 +1,7 @@
 import Head from "next/head";
-import { LargeTitle } from "../components/LargeTitle";
 import { TabBar } from "../components/TabBar";
 import { copy } from "../lib/copy";
-import page from "../styles/page.module.css";
+import { Today } from "../screens/Today";
 
 export default function Page() {
   return (
@@ -10,9 +9,7 @@ export default function Page() {
       <Head>
         <title>{copy.tabs.today}</title>
       </Head>
-      <main className={page.main}>
-        <LargeTitle title={copy.tabs.today} />
-      </main>
+      <Today />
       <TabBar current="today" />
     </>
   );

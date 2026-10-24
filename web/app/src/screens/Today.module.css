@@ -1,0 +1,123 @@
+.main {
+  padding-bottom: calc(var(--row) + 3.5rem + env(safe-area-inset-bottom) + var(--gap));
+}
+.line {
+  margin: 0 var(--pad) var(--gap);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.notice {
+  margin: 0 var(--pad) var(--gap);
+  padding: 0.75rem var(--pad);
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-group);
+  color: var(--notice-ink);
+}
+.noticeText {
+  margin: 0;
+  font-size: var(--size-meta);
+  line-height: 1.45;
+}
+.noticeLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--notice-ink);
+}
+.brief {
+  padding: 0.75rem var(--pad);
+  border-left: 3px solid var(--hue);
+}
+.briefText {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+.folded {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.more {
+  min-height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--hue);
+  cursor: pointer;
+}
+.more:focus-visible,
+.change:focus-visible,
+.pill:focus-visible,
+.seeAll:focus-visible {
+  outline: 2px solid var(--text);
+}
+.condition {
+  padding: 0.5rem var(--pad);
+}
+.pills {
+  display: flex;
+  gap: 0.5rem;
+}
+.pill {
+  flex: 1;
+  min-height: var(--control-h);
+  border: 1px solid var(--control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  cursor: pointer;
+}
+.pill:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.picked {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-h);
+}
+.value {
+  font-variant-numeric: tabular-nums;
+}
+.change {
+  min-height: var(--control-h);
+  padding: 0 0.5rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.change:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.reason {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.seeAll {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+}

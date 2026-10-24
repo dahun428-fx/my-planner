@@ -8,6 +8,9 @@ const table: [string, ModelName][] = [
   ["health.json", "Health"],
   ["health-degraded.json", "Health"],
   ["health-safe-mode.json", "SafeModeHealth"],
+  ["today.json", "Today"],
+  ["today-empty.json", "Today"],
+  ["checkins-today.json", "CheckinList"],
 ];
 
 const dir = join(__dirname, "../test/fixtures");
