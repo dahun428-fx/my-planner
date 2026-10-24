@@ -1,6 +1,7 @@
 import { del, get, keys, set } from "idb-keyval";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type ApiResult, apiGet } from "../api/client";
+import { loadConn } from "./connection";
 import type { ModelName } from "../api/validate";
 import { useConnection } from "./ConnectionProvider";
 import { usePolling } from "./polling";
@@ -66,6 +67,10 @@ export type SnapView<T> =
   | { kind: "loading" }
   | { kind: "blocked"; result: ApiResult<T> };
 
+// Every polled answer carries the BE address it came from, so an answer for the previous BE is
+// never shown or stored after the connection changes while the screen stays mounted.
+type Tagged<T> = ApiResult<T> & { beUrl: string | null };
+
 // Online: the polled answer (and it is stored when good). Offline: the stored copy, read-only.
 export function useSnapshotted<T>(
   key: SnapKey,
@@ -74,24 +79,29 @@ export function useSnapshotted<T>(
 ): { view: SnapView<T>; refresh(): Promise<void> } {
   const { state, conn } = useConnection();
   const beUrl = conn?.beUrl;
-  const { result, refresh } = usePolling<T>(useCallback(() => apiGet<T>(path, model), [path, model]));
+  const load = useCallback(async (): Promise<ApiResult<T>> => {
+    const from = loadConn()?.beUrl ?? null; // apiFetch sends with the saved connection
+    const r = await apiGet<T>(path, model);
+    return { ...r, beUrl: from } as Tagged<T>;
+  }, [path, model]);
+  const { result: raw, refresh } = usePolling<T>(load);
+  const result = raw && (raw as Tagged<T>).beUrl === beUrl ? raw : null;
   const [snap, setSnap] = useState<{ data: T; savedAt: string } | null | undefined>(undefined);
-  const lastLive = useRef<T | null>(null);
+  const lastLive = useRef<{ beUrl: string; data: T } | null>(null);
+  if (lastLive.current && lastLive.current.beUrl !== beUrl) lastLive.current = null;
 
   const offline = state?.kind === "offline" || result?.kind === "offline";
 
   useEffect(() => {
     if (result?.kind === "ok" && beUrl) {
-      lastLive.current = result.data;
+      lastLive.current = { beUrl, data: result.data };
       void saveSnap(key, result.data, beUrl);
     }
   }, [result, key, beUrl]);
 
   useEffect(() => {
-    if (!offline || !beUrl) {
-      setSnap(undefined);
-      return;
-    }
+    setSnap(undefined);
+    if (!offline || !beUrl) return;
     let alive = true;
     void loadSnap<T>(key, beUrl).then((s) => {
       if (alive) setSnap(s);
@@ -110,7 +120,7 @@ export function useSnapshotted<T>(
     view = { kind: "live", data: result.data };
   } else if (result.kind === "error" && lastLive.current !== null) {
     // A failed refresh does not blank a screen that already has content; the next poll tries again.
-    view = { kind: "live", data: lastLive.current };
+    view = { kind: "live", data: lastLive.current.data };
   } else {
     view = { kind: "blocked", result };
   }

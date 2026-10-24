@@ -29,7 +29,7 @@ export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPr
         { label: copy.todos.drop, tone: "negative" as const, onPress: onDrop },
       ];
   return (
-    <SwipeRow actions={actions} disabled={readOnly} menuTitle={todo.title} onLongPress={onLongPress}>
+    <SwipeRow actions={actions} disabled={readOnly} menuTitle={todo.title} onLongPress={onLongPress} moreLabel={copy.today.moreActions(todo.title)}>
       <div className={styles.row}>
         {readOnly ? (
           <span className={styles.check} aria-hidden="true">

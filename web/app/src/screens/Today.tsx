@@ -61,6 +61,20 @@ export function Today() {
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
   const live = view.kind === "live";
+
+  // A flip ends once the live list shows the state it asked for (or no longer has the row).
+  useEffect(() => {
+    if (view.kind !== "live") return;
+    setFlip((f) => {
+      const ids = Object.keys(f).map(Number);
+      const keep = ids.filter((id) => {
+        const row = view.data.todos.find((t) => t.todo.id === id);
+        return row !== undefined && (row.todo.status === "done") !== f[id];
+      });
+      if (keep.length === ids.length) return f;
+      return Object.fromEntries(keep.map((id) => [id, f[id]]));
+    });
+  }, [view]);
   const offline = view.kind === "snapshot" || view.kind === "none";
   const date = data?.date ?? "";
 
@@ -70,13 +84,17 @@ export function Today() {
     busy.current.add(id);
     const wasDone = (flip[id] ?? item.todo.status === "done");
     setFlip((f) => ({ ...f, [id]: !wasDone }));
+    let applied = false;
     try {
       const out = await run(wasDone ? "reopen_task" : "complete_task", { id });
-      if (out?.kind === "applied") await refresh();
-      else if (out?.kind === "conflict") toast.show({ text: copy.actions.failed });
+      applied = out?.kind === "applied";
+      if (out?.kind === "conflict") toast.show({ text: copy.actions.failed });
+      if (applied) await refresh();
     } finally {
       busy.current.delete(id);
-      unflip(id);
+      // After an applied write the flip stays until an answer that shows the change arrives
+      // (the effect above), so a failed refresh does not make the row look unchecked again.
+      if (!applied) unflip(id);
     }
   };
 

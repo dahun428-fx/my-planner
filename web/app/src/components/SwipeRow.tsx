@@ -12,6 +12,13 @@ const SLOP_PX = 8;
 const OPEN_PX = 40;
 const LONG_PRESS_MS = 500;
 const BUTTON_REM = 5;
+const HIDE_FALLBACK_MS = 260;
+
+// One source for the drag limit and the resting position: the root font size in px (16 when unknown).
+function remPx(): number {
+  const v = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(v) && v > 0 ? v : 16;
+}
 
 // Spec 5.5.5/9장: swipe left to show the row's actions; a long press (or the context menu) opens the
 // same actions in a sheet for people who cannot swipe. The moving value goes straight to the DOM
@@ -21,12 +28,15 @@ export function SwipeRow({
   disabled,
   menuTitle,
   onLongPress,
+  moreLabel,
   children,
 }: {
   actions: SwipeAction[];
   disabled: boolean;
   menuTitle?: string;
   onLongPress?: () => void;
+  /** Accessible name of the keyboard button that opens the same menu as a long press. */
+  moreLabel?: string;
   children: ReactNode;
 }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -36,7 +46,7 @@ export function SwipeRow({
   const gesture = useRef<{ x: number; y: number; dragging: boolean; active: boolean } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swallowClick = useRef(false);
-  const width = `${actions.length * BUTTON_REM}rem`;
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const off = disabled || actions.length === 0;
 
   const place = (value: string, animate: boolean) => {
@@ -49,16 +59,29 @@ export function SwipeRow({
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
   };
+  const clearHide = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+  };
+  // The buttons stay mounted while the row slides back, so the strip is never blank mid-slide.
   const close = () => {
     place("translateX(0)", true);
     setOpen(false);
-    setShowActions(false);
+    clearHide();
+    hideTimer.current = setTimeout(() => setShowActions(false), HIDE_FALLBACK_MS);
   };
 
-  useEffect(() => clearTimer, []);
+  useEffect(
+    () => () => {
+      clearTimer();
+      clearHide();
+    },
+    [],
+  );
   useEffect(() => {
     if (off) {
       clearTimer();
+      clearHide();
       place("translateX(0)", false);
       setOpen(false);
       setShowActions(false);
@@ -69,6 +92,7 @@ export function SwipeRow({
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (off || (e.pointerType === "mouse" && e.button !== 0)) return;
     swallowClick.current = false;
+    clearHide();
     gesture.current = { x: e.clientX, y: e.clientY, dragging: false, active: true };
     clearTimer();
     timer.current = setTimeout(() => {
@@ -101,8 +125,8 @@ export function SwipeRow({
         // capture is a nicety
       }
     }
-    const from = open ? -BUTTON_REM * 16 * actions.length : 0;
-    const px = Math.min(0, Math.max(-BUTTON_REM * 16 * actions.length, from + dx));
+    const limit = BUTTON_REM * remPx() * actions.length;
+    const px = Math.min(0, Math.max(-limit, (open ? -limit : 0) + dx));
     place(`translateX(${px}px)`, false);
   };
 
@@ -116,7 +140,7 @@ export function SwipeRow({
     const dx = e.clientX - g.x;
     const reveal = open ? dx < OPEN_PX : dx < -OPEN_PX;
     if (reveal) {
-      place(`translateX(-${width})`, true);
+      place(`translateX(-${BUTTON_REM * remPx() * actions.length}px)`, true);
       setOpen(true);
     } else {
       close();
@@ -170,6 +194,12 @@ export function SwipeRow({
         onPointerUp={onUp}
         onPointerCancel={onCancel}
         onClickCapture={onClickCapture}
+        onTransitionEnd={() => {
+          if (!open && !gesture.current?.dragging) {
+            clearHide();
+            setShowActions(false);
+          }
+        }}
         onContextMenu={(e) => {
           if (off) return;
           e.preventDefault();
@@ -178,6 +208,11 @@ export function SwipeRow({
         }}
       >
         {children}
+        {moreLabel && !off && (
+          <button type="button" className={styles.more} aria-label={moreLabel} onClick={() => setMenu(true)}>
+            <span aria-hidden="true">…</span>
+          </button>
+        )}
       </div>
       <Sheet open={menu && !off} onClose={() => setMenu(false)} title={menuTitle}>
         <div className={styles.menu}>

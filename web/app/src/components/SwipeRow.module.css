@@ -60,3 +60,20 @@
 .menuItem:first-child {
   border-top: 0;
 }
+.more {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--control-h);
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+.more:focus,
+.more:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SwipeRow } from "./SwipeRow";
@@ -17,7 +17,7 @@ function swipe(el: HTMLElement, dx: number) {
 afterEach(() => vi.useRealTimers());
 
 describe("SwipeRow", () => {
-  it("swipe reveals tomorrow and drop", () => {
+  it("swipe reveals tomorrow and drop", async () => {
     const tomorrow = vi.fn();
     const drop = vi.fn();
     render(
@@ -31,10 +31,12 @@ describe("SwipeRow", () => {
     expect(surface.style.transform).toMatch(/translateX\(-/);
     fireEvent.click(screen.getByRole("button", { name: "내일로" }));
     expect(tomorrow).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "빼기" })).toBeNull();
+    // The buttons stay while the row slides back, then go.
+    expect(surface.style.transform).toBe("translateX(0)");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "빼기" })).toBeNull());
   });
 
-  it("small or vertical drags do not reveal", () => {
+  it("small or vertical drags do not reveal", async () => {
     render(
       <SwipeRow actions={actions(vi.fn(), vi.fn())} disabled={false}>
         <span>운동</span>
@@ -42,7 +44,8 @@ describe("SwipeRow", () => {
     );
     const surface = screen.getByText("운동").parentElement as HTMLElement;
     swipe(surface, -10);
-    expect(screen.queryByRole("button", { name: "빼기" })).toBeNull();
+    expect(surface.style.transform).toBe("translateX(0)");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "빼기" })).toBeNull());
   });
 
   it("long press offers same actions", () => {
@@ -63,6 +66,35 @@ describe("SwipeRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "빼기" }));
     expect(drop).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("resting position matches the root font size", () => {
+    document.documentElement.style.fontSize = "20px";
+    try {
+      render(
+        <SwipeRow actions={actions(vi.fn(), vi.fn())} disabled={false}>
+          <span>운동</span>
+        </SwipeRow>,
+      );
+      const surface = screen.getByText("운동").parentElement as HTMLElement;
+      swipe(surface, -400);
+      // 2 buttons x 5rem x 20px: the drag is capped at the same distance the row rests at.
+      expect(surface.style.transform).toBe("translateX(-200px)");
+    } finally {
+      document.documentElement.style.fontSize = "";
+    }
+  });
+
+  it("keyboard button opens the same menu", () => {
+    const tomorrow = vi.fn();
+    render(
+      <SwipeRow actions={actions(tomorrow, vi.fn())} disabled={false} moreLabel="운동 더 보기">
+        <span>운동</span>
+      </SwipeRow>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "운동 더 보기" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "내일로" }));
+    expect(tomorrow).toHaveBeenCalledTimes(1);
   });
 
   it("moving cancels a long press", () => {

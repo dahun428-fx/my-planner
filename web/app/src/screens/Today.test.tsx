@@ -54,7 +54,9 @@ const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node
 
 describe("Today", () => {
   it("renders blocks in order", async () => {
-    serve();
+    // The BE sends a done row first; it still goes to the end of the list.
+    const [a, b, c, d] = today.todos;
+    serve({ ...today, todos: [d, a, b, c] });
     renderWithProviders(<Today />);
     const line = await screen.findByText(copy.today.checkinLine(copy.loops.evening_checkin));
     expect(line.closest("a")).toHaveAttribute("href", "/checkin/?id=341");
@@ -67,7 +69,7 @@ describe("Today", () => {
     expect(before(line, brief)).toBe(true);
     expect(before(brief, condition)).toBe(true);
     expect(before(condition, todos)).toBe(true);
-    const rows = today.todos.map((t) => screen.getByText(t.todo.title));
+    const rows = [a, b, c, d].map((t) => screen.getByText(t.todo.title));
     rows.forEach((r, i) => {
       expect(before(todos, r)).toBe(true);
       if (i > 0) expect(before(rows[i - 1], r)).toBe(true);
@@ -216,10 +218,42 @@ describe("Today", () => {
     renderWithProviders(<Today />);
     const box = await screen.findByRole("checkbox", { name: copy.today.checkLabel("장보기") });
     // The first load is followed by one more when the saved connection reaches the polling hook.
-    await new Promise((r) => setTimeout(r, 100));
-    const base = hits.today;
+    await waitFor(() => expect(hits.today).toBe(2));
     await userEvent.setup().click(box);
-    await waitFor(() => expect(hits.today).toBe(base + 1));
+    await waitFor(() => expect(hits.today).toBe(3));
+  });
+
+  it("keeps the check when the refresh after an applied write fails", async () => {
+    let failing = false;
+    server.use(
+      http.get(`${BASE}/today`, () =>
+        failing ? HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) : HttpResponse.json(today),
+      ),
+    );
+    const bodies = actions(() => applied());
+    renderWithProviders(<Today />);
+    const box = await screen.findByRole("checkbox", { name: copy.today.checkLabel("장보기") });
+    failing = true;
+    await userEvent.setup().click(box);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    await screen.findByText("✓ 처리했어요");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole("checkbox", { name: copy.today.doneLabel("장보기") })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keyboard user opens the row menu and moves a todo to tomorrow", async () => {
+    serve();
+    const bodies = actions(() => applied());
+    renderWithProviders(<Today />);
+    const more = await screen.findByRole("button", { name: copy.today.moreActions("운동 30분") });
+    expect(screen.queryByRole("button", { name: copy.today.moreActions("빨래 널기") })).toBeNull();
+    const user = userEvent.setup();
+    more.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: copy.todos.tomorrow }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ action: "move_task", args: { id: 12, planned_for: "2026-10-25" } });
   });
 
   it("saves snapshot on success", async () => {
@@ -281,6 +315,7 @@ describe("Today offline and refused", () => {
     expect(screen.getByText(copy.offline.snapshotAt(formatKst(saved, "HH:mm")))).toBeInTheDocument();
     expect(screen.getByText("운동 30분")).toBeInTheDocument();
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: copy.today.moreActions("운동 30분") })).toBeNull();
     for (const n of [1, 2, 3, 4, 5]) expect(screen.getByRole("button", { name: copy.today.conditionScore(n) })).toBeDisabled();
     expect(screen.getAllByText(copy.offline.writeLater).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: copy.offline.chatLater })).toBeDisabled();
