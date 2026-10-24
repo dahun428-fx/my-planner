@@ -154,7 +154,14 @@ VAPID_SUBJECT=mailto:<받을 수 있는 주소>
 
 **Funnel은 절대 쓰지 않습니다.** `tailscale funnel`은 API를 인터넷 전체에 엽니다. 토큰 하나만으로 할 일과 대화 기록에 닿을 수 있으니 tailnet 밖으로 열지 않습니다.
 
-허용 출처(CORS)는 `config.toml`의 `[api] cors_origins`에 정확한 주소로만 넣습니다. 운영 앱 주소는 `https://my-planner-beige-eight.vercel.app` 하나입니다(끝에 `/` 없이). `*.vercel.app` 같은 와일드카드나 미리보기 주소 패턴은 넣지 않습니다.
+허용 출처(CORS)는 `config.toml`의 `[api] cors_origins`에 정확한 주소로만 넣습니다. 운영 앱 주소는 `https://my-planner-beige-eight.vercel.app` 하나입니다(끝에 `/` 없이):
+
+```toml
+[api]
+cors_origins = ["https://my-planner-beige-eight.vercel.app"]
+```
+
+`*.vercel.app` 같은 와일드카드나 미리보기 주소 패턴은 넣지 않습니다. `config.toml`을 바꾼 뒤에도 작업을 다시 켭니다. 다시 켜지 않으면 앱 연결 화면이 "주소에 닿지 않아요"에서 막힙니다.
 
 **토큰 바꾸기**
 
@@ -173,15 +180,15 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 **Vercel 프로젝트 설정**
 
 - Root Directory: `web/app`. 빌드 설정은 `web/app/vercel.json`이 고정합니다(Framework 없음, `npm run build`, 출력 `out`).
-- 환경 변수는 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나뿐입니다. CSP `connect-src`에 들어가며, 없으면 빌드가 멈춥니다. 토큰은 빌드나 환경 변수에 넣지 않습니다.
+- 환경 변수는 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나뿐입니다. CSP `connect-src`에 들어가고, 연결 화면이 받아들이는 주소 범위도 이 값으로 정해집니다(`*`는 이름 한 칸만 맞습니다). 없으면 빌드가 멈추고, 틀리면 연결 화면이 "이 앱에서 쓸 수 있는 주소가 아니에요"를 띄웁니다. 값을 바꾸면 다시 배포합니다. 토큰은 빌드나 환경 변수에 넣지 않습니다.
 - 운영 주소를 바꾸면 `config.toml`의 `[api] cors_origins`도 새 주소로 바꿉니다. 미리보기 배포 주소는 허용하지 않으므로 미리보기에서는 BE에 닿지 않습니다.
 
 **폰에서 연결하기**
 
 1. 폰에 Tailscale을 켜고, Safari로 앱 주소를 엽니다.
-2. 공유 → 홈 화면에 추가로 설치하고, 홈 화면 아이콘으로 엽니다(iOS 웹 푸시는 설치한 앱에서만 됩니다).
-3. 연결 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net/api/v1/`와 `API_TOKEN`을 넣습니다. 토큰은 이 기기 안에만 남습니다.
-4. 설정에서 알림을 켜고 테스트 알림을 보내 봅니다.
+2. 공유 → 홈 화면에 추가로 설치하고, 홈 화면 아이콘으로 엽니다. Safari 탭과 홈 화면 앱은 저장 공간이 따로라서, 연결은 홈 화면 앱에서 합니다(iOS 웹 푸시도 설치한 앱에서만 됩니다).
+3. 연결 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣습니다. 토큰은 이 기기 안에만 남습니다.
+4. 설정 › 이 기기 알림에서 허용하기를 누르고 "시험 알림 보내기"로 확인합니다. VAPID 키가 없으면 알림은 텔레그램으로 갑니다(위 "토큰과 푸시 키").
 
 ## 데이터는 어디에 남나요
 
