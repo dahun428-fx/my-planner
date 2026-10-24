@@ -158,8 +158,8 @@ async def test_today_cards_filled_with_current_task_data(tmp_path):
     assert first["props"] == {"title": "목록", "task_ids": [b, d, gone, a]}
     assert first["pinned_at"].endswith("Z")
     assert first["data"] == {"todos": [
-        {"id": b, "title": "꾸민 둘", "cadence": None, "area": "finance", "status": "dropped"},
-        {"id": a, "title": "꾸민 하나(바뀜)", "cadence": None, "area": "health", "status": "open"},
+        {"id": b, "title": "꾸민 둘", "cadence": None, "area": "finance", "status": "dropped", "planned_for": None, "scheduled_at": None},
+        {"id": a, "title": "꾸민 하나(바뀜)", "cadence": None, "area": "health", "status": "open", "planned_for": None, "scheduled_at": None},
     ]}
     assert (second["id"], second["order"], second["props"]) == (summary, 2, SUMMARY)
     assert second.get("data") is None

@@ -57,17 +57,22 @@ def _row(env, aid):
 
 
 def _state(env):
-    """되돌리기가 맞춰야 할 데이터 전부(살아 있는 할 일, 영역, 우선순위, 컨디션). `updated_at`은 뺀다."""
+    """되돌리기가 맞춰야 할 데이터 전부(살아 있는 할 일, 영역, 우선순위, 컨디션, 습관, 습관 체크). `updated_at`은 뺀다."""
     q = env.conn.execute
     tasks = [dict(r) for r in q("SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY id")]
     for t in tasks:
         del t["updated_at"]
+    habits = [dict(r) for r in q("SELECT * FROM habits WHERE deleted_at IS NULL ORDER BY id")]
+    for h in habits:
+        del h["updated_at"]
+    checks = [tuple(r) for r in q("SELECT habit_id, date, checked_at FROM habit_checks ORDER BY 1, 2")]
     areas = [tuple(r) for r in q(
         "SELECT a.task_id, a.area FROM task_areas a JOIN tasks t ON t.id = a.task_id "
         "WHERE t.deleted_at IS NULL ORDER BY a.task_id, a.area")]
     prios = [tuple(r) for r in q("SELECT cadence, period, rank, task_id FROM priorities ORDER BY 1, 2, 3")]
     conds = [tuple(r) for r in q("SELECT date, score, note, recorded_at FROM conditions ORDER BY date")]
-    return {"tasks": tasks, "areas": areas, "priorities": prios, "conditions": conds}
+    return {"tasks": tasks, "areas": areas, "priorities": prios, "conditions": conds, "habits": habits,
+            "habit_checks": checks}
 
 
 def _ledger(env):
@@ -128,6 +133,55 @@ async def _case_condition_recorded(env):
     return "record_condition", {"score": 5}, "컨디션 5 기록"
 
 
+# 습관(SP7 5.5): `/actions` 습관 동작은 SP7-03이 더한다. 여기서는 `/actions`와 같은 맥락으로 도구를 직접 부른다
+HABIT = "tool:"
+
+
+def _hctx():
+    return RunContext(conversation_id=None, run_id=None, actor="user", channel="app")
+
+
+def _habit_call(env, name, **args):
+    """습관 도구 하나를 사용자(앱)로 부른다. `/actions` 응답처럼 `activity_id`, `undo_id`를 돌려준다."""
+    ctx = _hctx()
+    out = getattr(env.parts.tools, name)(ctx, **args)
+    assert "error" not in out, out
+    aid = ctx.activity_ids[-1] if ctx.activity_ids else None
+    return {"result": out, "activity_id": aid, "undo_id": aid if aid in ctx.undo_ids else None}
+
+
+def _habit(env, title="운동", **extra):
+    args = {"area": "health", "kind": "weekly", "target_per_week": 3, **extra}
+    return _habit_call(env, "add_habit", title=title, **args)["result"]["id"]
+
+
+async def _case_habit_added(env):
+    return HABIT + "add_habit", {"title": "운동", "area": "health", "kind": "weekly", "target_per_week": 3}, "운동 습관 추가"
+
+
+async def _case_habit_updated(env):
+    h = _habit(env)
+    return HABIT + "update_habit", {"id": h, "title": "아침 운동", "area": "learning", "target_per_week": 2}, (
+        "아침 운동 습관 고침")
+
+
+async def _case_habit_status_set(env):
+    h = _habit(env)
+    return HABIT + "set_habit_status", {"id": h, "status": "paused"}, "운동 습관 쉬어 가기"
+
+
+async def _case_habit_checked(env):
+    h = _habit(env)
+    return HABIT + "check_habit", {"id": h, "date": "2026-10-22"}, "운동 습관 체크"
+
+
+async def _case_habit_unchecked(env):
+    h = _habit(env)
+    _habit_call(env, "check_habit", id=h)
+    env.clock.advance(minutes=5)
+    return HABIT + "uncheck_habit", {"id": h}, "운동 습관 체크 취소"
+
+
 CASES = {
     "task_added": _case_task_added,
     "task_updated": _case_task_updated,
@@ -138,6 +192,11 @@ CASES = {
     "tasks_confirmed": _case_tasks_confirmed,
     "priorities_set": _case_priorities_set,
     "condition_recorded": _case_condition_recorded,
+    "habit_added": _case_habit_added,
+    "habit_updated": _case_habit_updated,
+    "habit_status_set": _case_habit_status_set,
+    "habit_checked": _case_habit_checked,
+    "habit_unchecked": _case_habit_unchecked,
 }
 
 
@@ -147,7 +206,10 @@ async def test_undo_each_kind(tmp_path, kind):
         action, args, gist = await CASES[kind](env)
         before = _state(env)
         env.clock.advance(minutes=1)
-        body = await _apply(env, action, args)
+        if action.startswith(HABIT):
+            body = _habit_call(env, action.removeprefix(HABIT), **args)
+        else:
+            body = await _apply(env, action, args)
         assert body["undo_id"] == body["activity_id"]
         assert _row(env, body["activity_id"])["kind"] == kind
         changed = _state(env)
@@ -704,3 +766,134 @@ async def test_list_undo_makes_drop_token_stale_n2(tmp_path):
     assert s_undo == 200
     assert st == 409 and body["error"]["code"] == "conflict" and token == "stale" and task == "open"
     assert s_m == 200
+
+
+# --- 습관 되돌리기 (SP7 5.5) ---
+
+
+def _checks(env):
+    return [tuple(r) for r in env.conn.execute("SELECT habit_id, date FROM habit_checks ORDER BY 1, 2")]
+
+
+WED_1300 = kst(2026, 10, 28, 13, 0)
+
+
+async def test_undo_monday_check_after_tuesday_check(tmp_path):
+    """체크 활동의 대상은 `habit:<id>:<날짜>` 하나: 다른 날짜의 체크끼리는 U3로 막지 않는다."""
+    async with BeEnv.start(tmp_path, start=WED_1300) as env:
+        h = _habit(env)
+        mon = _habit_call(env, "check_habit", id=h, date="2026-10-26")
+        env.clock.advance(minutes=1)
+        _habit_call(env, "check_habit", id=h, date="2026-10-27")
+        env.clock.advance(minutes=1)
+        status, out = await undo(env, mon["undo_id"])
+        repo = ActivityRepo(env.conn, env.clock)
+        targets = repo.targets(out["activity_id"])
+        checks = _checks(env)
+    assert (status, out["status"], out["confirmation"]) == (200, "undone", "↩ 되돌림: 운동 습관 체크")
+    assert targets == [f"habit:{h}:2026-10-26"]
+    assert checks == [(h, "2026-10-27")]
+
+
+async def test_undo_same_day_check_blocked_by_uncheck(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        h = _habit(env)
+        chk = _habit_call(env, "check_habit", id=h)
+        checked_at = env.conn.execute("SELECT checked_at FROM habit_checks").fetchone()[0]
+        env.clock.advance(minutes=1)
+        unchk = _habit_call(env, "uncheck_habit", id=h)
+        env.clock.advance(minutes=1)
+        blocked = await undo(env, chk["undo_id"])
+        restored = await undo(env, unchk["undo_id"])
+        rows = [tuple(r) for r in env.conn.execute("SELECT habit_id, date, checked_at FROM habit_checks")]
+    assert blocked[0] == 409 and blocked[1]["error"]["code"] == "superseded"
+    assert restored[0] == 200 and restored[1]["confirmation"] == "↩ 되돌림: 운동 습관 체크 취소"
+    assert rows == [(h, "2026-10-24", checked_at)]  # 이전 `checked_at` 그대로
+
+
+async def test_undo_add_with_checks_superseded(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        add = _habit_call(env, "add_habit", title="물 마시기", area="health", kind="daily")
+        h = add["result"]["id"]
+        chk = _habit_call(env, "check_habit", id=h)
+        env.clock.advance(minutes=1)
+        blocked = await undo(env, add["undo_id"])
+        alive = env.parts.tools.habits.get(h)
+        # 체크를 먼저 되돌리면 추가도 되돌릴 수 있다. 두 번째 되돌리기는 U4
+        await undo(env, chk["undo_id"])
+        done = await undo(env, add["undo_id"])
+        again = await undo(env, add["undo_id"])
+        gone = env.parts.tools.habits.get(h)
+        deleted_at = env.conn.execute("SELECT deleted_at FROM habits WHERE id = ?", (h,)).fetchone()[0]
+        ledger = _ledger(env)
+    assert blocked[0] == 409 and blocked[1]["error"]["code"] == "superseded"
+    assert alive is not None
+    assert done[0] == 200 and done[1]["confirmation"] == "↩ 되돌림: 물 마시기 습관 추가"
+    assert again[0] == 200 and again[1]["status"] == "already_undone"
+    assert gone is None and deleted_at is not None
+    assert [r[3] for r in ledger] == ["habit_check"]  # U6: 원장은 그대로
+
+
+async def test_undo_check_of_paused_habit_restores(tmp_path):
+    """체크·취소의 되돌리기는 5.3의 거절(쉬는 습관)을 보지 않는다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = _habit(env, "운동"), _habit(env, "물 마시기", kind="daily", target_per_week=None)
+        chk = _habit_call(env, "check_habit", id=a)
+        _habit_call(env, "check_habit", id=b, date="2026-10-23")
+        unchk = _habit_call(env, "uncheck_habit", id=b, date="2026-10-23")
+        env.clock.advance(minutes=1)
+        _habit_call(env, "set_habit_status", id=a, status="paused")
+        _habit_call(env, "set_habit_status", id=b, status="archived")
+        env.clock.advance(minutes=1)
+        r1 = await undo(env, chk["undo_id"])
+        r2 = await undo(env, unchk["undo_id"])
+        checks = _checks(env)
+        statuses = [env.parts.tools.habits.get(i).status for i in (a, b)]
+    assert (r1[0], r2[0]) == (200, 200)
+    assert checks == [(b, "2026-10-23")]
+    assert statuses == ["paused", "archived"]
+
+
+async def test_undo_pause_can_exceed_cap_then_add_rejected(tmp_path):
+    """Review Focus 4: 활성 10개 → 하나 쉬어 가기 → 새 습관(10개) → 쉬어 가기 되돌리기 → 11개.
+    그동안 새 추가·다시 시작은 거절, 체크는 된다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        ids = [_habit(env, f"습관{i}", kind="daily", target_per_week=None) for i in range(10)]
+        other = _habit_call(env, "set_habit_status", id=ids[1], status="paused")  # 쉬는 습관 하나 더
+        _habit_call(env, "set_habit_status", id=ids[1], status="active")  # 9개
+        pause = _habit_call(env, "set_habit_status", id=ids[0], status="paused")
+        extra = _habit(env, "열한째", kind="daily", target_per_week=None)  # 다시 10개
+        _habit_call(env, "set_habit_status", id=ids[2], status="paused")  # 9개
+        _habit(env, "열두째", kind="daily", target_per_week=None)  # 10개
+        env.clock.advance(minutes=1)
+        status, out = await undo(env, pause["undo_id"])
+        count = tools.habits.count_active()
+        add = tools.add_habit(_hctx(), title="열셋째", area="health", kind="daily")
+        resume = tools.set_habit_status(_hctx(), id=ids[2], status="active")
+        check = tools.check_habit(_hctx(), id=extra)
+    assert other["undo_id"] is not None
+    assert (status, out["confirmation"]) == (200, "↩ 되돌림: 습관0 습관 쉬어 가기")
+    assert count == 11
+    assert add == {"error": "습관은 한 번에 10개까지 챙길 수 있어요. 하나를 쉬어 가거나 그만두면 더할 수 있어요."}
+    assert resume == add
+    assert check["already"] is False and check["habit"]["checked"] is True
+
+
+async def test_undo_check_of_deleted_habit_superseded(tmp_path):
+    """추가 → 체크 → 취소 → 추가 되돌리기 → 취소 되돌리기: 지운 습관에 체크 행을 되살리지 않는다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        add = _habit_call(env, "add_habit", title="물 마시기", area="health", kind="daily")
+        h = add["result"]["id"]
+        chk = _habit_call(env, "check_habit", id=h)
+        env.clock.advance(minutes=1)
+        unchk = _habit_call(env, "uncheck_habit", id=h)
+        env.clock.advance(minutes=1)
+        removed = await undo(env, add["undo_id"])
+        restored = await undo(env, unchk["undo_id"])
+        rechecked = await undo(env, chk["undo_id"])
+        checks = _checks(env)
+    assert removed[0] == 200
+    assert restored[0] == 409 and restored[1]["error"]["code"] == "superseded"
+    assert rechecked[0] == 409 and rechecked[1]["error"]["code"] == "superseded"
+    assert checks == []

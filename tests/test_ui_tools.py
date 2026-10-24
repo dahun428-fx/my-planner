@@ -18,6 +18,8 @@ from my_planner.domain import RunContext
 from my_planner.harness.dispatcher import Outbound
 from my_planner.harness.stream import AppReplySender, UiMessageWriter
 from my_planner.store.repos.cards import CardsRepo
+from my_planner.store.views import todo_ref
+from my_planner.timefmt import to_api_times
 from my_planner.tools.mcp_adapter import (
     APP_ONLY_TOOLS,
     TOOL_NAMES,
@@ -131,8 +133,8 @@ def test_ui_todo_list_stream_output_has_current_todos(uenv):
     assert result == {"ok": True}
     assert sink.chunks[0]["input"] == {"title": "목록", "task_ids": [b, d, gone, a]}
     assert sink.chunks[1]["output"] == {"ok": True, "data": {"todos": [
-        {"id": b, "title": "꾸민 둘", "cadence": None, "area": "learning", "status": "done"},
-        {"id": a, "title": "꾸민 하나", "cadence": None, "area": "career", "status": "open"},
+        {"id": b, "title": "꾸민 둘", "cadence": None, "area": "learning", "status": "done", "planned_for": None, "scheduled_at": None},
+        {"id": a, "title": "꾸민 하나", "cadence": None, "area": "career", "status": "open", "planned_for": None, "scheduled_at": None},
     ]}}
 
 
@@ -174,8 +176,8 @@ async def test_harness_chunks_have_h_prefix(tmp_path):
     ]
     assert harness[0]["toolName"] == "ui_todo_draft" and harness[0]["input"] == {"task_ids": [1, 2]}
     assert harness[1]["output"] == {"ok": True, "data": {"todos": [
-        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "draft"},
-        {"id": 2, "title": "꾸민 독서", "cadence": None, "area": "learning", "status": "draft"},
+        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "draft", "planned_for": None, "scheduled_at": None},
+        {"id": 2, "title": "꾸민 독서", "cadence": None, "area": "learning", "status": "draft", "planned_for": None, "scheduled_at": None},
     ]}}
     # 두뇌 도구 조각은 `tc_`, 순서는 두뇌 글·도구 → 하네스 조각 → data-activity → finish(6.4.1)
     kinds = [c["type"] for c in chunks]
@@ -187,7 +189,7 @@ async def test_harness_chunks_have_h_prefix(tmp_path):
 async def test_app_reply_sender_numbers_harness_chunks_in_reply():
     sink = ListSink()
     w = UiMessageWriter(sink, "m-1-1")
-    refs = [{"id": 7, "title": "꾸민", "cadence": None, "area": "health", "status": "draft"}]
+    refs = [{"id": 7, "title": "꾸민", "cadence": None, "area": "health", "status": "draft", "planned_for": None, "scheduled_at": None}]
     out = Outbound(text="답", draft_task_ids=[7], ask_condition_for=date(2026, 10, 24), channel="app",
                    writer=w, draft_todos=refs)
     await AppReplySender().send(out)
@@ -202,3 +204,41 @@ async def test_app_reply_sender_numbers_harness_chunks_in_reply():
     assert by_id[("tool-input-available", "h_cond_2")]["input"] == {"date": "2026-10-24"}
     assert by_id[("tool-output-available", "h_cond_2")]["output"] == {"ok": True}
     assert by_id[("tool-output-available", "h_draft_1")]["output"] == {"ok": True, "data": {"todos": refs}}
+
+
+async def test_todo_ref_has_dates_in_utc(tmp_path):
+    """`TodoRef`의 `planned_for`(논리적 날짜)와 `scheduled_at`: 현지 시각으로 만들고 API·스트림 경계가 UTC로 바꾼다(SP6 10.2)."""
+    async with BeEnv.start(tmp_path, start=START) as env:
+        tools = env.parts.tools
+        ctx = _app_ctx()
+        a = tools.add_task(ctx, title="꾸민 치과", areas=["health"], planned_for="2026-10-25",
+                           scheduled_at="2026-10-25T14:00")["id"]
+        b = tools.add_task(ctx, title="꾸민 날짜 없음", areas=["learning"])["id"]
+        tools.pin_card(ctx, component="ui_todo_list", props={"title": "꾸민 목록", "task_ids": [a, b]})
+        ref = todo_ref(tools.tasks.get(a), tools.tasks, tools.today())
+        today = await (await env.get("/today")).json()
+
+    assert ref["scheduled_at"] == "2026-10-25T05:00:00+00:00"  # `todo_dict`처럼 오프셋 붙은 ISO, 경계에서 `Z`
+    assert to_api_times(ref) == {
+        "id": a, "title": "꾸민 치과", "cadence": None, "area": "health", "status": "open",
+        "planned_for": "2026-10-25", "scheduled_at": "2026-10-25T05:00:00Z",
+    }
+    assert today["cards"][0]["data"]["todos"] == [
+        to_api_times(ref),
+        {"id": b, "title": "꾸민 날짜 없음", "cadence": None, "area": "learning", "status": "open",
+         "planned_for": None, "scheduled_at": None},
+    ]
+
+
+async def test_harness_card_times_are_utc():
+    """하네스 초안 카드의 `data.todos[].scheduled_at`도 스트림에서 UTC `Z`다(6.1)."""
+    sink = ListSink()
+    refs = [{"id": 7, "title": "꾸민", "cadence": None, "area": "health", "status": "draft",
+             "planned_for": "2026-10-25", "scheduled_at": "2026-10-25T14:00:00+09:00"}]
+    out = Outbound(text="답", draft_task_ids=[7], channel="app", writer=UiMessageWriter(sink, "m-1-1"),
+                   draft_todos=refs)
+    await AppReplySender().send(out)
+
+    (output,) = [c["output"] for c in sink.chunks if c["type"] == "tool-output-available"]
+    assert output["data"]["todos"][0]["scheduled_at"] == "2026-10-25T05:00:00Z"
+    assert output["data"]["todos"][0]["planned_for"] == "2026-10-25"

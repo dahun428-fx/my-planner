@@ -506,10 +506,11 @@ CREATE TABLE status_titles (
 화면 조각이 붙이는 할 일 요약 `TodoRef`(대화의 `ui_todo_list`·`ui_todo_draft` 도구 출력, 체크인 `cards[].data`, 6.4.1·6.4.5·6.4.7):
 
 ```json
-{ "id": 55, "title": "치과 예약", "cadence": "week", "area": "health", "status": "draft" }
+{ "id": 55, "title": "치과 예약", "cadence": "week", "area": "health", "status": "draft",
+  "planned_for": "2026-10-25", "scheduled_at": "2026-10-25T05:00:00Z" }
 ```
 
-`cadence`는 그 할 일 `Todo.priority`의 `cadence`(지금 기간 우선순위가 아니면 `null`), `area`는 `areas`의 첫 영역(SP1 영역 순서, 없으면 `null`), `status`는 `draft` | `open` | `done` | `dropped`다. `dropped`(사용자가 빼거나 만료된 할 일, `tasks.status`)는 행이 남아 있으므로 props가 가리키면 `status: "dropped"`로 넣는다(FE가 줄을 그어 보이는 등). 소프트 삭제(`tasks.deleted_at`이 있음, 예: `task_added` 되돌리기)는 `status`와 다른 것이고, 소프트 삭제한 할 일은 `TodoRef` 목록에서 빠진다.
+`cadence`는 그 할 일 `Todo.priority`의 `cadence`(지금 기간 우선순위가 아니면 `null`), `area`는 `areas`의 첫 영역(SP1 영역 순서, 없으면 `null`), `status`는 `draft` | `open` | `done` | `dropped`다. `planned_for`는 논리적 날짜(없으면 `null`), `scheduled_at`은 UTC 시각(6.1, 없으면 `null`)이고 `Todo`의 같은 필드와 같다(SP6 스펙 10.2: 체크 줄의 보조 글, `ui_result`·`ui_period_list`의 날짜). 대화 도구 출력, 고정 카드, 체크인 카드 모두 같은 모양이다. `dropped`(사용자가 빼거나 만료된 할 일, `tasks.status`)는 행이 남아 있으므로 props가 가리키면 `status: "dropped"`로 넣는다(FE가 줄을 그어 보이는 등). 소프트 삭제(`tasks.deleted_at`이 있음, 예: `task_added` 되돌리기)는 `status`와 다른 것이고, 소프트 삭제한 할 일은 `TodoRef` 목록에서 빠진다.
 
 #### 6.3.1 `GET /health`
 
@@ -1576,6 +1577,7 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 2026-10-24 | v4 | 구현 계획의 계약 결정(빈 곳 1~7, 9, 11, 13, 15) 반영: 앱 머리글에만 `@app`(7.4), 받을 때 대화 고르기 `route_app_message`(6.4.1, 7.5 M3, 4.3 표), Pages Router와 `_document` `<meta>` CSP·`check-csp`(13.1, 14장), `API_TOKEN` 없음·짧음(6.1, 15장), `seed-life` 코드 6·BOM·`invalid`(12장), 체크인 `cards` 다시 만들기(6.4.5), 카탈로그 `2026-10-24.2`와 `ui_milestone_draft`·`ui_chapter_draft`(6.4.7), BE가 만드는 기준 응답(1장 조건 9, 16장), `sender` + `app_sender`(7.5 M4), 받을 때 고른 대화를 SP1 `005`의 `inbound_pending.conversation_id`에 적음(5.1, 7.5 M6. 계획 초안의 `011_inbound_conversation.sql`은 열이 이미 있어 만들지 않음. `011`은 이후 `activity_targets`가 쓴다) | SP3-4 구현 계획 "스펙 빈 곳과 이 계획의 결정" 표, 티켓 01 리뷰(011 중복 열) |
 | 2026-10-24 | v4 | 운영 앱 스레드 요청(SP5 스펙 12장) R1 `GET /priorities`(6.3.7), R2 `GET /drafts`(6.3.8, 6.3 초안 규칙 고침), R4a `GET /activity`의 `order=desc`·`before`·`next_before`(6.4.4), R4b 확인 문구를 `data-activity.confirmation`으로, 앱 통로의 `h-confirm` 글 조각 없앰(6.4.1, 7.5 M4·M5, 5.2), R4c `TodoRef`와 `data.todos`(6.3, 6.4.1, 6.4.5, 6.4.7), R4d 메시지 `id`(6.4.6, 7.4). 확인을 기다리는 `ui_confirm`은 `GET /checkins/{id}`의 `cards`로 읽는다(새 경로 없음) | 운영 앱 스레드(SP5 스펙 PR #67 12장) |
 | 2026-10-24 | v5 | SP3-4 구현 중 결정 반영(문구 C1~C4, 21b 목록) | SP3-4 구현 계획 문구 표와 빈 곳 8·10·12·14, 티켓 02~10 판정 |
+| 2026-10-24 | v6 | SP6 G-BE1: `TodoRef`에 `planned_for`, `scheduled_at`(6.3, 깨지지 않는 변경) | SP6 스펙 10.2 |
 
 **마스터 설계와 ADR에 반영할 것** (이 스펙이 승인되면 고친다)
 

@@ -7,7 +7,7 @@ JSON으로 바꾸는 일은 부르는 쪽이 한다. 읽기만 한다(읽기 전
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
@@ -17,6 +17,7 @@ from my_planner.domain import Area, Cadence, TaskStatus
 from my_planner.store.exports import week_bounds
 from my_planner.store.repos.conditions import Condition, ConditionsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.habits import Habit, HabitsRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 WEEKDAY = "월화수목금토일"
@@ -155,7 +156,10 @@ def todo_dict(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
 
 
 def todo_ref(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
-    """화면 조각이 붙이는 할 일 요약 `TodoRef` (6.3): `cadence`는 지금 기간 우선순위의 주기, `area`는 첫 영역."""
+    """화면 조각이 붙이는 할 일 요약 `TodoRef` (6.3): `cadence`는 지금 기간 우선순위의 주기, `area`는 첫 영역.
+
+    `planned_for`는 논리적 날짜, `scheduled_at`은 `todo_dict`처럼 오프셋 붙은 ISO이고 API·스트림 경계의 `to_api_times`가
+    UTC `Z`로 바꾼다(SP6 10.2)."""
     p = priority_dict(tasks, t, today)
     areas = _areas(t)
     return {
@@ -164,6 +168,8 @@ def todo_ref(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
         "cadence": p["cadence"] if p else None,
         "area": areas[0] if areas else None,
         "status": t.status.value,
+        "planned_for": t.planned_for.isoformat() if t.planned_for else None,
+        "scheduled_at": t.scheduled_at.isoformat() if t.scheduled_at else None,
     }
 
 
@@ -207,3 +213,55 @@ def curve_draft_live(status: str, draft_since: str | None, ttl_days: int, now: d
     if status != "draft" or draft_since is None:
         return False
     return from_iso(draft_since) + timedelta(days=ttl_days) > now
+
+
+def _monday(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def habit_dict(h: Habit, *, checked: bool, week_count: int) -> dict[str, Any]:
+    """공통 `Habit` 모양 (SP7 스펙 5.5)."""
+    return {
+        "id": h.id,
+        "title": h.title,
+        "area": str(h.area),
+        "kind": h.kind,
+        "target_per_week": h.target_per_week,
+        "status": h.status,
+        "checked": checked,
+        "week_count": week_count,
+    }
+
+
+def habits_view(habits: HabitsRepo, day: date, statuses: Sequence[str]) -> dict[str, Any]:
+    """`GET /habits`: 그 날짜의 체크 여부와 그 ISO 주의 체크 수를 붙인 목록."""
+    checked = habits.checked_on(day)
+    counts = habits.week_counts(_monday(day))
+    return {
+        "date": day.isoformat(),
+        "week": period_of(Cadence.week, day),
+        "items": [
+            habit_dict(h, checked=h.id in checked, week_count=counts.get(h.id, 0)) for h in habits.list(statuses)
+        ],
+    }
+
+
+def habit_history(habits: HabitsRepo, h: Habit, today: date, weeks: int) -> dict[str, Any]:
+    """`GET /habits/{id}`: 오늘이 든 주의 `weeks - 1`주 전 월요일부터 오늘까지. 체크가 없는 날·주는 넣지 않는다."""
+    start = _monday(today) - timedelta(weeks=weeks - 1)
+    days = habits.checks_between(h.id, start, today)
+    per_week: dict[str, int] = {}
+    for d in days:
+        w = period_of(Cadence.week, d)
+        per_week[w] = per_week.get(w, 0) + 1
+    return {
+        "habit": habit_dict(
+            h,
+            checked=today in set(days),
+            week_count=per_week.get(period_of(Cadence.week, today), 0),
+        ),
+        "from": start.isoformat(),
+        "to": today.isoformat(),
+        "checked_dates": [d.isoformat() for d in days],
+        "weeks": [{"week": w, "count": n} for w, n in per_week.items()],
+    }

@@ -789,6 +789,8 @@ export interface TodayTodo {
 /**
  * 화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.
  *
+ * `planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "TodoRef".
  */
@@ -796,6 +798,8 @@ export interface TodoRef {
   area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
   cadence: ("day" | "week" | "month" | "quarter" | "year") | null;
   id: number;
+  planned_for: string | null;
+  scheduled_at: string | null;
   status: "draft" | "open" | "done" | "dropped";
   title: string;
 }

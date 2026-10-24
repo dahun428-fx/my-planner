@@ -1,0 +1,21 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "/할 일",
+          "do": {
+            "kind": "open",
+            "screen": "todos_day"
+          }
+        }
+      ]
+    }
+  ]
+}

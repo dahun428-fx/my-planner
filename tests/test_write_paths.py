@@ -22,9 +22,11 @@ import test_api_e2e
 
 from my_planner.store.db import is_write, open_db
 
-# 도구 함수(`tools/core.py`), 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구,
-# UI)는 쓰지 않는다
-TOOLS = frozenset({"my_planner.tools.core", "my_planner.tools.actions", "my_planner.tools.activity"})
+# 도구 함수(`tools/core.py`, 습관 `tools/habits.py`), 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의
+# `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
+TOOLS = frozenset({
+    "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
+})
 DISPATCHER = "my_planner.harness.dispatcher"
 LOOP = "my_planner.loop.*"
 SEED = "my_planner.curve.seed"  # 잠금을 잡은 별도 프로세스(4.3, 12장)
@@ -49,6 +51,8 @@ ALLOWED: dict[str, set[str]] = {
     "conditions": set(TOOLS),
     "app_cards": set(TOOLS),
     "tool_events_log": set(TOOLS),
+    "habits": set(TOOLS),
+    "habit_checks": set(TOOLS),
     "curve_chapters": {*TOOLS, SEED},
     "curve_milestones": {*TOOLS, SEED},
     "curve_ladder_scores": {*TOOLS, SEED},
@@ -119,6 +123,8 @@ class Recorder:
         f = sys._getframe(1)
         while f is not None:
             name = f.f_globals.get("__name__", "")
+            if name == "my_planner.store.db" and f.f_code.co_name == "migrate":
+                return  # 마이그레이션 스크립트 안의 INSERT(012의 원장 옮기기)는 앱의 쓰기 경로가 아니다
             if name.startswith("my_planner"):
                 if inner is None and not name.startswith("my_planner.store"):
                     inner = name

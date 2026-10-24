@@ -198,11 +198,11 @@ async def test_get_status_equals_snapshot(tmp_path):
     assert got["titles"][0]["title"] == "「꾸민 결심」을 지나온 사람"
 
 
-async def test_tool_counts_22_and_28(tmp_path):
-    """S12, 10장: 텔레그램 대화 22개(SP1 12 + 10), 앱 대화 28개(+ 화면 3, 카드 3)."""
-    assert TOOL_NAMES[12:] == CURVE_TOOLS
-    assert len(tool_names_for("telegram")) == 22
-    assert len(tool_names_for("app")) == 28
+async def test_tool_counts_28_and_34(tmp_path):
+    """S12, 10장: 텔레그램 대화 28개(SP1 12 + 곡선 10 + 습관 6, SP7 5.4 H8), 앱 대화 34개(+ 화면 3, 카드 3)."""
+    assert TOOL_NAMES[12:22] == CURVE_TOOLS
+    assert len(tool_names_for("telegram")) == 28
+    assert len(tool_names_for("app")) == 34
     assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         names = [t.name for t in build_planner_tools(env.parts.tools, _ctx())]

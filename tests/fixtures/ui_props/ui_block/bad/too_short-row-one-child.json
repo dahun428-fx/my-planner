@@ -1,0 +1,16 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "group",
+      "layout": "row",
+      "children": [
+        {
+          "type": "stat",
+          "label": "가",
+          "value": "1"
+        }
+      ]
+    }
+  ]
+}

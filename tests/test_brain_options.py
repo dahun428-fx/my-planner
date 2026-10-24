@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from fnmatch import fnmatch
 from pathlib import Path
 
 from claude_agent_sdk import (
@@ -388,3 +389,40 @@ async def test_text_streamer_resets_on_message_start_even_if_stop_missing(tmp_pa
 
     ids = [c["id"] for c in sink.chunks if c["type"] == "text-start"]
     assert len(set(ids)) == 2 and sink.types.count("text-end") == 2
+
+
+# --- SP7-00 S12: 습관 도구를 더한 도구 수 (텔레그램 22+6=28, 앱 28+7=35). 가짜 도구, 실제 도구는 뒤 티켓 ---
+
+FAKE_HABIT_TOOLS = ["add_habit", "update_habit", "set_habit_status", "check_habit", "uncheck_habit", "list_habits"]
+
+
+def test_options_with_habit_tools_28_and_35(tmp_path):
+    from claude_agent_sdk import SdkMcpTool, create_sdk_mcp_server
+
+    from my_planner.tools.mcp_adapter import SERVER_NAME, tool_names_for
+
+    async def _ok(args):
+        return {"content": [{"type": "text", "text": '{"ok": true}'}]}
+
+    for channel, extra, expected in (
+        ("telegram", FAKE_HABIT_TOOLS, 28),
+        ("app", [*FAKE_HABIT_TOOLS, "ui_habit_check"], 35),
+    ):
+        # SP7-02부터 습관 도구는 실제 도구다: 이미 있는 이름은 다시 더하지 않는다(수는 그대로 28, 35)
+        names = [*tool_names_for(channel), *(n for n in extra if n not in tool_names_for(channel))]
+        assert len(names) == expected == len(set(names))
+        tools = [
+            SdkMcpTool(name=n, description=n, input_schema={"type": "object", "properties": {}}, handler=_ok)
+            for n in names
+        ]
+        server = create_sdk_mcp_server(name=SERVER_NAME, version="1.0.0", tools=tools)
+        opts = build_options(
+            server=server, session_id=None, workdir=tmp_path / "wd", max_turns=10, system_prompt="시스템"
+        )
+        assert opts.mcp_servers == {SERVER_NAME: server}
+        assert opts.tools == [] and opts.max_turns == 10
+        patterns = allowed_tool_patterns()
+        assert opts.allowed_tools == patterns
+        for n in names:
+            full = f"mcp__{SERVER_NAME}__{n}"
+            assert any(fnmatch(full, p) for p in patterns), full

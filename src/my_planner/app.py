@@ -64,6 +64,7 @@ from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
@@ -202,6 +203,7 @@ class BeParts:
     pushes: PushRepo
     curve: CurveRepo
     status: StatusRepo
+    habits: HabitsRepo | None = None  # 습관(SP7)
 
 
 def build_be(
@@ -235,6 +237,7 @@ def build_be(
     pushes = PushRepo(conn, clock)
     curve = CurveRepo(conn, clock)
     status = StatusRepo(conn, clock)
+    habits = HabitsRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -258,6 +261,7 @@ def build_be(
         curve=curve,
         status=status,
         review_date_for=lambda ctx: review_date_for(convs, runs, settings, ctx),
+        habits=habits,  # 습관 도구(SP7 5.4), `data/exports/habits.md`(5.8)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -315,7 +319,7 @@ def build_be(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
-        pushes=pushes, curve=curve, status=status,
+        pushes=pushes, curve=curve, status=status, habits=habits,
     )
 
 

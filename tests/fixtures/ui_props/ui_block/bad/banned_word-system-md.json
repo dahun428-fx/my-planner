@@ -1,0 +1,10 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "stat",
+      "label": "어제",
+      "value": "놓쳤어요"
+    }
+  ]
+}
