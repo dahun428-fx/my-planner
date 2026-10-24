@@ -30,7 +30,7 @@ function serve(answer: () => Response = () => HttpResponse.json(catalog)) {
 describe("catalog", () => {
   it("uses cached catalog when version matches", async () => {
     const hits = serve();
-    await set("catalog", catalog);
+    await set("catalog", { ...catalog, beUrl: TEST_BE_URL });
     const got = await loadCatalog(catalog.version);
     expect(got?.version).toBe("2026-10-24.2");
     expect(hits.n).toBe(0);
@@ -38,7 +38,7 @@ describe("catalog", () => {
 
   it("refetches when version changes", async () => {
     const hits = serve(() => HttpResponse.json({ ...catalog, version: "2026-10-25.1" }));
-    await set("catalog", catalog);
+    await set("catalog", { ...catalog, beUrl: TEST_BE_URL });
     const got = await loadCatalog("2026-10-25.1");
     expect(got?.version).toBe("2026-10-25.1");
     expect(hits.n).toBe(1);
@@ -55,9 +55,23 @@ describe("catalog", () => {
 
   it("offline uses stored", async () => {
     serve(() => HttpResponse.error());
-    await set("catalog", catalog);
+    await set("catalog", { ...catalog, beUrl: TEST_BE_URL });
     const got = await loadCatalog("2026-10-25.1");
     expect(got?.version).toBe("2026-10-24.2");
+  });
+
+  it("a catalog kept for another BE (or with no BE noted) is not used", async () => {
+    serve(() => HttpResponse.error());
+    await set("catalog", { ...catalog, beUrl: "https://old.example.ts.net" });
+    expect(await loadCatalog(null)).toBeNull();
+    await set("catalog", catalog);
+    expect(await loadCatalog(null)).toBeNull();
+  });
+
+  it("stores the BE address with the catalog", async () => {
+    serve();
+    await loadCatalog(catalog.version);
+    expect(((await get("catalog")) as { beUrl: string }).beUrl).toBe(TEST_BE_URL);
   });
 
   it("offline with nothing stored gives null", async () => {

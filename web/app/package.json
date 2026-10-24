@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/sw-manifest.mjs",
+    "icons": "node scripts/make-icons.mjs",
     "test": "vitest run",
     "test:tz": "TZ=America/Los_Angeles vitest run src/lib/time.test.ts",
     "typecheck": "tsc --noEmit",
@@ -25,6 +26,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.13",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",

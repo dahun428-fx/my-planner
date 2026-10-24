@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
 import { http, HttpResponse } from "msw";
@@ -16,6 +16,9 @@ import { Todos } from "../screens/Todos";
 import weekJson from "../test/fixtures/week.json";
 import { gatedResponse, golden, type HistoryItem, serveChat, serveHistory, sse, sseResponse } from "../test/chat";
 import todayJson from "../test/fixtures/today.json";
+import healthJson from "../test/fixtures/health.json";
+import catalogJson from "../test/fixtures/catalog.json";
+import { useChatSheet } from "./sheetContext";
 import { healthAnswers } from "../test/handlers";
 import { mockRouter, renderWithProviders, TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -512,5 +515,46 @@ describe("ChatSheet in the app", () => {
     const before = hits.today;
     await user.keyboard("{Escape}");
     await waitFor(() => expect(hits.today).toBe(before + 1));
+  });
+
+  it("another BE address starts a fresh sheet: no old lines, no old conversation id", async () => {
+    const OTHER = "https://other.example.ts.net";
+    const OTHER_API = `${OTHER}/api/v1`;
+    const Page = () => {
+      const chat = useChatSheet();
+      return (
+        <button type="button" onClick={() => chat.open()}>
+          open-sheet
+        </button>
+      );
+    };
+    mountApp(Page, "/");
+    serveChat(() => sseResponse(textAnswer("m-5-1", 5, "first BE answer")));
+    const otherChat: Record<string, unknown>[] = [];
+    server.use(
+      http.get(`${OTHER_API}/health`, () => HttpResponse.json(healthJson)),
+      http.get(`${OTHER_API}/ui/catalog`, () => HttpResponse.json(catalogJson)),
+      // The new BE's history cannot be read: nothing of the old one may stand in for it.
+      http.get(`${OTHER_API}/conversations`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })),
+      http.get(`${OTHER_API}/activity`, () => HttpResponse.json({ items: [], next_before: null, next_since: null })),
+      http.post(`${OTHER_API}/chat`, async ({ request }) => {
+        otherChat.push((await request.json()) as Record<string, unknown>);
+        return sseResponse(textAnswer("m-9-1", 9, "second BE answer"));
+      }),
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "open-sheet" }));
+    await sendText(user, "hello");
+    expect(await screen.findByText("first BE answer")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    act(() => saveConn({ beUrl: OTHER, token: TEST_TOKEN }));
+    await user.click(screen.getByRole("button", { name: "open-sheet" }));
+    await sendText(user, "hello again");
+    expect(await screen.findByText("second BE answer")).toBeInTheDocument();
+    expect(screen.queryByText("first BE answer")).toBeNull();
+    expect(otherChat).toHaveLength(1);
+    expect(otherChat[0].conversation_id).toBeNull();
   });
 });

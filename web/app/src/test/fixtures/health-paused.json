@@ -1,0 +1,67 @@
+{
+  "status": "ok",
+  "version": {
+    "app": "0.2.0",
+    "api": "v1",
+    "schema": 10,
+    "ui_catalog": "2026-10-24.2"
+  },
+  "now": "2026-10-24T08:00:05Z",
+  "started_at": "2026-10-24T00:01:10Z",
+  "last_tick_at": "2026-10-24T08:00:00Z",
+  "polling": "running",
+  "brain": {
+    "auth": "ok",
+    "checked_at": "2026-10-24T01:00:41Z",
+    "limited_until": null,
+    "calls_today": 23,
+    "calls_cap": 60
+  },
+  "proactive": {
+    "sent_today": 0,
+    "cap": 3
+  },
+  "paused_until": "2026-10-27T09:00:00Z",
+  "plan_open": false,
+  "notify": {
+    "primary": "app",
+    "effective": "app"
+  },
+  "runs_today": [
+    {
+      "id": 340,
+      "loop": "morning_brief",
+      "cadence": "day",
+      "scheduled_for": "2026-10-24T01:00:00Z",
+      "status": "done",
+      "skip_reason": null,
+      "delivered_via": [
+        "app"
+      ],
+      "checkin_state": "answered"
+    },
+    {
+      "id": 341,
+      "loop": "evening_checkin",
+      "cadence": "day",
+      "scheduled_for": "2026-10-24T09:00:00Z",
+      "status": "pending",
+      "skip_reason": null,
+      "delivered_via": [],
+      "checkin_state": null
+    }
+  ],
+  "errors": {
+    "window_hours": 24,
+    "since": "2026-10-24T00:01:10Z",
+    "total": 2,
+    "by_event": {
+      "send_error": 1,
+      "tick_error": 1
+    }
+  },
+  "push": {
+    "subscriptions": 1,
+    "last_success_at": "2026-10-23T08:30:02Z"
+  }
+}

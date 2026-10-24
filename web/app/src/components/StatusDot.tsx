@@ -11,11 +11,12 @@ const LABEL: Record<ConnState["kind"], string> = {
 };
 
 // Spec 5.4: a dot beside the title plus words. The colour never carries the meaning alone.
-export function StatusDot({ state }: { state: ConnState }) {
+// `label` replaces the words (the settings row says when it last checked); the dot stays.
+export function StatusDot({ state, label }: { state: ConnState; label?: string }) {
   return (
     <span className={styles.status}>
       <span className={`${styles.dot} ${styles[state.kind]}`} aria-hidden="true" />
-      <span className={styles.label}>{LABEL[state.kind]}</span>
+      <span className={styles.label}>{label ?? LABEL[state.kind]}</span>
     </span>
   );
 }

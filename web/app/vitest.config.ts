@@ -8,7 +8,7 @@ export default defineConfig({
     // next build inlines this from `trailingSlash: true`; next/link reads it at run time in tests.
     env: { __NEXT_TRAILING_SLASH: "true", NEXT_PUBLIC_CONNECT_SRC: "https://*.example.ts.net" },
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs"],
+    include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.mjs", "public/**/*.test.ts"],
     css: { modules: { classNameStrategy: "non-scoped" } },
   },
 });

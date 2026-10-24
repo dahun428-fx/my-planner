@@ -78,3 +78,22 @@
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+.later {
+  min-height: var(--control-h);
+  margin-top: calc(var(--gap) * -0.5);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--size-body);
+  cursor: pointer;
+}
+.later:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.later:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

@@ -1,6 +1,7 @@
 import { Validator, type Schema } from "@cfworker/json-schema";
 import { get, set } from "idb-keyval";
 import { apiGet } from "../api/client";
+import { loadConn } from "../lib/connection";
 import type { UiCatalog } from "../api/types.gen";
 
 // Spec 6: the BE's list of screen parts with a JSON Schema for each one's props. Kept on the device
@@ -10,23 +11,26 @@ export type Catalog = {
   components: Record<string, { origin: "brain" | "harness"; schema: object }>;
 };
 
-async function stored(): Promise<Catalog | null> {
+// The stored copy notes the BE it came from; a copy from another BE (or one without that note) is not used.
+async function stored(beUrl: string | null): Promise<Catalog | null> {
   try {
-    const v = (await get("catalog")) as Catalog | undefined;
-    return v && typeof v.version === "string" && v.components ? v : null;
+    const v = (await get("catalog")) as (Catalog & { beUrl?: string }) | undefined;
+    if (!v || typeof v.version !== "string" || !v.components || !beUrl || v.beUrl !== beUrl) return null;
+    return { version: v.version, components: v.components };
   } catch {
     return null; // blocked IndexedDB is "nothing saved"
   }
 }
 
 export async function loadCatalog(currentVersion: string | null): Promise<Catalog | null> {
-  const saved = await stored();
+  const beUrl = loadConn()?.beUrl ?? null; // apiGet sends with the saved connection
+  const saved = await stored(beUrl);
   if (saved && (currentVersion === null || saved.version === currentVersion)) return saved;
   const r = await apiGet<UiCatalog>("/ui/catalog", "UiCatalog");
   if (r.kind !== "ok") return saved; // offline or refused: the stored one still draws what it knows
   const fresh = r.data as Catalog;
   try {
-    await set("catalog", fresh);
+    if (beUrl) await set("catalog", { ...fresh, beUrl });
   } catch {
     // not saving is fine
   }

@@ -25,6 +25,9 @@ const table: [string, ModelName][] = [
   ["activity-desc-1.json", "ActivityResponse"],
   ["activity-desc-2.json", "ActivityResponse"],
   ["activity-asc.json", "ActivityResponse"],
+  ["notify.json", "NotifySettings"],
+  ["notify-effective-telegram.json", "NotifySettings"],
+  ["health-paused.json", "Health"],
 ];
 
 // The BE before R4a has no `next_before` key at all, so that fixture is checked as the client reads it (key absent -> null).

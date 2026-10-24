@@ -1,0 +1,15 @@
+{
+  "name": "비서",
+  "short_name": "비서",
+  "lang": "ko",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "theme_color": "#f2f2f5",
+  "background_color": "#f2f2f5",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

@@ -25,6 +25,12 @@ describe("time", () => {
     expect(relativeChecked("2026-10-24T07:59:40Z", t)).toBe(copy.settings.checkedJustNow);
     expect(relativeChecked("2026-10-24T07:55:00Z", t)).toBe(copy.settings.checkedMinutesAgo(5));
   });
+
+  it("never says a negative or unreadable time ago (clock skew)", () => {
+    const t = Date.parse("2026-10-24T08:00:00Z");
+    expect(relativeChecked("2026-10-24T08:30:00Z", t)).toBe(copy.settings.checkedJustNow);
+    expect(relativeChecked("not a time", t)).toBe(copy.settings.checkedJustNow);
+  });
 });
 
 describe("kstToUtcIso", () => {
