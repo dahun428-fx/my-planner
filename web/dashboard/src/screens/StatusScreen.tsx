@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useId } from "react";
 import type { Status, StatusStat } from "../api/types.gen";
-import { StatBar } from "../components/StatBar";
+import { StatBar, rampStep } from "../components/StatBar";
 import { StateNotice } from "../components/StateNotice";
 import { HpCells } from "../components/HpCells";
 import { XpBar } from "../components/XpBar";
@@ -20,9 +20,13 @@ function StatRow({ stat: s, latest }: { stat: StatusStat; latest: string | null 
   const older = s.score !== null && s.period !== null && s.period !== latest;
   return (
     <li className="stat" data-area={s.area} data-debuff={s.debuff || undefined}>
-      <span className="stat-name">{s.label}</span>
+      <span className="stat-name">
+        <span className="area-dot" aria-hidden="true" />
+        {s.label}
+      </span>
       <StatBar label={s.label} score={s.score} />
       <span className="stat-value num">
+        {s.score !== null && <span className="stat-step" data-step={rampStep(s.score)} aria-hidden="true" />}
         {s.score === null ? <span className="meta">{T.noScore}</span> : s.score}
         {older && <span className="meta"> {T.olderPeriod(s.period!)}</span>}
       </span>
@@ -54,8 +58,8 @@ export function StatusView({ status: s }: { status: Status }) {
   const latest = scored.length > 0 ? scored.map((x) => x.period!).sort().at(-1)! : null;
   const offersQuest = s.daily_quests.length > 0 || s.stats.some((x) => x.debuff && x.recovery_quest);
   return (
-    <>
-      <section className="panel hero" aria-label={T.level(s.level)}>
+    <div className="panels">
+      <section className="panel panel-wide hero" aria-label={T.level(s.level)}>
         <XpBar level={s.level} into={s.xp_into_level} forNext={s.xp_for_next} />
         <HpCells score={s.hp.score} />
       </section>
@@ -107,7 +111,7 @@ export function StatusView({ status: s }: { status: Status }) {
         {offersQuest && <p className="hint meta">{T.take}</p>}
       </section>
 
-      <section className="panel" aria-label={`${T.titles}, ${T.recentXp}`}>
+      <section className="panel panel-wide" aria-label={`${T.titles}, ${T.recentXp}`}>
         <div className="row">
           <h2>{T.titles}</h2>
           {s.titles.length === 0 ? <p className="empty">{T.titlesEmpty}</p> : <p className="line">{s.titles.map((t) => t.title).join(" · ")}</p>}
@@ -123,7 +127,7 @@ export function StatusView({ status: s }: { status: Status }) {
           )}
         </div>
       </section>
-    </>
+    </div>
   );
 }
 

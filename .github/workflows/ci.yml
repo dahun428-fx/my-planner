@@ -52,10 +52,15 @@ jobs:
               - 'config.toml'
             workflow:
               - '.github/workflows/ci.yml'
+            # web/shared/global.css와 DESIGN.md가 바뀌면 두 사본 시험(sync-design.test.mjs)이 돌아야 한다
             web:
               - 'web/app/**'
+              - 'web/shared/**'
+              - 'DESIGN.md'
             dashboard:
               - 'web/dashboard/**'
+              - 'web/shared/**'
+              - 'DESIGN.md'
 
   # be 작업은 둘로 나눈다. 작업 수준 `if:`에서는 matrix를 쓸 수 없고, 단계에서만 건너뛰면
   # Windows 러너가 떠서 분량을 쓰기 때문이다. 건너뛴 작업은 GitHub이 통과로 본다.

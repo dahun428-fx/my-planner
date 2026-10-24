@@ -6,7 +6,7 @@ import { Head, Html, Main, NextScript } from "next/document";
 const connectSrc = process.env.NEXT_PUBLIC_CONNECT_SRC ?? "";
 
 export const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
+  "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; " +
   `connect-src 'self' ${connectSrc}; base-uri 'none'; form-action 'none'`;
 
 export default function Document() {

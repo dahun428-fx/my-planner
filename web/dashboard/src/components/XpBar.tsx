@@ -12,9 +12,9 @@ export function XpBar({ level, into, forNext }: { level: number; into: number; f
         <span className="xp-level num">{T.level(level)}</span>
         <span className="xp-amount num">{T.xp(into, forNext)}</span>
       </div>
-      <svg className="xp-bar" viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label={T.xpBar(into, forNext)}>
-        <rect className="bar-track" x="0" y="0" width="100" height="10" rx="1.5" ry="5" />
-        {ratio > 0 && <rect className="xp-fill" x="0" y="0" width={ratio * 100} height="10" rx="1.5" ry="5" />}
+      <svg className="xp-bar" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label={T.xpBar(into, forNext)}>
+        <rect className="bar-track" x="0" y="0" width="100" height="6" rx="1" ry="3" />
+        {ratio > 0 && <rect className="xp-fill" x="0" y="0" width={ratio * 100} height="6" rx="1" ry="3" />}
       </svg>
     </div>
   );
