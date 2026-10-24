@@ -15,3 +15,8 @@ dist/
 # 스파이크와 작업 기록
 spikes/
 .superpowers/
+
+# 인생 곡선 시드 (개인 정보, 저장소에 넣지 않는다)
+*.seed.json
+life-seed/
+life-curve-seed*.json
