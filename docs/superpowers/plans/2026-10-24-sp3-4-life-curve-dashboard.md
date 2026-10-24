@@ -138,8 +138,9 @@ web/dashboard/                   # Vercel 루트 디렉터리
 | 18 | 대시보드 (c) 인생곡선 | 16 | `ready-for-agent` |
 | 19 | Vercel 배포, Tailscale serve, 운영 안내 | 15, 17, 18 | `needs-laptop` |
 | 20 | 노트북 수용 테스트 | 19 | `needs-laptop` |
+| 21 | 스펙 갱신: 빈 곳 결정 1~13과 문구 표 반영 | 없음(02 머지 전에 머지) | `ready-for-agent` |
 
-00→01→02→(03, 04→05→06→07→08)이 운영 앱 계약 줄이고, 운영 앱 스레드는 02 뒤부터 `GET /schema`로 타입을 만들 수 있다. 09~15가 곡선·상태창 줄, 16~18은 03 뒤 어느 때나 옆길로 돈다.
+00→01→02→(03, 04→05→06→07→08)이 운영 앱 계약 줄이고, 운영 앱 스레드는 02 뒤부터 `GET /schema`로 타입을 만들 수 있다. 09~15가 곡선·상태창 줄, 16~18은 03 뒤 어느 때나 옆길로 돈다. 21은 문서만 바꾸므로 01과 나란히 시작하고, 계약이 굳는 02보다 먼저 머지한다(번호만 마지막).
 
 ---
 
@@ -334,7 +335,7 @@ CORS (`tests/test_api_cors.py`, `cors_origins=["https://dash.example.vercel.app"
 `harness/checkins.py` (추가)
 - `checkin_summaries(*, runs, convs, deliveries, d: date, now, settings) -> list[dict]`: 6.4.5 요약 목록(`text`, `cards` 없음). 보낸 회차만, 다른 회차에 합쳐진 회차는 빼고 primary 하나로.
 - `checkin_detail(run_id: int, *, runs, convs, deliveries, tasks, conditions, now, settings) -> dict | None`
-- `checkin_cards(run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo, settings) -> list[dict]`: 그 회차의 `tool_events_log`(`run_id`)에서 `tasks_proposed`로 낸 할 일 가운데 아직 `draft`인 것 → `{"toolCallId": "h_draft_<run_id>", "component": "ui_todo_draft", "props": {"task_ids": […]}}`, `ask_condition_for(...)`의 날짜에 컨디션 기록이 없으면 → `{"toolCallId": "h_cond_<run_id>", "component": "ui_condition_picker", "props": {"date": …}}`. 티켓 13·14가 확인 카드와 사다리·영역 카드를 더한다.
+- `checkin_cards(run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo, settings) -> list[dict]`: 그 회차의 `tool_events_log`(`run_id`)에서 `tasks_proposed`로 낸 할 일 가운데 아직 `draft`인 것 → `{"toolCallId": "h_draft_<run_id>", "component": "ui_todo_draft", "props": {"task_ids": […]}}`, `ask_condition_for(...)`의 날짜에 컨디션 기록이 없으면 → `{"toolCallId": "h_cond_<run_id>", "component": "ui_condition_picker", "props": {"date": …}}`. 티켓 11이 사건·챕터 초안 카드(`h_mdraft_<run_id>` `ui_milestone_draft`, `h_cdraft_<run_id>` `ui_chapter_draft`)를, 티켓 13·14가 확인 카드와 사다리·영역 카드를 더한다.
 
 `store/transcripts.py`
 - `TranscriptStore.append(at, speaker, conversation_id, run_key, text, tools=None, *, channel: Channel = "telegram")`: `channel == "app"`일 때만 머리글 끝에 ` @app`을 붙인다(텔레그램 머리글은 SP1 그대로. 아래 "스펙 빈 곳" 1).
@@ -346,7 +347,7 @@ CORS (`tests/test_api_cors.py`, `cors_origins=["https://dash.example.vercel.app"
 - `ConversationsRepo.recent(*, channel: str | None, limit: int) -> list[Conversation]`, `.for_run(run_id: int) -> list[Conversation]`
 
 `tools/ui.py`
-- `UI_CATALOG_VERSION = "2026-10-24.1"`, `UI_COMPONENTS: dict[str, dict]`(6.4.7 표의 8개, 각 `{"origin": "brain" | "harness", "schema": JSON Schema}`. 제한: `ui_todo_list.task_ids` ≤30, `ui_choice.options` 2~4, `ui_summary_card.lines` ≤8·줄마다 120자)
+- `UI_CATALOG_VERSION = "2026-10-24.2"`, `UI_COMPONENTS: dict[str, dict]`(6.4.7 표의 8개 + 이 계획이 더한 하네스 출처 2개 = 10개, 각 `{"origin": "brain" | "harness", "schema": JSON Schema}`. 제한: `ui_todo_list.task_ids` ≤30, `ui_choice.options` 2~4, `ui_summary_card.lines` ≤8·줄마다 120자). 더한 둘은 `ui_todo_draft`와 같은 꼴이다: `ui_milestone_draft` `{"milestone_ids": int[1..10]}`(동작 `/actions confirm_milestones` 또는 `drop_milestone`), `ui_chapter_draft` `{"chapter_ids": int[1..5]}`(동작 `/actions confirm_chapters` 또는 `drop_chapter`), 둘 다 `origin: "harness"`. 스펙 6.4.7 표 수정이 필요하다(빈 곳 7, 티켓 21)
 - `validate_props(component: str, props: dict) -> str | None`(오류 문구 또는 None, `jsonschema` 사용)
 
 `api/read.py`: `get_today`, `get_week`, `get_conditions`, `get_checkins`, `get_checkin`, `get_conversations`, `get_conversation_messages`, `get_ui_catalog`, `get_schema`. 모두 `deps.read_conn()`만 쓰고, 응답 dict를 `to_api_times` 뒤 해당 pydantic 모델로 검증해 낸다.
@@ -381,7 +382,7 @@ CORS (`tests/test_api_cors.py`, `cors_origins=["https://dash.example.vercel.app"
 스키마 (`tests/test_api_schema.py`)
 - [ ] `test_schema_lists_all_models`: `/schema`의 `models` 키가 `MODELS`와 같고 `api == "v1"`
 - [ ] `test_every_read_response_validates_against_schema`: 위 응답 본문 각각을 `jsonschema.validate`
-- [ ] `test_ui_catalog_version_and_components`: `version == "2026-10-24.1"`, 8개, `origin` 값이 표대로
+- [ ] `test_ui_catalog_version_and_components`: `version == "2026-10-24.2"`, 10개, `origin` 값이 표대로(`ui_milestone_draft`·`ui_chapter_draft`는 `harness`)
 - [ ] `test_cli_schema_prints_bundle`
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
@@ -598,7 +599,7 @@ API (`tests/test_api_curve_status.py`)
 **라벨:** `ready-for-agent`
 
 **Files:**
-- Create: `harness/stream.py`, `api/chat.py`, `tests/ui_stream.py`
+- Create: `harness/stream.py`, `api/chat.py`, `tests/ui_stream.py`, `tests/gen_app_golden.py`, `tests/fixtures/app_golden/`
 - Modify: `domain.py`, `harness/brain.py`, `harness/dispatcher.py`, `harness/conversations.py`, `store/repos/state.py`, `store/repos/conversations.py`, `tools/mcp_adapter.py`, `bot/commands.py`, `bot/telegram_io.py`(`_answer_command`가 공통 함수를 부른다), `app.py`, `api/models.py`, `api/server.py`, `tests/fakes.py`
 - Test: `tests/test_api_chat.py`, `tests/test_dispatcher_app_channel.py`, `tests/test_stream.py`, `tests/test_brain_options.py`
 
@@ -659,7 +660,10 @@ API (`tests/test_api_curve_status.py`)
 - `ListSink`: 조각을 목록에 모으는 `StreamSink`.
 
 `tests/ui_stream.py`
-- `parse_sse(body: bytes) -> list[dict]`: `data:` 줄을 JSON으로, `[DONE]` 확인, 주석 줄 무시. AI SDK `UIMessageChunk`의 형식 규칙(첫 조각 `start`, `text-*`의 `id` 짝, `tool-input-available` 뒤 같은 `toolCallId`의 출력, 마지막 `finish`)을 확인한다. 운영 앱 스레드가 기준 응답을 주면 `tests/fixtures/app_golden/*.sse`를 이 파서로 같이 읽는다.
+- `parse_sse(body: bytes) -> list[dict]`: `data:` 줄을 JSON으로, `[DONE]` 확인, 주석 줄 무시. AI SDK `UIMessageChunk`의 형식 규칙(첫 조각 `start`, `text-*`의 `id` 짝, `tool-input-available` 뒤 같은 `toolCallId`의 출력, 마지막 `finish`)을 확인한다. `ALLOWED_CHUNK_TYPES`(AI SDK UI message stream 프로토콜의 `start`, `start-step`, `text-start`, `text-delta`, `text-end`, `tool-input-available`, `tool-output-available`, `tool-output-error`, `data-*`, `finish-step`, `finish`, `error`) 밖의 `type`은 오류.
+- `normalize_sse(body: bytes) -> bytes`: `messageId`와 응답 헤더의 요청 id를 `<id>`로 바꾼다(가짜 시계라 나머지는 늘 같다).
+
+`tests/gen_app_golden.py` (빈 곳 9): `python -m tests.gen_app_golden` → `BeEnv`(FakeBrain, FakeClock)로 아래 세 요청을 보내 `normalize_sse` 결과를 `tests/fixtures/app_golden/{chat_add_task,chat_daily_cap,chat_replay}.sse`에 쓰고, 응답 헤더는 `tests/fixtures/app_golden/headers.json`에. 스펙 6.4.1과 AI SDK UI message stream 프로토콜에서 만든 기준 응답이다. 운영 앱 스레드가 확인하기 전에도 이 티켓은 끝낼 수 있다(막지 않는다).
 
 **Slices**
 
@@ -675,6 +679,8 @@ API (`tests/test_api_curve_status.py`)
 - [ ] `test_ping_every_15s_while_queued`: 텔레그램 회차가 두뇌를 잡고 있는 동안 `: ping` 줄
 - [ ] `test_commands_in_app` : `/today` 글이 텔레그램 `today_text`와 같고 두뇌·`inbound_pending` 없음. `/pause 3`은 `pause_until`을 쓰고 같은 `client_msg_id` 재요청은 다시 실행하지 않는다. `/plan 이사 준비`는 두뇌 스트림, `messageMetadata.kind == "plan"`
 - [ ] `test_parser_reads_spec_example`: 스펙 6.4.1의 예시 본문을 `parse_sse`가 오류 없이 읽는다
+- [ ] `test_app_golden_matches_stream` (`tests/test_app_golden.py`, 매개변수 3): 지금 스트림의 `normalize_sse` == `tests/fixtures/app_golden/<이름>.sse`, 헤더 == `headers.json`(`x-vercel-ai-ui-message-stream: v1` 포함). `pytest --update-app-golden`이면 다시 쓴다(`tests/conftest.py`에 옵션)
+- [ ] `test_app_golden_files_parse`: 세 파일 모두 `parse_sse` 통과, 모르는 조각 종류 없음
 
 섞인 큐 (`tests/test_dispatcher_app_channel.py`, SP1 `Env` + `app_sender`)
 - [ ] `test_mixed_queue_batches_telegram_only`: 처리 중 텔레그램 2·앱 2가 쌓이면 두뇌 호출 3회(텔레그램 묶음 1 + 앱 2), 텔레그램 답은 FakeSender 1개, 앱 싱크 두 개가 각자 답, 대화 id가 섞이지 않는다
@@ -691,7 +697,7 @@ API (`tests/test_api_curve_status.py`)
 - [ ] `tests/test_api_e2e.py::test_chat_end_to_end`: `POST /chat`("내일 치과 추가해 줘") → `parse_sse` 통과 → `GET /conversations?channel=app`에 그 대화, `GET /conversations/{id}/messages`에 사용자·비서 두 줄(`tools == ["add_task"]`) → 텔레그램 `/today`(다음 날 시계)에 치과. → `passed`
 
 **마무리**
-- [ ] 운영 앱 스레드에 `parse_sse`가 확인하는 규칙과 기준 응답 자리를 알린다(이 저장소 이슈 한 줄).
+- [ ] 기준 응답을 운영 앱 스레드에 보내 확인을 받는다: `tests/fixtures/app_golden/`의 네 파일과 `parse_sse`가 확인하는 규칙(조정자를 거쳐 전달). 답을 기다리지 않고 다음 티켓으로 간다. 운영 앱 스레드가 차이를 알려 오면 새 이슈로 고치고 `--update-app-golden`으로 다시 만든다.
 - [ ] **Review + Commit** `feat(api): POST /chat with AI SDK UI message stream and per-channel brain lane`
 
 ---
@@ -849,7 +855,7 @@ API (`tests/test_api_push.py`)
 
 `store/exports.py`: `export_curve(repo: CurveRepo, path: Path) -> None`: 챕터와 확정 사건, 민감 사건은 제목 대신 "(민감)".
 
-확인 문구 (`confirmation_line`): 사건 확정 `✓ 저장: {제목} ({날짜}, {고점|저점|전환점})` + 칭호가 생기면 다음 줄 `칭호: {칭호}`, 빼기 `✗ 뺐어요: {제목}`(부록 A). 이 계획이 정한 것: 사다리 `✓ 사다리({YYYY-MM}): 지금 {n} · 5년 뒤 {m}`(없는 쪽은 뺀다), 영역 `✓ 영역 점수({YYYY-Qn}): 커리어 7 · 경제 5 …`(넣은 영역만), 챕터 확정 `✓ 저장: {제목} (챕터, {시작}~{끝|지금})`.
+확인 문구 (`confirmation_line`): 사건 확정 `✓ 저장: {제목} ({날짜}, {고점|저점|전환점})` + 칭호가 생기면 다음 줄 `칭호: {칭호}`, 빼기 `✗ 뺐어요: {제목}`(부록 A). 영역 점수, 챕터 확정·빼기, 도구로 기록한 사다리는 아래 **문구 표**의 C1~C4 그대로(Dahun 확인 필요, 확인 뒤 바뀌면 이 시험의 기대값만 고친다).
 
 `ACTIONS` 추가: `record_ladder_score`, `record_area_scores`, `confirm_milestones`, `confirm_chapters`, `drop_milestone`(→ `drop_curve_drafts(milestone_ids=[id])`), `drop_chapter`, 내부 `expire_curve_drafts`(활동 `milestone_drafts_expired`, `chapter_drafts_expired`). `register_undo`: `ladder_recorded`, `area_scores_recorded`(이전 행, 없었으면 삭제), `milestones_confirmed`, `chapters_confirmed`(초안으로, `draft_since` = 되돌린 시각, 칭호 삭제). 빼기는 되돌릴 수 없다(행 삭제). 대상 문자열: `ladder:<YYYY-MM>`, `areas:<YYYY-Qn>`, `milestone:<id>`, `chapter:<id>`.
 
@@ -868,7 +874,7 @@ API (`tests/test_api_push.py`)
 - [ ] `test_undo_confirm_resets_draft_since_and_removes_title`: 1년 전에 만든 사건의 확정을 되돌려도 다음 날 tick 뒤 행이 남고, 3일 뒤 사라진다
 - [ ] `test_period_default_from_review_conversation`: 11/29 회고 회차 대화에서 12/1에 `record_ladder_score(now=7)` → `period == "2026-11"`. 일반 대화면 `2026-12`
 - [ ] `test_export_chapters_md_masks_sensitive`
-- [ ] `test_confirmation_lines`: 위 문구 그대로, 금지어 없음
+- [ ] `test_confirmation_lines`: 부록 A 문구와 문구 표 C1~C4 그대로, 금지어 없음
 
 초안 (`tests/test_curve_drafts.py`, 러너)
 - [ ] `test_curve_drafts_deleted_after_3_days_by_draft_since`: 2일 23시간 → 남음, 3일 → 없음, 활동 `milestone_drafts_expired`(`secretary`/`scheduler`)
@@ -940,8 +946,8 @@ API (`tests/test_api_push.py`)
 **라벨:** `ready-for-agent`
 
 **Files:**
-- Modify: `tools/core.py`, `tools/mcp_adapter.py`, `harness/dispatcher.py`(`_outbound`), `bot/telegram_io.py`, `bot/callbacks.py`, `harness/prompts/system.md`, `app.py`
-- Test: `tests/test_curve_tools.py`, `tests/test_telegram_curve.py`, `tests/test_prompts.py`(SP1 금지어 시험 그대로)
+- Modify: `tools/core.py`, `tools/mcp_adapter.py`, `harness/dispatcher.py`(`_outbound`), `harness/stream.py`(`AppReplySender`의 사건·챕터 초안 조각), `harness/checkins.py`(`checkin_cards`), `bot/telegram_io.py`, `bot/callbacks.py`, `harness/prompts/system.md`, `app.py`
+- Test: `tests/test_curve_tools.py`, `tests/test_telegram_curve.py`, `tests/test_app_curve_cards.py`, `tests/test_prompts.py`(SP1 금지어 시험 그대로)
 
 **Interfaces**
 - Consumes: 09의 `Tools` 곡선 메서드, `curve_view`, `status_snapshot`, `apply_action`, `message_keyboard` (03, 04, 09)
@@ -952,6 +958,7 @@ API (`tests/test_api_push.py`)
 - `Tools.get_status(ctx) -> dict`: `status_snapshot(...)` 그대로
 - `TOOL_NAMES`에 `record_ladder_score`, `record_area_scores`, `add_milestone`, `confirm_milestones`, `propose_chapter`, `confirm_chapters`, `drop_curve_drafts`, `get_curve`, `get_status` 9개(설명은 스펙 10장 표의 "하는 일").
 - `Outbound`에 `draft_milestone_ids: list[int]`, `draft_chapter_ids: list[int]`(`milestone_proposed`, `chapter_proposed` 이벤트에서 채운다)
+- 앱 초안 카드(빈 곳 7): `AppReplySender`가 `out.draft_milestone_ids` → `tool-input-available {toolCallId: "h_mdraft_<n>", toolName: "ui_milestone_draft", input: {"milestone_ids"}}` + `tool-output-available {output: {"ok": true}}`, `out.draft_chapter_ids` → `h_cdraft_<n>`의 `ui_chapter_draft`. 조각 순서는 텔레그램 줄 순서와 같다(할 일 → 사건 → 챕터 → 컨디션). `checkin_cards`도 그 회차의 남은 사건·챕터 초안을 같은 컴포넌트로 낸다.
 - `bot/telegram_io.py`: `milestone_keyboard(ids: list[int], conversation_id: int | None, titles: dict[int, str]) -> list[list[InlineKeyboardButton]]`(초안마다 `✓ 저장: {제목 16자}` `✗ 빼기` 콜백 `m:c:<id>`, `m:x:<id>`, 맨 아래 `전부 저장` `m:all:<대화 id>`), `chapter_keyboard(ids, titles)`(`h:c:<id>`, `h:x:<id>`). `message_keyboard` 줄 순서: 할 일 초안 → 사건 초안 → 챕터 초안 → 컨디션.
 - `bot/callbacks.py`: `m:`·`h:`를 `apply_action`(`confirm_milestones`, `drop_milestone`, `confirm_chapters`, `drop_chapter`)으로. 이미 정리된 초안 → "이미 정리된 사건이에요.". 원문 기록 `[버튼] 저장: {제목}`, `[버튼] 빼기: {제목}`.
 - `system.md` 원칙 9(사건과 챕터는 초안으로만, 추측해서 만들지 않고 "곡선에 남길까요?"와 함께), 10(점수는 사용자가 말한 숫자만), 11(점수가 내려가도 걱정하는 말 대신 회복 퀘스트 하나). 스펙 10장 문장 그대로.
@@ -974,6 +981,11 @@ API (`tests/test_api_push.py`)
 - [ ] `test_button_reply_copy`: "✓ 저장: 제주 여행 (2019, 고점)"과 "칭호: 「제주 여행」의 순간", 빼기 "✗ 뺐어요: 제주 여행"
 - [ ] `test_chapter_buttons`
 - [ ] `test_system_prompt_has_principles_9_to_11`
+
+앱 (`tests/test_app_curve_cards.py`, `BeEnv`)
+- [ ] `test_app_milestone_draft_chunk`: `POST /chat` → FakeBrain(앱) `add_milestone` → `h_mdraft_1` 조각, `toolName == "ui_milestone_draft"`, `input` 이 `validate_props`를 통과
+- [ ] `test_app_chapter_draft_chunk_after_milestone`: 같은 답에 사건·챕터 초안 → `h_mdraft_1` 다음 `h_cdraft_1`
+- [ ] `test_checkin_cards_include_curve_drafts_until_confirmed`: `/actions confirm_milestones` 뒤 `GET /checkins/{id}`의 `cards`에서 빠진다
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
 - [ ] `tests/test_api_e2e.py::test_story_to_curve`: 텔레그램 "예전에 처음 혼자 제주 여행 갔을 때 정말 좋았어"(꾸며 낸 문장) → FakeBrain `add_milestone(date="2019", kind="high", title="제주 여행")` → FakeSender 메시지에 `m:c:<id>` 버튼 → 그 콜백 → `GET /curve?zoom=year`에 사건, `GET /status` 칭호. 3일 뒤 남은 다른 초안은 사라진다. → `passed`
@@ -1081,7 +1093,7 @@ API (`tests/test_api_push.py`)
 - 프롬프트 선택: `review_week.md` 뒤에 해당하는 `review_month.md` → `review_quarter.md` → `review_year.md`를 잇고, 월말이면서 분기·연말이 아니면 열린 시드 질문 하나(`curve_questions` → `asked`)를 `## 이번에 물을 질문`으로 붙인다(분기·연말이면 마지막 단계 뒤).
 - 사다리 키보드 `ladder_keyboard(period: str, field: Literal["n", "f"]) -> list[list[InlineKeyboardButton]]`: `0`~`5`, `6`~`10` 두 줄, `f`면 셋째 줄 `건너뛰기`. 콜백 `l:<YYYY-MM>:n:<0-10>`, `l:<YYYY-MM>:f:<0-10>`, `l:<YYYY-MM>:f:skip`. 달은 회고 회차 날짜가 든 달.
 - 1단계 자리(스펙 11.1-1): (a) 그 회고 묶음의 컨디션 버튼을 누르면 콜백이 토스트 대신 **새 메시지**로 "컨디션 {N} 기록했어요.\n\n{사다리 1단계 문구}" + `n` 키보드를 보낸다 (b) 컨디션 버튼 없이 회고 대화에 처음 들어온 사용자 글의 답에는 디스패처가 `Outbound.ladder: tuple[str, Literal["n", "f"]] | None`으로 같은 문구와 키보드를 붙인다 (c) 그 날짜 컨디션이 이미 있어 컨디션 줄이 없으면 회고 메시지에 바로 붙인다. 1단계는 회차마다 한 번(`app_state.ladder_prompted_run_id`). 그 달 사다리가 이미 있으면 묻지 않는다.
-- 2·3단계: `l:…:n:<v>` → `apply_action(record_ladder_score(period, now=v))` → 새 메시지 "5년 뒤에는 몇 칸일 것 같아요?" + `f` 키보드. `f:<v>`·`f:skip` → "기록했어요: 지금 {n}, 5년 뒤 {m}"(건너뛰면 "기록했어요: 지금 {n}"), 분기면 이어서 부록 A 영역 점수 문구(지난 분기 점수 줄 포함, 없으면 "지난 분기: 기록 없음"). 이 메시지들은 원문 기록에 회차 대화로 남고 하루 3회에 세지 않는다. 답장 창 뒤의 누름은 기록만 하고 다음 단계를 묻지 않는다.
+- 2·3단계: `l:…:n:<v>` → `apply_action(record_ladder_score(period, now=v))` → 새 메시지 C5 + `f` 키보드. `f:<v>`·`f:skip` → C6(건너뛰면 C7), 분기면 이어서 부록 A 영역 점수 문구(지난 분기 점수 줄 포함, 없으면 "지난 분기: 기록 없음"). 이 메시지들은 원문 기록에 회차 대화로 남고 하루 3회에 세지 않는다. 답장 창 뒤의 누름은 기록만 하고 다음 단계를 묻지 않는다.
 - `run_answered_by`: `record_ladder_score(period)` → 그 달 월말 회고 회차.
 - `save_weekly_review(data_dir, period, text, *, included: list[str] | None = None) -> Path`: 머리글 아래 `포함: 월간(2026-10), 분기(2026-Q4)` 한 줄(있을 때만).
 - 앱(실제 통로 `app`): `checkin_cards`가 월말 회고에 `ui_ladder_picker {period, field: "now"}`(그 달 `now`가 있으면 `future`), 분기 회고에 `ui_area_scores {period, previous}`를 더한다.
@@ -1101,7 +1113,7 @@ API (`tests/test_api_push.py`)
 - [ ] `test_first_text_reply_gets_step1_when_no_condition_button`
 - [ ] `test_condition_already_recorded_step1_on_review_message`
 - [ ] `test_one_keyboard_kind_per_message`: 어떤 메시지에도 컨디션 줄과 사다리 줄이 같이 없다
-- [ ] `test_now_then_future_then_recorded_copy`, `test_skip_future_copy`
+- [ ] `test_now_then_future_then_recorded_copy`, `test_skip_future_copy`: 문구 표 C5~C7 그대로
 - [ ] `test_quarter_area_prompt_with_previous_scores`
 - [ ] `test_late_button_after_window_records_without_next_step`
 - [ ] `test_late_skipped_review_next_review_does_not_ask_twice`: 10월 월말 회고가 `skipped(late)` → 10월 사다리는 비어 있고, 11/29 회고는 11월만 묻는다
@@ -1204,7 +1216,7 @@ API (`tests/test_api_push.py`)
   - `isHealth`, … 응답 모양 검사기(`types.gen.ts`의 타입을 좁히는 손 검사기, 필수 필드만)
 - `src/lib/polling.ts`: `usePolling<T>(load: () => Promise<ApiResult<T>>, intervalMs = 60_000): { result: ApiResult<T> | null; refresh: () => void }`: 열 때 한 번, 보이는 탭일 때만 60초마다, `visibilitychange`로 다시 보이면 바로 한 번, `unauthorized`면 멈추고 설정이 바뀔 때까지 다시 부르지 않는다
 - `src/lib/time.ts`: `formatKst(iso: string, style: "M/D HH:mm" | "HH:mm" | "HH:mm:ss" | "M/D") : string`(`Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", hourCycle: "h23" })`)
-- `src/lib/labels.ts`: 회차 이름(아침 브리핑, 저녁 체크인, 주간 회고, 다시 이어서), 상태(`done` 보냄, `pending`/`queued` 예정, `running` 보내는 중, `failed` 전송 안 됨, `skipped` `건너뜀({사유})`), 사유 표시(이 계획이 정함: `late` 시간 지남, `merged_into_return` 복귀 인사에 합침, `paused` 멈춤, `auth` 로그인 필요, `rate_limit` 사용 한도, `daily_cap` 하루 상한), 답할 회차(답함, 답 기다림, 지나감)
+- `src/lib/labels.ts`: 회차 이름(아침 브리핑, 저녁 체크인, 주간 회고, 다시 이어서), 상태(`done` 보냄, `pending`/`queued` 예정, `running` 보내는 중, `failed` 전송 안 됨, `skipped` `건너뜀({사유})`), 사유 표시(빈 곳 10, `docs/acceptance/sp1-checklist.md`의 뜻을 줄임: `late` 한계 시각 지남, `merged_into_return` 복귀 인사로 합침, `paused` /pause 중, `daily_cap` 하루 두뇌 호출 상한, `auth` 로그인·결제 문제, `rate_limit` 사용 한도. 모르는 값은 `건너뜀`만), 답할 회차(답함, 답 기다림, 지나감)
 - `src/components/ConnectionBand.tsx`: `/health`를 공유 폴링한다. 성공하면 `saveLastHealthOk`, 문구 `● BE 켜짐 · {HH:mm:ss} 응답`과 `[연결 확인]` 버튼, offline이면 `BE 꺼짐 · 마지막 응답 {M/D HH:mm}` 또는 `BE 꺼짐 · 마지막 응답 기록 없음`
 - `src/components/StateNotice.tsx`: 스펙 13.1 공통 상태 표의 문구 그대로(설정 없음 → `/settings`로 이동)
 - `src/screens/HealthScreen.tsx`: 13.2 배치, 빈 상태 문구("오늘 예정된 회차가 아직 없어요.", "최근 24시간 경고 없음")
@@ -1229,6 +1241,7 @@ API (`tests/test_api_push.py`)
 - [ ] `time.test.ts` `shows KST regardless of device time zone` (Review Focus 1): `process.env.TZ = "UTC"`와 `"America/Los_Angeles"`에서 `formatKst("2026-10-24T08:00:05Z", "HH:mm:ss") === "17:00:05"`
 - [ ] `HealthScreen.test.tsx`: 고정 자료 `health.json`으로 13.2의 줄(판·스키마, 폴링, 로그인, 주 통로 "앱 (지금 텔레그램)", 오늘 회차 두 줄, 두뇌 호출 23 / 60, 경고 2), 빈 상태 두 문구, 401·503·모양 오류 문구
 - [ ] `settings.test.tsx`: 범위 밖 URL은 저장되지 않고 이유가 보인다, "연결 확인"이 `/health`를 부른다
+- [ ] `labels.test.ts` `skip reason labels`: 여섯 사유가 위 문구로 `건너뜀(한계 시각 지남)` 꼴, 모르는 사유 → `건너뜀`, BE `SkipReason` 값과 키가 같다(고정 자료 `schema.json`의 enum)
 - [ ] `banned-words.test.ts`: `src/` 아래 문자열에 "놓쳤어요", "밀렸어요", "늦었지만", "실패", "연속"이 없다
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
@@ -1356,7 +1369,7 @@ API (`tests/test_api_push.py`)
   - 완료 조건 1: 대시보드 화면 넷의 할 일·레벨·경험치·스탯이 같은 시각 텔레그램 `/today`, `/week`, `/status`와 같다
   - 완료 조건 2: 덮개를 닫으면 10초 안에 "BE 꺼짐 · 마지막 응답 {시각}", 사생활 보호 창에서는 "마지막 응답 기록 없음"
   - 완료 조건 5: 11/29 회고에서 사다리 두 단계 → `curve_ladder_scores`에 `2026-11`. 12/27 회고에서 영역 점수 → `curve_area_scores` `2026-Q4`, 내려간 영역이 상태창에 디버프와 회복 퀘스트 하나
-  - 완료 조건 9: 운영 앱의 `/chat` 스트림을 운영 앱 스레드의 기준 응답과 같은 파서로 읽음, `/actions` → `undo_id` → `/activity/{id}/undo`가 한 번 되돌림
+  - 완료 조건 9: 운영 앱이 실제 `/chat` 스트림을 읽고, 같은 스트림이 `parse_sse`와 티켓 06 기준 응답(운영 앱 스레드 확인본)의 조각 순서와 맞음, `/actions` → `undo_id` → `/activity/{id}/undo`가 한 번 되돌림
   - 완료 조건 10: 운영 앱 구독 뒤 아침 브리핑이 푸시로만 오고 `proactive.sent_today` +1, 구독을 지우면 다음 회차가 텔레그램으로
   - `state/logs/`에서 토큰과 보낸 문장을 찾으면 없다
   - 시드를 가져온 뒤 노트북 밖 시드 사본을 지웠다(체크)
@@ -1365,6 +1378,44 @@ API (`tests/test_api_push.py`)
 - [ ] **Commit** `docs: SP3-4 acceptance results`
 
 ---
+
+### 티켓 21: 스펙 갱신 — 빈 곳 결정 1~13과 문구 표 반영
+
+**목표:** 이 계획의 "스펙 빈 곳과 이 계획의 결정" 1~13과 문구 표 C1~C7을 스펙 `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md`에 옮겨, 스펙이 다시 하나뿐인 기준이 되게 한다. 스펙 PR과 같은 흐름(새 가지, PR, Dahun 검토, 머지)으로 간다.
+**막는 티켓:** 없음(01과 나란히 시작, 02 머지 전에 머지)
+**라벨:** `ready-for-agent`
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md`(7.4, 6.4.1, 13.1·14장, 6.1·15장, 12장, 6.4.5, 6.4.7, 부록 A, 16장, 13.1, 7.5, 11.1, 4.3, 변경 기록 표), 이 계획(빈 곳 표 머리에 "스펙 반영: <PR 번호>")
+
+**Steps**
+- [ ] `git fetch origin && git switch -c docs/sp3-4-spec-gaps origin/main`
+- [ ] 빈 곳 1~13을 하나씩 스펙의 그 절에 문장으로 옮긴다(이 계획의 결정 칸 그대로, 티켓 번호는 빼고). 7은 6.4.7 표에 두 줄과 카탈로그 판 `2026-10-24.2`, 8은 부록 A에 C1~C7(PR 본문에 "C1~C7 Dahun 확인 필요"), 10은 13.1에 사유 표시 표.
+- [ ] 스펙 변경 기록 표에 한 줄: `| <날짜> | v1.1 | 구현 계획의 빈 곳 결정 1~13과 확인 문구 반영 | SP3-4 구현 계획 |`
+- [ ] 확인: `grep -c "ui_milestone_draft\|ui_chapter_draft" <스펙>` → 2 이상, `grep -n "2026-10-24.2" <스펙>` → 한 줄 이상, `grep -nE "놓쳤어요|밀렸어요|늦었지만" <스펙>`이 금지어 목록 줄 밖에서 나오지 않는다, `git diff --stat`가 스펙 파일 하나(와 이 계획의 머리 한 줄)
+- [ ] 스펙에 시드 내용, 실제 사건, 점수를 넣지 않는다(예시는 꾸며 낸 것만).
+- [ ] **Commit** `docs(spec): fold SP3-4 plan gap decisions into the spec`, `git push -u origin docs/sp3-4-spec-gaps`, PR을 연다(본문: 빈 곳 표 1~13과 바꾼 절의 짝, C1~C7 확인 요청). Dahun이 문구를 고치면 같은 PR에서 고치고, 이 계획의 문구 표와 티켓 09·14의 기대값도 같은 날 맞춘다.
+
+**수용 확인**
+- [ ] PR 머지 뒤 스펙만 읽고 티켓 02·06·11·16의 해당 부분을 쓸 수 있다: 빈 곳 표의 13줄마다 스펙에 대응 문장이 있다(PR 본문의 짝 표로 확인).
+
+---
+
+## 문구 표 (Dahun 확인 필요)
+
+스펙 부록 A에 없는 확인 문구를 이 계획이 정했다(빈 곳 8). 모두 존댓말이고 SP1 금지어("놓쳤어요", "밀렸어요", "늦었지만", "실패")와 "연속"을 쓰지 않는다. **Dahun 확인 필요**: 티켓 21의 스펙 PR에서 Dahun이 확인한다. 바뀌면 이 표와 해당 시험의 기대값만 고친다.
+
+| # | 자리 (티켓) | 문구 | 비고 |
+|---|---|---|---|
+| C1 | 영역 점수 기록 확인 줄 `record_area_scores` (09) | `✓ 영역 점수를 기록했어요 ({YYYY-Qn}): 커리어 7 · 경제 5` | 넣은 영역만, SP1 영역 6개 순서 |
+| C2 | 챕터 확정 확인 줄 `confirm_chapters` (09, 11) | `✓ 챕터를 저장했어요: {제목} ({시작}~{끝 또는 "지금"})` | 날짜는 사건과 같은 정밀도 표기 |
+| C3 | 챕터 빼기 `drop_chapter` (09, 11) | `✗ 챕터를 뺐어요: {제목}` | 이미 정리됐으면 `이미 정리된 챕터예요.` |
+| C4 | 도구로 기록한 사다리 `record_ladder_score` (09) | `✓ 사다리를 기록했어요 ({YYYY-MM}): 지금 {n} · 5년 뒤 {m}` | 없는 쪽은 ` · …` 째로 뺀다 |
+| C5 | 사다리 2단계 질문 (14) | `5년 뒤에는 몇 칸일 것 같아요?` | `f` 키보드와 함께 |
+| C6 | 사다리 버튼 기록 (14) | `기록했어요: 지금 {n}, 5년 뒤 {m}` | |
+| C7 | 사다리 5년 뒤 건너뜀 (14) | `기록했어요: 지금 {n}. 5년 뒤는 다음에 여쭤볼게요.` | |
+
+화면 표시 문구(대시보드 `labels.ts`의 건너뜀 사유)는 티켓 16에 있다. SP1 수용 체크리스트(`docs/acceptance/sp1-checklist.md`)의 뜻을 줄인 것이라 따로 확인하지 않는다.
 
 ## 스펙 빈 곳과 이 계획의 결정
 
@@ -1376,13 +1427,15 @@ API (`tests/test_api_push.py`)
 | 4 | 6.1, 15장 | `API_TOKEN`이 없거나 짧을 때 동작이 없다 | API를 열지 않고 `api_token_missing` 경고, 텔레그램과 루프는 계속 (01) |
 | 5 | 12장 | 읽을 수 없거나 JSON이 아닌 시드 파일의 종료 코드, BOM, 틀린 항목이 없다 | 코드 6, `utf-8-sig`, 틀린 항목은 `invalid` 개수만 (10) |
 | 6 | 6.4.5 `cards` | 텔레그램 버튼 재료(`draft_task_ids`, `ask_condition_for`)가 저장되지 않는다 | `tool_events_log.run_id`와 `ask_condition_for` 규칙으로 다시 만든다. 이미 기록한 컨디션은 카드에서 뺀다 (02) |
-| 7 | 6.4.7 카탈로그 | 앱에 사건·챕터 초안 카드 컴포넌트가 없다 | v1은 앱에서 자연어나 `/actions confirm_milestones`로 확정. 운영 앱 스레드에 알린다 (11) |
-| 8 | 부록 A | 영역 점수 기록, 챕터 확정, 도구로 기록한 사다리의 확인 문구가 없다 | 티켓 09에 적은 문구 |
-| 9 | 1장 조건 9, 16장 | 운영 앱 스레드의 기준 SSE 응답(golden)이 아직 없다 | `tests/ui_stream.py`로 스펙 예시를 읽고, 받으면 `tests/fixtures/app_golden/`에 더한다 (06, 20) |
-| 10 | 13.1 "건너뜀({사유})" | 사유의 화면 문구가 없다 | 티켓 16 `labels.ts`의 표 |
+| 7 | 6.4.7 카탈로그 | 앱에 사건·챕터 초안 카드 컴포넌트가 없다 | 하네스 출처 `ui_milestone_draft`(`milestone_ids[]`), `ui_chapter_draft`(`chapter_ids[]`)를 `ui_todo_draft`와 같은 꼴로 더한다, 카탈로그 `2026-10-24.2`(02, 11). **스펙 6.4.7 수정 필요** (21) |
+| 8 | 부록 A | 영역 점수 기록, 챕터 확정, 도구로 기록한 사다리의 확인 문구가 없다 | 문구 표 C1~C7, **Dahun 확인 필요** (09, 11, 14, 21) |
+| 9 | 1장 조건 9, 16장 | 운영 앱 스레드의 기준 SSE 응답(golden)이 아직 없다 | 티켓 06이 AI SDK UI message stream 프로토콜과 6.4.1로 `tests/fixtures/app_golden/`를 만들고 운영 앱 스레드에 보내 확인받는다. 06은 그 답에 막히지 않는다 (06, 20) |
+| 10 | 13.1 "건너뜀({사유})" | 사유의 화면 문구가 없다 | `docs/acceptance/sp1-checklist.md`의 뜻을 줄인 짧은 한국어 표시(티켓 16 `labels.ts`) |
 | 11 | 7.5 M4 `senders: dict` | 생성자를 바꾸면 SP1 시험의 `Dispatcher(sender=…)`가 깨진다 | `sender`(텔레그램)를 두고 `app_sender`를 더한다 (06) |
 | 12 | 11.1-1 "컨디션 답 아래" | SP1의 컨디션 버튼 답은 메시지가 아니라 콜백 토스트(`query.answer`)라 아래에 키보드를 붙일 수 없다 | 회고 묶음의 컨디션 누름만 새 메시지로 답하고 거기에 1단계 키보드 (14) |
 | 13 | 4.3 표 | `conversations`를 앱 요청이 열 때의 작성자가 표에 없다 | 디스패처(`route_app_message`)로 둔다. 쓰기 경로 감시에 넣는다 (06, 15) |
+
+1~13의 결정과 문구 표는 티켓 21이 스펙에 옮긴다. 그 PR이 머지되면 스펙이 다시 기준이고, 이 표는 "어디서 왔는지" 기록으로만 남는다.
 
 ## 스펙 대비 확인 (셀프 리뷰)
 
@@ -1402,7 +1455,7 @@ API (`tests/test_api_push.py`)
 스펙 절
 - 3 → 00 · 4.2~4.3 → 01, 04, 15 · 4.4 → File Structure
 - 5.1 → 01, 06, 07 · 5.2 → 04, 05 · 5.3 → 08, 12 · 5.4 → 09, 10 · 5.5 → 03, 15
-- 6.1 → 01 · 6.3.1 → 01, 08 · 6.3.2~6.3.4 → 02 · 6.3.5~6.3.6 → 03 · 6.4 `/schema` → 02 · 6.4.1 → 06 · 6.4.2 → 04 · 6.4.3~6.4.4 → 05 · 6.4.5 → 02, 07 · 6.4.6 → 02 · 6.4.7 → 02, 12 · 6.4.8~6.4.9 → 08
+- 6.1 → 01 · 6.3.1 → 01, 08 · 6.3.2~6.3.4 → 02 · 6.3.5~6.3.6 → 03 · 6.4 `/schema` → 02 · 6.4.1 → 06 · 6.4.2 → 04 · 6.4.3~6.4.4 → 05 · 6.4.5 → 02, 07 · 6.4.6 → 02 · 6.4.7 → 02, 11, 12, 21 · 6.4.8~6.4.9 → 08
 - 7.1~7.2 → 07 · 7.3 → 08 · 7.4 → 02 · 7.5 → 06
 - 8 → 03, 18 · 9.1 → 15 · 9.2~9.4 → 03, 09 · 10 → 09, 11, 12, 15 · 10.1 → 13
-- 11.1~11.2 → 14 · 11.3 → 11 · 11.4 → 15 · 12 → 10 · 13 → 16~18 · 14 → 01, 08, 16, 19 · 15 → 01, 08 · 16 → 각 티켓, 15 · 17 → 확정됨(Dahun 2026-10-24) · 부록 A → 09, 11, 14, 15, 16
+- 11.1~11.2 → 14 · 11.3 → 11 · 11.4 → 15 · 12 → 10 · 13 → 16~18 · 14 → 01, 08, 16, 19 · 15 → 01, 08 · 16 → 각 티켓, 15 · 17 → 확정됨(Dahun 2026-10-24) · 부록 A → 09, 11, 14, 15, 16, 문구 표, 21 · 빈 곳 1~13 → 21
