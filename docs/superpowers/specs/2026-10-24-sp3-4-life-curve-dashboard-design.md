@@ -1362,7 +1362,7 @@ python -m my_planner seed-life <파일> [--dry-run]
 |---|---|
 | 노출 범위 | BE는 `127.0.0.1`에만 연다. 밖에서는 `tailscale serve`(tailnet 안)로만 닿는다. **Tailscale Funnel은 쓰지 않는다**(공개 인터넷 노출). 사용자 안내 문서에 명령을 적는다 |
 | 토큰 | BE는 `API_TOKEN`을 `.env`에서 읽는다. 클라이언트(대시보드, 운영 앱)는 사용자가 기기마다 넣어 그 기기(브라우저 `localStorage`)에만 둔다. 빌드, Vercel 환경 변수, 저장소, 로그에는 없다. 32바이트 이상(`gen-token`이 `secrets.token_urlsafe(32)`). 상수 시간 비교. 1분에 실패 10회면 1분 동안 `429`. 바꾸려면 `.env`를 고치고 BE를 다시 시작한 뒤 기기마다 다시 넣는다. 토큰은 로그, 오류 응답, 활동 기록 어디에도 나오지 않는다 |
-| CORS | 허용 출처는 `config.toml`의 `api.cors_origins`(정확한 출처 문자열 목록)뿐이다. 미리보기 주소 패턴이나 정규식은 쓰지 않는다(`api.cors_origin_regex`는 비워 둔다). `*.vercel.app` 전체는 허용하지 않는다(누구나 그 주소에 배포할 수 있다). 허용 헤더 `Authorization, Content-Type`, 메서드 `GET, POST, PUT, DELETE`, 노출 헤더 `x-conversation-id`, 자격 증명(쿠키) 허용 안 함. 사전 요청에 `Access-Control-Request-Private-Network`가 있으면 `Access-Control-Allow-Private-Network: true`(S9). 허용 밖 출처는 CORS 헤더 없이 답한다(토큰 검사는 그대로) |
+| CORS | 허용 출처는 `config.toml`의 `api.cors_origins`(정확한 출처 문자열 목록)뿐이다. 미리보기 주소 패턴이나 정규식은 받지 않는다(설정 항목도 없다). `*.vercel.app` 전체는 허용하지 않는다(누구나 그 주소에 배포할 수 있다). 허용 헤더 `Authorization, Content-Type`, 메서드 `GET, POST, PUT, DELETE`, 노출 헤더 `x-conversation-id`, 자격 증명(쿠키) 허용 안 함. 사전 요청에 `Access-Control-Request-Private-Network`가 있으면 `Access-Control-Allow-Private-Network: true`(S9). 허용 밖 출처는 CORS 헤더 없이 답한다(토큰 검사는 그대로) |
 | CSRF | 쿠키를 쓰지 않고 `Authorization` 헤더만 받으므로 해당 없다 |
 | 로그 | aiohttp 기본 접근 로그를 끈다(`access_log=None`). 대신 요청마다 `method`, **경로 틀**(`/api/v1/activity/{id}/undo`), 상태 코드, 소요 시간만 남긴다. 쿼리 문자열, 헤더, 본문, 토큰, 푸시 `endpoint`, 할 일 제목, 도구 인자는 남기지 않는다(SP1 7장 로그 규칙). 로그 검사 테스트가 시험 토큰과 시험 문장이 로그 파일에 없는지 본다 |
 | 브라우저 | 대시보드는 엄격한 CSP로 `localStorage`의 토큰을 XSS에서 지킨다: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ${NEXT_PUBLIC_CONNECT_SRC}; base-uri 'none'; form-action 'none'`(외부 스크립트, 인라인 스크립트, 인라인 스타일 없음. `default-src`만 두면 인라인 스타일도 막히므로 `style-src`를 따로 적는다). BE URL은 기기마다 넣는 런타임 값이라 CSP에 그대로 넣을 수 없으므로, `connect-src`는 빌드 상수 `NEXT_PUBLIC_CONNECT_SRC`(tailnet 도메인 와일드카드 `https://*.<tailnet>.ts.net`, 비밀값 아님)로 정한다. `vercel.json`은 빌드 상수를 읽지 못하므로 **CSP는 `pages/_document.tsx`의 `<head>` 첫 요소 `<meta http-equiv="Content-Security-Policy">`**로 넣는다(어떤 `<script>`보다 앞). `<meta>`로는 줄 수 없는 것은 `vercel.json` 헤더로 준다: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: frame-ancestors 'none'`, 최소 `Permissions-Policy`. 빌드 뒤 `scripts/check-csp.mjs`가 `out/**/*.html`마다 인라인 `<script>`(`application/json` 제외)·`<style>`·`style=`가 0개이고 CSP `<meta>`가 첫 `<script>`보다 앞인지 확인한다(16장). 설정 화면은 이 범위 밖의 BE URL을 받지 않는다. BE를 클라우드로 옮기면 이 상수를 바꿔 다시 빌드한다. 화면 데이터는 메모리에만 둔다 |
@@ -1381,7 +1381,6 @@ enabled = true
 host = "127.0.0.1"
 port = 8787
 cors_origins = []          # 예: ["https://my-planner-dash.vercel.app", "https://my-planner-app.vercel.app"]
-cors_origin_regex = ""     # 쓰지 않는다(비워 둔다). 출처는 cors_origins에 정확히 적는다
 max_body_kb = 64
 
 [notify]
