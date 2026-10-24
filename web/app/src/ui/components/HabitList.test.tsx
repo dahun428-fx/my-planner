@@ -1,11 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import type { Habit } from "../../api/types.gen";
 import { copy } from "../../lib/copy";
 import { makeHabit, serveActions } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
+import { BASE, server } from "../../test/server";
 import { HabitList } from "./HabitList";
 
 const DATE = "2026-10-24";
@@ -61,6 +62,32 @@ describe("HabitList", () => {
     expect(onChanged).toHaveBeenCalledTimes(2);
   });
 
+  it("undo from the toast puts the row back and asks the caller to read again", async () => {
+    const bodies = serveActions(answerWith(() => ({ ...weekly, checked: true, week_count: 3 })));
+    const undos: string[] = [];
+    server.use(
+      http.post(`${BASE}/activity/:id/undo`, ({ params }) => {
+        undos.push(String(params.id));
+        return HttpResponse.json({ status: "undone", confirmation: "↩ 습관 체크 취소: 운동" });
+      }),
+    );
+    const onChanged = vi.fn();
+    renderWithProviders(<HabitList habits={[weekly]} date={DATE} readOnly={false} onChanged={onChanged} />);
+    await userEvent.click(box("운동"));
+    await waitFor(() => expect(box("운동")).toBeChecked());
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    await userEvent.click(await screen.findByRole("button", { name: copy.activity.undo }));
+    await waitFor(() => expect(undos).toEqual(["910"]));
+    // Without a fresh read (chat), the row falls back to the data it was given: unchecked.
+    await waitFor(() => expect(box("운동")).not.toBeChecked());
+    expect(screen.getByText("이번 주 2번 · 목표 3번")).toBeInTheDocument();
+    expect(onChanged).toHaveBeenCalledTimes(2);
+    // The next press checks again, never an uncheck of a row that is already unchecked.
+    await userEvent.click(box("운동"));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ action: "check_habit" });
+  });
+
   it("a refused check leaves the row as it was", async () => {
     const bodies = serveActions(() =>
       HttpResponse.json({ error: { code: "rejected", message: "쉬는 중인 습관이에요. 다시 시작하면 체크할 수 있어요." } }, { status: 422 }),
@@ -108,7 +135,7 @@ describe("HabitList", () => {
     expect(container.querySelector("progress, [role='progressbar']")).toBeNull();
   });
 
-  it("rows are 52px with a 44px check area", () => {
+  it("rows carry the 52px row class and the 44px check class", () => {
     const { container } = renderWithProviders(<HabitList habits={[daily]} date={DATE} readOnly={false} onChanged={vi.fn()} />);
     expect(container.querySelector("ul")).toHaveClass("habitRows");
     expect(box("물 마시기")).toHaveClass("check");

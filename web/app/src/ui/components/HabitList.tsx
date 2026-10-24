@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Habit } from "../../api/types.gen";
+import { useToast } from "../../components/Toast";
 import { copy, habitMeta } from "../../lib/copy";
 import type { PartProps } from "../types";
 import { usePartAction } from "../usePartAction";
@@ -22,6 +23,19 @@ export function HabitList({ habits, date, readOnly, onChanged }: { habits: Habit
   const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
   const inFlight = useRef(new Set<number>());
   useEffect(() => setAnswered(new Map()), [habits]);
+  // "되돌리기" on the toast: drop the answers kept here (a chat card falls back to the rows it was
+  // given) and let the caller read again (a check-in does not listen to the toast itself).
+  const toast = useToast();
+  const changed = useRef(onChanged);
+  changed.current = onChanged;
+  useEffect(
+    () =>
+      toast.onUndone(() => {
+        setAnswered(new Map());
+        changed.current();
+      }),
+    [toast],
+  );
 
   if (habits.length === 0) {
     return (

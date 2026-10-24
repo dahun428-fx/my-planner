@@ -134,6 +134,12 @@ describe("Checkin", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ action: "uncheck_habit", args: { id: 1, date: "2026-10-24" } });
     await waitFor(() => expect(hits.checkin).toBeGreaterThan(reads));
+
+    // "되돌리기" on the toast: the check-in reads again so the card shows the undone state.
+    server.use(http.post(`${BASE}/activity/900/undo`, () => HttpResponse.json({ status: "undone", confirmation: "↩ 습관 체크 취소: 물 마시기" })));
+    const afterPress = hits.checkin;
+    await userEvent.click(await screen.findByRole("button", { name: copy.activity.undo }));
+    await waitFor(() => expect(hits.checkin).toBeGreaterThan(afterPress));
   });
 
   it("evening shows open todos with tomorrow and done", async () => {
