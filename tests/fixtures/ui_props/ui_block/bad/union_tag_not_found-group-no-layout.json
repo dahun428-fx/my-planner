@@ -1,0 +1,18 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "group",
+      "children": [
+        {
+          "type": "text",
+          "md": "꾸민 글이에요."
+        },
+        {
+          "type": "text",
+          "md": "꾸민 글이에요."
+        }
+      ]
+    }
+  ]
+}

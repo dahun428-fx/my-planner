@@ -1,0 +1,13 @@
+{
+  "question": "어느 쪽?",
+  "options": [
+    {
+      "id": "a",
+      "label": "/today"
+    },
+    {
+      "id": "b",
+      "label": "독서"
+    }
+  ]
+}

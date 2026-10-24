@@ -86,7 +86,7 @@ from my_planner.tools.confirmations import (
     titles_summary,
     xp_granted_line,
 )
-from my_planner.tools.ui import BRAIN_COMPONENTS, validate_props
+from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
     from my_planner.store.repos.activity import ConfirmsRepo
@@ -1131,8 +1131,8 @@ class Tools:
         """화면 조각을 맨 뒤에 고정한다. props는 **고정하는 그 컴포넌트**의 카탈로그 스키마로 검증한다."""
         if self.cards is None:
             return _err("카드를 고정할 수 없어요.")
-        if component not in BRAIN_COMPONENTS:
-            return _err(f"고정할 수 있는 화면 조각은 {', '.join(BRAIN_COMPONENTS)}이에요.")
+        if component not in PINNABLE_COMPONENTS:  # SP6의 새 넷은 그때의 값이라 고정하지 않는다
+            return _err(f"고정할 수 있는 화면 조각은 {', '.join(PINNABLE_COMPONENTS)}이에요.")
         if (err := validate_props(component, props)) is not None:
             return _err(f"화면 조각 형식이 맞지 않아요: {err}")
         with transaction(self.cards.conn):
