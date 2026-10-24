@@ -79,6 +79,89 @@ describe("usePolling", () => {
     expect(result.current.result).toEqual(ok);
   });
 
+  it("backs off 10, 20, 40 then every 60 seconds while offline, and keeps 60 seconds once answered", async () => {
+    const offline: ApiResult<number> = { kind: "offline" };
+    const load = vi.fn(async (): Promise<ApiResult<number>> => offline);
+    const { result } = renderHook(() => usePolling(load, 60_000, "", { retryDelays: [10_000, 20_000, 40_000, 60_000] }));
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(result.current.retryMs).toBe(10_000);
+    const after = async (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    await after(9_999);
+    expect(load).toHaveBeenCalledTimes(1);
+    await after(1);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(result.current.retryMs).toBe(20_000);
+    await after(20_000);
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(result.current.retryMs).toBe(40_000);
+    await after(40_000);
+    expect(load).toHaveBeenCalledTimes(4);
+    expect(result.current.retryMs).toBe(60_000);
+    await after(60_000);
+    expect(load).toHaveBeenCalledTimes(5);
+    expect(result.current.retryMs).toBe(60_000); // the cap
+    load.mockImplementation(async () => ok);
+    await after(60_000);
+    expect(load).toHaveBeenCalledTimes(6);
+    expect(result.current.retryMs).toBeNull();
+    await after(59_999);
+    expect(load).toHaveBeenCalledTimes(6);
+    // offline again starts the ladder from 10 seconds
+    load.mockImplementation(async () => offline);
+    await after(1);
+    expect(load).toHaveBeenCalledTimes(7);
+    expect(result.current.retryMs).toBe(10_000);
+    await after(10_000);
+    expect(load).toHaveBeenCalledTimes(8);
+  });
+
+  it("keeps the plain interval while offline without retry delays", async () => {
+    const load = vi.fn(async (): Promise<ApiResult<number>> => ({ kind: "offline" }));
+    const { result } = renderHook(() => usePolling(load));
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_999);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(result.current.retryMs).toBeNull();
+  });
+
+  it("counts the next interval from a refresh", async () => {
+    const load = vi.fn(async () => ok);
+    const { result } = renderHook(() => usePolling(load));
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+      await result.current.refresh();
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_999);
+    });
+    expect(load).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it("loads at once when the wake value changes, not on the first render", async () => {
+    const load = vi.fn(async () => ok);
+    const { rerender } = renderHook(({ w }) => usePolling(load, 60_000, "k", { wake: w }), { initialProps: { w: 0 } });
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(1);
+    rerender({ w: 0 });
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(1);
+    rerender({ w: 1 });
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it("refresh loads now, even after unauthorized", async () => {
     const load = vi.fn(async (): Promise<ApiResult<number>> => ({ kind: "unauthorized" }));
     const { result } = renderHook(() => usePolling(load));

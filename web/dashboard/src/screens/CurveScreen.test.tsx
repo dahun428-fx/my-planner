@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import curveDay from "../test/fixtures/curve-day.json";
 import curveEmpty from "../test/fixtures/curve-empty.json";
@@ -53,6 +53,16 @@ const text = () => document.body.textContent ?? "";
 const firstMarker = () => screen.findByRole("button", { name: "고점 2025년 9월 꾸민 첫 전시" });
 
 beforeEach(() => resetCurveMemory());
+
+/** Freeze only the clock (MSW and waitFor keep real timers): 2026-10-24 12:00 in Korea unless told otherwise. */
+function today(iso = "2026-10-24T03:00:00Z") {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(iso));
+}
+afterEach(() => vi.useRealTimers());
+
+const FIRST_LADDER = "10월 25일(일) 월말 회고에서 첫 사다리 점수를 여쭤볼게요.";
+const AREAS_DAY = "12월 27일(일) 분기 회고에서 영역 점수를 함께 정해요.";
 
 describe("CurveScreen", () => {
   it("zoom buttons request each zoom", async () => {
@@ -212,7 +222,7 @@ describe("CurveScreen", () => {
     await waitFor(() => expect(seen.at(-1)).toBe("zoom=day"));
     const radar = await screen.findByRole("region", { name: "영역 (2026-Q3, 점선 Q2)" });
     expect(within(radar).getByText("건강 6 (Q2 7) ↓")).toBeInTheDocument();
-    expect(screen.queryByText("영역 점수는 분기 마지막 주 회고에서 함께 정해요.")).toBeNull();
+    expect(document.querySelector(".radar-panel .empty")).toBeNull();
     expect(seen).toContain(WIDE);
   });
 
@@ -245,14 +255,38 @@ describe("CurveScreen", () => {
     expect(panel.textContent).toContain("2025년 11월 기억 4");
   });
 
-  it("four empty states", async () => {
+  it("four empty states, with the dated reviews to come (DU-05)", async () => {
+    today();
     server.use(curveAnswers.ok(curveEmpty));
     renderScreen();
     expect(await screen.findByText("시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요.")).toBeInTheDocument();
-    expect(screen.getByText("첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.")).toBeInTheDocument();
-    expect(screen.getByText("영역 점수는 분기 마지막 주 회고에서 함께 정해요.")).toBeInTheDocument();
+    const curve = screen.getByRole("region", { name: "인생곡선" });
+    const marks = within(curve).getByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["10월 25일(일)첫 사다리", "12월 27일(일)영역 점수"]);
+    expect(within(marks).getAllByRole("listitem").map((li) => li.querySelector("time")?.getAttribute("datetime"))).toEqual(["2026-10-25", "2026-12-27"]);
+    expect(within(curve).getByText(FIRST_LADDER)).toBeInTheDocument();
+    const radar = screen.getByRole("region", { name: "영역" });
+    expect(within(radar).getByText(AREAS_DAY)).toBeInTheDocument();
     expect(screen.getByText("사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요.")).toBeInTheDocument();
     expect(screen.queryByRole("figure")).toBeNull();
+    // no percentages, countdowns or days-left counts
+    expect(text()).not.toMatch(/%|D-[0-9]|남은|일 남/);
+  });
+
+  it("works the review days out in Korean time", async () => {
+    today("2026-10-25T15:30:00Z"); // 10/26 00:30 in Korea, the day after October's last Sunday
+    server.use(curveAnswers.ok(curveEmpty));
+    renderScreen();
+    expect(await screen.findByText("11월 29일(일) 월말 회고에서 첫 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
+    expect(screen.getByText(AREAS_DAY)).toBeInTheDocument();
+  });
+
+  it("the review day itself is still the day", async () => {
+    today("2026-12-26T15:00:00Z"); // 12/27 00:00 in Korea: monthly and quarterly reviews on one Sunday
+    server.use(curveAnswers.ok(curveEmpty));
+    renderScreen();
+    const marks = await screen.findByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["12월 27일(일)첫 사다리", "12월 27일(일)영역 점수"]);
   });
 
   it("keeps a milestone the BE sent even when its middle is outside the range, at the edge", async () => {
@@ -265,17 +299,53 @@ describe("CurveScreen", () => {
   });
 
   it("says there is no ladder score when only five-years-ahead scores exist", async () => {
-    server.use(curveAnswers.ok({ ...curveMonth, ladder: [{ period: "2026-10", now: null, future: 8, note: null }] }));
+    today();
+    const ladder = [{ period: "2026-10", now: null, future: 8, note: null }];
+    server.use(curveAnswers.ok({ ...curveMonth, ladder }));
     renderScreen();
-    expect(await screen.findByText("첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.")).toBeInTheDocument();
+    expect(await screen.findByText(FIRST_LADDER)).toBeInTheDocument();
     expect(screen.getByRole("figure")).toBeInTheDocument();
+    // the areas are scored: only the ladder is to come
+    const marks = screen.getByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["10월 25일(일)첫 사다리"]);
+  });
+
+  it("does not call it the first ladder when the wide request has one", async () => {
+    today();
+    server.use(
+      http.get(`${BASE}/curve`, ({ request }) => {
+        const zoom = new URL(request.url).searchParams.get("zoom");
+        const body = zoom === "year" ? curveYear : { ...curveMonth, ladder: [] };
+        return HttpResponse.json(body as Record<string, unknown>);
+      }),
+    );
+    renderScreen();
+    expect(await screen.findByText("10월 25일(일) 월말 회고에서 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
+    const marks = screen.getByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["10월 25일(일)사다리"]);
+    expect(screen.queryByText(FIRST_LADDER)).toBeNull();
+  });
+
+  it("lists the reassurance months of the wide request, whatever the zoom (B2)", async () => {
+    const seen = recordCurve();
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole("button", { name: "일" }));
+    await waitFor(() => expect(seen.at(-1)).toBe("zoom=day"));
+    await screen.findByRole("figure");
+    const panel = screen.getByRole("region", { name: "안심 보기" });
+    // the day zoom alone has 2026-09 and 2026-10; the wide answer has all ten months
+    const periods = () => Array.from(document.querySelectorAll<HTMLElement>(".reassure")).map((li) => li.dataset.period);
+    expect(panel).toBeInTheDocument();
+    expect(periods()).toHaveLength(curveYear.reassurance.length);
+    expect(periods()).toContain("2025-11");
   });
 
   it("keeps the chart when only the ladder is missing, and has nothing to compare without a counted month", async () => {
     const reassurance = curveMonth.reassurance.map((r) => ({ ...r, condition_average: null, condition_scaled: null, gap: null }));
     server.use(curveAnswers.ok({ ...curveMonth, ladder: [], reassurance }));
     renderScreen();
-    expect(await screen.findByText("첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.")).toBeInTheDocument();
+    expect(await screen.findByText(/월말 회고에서 (첫 )?사다리 점수를 여쭤볼게요\.$/)).toBeInTheDocument();
     expect(screen.getByRole("figure")).toBeInTheDocument();
     expect(screen.queryByText("시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요.")).toBeNull();
     expect(screen.getByText("사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요.")).toBeInTheDocument();

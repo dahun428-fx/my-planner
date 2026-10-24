@@ -67,6 +67,39 @@ export const STATE_TEXT = {
   rate_limited: "잠시 뒤에 다시 시도해 주세요.",
   safe_mode: "데이터베이스 점검이 필요해요. PC에서 README의 복구 절차를 따라 주세요.",
   broken: (code: string) => `BE가 응답했지만 이 화면을 그리지 못했어요 (${code}).`,
+  openSettings: "설정 열기",
+} as const;
+
+// DU-02: the card in place of a screen while the BE does not answer. What to check, when this browser last
+// heard from it, and that it keeps checking. "never" is a browser with no good answer on record.
+export const OFFLINE_TEXT = {
+  title: {
+    never: "이 브라우저는 아직 노트북의 비서와 연결되지 않았어요.",
+    before: "노트북의 비서가 지금 응답하지 않아요.",
+  },
+  lastSeen: (when: string, ago: string) => `마지막 응답 ${when} (${ago})`,
+  lastNone: "이 브라우저에는 아직 응답 기록이 없어요.",
+  lead: {
+    never: "처음 연결할 때는 이 세 가지를 확인해 주세요.",
+    before: "잠시 쉬고 있을 수 있어요. 이 세 가지를 확인해 주세요.",
+  },
+  checks: [
+    "노트북이 켜져 있고 절전 상태가 아닌지",
+    "이 기기에서 Tailscale이 켜져 있는지",
+    "Chrome이라면 로컬 네트워크 접근을 허용했는지",
+  ],
+  checksLabel: "확인할 것",
+  neverHint: "주소와 토큰도 설정에서 한 번 더 봐 주세요.",
+  retry: (every: string) => `${every}마다 자동으로 다시 확인하고 있어요.`,
+  every: (ms: number) => (ms >= 60_000 ? `${Math.round(ms / 60_000)}분` : `${Math.round(ms / 1000)}초`),
+} as const;
+
+// Relative time beside the last answer (DU-02).
+export const TIME_TEXT = {
+  justNow: "방금",
+  minutesAgo: (n: number) => `${n}분 전`,
+  hoursAgo: (n: number) => `${n}시간 전`,
+  daysAgo: (n: number) => `${n}일 전`,
 } as const;
 
 export const BAND_TEXT = {
@@ -75,6 +108,8 @@ export const BAND_TEXT = {
   off: (when: string | null) => `BE 꺼짐 · 마지막 응답 ${when ?? "기록 없음"}`,
   checking: "연결 확인 중",
   check: "연결 확인",
+  none: "BE 연결 전",
+  offShort: "BE 꺼짐",
 } as const;
 
 export const HEALTH_TEXT = {
@@ -115,6 +150,19 @@ export const SETTINGS_TEXT = {
   },
   tokenMissing: "토큰을 넣어 주세요.",
   tokenInvalid: "토큰에는 영문, 숫자, 기호만 들어가요.",
+  // DU-04: where the two values come from. The address shape is a pattern, never a real machine name.
+  help: {
+    summary: "주소와 토큰은 어디서 찾나요?",
+    urlTitle: "BE 주소",
+    urlBody: "노트북에서 이 명령을 실행하면 나오는 주소예요.",
+    urlCommand: "tailscale serve status",
+    urlShape: "https://<기계>.<tailnet>.ts.net",
+    urlShapeNote: "이런 모양이에요. 뒤에 /api/v1은 붙여도 되고 빼도 돼요.",
+    tokenTitle: "API 토큰",
+    tokenBody: "노트북에서 이 명령으로 새로 만들 수 있어요.",
+    tokenCommand: "python -m my_planner gen-token",
+    tokenEnv: "이미 만들어 두었다면 노트북 .env 파일의 API_TOKEN 줄에 있어요.",
+  },
 } as const;
 
 export const NAV_TEXT = {
@@ -236,8 +284,22 @@ export const CURVE_TEXT = {
   moreMonths: (n: number) => `지난 달 ${n}개 더 보기`,
   empty: {
     events: "시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요.",
-    ladder: "첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.",
-    areas: "영역 점수는 분기 마지막 주 회고에서 함께 정해요.",
     reassurance: "사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요.",
   },
+  // DU-05: what comes next and on which day, in place of the 13.4 ladder and area lines. No counts of days.
+  upcoming: {
+    label: "곧 그려질 것",
+    firstLadderMark: "첫 사다리",
+    ladderMark: "사다리",
+    areasMark: "영역 점수",
+    firstLadder: (day: string) => `${day} 월말 회고에서 첫 사다리 점수를 여쭤볼게요.`,
+    ladder: (day: string) => `${day} 월말 회고에서 사다리 점수를 여쭤볼게요.`,
+    areas: (day: string) => `${day} 분기 회고에서 영역 점수를 함께 정해요.`,
+  },
+} as const;
+
+// Review days (DU-05), for example "10월 25일(일)".
+export const REVIEW_TEXT = {
+  weekdays: ["일", "월", "화", "수", "목", "금", "토"],
+  day: (m: number, d: number, weekday: string) => `${m}월 ${d}일(${weekday})`,
 } as const;
