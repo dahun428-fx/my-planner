@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-planner"
-version = "0.1.0"
+version = "0.2.0"
 description = "Dahun 한 사람을 위한 텔레그램 AI 비서"
 requires-python = ">=3.12,<3.13"
 dependencies = [

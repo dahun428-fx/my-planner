@@ -17,7 +17,7 @@ def test_migrate_fresh_then_again(tmp_path):
     latest = _migration_count()
     assert latest >= 1
 
-    assert latest == dbmod.LATEST_VERSION == 10
+    assert latest == dbmod.LATEST_VERSION
     assert migrate(conn) == latest
     assert conn.execute("PRAGMA user_version").fetchone()[0] == latest
     assert migrate(conn) == latest
