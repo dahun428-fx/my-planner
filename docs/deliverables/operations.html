@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>운영자 매뉴얼</title>
+<title>운영 매뉴얼</title>
+<meta name="description" content="my-planner v2 운영 매뉴얼: 노트북 BE 설치, .env 키, 작업 스케줄러, tailscale serve, Vercel 두 프로젝트, CORS, 토큰 바꾸기, 시드, 백업, 로그, 문제 해결, 자동 복구 계획.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
@@ -19,7 +20,7 @@
       <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
       my-planner <span class="brand__sub">산출물</span>
     </a>
-    <div class="topbar__doc"><span>운영자 매뉴얼</span></div>
+    <div class="topbar__doc"><span>v2 · 전체 시스템 · main 722d0d6</span></div>
     <button class="navtoggle" type="button" aria-controls="docnav" aria-expanded="false">
       <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>문서 목록
     </button>
@@ -30,7 +31,7 @@
 
   <nav class="docnav" id="docnav" aria-label="문서 목록">
     <div class="docnav__group">
-      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>산출물 지도</a></li></ul>
+      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>개요</a></li></ul>
     </div>
     <div class="docnav__group">
       <p class="docnav__label">1 요구</p>
@@ -41,25 +42,32 @@
     <div class="docnav__group">
       <p class="docnav__label">2 설계</p>
       <ul>
-        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 정의서</a></li>
-        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</a></li>
-        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>시퀀스·상태 다이어그램</a></li>
-        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg>화면설계서</a></li>
-        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>ERD · 테이블 정의서</a></li>
-        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</a></li>
+        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 설계서</a></li>
+        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도 (BPMN)</a></li>
+        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>동작 명세 (상태·순서도)</a></li>
       </ul>
     </div>
     <div class="docnav__group">
-      <p class="docnav__label">3 구현 · 시험</p>
+      <p class="docnav__label">3 화면</p>
       <ul>
-        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</a></li>
-        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>테스트 계획·결과서</a></li>
+        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg>텔레그램 화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="screens-dashboard" href="screens-dashboard.html"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg>대시보드 화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="screens-app" href="screens-app.html"><svg class="ic" aria-hidden="true"><use href="#i-pwa"/></svg>운영 앱 화면설계서</a></li>
       </ul>
     </div>
     <div class="docnav__group">
-      <p class="docnav__label">4 운영</p>
+      <p class="docnav__label">4 데이터 · 연동</p>
       <ul>
-        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</a></li>
+        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>데이터베이스 설계서</a></li>
+        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서 (API·도구)</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">5 시험 · 운영</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>시험 결과서</a></li>
+        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영 매뉴얼</a></li>
+        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>일정·로드맵</a></li>
       </ul>
     </div>
     <div class="docnav__group">
@@ -70,23 +78,24 @@
     </div>
   </nav>
 
+
   <main id="main" class="doc">
 
     <header class="doc-head">
-      <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</span>
-      <h1>my-planner 설치와 운영 안내</h1>
-      <p class="doc-head__lede">Dahun이 노트북에 비서를 설치하고, 매일 쓰고, 문제가 생겼을 때 스스로 고칠 수 있도록 순서대로 적었습니다. 명령은 PowerShell에서 저장소 폴더(<code>E:\my-planner</code>)에 있다고 보고 씁니다.</p>
+      <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영 매뉴얼</span>
+      <h1>my-planner 설치 · 배포 · 운영 안내</h1>
+      <p class="doc-head__lede">노트북의 BE, Vercel의 운영 앱과 대시보드, 그 사이의 Tailscale 사설망을 Dahun이 혼자 설치하고, 배포하고, 매일 점검하고, 문제가 생기면 스스로 고칠 수 있게 순서대로 적었습니다. 명령은 PowerShell에서 저장소 폴더(<code>E:\my-planner</code>)에 있다고 보고 씁니다.</p>
       <div class="doc-head__meta">
-        <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">운영자 매뉴얼 · 런북 (설치, 기동, 점검, 장애 대응)</span></span>
+        <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">운영자 매뉴얼 · 런북 (설치, 배포, 점검, 장애 대응)</span></span>
         <span class="pill doc" data-s="review">검토 중</span>
       </div>
       <dl class="docinfo">
-        <div><dt>문서 ID</dt><dd class="mono">MP-SP1-OPS</dd></div>
-        <div><dt>버전</dt><dd class="tnum">1.1</dd></div>
-        <div><dt>작성일</dt><dd class="tnum">2026-10-23</dd></div>
+        <div><dt>문서 ID</dt><dd class="mono">MP-OPS</dd></div>
+        <div><dt>버전</dt><dd class="tnum">2.0</dd></div>
+        <div><dt>작성일</dt><dd class="tnum">2026-10-24</dd></div>
         <div><dt>상태</dt><dd>검토 중</dd></div>
         <div><dt>대상 독자</dt><dd>Dahun (운영자이자 사용자)</dd></div>
-        <div><dt>기준</dt><dd class="mono">main 0336f4d README</dd></div>
+        <div><dt>기준</dt><dd class="mono">main 722d0d6 README</dd></div>
       </dl>
     </header>
 
@@ -95,468 +104,744 @@
     <section class="section" aria-label="요약">
       <aside class="summary">
         <span class="summary__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>한눈에 보기</span>
-        <p class="summary__title">한 번 설치해 작업 스케줄러에 등록하면, 노트북을 켜고 로그인하는 것만으로 비서가 저절로 돕니다.</p>
+        <p class="summary__title">BE는 노트북 한 대에서 작업 스케줄러로 늘 돌고, tailnet 안에만 <code>/api</code>를 엽니다. 운영 앱과 대시보드는 Vercel의 정적 파일이고, 폰·브라우저가 BE를 직접 부릅니다.</p>
         <div class="summary__body">
           <ul>
-            <li>설치는 네 단계입니다: 폴더와 Python 준비 → 텔레그램 봇 만들기 → <code>.env</code> 채우기 → 작업 등록과 점검.</li>
-            <li>비서는 하루에 먼저 최대 3번 연락합니다(아침 브리핑, 저녁 체크인, 일요일엔 회고를 저녁에 합침). 노트북이 꺼져 있었으면 켜진 뒤 알맞게 따라잡습니다.</li>
-            <li>문제가 생기면 비서가 텔레그램으로 고정 안내를 한 번 보냅니다. 안내 문구별로 할 일이 <a href="#notices">알림 대응</a>과 <a href="#trouble">문제 해결 표</a>에 있습니다.</li>
-            <li>봇 토큰은 비밀번호입니다. <code>.env</code> 파일에만 적고 어떤 채팅에도 붙여 넣지 않습니다.</li>
+            <li>처음 설치: Python과 venv → 텔레그램 봇 → <code>.env</code> → 작업 등록 → 토큰·푸시 키 → <code>tailscale serve</code> → Vercel 두 프로젝트 → 폰 연결.</li>
+            <li><code>main</code>에 병합하면 Vercel은 저절로 배포합니다. 노트북 BE는 지금은 손으로 받아 다시 켭니다(자동 복구 medic이 맡을 계획).</li>
+            <li>문제가 생기면 <a href="#trouble">문제 해결 결정 트리</a>에서 증상을 고르고 순서대로 확인합니다.</li>
+            <li>토큰과 키는 <code>.env</code>에만 둡니다. 어떤 채팅·문서·이슈에도 붙여 넣지 않고, API는 <b>Funnel로 절대 열지 않습니다</b>.</li>
           </ul>
         </div>
       </aside>
       <div class="kpis">
-        <div class="kpi kpi--dawn"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>아침 브리핑</div><div class="kpi__value">09:00<span class="kpi__sep">·</span>10:00</div><div class="kpi__note">평일 · 주말</div></div>
-        <div class="kpi kpi--dusk"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>저녁 체크인</div><div class="kpi__value">17:30<span class="kpi__sep">·</span>18:00</div><div class="kpi__note">평일 · 주말</div></div>
-        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg>DB 백업</div><div class="kpi__value">14<span class="kpi__unit">개</span></div><div class="kpi__note">매일 하나, 최근 14개 보관</div></div>
-        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg>로그 보관</div><div class="kpi__value">30<span class="kpi__unit">일</span></div><div class="kpi__note">메시지 본문은 남기지 않음</div></div>
+        <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg>도는 곳</div><div class="kpi__value">3<span class="kpi__unit">곳</span></div><div class="kpi__note">노트북 BE · Vercel 2</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><code>.env</code> 키</div><div class="kpi__value">6<span class="kpi__unit">개</span></div><div class="kpi__note">이름만 이 문서에</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg>작업</div><div class="kpi__value">2<span class="kpi__unit">개</span></div><div class="kpi__note">상시 + 깨우기 (medic 계획)</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-cors"/></svg>허용 출처</div><div class="kpi__value">2<span class="kpi__unit">개</span></div><div class="kpi__note">정확한 주소만</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg>DB 백업</div><div class="kpi__value">14<span class="kpi__unit">개</span></div><div class="kpi__note">매일 하나</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-log"/></svg>로그 보관</div><div class="kpi__value">30<span class="kpi__unit">일</span></div><div class="kpi__note">본문은 남기지 않음</div></div>
       </div>
     </section>
 
+    <!-- ============ 배포 파이프라인 ============ -->
     <section class="section">
       <div class="section__head">
-        <h2 id="prereq" data-jump="준비물"><span class="section__no">1</span>준비물</h2>
-        <p class="section__lede">설치 전에 세 가지가 있는지 확인합니다.</p>
+        <h2 id="pipeline" data-jump="배포 흐름"><span class="section__no">1</span>배포 흐름</h2>
+        <p class="section__lede">코드는 GitHub <code>main</code> 한 곳에서 나가 세 곳으로 갑니다. 점선은 아직 없는, 자동 복구(SP6)에서 생길 단계입니다.</p>
+      </div>
+      <figure class="fig">
+        <figcaption class="fig__head"><span class="fig__no"></span><span class="fig__title">배포 파이프라인: main → Vercel 둘 · 노트북 · 폰</span><span class="fig__std">스윔레인 흐름 (BPMN 레인 표기)</span></figcaption>
+        <div class="fig__body fig__body--wide" style="--fig-min:820px">
+          <svg viewBox="0 0 960 464" width="960" role="img" aria-label="PR이 리뷰를 거쳐 main에 병합되면 Vercel의 운영 앱과 대시보드 프로젝트가 저절로 빌드되고, 노트북 BE는 지금은 손으로 받아 다시 켠다. 계획된 medic 업데이터가 이 일을 맡는다. 폰은 Vercel에서 화면을 받고 tailnet으로 BE를 부른다.">
+            <defs>
+              <marker id="ah-o1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-head"/></marker>
+            </defs>
+            <rect x="1" y="1" width="958" height="460" class="bpmn-pool"/>
+            <rect x="1" y="1" width="958" height="110" class="bpmn-lane"/>
+            <rect x="1" y="1" width="32" height="110" class="bpmn-lane__head"/>
+            <text class="bpmn-lane__text" transform="translate(17 56) rotate(-90)">GitHub</text>
+            <rect x="1" y="111" width="958" height="110" class="bpmn-lane bpmn-lane--alt"/>
+            <rect x="1" y="111" width="32" height="110" class="bpmn-lane__head"/>
+            <text class="bpmn-lane__text" transform="translate(17 166) rotate(-90)">Vercel</text>
+            <rect x="1" y="221" width="958" height="120" class="bpmn-lane"/>
+            <rect x="1" y="221" width="32" height="120" class="bpmn-lane__head"/>
+            <text class="bpmn-lane__text" transform="translate(17 281) rotate(-90)">노트북</text>
+            <rect x="1" y="341" width="958" height="120" class="bpmn-lane bpmn-lane--alt"/>
+            <rect x="1" y="341" width="32" height="120" class="bpmn-lane__head"/>
+            <text class="bpmn-lane__text" transform="translate(17 401) rotate(-90)">폰</text>
+
+            <!-- GitHub 레인 -->
+            <rect x="60" y="31" width="140" height="50" rx="10" class="bpmn-task"/>
+            <use href="#i-github" x="68" y="38" width="16" height="16" class="d-ic"/>
+            <text x="138" y="52" class="bpmn-task__text">브랜치 · PR</text>
+            <text x="130" y="70" text-anchor="middle" class="d-text-sm">티켓 하나 = PR 하나</text>
+            <rect x="235" y="31" width="140" height="50" rx="10" class="bpmn-task d-dash"/>
+            <use href="#i-ci" x="243" y="38" width="16" height="16" class="d-ic"/>
+            <text x="313" y="52" class="bpmn-task__text">CI (계획)</text>
+            <text x="305" y="70" text-anchor="middle" class="d-mono">ci.yml</text>
+            <rect x="410" y="31" width="140" height="50" rx="10" class="bpmn-task bpmn-task--user"/>
+            <use href="#i-review" x="418" y="38" width="16" height="16" class="d-ic"/>
+            <text x="488" y="52" class="bpmn-task__text">리뷰 · 병합</text>
+            <text x="480" y="70" text-anchor="middle" class="d-text-sm">squash merge</text>
+            <rect x="600" y="31" width="140" height="50" rx="10" class="bpmn-task" stroke-width="2.5"/>
+            <use href="#i-github" x="608" y="38" width="16" height="16" class="d-ic--accent"/>
+            <text x="678" y="52" class="bpmn-task__text d-bold">main</text>
+            <text x="670" y="70" text-anchor="middle" class="d-text-sm">유일한 배포 원천</text>
+            <path d="M200 56H233" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <path d="M375 56H408" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <path d="M550 56H598" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+
+            <!-- Vercel 레인 -->
+            <rect x="450" y="134" width="180" height="64" rx="10" class="bpmn-task"/>
+            <use href="#i-pwa" x="458" y="141" width="16" height="16" class="d-ic--accent"/>
+            <text x="548" y="154" class="bpmn-task__text">운영 앱 프로젝트</text>
+            <text x="540" y="172" text-anchor="middle" class="d-mono">Root web/app</text>
+            <text x="540" y="188" text-anchor="middle" class="d-mono">NEXT_PUBLIC_CONNECT_SRC</text>
+            <rect x="700" y="134" width="180" height="64" rx="10" class="bpmn-task"/>
+            <use href="#i-dashboard" x="708" y="141" width="16" height="16" class="d-ic--accent"/>
+            <text x="798" y="154" class="bpmn-task__text">대시보드 프로젝트</text>
+            <text x="790" y="172" text-anchor="middle" class="d-mono">Root web/dashboard</text>
+            <text x="790" y="188" text-anchor="middle" class="d-mono">NEXT_PUBLIC_CONNECT_SRC</text>
+            <path d="M650 81C650 110 560 106 560 132" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <path d="M700 81C700 110 790 106 790 132" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <text x="745" y="112" text-anchor="middle" class="bpmn-label d-halo">병합마다 자동</text>
+
+            <!-- 노트북 레인 -->
+            <rect x="60" y="246" width="200" height="70" rx="10" class="bpmn-task"/>
+            <use href="#i-laptop" x="68" y="253" width="16" height="16" class="d-ic--accent"/>
+            <text x="168" y="266" class="bpmn-task__text">BE (my-planner)</text>
+            <text x="160" y="284" text-anchor="middle" class="d-mono">127.0.0.1:8787</text>
+            <text x="160" y="301" text-anchor="middle" class="d-mono">tailscale serve /api</text>
+            <rect x="290" y="246" width="180" height="70" rx="10" class="bpmn-task bpmn-task--user"/>
+            <use href="#i-user" x="298" y="253" width="16" height="16" class="d-ic"/>
+            <text x="388" y="266" class="bpmn-task__text">지금: 손으로 배포</text>
+            <text x="380" y="284" text-anchor="middle" class="d-mono">git pull · pip install</text>
+            <text x="380" y="301" text-anchor="middle" class="d-mono">작업 Stop → Start</text>
+            <rect x="650" y="246" width="290" height="70" rx="10" class="bpmn-task d-dash"/>
+            <use href="#i-medic" x="658" y="253" width="16" height="16" class="d-ic"/>
+            <text x="803" y="266" class="bpmn-task__text">계획: medic 업데이터 (5분마다)</text>
+            <text x="795" y="284" text-anchor="middle" class="d-text-sm">CI 성공한 main만 · 배포 전 DB 백업</text>
+            <text x="795" y="301" text-anchor="middle" class="d-text-sm">10분 확인 → 안 되면 직전 커밋으로 롤백</text>
+            <path d="M615 81V98H380V244" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <path d="M740 56H948V226H900V244" class="bpmn-flow d-dash" marker-end="url(#ah-o1)"/>
+            <path d="M290 281H262" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <text x="276" y="273" text-anchor="middle" class="bpmn-label d-halo">다시 켬</text>
+            <path d="M700 316V332H160V318" class="bpmn-flow d-dash" marker-end="url(#ah-o1)"/>
+
+            <!-- 폰·브라우저 레인 -->
+            <rect x="60" y="370" width="240" height="64" rx="10" class="bpmn-task"/>
+            <use href="#i-tailscale" x="68" y="377" width="16" height="16" class="d-ic--accent"/>
+            <text x="188" y="390" class="bpmn-task__text">BE 부르기 (tailnet 안)</text>
+            <text x="180" y="408" text-anchor="middle" class="d-mono">https://&lt;기계&gt;.&lt;tailnet&gt;.ts.net</text>
+            <text x="180" y="424" text-anchor="middle" class="d-mono">/api/v1 · Bearer 토큰</text>
+            <rect x="450" y="370" width="430" height="64" rx="10" class="bpmn-task"/>
+            <use href="#i-phone" x="458" y="377" width="16" height="16" class="d-ic--accent"/>
+            <text x="673" y="390" class="bpmn-task__text">운영 앱 · 대시보드 화면 받기</text>
+            <text x="665" y="408" text-anchor="middle" class="d-mono">my-planner-beige-eight.vercel.app</text>
+            <text x="665" y="424" text-anchor="middle" class="d-mono">my-planner-dashboard-seven.vercel.app</text>
+            <path d="M540 198V368" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <path d="M790 198V214H640V368" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <path d="M450 402H302" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <text x="376" y="394" text-anchor="middle" class="bpmn-label d-halo">주소·토큰 넣기</text>
+            <path d="M160 370V318" class="bpmn-flow" marker-end="url(#ah-o1)"/>
+            <text x="166" y="352" class="bpmn-label d-halo">HTTPS</text>
+            <!-- 번호 -->
+            <circle cx="60" cy="31" r="10" class="d-annot"/><text x="60" y="35" text-anchor="middle" class="d-mono d-annot-ink d-bold">1</text>
+            <circle cx="450" cy="134" r="10" class="d-annot"/><text x="450" y="138" text-anchor="middle" class="d-mono d-annot-ink d-bold">2</text>
+            <circle cx="290" cy="246" r="10" class="d-annot"/><text x="290" y="250" text-anchor="middle" class="d-mono d-annot-ink d-bold">3</text>
+            <circle cx="60" cy="370" r="10" class="d-annot"/><text x="60" y="374" text-anchor="middle" class="d-mono d-annot-ink d-bold">4</text>
+          </svg>
+        </div>
+        <div class="fig__body fig__body--tight" style="background:var(--surface)">
+          <div class="legend"><p class="legend__title">범례</p>
+            <div class="chip-row">
+              <span class="bpmn-chip bpmn-chip--task"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-task"/></svg>작업 (둥근 사각형)</span>
+              <span class="bpmn-chip bpmn-chip--task"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>옅은 면 = 사람이 하는 작업</span>
+              <span class="bpmn-chip bpmn-chip--flow"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-flow"/></svg>실선 = 지금 있는 흐름</span>
+              <span class="bpmn-chip"><svg class="ic" aria-hidden="true"><use href="#i-medic"/></svg>점선 테·점선 선 = 계획 (SP6 자동 복구)</span>
+              <span class="bpmn-chip bpmn-chip--event"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-lane"/></svg>레인 = 일이 일어나는 곳</span>
+            </div>
+          </div>
+        </div>
+        <p class="fig__cap"><b>결론:</b> <code>main</code>에 병합하면 Vercel 두 프로젝트는 저절로 배포되지만, 노트북 BE는 지금 손으로 받아 다시 켜야 하고, 이 일은 계획된 medic이 맡습니다. <span class="fig__scrollhint">좁은 화면에서는 그림을 옆으로 밀어 보세요.</span></p>
+      </figure>
+      <ol class="steps">
+        <li><span class="steps__title">브랜치 · PR · 병합</span><span class="steps__body"><span>티켓마다 브랜치 하나, PR 하나를 만들고, 리뷰 뒤 squash로 병합합니다. 지금은 저장소에 CI 워크플로가 없어 시험은 사람이 돌립니다(계획: <code>ci.yml</code>).</span></span></li>
+        <li><span class="steps__title">Vercel 자동 배포</span><span class="steps__body"><span><code>main</code>이 바뀌면 두 프로젝트가 따로 빌드합니다. 운영 앱은 <code>web/app</code>이 바뀌지 않았으면 빌드를 건너뜁니다(<code>vercel.json</code>의 <code>ignoreCommand</code>). 미리보기 배포는 CORS 밖이라 BE에 닿지 않습니다.</span></span></li>
+        <li><span class="steps__title">노트북 BE 갱신 (지금은 손으로)</span><span class="steps__body"><span>BE 코드(<code>src/</code>, <code>requirements.lock</code>, <code>pyproject.toml</code>, <code>config.toml</code>, <code>scripts/</code>)가 바뀌었을 때만 합니다.</span>
+<pre class="code"><code>git pull
+.venv\Scripts\python.exe -m pip install -r requirements.lock
+.venv\Scripts\python.exe -m pip install -e . --no-deps
+Stop-ScheduledTask -TaskName my-planner
+Start-ScheduledTask -TaskName my-planner</code></pre></span></li>
+        <li><span class="steps__title">폰·브라우저에서 확인</span><span class="steps__body"><span>대시보드 연결 띠가 “BE 켜짐”이고, 비서 상태 화면에 새 버전이 보이면 끝입니다.</span></span></li>
+      </ol>
+    </section>
+
+    <!-- ============ 2. 처음 설치 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="install" data-jump="설치"><span class="section__no">2</span>처음 설치 (노트북 BE)</h2>
+        <p class="section__lede">처음 한 번만 합니다. README의 “준비물”부터 “실행”까지와 같습니다.</p>
       </div>
       <div class="table-wrap">
         <table class="dt">
           <caption>준비물</caption>
           <thead><tr><th class="w-min">항목</th><th>필요한 것</th><th>확인 방법</th></tr></thead>
           <tbody>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-laptop"/></svg> 노트북</td><td>Windows 11 노트북(MSI GP76에서 확인). <b>Windows 시간대는 서울(UTC+09:00)</b>이어야 합니다</td><td>설정 &gt; 시간 및 언어에서 표준 시간대가 서울인지 확인 (README 준비물, 수용 체크리스트)</td></tr>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tool"/></svg> Python</td><td>Microsoft Store판 Python 3.12. 저장소 안에 venv <code>E:\my-planner\.venv</code>를 만듭니다</td><td><code>py -0p</code>에 3.12가 보이면 됩니다. 스파이크 S0에서 Store판 3.12.10으로 확인했습니다</td></tr>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-brain"/></svg> Claude</td><td>Claude 구독과 Claude Code 로그인. 비서(<a href="glossary.html#brain">두뇌</a>)는 API 키가 아니라 이 PC의 구독 로그인으로 Claude를 부릅니다</td><td>터미널에서 <code>claude</code>를 실행했을 때 로그인되어 있어야 합니다. 아니면 <code>/login</code></td></tr>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-telegram"/></svg> 텔레그램</td><td>본인 텔레그램 계정</td><td>휴대폰이나 PC 앱에서 로그인</td></tr>
+            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-laptop"/></svg> 노트북</td><td>Windows 11. <b>시간대는 서울(UTC+09:00)</b>. 깨우기 작업이 회차 시각을 노트북 로컬 시각으로 등록하기 때문</td><td>설정 › 시간 및 언어</td></tr>
+            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tool"/></svg> Python</td><td>Microsoft Store판 Python 3.12</td><td><code>py -0p</code>에 3.12가 보임</td></tr>
+            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-brain"/></svg> Claude</td><td>Claude 구독과 Claude Code 로그인. 두뇌는 API 키가 아니라 이 PC의 구독 로그인을 씀(ADR 0001)</td><td>터미널에서 <code>claude</code> 실행. 아니면 <code>/login</code></td></tr>
+            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-telegram"/></svg> 텔레그램</td><td>본인 계정</td><td>앱에서 로그인</td></tr>
+            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tailscale"/></svg> Tailscale</td><td>노트북과 폰을 같은 tailnet에. 관리 화면(DNS)에서 MagicDNS와 HTTPS 인증서 켜기</td><td>두 기기에서 Tailscale이 “연결됨”</td></tr>
           </tbody>
         </table>
       </div>
       <aside class="callout callout--warn">
         <svg class="ic" aria-hidden="true"><use href="#i-warning"/></svg>
-        <div class="callout__body"><span class="callout__title">Windows 시간대는 서울로</span><span><code>config.toml</code>의 <code>timezone = "Asia/Seoul"</code>로 회차 시각을 계산하고, 깨우기 작업은 그 시각을 노트북의 <b>로컬 시각</b>으로 등록합니다. 시간대가 다르면 깨우는 시각이 어긋납니다.</span></div>
+        <div class="callout__body"><span class="callout__title">폴더는 OneDrive 밖에</span><span>동기화 프로그램이 SQLite 파일(WAL)을 건드리면 DB가 손상될 수 있습니다. 기본 위치는 <code>E:\my-planner</code>입니다.</span></div>
       </aside>
-      <aside class="callout callout--warn">
-        <svg class="ic" aria-hidden="true"><use href="#i-warning"/></svg>
-        <div class="callout__body"><span class="callout__title">폴더는 OneDrive 밖에</span><span>저장소 폴더는 OneDrive 같은 동기화 폴더 밖에 둡니다. 동기화 프로그램이 SQLite 파일(WAL)을 건드리면 데이터베이스가 손상될 수 있습니다. 기본 위치는 <code>E:\my-planner</code>입니다.</span></div>
-      </aside>
-    </section>
-
-    <section class="section">
-      <div class="section__head">
-        <h2 id="setup" data-jump="처음 설치"><span class="section__no">2</span>처음 설치</h2>
-        <p class="section__lede">처음 한 번만 합니다. 그림의 순서대로 아래 단계를 따라갑니다.</p>
-      </div>
-      <figure class="fig">
-        <div class="fig__head"><span class="fig__no"></span><span class="fig__title">처음 설치 흐름</span><span class="fig__std">BPMN 2.0 근사(flowchart) · README</span></div>
-        <div class="fig__body">
-<pre class="mermaid">
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A','actorBkg':'#DDEFEC','actorBorder':'#0E6B63','actorTextColor':'#15222A','actorLineColor':'#A9B7BE','signalColor':'#42525B','signalTextColor':'#15222A','labelBoxBkgColor':'#EBF0F2','labelBoxBorderColor':'#A9B7BE','labelTextColor':'#15222A','loopTextColor':'#15222A','noteBkgColor':'#FAEFD3','noteBorderColor':'#8F5C00','noteTextColor':'#15222A','activationBkgColor':'#DFE6E9','activationBorderColor':'#42525B','sequenceNumberColor':'#FFFFFF'}}}%%
-flowchart TD
-  S(("시작")) --> A["폴더 준비<br/>E 드라이브 my-planner, OneDrive 밖"]
-  A --> B["venv 만들기와 의존성 설치"]
-  B --> C{"Claude Code에<br/>로그인되어 있나?"}
-  C -- 아니오 --> C1["터미널에서 claude 실행 후 /login"]
-  C1 --> D
-  C -- 예 --> D["BotFather에서 봇 만들기<br/>/newbot, 토큰 받기"]
-  D --> E["userinfobot으로 숫자 ID 확인"]
-  E --> F["메모장으로 .env에 토큰과 ID 저장"]
-  F --> G["내 봇 대화창에서 시작 누르기"]
-  G --> H["콘솔에서 시험 실행<br/>python -m my_planner"]
-  H --> I{"안녕에 답이 오나?"}
-  I -- 아니오 --> T["문제 해결 표"]
-  I -- 예 --> J["Ctrl+C로 끄기"]
-  J --> K["register_task.ps1로 등록"]
-  K --> L{"check_tasks.ps1<br/>모두 OK?"}
-  L -- 아니오 --> T
-  L -- 예 --> Z(("설치 끝"))
-  classDef done fill:#E0F1E5,stroke:#1D7539,color:#15222A
-  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
-  classDef fail fill:#FBE5E2,stroke:#B3261E,color:#15222A,stroke-width:2px
-  classDef warn fill:#FAEFD3,stroke:#8F5C00,color:#15222A
-  classDef key  fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px
-  classDef ext  fill:#FFFFFF,stroke:#A9B7BE,color:#42525B,stroke-dasharray:2 2
-  class Z key
-  class T warn
-  class C1 ext
-</pre>
-        </div>
-        <figcaption class="fig__cap">콘솔에서 “안녕”에 답이 오는 것을 먼저 본 뒤에 작업 스케줄러에 등록합니다. 어느 확인에서든 막히면 문제 해결 표로 갑니다. 굵은 테두리 = 끝, 노란 면 = 문제 해결로 빠짐, 회색 점선 = 필요할 때만.</figcaption>
-      </figure>
-      <div class="legend">
-        <div class="legend__title">범례 · BPMN 기호 (flowchart로 근사)</div>
-        <div class="chip-row">
-          <span class="bpmn-chip bpmn-chip--event"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-start"/></svg>시작 이벤트 (원)</span>
-          <span class="bpmn-chip bpmn-chip--task"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-task"/></svg>작업 (사각형)</span>
-          <span class="bpmn-chip bpmn-chip--gateway"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-xor"/></svg>배타 게이트웨이 (마름모)</span>
-          <span class="bpmn-chip bpmn-chip--end"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-end"/></svg>종료 이벤트 (굵은 원)</span>
-          <span class="bpmn-chip bpmn-chip--flow"><svg class="ic" aria-hidden="true"><use href="#i-bpmn-flow"/></svg>시퀀스 흐름</span>
-        </div>
-      </div>
-
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-folder"/></svg>2.1 폴더와 Python</h3>
-      <pre class="code"><code>cd E:\my-planner
+      <ol class="steps">
+        <li><span class="steps__title">폴더와 Python</span><span class="steps__body"><span><code>requirements.lock</code>은 정확한 버전 목록, 범위는 <code>pyproject.toml</code>에 있습니다.</span>
+<pre class="code"><code>cd E:\my-planner
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.lock
-.venv\Scripts\python.exe -m pip install -e . --no-deps</code></pre>
-      <p class="table-note"><code>requirements.lock</code>은 정확한 버전 목록입니다. 의존성 범위는 <code>pyproject.toml</code>에 있습니다.</p>
-
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-bot"/></svg>2.2 텔레그램 봇 만들기 (BotFather)</h3>
-      <ol class="steps">
-        <li><span class="steps__title">BotFather 찾기</span><span class="steps__body"><span>텔레그램에서 <code>@BotFather</code>를 찾아 대화를 시작합니다.</span></span></li>
-        <li><span class="steps__title">/newbot 보내기</span><span class="steps__body"><span>봇 이름과 사용자명을 정합니다. 사용자명은 <code>..._bot</code>으로 끝나야 합니다.</span></span></li>
-        <li><span class="steps__title">토큰 받기</span><span class="steps__body"><span>BotFather가 알려 주는 토큰(<code>123456789:ABC...</code> 형식)을 다음 단계의 <code>.env</code>에 넣습니다.</span></span></li>
-        <li><span class="steps__title">본인 숫자 ID 확인</span><span class="steps__body"><span><code>@userinfobot</code>에게 아무 메시지나 보내고, 답장의 숫자 <code>Id</code>를 적어 둡니다. 사용자명(<code>@...</code>)이 아니라 숫자입니다. 비서는 이 ID의 개인 채팅에만 답하고, 다른 사람이나 그룹 채팅은 무시합니다.</span></span></li>
-        <li><span class="steps__title">내 봇에서 시작 누르기</span><span class="steps__body"><span>만든 봇과의 대화창을 열어 <b>시작(/start)</b>을 한 번 누릅니다. 봇은 먼저 대화를 연 사람에게만 메시지를 보낼 수 있습니다.</span></span></li>
+.venv\Scripts\python.exe -m pip install -e . --no-deps</code></pre></span></li>
+        <li><span class="steps__title">텔레그램 봇 만들기</span><span class="steps__body"><span><code>@BotFather</code>에 <code>/newbot</code> → 이름과 <code>..._bot</code> 사용자명 → 받은 토큰을 <code>.env</code>의 <code>TELEGRAM_BOT_TOKEN</code>에. <code>@userinfobot</code>이 알려 주는 <b>숫자</b> Id를 <code>OWNER_TELEGRAM_ID</code>에. 마지막으로 내 봇 대화창에서 <b>시작(/start)</b>을 한 번 누릅니다.</span></span></li>
+        <li><span class="steps__title"><code>.env</code> 만들기</span><span class="steps__body"><span>키 목록은 <a href="#env">3절</a>. <code>config.toml</code>에는 개인값을 넣지 않습니다(넣으면 비서가 시작하지 않습니다).</span>
+<pre class="code"><code>copy .env.example .env
+notepad .env</code></pre></span></li>
+        <li><span class="steps__title">콘솔에서 시험 실행</span><span class="steps__body"><span>봇에게 “안녕”을 보내 답이 오면 Ctrl+C로 끕니다(진행 중인 답은 최대 30초 기다림). 이미 다른 비서가 돌고 있으면 새 프로세스는 바로 끝납니다(단일 실행 잠금 <code>state\my-planner.lock</code>).</span>
+<pre class="code"><code>.venv\Scripts\python.exe -m my_planner</code></pre></span></li>
+        <li><span class="steps__title">작업 스케줄러 등록</span><span class="steps__body"><span><a href="#tasks">4절</a>로 갑니다.</span></span></li>
       </ol>
+    </section>
 
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>2.3 <code>.env</code> 만들기</h3>
-      <pre class="code"><code>copy .env.example .env
-notepad .env</code></pre>
-      <p>메모장에서 두 줄을 채우고 저장합니다. <code>.env</code>는 Git에 들어가지 않습니다. <code>config.toml</code>에는 개인값을 넣지 않습니다(넣으면 비서가 시작하지 않습니다).</p>
-      <pre class="code"><code>TELEGRAM_BOT_TOKEN=...
-OWNER_TELEGRAM_ID=...</code></pre>
+    <!-- ============ 3. .env ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="env" data-jump=".env"><span class="section__no">3</span><code>.env</code>와 환경 변수 (이름만)</h2>
+        <p class="section__lede">값은 이 문서에 쓰지 않습니다. 값을 출력하는 명령의 결과도 채팅이나 문서에 붙이지 않고 <code>.env</code>에만 넣습니다.</p>
+      </div>
+      <div class="table-wrap table-wrap--scroll">
+        <table class="dt">
+          <caption>비밀값과 설정값이 사는 곳</caption>
+          <thead><tr><th class="w-min">이름</th><th class="w-min">어디</th><th>무엇</th><th>만드는 법</th><th>없거나 틀리면</th></tr></thead>
+          <tbody>
+            <tr><td class="id"><code>TELEGRAM_BOT_TOKEN</code></td><td class="nowrap">노트북 <code>.env</code></td><td>봇 토큰</td><td>BotFather <code>/newbot</code></td><td>비서가 시작하지 않음</td></tr>
+            <tr><td class="id"><code>OWNER_TELEGRAM_ID</code></td><td class="nowrap">노트북 <code>.env</code></td><td>주인의 숫자 ID. 이 ID의 개인 채팅에만 답함</td><td><code>@userinfobot</code></td><td>본인 메시지도 무시됨</td></tr>
+            <tr><td class="id"><code>API_TOKEN</code></td><td class="nowrap">노트북 <code>.env</code></td><td>HTTP API 토큰(43자 이상). 폰과 대시보드에도 넣음</td><td><code>python -m my_planner gen-token</code></td><td>API를 열지 않음(로그 <code>api_token_missing</code>). 텔레그램은 계속</td></tr>
+            <tr><td class="id"><code>VAPID_PUBLIC_KEY</code></td><td class="nowrap">노트북 <code>.env</code></td><td>웹 푸시 공개키</td><td rowspan="2"><code>python -m my_planner gen-vapid</code>가 두 줄을 출력</td><td rowspan="3">셋 중 하나라도 비면 푸시를 끄고(<code>/push/*</code>는 404) 회차는 텔레그램으로만</td></tr>
+            <tr><td class="id"><code>VAPID_PRIVATE_KEY</code></td><td class="nowrap">노트북 <code>.env</code></td><td>웹 푸시 비밀키</td></tr>
+            <tr><td class="id"><code>VAPID_SUBJECT</code></td><td class="nowrap">노트북 <code>.env</code></td><td><code>mailto:</code> 연락 주소</td><td>직접 적음 (<code>mailto:&lt;받을 수 있는 주소&gt;</code>)</td></tr>
+            <tr><td class="id"><code>MY_PLANNER_ROOT</code></td><td class="nowrap">환경 변수 (선택)</td><td>다른 폴더의 데이터를 쓸 때 저장소 루트</td><td>직접 설정</td><td>저장소 루트를 씀</td></tr>
+            <tr><td class="id"><code>NEXT_PUBLIC_CONNECT_SRC</code></td><td class="nowrap">Vercel 두 프로젝트</td><td>CSP <code>connect-src</code>. 값 모양 <code>https://*.&lt;tailnet&gt;.ts.net</code>. 비밀이 아님</td><td>Vercel 프로젝트 설정 › 환경 변수</td><td>없으면 빌드가 멈춤. 틀리면 BE에 닿지 않음</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note"><code>.env</code>를 바꾼 뒤에는 작업을 다시 켭니다(<code>Stop-ScheduledTask -TaskName my-planner</code> 뒤 <code>Start-ScheduledTask -TaskName my-planner</code>). 로그에 <code>api_started</code>가 나오면 API가 열린 것입니다. 자동 복구용 이름은 <a href="#medic">12절</a>.</p>
       <aside class="callout callout--bad">
-        <svg class="ic" aria-hidden="true"><use href="#i-warning"/></svg>
-        <div class="callout__body"><span class="callout__title">토큰은 어떤 채팅에도 붙여 넣지 않습니다</span><span>봇 토큰은 비밀번호와 같습니다. 텔레그램 대화, Claude나 다른 AI와의 채팅, 메신저, 이슈, 메모 앱 어디에도 붙여 넣지 말고 <code>E:\my-planner\.env</code>에만 적습니다. 새어 나갔다고 생각되면 BotFather에서 <code>/revoke</code>로 바꾸고 <code>.env</code>를 고친 뒤 비서를 다시 시작합니다. 등록·점검 스크립트는 <code>.env</code>를 읽지도, 비밀값을 출력하지도 않습니다.</span></div>
+        <svg class="ic" aria-hidden="true"><use href="#i-token"/></svg>
+        <div class="callout__body"><span class="callout__title">토큰과 키는 어떤 채팅에도 붙여 넣지 않습니다</span><span>텔레그램, Claude와의 대화, 메신저, 이슈, 메모 앱 어디에도 넣지 말고 <code>E:\my-planner\.env</code>에만 적습니다. 토큰은 빌드나 Vercel 환경 변수에도 넣지 않습니다(정적 파일은 누구나 받을 수 있습니다). 등록·점검 스크립트는 <code>.env</code>를 읽지도, 비밀값을 출력하지도 않습니다.</span></div>
       </aside>
-
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg>2.4 콘솔에서 시험 실행</h3>
-      <pre class="code"><code>.venv\Scripts\python.exe -m my_planner</code></pre>
-      <div class="prose"><ul>
-        <li>텔레그램에서 봇에게 “안녕”이라고 보내면 답이 옵니다.</li>
-        <li>끄려면 이 콘솔 창에서 Ctrl+C를 누릅니다. 진행 중인 답은 최대 30초 기다렸다가 끝냅니다.</li>
-        <li>이미 실행 중이면 새로 띄운 프로세스는 바로 끝납니다(단일 실행 잠금 <code>state\my-planner.lock</code>).</li>
-        <li>다른 폴더의 데이터를 쓰려면 환경변수 <code>MY_PLANNER_ROOT</code>에 저장소 루트를 지정합니다.</li>
-      </ul></div>
     </section>
 
+    <!-- ============ 4. 작업 스케줄러 ============ -->
     <section class="section">
       <div class="section__head">
-        <h2 id="tasks" data-jump="작업 등록"><span class="section__no">3</span>작업 스케줄러 등록과 점검</h2>
-        <p class="section__lede">콘솔 없이 늘 돌게 합니다. 관리자 권한은 필요 없습니다.</p>
+        <h2 id="tasks" data-jump="작업 스케줄러"><span class="section__no">4</span>작업 스케줄러와 워치독</h2>
+        <p class="section__lede">콘솔 없이 늘 돌게 합니다. 관리자 권한은 필요 없습니다. 등록 전에 콘솔 비서는 Ctrl+C로 끕니다(켜 둔 채 등록하면 점검의 <code>State is Running</code>이 <code>FAIL</code>).</p>
       </div>
-      <aside class="callout callout--warn">
-        <svg class="ic" aria-hidden="true"><use href="#i-warning"/></svg>
-        <div class="callout__body"><span class="callout__title">등록 전에 콘솔 비서를 끕니다</span><span>콘솔에서 <code>python -m my_planner</code>로 띄워 둔 비서가 있으면 먼저 Ctrl+C로 끕니다. 켜 둔 채 등록하면 작업이 띄운 프로세스가 단일 실행 잠금 때문에 바로 끝나고, 점검에서 <code>State is Running</code>이 <code>FAIL</code>로 나옵니다.</span></div>
-      </aside>
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-scheduler"/></svg>등록</h3>
-      <pre class="code"><code>powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1</code></pre>
-      <div class="table-wrap">
+<pre class="code"><code>powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
+powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1</code></pre>
+      <div class="table-wrap table-wrap--scroll">
         <table class="dt">
-          <caption>등록되는 작업 두 개</caption>
-          <thead><tr><th class="w-min">작업</th><th>언제 도나</th><th>하는 일</th></tr></thead>
+          <caption>등록되는 작업</caption>
+          <thead><tr><th class="w-min">작업</th><th>언제 도나</th><th>하는 일</th><th class="w-min">상태</th></tr></thead>
           <tbody>
-            <tr><td class="id"><code>my-planner</code></td><td>로그온할 때, 절전에서 깨어날 때, 그리고 5분마다(워치독)</td><td><code>pythonw -m my_planner</code>를 띄웁니다. 이미 실행 중이면 아무 일도 하지 않아 중복으로 뜨지 않습니다. 프로세스가 죽으면 5분 안에 워치독이 다시 띄웁니다. 배터리에서도 돌고 시간 제한이 없습니다.</td></tr>
-            <tr><td class="id"><code>my-planner-wake</code></td><td>회차 시각 5분 전 (기본값: 평일 <span class="tnum">08:55 · 17:25</span>, 주말 <span class="tnum">09:55 · 17:55</span>)</td><td>노트북을 절전에서 깨웁니다. 하는 일은 없습니다(<code>pythonw -c pass</code>). 시각은 <code>config.toml</code>에서 계산합니다.</td></tr>
+            <tr><td class="id"><code>my-planner</code></td><td>로그온할 때, 절전에서 깨어날 때, 그리고 <b>5분마다(워치독)</b></td><td><code>pythonw -m my_planner</code>를 띄움. 이미 돌고 있으면 아무 일도 하지 않음. 죽으면 5분 안에 다시 뜸. 배터리에서도 돌고 시간 제한 없음</td><td><span class="pill st" data-s="done">구현됨</span></td></tr>
+            <tr><td class="id"><code>my-planner-wake</code></td><td>회차 5분 전 (기본 평일 <span class="tnum">08:55 · 17:25</span>, 주말 <span class="tnum">09:55 · 17:55</span>)</td><td>노트북을 절전에서 깨움. 하는 일은 없음(<code>pythonw -c pass</code>). AC 전원에서만 확인(S4)</td><td><span class="pill st" data-s="done">구현됨</span></td></tr>
+            <tr><td class="id"><code>my-planner-medic</code></td><td>로그온할 때, 5분마다</td><td>자동 복구 감시자·업데이터(<a href="#medic">12절</a>)</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
           </tbody>
         </table>
       </div>
       <div class="prose"><ul>
-        <li>저장소가 다른 폴더에 있으면 <code>-Root D:\my-planner</code>, 깨우기 작업 없이 등록하려면 <code>-NoWake</code>를 붙입니다.</li>
-        <li>등록한 XML은 <code>state\tasks\</code>에 남습니다. 스크립트는 끝에 <code>my-planner</code> 작업을 한 번 시작하고 “시작했습니다”라고 출력합니다.</li>
+        <li>저장소가 다른 폴더면 <code>-Root D:\my-planner</code>, 깨우기 없이 등록하려면 <code>-NoWake</code>(점검에도 같이). 등록한 XML은 <code>state\tasks\</code>에 남습니다.</li>
+        <li>점검은 설정마다 <code>OK</code>/<code>FAIL</code> 한 줄, 마지막이 <code>OK   all checks passed</code>면 됩니다. <code>FAIL</code>이 하나라도 있으면 종료 코드 1.</li>
         <li><b>회차 시각을 바꾸면 등록 스크립트를 다시 실행합니다.</b> 깨우기 시각이 따라 바뀝니다.</li>
-      </ul></div>
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg>점검</h3>
-      <pre class="code"><code>powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1</code></pre>
-      <p>설정마다 한 줄씩 <code>OK</code> 또는 <code>FAIL</code>이 나오고, 마지막 줄이 <code>OK   all checks passed</code>이면 됩니다. <code>FAIL</code>이 하나라도 있으면 종료 코드가 1입니다. <code>-NoWake</code>로 등록했으면 점검에도 <code>-NoWake</code>를 붙입니다.</p>
-      <div class="table-wrap">
-        <table class="dt">
-          <caption>check_tasks.ps1이 보는 값 (요약)</caption>
-          <thead><tr><th class="w-min">대상</th><th>기대 값</th></tr></thead>
-          <tbody>
-            <tr><td class="nowrap">두 작업 공통</td><td>배터리에서 시작·계속(<code>DisallowStartIfOnBatteries</code>, <code>StopIfGoingOnBatteries</code> = False), <code>MultipleInstances = IgnoreNew</code>, 로그온 방식 Interactive, 실행 파일이 venv의 <code>pythonw.exe</code></td></tr>
-            <tr><td class="nowrap"><code>my-planner</code></td><td>인자 <code>-m my_planner</code>, <code>ExecutionTimeLimit = PT0S</code>, 재시작 999회·1분 간격, 작업 폴더 = 저장소 루트, 트리거 3개(로그온 1, 절전 복귀 이벤트 Power-Troubleshooter ID 1, 5분 반복 시간 트리거), <code>State is Running</code></td></tr>
-            <tr><td class="nowrap"><code>my-planner-wake</code></td><td>인자 <code>-c pass</code>, <code>WakeToRun = True</code>, 트리거가 지금 <code>config.toml</code>로 계산한 시각과 같음</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <aside class="callout callout--tbd">
-        <svg class="ic" aria-hidden="true"><use href="#i-question"/></svg>
-        <div class="callout__body"><span class="callout__title">아직 노트북에서 돌려 보지 않은 스크립트</span><span>두 PowerShell 스크립트는 클라우드에서 만들고 XML 템플릿만 자동 테스트했습니다. 처음 실행할 때 오류가 나면 출력 전체를 GitHub 이슈 #16에 남겨 주세요(토큰은 출력되지 않습니다). <a href="test-report.html#risks">테스트 결과서 미결 항목</a> 참고.</span></div>
-      </aside>
-    </section>
-
-    <section class="section">
-      <div class="section__head">
-        <h2 id="daily" data-jump="매일 쓰기"><span class="section__no">4</span>매일 쓰기</h2>
-        <p class="section__lede">평소에는 그냥 말을 걸면 됩니다. 명령은 두뇌를 거치지 않고 바로 답합니다(<code>/plan</code>만 예외).</p>
-      </div>
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>정해진 연락 시각</h3>
-      <div class="table-wrap">
-        <table class="dt">
-          <caption>회차 시각, 한계, 답장 창 (config.toml 기본값)</caption>
-          <thead><tr><th>회차</th><th class="w-min">평일</th><th class="w-min">주말(토·일)</th><th>이 시각이 지나면 보내지 않음</th><th>이때까지 답하면 같은 대화</th></tr></thead>
-          <tbody>
-            <tr><td><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침 브리핑</span></td><td class="tnum">09:00</td><td class="tnum">10:00</td><td>당일 12:00</td><td>당일 12:00</td></tr>
-            <tr><td><span class="loop loop--evening"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-moon"/></svg>저녁 체크인</span></td><td class="tnum">17:30</td><td class="tnum">18:00</td><td>다음 날 04:00</td><td>다음 날 04:00</td></tr>
-            <tr><td><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>주간 회고</span></td><td>—</td><td>일요일 18:00 (그날 저녁 체크인과 한 메시지)</td><td>예정 시각 + 3일</td><td>24시간</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="prose"><ul>
-        <li>“오늘”은 <a href="glossary.html#logical_date">논리적 날짜</a>입니다. 하루는 새벽 04:00에 바뀌므로 새벽 0시~3시 59분은 전날로 칩니다.</li>
-        <li>비서가 먼저 보내는 메시지는 하루 최대 <b>3회</b>입니다. 고정 안내(로그인·한도 등)는 세지 않습니다.</li>
-        <li>그 밖의 기본값: 두뇌 호출 하루 60회, 그냥 대화는 30분 안에 이어 말하면 같은 대화, 계획 모드는 마지막 메시지 뒤 2시간이면 닫힘, 비서가 제안한 초안은 3일 뒤 정리, 한 번에 넘기는 글은 8000자까지, 두뇌 호출 한 번은 300초(5분)까지(<code>brain_timeout_s</code>).</li>
-        <li>시각을 바꾸려면 <code>config.toml</code>의 <code>[schedule.*]</code>를 고칩니다. 설정은 비서가 시작할 때 읽으므로 <code>Stop-ScheduledTask -TaskName my-planner</code>로 멈춘 뒤 등록 스크립트를 다시 실행합니다(스크립트가 깨우기 시각을 다시 계산하고 작업을 시작합니다). 주간 회고 요일은 일요일만 됩니다.</li>
-      </ul></div>
-
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg>명령</h3>
-      <div class="table-wrap">
-        <table class="dt">
-          <caption>텔레그램 명령 (bot/commands.py)</caption>
-          <thead><tr><th class="w-min">명령</th><th>하는 일</th><th>비서의 답 (원문)</th></tr></thead>
-          <tbody>
-            <tr><td class="id"><code>/today</code></td><td>오늘 우선순위, 일정, 열린 할 일. 초안·끝낸 일은 안 보임</td><td>비어 있으면 <q class="src">아직 비어 있어요. 하고 싶은 일을 말씀해 주세요.</q></td></tr>
-            <tr><td class="id"><code>/week</code></td><td>이번 주(월~일) 우선순위와 날짜별 할 일</td><td>목록. 오늘 날짜에 “(오늘)” 표시</td></tr>
-            <tr><td class="id"><code>/pause 3</code></td><td>지금부터 N×24시간 동안 먼저 연락하지 않기. N은 1~14. 그동안에도 말을 걸면 답함</td><td><q class="src">{월}월 {일}일 {HH:MM}까지 먼저 연락하지 않을게요. 그동안에도 말씀하시면 답해요. 다시 시작하려면 /unpause를 보내 주세요.</q> 숫자가 틀리면 <q class="src">쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3</q></td></tr>
-            <tr><td class="id"><code>/unpause</code></td><td>멈춤 풀기</td><td><q class="src">멈춤을 풀었어요. 다시 정해진 시각에 연락할게요.</q> 멈춤 중이 아니면 <q class="src">지금은 멈춤 중이 아니에요.</q></td></tr>
-            <tr><td class="id"><code>/plan 주제</code></td><td><a href="glossary.html#plan_mode">계획 모드</a> 대화 열기. 주제는 없어도 됨. 비서가 질문을 하나씩 하며 함께 정리(이것만 두뇌를 거침). 계획 중에는 정해진 연락을 미룸</td><td>두뇌의 답</td></tr>
-            <tr><td class="id"><code>/done</code></td><td>계획 대화 마치기</td><td><q class="src">계획 대화를 마칠게요. 다시 함께 정리하고 싶으면 /plan을 보내 주세요.</q> 열린 계획이 없으면 <q class="src">지금 열린 계획 대화가 없어요.</q></td></tr>
-            <tr><td class="id"><code>/help</code></td><td>명령 안내</td><td>위 명령 목록과 <q class="src">그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요.</q></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="table-note">명령 뒤에 <code>@봇이름</code>이 붙어도 됩니다. 명령과 그 답도 원문 기록에 남습니다.</p>
-      <aside class="callout callout--tbd">
-        <svg class="ic" aria-hidden="true"><use href="#i-question"/></svg>
-        <div class="callout__body"><span class="callout__title">문구는 Dahun 확인 필요</span><span>위 명령 답과 아래 버튼 알림 문구(<q class="src">✓ 확정: 제목</q>, <q class="src">✗ 뺐어요: 제목</q>, <q class="src">이미 정리된 할 일이에요.</q>, <q class="src">컨디션 N 기록했어요.</q>)는 스펙이 정하지 않아 구현 중에 만든 것입니다. 스펙 v4 부록 A에 모여 있고 Dahun이 확인하기 전까지 바뀔 수 있습니다.</span></div>
-      </aside>
-
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg>버튼</h3>
-      <div class="table-wrap">
-        <table class="dt">
-          <caption>메시지 아래 버튼</caption>
-          <thead><tr><th class="w-min">버튼</th><th>언제 붙나</th><th>누르면</th></tr></thead>
-          <tbody>
-            <tr><td class="nowrap"><q class="src">✓ 추가</q>: 제목</td><td>비서가 제안한 <a href="glossary.html#draft">초안</a> 할 일마다 (제목은 16자까지 보임)</td><td>그 초안이 열린 할 일이 됩니다. 두뇌를 거치지 않습니다</td></tr>
-            <tr><td class="nowrap"><q class="src">✗ 빼기</q></td><td>초안마다</td><td>그 초안을 내려놓습니다</td></tr>
-            <tr><td class="nowrap"><q class="src">전부 추가</q></td><td>초안 목록 맨 아래</td><td>그 대화에서 제안된 초안을 모두 확정합니다</td></tr>
-            <tr><td class="nowrap">1 2 3 4 5</td><td>저녁 체크인, 그리고 어제 기록이 없을 때 아침 브리핑</td><td>버튼에 든 날짜로 <a href="glossary.html#condition">컨디션</a>을 기록하고 <q class="src">컨디션 {n} 기록했어요.</q>라고 답합니다. 다음 날 눌러도 원래 날짜에 기록됩니다</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="prose"><ul>
-        <li>버튼을 누르면 새 메시지가 아니라 화면 위의 짧은 알림으로 답하고, 버튼은 그대로 남습니다. 이미 정리된 초안의 버튼을 다시 누르면 상태는 그대로이고 <q class="src">이미 정리된 할 일이에요.</q>라고 알립니다.</li>
-        <li>확정하지 않은 초안은 3일 뒤 알리지 않고 정리됩니다. 말로 “전부 추가해 줘”라고 해도 됩니다.</li>
-        <li>사진, 스티커, 음성에는 <q class="src">지금은 글로만 이야기할 수 있어요.</q>라고 답합니다. 수정한 메시지는 다시 읽지 않습니다.</li>
+        <li>워치독 때문에 <code>Stop-ScheduledTask</code>만으로는 5분 뒤 다시 뜹니다. 오래 멈출 때(복구, 시드)는 <code>Disable-ScheduledTask</code>를 먼저 합니다.</li>
       </ul></div>
     </section>
 
+    <!-- ============ 5. tailnet ============ -->
     <section class="section">
       <div class="section__head">
-        <h2 id="data" data-jump="데이터"><span class="section__no">5</span>데이터는 어디에 남나</h2>
+        <h2 id="tailnet" data-jump="tailnet"><span class="section__no">5</span>API를 tailnet에만 열기 (<code>tailscale serve</code>)</h2>
+        <p class="section__lede">BE는 <code>127.0.0.1:8787</code>에서만 엽니다. 폰과 다른 기기에서는 Tailscale <code>serve</code>로 <b>내 tailnet 안에만</b> <code>/api</code>를 붙입니다.</p>
+      </div>
+      <ol class="steps">
+        <li><span class="steps__title">관리 화면에서 HTTPS 켜기</span><span class="steps__body"><span>Tailscale 관리 화면(DNS)에서 MagicDNS와 HTTPS 인증서를 켭니다.</span></span></li>
+        <li><span class="steps__title"><code>/api</code>만 붙이기</span><span class="steps__body"><span>443의 <code>/</code>를 다른 서비스가 쓰고 있으면 그 항목은 두고 <code>/api</code>만 붙입니다(이 노트북은 이 경우). 443이 비어 있으면 첫 줄 대신 <code>tailscale serve --bg --https=443 http://127.0.0.1:8787</code>도 됩니다. 파일 경로 항목이 이미 있으면 관리자 PowerShell이 필요합니다.</span>
+<pre class="code"><code>tailscale serve --bg --https=443 --set-path=/api http://127.0.0.1:8787/api</code></pre></span></li>
+        <li><span class="steps__title">tailnet 안인지 확인</span><span class="steps__body"><span><code>tailscale serve status</code>가 <code>(tailnet only)</code>이고, <code>tailscale funnel status</code>에 Funnel 항목이 없어야 합니다.</span></span></li>
+        <li><span class="steps__title">헬스 확인</span><span class="steps__body"><span>tailnet 기기에서 <code>https://&lt;기계&gt;.&lt;tailnet&gt;.ts.net/api/v1/health</code>를 <code>Authorization: Bearer &lt;API_TOKEN&gt;</code> 헤더로 열면 <code>"status": "ok"</code>, 헤더 없이 열면 <span class="http" data-c="4xx">401</span>입니다.</span></span></li>
+      </ol>
+      <aside class="callout callout--bad">
+        <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>
+        <div class="callout__body"><span class="callout__title">Funnel은 절대 쓰지 않습니다</span><span><code>tailscale funnel</code>은 API를 인터넷 전체에 엽니다. 토큰 하나만으로 할 일과 대화 기록에 닿을 수 있으니 tailnet 밖으로 열지 않습니다. 토큰을 10번 틀리면 잠시 <span class="http" data-c="4xx">429</span>로 막지만(로그 <code>api_auth_blocked</code>), 이것은 Funnel을 대신하지 못합니다.</span></div>
+      </aside>
+    </section>
+
+    <!-- ============ 6. Vercel + CORS ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="vercel" data-jump="Vercel·CORS"><span class="section__no">6</span>Vercel 두 프로젝트와 CORS</h2>
+        <p class="section__lede">운영 앱과 대시보드는 <b>다른 Vercel 프로젝트</b>입니다. 둘 다 데이터를 갖지 않고, 폰·브라우저가 tailnet 안의 BE를 직접 부릅니다.</p>
+      </div>
+      <div class="table-wrap table-wrap--scroll">
+        <table class="dt">
+          <caption>Vercel 프로젝트 설정</caption>
+          <thead><tr><th class="w-min">항목</th><th><svg class="ic ic--sm" aria-hidden="true"><use href="#i-pwa"/></svg> 운영 앱 (SP5)</th><th><svg class="ic ic--sm" aria-hidden="true"><use href="#i-dashboard"/></svg> 대시보드 (SP3-4)</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap">운영 주소</td><td><code>https://my-planner-beige-eight.vercel.app</code></td><td><code>https://my-planner-dashboard-seven.vercel.app</code></td></tr>
+            <tr><td class="nowrap">Root Directory</td><td><code>web/app</code></td><td><code>web/dashboard</code></td></tr>
+            <tr><td class="nowrap">빌드</td><td colspan="2"><code>vercel.json</code>이 고정: Framework 없음, <code>npm run build</code>, 출력 <code>out</code>(정적 파일, 서버 함수 없음)</td></tr>
+            <tr><td class="nowrap">환경 변수</td><td colspan="2"><code>NEXT_PUBLIC_CONNECT_SRC</code> 하나뿐. 값 모양 <code>https://*.&lt;tailnet&gt;.ts.net</code>(<code>*</code>는 이름 한 칸만 맞음). 바꾸면 다시 배포</td></tr>
+            <tr><td class="nowrap">값이 없으면</td><td colspan="2">빌드가 멈춤: <code>NEXT_PUBLIC_CONNECT_SRC is required for build (CSP connect-src)</code> (2026-10-24 운영 앱으로 확인)</td></tr>
+            <tr><td class="nowrap">값이 틀리면</td><td>연결 화면이 <q class="src">이 앱에서 쓸 수 있는 주소가 아니에요</q></td><td>BE에 닿지 않음(“BE 꺼짐”)</td></tr>
+            <tr><td class="nowrap">빌드 건너뛰기</td><td><code>web/app</code>이 안 바뀐 커밋은 건너뜀(<code>ignoreCommand</code>)</td><td>없음(커밋마다 빌드)</td></tr>
+            <tr><td class="nowrap">넣지 않는 것</td><td colspan="2">BE 주소, 토큰. Vercel 분석도 켜지 않음</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-cors"/></svg>허용 출처 (CORS)는 정확한 주소만</h3>
+      <p><code>config.toml</code>의 <code>[api] cors_origins</code>에 두 운영 주소를 끝에 <code>/</code> 없이 넣습니다. <code>*.vercel.app</code> 같은 와일드카드나 미리보기 주소 패턴은 넣지 않습니다. 바꾼 뒤에는 작업을 다시 켭니다. 다시 켜지 않으면 앱 연결 화면이 <q class="src">주소에 닿지 않아요</q>에서 막힙니다.</p>
+<pre class="code"><code>[api]
+cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner-dashboard-seven.vercel.app"]</code></pre>
+      <p class="table-note">운영 주소를 바꾸면 <code>cors_origins</code>도 새 주소로 바꿉니다. 대시보드를 더할 때는 운영 앱 주소를 그대로 두고 <b>더합니다</b>.</p>
+
+      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-phone"/></svg>폰과 대시보드 연결</h3>
+      <ol class="steps">
+        <li><span class="steps__title">운영 앱은 홈 화면 앱에서</span><span class="steps__body"><span>폰에 Tailscale을 켜고 Safari로 앱 주소를 엽니다. 공유 → 홈 화면에 추가 → 홈 화면 아이콘으로 엽니다. Safari 탭과 홈 화면 앱은 저장 공간이 따로라서 연결은 홈 화면 앱에서 합니다(iOS 웹 푸시도 설치한 앱에서만 됩니다).</span></span></li>
+        <li><span class="steps__title">주소와 토큰 넣기</span><span class="steps__body"><span>연결 화면에 <code>https://&lt;기계&gt;.&lt;tailnet&gt;.ts.net</code>과 <code>API_TOKEN</code>을 넣습니다. 토큰은 그 기기(브라우저) 안에만 남습니다.</span></span></li>
+        <li><span class="steps__title">대시보드는 “연결 확인”</span><span class="steps__body"><span>설정 화면에 같은 두 값을 넣고 “연결 확인”을 누릅니다. 데스크톱이나 Android Chrome이 로컬 네트워크 접근 권한 창(PNA)을 띄우면 허용합니다.</span></span></li>
+      </ol>
+    </section>
+
+    <!-- ============ 7. 토큰 바꾸기 · VAPID ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="rotate" data-jump="토큰 바꾸기"><span class="section__no">7</span>토큰 바꾸기와 VAPID</h2>
+        <p class="section__lede">토큰이 새어 나갔거나 기기를 잃어버렸을 때 합니다.</p>
+      </div>
+      <div class="cols">
+        <div class="doccard">
+          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-token"/></svg></span>
+          <span class="doccard__name">API 토큰 바꾸기</span>
+          <span class="doccard__desc">1. <code>gen-token</code>으로 새 토큰을 만들어 <code>.env</code>의 <code>API_TOKEN</code> 줄을 바꿉니다. 2. 작업을 다시 켭니다. 옛 토큰은 바로 <span class="http" data-c="4xx">401</span>이 됩니다. 3. 운영 앱 설정과 대시보드 설정에 새 토큰을 넣습니다.</span>
+        </div>
+        <div class="doccard">
+          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-push"/></svg></span>
+          <span class="doccard__name">VAPID 키</span>
+          <span class="doccard__desc">처음 한 번 <code>gen-vapid</code>로 만들어 세 줄을 <code>.env</code>에 넣습니다. 키를 바꾸면 기존 푸시 구독이 모두 끊기므로 <b>새어 나갔을 때만</b> 바꾸고, 바꾼 뒤 앱 설정 › 이 기기 알림에서 다시 켭니다.</span>
+        </div>
+        <div class="doccard">
+          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-bot"/></svg></span>
+          <span class="doccard__name">봇 토큰</span>
+          <span class="doccard__desc">BotFather에서 <code>/revoke</code>로 바꾸고 <code>.env</code>의 <code>TELEGRAM_BOT_TOKEN</code>을 고친 뒤 작업을 다시 켭니다.</span>
+        </div>
+      </div>
+<pre class="code"><code>.venv\Scripts\python.exe -m my_planner gen-token
+.venv\Scripts\python.exe -m my_planner gen-vapid</code></pre>
+      <p class="table-note">두 명령은 값을 화면에 출력합니다. 출력을 채팅이나 문서에 붙이지 않습니다.</p>
+    </section>
+
+    <!-- ============ 8. 시드 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="seed" data-jump="시드"><span class="section__no">8</span>인생 시드 가져오기 (<code>seed-life</code>)</h2>
+        <p class="section__lede">처음 한 번, 검토를 마친 시드 파일에서 챕터와 사건을 가져옵니다. 점수는 가져오지 않습니다(회고에서 답할 때 생깁니다).</p>
+      </div>
+      <ol class="steps">
+        <li><span class="steps__title">파일 놓기와 검토 표시</span><span class="steps__body"><span>시드 파일을 노트북의 <code>data\seed\</code> 아래로 옮기고(Git에 들어가지 않음), 검토를 마쳤으면 <code>meta.reviewed</code>를 <code>true</code>로 넣습니다. <code>sensitive: true</code>이거나 <code>storage</code> 키가 있는 항목은 <code>confirmed: true</code>인 것만 가져옵니다.</span></span></li>
+        <li><span class="steps__title">BE 멈추고 미리 보기</span><span class="steps__body"><span>워치독이 다시 띄우지 않게 작업을 끄고 멈춘 뒤, <code>--dry-run</code>으로 개수만 봅니다(내용은 나오지 않음). 가져올 개수가 파일의 챕터·사건 수에서 확인 안 한 민감 항목을 뺀 것과 맞는지, <code>invalid</code>가 없는지 봅니다.</span>
+<pre class="code"><code>Disable-ScheduledTask -TaskName my-planner
+Stop-ScheduledTask -TaskName my-planner
+.venv\Scripts\python.exe -m my_planner seed-life data\seed\&lt;파일&gt; --dry-run</code></pre></span></li>
+        <li><span class="steps__title">가져오고 다시 켜기</span><span class="steps__body"><span>개수가 맞으면 <code>--dry-run</code> 없이 한 번 더 실행하고 작업을 켭니다.</span>
+<pre class="code"><code>.venv\Scripts\python.exe -m my_planner seed-life data\seed\&lt;파일&gt;
+Enable-ScheduledTask -TaskName my-planner
+Start-ScheduledTask -TaskName my-planner</code></pre></span></li>
+        <li><span class="steps__title">바깥 사본 지우기</span><span class="steps__body"><span>노트북 밖에 만든 사본(클라우드 파일, 메신저 등)은 직접 지웁니다.</span></span></li>
+      </ol>
+      <div class="table-wrap">
+        <table class="dt dt--narrow">
+          <caption><code>seed-life</code> 종료 코드</caption>
+          <thead><tr><th class="num w-min">코드</th><th>뜻</th><th>할 일</th></tr></thead>
+          <tbody>
+            <tr><td class="num">0</td><td>끝남</td><td>작업 다시 켜기</td></tr>
+            <tr><td class="num">3</td><td>my-planner가 실행 중(같은 잠금)</td><td>2단계의 <code>Disable-</code> · <code>Stop-ScheduledTask</code></td></tr>
+            <tr><td class="num">4</td><td>이미 가져옴</td><td>다시 가져오지 않음. 그대로 둠</td></tr>
+            <tr><td class="num">5</td><td><code>meta.reviewed</code>가 <code>true</code>가 아님</td><td>검토 뒤 표시</td></tr>
+            <tr><td class="num">6</td><td>읽을 수 없거나 JSON이 아닌 파일, 또는 DB가 항목을 거절함. 아무것도 저장되지 않음</td><td>파일 형식 확인 뒤 다시</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">코드 4·5·6의 화면 문구는 Dahun 확인 대기입니다(SP3-4 스펙 부록 A).</p>
+    </section>
+
+    <!-- ============ 9. 데이터 · 백업 · 복구 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="backup" data-jump="백업·복구"><span class="section__no">9</span>데이터, 백업, 복구</h2>
         <p class="section__lede"><code>data\</code>, <code>state\</code>, <code>.env</code>는 Git에 들어가지 않습니다. 백업은 로컬·외장 디스크에만 합니다.</p>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wrap--scroll">
         <table class="dt">
           <caption>파일 위치 (저장소 루트 기준)</caption>
           <thead><tr><th class="w-min">위치</th><th>내용</th></tr></thead>
           <tbody>
-            <tr class="group"><th colspan="2"><code>state\</code> 실행 상태</th></tr>
-            <tr><td class="id"><code>state\planner.db</code></td><td>원본 데이터(SQLite): 할 일, 회차, 대화, 컨디션</td></tr>
-            <tr><td class="id"><code>state\backups\planner-YYYY-MM-DD.db</code></td><td>DB 백업. 매일 처음 도는 tick에 하나 만들고 최근 14개를 남깁니다</td></tr>
-            <tr><td class="id"><code>state\logs\my-planner.jsonl</code></td><td>시스템 로그. 메시지 본문은 남기지 않습니다. 하루 단위로 회전하고 30일 치를 보관합니다</td></tr>
-            <tr><td class="id"><code>state\tasks\</code></td><td>등록 스크립트가 만든 작업 XML</td></tr>
-            <tr><td class="id"><code>state\my-planner.lock</code></td><td>단일 실행 잠금 파일</td></tr>
-            <tr><td class="id"><code>state\integrity_notice_sent</code></td><td>안전 모드 알림을 보냈다는 표식(있을 때만)</td></tr>
-            <tr><td class="id"><code>state\brain-workdir\</code></td><td>두뇌 전용 빈 작업 폴더</td></tr>
-            <tr class="group"><th colspan="2"><code>data\</code> 사람이 읽는 기록</th></tr>
-            <tr><td class="id"><code>data\transcripts\YYYY\MM\YYYY-MM-DD.md</code></td><td><a href="glossary.html#transcript">원문 기록</a>. 하루 경계는 04:00이라 새벽 0시~3시 59분의 대화는 전날 파일에 들어갑니다</td></tr>
-            <tr><td class="id"><code>data\exports\tasks.md</code></td><td>할 일 목록 사본. 바뀔 때마다 DB에서 다시 만듭니다(초안 제외)</td></tr>
-            <tr><td class="id"><code>data\reviews\week\YYYY-Www.md</code></td><td>주간 회고 사본</td></tr>
-            <tr class="group"><th colspan="2">저장소 밖</th></tr>
-            <tr><td class="id"><code>%USERPROFILE%\.claude\projects\</code></td><td>Claude Agent SDK가 따로 남기는 세션 기록 사본입니다. 원본은 <code>data\transcripts\</code>이고, 두뇌에는 가린 글만 넘기므로 이 사본에 가리기 전 내용은 없습니다. 지우고 싶으면 이 폴더의 my-planner 관련 하위 폴더를 지웁니다</td></tr>
+            <tr><td class="id"><code>state\planner.db</code></td><td>원본 데이터(SQLite). BE만 씀(ADR 0007)</td></tr>
+            <tr><td class="id"><code>state\backups\planner-YYYY-MM-DD.db</code></td><td>매일 처음 도는 tick에 하나, 최근 14개</td></tr>
+            <tr><td class="id"><code>state\logs\my-planner.jsonl</code></td><td>시스템 로그. 하루 단위 회전, 30일 보관</td></tr>
+            <tr><td class="id"><code>data\transcripts\YYYY\MM\YYYY-MM-DD.md</code></td><td>원문 기록. 하루 경계는 04:00</td></tr>
+            <tr><td class="id"><code>data\exports\</code> · <code>data\curve\chapters.md</code></td><td>할 일·습관 사본, 인생 챕터와 사건 사본(사람이 읽는 md)</td></tr>
+            <tr><td class="id"><code>data\seed\</code></td><td>인생 시드 원본(가져오기 전)</td></tr>
+            <tr><td class="id"><code>%USERPROFILE%\.claude\projects\</code></td><td>Claude Agent SDK의 세션 사본. 두뇌에는 가린 글만 넘김</td></tr>
           </tbody>
         </table>
       </div>
-      <aside class="callout callout--info">
-        <svg class="ic" aria-hidden="true"><use href="#i-redact"/></svg>
-        <div class="callout__body"><span class="callout__title">자동 가리기</span><span>주민등록번호, 계좌번호로 보이는 숫자(10~14자리), “비밀번호/비번/password/PIN” 뒤의 값(영문자나 숫자가 있을 때)은 원문 기록과 두뇌에 넘기기 전에 <code>[가림]</code>으로 바뀝니다. 휴대전화, 하이픈이 있는 유선 번호, <code>+82</code> 번호는 그대로 둡니다(하이픈 없는 유선 번호는 가려집니다). <b>카드번호(15~16자리)는 가리지 않습니다.</b> 민감한 정보는 보내지 않는 편이 안전합니다.</span></div>
-      </aside>
-    </section>
-
-    <section class="section">
-      <div class="section__head">
-        <h2 id="restore" data-jump="복구"><span class="section__no">6</span>백업에서 복구하기</h2>
-        <p class="section__lede">README의 절차 그대로입니다. PowerShell에서 저장소 폴더(<code>E:\my-planner</code>)로 가서 순서대로 합니다.</p>
-      </div>
+      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg>백업에서 복구하기 (안전 모드일 때)</h3>
+      <p>시작할 때 <code>PRAGMA quick_check</code>로 DB를 검사합니다. 손상이면 텔레그램으로 <q class="src">데이터베이스에 문제가 있어요.</q>라고 한 번 알리고 답하지 않은 채 기다립니다(로그 <code>safe_mode</code>). 디스크·잠금 오류처럼 손상이 아니면 프로세스가 끝나고(로그 <code>fatal_error</code>) 워치독이 다시 띄웁니다.</p>
       <ol class="steps">
-        <li><span class="steps__title">작업을 멈춥니다</span><span class="steps__body"><span>5분 워치독이 다시 띄우지 않도록 끄고 멈춥니다(콘솔에서 실행 중이면 Ctrl+C).</span>
+        <li><span class="steps__title">작업 끄고 멈추기</span><span class="steps__body">
 <pre class="code"><code>Disable-ScheduledTask -TaskName my-planner
 Stop-ScheduledTask -TaskName my-planner</code></pre></span></li>
-        <li><span class="steps__title">백업을 제자리에 복사합니다</span><span class="steps__body"><span>지금 DB는 지우지 않고 옆으로 옮겨 둔 뒤, 가장 최근 백업을 <code>state\planner.db</code>로 복사합니다. 파일 이름의 날짜는 <code>state\backups\</code>에서 가장 최근 것으로 바꿉니다. 옛 DB의 WAL 파일이 남아 있으면 지웁니다. 다시 시작해도 같은 알림이 오면 하루 앞 백업으로 다시 해 봅니다.</span>
+        <li><span class="steps__title">지금 DB는 옆으로, 최근 백업을 제자리로</span><span class="steps__body"><span>날짜는 <code>state\backups\</code>에서 가장 최근 것으로 바꿉니다. 다시 시작해도 같은 알림이 오면 하루 앞 백업으로 다시 합니다.</span>
 <pre class="code"><code>Move-Item state\planner.db state\planner.db.broken -Force
 Remove-Item state\planner.db-wal, state\planner.db-shm -ErrorAction SilentlyContinue
 Copy-Item state\backups\planner-2026-10-23.db state\planner.db</code></pre></span></li>
-        <li><span class="steps__title">알림 표식을 지웁니다</span><span class="steps__body"><span>다음에 또 문제가 생기면 다시 알리게 됩니다.</span>
+        <li><span class="steps__title">알림 표식 지우기</span><span class="steps__body">
 <pre class="code"><code>Remove-Item state\integrity_notice_sent -ErrorAction SilentlyContinue</code></pre></span></li>
-        <li><span class="steps__title">다시 시작합니다</span><span class="steps__body">
+        <li><span class="steps__title">다시 켜기</span><span class="steps__body">
 <pre class="code"><code>Enable-ScheduledTask -TaskName my-planner
 Start-ScheduledTask -TaskName my-planner</code></pre></span></li>
       </ol>
       <aside class="callout callout--warn">
         <svg class="ic" aria-hidden="true"><use href="#i-warning"/></svg>
-        <div class="callout__body"><span class="callout__title">복구하면 잃는 것</span><span>백업 날짜 뒤에 나눈 대화는 <code>data\transcripts\</code>에 남아 있지만, 그 사이에 바뀐 할 일과 컨디션은 백업 시점으로 돌아갑니다.</span></div>
+        <div class="callout__body"><span class="callout__title">복구하면 잃는 것</span><span>백업 날짜 뒤의 대화는 <code>data\transcripts\</code>에 남지만, 그 사이 바뀐 할 일·컨디션·습관 체크·곡선 점수는 백업 시점으로 돌아갑니다. 경험치도 그 시점 값입니다.</span></div>
       </aside>
     </section>
 
+    <!-- ============ 10. 로그 ============ -->
     <section class="section">
       <div class="section__head">
-        <h2 id="safe" data-jump="안전 모드"><span class="section__no">7</span>안전 모드</h2>
-        <p class="section__lede">시작할 때 DB를 <code>PRAGMA quick_check</code>로 검사합니다. DB가 손상됐을 때만 비서는 스스로 고치지 않고 기다립니다.</p>
+        <h2 id="logs" data-jump="로그"><span class="section__no">10</span>로그 읽기</h2>
+        <p class="section__lede"><code>state\logs\my-planner.jsonl</code>에 한 줄에 하나씩 JSON으로 남습니다. 메시지 본문, 토큰, 푸시 주소는 남기지 않고 이벤트 이름과 경로 틀만 남깁니다.</p>
+      </div>
+<pre class="code"><code>Select-String -Path state\logs\my-planner.jsonl -Pattern 'fatal_error|safe_mode|api_token_missing|push_send_error' | Select-Object -Last 20</code></pre>
+      <div class="table-wrap table-wrap--scroll">
+        <table class="dt">
+          <caption>찾아볼 이벤트 이름</caption>
+          <thead><tr><th class="w-min">이벤트</th><th>뜻</th><th class="w-min">정상?</th></tr></thead>
+          <tbody>
+            <tr class="group"><th colspan="3">시작과 종료</th></tr>
+            <tr><td class="id"><code>starting</code> · <code>db_ready</code> · <code>polling_started</code></td><td>시작, DB 준비(스키마 버전), 텔레그램 받기 시작</td><td><span class="pill verdict" data-s="pass">정상</span></td></tr>
+            <tr><td class="id"><code>resume_detected</code> · <code>polling_restarted</code></td><td>절전에서 깨어나 텔레그램 연결을 다시 엶</td><td><span class="pill verdict" data-s="pass">정상</span></td></tr>
+            <tr><td class="id"><code>fatal_error</code></td><td>잡히지 않은 오류로 끝남. 워치독이 5분 안에 다시 띄움</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr><td class="id"><code>db_integrity_failed</code> · <code>db_corrupt</code> · <code>safe_mode</code></td><td>DB 손상 → 안전 모드(<a href="#backup">9절</a>)</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr><td class="id"><code>settings_invalid</code></td><td><code>config.toml</code>이나 <code>.env</code> 값이 틀림(필드 이름만 남음)</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr class="group"><th colspan="3">API</th></tr>
+            <tr><td class="id"><code>api_started</code></td><td>API가 열림</td><td><span class="pill verdict" data-s="pass">정상</span></td></tr>
+            <tr><td class="id"><code>api_token_missing</code></td><td><code>API_TOKEN</code>이 없거나 43자 미만 → API를 열지 않음</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr><td class="id"><code>api_bind_error</code> · <code>api_start_error</code></td><td>8787 포트를 다른 프로그램이 씀, 또는 API 설정 오류</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr><td class="id"><code>api_auth_failed</code> · <code>api_auth_blocked</code></td><td>토큰이 틀림(경로 틀만 남음), 10번 틀려 잠시 막음</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr class="group"><th colspan="3">전달과 푸시</th></tr>
+            <tr><td class="id"><code>push_send_error</code> · <code>push_fallback_telegram</code></td><td>푸시가 안 가 텔레그램으로 대신 보냄</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr><td class="id"><code>push_subscription_disabled</code></td><td>푸시 서비스가 404·410 → 그 구독을 끔. 앱에서 알림을 다시 켬</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+            <tr><td class="id"><code>message_send_failed</code> · <code>inbound_dropped</code></td><td>텔레그램 답 전송 3번 다 안 됨(다음 시작 때 보냄), 다시 처리 3번 뒤 버림</td><td><span class="pill verdict" data-s="blocked">확인</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 11. 문제 해결 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="trouble" data-jump="문제 해결"><span class="section__no">11</span>문제 해결 결정 트리</h2>
+        <p class="section__lede">증상 다섯 가지 중 하나를 고르고, 왼쪽에서 오른쪽으로 질문에 답해 갑니다. “아니오”면 바로 아래 상자가 할 일입니다.</p>
+      </div>
+      <figure class="fig">
+        <figcaption class="fig__head"><span class="fig__no"></span><span class="fig__title">증상별 판단 순서</span><span class="fig__std">결정 트리 (flowchart)</span></figcaption>
+        <div class="fig__body fig__body--wide" style="--fig-min:820px">
+          <svg viewBox="0 0 960 720" width="960" role="img" aria-label="문제 해결 결정 트리. BE 꺼짐, 401, CORS 막힘, Vercel 빌드 멈춤, 푸시가 안 옴의 다섯 증상마다 두 번 묻고, 아니오면 아래 상자의 일을 하고, 둘 다 예면 오른쪽 끝의 일을 한다.">
+            <defs>
+              <marker id="ah-o2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-head"/></marker>
+            </defs>
+            <!-- 시작과 척추 -->
+            <circle cx="30" cy="26" r="14" class="bpmn-start"/>
+            <text x="52" y="30" class="d-text d-bold">증상 고르기</text>
+            <path d="M30 40V610" class="d-line" stroke-width="1.5"/>
+            <path d="M30 90H46M30 220H46M30 350H46M30 480H46M30 610H46" class="bpmn-flow" marker-end="url(#ah-o2)"/>
+
+            <!-- 행 공통 도형: 증상(50-190), 질문1(c290), 질문2(c580), 끝(700-945) -->
+            <!-- 행 1: BE 꺼짐 -->
+            <rect x="50" y="68" width="140" height="44" rx="10" class="d-box" stroke-width="1.5"/>
+            <use href="#i-wifi-off" x="58" y="80" width="18" height="18" class="d-ic--accent"/>
+            <text x="82" y="87" class="d-text d-bold">BE 꺼짐</text>
+            <text x="82" y="103" class="d-text-sm">연결 띠·앱 배너</text>
+            <path d="M290 58L365 90L290 122L215 90z" class="bpmn-gw"/>
+            <text x="290" y="87" text-anchor="middle" class="d-text-sm">노트북이 켜져</text>
+            <text x="290" y="101" text-anchor="middle" class="d-text-sm">깨어 있나?</text>
+            <path d="M580 58L655 90L580 122L505 90z" class="bpmn-gw"/>
+            <text x="580" y="87" text-anchor="middle" class="d-text-sm">작업 상태가</text>
+            <text x="580" y="101" text-anchor="middle" class="d-text-sm">Running인가?</text>
+            <rect x="700" y="68" width="245" height="44" rx="10" class="d-box-2"/>
+            <text x="712" y="86" class="d-text">폰·노트북 Tailscale 켜기</text>
+            <text x="712" y="103" class="d-mono">serve status = tailnet only</text>
+            <rect x="215" y="140" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="225" y="157" class="d-text">전원 연결·덮개 열기</text>
+            <text x="225" y="174" class="d-text-sm">로그인하기</text>
+            <rect x="505" y="140" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="515" y="157" class="d-mono">Start-ScheduledTask</text>
+            <text x="515" y="174" class="d-text-sm">로그 fatal_error 보기</text>
+
+            <!-- 행 2: 401 -->
+            <rect x="50" y="198" width="140" height="44" rx="10" class="d-box" stroke-width="1.5"/>
+            <use href="#i-token" x="58" y="210" width="18" height="18" class="d-ic--accent"/>
+            <text x="82" y="217" class="d-text d-bold">401</text>
+            <text x="82" y="233" class="d-text-sm">토큰이 맞지 않아요</text>
+            <path d="M290 188L365 220L290 252L215 220z" class="bpmn-gw"/>
+            <text x="290" y="217" text-anchor="middle" class="d-text-sm">앱의 토큰 =</text>
+            <text x="290" y="231" text-anchor="middle" class="d-mono">.env API_TOKEN?</text>
+            <path d="M580 188L655 220L580 252L505 220z" class="bpmn-gw"/>
+            <text x="580" y="217" text-anchor="middle" class="d-text-sm">.env 바꾼 뒤</text>
+            <text x="580" y="231" text-anchor="middle" class="d-text-sm">작업 다시 켰나?</text>
+            <rect x="700" y="198" width="245" height="44" rx="10" class="d-box-2"/>
+            <text x="712" y="216" class="d-text">429면 잠시 기다리기</text>
+            <text x="712" y="233" class="d-text-sm">새어 나갔으면 7절 토큰 바꾸기</text>
+            <rect x="215" y="270" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="225" y="287" class="d-text">앱·대시보드 설정에</text>
+            <text x="225" y="304" class="d-text-sm">토큰 다시 넣기</text>
+            <rect x="505" y="270" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="515" y="287" class="d-text">작업 다시 켜기</text>
+            <text x="515" y="304" class="d-mono">Stop → Start</text>
+
+            <!-- 행 3: CORS -->
+            <rect x="50" y="328" width="140" height="44" rx="10" class="d-box" stroke-width="1.5"/>
+            <use href="#i-cors" x="58" y="340" width="18" height="18" class="d-ic--accent"/>
+            <text x="82" y="347" class="d-text d-bold">CORS 막힘</text>
+            <text x="82" y="363" class="d-text-sm">주소에 닿지 않아요</text>
+            <path d="M290 318L365 350L290 382L215 350z" class="bpmn-gw"/>
+            <text x="290" y="347" text-anchor="middle" class="d-text-sm">출처가 목록에</text>
+            <text x="290" y="361" text-anchor="middle" class="d-text-sm">정확히 있나?</text>
+            <path d="M580 318L655 350L580 382L505 350z" class="bpmn-gw"/>
+            <text x="580" y="347" text-anchor="middle" class="d-text-sm">config 바꾼 뒤</text>
+            <text x="580" y="361" text-anchor="middle" class="d-text-sm">다시 켰나?</text>
+            <rect x="700" y="328" width="245" height="44" rx="10" class="d-box-2"/>
+            <text x="712" y="346" class="d-text">미리보기 주소는 막힘</text>
+            <text x="712" y="363" class="d-text-sm">운영 주소(.vercel.app)로 열기</text>
+            <rect x="215" y="400" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="225" y="417" class="d-mono">cors_origins에</text>
+            <text x="225" y="434" class="d-text-sm">정확한 주소 더하기</text>
+            <rect x="505" y="400" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="515" y="417" class="d-text">작업 다시 켜기</text>
+            <text x="515" y="434" class="d-mono">Stop → Start</text>
+
+            <!-- 행 4: 빌드 멈춤 -->
+            <rect x="50" y="458" width="140" height="44" rx="10" class="d-box" stroke-width="1.5"/>
+            <use href="#i-vercel-cloud" x="58" y="470" width="18" height="18" class="d-ic--accent"/>
+            <text x="82" y="477" class="d-text d-bold">빌드 멈춤</text>
+            <text x="82" y="493" class="d-text-sm">Vercel 배포</text>
+            <path d="M290 448L365 480L290 512L215 480z" class="bpmn-gw"/>
+            <text x="290" y="477" text-anchor="middle" class="d-mono">CONNECT_SRC</text>
+            <text x="290" y="491" text-anchor="middle" class="d-text-sm">변수가 있나?</text>
+            <path d="M580 448L655 480L580 512L505 480z" class="bpmn-gw"/>
+            <text x="580" y="477" text-anchor="middle" class="d-mono">Root Directory</text>
+            <text x="580" y="491" text-anchor="middle" class="d-text-sm">가 맞나?</text>
+            <rect x="700" y="458" width="245" height="44" rx="10" class="d-box-2"/>
+            <text x="712" y="476" class="d-mono">npm ci &amp;&amp; npm run build</text>
+            <text x="712" y="493" class="d-text-sm">로 오류 줄 보기 (로컬)</text>
+            <rect x="215" y="530" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="225" y="547" class="d-mono">*.&lt;tailnet&gt;.ts.net</text>
+            <text x="225" y="564" class="d-text-sm">넣고 다시 배포</text>
+            <rect x="505" y="530" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="515" y="547" class="d-mono">web/app 또는</text>
+            <text x="515" y="564" class="d-mono">web/dashboard</text>
+
+            <!-- 행 5: 푸시 -->
+            <rect x="50" y="588" width="140" height="44" rx="10" class="d-box" stroke-width="1.5"/>
+            <use href="#i-push" x="58" y="600" width="18" height="18" class="d-ic--accent"/>
+            <text x="82" y="607" class="d-text d-bold">푸시가 안 옴</text>
+            <text x="82" y="623" class="d-text-sm">회차·시험 알림</text>
+            <path d="M290 578L365 610L290 642L215 610z" class="bpmn-gw"/>
+            <text x="290" y="607" text-anchor="middle" class="d-text-sm">홈 화면 앱에서</text>
+            <text x="290" y="621" text-anchor="middle" class="d-text-sm">알림 허용했나?</text>
+            <path d="M580 578L655 610L580 642L505 610z" class="bpmn-gw"/>
+            <text x="580" y="607" text-anchor="middle" class="d-text-sm">VAPID 키 셋이</text>
+            <text x="580" y="621" text-anchor="middle" class="d-text-sm">.env에 있나?</text>
+            <rect x="700" y="588" width="245" height="44" rx="10" class="d-box-2"/>
+            <text x="712" y="606" class="d-text">시험 알림 보내기 · 로그</text>
+            <text x="712" y="623" class="d-mono">push_send_error 보기</text>
+            <rect x="215" y="660" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="225" y="677" class="d-text">설정 › 이 기기 알림</text>
+            <text x="225" y="694" class="d-text-sm">› 허용하기</text>
+            <rect x="505" y="660" width="150" height="42" rx="6" class="d-plain d-warn-s" stroke-width="1.75"/>
+            <text x="515" y="677" class="d-mono">gen-vapid → .env</text>
+            <text x="515" y="694" class="d-text-sm">→ 작업 다시 켜기</text>
+
+            <!-- 흐름: 증상 → 질문1 → 질문2 → 끝, 질문 ↓ 할 일 -->
+            <path d="M190 90H213M365 90H503M655 90H698M190 220H213M365 220H503M655 220H698M190 350H213M365 350H503M655 350H698M190 480H213M365 480H503M655 480H698M190 610H213M365 610H503M655 610H698" class="bpmn-flow" marker-end="url(#ah-o2)"/>
+            <path d="M290 122V138M580 122V138M290 252V268M580 252V268M290 382V398M580 382V398M290 512V528M580 512V528M290 642V658M580 642V658" class="bpmn-flow" marker-end="url(#ah-o2)"/>
+            <g class="bpmn-label d-halo">
+              <text x="434" y="84" text-anchor="middle">예</text><text x="676" y="84" text-anchor="middle">예</text>
+              <text x="434" y="214" text-anchor="middle">예</text><text x="676" y="214" text-anchor="middle">예</text>
+              <text x="434" y="344" text-anchor="middle">예</text><text x="676" y="344" text-anchor="middle">예</text>
+              <text x="434" y="474" text-anchor="middle">예</text><text x="676" y="474" text-anchor="middle">예</text>
+              <text x="434" y="604" text-anchor="middle">예</text><text x="676" y="604" text-anchor="middle">예</text>
+              <text x="300" y="134">아니오</text><text x="590" y="134">아니오</text>
+              <text x="300" y="264">아니오</text><text x="590" y="264">아니오</text>
+              <text x="300" y="394">아니오</text><text x="590" y="394">아니오</text>
+              <text x="300" y="524">아니오</text><text x="590" y="524">아니오</text>
+              <text x="300" y="654">아니오</text><text x="590" y="654">아니오</text>
+            </g>
+          </svg>
+        </div>
+        <div class="fig__body fig__body--tight" style="background:var(--surface)">
+          <div class="legend"><p class="legend__title">범례</p>
+            <ul class="legend__list">
+              <li><span class="legend__glyph"><svg width="34" height="20" aria-hidden="true"><rect x="2" y="2" width="30" height="16" rx="5" class="d-box" stroke-width="1.5"/></svg></span><span class="legend__term">진한 둥근 상자</span><span class="legend__desc">증상(화면이나 알림에서 보이는 것)</span></li>
+              <li><span class="legend__glyph"><svg width="34" height="20" aria-hidden="true"><path d="M17 2L32 10L17 18L2 10z" class="bpmn-gw"/></svg></span><span class="legend__term">마름모</span><span class="legend__desc">예·아니오로 답하는 확인</span></li>
+              <li><span class="legend__glyph"><svg width="34" height="20" aria-hidden="true"><rect x="2" y="2" width="30" height="16" rx="3" class="d-plain d-warn-s" stroke-width="1.75"/></svg></span><span class="legend__term">황토 테 상자</span><span class="legend__desc">“아니오”일 때 바로 할 일</span></li>
+              <li><span class="legend__glyph"><svg width="34" height="20" aria-hidden="true"><rect x="2" y="2" width="30" height="16" rx="5" class="d-box-2"/></svg></span><span class="legend__term">회색 상자</span><span class="legend__desc">둘 다 “예”일 때 마지막으로 볼 것</span></li>
+            </ul>
+          </div>
+        </div>
+        <p class="fig__cap"><b>결론:</b> 다섯 증상 모두 두 번의 예·아니오로 원인을 좁히고, 대부분은 설정 값을 고친 뒤 작업을 다시 켜면 풀립니다. <span class="fig__scrollhint">좁은 화면에서는 그림을 옆으로 밀어 보세요.</span></p>
+      </figure>
+
+      <div class="table-wrap table-wrap--scroll">
+        <table class="dt">
+          <caption>증상 → 원인 → 할 일 (텔레그램 · 노트북 포함)</caption>
+          <thead><tr><th>증상</th><th>원인</th><th>할 일</th></tr></thead>
+          <tbody>
+            <tr><td>대시보드 “BE 꺼짐 · 마지막 응답 {시각}”, 앱 오프라인 배너</td><td>노트북이 꺼짐·잠듦, my-planner가 안 돎, Tailscale 꺼짐</td><td>트리 1행. 앱은 마지막 스냅샷을 보여 주고 쓰기를 막습니다</td></tr>
+            <tr><td><q class="src">토큰이 맞지 않아요</q> (<span class="http" data-c="4xx">401</span>)</td><td>토큰이 다름, <code>.env</code>를 바꾸고 다시 켜지 않음</td><td>트리 2행. <span class="http" data-c="4xx">429</span>면 10번 틀려 잠시 막힌 것</td></tr>
+            <tr><td><q class="src">주소에 닿지 않아요</q>, 브라우저 콘솔에 CORS</td><td>출처가 <code>cors_origins</code>에 없음(끝 <code>/</code>, 미리보기 주소)</td><td>트리 3행</td></tr>
+            <tr><td><q class="src">이 앱에서 쓸 수 있는 주소가 아니에요</q></td><td>넣은 BE 주소가 <code>NEXT_PUBLIC_CONNECT_SRC</code> 범위 밖</td><td>주소를 <code>https://&lt;기계&gt;.&lt;tailnet&gt;.ts.net</code>으로. 범위가 틀렸으면 Vercel 값 고치고 다시 배포</td></tr>
+            <tr><td>Vercel 빌드가 <code>NEXT_PUBLIC_CONNECT_SRC is required</code>로 멈춤</td><td>환경 변수가 없음</td><td>트리 4행</td></tr>
+            <tr><td>푸시가 안 오고 텔레그램으로 옴</td><td>구독 없음, VAPID 없음, 푸시 서비스 404·410</td><td>트리 5행. 대신 텔레그램으로 가는 것은 정상 동작(로그 <code>push_fallback_telegram</code>)</td></tr>
+            <tr><td>봇이 아무것에도 답하지 않음</td><td>프로세스가 안 돎, 안전 모드</td><td><code>check_tasks.ps1</code> → <code>Start-ScheduledTask</code>. 로그 <code>starting</code>, <code>safe_mode</code>, <code>fatal_error</code></td></tr>
+            <tr><td>아침 브리핑·저녁 체크인이 안 옴</td><td>멈춤 중, 노트북 꺼짐·배터리 절전, 한계 시각 지남, 오늘 3회 다 씀, 계획 모드</td><td><code>/unpause</code>로 멈춤 확인, 전원 연결, 계획 중이면 <code>/done</code>. 한계가 지난 회차는 건너뛰는 것이 정상</td></tr>
+            <tr><td><q class="src">Claude 로그인이 풀렸어요.</q> · 결제 안내</td><td>구독 로그인 만료, 계정·결제</td><td>PC 터미널에서 <code>claude</code> → <code>/login</code>. 계정 상태 확인</td></tr>
+            <tr><td><q class="src">사용 한도에 닿았어요</q> · <q class="src">오늘은 여기까지</q></td><td>구독 사용 한도, 하루 두뇌 호출 60회</td><td>기다립니다. 명령(<code>/today</code>)은 계속 됩니다</td></tr>
+            <tr><td><q class="src">데이터베이스에 문제가 있어요.</q></td><td>DB 손상 → 안전 모드</td><td><a href="#backup">9절 복구</a></td></tr>
+            <tr><td>점검에서 깨우기 트리거만 FAIL</td><td><code>config.toml</code> 시각을 바꾸고 등록을 다시 안 함</td><td>등록 스크립트 다시 실행</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ 12. 매일 점검 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="daily" data-jump="매일 점검"><span class="section__no">12</span>매일 점검표</h2>
+        <p class="section__lede">대부분 폰에서 1분이면 됩니다. 아니면 칸의 링크로 갑니다.</p>
+      </div>
+      <div class="table-wrap table-wrap--scroll">
+        <table class="dt">
+          <caption>점검 항목</caption>
+          <thead><tr><th class="w-min">언제</th><th>확인</th><th>정상 신호</th><th class="w-min">아니면</th></tr></thead>
+          <tbody>
+            <tr><td class="nowrap"><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-push"/></svg> 아침 브리핑이 왔나 (평일 09:00, 주말 10:00)</td><td>푸시 또는 텔레그램 한 통</td><td><a href="#trouble">11절</a></td></tr>
+            <tr><td class="nowrap"><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-heartbeat"/></svg> 대시보드 연결 띠</td><td>“BE 켜짐”</td><td>트리 1행</td></tr>
+            <tr><td class="nowrap"><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-dashboard"/></svg> 비서 상태 화면: 상태, 오늘 회차, 24시간 오류 수</td><td><code>ok</code>, 회차가 “보냄”, 오류 0에 가까움</td><td><a href="#logs">10절</a></td></tr>
+            <tr><td class="nowrap"><span class="loop loop--evening"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-moon"/></svg>저녁</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-condition"/></svg> 저녁 체크인과 컨디션·습관 버튼</td><td>17:30(주말 18:00)에 옴, 누르면 짧은 알림</td><td>트리 1행</td></tr>
+            <tr><td class="nowrap"><span class="loop loop--evening"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-moon"/></svg>저녁</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-power"/></svg> 노트북 전원 케이블</td><td>꽂혀 있음(밤 깨우기는 AC에서만 확인)</td><td>꽂기</td></tr>
+            <tr><td class="nowrap"><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>매주</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-backup"/></svg> <code>state\backups\</code>의 가장 새 파일</td><td>어제나 오늘 날짜</td><td>로그 <code>tick_error</code></td></tr>
+            <tr><td class="nowrap"><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>매주</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-log"/></svg> 로그에서 <code>fatal_error</code>, <code>safe_mode</code>, <code>push_send_error</code></td><td>없음</td><td><a href="#logs">10절</a></td></tr>
+            <tr><td class="nowrap"><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>매주</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tailscale"/></svg> <code>tailscale funnel status</code></td><td>Funnel 항목 없음</td><td>Funnel 끄기</td></tr>
+            <tr><td class="nowrap"><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>매주</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-github"/></svg> <code>main</code>에 BE 변경이 병합됐나</td><td>노트북이 최신 <code>main</code>(<code>git status</code>)</td><td><a href="#pipeline">1절 3단계</a></td></tr>
+            <tr><td class="nowrap"><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>매달</span></td><td><svg class="ic ic--sm" aria-hidden="true"><use href="#i-folder"/></svg> <code>data\</code>와 <code>state\backups\</code>를 외장 디스크에 복사</td><td>복사 끝</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details class="more" id="schedule-ref">
+        <summary><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>회차 시각과 텔레그램 명령 (참고) <span class="more__meta"><code>config.toml</code> 기본값 · <code>bot/commands.py</code></span><svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+        <div class="more__body">
+          <div class="table-wrap">
+            <table class="dt">
+              <caption>회차 시각, 한계, 답장 창</caption>
+              <thead><tr><th>회차</th><th class="w-min">평일</th><th class="w-min">주말</th><th>이 시각이 지나면 보내지 않음</th><th>이때까지 답하면 같은 대화</th></tr></thead>
+              <tbody>
+                <tr><td><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침 브리핑</span></td><td class="tnum">09:00</td><td class="tnum">10:00</td><td>당일 12:00</td><td>당일 12:00</td></tr>
+                <tr><td><span class="loop loop--evening"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-moon"/></svg>저녁 체크인</span></td><td class="tnum">17:30</td><td class="tnum">18:00</td><td>다음 날 04:00</td><td>다음 날 04:00</td></tr>
+                <tr><td><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>주간 회고</span></td><td>—</td><td>일요일 18:00 (저녁 체크인과 한 메시지)</td><td>예정 + 3일</td><td>24시간</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">명령: <code>/today</code>, <code>/week</code>, <code>/status</code>, <code>/habits</code>, <code>/pause N</code>(1~14일), <code>/unpause</code>, <code>/plan 주제</code>, <code>/done</code>, <code>/help</code>. 비서가 먼저 보내는 메시지는 하루 최대 3회이고, 하루는 04:00에 바뀝니다.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ 13. 자동 복구 계획 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="medic" data-jump="자동 복구"><span class="section__no">13</span>자동 복구 운영 (계획, SP6)</h2>
+        <p class="section__lede">기준 커밋 722d0d6에는 스펙과 계획(이슈 #122~#133)만 있습니다. 그 뒤 SP6-01~05(#136 · #137 · #138 · #140 · #143)가 main에 들어왔고(기준 뒤 병합), 감시자·업데이터는 아직입니다. 생기면 노트북의 감시자·업데이터(<b>medic</b>)가 문제를 찾아 GitHub 이슈로 올리고, 클라우드의 Claude가 수리 PR을 만들고, medic이 배포와 롤백을 맡습니다.</p>
       </div>
       <div class="cols">
         <div class="doccard">
-          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span>
-          <span class="doccard__name">어떻게 알 수 있나</span>
-          <span class="doccard__desc">텔레그램으로 한 번만 이렇게 옵니다: <q class="src">데이터베이스에 문제가 있어요. 최신 백업으로 복구해야 해요. PC에서 README의 복구 절차를 따라 주세요.</q> 그 뒤로는 메시지에 답하지 않고 정해진 연락도 하지 않습니다. 로그에는 <code>safe_mode</code>가 남습니다.</span>
+          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-medic"/></svg></span>
+          <span class="doccard__name">감시자 (2분마다) <span class="pill st" data-s="planned">계획</span></span>
+          <span class="doccard__desc">로그의 오류, <code>/health</code> 연속 3번 실패, 회차가 15분 넘게 안 나감, 답이 10분 넘게 밀림을 지문으로 묶어 <code>incident</code> 이슈를 엽니다. 이슈에는 할 일 제목, 대화, 컨디션, 사용자 폴더 경로를 넣지 않습니다.</span>
         </div>
         <div class="doccard">
-          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-backup"/></svg></span>
-          <span class="doccard__name">무엇을 하나</span>
-          <span class="doccard__desc"><a href="#restore">백업에서 복구하기</a>의 네 단계를 그대로 합니다. 표식 파일 <code>state\integrity_notice_sent</code>를 지워야 다음 문제 때 다시 알림이 옵니다.</span>
+          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-rollback"/></svg></span>
+          <span class="doccard__name">업데이터 (5분마다) <span class="pill st" data-s="planned">계획</span></span>
+          <span class="doccard__desc">CI가 성공한 <code>main</code>만 받습니다. 배포 전 DB 백업 → 작업 끄기 → 받기 → 의존성 → 켜기 → 10분 확인. 안 되면 직전 커밋으로 되돌리고, 스키마가 바뀐 배포면 DB도 배포 전 백업으로 되돌립니다.</span>
+        </div>
+        <div class="doccard">
+          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-repair"/></svg></span>
+          <span class="doccard__name">클라우드 수리 <span class="pill st" data-s="planned">계획</span></span>
+          <span class="doccard__desc"><code>incident</code> 라벨이 붙으면 GitHub Actions가 재현 시험과 수정 PR을 만들고 CI 뒤 병합합니다. 같은 장애에 2번 안 되거나 하루 자동 병합이 3번이면 멈추고 <code>needs-dahun</code>을 붙여 한 번 알립니다.</span>
         </div>
       </div>
-      <div class="prose"><ul>
-        <li>안전 모드에서도 프로세스는 살아 있습니다. 그래야 작업 스케줄러가 계속 다시 띄우지 않습니다.</li>
-        <li>알림 전송이 실패하면 표식을 만들지 않고, 다음 시작 때 다시 보냅니다.</li>
-        <li>안전 모드에 들어가는 경우는 둘뿐입니다: <code>quick_check</code> 결과가 <code>ok</code>가 아니거나, <code>OperationalError</code>가 아닌 <code>DatabaseError</code>(“file is not a database” 등)가 났을 때입니다. 로그에는 <code>db_integrity_failed</code> 또는 <code>db_corrupt</code>가 먼저 남습니다.</li>
-        <li>디스크 I/O, 파일 잠금, 열기 오류(<code>OperationalError</code>)는 손상으로 보지 않습니다. 안전 모드로 가지 않고 프로세스가 0이 아닌 종료 코드로 끝나며(로그 <code>fatal_error</code>), 워치독이 5분 안에 다시 띄웁니다. 멀쩡한 DB를 백업으로 덮지 않기 위해서입니다. 계속 반복되면 로그의 <code>fatal_error</code>를 확인합니다.</li>
-      </ul></div>
-    </section>
-
-    <section class="section">
-      <div class="section__head">
-        <h2 id="notices" data-jump="알림 대응"><span class="section__no">8</span>로그인·결제·한도 알림</h2>
-        <p class="section__lede">이 안내들은 비서가 먼저 보내는 하루 3회에 세지 않습니다. 문구는 코드 원문입니다. 로그인·결제·사용 한도 중에 Dahun이 메시지를 보내면 <b>메시지마다</b> 그 안내로 답하고, 비서가 먼저 보내는 안내만 하루(사용 한도는 한도 구간)에 한 번입니다.</p>
-      </div>
-      <div class="table-wrap">
-        <table class="dt">
-          <caption>고정 안내와 할 일</caption>
-          <thead><tr><th>안내 (원문)</th><th>뜻</th><th>그동안</th><th>할 일</th></tr></thead>
-          <tbody>
-            <tr><td><q class="src">Claude 로그인이 풀렸어요. PC에서 Claude Code에 다시 로그인해 주세요.</q></td><td>구독 로그인 만료</td><td>먼저 보내는 알림은 하루 한 번, 메시지에는 매번 이 안내로 답함. 그 사이 회차는 건너뛰고(<code>auth</code>) 다시 보내지 않음</td><td>PC 터미널에서 <code>claude</code>를 실행하고 <code>/login</code>. 다음 메시지부터 정상</td></tr>
-            <tr><td><q class="src">Claude 계정이나 결제 상태를 확인해야 해요. PC에서 Claude 계정을 살펴봐 주세요.</q></td><td>계정·결제 문제</td><td>위와 같음</td><td>Claude 계정의 구독·결제 상태를 확인</td></tr>
-            <tr><td><q class="src">지금은 Claude 사용 한도에 닿았어요. {재개}쯤 다시 이야기할 수 있어요. 명령(/today)은 계속 쓸 수 있어요.</q></td><td>구독 사용 한도. {재개}는 “21:30”이나 “10월 30일 09:00” 형식</td><td>먼저 보내는 알림은 한도 구간마다 한 번, 메시지에는 매번 이 안내로 답함. 그 시각까지 회차는 건너뜀(<code>rate_limit</code>). 명령은 동작</td><td>기다립니다. 재개 시각이 지나면 저절로 돌아옵니다</td></tr>
-            <tr><td><q class="src">오늘은 여기까지 생각을 아껴 둘게요. 명령(/today)은 계속 쓸 수 있어요.</q></td><td>하루 두뇌 호출 60회 상한</td><td>회차는 건너뜀(<code>daily_cap</code>). 명령은 동작</td><td>다음 논리적 날짜(04:00)에 풀립니다. 자주 닿으면 <code>config.toml</code>의 <code>daily_brain_calls</code>를 검토</td></tr>
-            <tr><td><q class="src">지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요.</q></td><td>두뇌 오류(한 번 생각이 300초를 넘은 경우 포함). 할 일을 아직 바꾸지 않았으면 2·4·8초 뒤 세 번 더 해 보고도 안 됨</td><td>그 메시지만 실패</td><td>조금 뒤 다시 말합니다. 반복되면 로그의 결과 상태를 확인</td></tr>
-            <tr><td><q class="src">정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요.</q></td><td>한 번에 도구를 너무 많이 부름(<code>max_turns</code> 10)</td><td>그때까지 바꾼 내용은 확인 문구로 함께 옴</td><td>“계속해 줘”처럼 이어서 말합니다</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section__head">
-        <h2 id="power" data-jump="절전·전원"><span class="section__no">9</span>절전, 전원, 깨우기</h2>
-        <p class="section__lede">스파이크 S4·S6에서 이 노트북으로 확인한 사실입니다.</p>
-      </div>
-      <div class="table-wrap">
-        <table class="dt">
-          <caption>전원 상태별 동작</caption>
-          <thead><tr><th class="w-min">상태</th><th>깨우기 타이머</th><th>결과</th></tr></thead>
-          <tbody>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-power"/></svg> AC 전원, 절전</td><td><span class="pill verdict" data-s="pass">확인됨</span></td><td>회차 5분 전에 깨어납니다(S4 성공)</td></tr>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-laptop"/></svg> 배터리, 절전</td><td><span class="pill verdict" data-s="blocked">꺼져 있음</span></td><td>전원 옵션의 배터리 “절전 모드 해제 타이머 허용”이 “사용 안 함”이라 깨우지 못합니다. 다음에 켜질 때 따라잡기로 보냅니다</td></tr>
-            <tr><td class="nowrap"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-laptop"/></svg> 덮개 닫힘</td><td><span class="pill verdict" data-s="notrun">미확인</span></td><td>덮개를 닫으면 AC·배터리 모두 절전입니다. 깨어나는지는 아직 확인하지 않았습니다(Dahun 결정으로 나중에)</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="prose"><ul>
-        <li>이 노트북은 전통적인 S3 대기입니다(Modern Standby 아님). 절전 중에는 네트워크가 끊기고 프로세스가 멈춥니다. 깨어나면 <a href="glossary.html#catch_up">따라잡기</a>가 놓친 회차를 한계 안이면 보내고, 지났으면 건너뜁니다.</li>
-        <li>24시간 넘게 꺼져 있었으면 밀린 연락 대신 <a href="glossary.html#return">복귀 인사</a> 하나만 보냅니다.</li>
-        <li>깨어나면 비서가 텔레그램 연결을 다시 시작합니다(직전 tick과 3분 넘게 차이 나면). 로그에 <code>resume_detected</code>, <code>polling_restarted</code>가 남습니다.</li>
-        <li>두뇌가 생각하고 메시지를 보내는 동안에는 비서가 절전을 막고, 끝나면 풉니다.</li>
-        <li>배터리에서도 깨우려면: 제어판 &gt; 전원 옵션 &gt; 설정 변경 &gt; 고급 전원 관리 옵션 변경 &gt; 절전 &gt; 절전 모드 해제 타이머 허용 &gt; 배터리 사용을 “사용”으로 바꿉니다. 비서는 이 설정을 바꾸지 않습니다.</li>
-        <li>프로세스가 죽으면 “실패 시 재시작” 설정이 아니라 5분 워치독 트리거가 다시 띄웁니다(S6). 최악의 경우 5분 뒤입니다.</li>
-        <li>텔레그램은 받아 가지 않은 메시지를 24시간까지만 보관합니다. PC가 24시간 넘게 꺼져 있었다면 그동안 보낸 메시지는 사라질 수 있습니다.</li>
-        <li>노트북이 잠든 동안 보낸 답도 <b>보낸 시각</b>으로 판단해, 그 시각에 답하던 회차 대화로 이어집니다(예: 03:00에 보낸 저녁 체크인 답을 09:30에 받아도 저녁 대화).</li>
-      </ul></div>
-
-      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>답하는 도중 꺼지면</h3>
-      <div class="prose"><ul>
-        <li>받은 메시지는 답하기 전에 DB(<code>inbound_pending</code>)에 가린 글로 먼저 저장합니다. 답하는 도중 PC가 꺼지거나 로그오프해도 다음에 켜질 때 그 메시지에 답합니다. 할 일 변경은 두 번 되지 않습니다.</li>
-        <li>드물게 같은 답이 두 번 올 수 있습니다(보낸 직후, 처리 완료를 적기 전에 꺼진 경우). 메시지를 받은 직후 몇 밀리초 안에 꺼지면 그 메시지는 사라질 수 있습니다.</li>
-        <li>다시 처리해도 답하지 못한 메시지는 세 번까지 다시 해 보고, 그다음에는 버리고 로그에 <code>inbound_dropped</code>만 남깁니다.</li>
-        <li>답을 텔레그램으로 보낼 때는 바로 3번(1초, 2초 간격)까지 해 봅니다. 그래도 안 되면 그 답은 다음에 프로그램이 시작될 때 보냅니다(로그 <code>message_send_failed</code>). 그 전에는 다시 보내지 않으므로 늦게 도착할 수 있습니다.</li>
-        <li>한 번의 생각(두뇌 호출)이 300초를 넘으면 멈추고 오류로 봅니다. 할 일을 아직 바꾸지 않았을 때만 다시 해 봅니다. 깨어난 직후 연결이 반쯤 끊겨 비서 전체가 멈추는 일을 막습니다.</li>
-      </ul></div>
-    </section>
-
-    <section class="section">
-      <div class="section__head">
-        <h2 id="trouble" data-jump="문제 해결"><span class="section__no">10</span>문제 해결</h2>
-        <p class="section__lede">먼저 비서가 보낸 고정 안내가 있는지 보고, 없으면 작업이 도는지 확인합니다.</p>
-      </div>
-      <figure class="fig">
-        <div class="fig__head"><span class="fig__no"></span><span class="fig__title">문제 판단 순서</span><span class="fig__std">flowchart (결정 트리)</span></div>
-        <div class="fig__body fig__body--wide" style="--fig-min:900px">
-<pre class="mermaid">
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'IBM Plex Sans KR, Noto Sans KR, sans-serif','fontSize':'14px','primaryColor':'#DDEFEC','primaryBorderColor':'#0E6B63','primaryTextColor':'#15222A','secondaryColor':'#EBF0F2','secondaryBorderColor':'#A9B7BE','secondaryTextColor':'#15222A','tertiaryColor':'#FFFFFF','tertiaryBorderColor':'#D3DCE0','tertiaryTextColor':'#15222A','lineColor':'#42525B','textColor':'#15222A','mainBkg':'#DDEFEC','nodeBorder':'#0E6B63','clusterBkg':'#F5F7F8','clusterBorder':'#A9B7BE','edgeLabelBackground':'#FFFFFF','titleColor':'#15222A','actorBkg':'#DDEFEC','actorBorder':'#0E6B63','actorTextColor':'#15222A','actorLineColor':'#A9B7BE','signalColor':'#42525B','signalTextColor':'#15222A','labelBoxBkgColor':'#EBF0F2','labelBoxBorderColor':'#A9B7BE','labelTextColor':'#15222A','loopTextColor':'#15222A','noteBkgColor':'#FAEFD3','noteBorderColor':'#8F5C00','noteTextColor':'#15222A','activationBkgColor':'#DFE6E9','activationBorderColor':'#42525B','sequenceNumberColor':'#FFFFFF'}}}%%
-flowchart TD
-  Q0(("이상하다")) --> Q1{"비서가 보낸<br/>고정 안내가 있나?"}
-  Q1 -- "데이터베이스에 문제" --> A1["안전 모드<br/>백업에서 복구"]
-  Q1 -- "로그인이 풀렸어요" --> A2["터미널에서 claude 실행 후 /login"]
-  Q1 -- "계정이나 결제" --> A3["Claude 계정과 결제 상태 확인"]
-  Q1 -- "사용 한도에 닿았어요" --> A4["안내된 시각까지 기다리기<br/>/today는 됨"]
-  Q1 -- "오늘은 여기까지" --> A5["하루 60회 상한<br/>새벽 4시 뒤 풀림"]
-  Q1 -- "안내 없음" --> Q2{"check_tasks.ps1에서<br/>State is Running이 OK?"}
-  Q2 -- 아니오 --> A6["Start-ScheduledTask<br/>로그의 starting 확인"]
-  Q2 -- 예 --> Q3{"내 메시지에는<br/>답하나?"}
-  Q3 -- 예 --> A7["정해진 연락만 안 옴<br/>멈춤, 전원, 하루 3회 확인"]
-  Q3 -- 아니오 --> A8["로그 확인 후 다시 시작<br/>.env의 토큰과 ID 확인"]
-  classDef done fill:#E0F1E5,stroke:#1D7539,color:#15222A
-  classDef skip fill:#EBF0F2,stroke:#5E6E77,color:#15222A,stroke-dasharray:4 3
-  classDef fail fill:#FBE5E2,stroke:#B3261E,color:#15222A,stroke-width:2px
-  classDef warn fill:#FAEFD3,stroke:#8F5C00,color:#15222A
-  classDef key  fill:#FFFFFF,stroke:#0E6B63,color:#15222A,stroke-width:2px
-  classDef ext  fill:#FFFFFF,stroke:#A9B7BE,color:#42525B,stroke-dasharray:2 2
-  class A1,A6,A8 warn
-  class A4,A5,A7 skip
-</pre>
-        </div>
-        <figcaption class="fig__cap">안내 문구가 있으면 그 문구가 원인을 알려 줍니다. 안내가 없으면 작업 상태 → 메시지 응답 순서로 좁혀 갑니다. 노란 면 = 직접 손볼 일, 회색 점선 = 기다리거나 설정만 확인. <span class="fig__scrollhint">좌우로 밀어 볼 수 있습니다.</span></figcaption>
-      </figure>
+      <h3 class="h-group"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Dahun이 나중에 넣을 비밀값과 설정 (이름만)</h3>
       <div class="table-wrap table-wrap--scroll">
         <table class="dt">
-          <caption>증상 → 원인 → 할 일</caption>
-          <thead><tr><th>증상</th><th>원인</th><th>할 일</th></tr></thead>
+          <caption>자동 복구용 이름 (SP6 자동 복구 스펙 8장)</caption>
+          <thead><tr><th class="w-min">이름</th><th class="w-min">어디</th><th>무엇</th><th class="w-min">상태</th></tr></thead>
           <tbody>
-            <tr><td>봇이 아무것에도 답하지 않음</td><td>프로세스가 안 돎, 또는 안전 모드</td><td><code>check_tasks.ps1</code>로 <code>State is Running</code> 확인 → 아니면 <code>Start-ScheduledTask -TaskName my-planner</code>. 로그 <code>state\logs\my-planner.jsonl</code>에서 <code>starting</code>, <code>safe_mode</code>, <code>fatal_error</code>를 찾습니다</td></tr>
-            <tr><td>콘솔에서 띄웠더니 바로 꺼짐</td><td>이미 다른 비서가 실행 중(단일 실행 잠금)</td><td>정상입니다. 작업 스케줄러가 띄운 비서가 돌고 있습니다</td></tr>
-            <tr><td>점검에서 <code>State is Running</code>만 FAIL</td><td>콘솔 비서를 켜 둔 채 등록함</td><td>콘솔에서 Ctrl+C → <code>Start-ScheduledTask -TaskName my-planner</code> → 다시 점검</td></tr>
-            <tr><td>점검에서 깨우기 트리거 FAIL</td><td><code>config.toml</code> 시각을 바꾼 뒤 등록을 다시 안 함</td><td>등록 스크립트를 다시 실행</td></tr>
-            <tr><td>다른 계정이나 그룹에서 보내면 답이 없음</td><td>주인 ID의 개인 채팅에만 답하도록 설계됨</td><td>정상입니다. 본인 계정이 무시되면 <code>.env</code>의 <code>OWNER_TELEGRAM_ID</code>가 숫자 ID인지 확인</td></tr>
-            <tr><td>아침 브리핑이나 저녁 체크인이 안 옴</td><td>멈춤 중, 노트북이 꺼짐·배터리 절전, 한계 시각이 지남, 오늘 이미 3회 보냄, 계획 모드 중</td><td><code>/unpause</code>로 멈춤 확인(멈춤 중이 아니면 그렇다고 답함). 전원 케이블 연결. 계획 중이면 <code>/done</code>. 한계가 지난 회차는 건너뛰는 것이 정상입니다</td></tr>
-            <tr><td>오래 꺼 뒀다 켰더니 인사 하나만 옴</td><td>24시간 넘는 공백은 복귀 인사 하나로 묶음</td><td>정상입니다</td></tr>
-            <tr><td>꺼져 있는 동안 보낸 메시지에 답이 없음</td><td>텔레그램은 24시간까지만 보관</td><td>다시 보냅니다</td></tr>
-            <tr><td>답하는 도중 PC를 껐는데 답이 없었음</td><td>켜질 때 다시 처리합니다(<code>inbound_pending</code>)</td><td>다음에 켜면 답이 옵니다. 같은 답이 두 번 오면 무시해도 됩니다. 세 번 시작해도 답이 없으면 로그의 <code>inbound_dropped</code>를 확인하고 다시 보냅니다</td></tr>
-            <tr><td>답이 한참 뒤에(다음에 켰을 때) 옴</td><td>텔레그램 전송이 3번 다 실패해 다음 시작 때 보냄</td><td>정상입니다. 로그의 <code>message_send_failed</code>로 확인합니다</td></tr>
-            <tr><td><q class="src">데이터베이스에 문제가 있어요.</q></td><td>DB 검사(<code>quick_check</code>) 실패 또는 손상 → 안전 모드</td><td><a href="#restore">백업에서 복구하기</a></td></tr>
-            <tr><td><q class="src">Claude 로그인이 풀렸어요.</q> 또는 결제 안내</td><td>구독 로그인·결제</td><td><a href="#notices">알림 대응</a> 표</td></tr>
-            <tr><td><q class="src">사용 한도에 닿았어요</q> · <q class="src">오늘은 여기까지</q></td><td>사용 한도 또는 하루 60회 상한</td><td>기다립니다. 명령은 계속 됩니다</td></tr>
-            <tr><td>버튼을 눌렀더니 <q class="src">이미 정리된 할 일이에요.</q></td><td>이미 확정했거나 뺀 초안</td><td>정상입니다. <code>/today</code>로 확인</td></tr>
-            <tr><td>사진을 보냈더니 <q class="src">지금은 글로만 이야기할 수 있어요.</q></td><td>SP1은 글만 받음</td><td>글로 보냅니다</td></tr>
-            <tr><td>밤에 노트북이 깨어나지 않음</td><td>배터리 상태이거나 덮개를 닫음</td><td>AC 전원에 연결. 배터리에서도 원하면 9절의 전원 옵션 변경</td></tr>
-            <tr><td>Windows Terminal 창이 잠깐씩 뜸</td><td>창 숨김이 안 되는 Windows 버전</td><td>로그에 <code>console_hide_unavailable</code>가 있는지 확인하고 이슈로 남깁니다</td></tr>
+            <tr><td class="id"><code>CLAUDE_CODE_OAUTH_TOKEN</code></td><td class="nowrap">저장소 시크릿</td><td>클라우드 수리용 Claude 로그인(노트북에서 <code>claude setup-token</code>)</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
+            <tr><td class="id"><code>REPAIR_PAT</code></td><td class="nowrap">저장소 시크릿</td><td>수리 PR·병합용 GitHub 토큰(권한은 스펙 4.2)</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
+            <tr><td class="id"><code>TELEGRAM_BOT_TOKEN</code> · <code>OWNER_TELEGRAM_ID</code></td><td class="nowrap">저장소 시크릿</td><td><code>.env</code>와 같은 이름. 하트비트가 끊기면 Actions가 직접 알림</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
+            <tr><td class="id"><code>AUTO_REPAIR</code></td><td class="nowrap">저장소 변수</td><td><code>on</code>/<code>off</code>. 자동 수리를 끄는 스위치</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
+            <tr><td class="id"><code>REPAIR_MAX_FAILURES</code> · <code>REPAIR_MAX_MERGES_PER_DAY</code> · <code>PAT_EXPIRES</code></td><td class="nowrap">저장소 변수</td><td>실패 한도(기본 2), 하루 병합 한도(기본 3), 토큰 만료일</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
+            <tr><td class="id"><code>MEDIC_GITHUB_TOKEN</code></td><td class="nowrap">노트북 <code>.env</code></td><td>medic이 이슈를 열고 CI 결과를 읽는 토큰</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
+            <tr><td class="id"><code>config.medic.toml</code></td><td class="nowrap">Git</td><td>감시 간격 120초, 배포 간격 300초, 확인 10분 등 노트북 쪽 값(비밀 아님)</td><td><span class="pill st" data-s="planned">계획</span></td></tr>
           </tbody>
         </table>
       </div>
+      <aside class="callout callout--info">
+        <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+        <div class="callout__body"><span class="callout__title">생기기 전까지는</span><span>지금은 1절 3단계의 손 배포와 이 문서의 결정 트리로 운영합니다. medic이 생기면 손으로 <code>git pull</code>하던 일이 없어지고, 작업 스케줄러에 <code>my-planner-medic</code>이 더해집니다. 노트북이 꺼진 채 회차 시각이 지나면 텔레그램으로 “노트북 응답 없음”이 하루 한 번 옵니다.</span></div>
+      </aside>
     </section>
 
+    <!-- ============ 14. 제거 ============ -->
     <section class="section">
       <div class="section__head">
-        <h2 id="uninstall" data-jump="제거"><span class="section__no">11</span>제거</h2>
-        <p class="section__lede">작업 두 개를 지우면 비서는 더 이상 뜨지 않습니다. 데이터는 직접 지우기 전까지 남습니다.</p>
+        <h2 id="uninstall" data-jump="제거"><span class="section__no">14</span>제거</h2>
+        <p class="section__lede">작업을 지우면 비서는 더 이상 뜨지 않습니다. 데이터는 직접 지우기 전까지 남습니다.</p>
       </div>
-      <ol class="steps">
-        <li><span class="steps__title">작업 멈추고 지우기</span><span class="steps__body">
 <pre class="code"><code>Stop-ScheduledTask -TaskName my-planner
 Unregister-ScheduledTask -TaskName my-planner -Confirm:$false
-Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false</code></pre></span></li>
-        <li><span class="steps__title">데이터 보관 여부 정하기</span><span class="steps__body"><span>필요하면 <code>data\</code>와 <code>state\backups\</code>를 외장 디스크에 복사해 둡니다. 저장소 폴더 <code>E:\my-planner</code>를 지우면 할 일, 원문 기록, 백업이 모두 사라집니다.</span></span></li>
-        <li><span class="steps__title">세션 사본 지우기 (선택)</span><span class="steps__body"><span><code>%USERPROFILE%\.claude\projects\</code>에서 my-planner 관련 하위 폴더를 지웁니다.</span></span></li>
-        <li><span class="steps__title">토큰 무효로 하기 (선택)</span><span class="steps__body"><span>봇을 다시 쓰지 않을 거라면 BotFather에서 <code>/revoke</code>로 토큰을 바꿔 옛 토큰을 쓸 수 없게 합니다.</span></span></li>
-      </ol>
+Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
+tailscale serve --https=443 --set-path=/api off</code></pre>
+      <p class="table-note">필요하면 <code>data\</code>와 <code>state\backups\</code>를 먼저 외장 디스크에 복사합니다. 봇을 다시 쓰지 않으면 BotFather에서 <code>/revoke</code>, Vercel 두 프로젝트도 지웁니다.</p>
+    </section>
+
+    <!-- ============ 15. 미정 ============ -->
+    <section class="section">
+      <div class="section__head">
+        <h2 id="tbd" data-jump="미정"><span class="section__no">15</span>미정 · 확인 필요</h2>
+      </div>
+      <aside class="callout callout--tbd">
+        <svg class="ic" aria-hidden="true"><use href="#i-question"/></svg>
+        <div class="callout__body"><span class="callout__title">이 문서에서 확인하지 못한 것</span><span>
+          <ul>
+            <li>PowerShell 스크립트(<code>register_task.ps1</code>, <code>check_tasks.ps1</code>)의 노트북 실행 결과(이슈 #16)와 배터리·덮개 깨우기.</li>
+            <li><code>tailscale serve ... off</code>로 <code>/api</code> 항목만 지우는 명령은 README에 없어, Tailscale 문서대로 적었습니다. 실행 전 <code>tailscale serve status</code>로 확인합니다.</li>
+            <li>대시보드에서 <code>NEXT_PUBLIC_CONNECT_SRC</code> 없이 빌드가 멈추는 것은 같은 코드(<code>next.config.mjs</code>)로 보았고, 직접 빌드하지는 않았습니다.</li>
+            <li>“비서 상태” 화면의 정확한 글(“보냄” 등)은 대시보드 화면설계서를 따릅니다.</li>
+            <li>자동 복구(13절)는 스펙 단계라 이름과 기본값이 구현 중에 바뀔 수 있습니다.</li>
+          </ul>
+        </span></div>
+      </aside>
     </section>
 
   </main>
@@ -569,30 +854,25 @@ Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false</code></pre><
     <div>
       <h2>원천 자료</h2>
       <ul class="sources">
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>설치·실행·작업 스케줄러·데이터 위치·백업 복구 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/README.md" target="_blank" rel="noopener"><code>README.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>회차 시각과 상한 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/config.toml" target="_blank" rel="noopener"><code>config.toml</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>설정 읽기 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/config.py" target="_blank" rel="noopener"><code>src/my_planner/config.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>명령과 응답 문구 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/bot/commands.py" target="_blank" rel="noopener"><code>src/my_planner/bot/commands.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>고정 안내 문구 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/harness/dispatcher.py" target="_blank" rel="noopener"><code>src/my_planner/harness/dispatcher.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>안전 모드·받은 메시지 다시 넣기 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/app.py" target="_blank" rel="noopener"><code>src/my_planner/app.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>다시 넣기 상한 inbound_dropped <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/src/my_planner/loop/runner.py" target="_blank" rel="noopener"><code>src/my_planner/loop/runner.py</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>등록 스크립트 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/scripts/register_task.ps1" target="_blank" rel="noopener"><code>scripts/register_task.ps1</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>점검 스크립트 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/scripts/check_tasks.ps1" target="_blank" rel="noopener"><code>scripts/check_tasks.ps1</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 §5.1 프로세스 수명, §5.2 전달 보장, §5.6 명령, §7 운영 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>스파이크 기록 S0·S4·S5·S6 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/spikes/2026-10-sp1.md" target="_blank" rel="noopener"><code>docs/spikes/2026-10-sp1.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>7일 수용 테스트 체크리스트 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/acceptance/sp1-checklist.md" target="_blank" rel="noopener"><code>docs/acceptance/sp1-checklist.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>설치, 실행, 작업 스케줄러, API 열기, 운영 앱, 대시보드, 시드, 데이터 위치, 백업 복구 <code>README.md</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span><code>.env</code> 키 이름 <code>.env.example</code>, 허용 출처 <code>config.toml</code> <code>[api]</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>Vercel 설정 <code>web/app/vercel.json</code>, <code>web/dashboard/vercel.json</code>, 빌드 검사 <code>next.config.mjs</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>로그 이벤트 <code>src/my_planner/app.py</code>, <code>src/my_planner/api/server.py</code>, 명령 <code>src/my_planner/cli.py</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 §5.1, §7 운영 · SP3-4 스펙 §6.1, §12, §14 · SP5 스펙 §11 배포</span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP6 자동 복구 스펙 §1~§5, §8 비밀값과 설정, §9 단계 <code>docs/superpowers/specs/2026-10-24-sp6-auto-recovery-design.md</code></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-test"/></svg><span>빌드 멈춤 확인: 2026-10-24 <code>web/app</code>에서 환경 변수 없이 <code>next build</code> (<a href="test-report.html#results">시험 결과서 2절</a>)</span></li>
       </ul>
     </div>
     <div>
       <h2>관련 문서</h2>
       <ul class="sources">
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-test"/></svg><a href="test-report.html">테스트 계획·결과서</a></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-flow"/></svg><a href="process-flows.html">업무 흐름도</a></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-screen"/></svg><a href="screens.html">화면설계서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-test"/></svg><a href="test-report.html">시험 결과서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-architecture"/></svg><a href="architecture.html">아키텍처 정의서</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-interface"/></svg><a href="interfaces.html">인터페이스 정의서</a></li>
         <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-glossary"/></svg><a href="glossary.html">용어집</a></li>
       </ul>
     </div>
-    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23 · main 0336f4d</span><a href="index.html">산출물 지도로</a></div>
+    <div class="site-foot__fine"><span>my-planner · 전체 시스템 산출물 v2</span><span class="tnum">작성 2026-10-24 · main 722d0d6</span><a href="index.html">산출물 지도로</a></div>
   </div>
 </footer>
 <script src="assets/site.js" defer></script>
