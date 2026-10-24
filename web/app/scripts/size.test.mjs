@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { firstScreenChunks } from "./size.mjs";
 
@@ -15,7 +16,7 @@ afterEach(() => {
   dirs = [];
 });
 
-function outWith(chunks) {
+function outWith(chunks, later = {}) {
   const dir = mkdtempSync(join(tmpdir(), "size-"));
   dirs.push(dir);
   mkdirSync(join(dir, "_next/static/chunks"), { recursive: true });
@@ -23,6 +24,11 @@ function outWith(chunks) {
     writeFileSync(join(dir, "_next/static/chunks", name), bytes);
     return `<script src="/_next/static/chunks/${name}" defer=""></script>`;
   });
+  // Chunks the first screen does not load (the chat sheet's, read with import() later).
+  for (const [name, bytes] of Object.entries(later)) {
+    mkdirSync(join(dir, "_next/static/chunks", name, ".."), { recursive: true });
+    writeFileSync(join(dir, "_next/static/chunks", name), bytes);
+  }
   writeFileSync(join(dir, "index.html"), `<html><head>${tags.join("")}</head></html>`);
   return dir;
 }
@@ -53,5 +59,38 @@ describe("size", () => {
     const big = run(outWith({ "a.js": randomBytes(120 * 1024), "b.js": randomBytes(70 * 1024) }));
     expect(big.status).toBe(1);
     expect(big.stderr).toMatch(/^OVER [\d.]+KB > 180KB/m);
+  });
+
+  it("prints chat chunk line", () => {
+    const chat = `self.x=1;registerParts({},"sp6-chat-parts");${"y".repeat(5000)}`;
+    const r = run(outWith({ "a.js": "self.a=1" }, { "b.js": chat, "c.js": "self.c=1" }));
+    expect(r.status).toBe(0);
+    const kb = (gzipSync(Buffer.from(chat), { level: 9 }).length / 1024).toFixed(1);
+    const line = r.stdout.split("\n").find((l) => l.startsWith("chat sheet chunk:"));
+    expect(line).toBe(`chat sheet chunk: ${kb} KB (chunks/b.js)`);
+    // It comes right after the first-screen total.
+    const lines = r.stdout.trim().split("\n");
+    expect(lines[lines.length - 2]).toMatch(/^OK /);
+    expect(lines[lines.length - 1]).toBe(line);
+  });
+
+  it("unknown when no chunk has the marker", () => {
+    const r = run(outWith({ "a.js": "self.a=1" }, { "b.js": "self.b=1" }));
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/^chat sheet chunk: unknown$/m);
+  });
+
+  it("first-screen chunk with marker is not counted", () => {
+    const r = run(outWith({ "a.js": 'x("sp6-chat-parts")' }, { "nested/b.js": 'y("sp6-chat-parts")' }));
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/^chat sheet chunk: [\d.]+ KB \(chunks\/nested\/b\.js\)$/m);
+    const only = run(outWith({ "a.js": 'x("sp6-chat-parts")' }));
+    expect(only.stdout).toMatch(/^chat sheet chunk: unknown$/m);
+  });
+
+  it("the chat line never changes the exit code", () => {
+    const big = run(outWith({ "a.js": randomBytes(190 * 1024) }, { "b.js": '"sp6-chat-parts"' }));
+    expect(big.status).toBe(1);
+    expect(big.stdout).toMatch(/^chat sheet chunk: /m);
   });
 });
