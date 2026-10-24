@@ -7,7 +7,7 @@ from datetime import timedelta
 
 import jsonschema
 from be_env import BeEnv
-from fakes import FAKE_VAPID, FakePushSender, FakeTurn
+from fakes import FAKE_AUTH, FAKE_P256DH, FAKE_VAPID, FakePushSender, FakeTurn
 from test_delivery import EP_A, EP_B, _start
 from test_dispatcher_messages import kst
 
@@ -15,15 +15,37 @@ from my_planner.api.models import schema_bundle
 from my_planner.logging_setup import setup_logging
 
 SECRET_EP = "https://push.example.invalid/sub/SECRET-ENDPOINT-fake-0123"
-SECRET_P256 = "SECRET-P256DH-fake"
-SECRET_AUTH = "SECRET-AUTH-fake"
+
+
+def _point(n):
+    """꾸며 낸 P-256 공개점(base64url 65바이트). `n`은 작은 비밀값."""
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    raw = ec.derive_private_key(n, ec.SECP256R1()).public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def _b64(raw):
+    import base64
+
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+SECRET_P256 = _point(777)
+SECRET_AUTH = _b64(b"SECRET-AUTH-16by")
+NEW_P256 = _point(4242)
 
 
 def _valid(model, body):
     jsonschema.Draft202012Validator(schema_bundle()["models"][model]).validate(body)
 
 
-def _sub_body(endpoint, *, p256dh="fake-p256dh", auth="fake-auth", label="폰"):
+def _sub_body(endpoint, *, p256dh=FAKE_P256DH, auth=FAKE_AUTH, label="폰"):
     return {"endpoint": endpoint, "expirationTime": None, "keys": {"p256dh": p256dh, "auth": auth}, "label": label}
 
 
@@ -52,7 +74,7 @@ async def test_subscribe_same_endpoint_same_id(tmp_path):
     async with BeEnv.start(tmp_path, start=_start(), push=FakePushSender()) as env:
         first = await env.post("/push/subscriptions", json=_sub_body(EP_A))
         first_body = await first.json()
-        again = await env.post("/push/subscriptions", json=_sub_body(EP_A, p256dh="new-p256dh", label="새 폰"))
+        again = await env.post("/push/subscriptions", json=_sub_body(EP_A, p256dh=NEW_P256, label="새 폰"))
         again_body = await again.json()
         other = await (await env.post("/push/subscriptions", json=_sub_body(EP_B, label=None))).json()
         bad = await env.post("/push/subscriptions", json={"endpoint": EP_A, "keys": {"p256dh": "x"}})
@@ -65,7 +87,7 @@ async def test_subscribe_same_endpoint_same_id(tmp_path):
     _valid("PushSubscribed", first_body)
     assert again_body == first_body and other["id"] != first_body["id"]
     assert [(r["id"], r["p256dh"], r["label"]) for r in rows] == [
-        (first_body["id"], "new-p256dh", "새 폰"), (other["id"], "fake-p256dh", None)]
+        (first_body["id"], NEW_P256, "새 폰"), (other["id"], FAKE_P256DH, None)]
     assert bad.status == 400 and EP_A not in bad_text
     assert not_https.status == 400
     assert kinds == [
@@ -201,3 +223,68 @@ def test_settings_vapid_only_when_all_three(tmp_path, monkeypatch):
 
     (tmp_path / ".env").write_text(base + "VAPID_PUBLIC_KEY=BFakePub\nVAPID_PRIVATE_KEY=\n", encoding="utf-8")
     assert load_settings(tmp_path).vapid is None
+
+
+async def test_subscribe_rejects_malformed_keys(tmp_path):
+    """`p256dh`는 비압축 P-256 점 65바이트, `auth`는 16바이트(base64url). 그 밖은 400이고 값은 답에 없다."""
+    bad_keys = [
+        {"p256dh": "not base64!", "auth": FAKE_AUTH},
+        {"p256dh": _b64(b"\x04" + b"\x01" * 64), "auth": FAKE_AUTH},  # 65바이트지만 곡선 위의 점이 아니다
+        {"p256dh": _b64(b"\x02" + b"\x01" * 32), "auth": FAKE_AUTH},  # 압축 점
+        {"p256dh": FAKE_P256DH[:-4], "auth": FAKE_AUTH},  # 짧다
+        {"p256dh": FAKE_P256DH, "auth": _b64(b"x" * 15)},
+        {"p256dh": FAKE_P256DH, "auth": _b64(b"x" * 32)},
+        {"p256dh": FAKE_P256DH, "auth": "a"},  # base64url 길이가 틀렸다
+    ]
+    async with BeEnv.start(tmp_path, start=_start(), push=FakePushSender()) as env:
+        results = []
+        for keys in bad_keys:
+            resp = await env.post("/push/subscriptions", json={"endpoint": EP_A, "keys": keys})
+            results.append((resp.status, await resp.json()))
+        ok = await env.post("/push/subscriptions", json=_sub_body(EP_A))
+        count = _rows(env, "SELECT COUNT(*) AS n FROM push_subscriptions")[0]["n"]
+
+    for status, body in results:
+        assert status == 400 and body["error"]["code"] == "invalid_request"
+        assert EP_A not in json.dumps(body) and FAKE_P256DH[:20] not in json.dumps(body)
+    assert ok.status == 201 and count == 1
+
+
+def test_secrets_hidden_from_repr():
+    from pydantic import ValidationError
+
+    from my_planner.api.models import PushSubscribeBody
+    from my_planner.tools.actions import ActionRequest
+
+    body = PushSubscribeBody.model_validate(_sub_body(SECRET_EP, p256dh=SECRET_P256, auth=SECRET_AUTH))
+    req = ActionRequest("push_subscribe", {"endpoint": SECRET_EP, "p256dh": SECRET_P256, "auth": SECRET_AUTH},
+                        actor="user", channel="app", endpoint="push")
+    try:
+        PushSubscribeBody.model_validate({"endpoint": SECRET_EP, "keys": {"p256dh": SECRET_AUTH, "auth": SECRET_P256}})
+    except ValidationError as e:
+        err = str(e)
+    else:
+        raise AssertionError("검증이 실패해야 한다")
+    for text in (repr(body), str(body), repr(body.keys), repr(req), err):
+        for secret in (SECRET_EP, SECRET_P256, SECRET_AUTH):
+            assert secret not in text
+    assert "push_subscribe" in repr(req) and "label" in repr(body)
+
+
+async def test_push_test_failures_do_not_count_but_notices_do(tmp_path):
+    push = FakePushSender({EP_B: [410]})
+    push.always(EP_A, 503)
+    async with BeEnv.start(tmp_path, start=_start(), push=push) as env:
+        a = await env.subscribe(EP_A)
+        b = await env.subscribe(EP_B)
+        bodies = [await (await env.post("/push/test")).json() for _ in range(6)]  # 일시 장애 중에 여러 번 눌러도
+        after_tests = {r["id"]: r for r in _rows(env, "SELECT * FROM push_subscriptions")}
+        tries_before_notice = len(push.sent)
+        got = await env.parts.delivery.deliver_notice("꾸민 안내")  # 고정 안내: 전달 하나에 실패 하나
+        after_notice = _rows(env, "SELECT failure_count, disabled_at FROM push_subscriptions WHERE id = ?", a)[0]
+
+    assert bodies[0] == {"ok": 0, "failed": 2} and bodies[1:] == [{"ok": 0, "failed": 1}] * 5
+    assert (after_tests[a]["failure_count"], after_tests[a]["disabled_at"]) == (0, None)
+    assert after_tests[b]["disabled_at"] is not None  # 410은 시험이어도 끈다
+    assert got == "telegram" and len(push.sent) == tries_before_notice + 1  # 재시도 없이 한 번
+    assert (after_notice["failure_count"], after_notice["disabled_at"]) == (1, None)

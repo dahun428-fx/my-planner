@@ -113,7 +113,7 @@ ActionStatus = Literal[
 @dataclass
 class ActionRequest:
     action: str
-    args: Any
+    args: Any = field(repr=False)  # 구독 주소·키(`push_subscribe`), 할 일 제목이 들어 있다
     _: KW_ONLY
     actor: Actor
     channel: ActivityChannel
@@ -336,12 +336,11 @@ def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
         return {"error": BAD_ARGS}
     assert deps.pushes is not None
     now = deps.clock.now()
-    disabled = 0
-    for r in results:
-        if r["result"] == "ok":
-            deps.pushes.record_ok(r["id"], now)
-        elif deps.pushes.record_failure(r["id"], gone=r["result"] == "gone", at=now):
-            disabled += 1
+    # 시험의 `failed`는 연속 실패에 세지 않는다(일시 장애 중에 시험을 여러 번 눌러도 구독이 꺼지지 않게).
+    # 받음과 404/410(`gone`)은 회차와 같이 적는다
+    disabled = sum(
+        deps.pushes.apply_result(r["id"], r["result"], now, count_failure=False) for r in results
+    )
     ok = sum(1 for r in results if r["result"] == "ok")
     return {"ok": ok, "failed": len(results) - ok, "disabled": disabled}
 

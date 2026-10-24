@@ -24,7 +24,16 @@ from typing import Any
 
 from aiohttp import ClientResponse
 from aiohttp.test_utils import TestClient, TestServer
-from fakes import FAKE_VAPID, FakeBrain, FakeSender, FakeTurn, fake_sleep, make_settings
+from fakes import (
+    FAKE_AUTH,
+    FAKE_P256DH,
+    FAKE_VAPID,
+    FakeBrain,
+    FakeSender,
+    FakeTurn,
+    fake_sleep,
+    make_settings,
+)
 from telegram import Update
 
 from my_planner.api.health import ErrorCounter
@@ -195,7 +204,7 @@ class BeEnv:
 
     async def subscribe(self, endpoint: str, *, label: str | None = "폰") -> int:
         """`POST /push/subscriptions`(꾸며 낸 키). 구독 id."""
-        body = {"endpoint": endpoint, "expirationTime": None, "keys": {"p256dh": "fake-p256dh", "auth": "fake-auth"},
+        body = {"endpoint": endpoint, "expirationTime": None, "keys": {"p256dh": FAKE_P256DH, "auth": FAKE_AUTH},
                 "label": label}
         resp = await self.post("/push/subscriptions", json=body)
         assert resp.status == 201, resp.status

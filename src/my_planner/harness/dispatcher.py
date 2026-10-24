@@ -1368,17 +1368,8 @@ class Dispatcher:
             s = self.settings
             until = reply_window_end(Due(run.loop, run.scheduled_for, run.cadence), s.timezone, s.day_boundary, cfg=s)
             return await self.delivery.deliver_run(run, out, reply_until=until, attempts=attempts)
-        got: list[object] = []
-
-        async def send() -> None:
-            got.append(await self.sender.send(out))
-
-        err = await send_with_retry(
-            send, sleep=self._sleep, attempts=attempts, event="run_send_error", extra={"run_id": run.id},
-        )
-        mid = got[-1] if got else None
-        mid = mid if isinstance(mid, int) and not isinstance(mid, bool) else None
-        return DeliveryOutcome("telegram", "full", err is None, mid)
+        sent, mid = await send_run_telegram(self.sender, out, sleep=self._sleep, attempts=attempts, run_id=run.id)
+        return DeliveryOutcome("telegram", "full", sent, mid)
 
     def _record_not_sent(self, run: Run, outcome: DeliveryOutcome) -> None:
         """끝내 아무 데도 못 보낸 회차의 시도(7.3 D4). 기록이 안 돼도 회차 처리는 그대로 간다."""
@@ -1619,6 +1610,23 @@ async def send_with_retry(
             if i + 1 < attempts:
                 await sleep(SEND_RETRY_DELAYS_S[i])
     return err
+
+
+async def send_run_telegram(
+    sender: Sender, out: Outbound, *, sleep: Callable[[float], Awaitable[None]], attempts: int, run_id: int
+) -> tuple[bool, int | None]:
+    """회차 본문을 텔레그램에 보낸다(바로 `attempts`회까지). (보냈나, 버튼이 붙은 마지막 조각의 메시지 id).
+
+    id는 전송이 돌려준 정수일 때만이다. 디스패처(전달 없음)와 `harness/delivery.py`(D2, D4)가 함께 쓴다.
+    """
+    got: list[object] = []
+
+    async def send() -> None:
+        got.append(await sender.send(out))
+
+    err = await send_with_retry(send, sleep=sleep, attempts=attempts, event="run_send_error", extra={"run_id": run_id})
+    mid = got[-1] if got else None
+    return err is None, mid if isinstance(mid, int) and not isinstance(mid, bool) else None
 
 
 async def _idle() -> None:

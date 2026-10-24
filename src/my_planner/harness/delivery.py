@@ -19,7 +19,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from my_planner.domain import Channel, LoopKey
@@ -28,7 +28,7 @@ from my_planner.harness.dispatcher import (
     SEND_RETRY_DELAYS_S,
     Outbound,
     Sender,
-    send_with_retry,
+    send_run_telegram,
 )
 from my_planner.store.repos.state import NOTIFY_PRIMARY_KEY
 
@@ -110,11 +110,8 @@ def _first_line(text: str) -> str:
     return line if len(line) <= BODY_MAX_CHARS else line[: BODY_MAX_CHARS - 1] + "…"
 
 
-def push_payload(
-    run: Run, text: str, *, reply_until: datetime, now: datetime | None = None
-) -> tuple[dict[str, Any], int, str]:
-    """회차 푸시(6.4.8): (페이로드, TTL 초 = 지금부터 답장 창 끝까지, Topic `run-<id>`)."""
-    now = now if now is not None else datetime.now(UTC)
+def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -> tuple[dict[str, Any], int, str]:
+    """회차 푸시(6.4.8): (페이로드, TTL 초 = `now`(주입한 시계)부터 답장 창 끝까지, Topic `run-<id>`)."""
     payload = {
         "type": "checkin",
         "checkin_id": run.id,
@@ -200,16 +197,7 @@ class Delivery:
         return DeliveryOutcome("telegram", "full", sent, mid)
 
     async def _telegram(self, out: Outbound, *, attempts: int, run_id: int) -> tuple[bool, int | None]:
-        got: list[object] = []
-
-        async def send() -> None:
-            got.append(await self.telegram.send(out))
-
-        err = await send_with_retry(
-            send, sleep=self._sleep, attempts=attempts, event="run_send_error", extra={"run_id": run_id},
-        )
-        mid = got[-1] if got else None
-        return err is None, mid if isinstance(mid, int) and not isinstance(mid, bool) else None
+        return await send_run_telegram(self.telegram, out, sleep=self._sleep, attempts=attempts, run_id=run_id)
 
     # --- 고정 안내 (D8) ---
 
@@ -232,13 +220,11 @@ class Delivery:
 
     # --- 시험 (6.4.8 `POST /push/test`) ---
 
-    async def push_test(
-        self, record: Callable[[list[dict[str, Any]]], object] | None = None
-    ) -> tuple[int, int]:
+    async def push_test(self, record: Callable[[list[dict[str, Any]]], object]) -> tuple[int, int]:
         """켜진 구독 모두에 시험 알림을 한 번씩 보낸다. 하루 3회 상한에 세지 않는다. (받은 수, 못 받은 수).
 
-        `record`가 있으면 결과(`[{"id", "result"}]`)를 그쪽(즉시 갈래 `push_test_result`)에 넘기고, 없으면
-        여기서 기록한다.
+        결과(`[{"id", "result"}]`)는 `record`(즉시 갈래 `push_test_result`)가 적는다. 시험의 `failed`는 연속 실패에
+        세지 않는다(`PushRepo.apply_result(count_failure=False)`).
         """
         if self.push is None:
             return 0, 0
@@ -247,18 +233,9 @@ class Delivery:
         for sub in self.pushes.active():
             res = await self._try(sub, payload, ttl=NOTICE_TTL_S, topic=None, attempts=1)
             results.append({"id": sub.id, "result": res})
-        if record is not None:
-            record(results)
-        else:
-            self.record_results(results)
+        record(results)
         ok = sum(1 for r in results if r["result"] == "ok")
         return ok, len(results) - ok
-
-    def record_results(self, results: list[dict[str, Any]]) -> None:
-        """구독마다 받음·못 받음을 적는다(이벤트 루프 스레드에서)."""
-        now = self.clock.now()
-        for r in results:
-            self._record(int(r["id"]), r["result"], now)
 
     # --- 공통 ---
 
@@ -302,8 +279,6 @@ class Delivery:
         return "failed"
 
     def _record(self, sub_id: int, result: str, at: datetime) -> None:
-        if result == "ok":
-            self.pushes.record_ok(sub_id, at)
-            return
-        if self.pushes.record_failure(sub_id, gone=result == "gone", at=at):
+        """회차와 고정 안내: 전달 하나에 결과 하나(`failed`는 연속 실패 +1)."""
+        if self.pushes.apply_result(sub_id, result, at):
             log.info("push_subscription_disabled", extra={"subscription_id": sub_id, "reason": result})

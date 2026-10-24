@@ -109,6 +109,26 @@ FAKE_VAPID = VapidConfig(
 )
 
 
+def _fake_browser_keys() -> tuple[str, str]:
+    """꾸며 낸 브라우저 구독 키: 고정한 작은 비밀값에서 만든 P-256 공개점(65바이트)과 auth 16바이트(base64url)."""
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    point = ec.derive_private_key(12345, ec.SECP256R1()).public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+
+    def b64(b: bytes) -> str:
+        return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
+    return b64(point), b64(bytes(range(16)))
+
+
+FAKE_P256DH, FAKE_AUTH = _fake_browser_keys()
+
+
 @dataclass
 class PushCall:
     endpoint: str

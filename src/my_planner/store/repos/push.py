@@ -101,6 +101,18 @@ class PushRepo:
                 (to_iso(at), id),
             )
 
+    def apply_result(self, id: int, result: str, at: datetime, *, count_failure: bool = True) -> bool:
+        """전송 결과 하나(`ok` | `gone` | `failed`)를 적는 단 하나의 길. 이번에 껐으면 True.
+
+        `count_failure=False`(시험 푸시): `failed`는 연속 실패 수를 올리지 않는다. `ok`, `gone`(404/410)은 그대로 적는다.
+        """
+        if result == "ok":
+            self.record_ok(id, at)
+            return False
+        if result == "gone" or count_failure:
+            return self.record_failure(id, gone=result == "gone", at=at)
+        return False
+
     def record_failure(self, id: int, *, gone: bool, at: datetime) -> bool:
         """못 받았다: 연속 실패 +1. `gone`(404/410)이거나 연속 5번이면 끈다. 이번에 껐으면 True."""
         with transaction(self.conn):

@@ -6,6 +6,8 @@ from datetime import date, timedelta
 
 from be_env import BeEnv
 from fakes import (
+    FAKE_AUTH,
+    FAKE_P256DH,
     FAKE_VAPID,
     FakePushSender,
     FakeSender,
@@ -367,6 +369,10 @@ def test_push_payload_titles_and_body(tmp_path, conn):
                       LoopKey.review: "주간 회고", LoopKey.return_: "다시 이어서"}
     _, ttl, _ = push_payload(runs.get(1), "x", reply_until=SAT_1000, now=SAT_1200)
     assert ttl == 0  # 창이 지났으면 0
+    import pytest
+
+    with pytest.raises(TypeError):  # `now`는 주입한 시계로만(벽시계 기본값이 없다)
+        push_payload(runs.get(1), "x", reply_until=SAT_1200)
 
 
 async def test_push_sent_in_worker_thread_recorded_on_loop_thread(tmp_path, conn):
@@ -374,7 +380,7 @@ async def test_push_sent_in_worker_thread_recorded_on_loop_thread(tmp_path, conn
     settings = make_settings(tmp_path, vapid=FAKE_VAPID)
     state = StateRepo(conn, clock)
     pushes = PushRepo(conn, clock)
-    sid = pushes.upsert(EP_A, "fake-p256dh", "fake-auth", None)
+    sid = pushes.upsert(EP_A, FAKE_P256DH, FAKE_AUTH, None)
     threads = []
 
     class ThreadPush(FakePushSender):
@@ -395,7 +401,7 @@ def test_no_vapid_means_push_disabled(tmp_path, conn):
     clock = FakeClock(_start())
     state = StateRepo(conn, clock)
     pushes = PushRepo(conn, clock)
-    pushes.upsert(EP_A, "fake-p256dh", "fake-auth", None)
+    pushes.upsert(EP_A, FAKE_P256DH, FAKE_AUTH, None)
     state.set(NOTIFY_PRIMARY_KEY, "app")
     delivery = Delivery(telegram=FakeSender(), push=FakePushSender(), pushes=pushes, state=state, clock=clock,
                         settings=make_settings(tmp_path))
