@@ -9,6 +9,7 @@ import { chatSheetChunk } from "../chat/loadChatSheet";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Skeleton } from "../components/Skeleton";
 import { useConnection } from "../lib/ConnectionProvider";
@@ -255,7 +256,7 @@ function CheckinBody({ id }: { id: number }) {
     body = (
       <>
         <Group>
-          <p className={styles.text}>{data.text}</p>
+          <Markdown text={data.text} className={styles.text} />
         </Group>
         {cards.map((card) => (
           <section key={card.toolCallId} className={styles.card}>

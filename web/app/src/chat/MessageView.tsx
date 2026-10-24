@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { useState } from "react";
 import { type UndoBlockReason, useUndo } from "../api/actions";
+import { Markdown } from "../components/Markdown";
 import { copy } from "../lib/copy";
 import { UiPart } from "../ui/registry";
 import type { ViewPart } from "./parts";
@@ -47,7 +48,8 @@ const userText = (m: UIMessage) =>
     .map((p) => p.text)
     .join("");
 
-// Spec 5.5.2: my text on the right in a dark bubble, the secretary's as plain body text, parts in place.
+// Spec 5.5.2: my text on the right in a dark bubble (plain, as typed), the secretary's as body text
+// in Markdown, parts in place.
 export function MessageView({
   message,
   parts,
@@ -70,11 +72,7 @@ export function MessageView({
     <div className={styles.theirs} data-message={message.id}>
       {parts.map((p, i) => {
         if (p.kind === "text") {
-          return (
-            <p key={i} className={styles.text}>
-              {p.text}
-            </p>
-          );
+          return <Markdown key={i} text={p.text} className={styles.text} />;
         }
         if (p.kind === "ui") {
           return (

@@ -28,11 +28,9 @@
   color: var(--muted);
 }
 .text {
-  margin: 0;
   padding: 0.75rem var(--pad);
   font-size: var(--size-body);
   line-height: 1.5;
-  white-space: pre-line;
 }
 .card {
   margin: 0 var(--pad) var(--gap);
