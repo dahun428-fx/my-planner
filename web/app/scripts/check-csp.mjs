@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Static-export CSP check (same rules and output as the dashboard's check-csp, SP3-4 plan 16).
 // For every out/**/*.html: (1) no <script> without src (except type="application/json"),
-// no <style>, no style= attribute; (2) the CSP <meta> comes before the first <script>.
+// no <style>, no style= attribute; (2) the CSP <meta> comes before the first <script>; (3) no
+// page-level stylesheet (data-n-p): on a move between tabs Next's pages router re-adds a page's CSS
+// as an inline <style>, which style-src 'self' blocks, so every style must come with _app.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +46,11 @@ export function checkHtml(html) {
   for (const m of html.matchAll(/<[a-z][^>]*?\sstyle\s*=/gi)) {
     inlineStyles++;
     problems.push({ line: lineOf(html, m.index), what: "style attribute" });
+  }
+
+  for (const m of html.matchAll(/<link\b[^>]*\sdata-n-p\b[^>]*>/gi)) {
+    inlineStyles++;
+    problems.push({ line: lineOf(html, m.index), what: "page-level stylesheet" });
   }
 
   const meta = html.search(/<meta\b[^>]*http-equiv\s*=\s*["']?Content-Security-Policy/i);
