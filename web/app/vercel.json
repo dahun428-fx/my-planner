@@ -3,6 +3,7 @@
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "out",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- .",
   "headers": [
     {
       "source": "/(.*)",
