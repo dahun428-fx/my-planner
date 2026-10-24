@@ -141,12 +141,14 @@ export function Settings() {
     testLock.current = true;
     setTesting(true);
     try {
-      // The BE waits on the push services before it answers: a longer wait, and running out of it is not "offline".
+      // The BE waits on the push services before it answers: a longer wait, and running out of it is
+      // "slow", not "offline" (the status dot may well say connected).
       const r = await apiFetch<PushTestResult>("POST", "/push/test", { model: "PushTestResult", timeoutMs: PUSH_TEST_TIMEOUT_MS });
       if (r.kind === "ok") {
         const none = r.data.ok === 0 && r.data.failed === 0;
         toast.show({ text: none ? copy.settings.testNoDevices : copy.settings.testResult(r.data.ok, r.data.failed) });
       }
+      else if (r.kind === "error" && r.code === "timeout") toast.show({ text: copy.settings.testSlow });
       else if (r.kind === "error" && r.status === 404) {
         setDevice("unavailable");
         toast.show({ text: copy.settings.pushUnavailable });

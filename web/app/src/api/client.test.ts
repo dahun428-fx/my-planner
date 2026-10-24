@@ -96,7 +96,7 @@ describe("apiFetch", () => {
     }
   });
 
-  it("a longer timeout of its own: waits that long, and running out does not report offline", async () => {
+  it("a longer timeout of its own: waits that long, and running out is a timeout, not offline", async () => {
     vi.useFakeTimers();
     const seen: string[] = [];
     const off = subscribeResults((r) => seen.push(r.kind));
@@ -114,8 +114,8 @@ describe("apiFetch", () => {
       await vi.advanceTimersByTimeAsync(29_999);
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(2);
-      expect(await p).toEqual({ kind: "offline" });
-      expect(seen).toEqual([]);
+      expect(await p).toEqual({ kind: "error", status: 0, code: "timeout" });
+      expect(seen).not.toContain("offline");
     } finally {
       off();
       vi.unstubAllGlobals();
