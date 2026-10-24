@@ -5,13 +5,14 @@ import { NAV_TEXT } from "../lib/labels";
 const LINKS = [
   { href: "/", label: NAV_TEXT.status },
   { href: "/tasks/", label: NAV_TEXT.tasks },
+  { href: "/curve/", label: NAV_TEXT.curve },
   { href: "/status/", label: NAV_TEXT.window },
   { href: "/settings/", label: NAV_TEXT.settings },
 ] as const;
 
 const same = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
-/** Wordmark and the screens. The life-curve screen (ticket 18) adds its link between 할 일 and 상태창. */
+/** Wordmark and the screens. On a phone the links get their own row, which scrolls inside itself. */
 export function Nav() {
   const { asPath } = useRouter();
   const path = asPath.split(/[?#]/)[0];

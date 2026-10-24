@@ -1,7 +1,7 @@
 """대시보드 고정 자료 (SP3-4 티켓 16, 스펙 13장·16장). 내용은 모두 꾸며 낸 것이다.
 
 `seed_dashboard_db(conn, clock)`이 SQL로 바로 넣는다(쓰기 도구를 거치지 않는다): 할 일·우선순위·일정·전에 잡은 일,
-분기 메인 퀘스트와 첫 걸음, 컨디션 30일 중 21일, 오늘 회차와 전달, 챕터·사건·사다리·영역 점수(지난 분기와 이번 분기),
+분기 메인 퀘스트와 첫 걸음, 컨디션 30일 중 21일(과 그 앞 두 달), 오늘 회차와 전달, 챕터·사건·사다리·영역 점수(지난 분기와 이번 분기),
 경험치 원장(합계 1380 = 레벨 6, 130 / 400)·칭호. 시각은 `clock.now()`를 기준으로 잡는다.
 `tests/test_dashboard_fixtures.py`가 이 DB의 `GET` 응답을 `web/dashboard/src/test/fixtures/`와 비교한다.
 티켓 17·18은 그 표에 행만 더한다.
@@ -53,6 +53,17 @@ LAST_QUARTER = {"career": 6, "finance": 5, "health": 6, "relationships": 7, "lea
 # 컨디션: 30일 가운데 21일만 기록(오늘에서 며칠 전, 점수). 빈 날은 그대로 빈 날이다.
 CONDITION_GAPS = frozenset({2, 5, 9, 12, 16, 19, 23, 26, 29})
 CONDITION_SCORES = (4, 3, 3, 4, 5, 2, 3, 4, 4, 3)
+# 인생 곡선 사다리 (달, 지금, 5년 뒤): 2026-03은 5년 뒤만, 2026-04는 빈 달(선이 끊긴다)
+CURVE_LADDER = (
+    ("2025-11", 4, 6), ("2025-12", 4, 6), ("2026-01", 5, 7), ("2026-02", 6, 7), ("2026-03", None, 7),
+    ("2026-05", 5, 7), ("2026-06", 3, 6), ("2026-07", 7, 8), ("2026-08", 5, 7), ("2026-09", 6, 7),
+    ("2026-10", 6, 8),
+)
+# 30일 창보다 앞선 달의 컨디션(짝수 날마다): 7월은 기억보다 버거웠고 8월은 기억보다 괜찮았다(안심 보기 8.3)
+CURVE_CONDITIONS = {
+    "2026-07": (2, 3, 2, 3, 2, 3, 2, 3, 3, 2),
+    "2026-08": (5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4),
+}
 
 
 def _kst(day: datetime, h: int, mi: int = 0) -> datetime:
@@ -164,11 +175,19 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
     # --- 인생 곡선: 챕터·사건·사다리·영역 점수 ---
     ch = chapter(conn, "꾸민 새 출발", "2025-03", sketch="↗", certainty="estimate")
     chapter(conn, "꾸민 배움의 해", "2023-01", "2025-02")
-    m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch)
+    m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch, note="꾸민 메모: 작은 카페 벽에 세 점")
     m2 = milestone(conn, "꾸민 이사 결정", "2026-02-14", kind="turning_point", chapter_id=ch)
     milestone(conn, "꾸민 긴 감기", "2026-06", kind="low")
-    for period, n, f in (("2026-08", 5, 7), ("2026-09", 6, 7), ("2026-10", 6, 8)):
+    milestone(conn, "꾸민 첫 자전거", "2019", kind="high")  # 가장 이른 챕터보다 앞선 사건(년 확대가 `from`을 준다)
+    milestone(conn, "꾸민 조용한 겨울", "2025-12", kind="low", sensitive=1, note="꾸민 메모: 민감 표시 확인용")
+    for period, n, f in CURVE_LADDER:
         ladder(conn, period, now=n, future=f)
+    for month, scores in CURVE_CONDITIONS.items():
+        for day, score in enumerate(scores, start=1):
+            conn.execute(
+                "INSERT INTO conditions (date, score, note, recorded_at) VALUES (?, ?, NULL, ?)",
+                (f"{month}-{day * 2:02d}", score, ts),
+            )
     q = (today.month - 1) // 3 + 1
     last_quarter = f"{today.year}-Q{q - 1}" if q > 1 else f"{today.year - 1}-Q4"
     area_scores(conn, last_quarter, **LAST_QUARTER)

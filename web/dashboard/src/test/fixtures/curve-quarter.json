@@ -1,0 +1,376 @@
+{
+  "zoom": "quarter",
+  "from": "2022-01-01",
+  "to": "2026-12-31",
+  "chapters": [
+    {
+      "id": 2,
+      "title": "꾸민 배움의 해",
+      "theme": "꾸민 주제",
+      "start": "2023-01",
+      "end": "2025-02",
+      "sketch": null,
+      "certainty": "fact"
+    },
+    {
+      "id": 1,
+      "title": "꾸민 새 출발",
+      "theme": "꾸민 주제",
+      "start": "2025-03",
+      "end": null,
+      "sketch": "↗",
+      "certainty": "estimate"
+    }
+  ],
+  "milestones": [
+    {
+      "id": 1,
+      "date": "2025-09",
+      "precision": "month",
+      "kind": "high",
+      "title": "꾸민 첫 전시",
+      "note": "꾸민 메모: 작은 카페 벽에 세 점",
+      "chapter_id": 1,
+      "sensitive": false,
+      "certainty": "fact"
+    },
+    {
+      "id": 2,
+      "date": "2026-02-14",
+      "precision": "day",
+      "kind": "turning_point",
+      "title": "꾸민 이사 결정",
+      "note": null,
+      "chapter_id": 1,
+      "sensitive": false,
+      "certainty": "fact"
+    },
+    {
+      "id": 3,
+      "date": "2026-06",
+      "precision": "month",
+      "kind": "low",
+      "title": "꾸민 긴 감기",
+      "note": null,
+      "chapter_id": null,
+      "sensitive": false,
+      "certainty": "fact"
+    }
+  ],
+  "ladder": [
+    {
+      "period": "2025-11",
+      "now": 4,
+      "future": 6,
+      "note": null
+    },
+    {
+      "period": "2025-12",
+      "now": 4,
+      "future": 6,
+      "note": null
+    },
+    {
+      "period": "2026-01",
+      "now": 5,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-02",
+      "now": 6,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-03",
+      "now": null,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-05",
+      "now": 5,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-06",
+      "now": 3,
+      "future": 6,
+      "note": null
+    },
+    {
+      "period": "2026-07",
+      "now": 7,
+      "future": 8,
+      "note": null
+    },
+    {
+      "period": "2026-08",
+      "now": 5,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-09",
+      "now": 6,
+      "future": 7,
+      "note": null
+    },
+    {
+      "period": "2026-10",
+      "now": 6,
+      "future": 8,
+      "note": null
+    }
+  ],
+  "areas": [
+    {
+      "period": "2026-Q3",
+      "scores": {
+        "career": 6,
+        "finance": 5,
+        "health": 6,
+        "learning": 6,
+        "quality_of_life": 5,
+        "relationships": 7
+      }
+    },
+    {
+      "period": "2026-Q4",
+      "scores": {
+        "career": 6,
+        "finance": 5,
+        "health": 4,
+        "learning": 6,
+        "quality_of_life": 5,
+        "relationships": 7
+      }
+    }
+  ],
+  "condition": [
+    {
+      "bucket": "2022-Q1",
+      "start": "2022-01-01",
+      "end": "2022-03-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2022-Q2",
+      "start": "2022-04-01",
+      "end": "2022-06-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2022-Q3",
+      "start": "2022-07-01",
+      "end": "2022-09-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2022-Q4",
+      "start": "2022-10-01",
+      "end": "2022-12-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2023-Q1",
+      "start": "2023-01-01",
+      "end": "2023-03-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2023-Q2",
+      "start": "2023-04-01",
+      "end": "2023-06-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2023-Q3",
+      "start": "2023-07-01",
+      "end": "2023-09-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2023-Q4",
+      "start": "2023-10-01",
+      "end": "2023-12-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2024-Q1",
+      "start": "2024-01-01",
+      "end": "2024-03-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2024-Q2",
+      "start": "2024-04-01",
+      "end": "2024-06-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2024-Q3",
+      "start": "2024-07-01",
+      "end": "2024-09-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2024-Q4",
+      "start": "2024-10-01",
+      "end": "2024-12-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2025-Q1",
+      "start": "2025-01-01",
+      "end": "2025-03-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2025-Q2",
+      "start": "2025-04-01",
+      "end": "2025-06-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2025-Q3",
+      "start": "2025-07-01",
+      "end": "2025-09-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2025-Q4",
+      "start": "2025-10-01",
+      "end": "2025-12-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-Q1",
+      "start": "2026-01-01",
+      "end": "2026-03-31",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-Q2",
+      "start": "2026-04-01",
+      "end": "2026-06-30",
+      "average": null,
+      "days_logged": 0
+    },
+    {
+      "bucket": "2026-Q3",
+      "start": "2026-07-01",
+      "end": "2026-09-30",
+      "average": 3.6,
+      "days_logged": 26
+    },
+    {
+      "bucket": "2026-Q4",
+      "start": "2026-10-01",
+      "end": "2026-12-31",
+      "average": 3.7,
+      "days_logged": 17
+    }
+  ],
+  "reassurance": [
+    {
+      "period": "2025-11",
+      "ladder_now": 4,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 0,
+      "gap": null
+    },
+    {
+      "period": "2025-12",
+      "ladder_now": 4,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 0,
+      "gap": null
+    },
+    {
+      "period": "2026-01",
+      "ladder_now": 5,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 0,
+      "gap": null
+    },
+    {
+      "period": "2026-02",
+      "ladder_now": 6,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 0,
+      "gap": null
+    },
+    {
+      "period": "2026-05",
+      "ladder_now": 5,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 0,
+      "gap": null
+    },
+    {
+      "period": "2026-06",
+      "ladder_now": 3,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 0,
+      "gap": null
+    },
+    {
+      "period": "2026-07",
+      "ladder_now": 7,
+      "condition_average": 2.5,
+      "condition_scaled": 3.8,
+      "days_logged": 10,
+      "gap": -3.2
+    },
+    {
+      "period": "2026-08",
+      "ladder_now": 5,
+      "condition_average": 4.5,
+      "condition_scaled": 8.8,
+      "days_logged": 12,
+      "gap": 3.8
+    },
+    {
+      "period": "2026-09",
+      "ladder_now": 6,
+      "condition_average": null,
+      "condition_scaled": null,
+      "days_logged": 4,
+      "gap": null
+    },
+    {
+      "period": "2026-10",
+      "ladder_now": 6,
+      "condition_average": 3.7,
+      "condition_scaled": 6.8,
+      "days_logged": 17,
+      "gap": 0.8
+    }
+  ]
+}
