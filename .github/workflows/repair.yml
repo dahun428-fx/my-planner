@@ -3,6 +3,8 @@ name: repair
 # 장애 이슈 자동 수리 (SP6 스펙 4.3). 판단은 .github/scripts/*.py, YAML은 얇게.
 # 수리는 핫픽스다: main에서 따고 main으로 머지한다(배포 흐름 스펙 7장). sync-develop.yml이 develop에 합친다.
 # 쓰기는 모두 REPAIR_PAT(스펙 4.2): GITHUB_TOKEN으로 만든 PR·라벨은 ci·repair를 깨우지 않는다.
+# Claude는 REPAIR_PAT을 받지 않는다: 읽기 전용 GITHUB_TOKEN으로 이슈·PR·CI를 읽고 커밋만 한다. 그 커밋은 git bundle로
+# 다른 작업(새 러너)에 넘겨 셸이 PAT으로 푸시하고 PR을 연다. 그래서 Claude도, 의존성 설치도 머지 권한을 못 본다.
 
 run-name: "repair #${{ github.event.issue.number || inputs.issue }}"  # sweep이 이 제목으로 실행과 이슈를 잇는다
 
@@ -77,12 +79,17 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    outputs:
+      start: ${{ steps.start.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.REPAIR_PAT }}  # Claude가 수리 브랜치를 이 신원으로 푸시한다
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -95,6 +102,12 @@ jobs:
         run: |
           pip install -r requirements.lock
           pip install -e ".[dev]" --no-deps
+      - name: Start
+        id: start
+        run: |
+          git config user.name "my-planner auto-repair"
+          git config user.email "auto-repair@users.noreply.github.com"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Prompt
         id: prompt
         env:
@@ -119,16 +132,89 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.REPAIR_PAT }}
+          GH_TOKEN: ${{ github.token }}  # 읽기 전용(이 작업의 permissions)
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.REPAIR_PAT }}
+          github_token: ${{ github.token }}
           prompt: ${{ steps.prompt.outputs.text }}
           claude_args: --max-turns 60 --allowedTools "Bash,Edit,MultiEdit,Write,Read,Glob,Grep,Task,TodoWrite"
+      # Claude의 커밋(시작 커밋 뒤)과 PR 글을 다음 작업에 넘긴다. 이 러너의 git 설정·훅은 넘기지 않는다
+      - name: Bundle
+        env:
+          START: ${{ steps.start.outputs.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/out"
+          mkdir -p "$out"
+          if [ -d .repair-out ]; then cp -r .repair-out/. "$out/"; fi
+          if [ "$(git rev-parse HEAD)" != "$START" ]; then
+            git bundle create "$out/repair.bundle" HEAD "^$START"
+          fi
+          ls -la "$out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repair-fix
+          path: ${{ runner.temp }}/out
+          retention-days: 3
+          overwrite: true
+
+  # Claude 없이 새 러너에서: 커밋을 REPAIR_PAT으로 푸시하고 PR을 연다(재현 못 했으면 진단 댓글)
+  publish:
+    needs: [gate, fix]
+    if: needs.gate.outputs.decision == 'go' && needs.fix.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: repair-fix
+          path: ${{ runner.temp }}/out
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Push
+        id: push
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          START: ${{ needs.fix.outputs.start }}
+          BRANCH: auto-repair/${{ needs.gate.outputs.issue }}-${{ needs.gate.outputs.attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$START" =~ ^[0-9a-f]{40}$ ]] || { echo "bad start sha"; exit 1; }
+          [[ "$BRANCH" =~ ^auto-repair/[0-9]+-[0-9]+$ ]] || { echo "bad branch"; exit 1; }
+          out="$RUNNER_TEMP/out"
+          pushed=false
+          if [ -f "$out/repair.bundle" ]; then
+            git fetch --no-tags "$out/repair.bundle" HEAD
+            git merge-base --is-ancestor "$START" FETCH_HEAD  # 시작 커밋 위의 작업만
+            # 토큰은 git 설정 파일·명령 인자에 두지 않고 이 명령의 환경으로만 넘긴다
+            auth=$(printf 'x-access-token:%s' "$REPAIR_PAT" | base64 -w0)
+            echo "::add-mask::$auth"
+            # .github/workflows를 바꾼 커밋은 PAT에 Workflows 권한이 없어 거부된다 → 이 단계 실패 → 보통의 실패 길
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+              git push origin "FETCH_HEAD:refs/heads/$BRANCH"
+            pushed=true
+          fi
+          echo "pushed=$pushed" >> "$GITHUB_OUTPUT"
+      - name: Open PR or comment
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          BRANCH: auto-repair/${{ needs.gate.outputs.issue }}-${{ needs.gate.outputs.attempt }}
+          PUSHED: ${{ steps.push.outputs.pushed }}
+        run: python .github/scripts/repair_publish.py --issue "$ISSUE" --branch "$BRANCH" --pushed "$PUSHED" --out "$RUNNER_TEMP/out"
 
   merge:
-    needs: [gate, fix]
-    # fix가 실패해도 돈다: PR이 없으면 no_pr로 실패를 센다. 취소면 sweep이 죽은 시도를 정리한다
+    needs: [gate, fix, publish]
+    # fix·publish가 실패해도 돈다: PR이 없으면 no_pr로 실패를 센다. 취소면 sweep이 죽은 시도를 정리한다
     if: >-
       !cancelled()
       && (needs.gate.outputs.decision == 'go' || needs.gate.outputs.decision == 'merge_only')
@@ -142,6 +228,7 @@ jobs:
     outputs:
       result: ${{ steps.merge.outputs.result }}
       pr: ${{ steps.merge.outputs.pr }}
+      branch: ${{ steps.merge.outputs.branch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -165,16 +252,22 @@ jobs:
       !cancelled()
       && needs.gate.outputs.decision == 'go'
       && needs.merge.outputs.result == 'ci_failed'
+      && needs.merge.outputs.branch != ''
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+    outputs:
+      start: ${{ steps.start.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.merge.outputs.branch }}
           fetch-depth: 0
-          token: ${{ secrets.REPAIR_PAT }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -187,12 +280,18 @@ jobs:
         run: |
           pip install -r requirements.lock
           pip install -e ".[dev]" --no-deps
+      - name: Start
+        id: start
+        run: |
+          git config user.name "my-planner auto-repair"
+          git config user.email "auto-repair@users.noreply.github.com"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Prompt
         id: prompt
         env:
           ISSUE: ${{ needs.gate.outputs.issue }}
-          ATTEMPT: ${{ needs.gate.outputs.attempt }}
           PR: ${{ needs.merge.outputs.pr }}
+          BRANCH: ${{ needs.merge.outputs.branch }}
         run: |
           set -euo pipefail
           eof="EOF_$(openssl rand -hex 8)"
@@ -204,20 +303,83 @@ jobs:
             echo "- 모드: ci_fix"
             echo "- 이슈: #$ISSUE"
             echo "- PR: #$PR"
-            echo "- 브랜치: auto-repair/$ISSUE-$ATTEMPT"
+            echo "- 브랜치: $BRANCH (이미 체크아웃됨)"
             echo "$eof"
           } >> "$GITHUB_OUTPUT"
       - uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.REPAIR_PAT }}
+          GH_TOKEN: ${{ github.token }}  # 읽기 전용(이 작업의 permissions)
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.REPAIR_PAT }}
+          github_token: ${{ github.token }}
           prompt: ${{ steps.prompt.outputs.text }}
           claude_args: --max-turns 60 --allowedTools "Bash,Edit,MultiEdit,Write,Read,Glob,Grep,Task,TodoWrite"
+      # Claude의 커밋(시작 커밋 뒤)과 PR 글을 다음 작업에 넘긴다. 이 러너의 git 설정·훅은 넘기지 않는다
+      - name: Bundle
+        env:
+          START: ${{ steps.start.outputs.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/out"
+          mkdir -p "$out"
+          if [ -d .repair-out ]; then cp -r .repair-out/. "$out/"; fi
+          if [ "$(git rev-parse HEAD)" != "$START" ]; then
+            git bundle create "$out/repair.bundle" HEAD "^$START"
+          fi
+          ls -la "$out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repair-refix
+          path: ${{ runner.temp }}/out
+          retention-days: 3
+          overwrite: true
+
+  republish:
+    needs: [gate, merge, refix]
+    if: >-
+      !cancelled()
+      && needs.refix.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.merge.outputs.branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: repair-refix
+          path: ${{ runner.temp }}/out
+      - name: Push
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          START: ${{ needs.refix.outputs.start }}
+          BRANCH: ${{ needs.merge.outputs.branch }}
+        run: |
+          set -euo pipefail
+          [[ "$START" =~ ^[0-9a-f]{40}$ ]] || { echo "bad start sha"; exit 1; }
+          [[ "$BRANCH" =~ ^auto-repair/[0-9]+-[0-9]+$ ]] || { echo "bad branch"; exit 1; }
+          out="$RUNNER_TEMP/out"
+          pushed=false
+          if [ -f "$out/repair.bundle" ]; then
+            git fetch --no-tags "$out/repair.bundle" HEAD
+            git merge-base --is-ancestor "$START" FETCH_HEAD  # 시작 커밋 위의 작업만
+            # 토큰은 git 설정 파일·명령 인자에 두지 않고 이 명령의 환경으로만 넘긴다
+            auth=$(printf 'x-access-token:%s' "$REPAIR_PAT" | base64 -w0)
+            echo "::add-mask::$auth"
+            # .github/workflows를 바꾼 커밋은 PAT에 Workflows 권한이 없어 거부된다 → 이 단계 실패 → 보통의 실패 길
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth" \
+              git push origin "FETCH_HEAD:refs/heads/$BRANCH"
+            pushed=true
+          fi
+          echo "pushed=$pushed" >> "$GITHUB_OUTPUT"
 
   remerge:
-    needs: [gate, merge, refix]
+    needs: [gate, merge, refix, republish]
     if: >-
       !cancelled()
       && needs.gate.outputs.decision == 'go'
@@ -247,9 +409,10 @@ jobs:
           ISSUE: ${{ needs.gate.outputs.issue }}
         run: python .github/scripts/repair_merge.py merge --issue "$ISSUE"
 
-  # 머지도 시간 초과도 아니면(CI 두 번 실패, PR 없음, 단계 실패) failed-N +1, repairing 떼기, PR 닫기
+  # 머지·시간 초과·취소가 아니면(CI 두 번 실패, PR 없음, 단계 실패): 이번 시도가 이미 머지됐으면 merged로,
+  # 아니면 failed-<시도>, repairing 떼기, PR 닫기. 머지 작업이 취소(동시성 밀림·시간 초과)면 repairing을 둔다(sweep).
   settle:
-    needs: [gate, fix, merge, refix, remerge]
+    needs: [gate, fix, publish, merge, refix, republish, remerge]
     if: >-
       !cancelled()
       && (needs.gate.outputs.decision == 'go' || needs.gate.outputs.decision == 'merge_only')
@@ -270,9 +433,14 @@ jobs:
         env:
           REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
           ISSUE: ${{ needs.gate.outputs.issue }}
+          ATTEMPT: ${{ needs.gate.outputs.attempt }}
           FIRST: ${{ needs.merge.outputs.result }}
           SECOND: ${{ needs.remerge.outputs.result }}
+          MERGE_JOB: ${{ needs.merge.result }}
+          REMERGE_JOB: ${{ needs.remerge.result }}
         run: |
           result="$FIRST"
-          if [ "$FIRST" = "ci_failed" ]; then result="$SECOND"; fi
-          python .github/scripts/repair_merge.py settle --issue "$ISSUE" --result "${result:-error}"
+          job="$MERGE_JOB"
+          if [ "$FIRST" = "ci_failed" ]; then result="$SECOND"; job="$REMERGE_JOB"; fi
+          if [ "$job" = "cancelled" ]; then result="cancelled"; fi
+          python .github/scripts/repair_merge.py settle --issue "$ISSUE" --attempt "$ATTEMPT" --result "${result:-error}"

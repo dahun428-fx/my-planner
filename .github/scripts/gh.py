@@ -40,6 +40,7 @@ TZ = "Asia/Seoul"  # Actions의 "오늘"(머지 한도, 하트비트 알림)은 
 # --- Actions 쪽만 -------------------------------------------------------------
 AUTO_REPAIR_LABEL = "auto-repair"  # 수리 PR 라벨(하루 머지 수를 센다)
 BRANCH_PREFIX = "auto-repair/"
+BRANCH_RE = re.compile(r"^auto-repair/\d+-\d+$")  # 다음 작업에 넘겨도 되는 브랜치 이름
 BASE = "main"  # 수리는 핫픽스: main에서 따서 main으로 (배포 흐름 스펙 7장)
 REPAIR_WORKFLOW = "repair.yml"
 CI_NAME = "ci"

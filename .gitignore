@@ -41,3 +41,6 @@ web/dashboard/tsconfig.tsbuildinfo
 # 체크아웃별 설정 덮어쓰기 (개발용 BE, 릴리스 흐름 스펙 5.2)
 config.local.toml
 config.medic.local.toml
+
+# repair.yml의 Claude 단계가 PR 제목·본문·진단을 남기는 곳(커밋하지 않는다)
+.repair-out/

@@ -102,12 +102,49 @@ def test_workflows_never_interpolate_event_text_into_run():
                 assert "${{" not in line, f"{name}: {line.strip()}"
 
 
+def _jobs(text: str) -> dict[str, str]:
+    """`jobs:` 아래 작업 이름 → 그 작업의 글(PyYAML 없이 들여쓰기로)."""
+    body = text[text.index("\njobs:\n") + len("\njobs:\n"):]
+    out: dict[str, str] = {}
+    name = None
+    for line in body.splitlines():
+        m = re.match(r"^  ([A-Za-z0-9_-]+):$", line)
+        if m:
+            name = m[1]
+            out[name] = ""
+        elif name is not None:
+            out[name] += line + "\n"
+    return out
+
+
 def test_workflows_write_with_repair_pat_not_github_token():
     for name in ("repair.yml", "watch.yml", "signal.yml"):
         text = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
         assert "secrets.REPAIR_PAT" in text
-        assert "github.token" not in text and "secrets.GITHUB_TOKEN" not in text
+        assert "secrets.GITHUB_TOKEN" not in text
         assert "permissions:" in text
+        for job, body in _jobs(text).items():
+            if "github.token" in body:
+                # 읽기 전용 GITHUB_TOKEN은 Claude 작업에만, 쓰기 권한 없이
+                assert (name, job) in {("repair.yml", "fix"), ("repair.yml", "refix")}, job
+                assert ": write" not in body, job
+
+
+def test_claude_jobs_never_see_repair_pat():
+    """리뷰 I1: Claude와 의존성 설치는 머지 권한 있는 PAT을 env·git 설정 어디에서도 못 본다."""
+    jobs = _jobs((ROOT / ".github" / "workflows" / "repair.yml").read_text(encoding="utf-8"))
+    for job in ("fix", "refix"):
+        assert "anthropics/claude-code-action@v1" in jobs[job]
+        assert "secrets.REPAIR_PAT" not in jobs[job], job
+        assert "persist-credentials: false" in jobs[job]
+    for job, body in jobs.items():
+        if "actions/checkout@v4" in body:
+            assert "persist-credentials: false" in body, job
+            assert "token:" not in body.split("actions/checkout@v4")[1].split("- ")[0], job
+    # 푸시·PR은 Claude 없는 작업에서만
+    for job in ("publish", "republish"):
+        assert "claude-code-action" not in jobs[job] and "git push origin" in jobs[job]
+        assert "::add-mask::" in jobs[job]
 
 
 def test_workflow_triggers_and_names():
@@ -123,7 +160,7 @@ def test_workflow_triggers_and_names():
     assert 'run-name: "repair #${{ github.event.issue.number || inputs.issue }}"' in repair  # sweep이 잇는 제목
     assert "format('repair-{0}', github.event.issue.number || inputs.issue)" in repair
     assert "cancel-in-progress: false" in repair and "group: repair-merge" in repair
-    assert repair.count("ref: main") == 6  # 작업마다 main에서(핫픽스)
+    assert repair.count("ref: main") == 6  # 수리 PR 브랜치를 쓰는 refix·republish 말고는 main에서(핫픽스)
     assert "claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" in repair
     assert "anthropics/claude-code-action@v1" in repair and "--max-turns 60" in repair
     ci = (wf / "ci.yml").read_text(encoding="utf-8")

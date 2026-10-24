@@ -87,3 +87,28 @@ def test_pat_expiry_other_tokens_and_bad_dates():
         more_pats={"RELEASE_PAT": "2026-11-01", "DEV_PAT": None, "X": ""},
     )
     assert msgs == ["GitHub 토큰(RELEASE_PAT)이 2026-11-01에 만료돼요"]
+
+
+# --- 고침 1회차 (리뷰 M4, M6) ----------------------------------------------------------
+
+
+def test_notice_survives_failure_in_pat_block():
+    _server, api, n = _env(_body("2026-10-26T05:00:00Z", "2026-10-26T08:30:00Z"))
+    http = api._http
+    route = http.route
+
+    def failing(m, url, json):
+        if m == "POST" and url.endswith(f"/issues/{n}/labels") and "pat-reminded" in str(json):
+            return 502, None, {}
+        return route(m, url, json)
+
+    http.route = failing
+    msgs = heartbeat_check.check(api, now=_at(10, 7), pat_expires="2026-11-01")
+    assert msgs == [NOTICE]  # PAT 쪽이 실패해도 응답 없음 알림은 간다
+
+
+def test_past_date_labels_are_deleted_from_repo():
+    server, api, n = _env(_body("2026-10-26T05:00:00Z", "2026-10-26T08:30:00Z"))
+    server.issues[n]["labels"] += [{"name": "stale-2026-10-24"}, {"name": "pat-reminded-2026-10-25"}]
+    heartbeat_check.check(api, now=_at(10, 7), pat_expires="2026-11-01")
+    assert sorted(server.deleted_labels) == ["pat-reminded-2026-10-25", "stale-2026-10-24"]

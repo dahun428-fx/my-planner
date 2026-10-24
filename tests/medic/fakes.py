@@ -129,6 +129,9 @@ class FakeGitHub:
         self.dispatches: list[tuple[str, dict[str, Any]]] = []
         self.deleted_refs: list[str] = []
         self.merges: list[tuple[int, dict[str, Any]]] = []
+        self.events: dict[int, list[dict[str, Any]]] = defaultdict(list)  # 이슈 -> labeled 이벤트(오래된 것부터)
+        self.created_pulls: list[dict[str, Any]] = []
+        self.deleted_labels: list[str] = []
         self._next = 1
 
     # --- 시험 준비 ---
@@ -154,7 +157,7 @@ class FakeGitHub:
         self._next += 1
         self.pulls.append({
             "number": n, "title": title, "body": body, "state": state, "merged_at": merged_at,
-            "head": {"ref": head_ref, "sha": head_sha}, "base": {"ref": base},
+            "head": {"ref": head_ref, "sha": head_sha, "repo": {"full_name": self.repo}}, "base": {"ref": base},
             "labels": [{"name": x} for x in labels or []],
             "html_url": f"https://github.com/{self.repo}/pull/{n}",
         })
@@ -214,6 +217,9 @@ class FakeGitHub:
                 for name in json["labels"]:
                     if name not in have:
                         self.issues[int(num)]["labels"].append({"name": name})
+                        self.events[int(num)].append(
+                            {"event": "labeled", "label": {"name": name}, "created_at": self._now()}
+                        )
                 return 200, self.issues[int(num)]["labels"], ok
             case "DELETE", ["issues", num, "labels", name] if int(num) in self.issues:
                 if name not in self.labels(int(num)):
@@ -237,6 +243,17 @@ class FakeGitHub:
                 if msgs is None:
                     return 404, {"message": "Not Found"}, ok
                 return 200, {"commits": [{"commit": {"message": m}} for m in msgs]}, ok
+            case "GET", ["issues", num, "events"] if int(num) in self.issues:
+                return 200, self.events[int(num)][: int(q.get("per_page", 30))], ok
+            case "POST", ["pulls"]:
+                n = self.add_pull(json["head"], base=json["base"], title=json["title"], body=json.get("body", ""))
+                self.created_pulls.append(self.pull(n))
+                return 201, self.pull(n), ok
+            case "DELETE", ["labels", name]:
+                self.deleted_labels.append(name)
+                for issue in self.issues.values():  # 저장소 라벨을 지우면 이슈에서도 빠진다
+                    issue["labels"] = [x for x in issue["labels"] if x["name"] != name]
+                return 204, None, ok
             case "GET", ["pulls"]:
                 out = [
                     p for p in sorted(self.pulls, key=lambda p: -int(p.get("number") or 0))
