@@ -1,7 +1,7 @@
 // The browser calls the BE directly (ADR 0008). One result type for every screen, mapped from the
 // common states table of spec 13.1. Shapes are checked by hand: a field the BE adds later is ignored,
 // a field a screen needs that is missing or of the wrong type is `broken("shape")`.
-import type { Conditions, Health, SafeModeHealth, Status, Today, Week } from "../api/types.gen";
+import type { Conditions, Curve, Health, SafeModeHealth, Status, Today, Week } from "../api/types.gen";
 import type { Conn } from "./connection";
 
 export type ApiResult<T> =
@@ -218,5 +218,41 @@ export function isStatus(v: unknown): v is Status {
     arr(v.daily_quests, (q) => isObj(q) && int(q.task_id) && str(q.title) && strOrNull(q.parent_title)) &&
     arr(v.titles, (t) => isObj(t) && int(t.milestone_id) && str(t.title)) &&
     arr(v.recent_xp, (x) => isObj(x) && str(x.at) && str(x.label) && int(x.amount))
+  );
+}
+
+// ---- (c) 인생곡선 (6.3.5) ----------------------------------------------------------------------------
+
+const numOrNull = (v: unknown) => v === null || num(v);
+const ZOOMS = ["day", "week", "month", "quarter", "year"];
+
+export function isCurve(v: unknown): v is Curve {
+  return (
+    isObj(v) &&
+    typeof v.zoom === "string" &&
+    ZOOMS.includes(v.zoom) &&
+    str(v.from) &&
+    str(v.to) &&
+    arr(v.chapters, (c) => isObj(c) && int(c.id) && str(c.title) && str(c.start) && strOrNull(c.end) && strOrNull(c.sketch) && str(c.certainty)) &&
+    arr(
+      v.milestones,
+      (m) =>
+        isObj(m) &&
+        int(m.id) &&
+        str(m.date) &&
+        (m.precision === "year" || m.precision === "month" || m.precision === "day") &&
+        (m.kind === "high" || m.kind === "low" || m.kind === "turning_point") &&
+        str(m.title) &&
+        strOrNull(m.note) &&
+        typeof m.sensitive === "boolean" &&
+        str(m.certainty),
+    ) &&
+    arr(v.ladder, (l) => isObj(l) && str(l.period) && intOrNull(l.now) && intOrNull(l.future)) &&
+    arr(v.areas, (a) => isObj(a) && str(a.period) && isObj(a.scores) && Object.values(a.scores).every(int)) &&
+    arr(v.condition, (c) => isObj(c) && str(c.bucket) && str(c.start) && str(c.end) && numOrNull(c.average) && int(c.days_logged)) &&
+    arr(
+      v.reassurance,
+      (r) => isObj(r) && str(r.period) && int(r.ladder_now) && numOrNull(r.condition_average) && numOrNull(r.condition_scaled) && int(r.days_logged) && numOrNull(r.gap),
+    )
   );
 }

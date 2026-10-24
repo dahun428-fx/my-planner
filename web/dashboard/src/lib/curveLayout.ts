@@ -60,6 +60,21 @@ export function ladderSeries(ladder: CurveLadder[], from: string, to: string): L
   return out;
 }
 
+/**
+ * The day and week zooms show the ladder as steps (8.2): each month's score is flat from its first day to its
+ * last, an empty month stays a break. Two points per scored month, one `null` point per empty month.
+ */
+export function ladderSteps(points: LadderPoint[]): LadderPoint[] {
+  return points.flatMap((p) => {
+    if (p.now === null && p.future === null) return [p];
+    const [y, m] = parts(p.period);
+    return [
+      { ...p, x: kstX(y, m, 1) },
+      { ...p, x: kstX(y, m + 1, 1) - 1 },
+    ];
+  });
+}
+
 /** Where a milestone sits: a day at its noon, a month on the 15th (like the ladder), a year on 1 July. */
 export function milestoneX(date: string, precision: "year" | "month" | "day"): number {
   const [y, m, d] = parts(date);
@@ -187,6 +202,13 @@ export function axisTicks(zoom: Zoom, from: string, to: string): Tick[] {
   const step = Math.max(1, Math.ceil(years / 6));
   for (let y = fy; y <= ty; y += step) out.push({ x: kstX(y, 1, 1), label: String(y) });
   return out;
+}
+
+/** At most `max` labels on a narrow plot: every k-th tick from the first (which keeps the January year labels). */
+export function thinTicks(ticks: Tick[], max: number): Tick[] {
+  if (ticks.length <= max) return ticks;
+  const k = Math.ceil(ticks.length / max);
+  return ticks.filter((_, i) => i % k === 0);
 }
 
 export interface RadarRow {

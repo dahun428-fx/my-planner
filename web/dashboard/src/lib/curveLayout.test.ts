@@ -10,9 +10,11 @@ import {
   dayStart,
   kstX,
   ladderSeries,
+  ladderSteps,
   milestoneX,
   radarRows,
   reassuranceCopy,
+  thinTicks,
   visibleRange,
 } from "./curveLayout";
 
@@ -39,6 +41,21 @@ describe("ladderSeries", () => {
     const s = ladderSeries([ladder("2026-09", 6, 7)], "2026-09-25", "2026-10-24");
     expect(s.map((p) => p.period)).toEqual(["2026-09", "2026-10"]);
     expect(s[0].now).toBe(6);
+  });
+});
+
+describe("ladderSteps", () => {
+  it("holds each month flat from its first to its last day and keeps empty months as breaks", () => {
+    const s = ladderSteps(ladderSeries([ladder("2026-08", 5, 7), ladder("2026-10", 6, 8)], "2026-08-01", "2026-10-31"));
+    expect(s.map((p) => [p.period, p.now])).toEqual([
+      ["2026-08", 5],
+      ["2026-08", 5],
+      ["2026-09", null],
+      ["2026-10", 6],
+      ["2026-10", 6],
+    ]);
+    expect(s[0].x).toBe(dayStart("2026-08-01"));
+    expect(s[1].x).toBe(dayStart("2026-09-01") - 1);
   });
 });
 
@@ -129,6 +146,14 @@ describe("axisTicks", () => {
     const ticks = axisTicks("day", "2026-09-25", "2026-10-24");
     expect(ticks.at(-1)!.label).toBe("10/24");
     expect(ticks.map((t) => t.label)).toEqual(["9/26", "10/3", "10/10", "10/17", "10/24"]);
+  });
+});
+
+describe("thinTicks", () => {
+  it("keeps at most `max` labels, from the first", () => {
+    const ticks = axisTicks("month", "2024-11-01", "2026-10-31");
+    expect(thinTicks(ticks, 10)).toBe(ticks);
+    expect(thinTicks(ticks, 5).map((t) => t.label)).toEqual(["2025", "7월", "2026", "7월"]);
   });
 });
 

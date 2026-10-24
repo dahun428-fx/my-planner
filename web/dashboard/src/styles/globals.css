@@ -455,7 +455,8 @@ h2 {
   font-weight: 600;
   cursor: pointer;
 }
-.tab[aria-selected="true"] {
+.tab[aria-selected="true"],
+.tab[aria-pressed="true"] {
   background: var(--surface);
   color: var(--text);
 }
@@ -794,6 +795,321 @@ h2 {
 }
 .panel > .row h2 {
   margin-bottom: 4px;
+}
+
+/* ---- life curve: ink lines on a tone-step panel; chapters a strip, milestones a lane above the 0~10 plot ---- */
+.curve-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--gap);
+  margin: 0 0 var(--gap);
+}
+.zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.zoom-row .tabs {
+  margin: 0;
+}
+.zooms .tab {
+  min-width: 3.25rem;
+  padding: 0 12px;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-h);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+@media (max-width: 480px) {
+  .curve-controls {
+    display: grid;
+  }
+  .zoom-row {
+    min-width: 0;
+  }
+  .zoom-row .tabs {
+    flex: 1;
+  }
+  .zooms .tab {
+    min-width: 0;
+    padding: 0 4px;
+  }
+}
+.curve-panel {
+  padding: 12px 12px 14px;
+}
+.curve-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 4px 6px;
+}
+.curve-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.curve-swatch {
+  width: 20px;
+  height: 8px;
+  overflow: visible;
+}
+.curve-swatch.dot {
+  width: 8px;
+}
+.curve-swatch line {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+.curve-key[data-key="future"] .curve-swatch line {
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+}
+.curve-swatch circle {
+  fill: var(--muted);
+  opacity: 0.45;
+}
+.curve-figure {
+  position: relative;
+  margin: 0;
+}
+.curve-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.curve-figure .recharts-surface {
+  overflow: visible;
+}
+.curve-figure text,
+.radar text {
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.curve-axis text {
+  fill: var(--muted);
+  font-size: 12px;
+}
+.curve-grid {
+  stroke: var(--rule);
+  stroke-width: 1px;
+}
+.curve-band.tone-0 .recharts-reference-area-rect {
+  fill: var(--raised);
+  fill-opacity: 1;
+}
+.curve-band.tone-1 .recharts-reference-area-rect {
+  fill: var(--ground);
+  fill-opacity: 1;
+}
+.curve-chapter-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.curve-edge line {
+  stroke: var(--control);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+}
+.curve-cond-dot {
+  fill: var(--muted);
+  opacity: 0.4;
+}
+.curve-now .recharts-curve {
+  stroke: var(--text);
+  stroke-width: 2px;
+  fill: none;
+}
+.curve-future .recharts-curve {
+  stroke: var(--muted);
+  stroke-width: 2px;
+  stroke-dasharray: 5 4;
+  fill: none;
+}
+.curve-dot-now {
+  fill: var(--text);
+  stroke: var(--surface);
+  stroke-width: 1.5px;
+}
+.curve-dot-future {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-width: 1.5px;
+}
+.curve-marker {
+  pointer-events: auto;
+  cursor: pointer;
+  outline: none;
+}
+.curve-marker-hit {
+  fill: transparent;
+}
+.curve-marker-glyph {
+  fill: var(--text);
+  stroke: var(--surface);
+  stroke-width: 1px;
+  stroke-linejoin: round;
+}
+.curve-marker[data-estimate] .curve-marker-glyph {
+  fill: var(--surface);
+  stroke: var(--text);
+  stroke-width: 1.5px;
+}
+.curve-marker-ring {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5px;
+}
+.curve-marker:focus-visible .curve-marker-hit {
+  stroke: var(--hue);
+  stroke-width: 2px;
+}
+.curve-marker[data-sensitive] .curve-marker-hit {
+  stroke: var(--control);
+  stroke-width: 1px;
+  stroke-dasharray: 2 2;
+}
+.curve-empty {
+  display: grid;
+  gap: 6px;
+  padding: 4px;
+}
+.curve-figure + .curve-empty,
+.curve + .curve-empty,
+.milestone + .curve-empty {
+  margin-top: 8px;
+}
+.milestone {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--raised);
+}
+.milestone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+.milestone-meta {
+  margin: 0;
+}
+.milestone-head .text-button {
+  min-height: 32px;
+}
+.milestone-title {
+  margin: 2px 0 0;
+  font-size: var(--fs-nav);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.milestone-note {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.skeleton.tall {
+  height: 320px;
+}
+.curve-pair {
+  display: grid;
+  gap: 0 var(--gap);
+}
+@media (min-width: 640px) {
+  .curve-pair {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+.radar {
+  display: flex;
+  justify-content: center;
+}
+.radar-grid {
+  stroke: var(--rule);
+  fill: none;
+}
+.radar-tick {
+  fill: var(--muted);
+  font-size: 12px;
+}
+.radar-tick-value {
+  fill: var(--text);
+  font-weight: 600;
+}
+.radar-down {
+  fill: var(--text);
+  font-weight: 700;
+}
+.radar-now .recharts-polygon {
+  stroke: var(--text);
+  stroke-width: 2px;
+  fill: var(--text);
+  fill-opacity: 0.08;
+}
+.radar-prev .recharts-polygon {
+  stroke: var(--muted);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 3;
+  fill: none;
+}
+.radar-dot {
+  fill: var(--text);
+  stroke: none;
+}
+.reassures {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.reassure {
+  padding: 10px 0;
+  word-break: keep-all;
+}
+.reassure + .reassure {
+  border-top: 1px solid var(--rule);
+}
+.reassure:first-child {
+  padding-top: 0;
+}
+.reassure-head {
+  margin: 0;
+  font-weight: 600;
+}
+.reassure-copy {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+.reassure:not([data-compared]) .reassure-head {
+  font-weight: 400;
+  color: var(--muted);
+}
+.reassure-more {
+  margin-top: 4px;
+  border-top: 1px solid var(--rule);
+}
+.reassure-more summary {
+  min-height: var(--row);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.reassure-more .reassure:first-child {
+  padding-top: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {

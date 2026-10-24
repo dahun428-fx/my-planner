@@ -52,6 +52,7 @@ describe("shell", () => {
     expect(links).toEqual([
       ["비서 상태", "/"],
       ["할 일", "/tasks/"],
+      ["인생곡선", "/curve/"],
       ["상태창", "/status/"],
       ["설정", "/settings/"],
     ]);

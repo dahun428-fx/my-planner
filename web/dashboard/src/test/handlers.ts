@@ -1,5 +1,6 @@
 import { delay, http, HttpResponse } from "msw";
 import conditions from "./fixtures/conditions.json";
+import curveMonth from "./fixtures/curve-month.json";
 import health from "./fixtures/health.json";
 import safeMode from "./fixtures/health-safe-mode.json";
 import status from "./fixtures/status.json";
@@ -27,7 +28,7 @@ export const healthAnswers = {
     }),
 };
 
-// The same states for a screen's own GET (`/today`, `/week`, `/conditions`, `/status`).
+// The same states for a screen's own GET (`/today`, `/week`, `/conditions`, `/status`, `/curve`; a query string still matches).
 export function answersFor(path: string, fixture: object) {
   const url = `${BASE}${path}`;
   return {
@@ -44,5 +45,6 @@ export const todayAnswers = answersFor("/today", today);
 export const weekAnswers = answersFor("/week", week);
 export const conditionsAnswers = answersFor("/conditions", conditions);
 export const statusAnswers = answersFor("/status", status);
+export const curveAnswers = answersFor("/curve", curveMonth);
 
-export const handlers = [healthAnswers.ok(), todayAnswers.ok(), weekAnswers.ok(), conditionsAnswers.ok(), statusAnswers.ok()];
+export const handlers = [healthAnswers.ok(), todayAnswers.ok(), weekAnswers.ok(), conditionsAnswers.ok(), statusAnswers.ok(), curveAnswers.ok()];

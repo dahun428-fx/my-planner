@@ -14,7 +14,14 @@ import status from "../test/fixtures/status.json";
 import todayEmpty from "../test/fixtures/today-empty.json";
 import today from "../test/fixtures/today.json";
 import week from "../test/fixtures/week.json";
-import { fetchApi, getHealth, isConditions, isHealth, isSafeModeHealth, isStatus, isToday, isWeek } from "./api";
+import curveDay from "../test/fixtures/curve-day.json";
+import curveEmpty from "../test/fixtures/curve-empty.json";
+import curveMonth from "../test/fixtures/curve-month.json";
+import curveSensitive from "../test/fixtures/curve-month-sensitive.json";
+import curveQuarter from "../test/fixtures/curve-quarter.json";
+import curveWeek from "../test/fixtures/curve-week.json";
+import curveYear from "../test/fixtures/curve-year.json";
+import { fetchApi, getHealth, isConditions, isCurve, isHealth, isSafeModeHealth, isStatus, isToday, isWeek } from "./api";
 
 const conn = { beUrl: ORIGIN, token: "fake-token-abc" };
 
@@ -134,5 +141,14 @@ describe("screen shapes", () => {
     expect(isConditions({ ...fx.conditions, items: [{ date: "2026-10-01", score: "4", note: null }] })).toBe(false);
     expect(isStatus({ ...fx.status, xp_into_level: undefined })).toBe(false);
     expect(isStatus({ ...fx.status, extra_field_added_later: 1 })).toBe(true);
+  });
+
+  it("accept every curve fixture and refuse a wrong field", () => {
+    const all = [curveDay, curveWeek, curveMonth, curveSensitive, curveQuarter, curveYear, curveEmpty];
+    expect(all.map(isCurve)).toEqual(all.map(() => true));
+    expect(isCurve({ ...curveMonth, zoom: "decade" })).toBe(false);
+    expect(isCurve({ ...curveMonth, ladder: [{ period: "2026-10", now: "6", future: null }] })).toBe(false);
+    expect(isCurve({ ...curveMonth, milestones: [{ ...curveMonth.milestones[0], kind: "peak" }] })).toBe(false);
+    expect(isCurve({ ...curveMonth, reassurance: undefined })).toBe(false);
   });
 });
