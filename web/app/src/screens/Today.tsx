@@ -4,7 +4,7 @@ import type { Today as TodayData } from "../api/types.gen";
 import { useAction } from "../api/actions";
 import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
-import { ChatLauncher } from "../components/ChatLauncher";
+import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
 import { OfflineNotice } from "../components/OfflineNotice";
@@ -32,10 +32,6 @@ const FOLD_CHARS = 140;
 function dateLine(data: TodayData): string {
   const [, m, d] = data.date.split("-").map(Number);
   return copy.today.dateLine(m, d, data.weekday);
-}
-
-function launcherReason(kind: string | undefined): string | null {
-  return kind === "unauthorized" || kind === "rate_limited" || kind === "safe_mode" ? copy.chat.launcherBlocked[kind] : null;
 }
 
 // Spec 5.5.1 blocks 1-7, 5.5.4 offline, F3, F9.

@@ -61,6 +61,21 @@ function undoes(answer: () => Response) {
 const rowOf = (text: string) => screen.getByText(text).closest("div[class*=row]") as HTMLElement;
 
 describe("Activity", () => {
+  it("chat launcher: on when connected, off with the reason when not", async () => {
+    serve();
+    const { unmount } = renderWithProviders(<Activity />);
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
+    unmount();
+    const off = renderWithProviders(<Activity />, { conn: "offline" });
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.offline.chatLater })).toBeDisabled());
+    off.unmount();
+    renderWithProviders(<Activity />, { conn: "safe_mode" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: copy.chat.launcher })).toHaveAccessibleDescription(copy.chat.launcherBlocked.safe_mode),
+    );
+    expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled();
+  });
+
   it("newest first in date groups", async () => {
     const urls = serve();
     renderWithProviders(<Activity />);

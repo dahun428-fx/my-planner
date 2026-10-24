@@ -76,6 +76,7 @@ export const copy = {
     undo: "되돌리기",
     undone: "되돌렸어요",
     messages: "대화 내용",
+    openFailed: "대화를 열지 못했어요. 다시 눌러 주세요.",
     launcherBlocked: {
       unauthorized: "열쇠를 다시 넣으면 말할 수 있어요",
       rate_limited: "잠시 뒤에 말할 수 있어요",

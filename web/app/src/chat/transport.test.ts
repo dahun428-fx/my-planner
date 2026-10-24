@@ -1,6 +1,7 @@
 import type { UIMessage } from "ai";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import { globalConfig } from "zod/v4/core";
 import { BASE, server } from "../test/server";
 import { TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { buildChatBody, makeTransport } from "./transport";
@@ -41,6 +42,10 @@ describe("buildChatBody", () => {
 });
 
 describe("makeTransport", () => {
+  it("turns zod's compiled checks off before the SDK parses anything (CSP, no eval probe)", () => {
+    expect(globalConfig.jitless).toBe(true);
+  });
+
   it("posts the body to the BE chat path with the token", async () => {
     const seen: { auth: string | null; body: unknown }[] = [];
     server.use(

@@ -4,7 +4,9 @@ import { failureText, undoActivity, type UndoBlockReason } from "../api/actions"
 import { type ApiResult, apiFetch, apiGet } from "../api/client";
 import type { ActivityItem, ActivityResponse, CheckinList, Today } from "../api/types.gen";
 import { validateModel } from "../api/validate";
+import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
+import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
 import { Row } from "../components/Row";
@@ -113,6 +115,11 @@ export function Activity() {
     void checkins.refresh();
     reread();
   }, [readAgain, checkins, reread]);
+  const chat = useChatSheet();
+  // The secretary may have written something while the sheet was open: read again when it closes.
+  const afterRef = useRef(afterPartAction);
+  afterRef.current = afterPartAction;
+  useEffect(() => chat.onClosed(() => afterRef.current()), [chat]);
 
   const first = result?.kind === "ok" ? result.data : null;
   const items = useMemo(() => (first ? applyUndone(mergeById(first.items, older), undone) : []), [first, older, undone]);
@@ -290,6 +297,7 @@ export function Activity() {
     <main className={`${page.main} ${styles.main}`}>
       <LargeTitle title={copy.activity.title} meta={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
       {body}
+      <ChatLauncher disabled={state?.kind !== "online"} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

@@ -1,28 +1,69 @@
 import type { AppProps } from "next/app";
 import Head from "next/head";
-import { lazy, type ReactNode, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { Component as ReactComponent, type ComponentType, type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import type { ChatSheetProps } from "../chat/ChatSheet";
+import { chatSheetChunk } from "../chat/loadChatSheet";
 import { type ChatSheetApi, ChatSheetContext } from "../chat/sheetContext";
-import { ToastProvider } from "../components/Toast";
+import { ToastProvider, useToast } from "../components/Toast";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
+import { copy } from "../lib/copy";
 import { CatalogProvider } from "../ui/CatalogProvider";
 import "../styles/tokens.css";
 import "../styles/globals.css";
 
-// The AI SDK is loaded the first time the sheet opens, so it stays out of the first screen's
-// bundle (spec 9: 180KB).
-const ChatSheet = lazy(() => import("../chat/ChatSheet").then((m) => ({ default: m.ChatSheet })));
+// A crash inside the chat sheet takes down only the sheet, never the screen behind it.
+class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
-// One chat sheet for the whole app: once opened it stays mounted, so a reply still coming survives
-// a close and a change of tab, and the last view is there to read offline (F9).
+// One chat sheet for the whole app. Its chunk loads on the first open; if that fails (a stale
+// deploy, a bad network) a toast says so and the next tap tries again. Once loaded it stays
+// mounted, so a reply still coming survives a close and a change of tab, and the last view is
+// there to read offline (F9).
 function ChatHost({ children }: { children: ReactNode }) {
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [open, setOpen] = useState(false);
-  const [used, setUsed] = useState(false);
+  const [Sheet, setSheet] = useState<ComponentType<ChatSheetProps> | null>(null);
+  const [generation, setGeneration] = useState(0);
+  const sheetRef = useRef<ComponentType<ChatSheetProps> | null>(null);
+  const loading = useRef(false);
   const closed = useRef(new Set<() => void>());
+
+  const fail = useCallback(() => {
+    sheetRef.current = null;
+    setSheet(null);
+    setOpen(false);
+    setGeneration((g) => g + 1); // a fresh boundary for the next try
+    toastRef.current.show({ text: copy.chat.openFailed });
+  }, []);
+
   const api = useMemo<ChatSheetApi>(
     () => ({
       open: () => {
-        setUsed(true);
         setOpen(true);
+        if (sheetRef.current || loading.current) return;
+        loading.current = true;
+        chatSheetChunk
+          .load()
+          .then((m) => {
+            sheetRef.current = m.ChatSheet;
+            setSheet(() => m.ChatSheet);
+          })
+          .catch(fail)
+          .finally(() => {
+            loading.current = false;
+          });
       },
       onClosed: (cb) => {
         closed.current.add(cb);
@@ -31,7 +72,7 @@ function ChatHost({ children }: { children: ReactNode }) {
         };
       },
     }),
-    [],
+    [fail],
   );
   const close = useCallback(() => {
     setOpen(false);
@@ -40,10 +81,10 @@ function ChatHost({ children }: { children: ReactNode }) {
   return (
     <ChatSheetContext.Provider value={api}>
       {children}
-      {used && (
-        <Suspense fallback={null}>
-          <ChatSheet open={open} onClose={close} />
-        </Suspense>
+      {Sheet && (
+        <ChatBoundary key={generation} onError={fail}>
+          <Sheet open={open} onClose={close} />
+        </ChatBoundary>
       )}
     </ChatSheetContext.Provider>
   );

@@ -1,9 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../api/client";
-import type { Conversations } from "../api/types.gen";
-import { validateModel } from "../api/validate";
+import { BlockError } from "../components/BlockError";
 import { Sheet } from "../components/Sheet";
 import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
@@ -11,87 +9,14 @@ import { copy } from "../lib/copy";
 import { newClientMsgId } from "../lib/ids";
 import { formatKst } from "../lib/time";
 import styles from "./ChatSheet.module.css";
-import { loadParts, saveParts } from "./localParts";
+import { loadHistory, type Meta } from "./history";
+import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
 import { type ChatCtx, makeTransport } from "./transport";
 
-// --- history ---
-
 const GAP_MS = 10 * 60_000;
-const ELSEWHERE_MAX = 3;
-
-type Meta = { conversation_id?: number | null; at?: string };
-type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string };
-
-interface History {
-  conversationId: number | null;
-  messages: UIMessage[];
-  restored: Record<string, ViewPart[]>;
-  elsewhere: string[];
-}
-
-const EMPTY: History = { conversationId: null, messages: [], restored: {}, elsewhere: [] };
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-
-// Read leniently: a BE before R4d has no `id` on the lines (then they show as text only).
-function readLines(data: unknown): Line[] | null {
-  if (!isObj(data) || !Array.isArray(data.items)) return null;
-  const out: Line[] = [];
-  for (const m of data.items) {
-    if (!isObj(m) || typeof m.at !== "string" || typeof m.text !== "string" || (m.speaker !== "user" && m.speaker !== "secretary")) return null;
-    out.push({ id: typeof m.id === "string" && m.id !== "" ? m.id : undefined, at: m.at, speaker: m.speaker, text: m.text });
-  }
-  return out;
-}
-
-// Spec 5.5.2: what changed outside the app after this conversation's last line, one summary a line.
-async function readElsewhere(since: string): Promise<string[]> {
-  const r = await apiFetch<unknown>("GET", `/activity?since=${encodeURIComponent(since)}&limit=50`);
-  if (r.kind !== "ok" || !isObj(r.data) || !Array.isArray(r.data.items)) return [];
-  return r.data.items
-    .filter((a): a is { channel: string; summary: string } => isObj(a) && typeof a.summary === "string" && typeof a.channel === "string" && a.channel !== "app")
-    .map((a) => a.summary)
-    .slice(-ELSEWHERE_MAX);
-}
-
-/** null: the history could not be read (keep what is on screen, F9). */
-async function loadHistory(given: number | null | undefined): Promise<History | null> {
-  let id: number | null = null;
-  if (given !== undefined) {
-    id = given;
-  } else {
-    const r = await apiFetch<Conversations>("GET", "/conversations?channel=app&limit=3", { model: "Conversations" });
-    if (r.kind !== "ok" || !validateModel("Conversations", r.data)) return null;
-    const latest = [...r.data.items].sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1))[0];
-    id = latest?.id ?? null;
-  }
-  if (id === null) return EMPTY;
-  const r = await apiFetch<unknown>("GET", `/conversations/${id}/messages`);
-  if (r.kind === "error" && r.status === 404) return EMPTY;
-  if (r.kind !== "ok") return null;
-  const lines = readLines(r.data);
-  if (!lines) return null;
-  const restored: Record<string, ViewPart[]> = {};
-  const messages: UIMessage[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    const mid = l.id ?? `h-${id}-${i}`;
-    if (l.id && l.speaker === "secretary") {
-      const parts = await loadParts(l.id);
-      if (parts) restored[mid] = parts;
-    }
-    messages.push({
-      id: mid,
-      role: l.speaker === "user" ? "user" : "assistant",
-      parts: [{ type: "text", text: l.text }],
-      metadata: { conversation_id: id, at: l.at } satisfies Meta,
-    });
-  }
-  const last = lines[lines.length - 1];
-  const elsewhere = given === undefined && last ? await readElsewhere(last.at) : [];
-  return { conversationId: id, messages, restored, elsewhere };
-}
 
 // --- retries ---
 
@@ -127,6 +52,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const [inFlight, setInFlight] = useState(false);
   const [restored, setRestored] = useState<Record<string, ViewPart[]>>({});
   const [elsewhere, setElsewhere] = useState<string[]>([]);
+  const [historyCount, setHistoryCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState("");
 
@@ -183,21 +110,30 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
 
   // Opening shows the conversation as the BE has it (unless an answer is still coming).
   const seq = useRef(0);
-  useEffect(() => {
-    if (!open || sending.current) return;
+  const load = useCallback(() => {
     const mine = ++seq.current;
     setLoading(true);
-    void loadHistory(conversationId).then((h) => {
+    setLoadError(null);
+    void loadHistory(conversationId).then((r) => {
       if (mine !== seq.current) return;
       setLoading(false);
-      if (!h) return; // offline or unreadable: the last view stays, read-only (F9)
+      if (r.kind === "offline") return; // the last view stays, read-only (F9)
+      if (r.kind === "failed") {
+        setLoadError(r.code);
+        return;
+      }
+      const h = r.history;
       ctx.current.conversationId = h.conversationId;
       setMessages(h.messages);
+      setHistoryCount(h.messages.length);
       setRestored(h.restored);
       setElsewhere(h.elsewhere);
       setFailure(null);
     });
-  }, [open, conversationId, setMessages]);
+  }, [conversationId, setMessages]);
+  useEffect(() => {
+    if (open && !sending.current) load();
+  }, [open, load]);
 
   useEffect(() => {
     const el = list.current;
@@ -235,6 +171,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   };
 
   // Dividers (5.5.2): the time when the conversation changes or after a gap of more than 10 minutes.
+  // Right after the history it was read for, not after what is said now.
+  const elsewhereLines = elsewhere.map((line, k) => (
+    <p key={`e-${k}`} className={styles.elsewhere}>
+      {copy.chat.elsewhere(line)}
+    </p>
+  ));
   const rows: React.ReactNode[] = [];
   let prevConv: number | null = null;
   let prevAt: string | null = null;
@@ -264,6 +206,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     }
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
     rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} />);
+    if (i === historyCount - 1) rows.push(elsewhereLines);
     if (conv !== null) prevConv = conv;
     if (at !== null) prevAt = at;
   });
@@ -314,11 +257,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
             )}
           </p>
         )}
-        {elsewhere.map((s, i) => (
-          <p key={i} className={styles.elsewhere}>
-            {copy.chat.elsewhere(s)}
-          </p>
-        ))}
+        {online && loadError !== null && <BlockError code={loadError} onRetry={load} />}
       </div>
       {reason && <p className={styles.reason}>{reason}</p>}
       <form className={styles.composer} onSubmit={onSubmit}>

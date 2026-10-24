@@ -75,7 +75,7 @@ export function serveHistory(opts: {
   messages?: Record<number, HistoryItem[]>;
   activity?: { id: number; at: string; channel: "app" | "telegram" | "scheduler"; summary: string }[];
 } = {}) {
-  const seen = { conversations: 0, messages: [] as number[], activitySince: [] as string[] };
+  const seen = { conversations: 0, messages: [] as number[], activitySince: [] as string[], activityOrder: [] as string[] };
   server.use(
     http.get(`${BASE}/conversations`, ({ request }) => {
       seen.conversations += 1;
@@ -101,10 +101,13 @@ export function serveHistory(opts: {
       return HttpResponse.json({ items: items.map((m) => ({ ...m, tools: [], channel: "app" })) });
     }),
     http.get(`${BASE}/activity`, ({ request }) => {
-      const since = new URL(request.url).searchParams.get("since") ?? "";
+      const q = new URL(request.url).searchParams;
+      const since = q.get("since") ?? "";
       seen.activitySince.push(since);
+      seen.activityOrder.push(q.get("order") ?? "asc");
       const items = (opts.activity ?? [])
         .filter((a) => a.at > since)
+        .sort((a, b) => (q.get("order") === "desc" ? (a.at < b.at ? 1 : -1) : a.at < b.at ? -1 : 1))
         .map((a) => ({ ...a, actor: "user", kind: "complete_task", risk: "low", undo_id: null, undone_at: null }));
       return HttpResponse.json({ items, next_before: null, next_since: null });
     }),

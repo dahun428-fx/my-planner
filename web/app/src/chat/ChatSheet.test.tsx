@@ -10,18 +10,23 @@ import { saveConn } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { formatKst } from "../lib/time";
 import App from "../pages/_app";
+import { Activity } from "../screens/Activity";
 import { Today } from "../screens/Today";
+import { Todos } from "../screens/Todos";
+import weekJson from "../test/fixtures/week.json";
 import { gatedResponse, golden, type HistoryItem, serveChat, serveHistory, sse, sseResponse } from "../test/chat";
 import todayJson from "../test/fixtures/today.json";
 import { healthAnswers } from "../test/handlers";
 import { mockRouter, renderWithProviders, TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
 import { ChatSheet } from "./ChatSheet";
+import { chatSheetChunk } from "./loadChatSheet";
 import { saveParts } from "./localParts";
 import type { ViewPart } from "./parts";
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   await clear();
 });
 
@@ -194,6 +199,68 @@ describe("ChatSheet", () => {
     expect(screen.queryByText(copy.chat.elsewhere("앱에서 한 일"))).toBeNull();
     expect(screen.queryByText(copy.chat.elsewhere("앞선 일"))).toBeNull();
     expect(seen.activitySince).toEqual(["2026-10-24T01:00:00Z"]);
+    expect(seen.activityOrder).toEqual(["desc"]);
+    // Newest three, shown oldest first.
+    const shown = screen.getAllByText(/^다른 곳에서 바뀐 것: /).map((e) => e.textContent);
+    expect(shown).toEqual([copy.chat.elsewhere("둘"), copy.chat.elsewhere("셋"), copy.chat.elsewhere("넷")]);
+  });
+
+  it("elsewhere lines stay right after the history, before what is said now", async () => {
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "좋아요" }], {
+      activity: [{ id: 2, at: "2026-10-24T02:00:00Z", channel: "telegram", summary: "하나" }],
+    });
+    serveChat(() => sseResponse(textAnswer("m-5-2", 5, "네, 그럴게요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    const line = await screen.findByText(copy.chat.elsewhere("하나"));
+    await sendText(user, "고마워");
+    const reply = await screen.findByText("네, 그럴게요");
+    const after = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(after(screen.getByText("좋아요"), line)).toBe(true);
+    expect(after(line, screen.getByText("고마워"))).toBe(true);
+    expect(after(line, reply)).toBe(true);
+  });
+
+  it("a history that cannot be read says so and tries again", async () => {
+    let fail = true;
+    serveHistory({ conversations: [{ id: 5, last_message_at: "2026-10-24T01:00:00Z" }], messages: { 5: [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "좋아요" }] } });
+    server.use(
+      http.get(`${BASE}/conversations`, () => (fail ? HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) : undefined)),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    const retry = await screen.findByRole("button", { name: copy.errors.retry });
+    expect(screen.getByText(copy.errors.block("internal"))).toBeInTheDocument();
+    fail = false;
+    await user.click(retry);
+    expect(await screen.findByText("좋아요")).toBeInTheDocument();
+    expect(screen.queryByText(copy.errors.block("internal"))).toBeNull();
+  });
+
+  it("a reply without a conversation id keeps the one in hand", async () => {
+    // A command answer with no open app conversation: `conversation_id: null`, no x-conversation-id.
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "좋아요" }]);
+    const command = sse([
+      { type: "start", messageMetadata: { conversation_id: null, channel: "app", kind: "chat", checkin_id: null } },
+      { type: "start-step" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "오늘 할 일은 셋이에요." },
+      { type: "text-end", id: "t1" },
+      { type: "finish-step" },
+      { type: "finish", messageMetadata: { conversation_id: null, channel: "app", kind: "chat" } },
+      "[DONE]",
+    ]);
+    const headers = { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1" };
+    const bodies = serveChat(() => sseResponse(command, headers), () => sseResponse(golden("chat_replay.sse")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    await screen.findByText("좋아요");
+    await sendText(user, "/today");
+    expect(await screen.findByText("오늘 할 일은 셋이에요.")).toBeInTheDocument();
+    expect(screen.queryByText(copy.chat.newConversation)).toBeNull();
+    await sendText(user, "고마워");
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1].conversation_id).toBe(5);
   });
 
   it("new conversation divider when id changes", async () => {
@@ -347,24 +414,80 @@ describe("ChatSheet", () => {
 });
 
 describe("ChatSheet in the app", () => {
-  function mountApp() {
+  function mountApp(Component: React.ComponentType = Today, route = "/") {
     saveConn({ beUrl: TEST_BE_URL, token: TEST_TOKEN });
-    const hits = { today: 0 };
+    const hits = { today: 0, week: 0, activity: 0 };
     server.use(
       http.get(`${BASE}/today`, () => {
         hits.today += 1;
         return HttpResponse.json(todayJson);
       }),
+      http.get(`${BASE}/week`, () => {
+        hits.week += 1;
+        return HttpResponse.json(weekJson);
+      }),
+      http.get(`${BASE}/drafts`, () => HttpResponse.json({ items: [] })),
+      http.get(`${BASE}/priorities`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })),
+      http.get(`${BASE}/checkins`, () => HttpResponse.json({ items: [] })),
     );
     serveHistory();
-    const router = mockRouter("/");
+    // serveHistory answers /activity for the "elsewhere" lines; the Activity screen reads it too.
+    server.use(
+      http.get(`${BASE}/activity`, () => {
+        hits.activity += 1;
+        return HttpResponse.json({ items: [], next_before: null, next_since: null });
+      }),
+    );
+    const router = mockRouter(route);
     render(
       <RouterContext.Provider value={router}>
-        <App {...({ Component: Today, pageProps: {}, router } as unknown as AppProps)} />
+        <App {...({ Component, pageProps: {}, router } as unknown as AppProps)} />
       </RouterContext.Provider>,
     );
     return hits;
   }
+
+  async function openFromLauncher(user: ReturnType<typeof userEvent.setup>) {
+    const launcher = await screen.findByRole("button", { name: copy.chat.launcher });
+    await waitFor(() => expect(launcher).toBeEnabled());
+    await user.click(launcher);
+    await screen.findByRole("dialog");
+    await ready();
+    return launcher;
+  }
+
+  it("a chat chunk that fails to load leaves the screen, says so, and loads on the next tap", async () => {
+    const load = vi.spyOn(chatSheetChunk, "load").mockRejectedValueOnce(new Error("chunk 404"));
+    mountApp();
+    const user = userEvent.setup();
+    const launcher = await screen.findByRole("button", { name: copy.chat.launcher });
+    await waitFor(() => expect(launcher).toBeEnabled());
+    await user.click(launcher);
+    expect(await screen.findByText(copy.chat.openFailed)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("운동 30분")).toBeInTheDocument();
+    await user.click(launcher);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("todos: the launcher opens the sheet and closing reads the lists again", async () => {
+    const hits = mountApp(Todos, "/todos/");
+    const user = userEvent.setup();
+    await openFromLauncher(user);
+    const before = hits.week;
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: copy.chat.close }));
+    await waitFor(() => expect(hits.week).toBe(before + 1));
+  });
+
+  it("activity: the launcher opens the sheet and closing reads the log again", async () => {
+    const hits = mountApp(Activity, "/activity/");
+    const user = userEvent.setup();
+    await openFromLauncher(user);
+    const before = hits.activity;
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: copy.chat.close }));
+    await waitFor(() => expect(hits.activity).toBe(before + 1));
+  });
 
   it("focus returns to launcher on close", async () => {
     mountApp();
