@@ -9,7 +9,8 @@ import styles from "./parts.module.css";
 export type DraftRow = { id: number; title: string; when: string };
 
 // The body shared by ui_milestone_draft and ui_chapter_draft: a bordered group with one line per
-// draft and "빼기" · "확정" on each line. A line that was handled leaves the list.
+// draft and "빼기" · "확정" on each line. A line that was handled leaves the list. A group restored
+// after a reload shows its lines only (they may have been handled since).
 export function DraftRows({
   heading,
   fallback,
@@ -51,14 +52,16 @@ export function DraftRows({
             <li key={r.id} className={styles.draftRow}>
               <p className={styles.draftTitle}>{r.title}</p>
               <p className={styles.draftWhen}>{r.when}</p>
-              <div className={styles.buttons}>
-                <button type="button" className={styles.button} disabled={ctx.readOnly} onClick={() => void send(r, dropAction, { id: r.id })}>
-                  {copy.parts.drop}
-                </button>
-                <button type="button" className={`${styles.button} ${styles.primary}`} disabled={ctx.readOnly} onClick={() => void send(r, confirmAction, { ids: [r.id] })}>
-                  {copy.parts.confirmOne}
-                </button>
-              </div>
+              {!ctx.restored && (
+                <div className={styles.buttons}>
+                  <button type="button" className={styles.button} disabled={ctx.readOnly} onClick={() => void send(r, dropAction, { id: r.id })}>
+                    {copy.parts.drop}
+                  </button>
+                  <button type="button" className={`${styles.button} ${styles.primary}`} disabled={ctx.readOnly} onClick={() => void send(r, confirmAction, { ids: [r.id] })}>
+                    {copy.parts.confirmOne}
+                  </button>
+                </div>
+              )}
             </li>
           ))}
       </ul>
