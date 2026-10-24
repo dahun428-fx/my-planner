@@ -115,10 +115,31 @@
   color: var(--muted);
   text-decoration: line-through;
 }
+/* The grey line at the right of a row (a habit's count). */
 .rowMeta {
-  display: block;
+  flex: none;
+  max-width: 45%;
+  padding-right: 0.25rem;
+  text-align: right;
   font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+/* SP7 6.1: habit rows are 52px tall; the check keeps its 44px hit area. */
+.habitRows .row {
+  min-height: var(--row);
+}
+.habitAdd {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--muted);
+  text-decoration: none;
+}
+.habitAdd:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 .pills {
   display: flex;

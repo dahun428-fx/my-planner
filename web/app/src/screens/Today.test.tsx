@@ -14,6 +14,7 @@ import health from "../test/fixtures/health.json";
 import degraded from "../test/fixtures/health-degraded.json";
 import todayJson from "../test/fixtures/today.json";
 import emptyJson from "../test/fixtures/today-empty.json";
+import { makeHabit } from "../test/parts";
 import { renderWithProviders, seedSnap, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Today } from "./Today";
@@ -51,6 +52,12 @@ function actions(answer: (body: Record<string, unknown>) => Response | Promise<R
 
 const applied = (confirmation = "✓ 처리했어요") => // taste-skill-ignore: BE confirmation prefix (R4b), not UI
   HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation });
+
+const habits = [
+  makeHabit(1, "물 마시기", { week_count: 4, checked: true }),
+  makeHabit(2, "운동", { kind: "weekly", target_per_week: 3, week_count: 2 }),
+];
+const withHabits: TodayData = { ...today, habits };
 
 const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
@@ -373,6 +380,78 @@ async function seed(data: TodayData | null) {
   if (data) await seedSnap("today", data);
   server.use(http.get(`${BASE}/today`, () => HttpResponse.error()));
 }
+
+describe("Today habits (SP7 6.1)", () => {
+  it("habit_block_between_condition_and_todos", async () => {
+    const hits = serve(withHabits);
+    const bodies = actions((b) =>
+      HttpResponse.json({
+        status: "applied",
+        activity_id: 920,
+        undo_id: 920,
+        result: { habit: { ...habits[1], checked: true, week_count: 3 }, date: today.date, already: false },
+        confirmation: "✓ 습관: 운동", // taste-skill-ignore: BE confirmation (appendix A), not UI
+      }),
+    );
+    renderWithProviders(<Today />);
+    const habitsHeading = await screen.findByRole("heading", { name: "습관" });
+    const condition = screen.getByRole("heading", { name: copy.today.condition });
+    const todos = screen.getByRole("heading", { name: copy.today.todosHeading(3) });
+    expect(before(condition, habitsHeading)).toBe(true);
+    expect(before(habitsHeading, todos)).toBe(true);
+    expect(screen.getByRole("link", { name: "관리" })).toHaveAttribute("href", "/habits/");
+    const water = screen.getByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") });
+    expect(before(habitsHeading, water)).toBe(true);
+    expect(before(water, todos)).toBe(true);
+    expect(water).toBeChecked();
+    expect(screen.getByText("이번 주 4번")).toBeInTheDocument();
+    expect(screen.getByText("이번 주 2번 · 목표 3번")).toBeInTheDocument();
+
+    await waitFor(() => expect(hits.today).toBe(2));
+    await userEvent.click(screen.getByRole("checkbox", { name: copy.parts.checkLabel("운동") }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    // The day is /today.date (the BE's logical day), never the device calendar.
+    expect(bodies[0]).toMatchObject({ action: "check_habit", args: { id: 2, date: today.date } });
+    await waitFor(() => expect(hits.today).toBe(3));
+    expect(await screen.findByRole("button", { name: copy.activity.undo })).toBeInTheDocument();
+  });
+
+  it("empty_habits_shows_add_row", async () => {
+    serve(today); // habits: []
+    renderWithProviders(<Today />);
+    const add = await screen.findByRole("link", { name: "습관 추가하기" });
+    expect(add).toHaveAttribute("href", "/habits/");
+    expect(screen.queryByRole("heading", { name: "습관" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "관리" })).toBeNull();
+    const condition = screen.getByRole("heading", { name: copy.today.condition });
+    const todos = screen.getByRole("heading", { name: copy.today.todosHeading(3) });
+    expect(before(condition, add)).toBe(true);
+    expect(before(add, todos)).toBe(true);
+  });
+
+  it("a snapshot saved before habits (no field) still draws, with the add row", async () => {
+    const { habits: _gone, ...old } = today;
+    await seed(old as TodayData);
+    renderWithProviders(<Today />, { conn: "offline" });
+    expect(await screen.findByText(copy.offline.lead)).toBeInTheDocument();
+    expect(screen.getByText("운동 30분")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "습관 추가하기" })).toBeInTheDocument();
+  });
+
+  it("offline_snapshot_habits_read_only", async () => {
+    await seed(withHabits);
+    const bodies = actions(() => applied());
+    renderWithProviders(<Today />, { conn: "offline" });
+    expect(await screen.findByText(copy.offline.lead)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "습관" })).toBeInTheDocument();
+    const boxes = [copy.parts.checkLabel("물 마시기"), copy.parts.checkLabel("운동")].map((name) => screen.getByRole("checkbox", { name }));
+    for (const b of boxes) expect(b).toBeDisabled();
+    expect(boxes[0]).toBeChecked();
+    await userEvent.click(boxes[1]);
+    expect(bodies).toHaveLength(0);
+    expect(screen.getByText("이번 주 2번 · 목표 3번")).toBeInTheDocument();
+  });
+});
 
 describe("Today offline and refused", () => {
   it("offline with snapshot is read-only", async () => {

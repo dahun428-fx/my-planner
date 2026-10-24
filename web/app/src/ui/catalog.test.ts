@@ -111,6 +111,6 @@ describe("catalog", () => {
   it("catalog names match registry", () => {
     expect(catalog.version).toBe("2026-10-24.2");
     expect(Object.keys(catalog.components).sort()).toEqual([...registryNames].sort());
-    expect(registryNames).toHaveLength(10);
+    expect(registryNames).toHaveLength(11);
   });
 });

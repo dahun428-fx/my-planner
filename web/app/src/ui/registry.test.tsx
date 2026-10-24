@@ -4,10 +4,10 @@ import { clear } from "idb-keyval";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { copy } from "../lib/copy";
-import { makeCtx } from "../test/parts";
+import { makeCtx, makeHabit } from "../test/parts";
 import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
-import { UiPart } from "./registry";
+import { registryNames, UiPart } from "./registry";
 
 afterEach(async () => {
   await clear();
@@ -51,5 +51,28 @@ describe("UiPart", () => {
     }
     expect(trees[1]).toBe(trees[0]);
     expect(trees[2]).toBe(trees[0]);
+  });
+
+  it("ui_habit_check_registered", async () => {
+    expect(registryNames).toContain("ui_habit_check");
+    const habits = [makeHabit(1, "물 마시기", { week_count: 4, checked: true })];
+    renderWithProviders(<UiPart name="ui_habit_check" props={{ date: "2026-10-24" }} data={{ habits }} ctx={makeCtx({ where: "checkin" })} />);
+    expect(await screen.findByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") })).toBeChecked();
+    expect(screen.getByText("이번 주 4번")).toBeInTheDocument();
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("missing_data_fallback_line", async () => {
+    renderWithProviders(<UiPart name="ui_habit_check" props={{ date: "2026-10-24" }} ctx={makeCtx()} />);
+    const line = await screen.findByRole("link", { name: "오늘 습관" });
+    expect(line).toHaveAttribute("href", "/habits/");
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("ui_habit_check without a date is not drawn", async () => {
+    renderWithProviders(<UiPart name="ui_habit_check" props={{}} data={{ habits: [makeHabit(1, "물 마시기")] }} ctx={makeCtx()} />);
+    expect(await screen.findByText(copy.parts.unknown)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays, formatKst } from "../lib/time";
 import page from "../styles/page.module.css";
+import { HabitList } from "../ui/components/HabitList";
 import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
 import { PinnedCard } from "./PinnedCard";
@@ -35,7 +36,7 @@ function dateLine(data: TodayData): string {
   return copy.today.dateLine(m, d, data.weekday);
 }
 
-// Spec 5.5.1 blocks 1-7, 5.5.4 offline, F3, F9.
+// Spec 5.5.1 blocks 1-7 (and SP7 6.1 habits after the condition), 5.5.4 offline, F3, F9.
 export function Today() {
   const { state, recheck } = useConnection();
   const { view, refresh } = useSnapshotted<TodayData>("today", "/today", "Today");
@@ -64,6 +65,8 @@ export function Today() {
     void refresh();
     reread();
   }, [refresh, reread]);
+
+  const afterHabit = useCallback(() => void refresh(), [refresh]);
 
   const offline = view.kind === "snapshot" || view.kind === "none";
   const date = data?.date ?? "";
@@ -155,6 +158,7 @@ export function Today() {
     const readOnly = !writable;
     const pinned = [...t.cards].sort((a, b) => a.order - b.order);
     const pinnedIds = pinned.map((c) => c.id);
+    const habits = t.habits ?? [];
 
     body = (
       <>
@@ -233,6 +237,25 @@ export function Today() {
             {readOnly && <p className={styles.reason}>{copy.offline.writeLater}</p>}
           </div>
         </Group>
+        {/* SP7 6.1: between the condition and the to-dos. A snapshot from before habits has no field. */}
+        {habits.length > 0 ? (
+          <Group
+            heading={copy.habits.heading}
+            action={
+              <Link href="/habits/" className={styles.manage}>
+                {copy.habits.manage}
+              </Link>
+            }
+          >
+            <div className={styles.habits}>
+              <HabitList habits={habits} date={t.date} readOnly={readOnly} onChanged={afterHabit} />
+            </div>
+          </Group>
+        ) : (
+          <div className={styles.habitsEmpty}>
+            <HabitList habits={habits} date={t.date} readOnly={readOnly} onChanged={afterHabit} />
+          </div>
+        )}
         <Group
           heading={copy.today.todosHeading(openCount)}
           footer={

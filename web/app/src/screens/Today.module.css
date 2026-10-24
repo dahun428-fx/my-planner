@@ -169,3 +169,23 @@
   border-radius: var(--radius-group);
   overflow: hidden;
 }
+/* SP7 6.1: the habit rows inside the group, aligned with the to-do rows below. */
+.habits {
+  padding: 0 var(--pad) 0 0;
+}
+.habitsEmpty {
+  margin: 0 var(--pad) var(--gap);
+  padding: 0 0.25rem;
+}
+.manage {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.manage:focus-visible {
+  outline: 2px solid var(--text);
+}

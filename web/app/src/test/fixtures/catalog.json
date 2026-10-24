@@ -109,6 +109,25 @@
         "type": "object"
       }
     },
+    "ui_habit_check": {
+      "origin": "brain",
+      "schema": {
+        "additionalProperties": false,
+        "description": "오늘 습관 줄 묶음(SP7 스펙 9장). 지금 값은 BE가 `data.habits`로 붙인다. 달력에 없는 날짜는 도구가 거른다.",
+        "properties": {
+          "date": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "HabitCheckProps",
+        "type": "object"
+      }
+    },
     "ui_todo_draft": {
       "origin": "harness",
       "schema": {

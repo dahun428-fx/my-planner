@@ -33,7 +33,21 @@ type TodayEntry = { group: string; todo: Todo };
 function today(): Record<string, unknown> {
   const t = fixture("today-cards") as { todos: TodayEntry[] };
   const long = { ...t.todos[2].todo, id: 99, title: LONG_TITLE };
-  return { ...t, todos: [...t.todos.slice(0, 3), { group: "open", todo: long }, ...t.todos.slice(3)] };
+  return { ...t, todos: [...t.todos.slice(0, 3), { group: "open", todo: long }, ...t.todos.slice(3)], habits: HABITS };
+}
+
+/** SP7 6.1: a daily, a weekly under its target and one that met it (the three meta lines). */
+const HABITS = [
+  { id: 1, title: "물 마시기", area: "health", kind: "daily", target_per_week: null, status: "active", checked: true, week_count: 4 },
+  { id: 2, title: "운동", area: "health", kind: "weekly", target_per_week: 3, status: "active", checked: false, week_count: 2 },
+  { id: 3, title: "독서", area: "learning", kind: "weekly", target_per_week: 2, status: "active", checked: true, week_count: 2 },
+];
+
+/** The evening check-in with its habit card (SP7 6.3: after the confirm card). */
+function checkin341(): Record<string, unknown> {
+  const c = fixture("checkin-341") as { cards: unknown[] };
+  const habit = { toolCallId: "h_habit_1", component: "ui_habit_check", props: { date: "2026-10-24" }, data: { habits: HABITS } };
+  return { ...c, cards: [...c.cards, habit] };
 }
 
 function week(): Record<string, unknown> {
@@ -71,7 +85,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/drafts") return json(route, fixture("drafts"));
     if (get && path === "/priorities") return json(route, fixture(`priorities-${q.get("cadence") ?? "month"}`));
     if (get && path === "/checkins") return json(route, fixture("checkins-today"));
-    if (get && path === "/checkins/341") return json(route, fixture("checkin-341"));
+    if (get && path === "/checkins/341") return json(route, checkin341());
     if (get && path === "/checkins/340") return json(route, fixture("checkin-340-brief"));
     if (get && path === "/activity") {
       if (q.has("since")) return json(route, { items: [], next_before: null, next_since: null });

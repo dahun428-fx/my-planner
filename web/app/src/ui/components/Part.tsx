@@ -25,17 +25,22 @@ export function Part({
   );
 }
 
+// One check row (the SP6 "할 일 줄" look). `done` strikes the title through (a finished to-do);
+// `meta` is the grey line at the right (a habit's "이번 주 n번"). A habit row is checked but
+// never `done`: a habit does not end.
 export function CheckRow({
   title,
   checked,
   disabled,
   done,
+  meta,
   onToggle,
 }: {
   title: string;
   checked: boolean;
   disabled: boolean;
   done?: boolean;
+  meta?: string;
   onToggle(): void;
 }) {
   return (
@@ -44,6 +49,7 @@ export function CheckRow({
         <span className={styles.circle} />
       </button>
       <span className={`${styles.rowText} ${done ? styles.done : ""}`}>{title}</span>
+      {meta !== undefined && <span className={styles.rowMeta}>{meta}</span>}
     </li>
   );
 }

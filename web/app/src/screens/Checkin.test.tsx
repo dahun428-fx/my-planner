@@ -13,6 +13,7 @@ import briefJson from "../test/fixtures/checkin-340-brief.json";
 import missedJson from "../test/fixtures/checkin-341-missed.json";
 import pendingJson from "../test/fixtures/checkin-341.json";
 import todayJson from "../test/fixtures/today.json";
+import { makeHabit } from "../test/parts";
 import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Checkin } from "./Checkin";
@@ -104,6 +105,35 @@ describe("Checkin", () => {
     serve();
     renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
+  });
+
+  it("habit_card_before_condition_picker", async () => {
+    // SP7 6.3: after ui_confirm, before the condition picker (the Telegram button order).
+    const habitCard = {
+      toolCallId: "h_habit_1",
+      component: "ui_habit_check",
+      props: { date: "2026-10-24" },
+      data: { habits: [makeHabit(1, "물 마시기", { checked: true, week_count: 4 }), makeHabit(2, "운동", { kind: "weekly", target_per_week: 3, week_count: 1 })] },
+    };
+    const condCard = { toolCallId: "h_cond_1", component: "ui_condition_picker", props: { date: "2026-10-24" }, data: null };
+    const hits = serve({ ...pending, cards: [...pending.cards, habitCard, condCard] } as CheckinDetail);
+    const bodies = actions(() => applied());
+    renderWithProviders(<Checkin id={341} />);
+    const confirm = await screen.findByText("‘장보기’를 할 일에서 뺄까요?");
+    const water = await screen.findByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") });
+    const pill = screen.getByRole("button", { name: copy.today.conditionScore(3) });
+    const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(confirm, water)).toBe(true);
+    expect(before(water, pill)).toBe(true);
+    // Already checked stays on the card so it can be taken back.
+    expect(water).toBeChecked();
+    expect(screen.getByText("이번 주 1번 · 목표 3번")).toBeInTheDocument();
+
+    const reads = hits.checkin;
+    await userEvent.click(water);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ action: "uncheck_habit", args: { id: 1, date: "2026-10-24" } });
+    await waitFor(() => expect(hits.checkin).toBeGreaterThan(reads));
   });
 
   it("evening shows open todos with tomorrow and done", async () => {

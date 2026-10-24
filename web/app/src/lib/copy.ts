@@ -1,4 +1,4 @@
-import type { Todo } from "../api/types.gen";
+import type { Habit, Todo } from "../api/types.gen";
 
 // Every Korean sentence the app shows lives here (spec 10장). Screen code takes text from `copy`;
 // `npm run lint:copy` rejects Hangul literals anywhere else. Templates are functions.
@@ -315,6 +315,21 @@ export const copy = {
     checkLabel: (title: string) => `${title} 체크`,
   },
 
+  // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,
+  // nothing about what is left.
+  habits: {
+    heading: "습관",
+    manage: "관리",
+    todayLine: "오늘 습관",
+    addRow: "습관 추가하기",
+    empty: "챙기고 싶은 습관을 더해 보세요. 매일 하는 것도, 주 몇 번 하는 것도 돼요.",
+    weekOfTarget: (n: number, target: number) => `이번 주 ${n}번 · 목표 ${target}번`,
+    weekMet: "이번 주 목표만큼 했어요",
+    week: (n: number) => `이번 주 ${n}번`,
+    lastWeek: (n: number) => `지난주 ${n}번`,
+    weekOf: (m: number, d: number, n: number) => `${m}월 ${d}일 주 ${n}번`,
+  },
+
   areas: {
     career: "커리어",
     finance: "경제",
@@ -349,3 +364,11 @@ export const copy = {
 } as const;
 
 export type Copy = typeof copy;
+
+/** The grey line at the right of a habit row (SP7 6.1). The app works out "met"; it earns nothing. */
+export function habitMeta(h: Pick<Habit, "kind" | "target_per_week" | "week_count">): string {
+  if (h.kind === "weekly" && h.target_per_week !== null) {
+    return h.week_count >= h.target_per_week ? copy.habits.weekMet : copy.habits.weekOfTarget(h.week_count, h.target_per_week);
+  }
+  return copy.habits.week(h.week_count);
+}
