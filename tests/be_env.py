@@ -84,6 +84,7 @@ class BeEnv:
         script: list[FakeTurn] | tuple[FakeTurn, ...] = (),
         start: datetime,
         overrides: dict[str, Any] | None = None,
+        api_sleep: Any = None,
     ) -> AsyncIterator[BeEnv]:
         settings = make_settings(tmp_path, **{"api_token": TEST_TOKEN, **(overrides or {})})
         db_path = settings.paths.state_dir / "planner.db"
@@ -111,6 +112,7 @@ class BeEnv:
             dispatcher=parts.dispatcher, errors=ErrorCounter(clock),
             polling_state=lambda: "down" if parts.runner.polling_down else "running",
             started_at=start, transcripts=parts.transcripts,
+            **({"sleep": api_sleep} if api_sleep is not None else {}),
         )
         client = TestClient(TestServer(build_app(deps)))
         await client.start_server()
@@ -157,6 +159,27 @@ class BeEnv:
         }
         resp = await self.post("/actions", json=body)
         return resp.status, await resp.json()
+
+    def chat_body(
+        self, text: str | None = None, *, client_msg_id: str | None = None, conversation_id: int | None = None,
+        checkin_id: int | None = None, parts: list[dict[str, Any]] | None = None, message_id: str = "msg-1",
+    ) -> dict[str, Any]:
+        return {
+            "client_msg_id": client_msg_id or f"cm-{next(self._ids)}",
+            "conversation_id": conversation_id,
+            "checkin_id": checkin_id,
+            "message": {
+                "id": message_id, "role": "user",
+                "parts": parts if parts is not None else [{"type": "text", "text": text or ""}],
+            },
+        }
+
+    async def chat(self, text: str | None = None, **kw: Any) -> tuple[ClientResponse, bytes]:
+        """`POST /chat`을 보내고 스트림을 끝까지 읽는다. 그다음 디스패처 큐가 빌 때까지 기다린다."""
+        resp = await self.post("/chat", json=self.chat_body(text, **kw))
+        raw = await resp.read()
+        await self.drain()
+        return resp, raw
 
     def activity(self) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM activity ORDER BY id").fetchall()

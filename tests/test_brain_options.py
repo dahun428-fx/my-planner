@@ -207,3 +207,21 @@ def test_brain_result_carries_no_tool_events():
     assert [f.name for f in fields(BrainResult)] == [
         "text", "session_id", "turns", "status", "error", "resume_failed", "retry_at",
     ]
+
+
+def test_build_options_partial_messages_and_fork_off_by_default(tmp_path):
+    """이 티켓의 두뇌는 부분 메시지를 켜지 않는다(SP3-4 06: 글 블록 하나, 조각 스트리밍은 06b)."""
+    opts, _, _ = _options(tmp_path)
+    assert opts.include_partial_messages is False
+    assert opts.fork_session is False
+
+
+def test_app_system_prompt_appends_channel_app(tmp_path):
+    from my_planner.harness import prompts
+    from my_planner.harness.brain import ClaudeBrain
+
+    brain = ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+    assert brain.system_prompt_for("telegram") == prompts.load("system.md")
+    app = brain.system_prompt_for("app")
+    assert app.startswith(prompts.load("system.md"))
+    assert app.endswith(prompts.load("channel_app.md"))  # 지금은 빈 자리(티켓 09가 채운다)

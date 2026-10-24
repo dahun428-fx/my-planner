@@ -1,0 +1,7 @@
+{
+  "content-type": "text/event-stream",
+  "cache-control": "no-cache",
+  "x-accel-buffering": "no",
+  "x-vercel-ai-ui-message-stream": "v1",
+  "x-conversation-id": "1"
+}

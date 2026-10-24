@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import itertools
 import logging
+import sqlite3
 import time
 from collections.abc import Awaitable, Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
@@ -19,6 +20,7 @@ import anyio
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import (
     Cadence,
+    Channel,
     ConversationKind,
     LoopKey,
     RunContext,
@@ -30,6 +32,12 @@ from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
 from my_planner.harness.context import ask_condition_for, build_notices, build_preamble
 from my_planner.harness.redact import MASK, redact
+from my_planner.harness.stream import (
+    QueueSink,
+    StreamSink,
+    UiMessageWriter,
+    write_reply,
+)
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
 from my_planner.store.db import transaction
@@ -43,13 +51,16 @@ from my_planner.store.repos.state import (
     PAUSE_UNTIL_KEY,
 )
 from my_planner.store.reviews import save_weekly_review
+from my_planner.store.transcripts import app_secretary_message_id, app_user_message_id
 from my_planner.tools.actions import ActionDeps, ActionRequest, ActionResult
 from my_planner.tools.actions import apply_action as _apply_action
+from my_planner.tools.activity import undoable_now
 from my_planner.tools.confirmations import render_confirmations
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.harness.stream import AppReplySender
     from my_planner.store.repos.activity import (
         ActivityRepo,
         ConfirmsRepo,
@@ -73,6 +84,13 @@ class Inbound:
     sent_at: datetime  # 텔레그램이 기록한 보낸 시각
     update_ids: list[int]
     recovered: bool = False  # 시작 때 `inbound_pending`에서 다시 넣은 메시지(본문은 이미 가린 글)
+    # 통로(SP3-4 7.5 M1). 앱 메시지는 `POST /chat` 하나에 하나이고 묶지 않는다
+    channel: Channel = "telegram"
+    client_msg_id: str | None = None
+    checkin_id: int | None = None
+    sink: StreamSink | None = None  # 앱 요청의 스트림. 시작 때 다시 넣은 앱 행은 None(M6)
+    conversation_id: int | None = None  # 앱: 받을 때 `route_app_message`가 고른 대화(6.4.1)
+    message_id: str | None = None  # 앱: 받은 `message.id`(사용자 줄의 id, 6.4.6)
 
 
 @dataclass
@@ -81,12 +99,35 @@ class Outbound:
     draft_conversation_id: int | None = None
     draft_task_ids: list[int] = field(default_factory=list)
     ask_condition_for: date | None = None
+    # 앱 답(SP3-4 7.5 M4): 확인 문구는 글에 붙이지 않고 `data-activity.confirmation`으로 간다(6.4.1)
+    channel: Channel = "telegram"
+    confirmation: str | None = None
+    writer: UiMessageWriter | None = None
+    activity_ids: list[int] = field(default_factory=list)
+    undo_ids: list[int] = field(default_factory=list)
 
 
 class Sender(Protocol):
     async def send(self, out: Outbound) -> None: ...
 
     async def typing(self) -> None: ...
+
+
+@dataclass
+class _AppSlot:
+    """처리를 기다리거나 처리 중인 앱 메시지 하나(M8: 같은 `client_msg_id`의 새 요청이 여기에 붙는다)."""
+
+    inbound: Inbound
+    writer: UiMessageWriter
+    conversation_id: int | None  # 지금 고른 대화(닫혀 있어 다시 고르면 바뀐다)
+
+    @property
+    def inbound_id(self) -> int:
+        return self.inbound.update_ids[0]
+
+
+def _app_key(m: Inbound) -> str:
+    return m.client_msg_id if m.client_msg_id is not None else f"inbound:{m.update_ids[0]}"
 
 
 @dataclass
@@ -203,6 +244,7 @@ class Dispatcher:
         activity: ActivityRepo | None = None,
         idempotency: IdempotencyRepo | None = None,
         confirms: ConfirmsRepo | None = None,
+        app_sender: AppReplySender | None = None,
     ) -> None:
         self.brain = brain
         self.sender = sender
@@ -220,6 +262,9 @@ class Dispatcher:
         self.activity = activity
         self.idempotency = idempotency
         self.confirms = confirms
+        self.app_sender = app_sender  # 앱 답을 보낼 곳(M4). None이면 앱 답은 아무 데도 가지 않는다
+        self._app: dict[str, _AppSlot] = {}
+        self._cur: _AppSlot | None = None  # 지금 처리 중인 앱 메시지(작업자는 하나라 한 번에 하나)
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
         self._awake = _AwakeRefs(keep_awake, lambda: not self._queue.empty())
@@ -273,14 +318,98 @@ class Dispatcher:
         assert self.tools is not None, "즉시 갈래에는 도구가 있어야 한다"
         deps = ActionDeps(
             tools=self.tools, clock=self.clock, activity=self.activity, idempotency=self.idempotency,
-            confirms=self.confirms,
+            confirms=self.confirms, state=self.state, router=self.router,
         )
         return _apply_action(deps, req)
 
     def submit_message(self, m: Inbound) -> None:
-        # 받은 때를 활동으로 기록한다. 앞선 두뇌 호출을 기다리는 동안 tick이 대화를 만료로 닫지 않는다
-        self.router.keep_alive(m.at)
+        if m.channel == "app":
+            # 대화는 받을 때 이미 골랐고(`route_app_message`가 활동으로 기록했다) 스트림을 붙일 자리를 만든다(M8)
+            self._register_app(m)
+        else:
+            # 받은 때를 활동으로 기록한다. 앞선 두뇌 호출을 기다리는 동안 tick이 대화를 만료로 닫지 않는다
+            self.router.keep_alive(m.at)
         self._queue.put_nowait((_PRIORITY_MESSAGE, next(self._seq), m))
+
+    # --- 앱 통로 (SP3-4 6.4.1, 7.5) ---
+
+    def route_app_message(
+        self, at: datetime, *, conversation_id: int | None, checkin_id: int | None
+    ) -> Conversation:
+        """앱 메시지의 대화를 받을 때 고른다(동기, 7.2). 필요하면 새 앱 대화를 연다(4.3: 앱이 여는 대화는 여기서만)."""
+        return self.router.for_app_message(at, conversation_id=conversation_id, checkin_id=checkin_id)
+
+    def chat_metadata(self, conversation_id: int | None) -> dict[str, Any]:
+        conv = self.convs.get(conversation_id) if conversation_id is not None else None
+        kind = conv.kind.value if conv is not None else ConversationKind.chat.value
+        return {"conversation_id": conversation_id, "channel": "app", "kind": kind}
+
+    def _register_app(self, m: Inbound) -> None:
+        inbound_id = m.update_ids[0]
+        mid = app_secretary_message_id(m.conversation_id, inbound_id) if m.conversation_id is not None else None
+        writer = UiMessageWriter(m.sink, mid)
+        writer.metadata = self.chat_metadata(m.conversation_id)
+        self._app[_app_key(m)] = _AppSlot(m, writer, m.conversation_id)
+
+    def attach_stream(self, client_msg_id: str, sink: QueueSink) -> bool:
+        """같은 `client_msg_id`가 처리 중(또는 큐에서 기다리는 중)이면 새 요청의 싱크를 그 처리에 붙인다(M8).
+
+        스트림이 있는 처리면 지난 조각부터 같은 조각을 받는다. 시작 때 다시 넣어 싱크가 없는 처리(M6)면 그 처리의
+        `start`와 `data-status: queued`부터 새로 쓴다. 그런 처리가 없으면 False.
+        """
+        slot = self._app.get(client_msg_id)
+        if slot is None or slot.writer.finished:
+            return False
+        w = slot.writer
+        if w.sink is None:
+            fresh = UiMessageWriter(sink, w.message_id)
+            fresh.start({**self.chat_metadata(slot.conversation_id), "checkin_id": slot.inbound.checkin_id})
+            fresh.status("queued")
+            if w.step_open:
+                fresh.start_step()
+            w.sink = sink
+            slot.inbound.sink = sink
+        elif isinstance(w.sink, QueueSink):
+            w.sink.join(sink)
+        else:
+            return False
+        log.info("chat_stream_attached", extra={"inbound_id": slot.inbound_id})
+        return True
+
+    def record_chat_reply(self, client_msg_id: str, reply_text: str, *, conversation_id: int | None = None) -> None:
+        """두뇌를 거치지 않은 앱 답(읽기 명령, 글 아닌 메시지)을 재생할 수 있게 적는다(`endpoint='chat'`, 6.4.1)."""
+        if self.idempotency is None:
+            return
+        body = {"conversation_id": conversation_id, "reply_text": reply_text, "confirmation": None, "inbound_id": None}
+        try:
+            self.idempotency.put(client_msg_id, "chat", 200, body, conversation_id=conversation_id)
+        except sqlite3.IntegrityError:
+            pass  # 이미 적었다(같은 client_msg_id)
+
+    def _app_conversation(self, slot: _AppSlot) -> Conversation:
+        """받을 때 고른 대화. 그 대화가 없어졌거나 닫혔으면 다시 고른다(M3, M6)."""
+        conv = self.convs.get(slot.conversation_id) if slot.conversation_id is not None else None
+        if conv is None or conv.closed_at is not None:
+            conv = self.route_app_message(
+                self.clock.now(), conversation_id=None, checkin_id=slot.inbound.checkin_id
+            )
+            slot.conversation_id = conv.id
+            slot.writer.metadata = self.chat_metadata(conv.id)
+        return conv
+
+    def _release_app(self, slot: _AppSlot) -> None:
+        """처리가 끝난 앱 메시지의 자리를 비운다. 답을 쓰지 못하고 끝났으면(예외) 일반 문구로 스트림을 닫는다."""
+        self._app.pop(_app_key(slot.inbound), None)
+        if not slot.writer.finished:
+            write_reply(slot.writer, FALLBACK_REPLY)
+
+    def activity_of(self, inbound_id: int) -> tuple[list[int], list[int]]:
+        """그 메시지가 만든 활동 id와, 지금 되돌릴 수 있는 것(6.4.1 재생, 6.4.4)."""
+        if self.activity is None:
+            return [], []
+        rows = self.activity.by_inbound(inbound_id)
+        now = self.clock.now()
+        return [a.id for a in rows], [a.id for a in rows if undoable_now(a, self.activity, now)]
 
     def submit_run(self, run: Run, merged: list[Run], *, carried_ids: Iterable[int] = ()) -> None:
         """러너가 `queued`로 바꾼 회차를 넣는다. `merged`는 이 회차에 합쳐 함께 처리할 회차다.
@@ -342,16 +471,30 @@ class Dispatcher:
             except Exception:
                 log.exception("run_resend_error", extra={"run_id": item.run.id})
             return
-        # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다)
-        batch = [item] if item.recovered else [item, *self._drain_messages()]
+        # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다).
+        # 앱 메시지도 묶지 않는다(요청마다 스트림이 하나다, M2)
+        alone = item.recovered or item.channel == "app"
+        batch = [item] if alone else [item, *self._drain_messages(item)]
+        slot = self._app.get(_app_key(item)) if item.channel == "app" else None
+        if item.channel == "app" and slot is None:  # 넣을 때 자리를 만든다. 없으면 여기서
+            self._register_app(item)
+            slot = self._app[_app_key(item)]
+        self._cur = slot
         try:
             await self._handle_messages(batch)
         except Exception:
             ids = [i for m in batch for i in m.update_ids]
             log.exception("message_handling_error", extra={"update_ids": ids})
+        finally:
+            self._cur = None
+            if slot is not None:
+                self._release_app(slot)
 
-    def _drain_messages(self) -> list[Inbound]:
-        """쌓여 있는 메시지를 모두 꺼낸다(도착 순서). 메시지가 아닌 항목은 제자리로 돌려 놓는다."""
+    def _drain_messages(self, lead: Inbound) -> list[Inbound]:
+        """쌓여 있는 메시지 가운데 `lead`와 같은 통로인 것을 모두 꺼낸다(도착 순서, M2). 나머지는 제자리로.
+
+        텔레그램끼리만 묶는다. 앱 메시지와 다시 넣은 메시지는 묶지 않는다.
+        """
         taken: list[tuple[int, int, Any]] = []
         while True:
             try:
@@ -360,8 +503,12 @@ class Dispatcher:
                 break
         msgs: list[Inbound] = []
         for entry in taken:
-            if isinstance(entry[2], Inbound) and not entry[2].recovered:
-                msgs.append(entry[2])
+            m = entry[2]
+            if (
+                isinstance(m, Inbound) and not m.recovered and m.channel == lead.channel
+                and lead.channel == "telegram"
+            ):
+                msgs.append(m)
             else:
                 self._queue.put_nowait(entry)
         return msgs
@@ -413,12 +560,17 @@ class Dispatcher:
             stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
             truncated_to=limits.input_max_chars if truncated else None,
         )
-        # 답장 창은 보낸 시각으로 고른다(스펙 갭 7 결정). 묶음의 첫 메시지 기준
-        conv = self.router.for_user_message(batch[0].at, sent_at=batch[0].sent_at)
+        app = self._cur
+        if app is not None:
+            # 앱: 받을 때 고른 대화로(닫혔으면 다시 고른다, M3)
+            conv = self._app_conversation(app)
+        else:
+            # 답장 창은 보낸 시각으로 고른다(스펙 갭 7 결정). 묶음의 첫 메시지 기준
+            conv = self.router.for_user_message(batch[0].at, sent_at=batch[0].sent_at)
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
         self.convs.touch(conv.id)
 
-        run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[], inbound_id=lead)
+        run_ctx = self._message_ctx(conv.id, lead)
         body = _join(self._recorded_condition(), f"## 메시지\n{text}")
         with self._awake.hold():
             fell_back = False
@@ -437,6 +589,8 @@ class Dispatcher:
                 f"## 최근 대화\n{history}" if history else "",
                 body,
             )
+            if app is not None:
+                app.writer.start_step()  # 두뇌가 시작한다: 도구 조각이 이 단계 안에 온다
             result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
             if resumed and result.resume_failed:
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
@@ -449,7 +603,7 @@ class Dispatcher:
                     body,
                 )
                 fell_back = True
-                run_ctx = RunContext(conversation_id=conv.id, run_id=None, events=[], inbound_id=lead)
+                run_ctx = self._message_ctx(conv.id, lead)
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
             capped = False
@@ -482,20 +636,24 @@ class Dispatcher:
                 return
             if capped:  # 백오프 중 하루 상한: 고정 안내로(대화 밖 `[-]`), 모인 확인 문구를 붙여 답한다
                 confirmations = render_confirmations(run_ctx.events, self._today())
-                if await self._fixed_reply([], _join(DAILY_CAP_REPLY, confirmations), update_ids, save=True):
+                if await self._fixed_reply(
+                    [], DAILY_CAP_REPLY, update_ids, save=True, confirmation=confirmations, ctx=run_ctx
+                ):
                     log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
                 return
-            reply = _reply_for(result)
+            body_text = _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
-            if confirmations:  # 두뇌 답, 빈 줄, 확인 문구. 도구를 안 불렀으면 빈 줄도 없다
-                reply = f"{reply}\n\n{confirmations}"
+            # 텔레그램: 두뇌 답, 빈 줄, 확인 문구(도구를 안 불렀으면 빈 줄도 없다). 앱: 확인 문구는 `data-activity`로
+            reply = _join(body_text, confirmations)
+            sent_text = body_text if app is not None else reply
             # 두 단계: 보내기 전에 답을 저장한다(brain_done). 바로 3회까지 보내고, 끝내 안 되면 처리 완료로 두지
             # 않는다. 다음 시작 때 저장한 답만 다시 보낸다(두뇌는 다시 부르지 않는다)
-            self.state.save_inbound_reply(lead, redact(reply)[0], conv.id)
-            if not await self._send_reply(_outbound(reply, run_ctx), update_ids, conv.id):
+            self.state.save_inbound_reply(lead, redact(sent_text)[0], conv.id)
+            out = self._reply_out(_outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids)
+            if not await self._send_reply(out, update_ids, conv.id):
                 return
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
-            self._messages_done(update_ids)
+            self._messages_done(update_ids, reply=sent_text, confirmation=confirmations, conversation_id=conv.id)
             self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names))
         log.info(
             "message_handled",
@@ -507,24 +665,54 @@ class Dispatcher:
         )
 
     async def _fixed_reply(
-        self, batch: list[Inbound], text: str, update_ids: list[int], *, save: bool = False
+        self, batch: list[Inbound], text: str, update_ids: list[int], *, save: bool = False,
+        confirmation: str = "", ctx: RunContext | None = None,
     ) -> bool:
         """사용자 메시지에 고정 안내로 답한다. 원문 기록에는 대화 밖(`[-]`)으로 남긴다.
 
         `batch`의 메시지도 `[-]`로 기록한다(이미 대화에 기록했으면 빈 목록). 바로 3회까지 보내고, 보낸 뒤에만
         `update_ids`를 처리 완료로 기록하고 비서 줄을 남긴다. 끝내 안 보냈으면 False.
         `save`: 두뇌를 부른 뒤의 안내다. 보내기 전에 저장해 다음 시작 때 두뇌를 다시 부르지 않게 한다.
+        `confirmation`: 그 전에 도구가 바꾼 것의 확인 문구. 텔레그램은 글 뒤에 붙이고, 앱은 `data-activity`로 보낸다.
         """
         lead = update_ids[0] if update_ids else None
+        app = self._cur is not None
+        full = _join(text, confirmation)
+        sent = text if app else full
         if batch and lead is not None:
             self._log_user_lines(batch, None, self.state.get_pending_inbound(lead), lead)
         if save and lead is not None:
-            self.state.save_inbound_reply(lead, redact(text)[0], None)
-        if not await self._send_reply(Outbound(text=text), update_ids, None):
+            self.state.save_inbound_reply(lead, redact(sent)[0], None)
+        ids = (ctx.activity_ids, ctx.undo_ids) if ctx is not None else ([], [])
+        if not await self._send_reply(self._reply_out(Outbound(text=sent), confirmation, *ids), update_ids, None):
             return False
-        self._messages_done(update_ids)
-        self._transcribe_reply(None, text, [])
+        self._messages_done(update_ids, reply=sent, confirmation=confirmation)
+        self._transcribe_reply(None, full, [])
         return True
+
+    def _message_ctx(self, conversation_id: int, lead: int) -> RunContext:
+        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1)를 싣는다."""
+        app = self._cur
+        if app is None:
+            return RunContext(conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead)
+        return RunContext(
+            conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead, channel="app",
+            stream=app.writer,
+        )
+
+    def _reply_out(
+        self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int]
+    ) -> Outbound:
+        """앱 답이면 통로, 쓰개, 확인 문구, 활동 id를 싣는다(M4). 텔레그램은 그대로(확인 문구는 이미 글에 있다)."""
+        app = self._cur
+        if app is None:
+            return out
+        out.channel = "app"
+        out.writer = app.writer
+        out.confirmation = confirmation or None
+        out.activity_ids = list(activity_ids)
+        out.undo_ids = list(undo_ids)
+        return out
 
     def _log_user_lines(
         self, batch: list[Inbound], conversation_id: int | None, pending: PendingInbound | None, lead: int
@@ -532,8 +720,17 @@ class Dispatcher:
         """사용자 줄을 원문 기록에 쓴다(가린 뒤). 다시 넣은 메시지가 이미 썼으면(`user_logged`) 건너뛴다."""
         if pending is not None and pending.user_logged:
             return
+        app = self._cur
         for m in batch:
-            self.transcripts.append(m.at, "사용자", conversation_id, None, redact(m.text)[0])
+            if app is not None:
+                # 앱 머리글: `#<사용자 줄 id> @app`(7.4). id는 받을 때 고른 대화로 만든다
+                cid = conversation_id if conversation_id is not None else app.conversation_id
+                mid = app_user_message_id(cid, lead, m.message_id) if cid is not None else None
+                self.transcripts.append(
+                    m.at, "사용자", conversation_id, None, redact(m.text)[0], channel="app", message_id=mid
+                )
+            else:
+                self.transcripts.append(m.at, "사용자", conversation_id, None, redact(m.text)[0])
         self.state.mark_inbound_user_logged(lead)
 
     async def _resend_saved_reply(self, batch: list[Inbound], pending: PendingInbound, update_ids: list[int]) -> None:
@@ -544,11 +741,17 @@ class Dispatcher:
             self._messages_done(update_ids)
             return
         ctx = self._logged_context(pending.update_id, pending.conversation_id)
+        # 앱 행의 저장한 답에는 확인 문구가 없다(앱은 `data-activity`로 보낸다): 도구 기록에서 다시 만든다
+        confirmation = render_confirmations(ctx.events, self._today()) if self._cur is not None else ""
+        acts = self.activity_of(pending.update_id) if self._cur is not None else ([], [])
         with self._awake.hold():
-            if not await self._send_reply(_outbound(text, ctx), update_ids, pending.conversation_id):
+            out = self._reply_out(_outbound(text, ctx), confirmation, *acts)
+            if not await self._send_reply(out, update_ids, pending.conversation_id):
                 return
-            self._messages_done(update_ids)
-            self._transcribe_reply(pending.conversation_id, text, [])
+            self._messages_done(
+                update_ids, reply=text, confirmation=confirmation, conversation_id=pending.conversation_id
+            )
+            self._transcribe_reply(pending.conversation_id, _join(text, confirmation), [])
         if pending.conversation_id is not None:
             self.convs.touch(pending.conversation_id)
         log.info("inbound_reply_resent", extra={"update_ids": update_ids, "conversation_id": pending.conversation_id})
@@ -564,13 +767,17 @@ class Dispatcher:
         conv_id = next((c for *_, c in logged if c is not None), None)
         self._log_user_lines(batch, conv_id, pending, pending.update_id)
         ctx = self._logged_context(pending.update_id, conv_id)
-        text = _join(FALLBACK_REPLY, render_confirmations(ctx.events, self._today()))
-        self.state.save_inbound_reply(pending.update_id, redact(text)[0], conv_id)  # 두 단계: 저장 뒤 보낸다
+        confirmation = render_confirmations(ctx.events, self._today())
+        text = _join(FALLBACK_REPLY, confirmation)
+        sent = FALLBACK_REPLY if self._cur is not None else text
+        self.state.save_inbound_reply(pending.update_id, redact(sent)[0], conv_id)  # 두 단계: 저장 뒤 보낸다
         log.warning("inbound_tools_already_ran", extra={"update_ids": update_ids, "conversation_id": conv_id})
+        acts = self.activity_of(pending.update_id) if self._cur is not None else ([], [])
         with self._awake.hold():
-            if not await self._send_reply(_outbound(text, ctx), update_ids, conv_id):
+            out = self._reply_out(_outbound(sent, ctx), confirmation, *acts)
+            if not await self._send_reply(out, update_ids, conv_id):
                 return
-            self._messages_done(update_ids)
+            self._messages_done(update_ids, reply=sent, confirmation=confirmation, conversation_id=conv_id)
             self._transcribe_reply(conv_id, text, [])
         if conv_id is not None:
             self.convs.touch(conv_id)
@@ -585,7 +792,15 @@ class Dispatcher:
         return RunContext(conversation_id=conversation_id, run_id=None, events=events, inbound_id=inbound_id)
 
     async def _send_reply(self, out: Outbound, update_ids: list[int], conversation_id: int | None) -> bool:
-        """사용자 메시지에 답하는 전송. 바로 3회까지(1초, 2초 간격). 끝내 안 되면 `message_send_failed`."""
+        """사용자 메시지에 답하는 전송. 바로 3회까지(1초, 2초 간격). 끝내 안 되면 `message_send_failed`.
+
+        앱 답은 `app_sender`로 한 번만 쓴다. 끊겼거나 싱크가 없어도 보낸 것으로 본다(M6·M7: 답은 원문 기록과
+        `api_idempotency`에 남는다).
+        """
+        if out.channel == "app":
+            if self.app_sender is not None:
+                await self.app_sender.send(out)
+            return True
         err = await send_with_retry(
             lambda: self.sender.send(out), sleep=self._sleep, event="message_send_error",
             extra={"update_ids": update_ids},
@@ -598,14 +813,42 @@ class Dispatcher:
         )
         return False
 
-    def _messages_done(self, update_ids: list[int]) -> None:
-        """답을 보낸 메시지를 처리 완료로 기록한다."""
-        self.state.mark_updates_done(update_ids)
+    def _messages_done(
+        self, update_ids: list[int], *, reply: str = "", confirmation: str = "", conversation_id: int | None = None
+    ) -> None:
+        """답을 보낸 메시지를 처리 완료로 기록한다.
+
+        텔레그램: `telegram_updates` + `inbound_pending` 삭제(SP1). 앱(M5): `api_idempotency`(`reply_text`,
+        `confirmation`) + `inbound_pending` 삭제를 한 트랜잭션으로. `telegram_updates`에는 쓰지 않는다.
+        """
+        app = self._cur
+        if app is None:
+            self.state.mark_updates_done(update_ids)
+            return
+        cid = conversation_id if conversation_id is not None else app.conversation_id
+        self.state.finish_app_inbound(
+            app.inbound_id, client_msg_id=app.inbound.client_msg_id, conversation_id=cid,
+            reply_text=redact(reply)[0], confirmation=confirmation or None,
+        )
+        # 이제부터 같은 `client_msg_id`는 저장한 답 재생이다(6.4.1)
+        self._app.pop(_app_key(app.inbound), None)
 
     def _transcribe_reply(self, conversation_id: int | None, text: str, tools: list[str]) -> None:
-        """보낸 답을 원문 기록에 남긴다. 기록이 안 돼도 사용자는 이미 받았으니 종류만 로그에 남긴다."""
+        """보낸 답을 원문 기록에 남긴다. 기록이 안 돼도 사용자는 이미 받았으니 종류만 로그에 남긴다.
+
+        앱 답은 머리글에 `#m-<대화>-<|inbound_id|> @app`(그 답의 `start.messageId`, 6.4.6)을 붙인다.
+        """
+        app = self._cur
         try:
-            self.transcripts.append(self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools)
+            if app is not None:
+                cid = conversation_id if conversation_id is not None else app.conversation_id
+                mid = app_secretary_message_id(cid, app.inbound_id) if cid is not None else None
+                self.transcripts.append(
+                    self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools, channel="app",
+                    message_id=mid,
+                )
+            else:
+                self.transcripts.append(self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools)
         except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
             log.warning("reply_transcript_error", extra={"error_type": type(e).__name__})
 
@@ -982,8 +1225,9 @@ class Dispatcher:
         self, prompt: str, *, session_id: str | None, run_ctx: RunContext
     ) -> BrainResult:
         """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다."""
-        self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7)
-        typing = asyncio.create_task(self._typing_loop(), name="typing")
+        self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7, 두 통로가 함께)
+        # '입력 중'은 텔레그램에만. 앱은 `data-status`와 `: ping`이 대신한다(6.4.1)
+        typing = asyncio.create_task(self._typing_loop() if run_ctx.channel != "app" else _idle(), name="typing")
         started = time.monotonic()
         try:
             # 한 호출이 멈춰 직렬 작업자 전체가 서지 않도록 상한을 둔다. 넘으면 error(timeout)로 보고
@@ -1065,6 +1309,10 @@ async def send_with_retry(
             if i + 1 < attempts:
                 await sleep(SEND_RETRY_DELAYS_S[i])
     return err
+
+
+async def _idle() -> None:
+    await asyncio.Event().wait()
 
 
 def _outbound(text: str, run_ctx: RunContext) -> Outbound:

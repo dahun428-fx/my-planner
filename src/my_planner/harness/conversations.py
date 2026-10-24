@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from my_planner.clock import logical_date
-from my_planner.domain import ConversationKind, RunStatus
+from my_planner.domain import Channel, ConversationKind, RunStatus
 from my_planner.loop.schedule import Due, reply_window_end
 
 if TYPE_CHECKING:
@@ -16,8 +16,15 @@ if TYPE_CHECKING:
     from my_planner.store.repos.runs import Run, RunsRepo
 
 
+CHANNELS: tuple[Channel, ...] = ("telegram", "app")
+
+
 class ConversationRouter:
-    """계획 대화 규칙(2시간)이 가장 먼저, 그다음 회차 대화 규칙(답장 창), 그다음 30분 규칙이다."""
+    """계획 대화 규칙(2시간)이 가장 먼저, 그다음 회차 대화 규칙(답장 창), 그다음 30분 규칙이다.
+
+    대화와 그 규칙은 통로마다 따로다(SP3-4 7.1): 텔레그램에서 연 `chat`을 앱이 잇지 않고, 계획 모드도 통로마다 하나다.
+    통로를 받는 함수의 기본값은 `telegram`이다(SP1 동작 그대로).
+    """
 
     def __init__(
         self,
@@ -38,9 +45,9 @@ class ConversationRouter:
     def _plan_idle(self) -> timedelta:
         return timedelta(hours=self.settings.limits.plan_idle_hours)
 
-    def _open_plan(self, at: datetime) -> Conversation | None:
+    def _open_plan(self, at: datetime, channel: Channel = "telegram") -> Conversation | None:
         """마지막 메시지 후 2시간 이내의 열린 `plan` 대화. 2시간이 지났으면 닫고 None(만료는 볼 때 확인한다)."""
-        cur = self.convs.latest_open(ConversationKind.plan)
+        cur = self.convs.latest_open(ConversationKind.plan, channel)
         if cur is None:
             return None
         if at - cur.last_message_at <= self._plan_idle():
@@ -48,32 +55,35 @@ class ConversationRouter:
         self.convs.close(cur.id)
         return None
 
-    def start_plan(self) -> Conversation:
-        """새 `plan` 대화를 연다. 열려 있던 다른 계획 대화는 닫는다."""
-        while (cur := self.convs.latest_open(ConversationKind.plan)) is not None:
+    def start_plan(self, channel: Channel = "telegram") -> Conversation:
+        """그 통로에 새 `plan` 대화를 연다. 그 통로에 열려 있던 다른 계획 대화는 닫는다."""
+        while (cur := self.convs.latest_open(ConversationKind.plan, channel)) is not None:
             self.convs.close(cur.id)
         tz, boundary = self.settings.timezone, self.settings.day_boundary
-        return self.convs.open(ConversationKind.plan, logical_date(self.clock.now(), tz, boundary))
+        return self.convs.open(ConversationKind.plan, logical_date(self.clock.now(), tz, boundary), channel=channel)
 
-    def end_plan(self) -> bool:
-        """열린 계획 대화를 닫는다. 2시간 안에 열려 있던 것이 있었으면 True."""
-        was_open = self._open_plan(self.clock.now()) is not None
-        while (cur := self.convs.latest_open(ConversationKind.plan)) is not None:
+    def end_plan(self, channel: Channel = "telegram") -> bool:
+        """그 통로의 열린 계획 대화를 닫는다. 2시간 안에 열려 있던 것이 있었으면 True."""
+        was_open = self._open_plan(self.clock.now(), channel) is not None
+        while (cur := self.convs.latest_open(ConversationKind.plan, channel)) is not None:
             self.convs.close(cur.id)
         return was_open
 
     def plan_open(self) -> bool:
-        return self._open_plan(self.clock.now()) is not None
+        """**어느 통로든** 계획 대화가 열려 있다(회차가 기다리는 규칙, SP3-4 7.1)."""
+        now = self.clock.now()
+        found = [self._open_plan(now, ch) for ch in CHANNELS]  # 통로마다 본다(만료된 것은 닫는다)
+        return any(c is not None for c in found)
 
-    def keep_alive(self, at: datetime) -> None:
-        """사용자 메시지가 도착했다: 아직 만료 전인 `plan`·`chat` 대화를 활동으로 기록한다.
+    def keep_alive(self, at: datetime, channel: Channel = "telegram") -> None:
+        """사용자 메시지가 도착했다: 그 통로에서 아직 만료 전인 `plan`·`chat` 대화를 활동으로 기록한다.
 
         메시지가 큐에서 기다리는 동안 tick이 그 대화를 만료로 닫지 않게 한다. 새 대화는 열지 않는다.
         """
-        plan = self._open_plan(at)
+        plan = self._open_plan(at, channel)
         if plan is not None:
             self.convs.touch(plan.id)
-        chat = self.convs.latest_open(ConversationKind.chat)
+        chat = self.convs.latest_open(ConversationKind.chat, channel)
         if chat is not None and at - chat.last_message_at <= self._idle():
             self.convs.touch(chat.id)
 
@@ -127,6 +137,40 @@ class ConversationRouter:
         )
         return conv if at <= end else None
 
+    def for_app_message(self, at: datetime, *, conversation_id: int | None, checkin_id: int | None) -> Conversation:
+        """앱 메시지의 대화(SP3-4 7.2, 6.4.1). 받을 때 고른다. 위에서부터 처음 맞는 것:
+
+        1. 앱 통로의 열린 `plan`(2시간)
+        2. 앱이 보낸 `conversation_id`가 30분 안의 열린 앱 `chat`
+        3. 30분 안의 앱 `chat`
+        4. 새 앱 `chat`
+
+        `checkin_id`와 회차 대화 규칙(7.2의 1·3번, 가르기)은 티켓 07이 앞에 넣는다. 고른 대화는 활동으로 기록해
+        큐에서 기다리는 동안 tick이 닫지 않게 한다.
+        """
+        del checkin_id  # 티켓 07
+        conv = self._open_plan(at, "app")
+        if conv is None and conversation_id is not None:
+            asked = self.convs.get(conversation_id)
+            if (
+                asked is not None and asked.channel == "app" and asked.kind is ConversationKind.chat
+                and asked.closed_at is None and at - asked.last_message_at <= self._idle()
+            ):
+                conv = asked
+        if conv is None:
+            cur = self.convs.latest_open(ConversationKind.chat, "app")
+            if cur is not None and at - cur.last_message_at <= self._idle():
+                conv = cur
+            else:
+                if cur is not None:
+                    self.convs.close(cur.id)
+                tz, boundary = self.settings.timezone, self.settings.day_boundary
+                conv = self.convs.open(ConversationKind.chat, logical_date(at, tz, boundary), channel="app")
+        self.convs.touch(conv.id)
+        touched = self.convs.get(conv.id)
+        assert touched is not None
+        return touched
+
     def for_run(self, run: Run) -> Conversation:
         """회차 실행은 늘 새 `run` 대화를 연다. 날짜는 실제로 보내는 때의 논리적 날짜다."""
         tz, boundary = self.settings.timezone, self.settings.day_boundary
@@ -135,7 +179,8 @@ class ConversationRouter:
     def close_expired(self) -> None:
         """마지막 메시지 후 30분이 지난 `chat` 대화와 2시간이 지난 `plan` 대화를 닫는다. 러너가 tick마다 부른다."""
         now = self.clock.now()
-        cur = self.convs.latest_open(ConversationKind.chat)
-        if cur is not None and now - cur.last_message_at > self._idle():
-            self.convs.close(cur.id)
-        self._open_plan(now)
+        for ch in CHANNELS:
+            cur = self.convs.latest_open(ConversationKind.chat, ch)
+            if cur is not None and now - cur.last_message_at > self._idle():
+                self.convs.close(cur.id)
+            self._open_plan(now, ch)

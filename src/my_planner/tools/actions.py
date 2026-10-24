@@ -60,12 +60,14 @@ from my_planner.tools.confirmations import (
 )
 
 if TYPE_CHECKING:
+    from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.activity import (
         ActivityRepo,
         ConfirmsRepo,
         Endpoint,
         IdempotencyRepo,
     )
+    from my_planner.store.repos.state import StateRepo
     from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
@@ -119,6 +121,8 @@ class ActionDeps:
     activity: ActivityRepo | None = None
     idempotency: IdempotencyRepo | None = None
     confirms: ConfirmsRepo | None = None
+    state: StateRepo | None = None  # 명령 동작(`cmd_pause`, `cmd_unpause`)
+    router: ConversationRouter | None = None  # 명령 동작 `cmd_done`
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -143,6 +147,7 @@ class ActionSpec:
     target: Callable[[Tools, dict[str, Any]], list[str]] | None = None
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
     endpoint: Endpoint | None = None
+    reply: bool = False  # 명령 동작: 결과가 답 글(`reply_text`)이고 응답은 `/chat` 재생 모양(6.4.1)
 
 
 # --- 확인이 필요한가 (6.4.2 위험 칸) ---
@@ -224,6 +229,27 @@ def _prune_api_state(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) ->
     return out
 
 
+def _cmd_pause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    from my_planner.bot.commands import cmd_pause
+
+    assert deps.state is not None
+    return {"reply_text": cmd_pause(deps.state, deps.clock.now(), str(args.get("text", "")), deps.tools.tz)}
+
+
+def _cmd_unpause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    from my_planner.bot.commands import cmd_unpause
+
+    assert deps.state is not None
+    return {"reply_text": cmd_unpause(deps.state, deps.clock.now())}
+
+
+def _cmd_done(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    from my_planner.bot.commands import cmd_done
+
+    assert deps.router is not None
+    return {"reply_text": cmd_done(deps.router, ctx.channel)}
+
+
 ACTIONS: dict[str, ActionSpec] = {
     "add_task": ActionSpec("add_task"),
     "update_task": ActionSpec("update_task", target=_task_target),
@@ -240,6 +266,11 @@ ACTIONS: dict[str, ActionSpec] = {
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),
+    # 내부(상태를 바꾸는 명령 `/pause`, `/unpause`, `/done`: `bot.commands.run_command`, 6.4.1). 중복 방지는
+    # `endpoint='chat'`의 `api_idempotency`(`response_json.reply_text`에 명령의 답)
+    "cmd_pause": ActionSpec(_cmd_pause, public=False, accepts=frozenset({"text"}), endpoint="chat", reply=True),
+    "cmd_unpause": ActionSpec(_cmd_unpause, public=False, endpoint="chat", reply=True),
+    "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
 }
 
 
@@ -300,6 +331,11 @@ def _call(deps: ActionDeps, spec: ActionSpec, ctx: RunContext, args: dict[str, A
         out = spec.tool(deps, ctx, args)
     if "error" in out:
         return _rejected(str(out["error"]))
+    if spec.reply:
+        return ActionResult("applied", 200, {
+            "status": "applied", "conversation_id": None, "reply_text": out["reply_text"], "confirmation": None,
+            "inbound_id": None,
+        })
     return _applied(deps, ctx, out)
 
 

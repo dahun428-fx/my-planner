@@ -65,8 +65,13 @@ def build_options(
     max_turns: int,
     system_prompt: str,
     cli_path: str | Path | None = None,
+    include_partial_messages: bool = False,
+    fork_session: bool = False,
 ) -> ClaudeAgentOptions:
-    """스펙 5.3 두뇌 실행 설정. S2: strict MCP는 필드로, S3: cli_path는 기본 None(번들 CLI)."""
+    """스펙 5.3 두뇌 실행 설정. S2: strict MCP는 필드로, S3: cli_path는 기본 None(번들 CLI).
+
+    `include_partial_messages`: 글 조각 스트리밍(SP3-4 S11, 티켓 06b). `fork_session`: 회차 대화 가르기(7.2, 티켓 07).
+    """
     return ClaudeAgentOptions(
         tools=[],
         mcp_servers={SERVER_NAME: server},
@@ -80,6 +85,8 @@ def build_options(
         resume=session_id,
         env=dict(BRAIN_ENV),
         cli_path=cli_path,
+        include_partial_messages=include_partial_messages,
+        fork_session=fork_session,
     )
 
 
@@ -169,6 +176,12 @@ class ClaudeBrain:
         self._max_turns = max_turns
         self._cli_path = cli_path
         self._system_prompt = prompts.load("system.md")
+        # 앱 통로는 `system.md` 뒤에 `channel_app.md`를 붙인다(SP3-4 6.4.7, 지금은 빈 자리, 티켓 09가 채운다)
+        app_part = prompts.load("channel_app.md").strip()
+        self._app_system_prompt = f"{self._system_prompt}\n\n{app_part}" if app_part else self._system_prompt
+
+    def system_prompt_for(self, channel: str) -> str:
+        return self._app_system_prompt if channel == "app" else self._system_prompt
 
     async def run(
         self, prompt: str, *, session_id: str | None, run_ctx: RunContext
@@ -179,7 +192,7 @@ class ClaudeBrain:
             session_id=session_id,
             workdir=self._workdir,
             max_turns=self._max_turns,
-            system_prompt=self._system_prompt,
+            system_prompt=self.system_prompt_for(run_ctx.channel),
             cli_path=self._cli_path,
         )
         messages: list[object] = []

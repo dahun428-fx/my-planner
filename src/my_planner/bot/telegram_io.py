@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timedelta
-from typing import Literal, Protocol
+from datetime import date, datetime
+from typing import Any, Literal, Protocol
 
 from telegram import (
     Bot,
@@ -19,25 +19,17 @@ from telegram.constants import ChatAction, ChatType
 from telegram.ext import Application, ContextTypes, TypeHandler
 
 from my_planner.bot.commands import (
-    HELP_TEXT,
-    NO_PLAN_REPLY,
-    NOT_PAUSED_REPLY,
-    PAUSE_USAGE,
-    PLAN_DONE_REPLY,
-    UNPAUSE_REPLY,
+    CommandDeps,
     command_of,
-    pause_days,
-    pause_reply,
     plan_topic,
-    today_text,
-    week_text,
+    run_command,
 )
-from my_planner.clock import Clock, SystemClock, from_iso, to_iso
+from my_planner.clock import Clock, SystemClock
 from my_planner.config import Settings
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Inbound, Outbound, send_with_retry
 from my_planner.harness.redact import redact
-from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
+from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
@@ -138,6 +130,7 @@ async def handle_update(
             await _answer_command(
                 msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, state,
                 lambda: state.mark_updates_done(done), router, sleep,
+                apply=getattr(dispatcher, "apply_action", None) if getattr(dispatcher, "tools", None) else None,
             )
             return "command"
         _persist_and_submit(dispatcher, state, update.update_id, msg.text, msg.date, clock.now())
@@ -177,29 +170,16 @@ async def _answer_command(
     on_sent: Callable[[], None],
     router: ConversationRouter | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    *,
+    apply: Callable[[Any], Any] | None = None,
 ) -> None:
-    """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
+    """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다. 답은 앱과 같은 `run_command`가 만든다."""
     now = clock.now()
-    if cmd == "/help":
-        reply = HELP_TEXT
-    elif cmd == "/pause":
-        days = pause_days(text)
-        if days is None:
-            reply = PAUSE_USAGE
-        else:
-            until = now + timedelta(days=days)  # 지금부터 N×24시간(스펙 5.6)
-            state.set(PAUSE_UNTIL_KEY, to_iso(until))
-            reply = pause_reply(until, tools.tz)
-    elif cmd == "/unpause":
-        v = state.get(PAUSE_UNTIL_KEY)
-        state.set(PAUSE_UNTIL_KEY, None)
-        reply = UNPAUSE_REPLY if v and from_iso(v) > now else NOT_PAUSED_REPLY
-    elif cmd == "/done":
-        assert router is not None
-        reply = PLAN_DONE_REPLY if router.end_plan() else NO_PLAN_REPLY
-    else:
-        render = today_text if cmd == "/today" else week_text
-        reply = render(tools.tasks, now, tools.tz, tools.boundary)
+    deps = CommandDeps(
+        tasks=tools.tasks, conditions=tools.conditions, state=state, router=router, clock=clock, settings=tools,
+        apply=apply,
+    )
+    reply = run_command(cmd, text, deps, channel="telegram")
     for part in split_message(reply):
         if not await _send_text(bot, chat_id, part, sleep, None):
             return  # 처리 완료로 두지 않고 원문 기록도 남기지 않는다

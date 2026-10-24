@@ -527,6 +527,25 @@ class ActionRequestBody(_Model):
     confirm_token: str | None = None
 
 
+class ChatMessage(BaseModel):
+    """AI SDK `UIMessage`(마지막 사용자 메시지 하나). `parts`의 `text`만 읽는다(6.4.1). 모르는 필드는 버린다."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str | None = Field(default=None, max_length=200)
+    role: Literal["user"]
+    parts: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
+class ChatRequestBody(_Model):
+    """`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지)."""
+
+    client_msg_id: str = Field(min_length=1, max_length=200)
+    conversation_id: int | None = None
+    checkin_id: int | None = None
+    message: ChatMessage
+
+
 class ActionXp(_Model):
     gained: int
     level_up: None  # 티켓 15 전까지 늘 null
@@ -623,6 +642,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "UiCatalog": UiCatalog,
     "SchemaBundle": SchemaBundle,
     "ActionRequestBody": ActionRequestBody,
+    "ChatRequestBody": ChatRequestBody,
     "ActionApplied": ActionApplied,
     "ActionNeedsConfirm": ActionNeedsConfirm,
     "ActionRejected": ActionRejected,

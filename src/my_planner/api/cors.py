@@ -19,6 +19,8 @@ ALLOW_HEADERS = "Authorization, Content-Type"
 EXPOSE_HEADERS = "x-conversation-id"
 
 Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+# 스트림 응답(`POST /chat`)은 처리기가 헤더를 먼저 보낸다: 붙일 CORS 헤더를 요청에 실어 두면 처리기가 함께 보낸다
+CORS_HEADERS_KEY = web.RequestKey("cors_headers", dict[str, str])
 
 
 class CorsPolicy:
@@ -66,12 +68,16 @@ def cors_middleware(policy: CorsPolicy) -> Callable[[web.Request, Handler], Awai
                     resp.headers["Access-Control-Allow-Private-Network"] = "true"
                 resp.headers["Vary"] = "Origin"
             return resp
-        resp = await call_json(handler, request)
+        extra: dict[str, str] = {}
         if allowed:
             assert origin is not None
-            resp.headers["Access-Control-Allow-Origin"] = origin
-            resp.headers["Access-Control-Expose-Headers"] = EXPOSE_HEADERS
-            resp.headers["Vary"] = "Origin"
+            extra = {
+                "Access-Control-Allow-Origin": origin, "Access-Control-Expose-Headers": EXPOSE_HEADERS, "Vary": "Origin",
+            }
+        request[CORS_HEADERS_KEY] = extra
+        resp = await call_json(handler, request)
+        if extra and not resp.prepared:
+            resp.headers.update(extra)
         return resp
 
     return cors

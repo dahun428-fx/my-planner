@@ -153,3 +153,29 @@ async def test_undo_end_to_end(tmp_path):
     assert again.status == 200 and again_body == {"status": "already_undone", "activity_id": body["activity_id"]}
     assert [(i["kind"], i["actor"], i["channel"]) for i in after["items"]] == [
         ("task_added", "user", "app"), ("task_completed", "secretary", "telegram"), ("undo", "user", "app")]
+
+
+async def test_chat_end_to_end(tmp_path):
+    """앱 채팅(SP3-4 티켓 06): `POST /chat` → 대화 기록 → 다음 날 텔레그램 `/today`에 같은 할 일."""
+    from ui_stream import parse_sse
+
+    add = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-25"})
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([add], "내일 치과를 추가할게요.")]) as env:
+        resp, raw = await env.chat("내일 치과 추가해 줘", message_id="msg-e2e")
+        chunks = parse_sse(raw)
+        conv_id = int(resp.headers["x-conversation-id"])
+        listing = await (await env.get("/conversations?channel=app")).json()
+        messages = await (await env.get(f"/conversations/{conv_id}/messages")).json()
+
+        env.clock.set(kst(2026, 10, 25, 9, 0))
+        await env.telegram("/today")
+        today_reply = env.bot.sent[-1][1]
+
+    assert [c["id"] for c in listing["items"]] == [conv_id]
+    assert listing["items"][0]["channel"] == "app"
+    items = messages["items"]
+    assert [(m["speaker"], m["channel"]) for m in items] == [("user", "app"), ("secretary", "app")]
+    assert items[0]["id"] == "msg-e2e"
+    assert items[1]["id"] == chunks[0]["messageId"]  # 비서 줄의 id는 그 답의 start.messageId(6.4.6)
+    assert items[1]["tools"] == ["add_task"]
+    assert "치과" in today_reply

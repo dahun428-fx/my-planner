@@ -34,6 +34,7 @@ from my_planner.config import (
 from my_planner.harness.brain import Brain, ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher, Outbound, Sender
+from my_planner.harness.stream import AppReplySender
 from my_planner.logging_setup import setup_logging
 from my_planner.loop.runner import (
     Runner,
@@ -246,6 +247,7 @@ def build_be(
         activity=activity,
         idempotency=idempotency,
         confirms=confirms,
+        app_sender=AppReplySender(),  # 앱 답(`POST /chat`의 스트림, SP3-4 7.5 M4)
     )
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,

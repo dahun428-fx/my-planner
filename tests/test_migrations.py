@@ -293,3 +293,39 @@ def test_curve_valid_rows_and_cascade(tmp_path):
     _ins(conn, "run_deliveries", run_id=rid, **_DELIVERY)
     with pytest.raises(sqlite3.IntegrityError):  # PK (run_id, channel)
         _ins(conn, "run_deliveries", run_id=rid, **_DELIVERY)
+
+
+def test_latest_version_is_011_no_chat_migration():
+    """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
+    assert dbmod.LATEST_VERSION == 11 == _migration_count()
+
+
+async def test_resubmitted_app_row_keeps_conversation(tmp_path):
+    """다시 넣은 앱 행은 `inbound_pending.conversation_id`(005의 열)의 대화로 간다. 닫혔으면 다시 고른 대화로(7.5 M6)."""
+    from be_env import BeEnv
+    from fakes import FakeTurn
+    from test_dispatcher_app_channel import app_message
+    from test_dispatcher_messages import kst
+
+    from my_planner.loop.runner import resubmit_inbound
+
+    script = [FakeTurn([], "이어서요."), FakeTurn([], "새 대화예요.")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=script) as env:
+        p = env.parts
+        m = app_message(env, "하나", None, "cm-keep")
+        row = p.state.get_pending_inbound(m.update_ids[0])
+        assert row.channel == "app" and row.client_msg_id == "cm-keep" and row.conversation_id == m.conversation_id
+        resubmit_inbound(p.state, p.dispatcher)
+        await env.drain()
+        kept = env.brain.calls[0]["run_ctx"].conversation_id
+
+        closed = app_message(env, "둘", None, "cm-closed")
+        p.convs.close(closed.conversation_id)
+        resubmit_inbound(p.state, p.dispatcher)
+        await env.drain()
+        moved = env.brain.calls[1]["run_ctx"].conversation_id
+        moved_conv = p.convs.get(moved)
+
+    assert kept == m.conversation_id
+    assert moved != closed.conversation_id
+    assert moved_conv.channel == "app" and moved_conv.kind.value == "chat" and moved_conv.closed_at is None

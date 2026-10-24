@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -20,6 +21,7 @@ CARRY_REVIEW_KEY = "carry_review_run_id"  # R1로 넘겨 받은 회고 회차(�
 BRAIN_AUTH_STATE_KEY = "brain_auth_state"  # 디스패처가 두뇌 호출마다: ok | login | billing
 BRAIN_AUTH_CHECKED_AT_KEY = "brain_auth_checked_at"  # 그 기록 시각(UTC ISO)
 NOTIFY_PRIMARY_KEY = "notify_primary"  # 주 통로 telegram | app. 없으면 config의 notify.default_primary
+APP_INBOUND_SEQ_KEY = "app_inbound_seq"  # 앱 메시지의 마지막 inbound_id(음수, 5.1)
 
 UsageField = Literal["brain_calls", "proactive_messages"]
 _USAGE_FIELDS = ("brain_calls", "proactive_messages")
@@ -42,8 +44,11 @@ class PendingInbound:
     user_logged: bool = False
     brain_done: bool = False
     reply_text: str | None = None
-    conversation_id: int | None = None
+    conversation_id: int | None = None  # 앱 행은 받을 때 고른 대화(SP3-4 5.1), brain_done이면 답이 속한 대화
     attempts: int = 0
+    channel: str = "telegram"  # 'telegram' | 'app'
+    client_msg_id: str | None = None
+    checkin_id: int | None = None
 
 
 def _pending(r: sqlite3.Row) -> PendingInbound:
@@ -57,6 +62,9 @@ def _pending(r: sqlite3.Row) -> PendingInbound:
         reply_text=r["reply_text"],
         conversation_id=r["conversation_id"],
         attempts=r["attempts"],
+        channel=r["channel"],
+        client_msg_id=r["client_msg_id"],
+        checkin_id=r["checkin_id"],
     )
 
 
@@ -120,14 +128,69 @@ class StateRepo:
 
     # inbound_pending (받았지만 아직 답하지 못한 메시지, 가린 글만)
     def add_pending_inbound(
-        self, update_id: int, text_redacted: str, sent_at: datetime, received_at: datetime
+        self,
+        update_id: int,
+        text_redacted: str,
+        sent_at: datetime,
+        received_at: datetime,
+        *,
+        channel: str = "telegram",
+        client_msg_id: str | None = None,
+        checkin_id: int | None = None,
+        conversation_id: int | None = None,
     ) -> None:
+        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`를 적는다(SP3-4 5.1)."""
         with transaction(self.conn):
             self.conn.execute(
-                "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at) "
-                "VALUES (?, ?, ?, ?)",
-                (update_id, text_redacted, to_iso(sent_at), to_iso(received_at)),
+                "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
+                "client_msg_id, checkin_id, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    update_id, text_redacted, to_iso(sent_at), to_iso(received_at), channel, client_msg_id,
+                    checkin_id, conversation_id,
+                ),
             )
+
+    def next_app_inbound_id(self) -> int:
+        """앱 메시지의 `inbound_id`: −1, −2, … (`app_state.app_inbound_seq`, 5.1). 텔레그램 `update_id`(양수)와 겹치지 않는다."""
+        with transaction(self.conn):
+            cur = int(self.get(APP_INBOUND_SEQ_KEY) or "0")
+            nxt = cur - 1
+            self.set(APP_INBOUND_SEQ_KEY, str(nxt))
+        return nxt
+
+    def pending_by_client_msg_id(self, client_msg_id: str) -> PendingInbound | None:
+        r = self.conn.execute(
+            "SELECT * FROM inbound_pending WHERE client_msg_id = ?", (client_msg_id,)
+        ).fetchone()
+        return _pending(r) if r is not None else None
+
+    def finish_app_inbound(
+        self,
+        update_id: int,
+        *,
+        client_msg_id: str | None,
+        conversation_id: int | None,
+        reply_text: str,
+        confirmation: str | None = None,
+    ) -> None:
+        """앱 메시지 처리 완료(SP3-4 7.5 M5): `api_idempotency`(`endpoint='chat'`) 기록과 `inbound_pending` 행 삭제를
+        한 트랜잭션으로. `telegram_updates`에는 쓰지 않는다(음수 id를 넣지 않는다).
+
+        `response_json`은 재요청 재생(6.4.1)의 근거다: `conversation_id`, `reply_text`(가린 뒤), `confirmation`,
+        그리고 `messageId`와 활동을 다시 찾을 `inbound_id`.
+        """
+        body = {
+            "conversation_id": conversation_id, "reply_text": reply_text, "confirmation": confirmation,
+            "inbound_id": update_id,
+        }
+        with transaction(self.conn):
+            if client_msg_id is not None:
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO api_idempotency (client_msg_id, endpoint, status_code, response_json, "
+                    "conversation_id, at) VALUES (?, 'chat', 200, ?, ?, ?)",
+                    (client_msg_id, json.dumps(body, ensure_ascii=False), conversation_id, to_iso(self.clock.now())),
+                )
+            self.conn.execute("DELETE FROM inbound_pending WHERE update_id = ?", (update_id,))
 
     def is_pending_inbound(self, update_id: int) -> bool:
         row = self.conn.execute("SELECT 1 FROM inbound_pending WHERE update_id = ?", (update_id,)).fetchone()
@@ -185,7 +248,11 @@ class StateRepo:
         return p.attempts if p is not None else 0
 
     def drop_pending_inbound(self, update_id: int) -> None:
-        """다시 넣기를 그만둔다. 처리 완료로 기록해 다시 받아도 건너뛴다."""
+        """다시 넣기를 그만둔다. 텔레그램 행은 처리 완료로 기록해 다시 받아도 건너뛴다. 앱 행(음수 id)은 지우기만 한다."""
+        if update_id < 0:
+            with transaction(self.conn):
+                self.conn.execute("DELETE FROM inbound_pending WHERE update_id = ?", (update_id,))
+            return
         self.mark_updates_done([update_id])
 
     def prune_updates(self, older_than: datetime) -> int:

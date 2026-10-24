@@ -236,9 +236,16 @@ def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
             )
             continue
         state.bump_inbound_attempts(row.update_id)
-        dispatcher.submit_message(
-            Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)
-        )
+        if row.channel == "app":
+            # 앱 행(SP3-4 7.5 M6): 싱크 없이, 받을 때 고른 대화로. 답은 어디에도 보내지 않고 M5로 끝낸다
+            m = Inbound(
+                text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
+                channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=None,
+                conversation_id=row.conversation_id,
+            )
+        else:
+            m = Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)
+        dispatcher.submit_message(m)
         submitted.append(row.update_id)
     if submitted:
         log.info("inbound_resubmitted_on_start", extra={"update_ids": submitted})
