@@ -232,20 +232,38 @@ async def test_answer_clears_telegram_buttons(tmp_path, caplog):
 
 
 async def test_buttons_clear_failure_only_logs(tmp_path, caplog):
-    script = [FakeTurn([], RUN_TEXT, session_id="s-run"), FakeTurn([], "텔레 답")]
+    script = [FakeTurn([], RUN_TEXT, session_id="s-run"), FakeTurn([], "앱 답")]
     async with await evening_env(tmp_path, script) as env:
         env.sender.clear_fail = True
         await env.tick()
         env.clock.set(kst(2026, 10, 26, 18, 0))
         with caplog.at_level(logging.WARNING):
-            await env.telegram("꾸민 텔레 답")
+            resp, raw = await env.chat("꾸민 앱 답")
             await env.drain()
         run = run_row(env)
-        replies = [o.text for o in env.sender.sent]
 
-    assert run["answered_via"] == "telegram"
-    assert replies[-1] == "텔레 답"
+    assert run["answered_via"] == "app"
+    assert resp.status == 200 and "앱 답" in "".join(c.get("delta", "") for c in parse_sse(raw))
+    assert env.sender.cleared == []
     assert "buttons_clear_error" in caplog.text
+
+
+async def test_telegram_reply_keeps_buttons(tmp_path):
+    """Dahun 결정: 텔레그램 글 답장은 SP1처럼 버튼을 그대로 둔다(거두는 것은 앱에서 먼저 답했을 때만)."""
+    script = [FakeTurn([], RUN_TEXT, session_id="s-run"), FakeTurn([], "텔레 답"), FakeTurn([], "앱 답")]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        await env.telegram("꾸민 텔레 답")
+        first = run_row(env)
+        env.clock.set(kst(2026, 10, 26, 18, 10))
+        await env.chat("꾸민 앱 답")  # 첫 답이 아니므로 거두지 않는다
+        await env.drain()
+        final = run_row(env)
+
+    assert final["answered_via"] == "telegram"
+    assert first["answered_via"] == "telegram"
+    assert env.sender.cleared == []
 
 
 async def test_condition_action_answers_evening_checkin(tmp_path):
@@ -281,7 +299,7 @@ async def test_draft_button_answers_its_run(tmp_path):
 
     assert result == "confirmed"
     assert run["answered_via"] == "telegram"
-    assert env.sender.cleared == [mid]
+    assert mid is not None and env.sender.cleared == []  # 텔레그램 버튼 누름은 버튼을 그대로 둔다
 
 
 async def test_condition_button_answers_message_run(tmp_path):
@@ -302,6 +320,22 @@ async def test_condition_button_answers_message_run(tmp_path):
     assert result == "recorded"
     assert after["answered_via"] == "telegram"
     assert found == morning["id"]
+
+
+async def test_condition_recorded_before_brief_is_not_its_answer(tmp_path):
+    """보낼 때 어제 컨디션이 이미 있었으면 아침 브리핑에는 컨디션 버튼이 없다: 다시 기록해도 그 브리핑의 답이 아니다."""
+    async with BeEnv.start(
+        tmp_path, start=kst(2026, 10, 26, 9, 0) + timedelta(seconds=30), script=[FakeTurn([], "좋은 아침이에요")]
+    ) as env:
+        await env.action("record_condition", {"score": 3, "date": "2026-10-25"})
+        await env.tick()
+        assert env.sender.sent[0].ask_condition_for is None
+        env.clock.set(kst(2026, 10, 26, 9, 30))
+        status, _ = await env.action("record_condition", {"score": 4, "date": "2026-10-25"})
+        morning = run_row(env, "morning_brief")
+
+    assert status == 200
+    assert morning["answered_at"] is None
 
 
 async def test_late_reply_by_sent_at(tmp_path):
@@ -336,3 +370,124 @@ async def test_chat_activity_ids_are_undoable(tmp_path):
 
     assert resp.status == 200 and body["status"] == "undone" and body["undone"] == undo_id
     assert deleted is not None  # 추가 되돌리기는 소프트 삭제
+
+
+# --- fix1: 같은 세션 id, 원래 대화만 보는 규칙 3, 갓 가른 대화의 알림 기준 ---
+
+
+async def test_fork_returning_original_session_falls_back(tmp_path, caplog):
+    """가르기가 원래 세션 id를 돌려주면 가르기 실패다: 그 세션을 적지 않고 바로 대체 경로(새 세션)로 다시 부른다."""
+    script = [
+        FakeTurn([], RUN_TEXT, session_id="s-run"),
+        FakeTurn([], "텔레 답", session_id="s-run"),
+        FakeTurn([], "갈라지지 않은 답", session_id="s-run"),
+        FakeTurn([], "대체 경로 답", session_id="s-new"),
+        FakeTurn([], "앱 둘째 답", session_id="s-new"),
+    ]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        env.clock.set(kst(2026, 10, 26, 17, 45))
+        await env.telegram("꾸민 텔레 먼저")
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        with caplog.at_level(logging.WARNING):
+            _, raw = await env.chat("꾸민 앱 답")
+        fork_id = start_meta(raw)["conversation_id"]
+        env.clock.advance(timedelta(minutes=5))
+        await env.chat("꾸민 앱 둘째", conversation_id=fork_id)
+        fork = conv_row(env, fork_id)
+        calls = env.brain.calls
+        text = "".join(c.get("delta", "") for c in parse_sse(raw))
+
+    assert [(c["session_id"], c["fork_session"]) for c in calls[2:]] == [
+        ("s-run", True), (None, False), ("s-new", False),
+    ]
+    fallback = calls[3]["prompt"]
+    assert f"## 회차 메시지\n{RUN_TEXT}" in fallback
+    # 대체 경로의 최근 원문은 원래(텔레그램) 대화의 기록이다(S11): 회차 본문과 텔레그램에서 주고받은 답
+    history = fallback.split("## 최근 대화\n", 1)[1]
+    assert "꾸민 텔레 먼저" in history and "텔레 답" in history
+    assert fork["session_id"] == "s-new"
+    assert text == "대체 경로 답"
+    assert "fork_session_not_forked" in caplog.text
+
+
+async def test_fork_failure_history_uses_origin_transcript(tmp_path):
+    """resume 실패로 끝난 가르기도 원래 대화의 최근 원문을 붙인다(S11 대체 경로)."""
+    script = [
+        FakeTurn([], RUN_TEXT, session_id="s-run"),
+        FakeTurn([], "텔레 답", session_id="s-run"),
+        FakeTurn([], "", status="error", session_id=None, resume_failed=True),
+        FakeTurn([], "새 세션 답", session_id="s-new"),
+    ]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        env.clock.set(kst(2026, 10, 26, 17, 45))
+        await env.telegram("꾸민 텔레 먼저")
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        await env.chat("꾸민 앱 답")
+        prompt = env.brain.calls[3]["prompt"]
+
+    history = prompt.split("## 최근 대화\n", 1)[1].split("\n\n## 메시지", 1)[0]
+    assert RUN_TEXT in history and "꾸민 텔레 먼저" in history and "텔레 답" in history
+    assert history.count("꾸민 앱 답") == 0  # 지금 메시지는 `## 메시지`에만
+    assert "## 메시지\n꾸민 앱 답" in prompt
+
+
+async def test_rule_3_ignores_newer_fork_of_older_run(tmp_path):
+    """규칙 3은 원래 회차 대화만 본다: 더 오래된 회차를 앱에서 갈라 연 대화가 새 회차의 텔레그램 답을 가져가지 않는다."""
+    from my_planner.domain import LoopKey
+
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 17, 30)) as env:
+        p = env.parts
+        older = p.runs.ensure(LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30))
+        older_conv = p.router.for_run(older)
+        p.runs.set_conversation(older.id, older_conv.id)
+        p.runs.mark_done(older.id)
+        env.clock.set(kst(2026, 10, 26, 20, 0))
+        newer = p.runs.ensure(LoopKey.return_, kst(2026, 10, 26, 20, 0))
+        newer_conv = p.router.for_run(newer)
+        p.runs.set_conversation(newer.id, newer_conv.id)
+        p.runs.mark_done(newer.id)
+        env.clock.set(kst(2026, 10, 26, 21, 0))
+        fork = p.dispatcher.route_app_message(env.clock.now(), conversation_id=None, checkin_id=older.id)
+        env.clock.set(kst(2026, 10, 26, 21, 10))
+        target = p.router.for_user_message(env.clock.now(), sent_at=env.clock.now())
+
+    assert (fork.run_id, fork.channel, fork.forked_from) == (older.id, "app", older_conv.id)
+    assert target.id == newer_conv.id
+
+
+async def test_fresh_fork_notices_changes_since_run_sent(tmp_path):
+    """갓 가른 대화의 첫 호출은 회차를 보낸 때부터 다른 통로 변경을 본다(가른 시각부터가 아니다)."""
+    script = [FakeTurn([], RUN_TEXT, session_id="s-run"), FakeTurn([], "앱 답", session_id="s-fork")]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        mid = env.parts.deliveries.telegram_message_id(run_row(env)["id"])
+        env.clock.set(kst(2026, 10, 26, 17, 45))
+        assert await env.press("c:2026-10-26:4", message_id=mid) == "recorded"  # 세션 밖(버튼)의 변경
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        (pressed,) = [r for r in env.activity() if r["channel"] == "telegram"]
+        await env.chat("꾸민 앱 답")
+        prompt = env.brain.calls[1]["prompt"]
+
+    section = prompt.split("## 다른 곳에서 바뀐 것\n", 1)[1].split("\n\n", 1)[0]
+    assert section.splitlines() == [f"- {pressed['summary']}"]
+
+
+async def test_answer_record_failure_keeps_committed_action(tmp_path, caplog):
+    """답 표시가 예외를 올려도 이미 커밋한 동작은 그대로 200이다(리뷰 Minor 2)."""
+    async with await evening_env(tmp_path, [FakeTurn([], RUN_TEXT)]) as env:
+        await env.tick()
+
+        def boom(run_id, channel, **kw):
+            raise RuntimeError("fake answer failure")
+
+        env.parts.dispatcher.mark_answered = boom
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        with caplog.at_level(logging.WARNING):
+            status, body = await env.action("record_condition", {"score": 4, "date": "2026-10-26"})
+        score = env.conn.execute("SELECT score FROM conditions WHERE date = '2026-10-26'").fetchone()["score"]
+
+    assert status == 200 and body["status"] == "applied"
+    assert score == 4
+    assert "action_answer_record_error" in caplog.text and "action_failed" not in caplog.text

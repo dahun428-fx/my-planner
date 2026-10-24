@@ -16,6 +16,7 @@ from my_planner.store.views import draft_live, todo_refs
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
+    from my_planner.store.repos.activity import ActivityRepo
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import ConversationsRepo
@@ -65,9 +66,14 @@ def _open_checkins(runs: RunsRepo, now: datetime, settings: Settings) -> list[Ru
     return sorted(found, key=lambda r: (r.scheduled_for, r.id), reverse=True)
 
 
-def _condition_run(day: date, runs: RunsRepo, now: datetime, settings: Settings) -> Run | None:
-    """그 날짜의 컨디션 버튼을 단 회차: 그 날짜의 저녁 체크인(합쳐 보냈으면 primary), 또는 그 전날 저녁이 없어
-    어제를 물은 아침 브리핑(SP1 5.4 판정과 같은 뜻. 기록한 뒤라 `ask_condition_for`는 더 묻지 않는다)."""
+def _condition_run(
+    day: date, runs: RunsRepo, now: datetime, settings: Settings, activity: ActivityRepo | None
+) -> Run | None:
+    """그 날짜의 컨디션 버튼을 단 회차: 그 날짜의 저녁 체크인(합쳐 보냈으면 primary), 또는 그 전날 저녁이 없고
+    보낼 때 그 날짜 컨디션이 아직 없어 어제를 물은 아침 브리핑(SP1 5.4 판정과 같은 뜻. 기록한 뒤라
+    `ask_condition_for`는 더 묻지 않으므로, 보낼 때 기록이 있었는지는 활동 기록으로 본다)."""
+    from my_planner.tools.activity import condition_target
+
     tz, boundary = settings.timezone, settings.day_boundary
     for r in _open_checkins(runs, now, settings):
         for b in (r, *_merged(r, runs)):
@@ -77,13 +83,18 @@ def _condition_run(day: date, runs: RunsRepo, now: datetime, settings: Settings)
             if (
                 b.loop is LoopKey.morning_brief and d - timedelta(days=1) == day
                 and not evening_done(day, runs=runs, settings=settings)
+                and not (
+                    activity is not None and r.finished_at is not None
+                    and activity.recorded_by(condition_target(day), r.finished_at)
+                )
             ):
                 return r
     return None
 
 
 def run_answered_by(
-    req: ActionRequest, *, runs: RunsRepo, tasks: TasksRepo, settings: Settings, now: datetime
+    req: ActionRequest, *, runs: RunsRepo, tasks: TasksRepo, settings: Settings, now: datetime,
+    activity: ActivityRepo | None = None,
 ) -> int | None:
     """즉시 갈래 동작이 답한 회차(6.4.5 "답으로 치는 것"). `apply_action`이 적용한 뒤 부른다. 없으면 None.
 
@@ -102,7 +113,7 @@ def run_answered_by(
             )
         except ValueError:
             return None
-        run = _condition_run(day, runs, now, settings)
+        run = _condition_run(day, runs, now, settings, activity)
         return run.id if run is not None else None
     if req.action in ("confirm_tasks", "drop_task"):
         ids = args.get("ids") if req.action == "confirm_tasks" else [args.get("id")]

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from telegram import CallbackQuery
 
 from my_planner.clock import Clock
-from my_planner.domain import RunContext, TaskStatus
+from my_planner.domain import Channel, RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.actions import ActionRequest, ActionResult
 from my_planner.tools.confirmations import (
@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 
 CallbackResult = Literal["confirmed", "dropped", "recorded", "stale", "ignored", "unknown"]
 Apply = Callable[[ActionRequest], ActionResult]
-MarkAnswered = Callable[[int, Any], object]  # `Dispatcher.mark_answered(run_id, channel)`
+MarkAnswered = Callable[[int, Channel], object]  # `Dispatcher.mark_answered(run_id, channel)`
 
 STALE_REPLY = "이미 정리된 할 일이에요."
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")

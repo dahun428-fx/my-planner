@@ -95,7 +95,11 @@ class ConversationRouter:
         self.convs.touch(conv.id)
 
     def notice_base(self, conv: Conversation) -> datetime:
-        """다른 통로 변경 알림의 기준(7.1): 받기 직전 그 대화의 마지막 메시지 시각. 꺼내면 지운다."""
+        """다른 통로 변경 알림의 기준(7.1): 받기 직전 그 대화의 마지막 메시지 시각. 꺼내면 지운다.
+
+        메모리에만 둔다. 재시작을 넘긴 메시지는 받을 때 갱신된 `last_message_at`을 기준으로 써서 그 한 번의 호출에서
+        몇 줄 빠질 수 있다. 받아들인 한계다(최대 5줄, 두뇌는 도구로 지금 상태를 다시 읽는다. 티켓 07 리뷰 Minor 4).
+        """
         return self._notice_base.pop(conv.id, conv.last_message_at)
 
     def touch_plan(self, conversation_id: int | None) -> None:

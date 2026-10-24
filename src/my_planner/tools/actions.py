@@ -35,7 +35,14 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.clock import Clock, period_of
-from my_planner.domain import ActivityChannel, Actor, Cadence, RunContext, TaskStatus
+from my_planner.domain import (
+    ActivityChannel,
+    Actor,
+    Cadence,
+    Channel,
+    RunContext,
+    TaskStatus,
+)
 from my_planner.store.db import transaction
 from my_planner.timefmt import (  # API 경계의 시각 변환(6.1). 도구 결과는 현지 시각이다
     api_time,
@@ -128,7 +135,7 @@ class ActionDeps:
     # 답한 회차(6.4.5): 적용한 동작이 회차의 버튼과 같은 일이면 `mark_answered(run_id, channel)`(디스패처)
     runs: RunsRepo | None = None
     settings: Settings | None = None
-    mark_answered: Callable[[int, Any], object] | None = None
+    mark_answered: Callable[[int, Channel], object] | None = None
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -456,16 +463,17 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
 
 
 def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
-    """적용한 동작이 답한 회차가 있으면 처음 한 번 적는다(`harness.checkins.run_answered_by`, 같은 트랜잭션)."""
+    """적용한 동작이 답한 회차가 있으면 처음 한 번 적는다(`harness.checkins.run_answered_by`, 동작이 커밋된 뒤)."""
     if deps.mark_answered is None or deps.runs is None or deps.settings is None:
         return
     from my_planner.harness.checkins import run_answered_by
 
     run_id = run_answered_by(
-        req, runs=deps.runs, tasks=deps.tools.tasks, settings=deps.settings, now=deps.clock.now()
+        req, runs=deps.runs, tasks=deps.tools.tasks, settings=deps.settings, now=deps.clock.now(),
+        activity=deps.activity,
     )
     if run_id is not None:
-        deps.mark_answered(run_id, req.channel)
+        deps.mark_answered(run_id, "app" if req.channel == "app" else "telegram")
 
 
 _REQUEST_KEY = "_request"  # 저장한 undo 응답 옆에 둔 요청(활동 id). 다시 돌려줄 때 뺀다
@@ -508,13 +516,16 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
             if req.client_msg_id is not None and deps.idempotency is not None:
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(req.client_msg_id, req.endpoint, res.http_status, stored_body)
-        if res.status == "applied":
-            _mark_answered(deps, req)
     except Exception:
         # 적용과 응답 기록이 함께 되돌려졌다. `tasks.md`는 트랜잭션 밖 파일이라 지금 값으로 다시 만든다
         deps.tools._export()
         log.warning("action_failed", extra={"action": req.action, "channel": req.channel})
         raise
+    if res.status == "applied":
+        try:
+            _mark_answered(deps, req)  # 동작은 이미 커밋됐다. 답 표시가 안 돼도 응답은 그대로다
+        except Exception as e:  # noqa: BLE001 - 본문 없이 종류만 남긴다
+            log.warning("action_answer_record_error", extra={"action": req.action, "error_type": type(e).__name__})
     log.info(
         "action_handled",
         extra={"action": req.action, "status": res.status, "actor": req.actor, "channel": req.channel},

@@ -129,6 +129,15 @@ class ActivityRepo:
             args += [len(prefix), prefix, kind, kind]
         return self.conn.execute(sql + " LIMIT 1", args).fetchone() is not None
 
+    def recorded_by(self, target: str, at: datetime) -> bool:
+        """`at` 때 그 대상을 바꾼 활동(되돌리기 빼고)이 있었고 그때 아직 되돌리지 않았다(그때 값이 있었다)."""
+        r = self.conn.execute(
+            "SELECT 1 FROM activity_targets t JOIN activity a ON a.id = t.activity_id WHERE t.target = ? "
+            "AND a.kind != 'undo' AND a.at <= ? AND (a.undone_at IS NULL OR a.undone_at > ?) LIMIT 1",
+            (target, to_iso(at), to_iso(at)),
+        ).fetchone()
+        return r is not None
+
     def other_channel_since(self, after: datetime, channel: str, limit: int = 5) -> list[Activity]:
         """`after`보다 나중에 **다른 통로**(`telegram` ↔ `app`)에서 생긴 활동 가운데 최근 `limit`개, 시간순(7.1).
 

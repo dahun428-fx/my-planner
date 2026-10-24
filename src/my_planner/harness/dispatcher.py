@@ -112,10 +112,13 @@ class Outbound:
 class Sender(Protocol):
     """`send`는 버튼이 붙은 마지막 조각의 메시지 id를 돌려줄 수 있다(텔레그램, 답한 뒤 버튼을 거둘 때 쓴다).
 
-    `clear_buttons(message_id)`가 있으면 답한 회차의 버튼을 거둔다(SP3-4 6.4.5). 없는 전송(시험용)은 건너뛴다.
+    `clear_buttons(message_id)`: 앱에서 먼저 답한 회차 메시지의 버튼을 거둔다(SP3-4 6.4.5). 메시지 id를 돌려주는
+    전송에만 불린다(id를 돌려주지 않는 시험용 전송은 부를 일이 없다).
     """
 
     async def send(self, out: Outbound) -> object: ...
+
+    async def clear_buttons(self, message_id: int) -> object: ...
 
     async def typing(self) -> None: ...
 
@@ -299,6 +302,9 @@ class Dispatcher:
         self._worker: asyncio.Task[None] | None = None
         self._timers: set[asyncio.Task[None]] = set()
         self._background: set[asyncio.Task[None]] = set()  # 버튼 거두기(답한 회차, 즉시 갈래에서 걸어 둔다)
+        # 가르기가 원래 세션 id를 돌려준(갈라지지 않은) 대화: 이 프로세스에서는 다시 가르지 않고 대체 경로로 간다.
+        # 메모리에만 둔다(재시작 뒤 한 번은 다시 가르기를 시도한다. 받아들인 한계, S11 확인 전)
+        self._no_fork: set[int] = set()
         self._stopping = False
         self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
 
@@ -356,9 +362,11 @@ class Dispatcher:
     def mark_answered(self, run_id: int, channel: Channel, *, at: datetime | None = None) -> bool:
         """그 회차(합쳐진 회차면 primary)에 처음 답한 통로와 시각을 적는다(6.4.5, 7.5 M3). 처음이면 True.
 
-        처음 답이면 텔레그램에 보낸 회차 메시지의 버튼을 거둔다(`clear_buttons`). 동기 함수라 거두기는 이벤트
-        루프에 걸어 두고, 안 되면 `buttons_clear_error`만 남긴다(답 기록은 그대로).
-        경험치 원장(X3/X5/X8)은 티켓 15가 이 트랜잭션에 더한다.
+        처음 답이 **앱**에서 왔으면 텔레그램에 보낸 회차 메시지의 버튼을 거둔다(`clear_buttons`, Dahun 결정:
+        텔레그램 글 답장과 버튼 누름은 SP1처럼 버튼을 그대로 둔다). 동기 함수라 거두기는 이벤트 루프에 걸어
+        두고, 안 되면 `buttons_clear_error`만 남긴다(답 기록은 그대로).
+        경험치 원장(X3/X5/X8)은 티켓 15가 이 트랜잭션에 더한다. 그때 `apply_action`의 트랜잭션 안으로 옮기면
+        거두기는 바깥 트랜잭션이 커밋된 뒤에 걸어야 한다(롤백된 답의 버튼을 거두지 않게).
         """
         if self.runs is None:
             return False
@@ -369,10 +377,11 @@ class Dispatcher:
         if not self.runs.mark_answered(primary.id, channel, at if at is not None else self.clock.now()):
             return False
         log.info("run_answered", extra={"run_id": primary.id, "channel": channel})
+        if channel != "app":
+            return True
         message_id = self.deliveries.telegram_message_id(primary.id) if self.deliveries is not None else None
-        clear = getattr(self.sender, "clear_buttons", None)
-        if message_id is not None and clear is not None:
-            self._clear_later(clear, message_id, primary.id)
+        if message_id is not None:
+            self._clear_later(self.sender.clear_buttons, message_id, primary.id)
         return True
 
     def _clear_later(self, clear: Callable[[int], Awaitable[object]], message_id: int, run_id: int) -> None:
@@ -696,7 +705,7 @@ class Dispatcher:
             # 갈라 연 회차 대화의 첫 호출: 원래 대화의 세션을 `fork_session`으로 갈라 이어 간다(7.2, S11)
             session_id, fork = conv.session_id, False
             origin_text = self._fork_origin_text(conv)
-            if session_id is None and conv.forked_from is not None:
+            if session_id is None and conv.forked_from is not None and conv.id not in self._no_fork:
                 origin = self.convs.get(conv.forked_from)
                 if origin is not None and origin.session_id is not None:
                     session_id, fork = origin.session_id, True
@@ -706,7 +715,7 @@ class Dispatcher:
             history = ""
             if not resumed and conv.kind is ConversationKind.run:
                 # 세션이 없는 회차 대화: 두뇌가 자기가 보낸 회차 메시지를 알도록 최근 원문을 붙인다.
-                history = self.transcripts.recent(conv.id, 20, skip_last=len(batch))
+                history = self._history(conv, len(batch))
             prompt = _join(
                 notices,
                 "" if resumed else instructions,
@@ -719,10 +728,20 @@ class Dispatcher:
                 app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
                 app.writer.start_step()
             result = await self._call_brain(prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork)
-            if resumed and result.resume_failed:
+            # 가르기가 원래 세션 id를 그대로 돌려줬다: 갈라지지 않고 원래 세션을 이었다. 가르기 실패로 본다(그 세션은
+            # 쓰지 않는다). 도구가 아직 쓰지 않았으면 바로 대체 경로로 다시 부른다. 썼으면 다시 부르지 않고(중복 쓰기
+            # 방지) 그 답을 보내되, 다음 메시지부터 대체 경로로 간다
+            not_forked = (
+                fork and not result.resume_failed and result.session_id == session_id
+                and result.status in ("ok", "max_turns", "error")
+            )
+            if not_forked:
+                log.warning("fork_session_not_forked", extra={"conversation_id": conv.id})
+                self._no_fork.add(conv.id)
+            if resumed and (result.resume_failed or (not_forked and not run_ctx.events)):
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
-                # 가르기가 안 됐으면(S11 대체 경로) 원래 대화의 회차 본문을 앞에 붙인다(7.2)
-                history = self.transcripts.recent(conv.id, 20, skip_last=len(batch))
+                # 가르기가 안 됐으면(S11 대체 경로) 원래 대화의 회차 본문과 원래 대화의 최근 원문을 붙인다(7.2)
+                history = self._history(conv, len(batch))
                 prompt = _join(
                     notices,
                     instructions,
@@ -754,11 +773,9 @@ class Dispatcher:
                 )
             if fork and not fell_back:
                 # 갈라 얻은 새 세션만 적는다. 원래 세션 id가 그대로 오면(갈라지지 않았거나 오류) 적지 않는다:
-                # 두 통로가 한 세션을 쓰지 않게 하고, 다음 메시지가 다시 가른다
+                # 두 통로가 한 세션을 쓰지 않는다
                 if result.session_id and result.session_id != session_id:
                     self.convs.set_session(conv.id, result.session_id)
-                elif result.status == "ok":
-                    log.warning("fork_session_not_forked", extra={"conversation_id": conv.id})
             elif result.session_id or fell_back:  # 대체 경로가 세션을 못 얻었으면 깨진 세션 ID를 지운다
                 self.convs.set_session(conv.id, result.session_id)
             self.convs.touch(conv.id)
@@ -835,8 +852,10 @@ class Dispatcher:
     def _elsewhere(self, conv: Conversation, channel: Channel) -> list[str] | None:
         """이 대화의 마지막 메시지 뒤에 다른 통로에서 생긴 활동의 `summary`(최대 5줄, 7.1 "다른 곳에서 바뀐 것").
 
-        기준은 받기 직전 그 대화의 `last_message_at`이다. 갈라 연 회차 대화의 첫 호출은 회차를 보낸 때부터 본다
-        (갈라 받은 세션은 회차 때까지만 안다).
+        기준은 받기 직전 그 대화의 `last_message_at`이다(`ConversationRouter.notice_base`, 메모리에만 있다: 재시작을
+        넘긴 메시지는 받을 때 갱신된 값을 써서 한 번은 몇 줄 빠질 수 있다. 받아들인 한계, 두뇌는 도구로 다시 읽는다).
+        갈라 연 회차 대화의 첫 호출은 회차를 보낸 때부터 본다. 가르기는 원래 세션 전체를 복사하므로 원래 통로의
+        대화에서 이미 본 줄이 겹칠 수 있지만, 버튼 누름처럼 세션 밖에서 바뀐 것을 빠뜨리지 않는다(보수적인 기준).
         """
         if self.activity is None:
             return None
@@ -849,6 +868,14 @@ class Dispatcher:
             if run is not None and run.finished_at is not None:
                 base = min(base, run.finished_at)
         return [a.summary for a in self.activity.other_channel_since(base, channel, limit=5)] or None
+
+    def _history(self, conv: Conversation, skip_last: int) -> str:
+        """새 세션에 붙이는 최근 원문. 갈라 연 대화면 원래 대화의 최근 20개를 먼저, 그 뒤에 이 대화의 것(S11 대체 경로)."""
+        own = self.transcripts.recent(conv.id, 20, skip_last=skip_last)
+        if conv.forked_from is None:
+            return own
+        origin = self.transcripts.recent(conv.forked_from, 20)
+        return "\n".join(p for p in (origin, own) if p)
 
     def _fork_origin_text(self, conv: Conversation) -> str:
         """갈라 연 회차 대화가 새 세션으로 시작할 때 앞에 붙이는 원래 회차 본문(`## 회차 메시지`, 7.2)."""
