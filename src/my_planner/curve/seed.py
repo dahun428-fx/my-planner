@@ -12,11 +12,12 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import sys
 from collections import Counter
 from collections.abc import Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, TextIO
@@ -45,6 +46,7 @@ RUNNING_MESSAGE = "my-planner가 실행 중이에요. 작업 스케줄러에서 
 ALREADY_MESSAGE = "이미 시드를 가져왔어요. 다시 가져오지 않아요."
 NOT_REVIEWED_MESSAGE = "시드 파일을 검토한 뒤 meta.reviewed를 true로 넣어 주세요. 아무것도 가져오지 않았어요."
 BAD_FILE_MESSAGE = "시드 파일을 읽을 수 없어요(없는 파일이거나 JSON 객체가 아니에요). 아무것도 가져오지 않았어요."
+DB_REJECTED_MESSAGE = "시드 항목 가운데 DB에 넣을 수 없는 것이 있어요. 아무것도 가져오지 않았어요."
 DONE_MESSAGE = "가져왔어요."
 DRY_RUN_MESSAGE = "--dry-run: 아무것도 쓰지 않았어요."
 
@@ -55,6 +57,16 @@ _CERTAINTY = {"사실": "fact", "추정": "estimate", "fact": "fact", "estimate"
 _KIND = {"high": "high", "low": "low", "turning": "turning_point"}
 _AREAS = frozenset(a.value for a in Area)
 MAX_TITLE = 100  # curve_chapters.title, curve_milestones.title CHECK
+# 12장 표의 필수 키(`?`가 붙지 않은 것). 빠지면 그 항목은 `invalid`다. 값을 읽지 않는 키(`score`, `evidence`)도 있어야 한다
+REQUIRED_KEYS = {
+    "chapters": ("id", "title", "start", "end", "source", "certainty", "note"),
+    "events": ("date", "title", "kind", "chapter_id", "source", "certainty", "kind_certainty", "sensitive"),
+    "curve_sketch": ("chapter_id", "direction", "certainty"),
+    "areas": ("key", "label", "score", "evidence", "source", "quest", "sensitive"),
+}
+# ASCII 숫자만(전각 숫자는 `str.isdigit()`을 통과하지만 DB의 GLOB CHECK에 걸린다)
+_MONTH_RE = re.compile(r"\d{4}-\d{2}", re.ASCII)
+_EVENT_DATE_RE = re.compile(r"\d{4}(-\d{2})?", re.ASCII)  # 12장: 'YYYY' | 'YYYY-MM'
 MAX_QUEST = 80  # curve_area_defaults.recovery_quest CHECK
 
 
@@ -117,9 +129,11 @@ class _Invalid(Exception):
     pass
 
 
-def _gate(item: dict[str, Any]) -> SkipReason | None:
-    """확인 규칙: `sensitive: true`이거나 `storage` 키가 있으면 `confirmed: true`일 때만."""
-    sensitive = item.get("sensitive", False)
+def _gate(section: str, item: dict[str, Any]) -> SkipReason | None:
+    """필수 키 → 확인 규칙(`sensitive: true`이거나 `storage` 키가 있으면 `confirmed: true`일 때만)."""
+    if any(k not in item for k in REQUIRED_KEYS[section]):
+        return "invalid"
+    sensitive = item.get("sensitive", False)  # 챕터는 `sensitive`가 선택 키다
     if not isinstance(sensitive, bool):
         return "invalid"
     if item.get("confirmed") is True:
@@ -150,14 +164,14 @@ def _opt_text(item: dict[str, Any], key: str) -> str | None:
 
 
 def _certainty(item: dict[str, Any], key: str) -> str:
-    v = item.get(key, "사실")
+    v = item.get(key)  # 필수 키다: 기본값으로 채우지 않는다(추정을 사실로 저장하지 않게)
     if not isinstance(v, str) or v not in _CERTAINTY:
         raise _Invalid(key)
     return _CERTAINTY[v]
 
 
 def _month(v: Any) -> str:
-    if not isinstance(v, str) or len(v) != 7:
+    if not isinstance(v, str) or not _MONTH_RE.fullmatch(v):
         raise _Invalid("month")
     try:
         precision, _ = date_precision(v)
@@ -182,6 +196,8 @@ def _chapter(item: dict[str, Any]) -> SeedChapter:
 
 def _event(item: dict[str, Any], chapter_keys: set[str]) -> SeedEvent:
     date_text = _text(item, "date")
+    if not _EVENT_DATE_RE.fullmatch(date_text):
+        raise _Invalid("date")
     try:
         date_precision(date_text)
     except ValueError as e:
@@ -195,7 +211,7 @@ def _event(item: dict[str, Any], chapter_keys: set[str]) -> SeedEvent:
     return SeedEvent(
         date_text=date_text, kind=_KIND[kind], title=_text(item, "title", max_len=MAX_TITLE),
         note=_opt_text(item, "note"), chapter_key=chapter if chapter in chapter_keys else None,
-        sensitive=item.get("sensitive", False) is True, certainty=_certainty(item, "certainty"),
+        sensitive=item["sensitive"] is True, certainty=_certainty(item, "certainty"),
         kind_certainty=_certainty(item, "kind_certainty"), source_ref=_opt_text(item, "source"),
     )
 
@@ -216,11 +232,12 @@ def plan_import(seed: dict[str, Any]) -> SeedPlan:
     plan = SeedPlan()
     skipped = plan.skipped
 
-    for item in _items(seed, "chapters", skipped):
+    section = "chapters"
+    for item in _items(seed, section, skipped):
         if not isinstance(item, dict):
             skipped["invalid"] += 1
             continue
-        if reason := _gate(item):
+        if reason := _gate(section, item):
             skipped[reason] += 1
             continue
         try:
@@ -234,11 +251,12 @@ def plan_import(seed: dict[str, Any]) -> SeedPlan:
         plan.chapters.append(chapter)
     chapter_keys = {c.seed_key for c in plan.chapters}
 
-    for item in _items(seed, "events", skipped):
+    section = "events"
+    for item in _items(seed, section, skipped):
         if not isinstance(item, dict):
             skipped["invalid"] += 1
             continue
-        if reason := _gate(item):
+        if reason := _gate(section, item):
             skipped[reason] += 1
             continue
         try:
@@ -250,20 +268,25 @@ def plan_import(seed: dict[str, Any]) -> SeedPlan:
         if not isinstance(item, dict):
             skipped["invalid"] += 1
             continue
+        if _gate("curve_sketch", item) == "invalid":
+            skipped["invalid"] += 1
+            continue
         try:
             key = _text(item, "chapter_id")
             direction = _text(item, "direction")
+            _certainty(item, "certainty")  # 확인만 한다. 챕터의 certainty는 챕터 것을 쓴다
         except _Invalid:
             skipped["invalid"] += 1
             continue
         if key in chapter_keys:  # 건너뛴 챕터의 그림은 그 챕터와 함께 빠진다(따로 세지 않는다)
             plan.sketches[key] = direction
 
-    for item in _items(seed, "areas", skipped):
+    section = "areas"
+    for item in _items(seed, section, skipped):
         if not isinstance(item, dict):
             skipped["invalid"] += 1
             continue
-        if reason := _gate(item):
+        if reason := _gate(section, item):
             skipped[reason] += 1
             continue
         key = item.get("key")
@@ -352,13 +375,12 @@ def run_seed_life(
     def say(line: str) -> None:
         print(line, file=out)
 
-    try:
-        lock = lock_factory(paths.state_dir / LOCK_FILE)
-        lock.__enter__()
-    except AlreadyRunning:
-        say(RUNNING_MESSAGE)
-        return EXIT_RUNNING
-    try:
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(lock_factory(paths.state_dir / LOCK_FILE))
+        except AlreadyRunning:
+            say(RUNNING_MESSAGE)
+            return EXIT_RUNNING
         try:
             seed = load_seed(file)
         except SeedFileError:
@@ -392,7 +414,12 @@ def run_seed_life(
             plan = plan_import(seed)
             for line in summary_lines(plan):
                 say(line)
-            apply_seed(conn, plan, clock)
+            try:
+                apply_seed(conn, plan, clock)
+            except sqlite3.Error:
+                # 계획을 지나 DB 제약에 걸렸다: 한 트랜잭션이라 모두 되돌려졌다. 예외 글은 내지 않는다
+                say(DB_REJECTED_MESSAGE)
+                return EXIT_BAD_FILE
             try:
                 export_curve(CurveRepo(conn, clock), paths.data_dir / "curve" / "chapters.md")
             except OSError:
@@ -401,5 +428,4 @@ def run_seed_life(
             return EXIT_OK
         finally:
             conn.close()
-    finally:
-        lock.__exit__(None, None, None)
+    return EXIT_BAD_FILE  # pragma: no cover (ExitStack가 예외를 삼키지 않는다)

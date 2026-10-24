@@ -368,3 +368,70 @@ def test_cli_seed_life_dispatch(tmp_path, monkeypatch, capsys):
         cli.main(["seed-life", "--help"])
     assert e.value.code == 0
     assert "--dry-run" in capsys.readouterr().out
+
+
+# --- 리뷰 1차: 필수 키, ASCII 숫자, DB 제약, 한 트랜잭션 ---
+
+
+@pytest.mark.parametrize(("section", "index", "key"), [
+    ("events", 0, "sensitive"), ("events", 0, "certainty"), ("events", 1, "kind_certainty"),
+    ("events", 0, "chapter_id"), ("events", 0, "source"),
+    ("chapters", 0, "certainty"), ("chapters", 0, "end"), ("chapters", 0, "note"), ("chapters", 0, "source"),
+    ("areas", 0, "sensitive"), ("areas", 0, "score"), ("areas", 0, "evidence"), ("areas", 0, "label"),
+    ("areas", 0, "quest"), ("curve_sketch", 0, "certainty"),
+])
+def test_missing_required_key_is_invalid(section, index, key):
+    data = fixture_seed()
+    del data[section][index][key]
+    plan = plan_import(data)
+    assert plan.skipped["invalid"] == 2 + 1
+    assert plan.skipped["sensitive_unconfirmed"] == 1 and plan.skipped["storage_unconfirmed"] == 1
+
+
+def test_unconfirmed_sensitive_without_key_is_not_imported():
+    data = fixture_seed()
+    del data["events"][4]["sensitive"]  # 확인하지 않은 민감 고점에서 키만 빠졌다
+    plan = plan_import(data)
+    assert len(plan.events) == 4
+    assert plan.skipped["invalid"] == 3
+    assert data["events"][4]["title"] not in [e.title for e in plan.events]
+
+
+@pytest.mark.parametrize("value", ["yes", 1, None])
+def test_non_bool_sensitive_is_invalid(value):
+    data = fixture_seed()
+    data["events"][0]["sensitive"] = value
+    data["areas"][0]["sensitive"] = value
+    plan = plan_import(data)
+    assert plan.skipped["invalid"] == 2 + 2
+    assert len(plan.events) == 3 and "career" not in plan.quests
+
+
+def test_full_width_digits_and_day_dates_are_invalid(tmp_path):
+    data = fixture_seed()
+    data["chapters"][2]["start"] = "２０２０-０１"
+    data["events"][0]["date"] = "２０１２"
+    data["events"][2]["date"] = "2016-07-03"  # 12장 모양은 'YYYY' | 'YYYY-MM'
+    plan = plan_import(data)
+    assert plan.skipped["invalid"] == 2 + 3
+    code, out = run(tmp_path, write_seed(tmp_path, data))
+    assert code == EXIT_OK
+    assert "Traceback" not in out
+    assert not db(tmp_path).execute("SELECT 1 FROM curve_milestones WHERE date_text NOT GLOB '[0-9]*'").fetchall()
+
+
+def test_db_error_during_apply_rolls_back_code_6(tmp_path, monkeypatch):
+    from my_planner.store.repos.curve import CurveRepo
+
+    def boom(self, text):
+        raise sqlite3.IntegrityError("CHECK constraint failed")
+
+    monkeypatch.setattr(CurveRepo, "add_question", boom)
+    code, out = run(tmp_path, FIXTURE)
+    assert code == EXIT_BAD_FILE
+    assert out.endswith(seed.DB_REJECTED_MESSAGE + "\n")
+    assert "CHECK" not in out
+    counts = table_counts(tmp_path)
+    assert counts and not any(counts.values())  # 챕터·사건·칭호·표시 모두 되돌려졌다
+    monkeypatch.undo()
+    assert run(tmp_path, FIXTURE)[0] == EXIT_OK  # 표시가 없으니 다시 가져올 수 있다
