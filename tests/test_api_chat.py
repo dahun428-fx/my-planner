@@ -524,3 +524,23 @@ async def test_inflight_unattachable_stream_is_conflict_not_resubmit(tmp_path):
 
     assert resp.status == 409 and body["error"]["code"] == "conflict"
     assert calls == 1
+
+
+async def test_direct_reply_ignores_idle_client_conversation(tmp_path):
+    """명령·글 아닌 답이 알리는 대화도 라우팅과 같은 30분 규칙을 따른다(06 리뷰 N1)."""
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "꾸민 답")]) as env:
+        _, first = await env.chat("꾸민 인사")
+        cid = parse_sse(first)[0]["messageMetadata"]["conversation_id"]
+        env.clock.advance(timedelta(minutes=29))
+        resp_in, fresh = await env.chat("/today", conversation_id=cid)
+        env.clock.advance(timedelta(minutes=31))  # 마지막 메시지 뒤 31분(명령은 대화를 잇지 않는다)
+        resp_cmd, idle_cmd = await env.chat("/today", conversation_id=cid)
+        resp_img, idle_img = await env.chat(conversation_id=cid, parts=[{"type": "file", "url": "x"}])
+        count = env.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+
+    assert parse_sse(fresh)[0]["messageMetadata"]["conversation_id"] == cid
+    assert resp_in.headers["x-conversation-id"] == str(cid)
+    for resp, raw in ((resp_cmd, idle_cmd), (resp_img, idle_img)):
+        assert parse_sse(raw)[0]["messageMetadata"]["conversation_id"] is None
+        assert "x-conversation-id" not in resp.headers
+    assert count == 1  # 새 대화를 열지 않는다

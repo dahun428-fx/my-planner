@@ -122,6 +122,7 @@ def get_today(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     body = {
         "date": view.date.isoformat(),
         "weekday": view.weekday,
+        "day_boundary": f"{s.day_boundary:%H:%M}",  # 논리적 날짜가 바뀌는 시각(설정, 기본 04:00)
         "brief": _brief(runs, view.date, deps),
         "condition": condition_dict(view.condition) if view.condition else None,
         "todos": [

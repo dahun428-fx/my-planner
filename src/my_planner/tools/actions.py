@@ -60,6 +60,7 @@ from my_planner.tools.confirmations import (
 )
 
 if TYPE_CHECKING:
+    from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.activity import (
         ActivityRepo,
@@ -67,6 +68,7 @@ if TYPE_CHECKING:
         Endpoint,
         IdempotencyRepo,
     )
+    from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.tools.core import Tools
 
@@ -123,6 +125,10 @@ class ActionDeps:
     confirms: ConfirmsRepo | None = None
     state: StateRepo | None = None  # 명령 동작(`cmd_pause`, `cmd_unpause`)
     router: ConversationRouter | None = None  # 명령 동작 `cmd_done`
+    # 답한 회차(6.4.5): 적용한 동작이 회차의 버튼과 같은 일이면 `mark_answered(run_id, channel)`(디스패처)
+    runs: RunsRepo | None = None
+    settings: Settings | None = None
+    mark_answered: Callable[[int, Any], object] | None = None
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -449,6 +455,19 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
     return _call(deps, spec, _context(req), args)
 
 
+def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
+    """적용한 동작이 답한 회차가 있으면 처음 한 번 적는다(`harness.checkins.run_answered_by`, 같은 트랜잭션)."""
+    if deps.mark_answered is None or deps.runs is None or deps.settings is None:
+        return
+    from my_planner.harness.checkins import run_answered_by
+
+    run_id = run_answered_by(
+        req, runs=deps.runs, tasks=deps.tools.tasks, settings=deps.settings, now=deps.clock.now()
+    )
+    if run_id is not None:
+        deps.mark_answered(run_id, req.channel)
+
+
 _REQUEST_KEY = "_request"  # 저장한 undo 응답 옆에 둔 요청(활동 id). 다시 돌려줄 때 뺀다
 
 
@@ -489,6 +508,8 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
             if req.client_msg_id is not None and deps.idempotency is not None:
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(req.client_msg_id, req.endpoint, res.http_status, stored_body)
+        if res.status == "applied":
+            _mark_answered(deps, req)
     except Exception:
         # 적용과 응답 기록이 함께 되돌려졌다. `tasks.md`는 트랜잭션 밖 파일이라 지금 값으로 다시 만든다
         deps.tools._export()

@@ -49,8 +49,17 @@ class FakeBrain:
     def session_ids(self) -> list[str | None]:
         return [c["session_id"] for c in self.calls]
 
-    async def run(self, prompt: str, *, session_id: str | None, run_ctx: RunContext) -> BrainResult:
-        self.calls.append({"prompt": prompt, "session_id": session_id, "run_ctx": run_ctx})
+    @property
+    def forks(self) -> list[bool]:
+        """호출마다 `fork_session`(회차 대화 가르기, SP3-4 16장 "가르기 호출을 기록한다")."""
+        return [c["fork_session"] for c in self.calls]
+
+    async def run(
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
+    ) -> BrainResult:
+        self.calls.append(
+            {"prompt": prompt, "session_id": session_id, "run_ctx": run_ctx, "fork_session": fork_session}
+        )
         if not self.script:
             raise AssertionError("FakeBrain: 시나리오가 더 없다")
         turn = self.script.pop(0)
@@ -91,15 +100,34 @@ class FakeBrain:
 
 
 class FakeSender:
-    def __init__(self, *, fail: bool = False):
+    """`send`는 버튼(초안, 컨디션)이 붙은 메시지면 가짜 메시지 id(1부터)를 돌려준다(`TelegramSender`와 같다).
+
+    `cleared`: 버튼을 거둔 메시지 id(`clear_buttons`). `clear_fail`이면 거두기가 예외를 올린다.
+    """
+
+    def __init__(self, *, fail: bool = False, clear_fail: bool = False):
         self.sent: list[Outbound] = []
+        self.message_ids: list[int | None] = []
+        self.cleared: list[int] = []
         self.typing_count = 0
         self.fail = fail
+        self.clear_fail = clear_fail
+        self._next_id = 1
 
-    async def send(self, out: Outbound) -> None:
+    async def send(self, out: Outbound) -> int | None:
         if self.fail:
             raise ConnectionError("fake send failure")
         self.sent.append(out)
+        mid = None
+        if out.draft_task_ids or out.ask_condition_for is not None:
+            mid, self._next_id = self._next_id, self._next_id + 1
+        self.message_ids.append(mid)
+        return mid
+
+    async def clear_buttons(self, message_id: int) -> None:
+        if self.clear_fail:
+            raise ConnectionError("fake clear failure")
+        self.cleared.append(message_id)
 
     async def typing(self) -> None:
         self.typing_count += 1

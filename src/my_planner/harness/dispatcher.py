@@ -110,7 +110,12 @@ class Outbound:
 
 
 class Sender(Protocol):
-    async def send(self, out: Outbound) -> None: ...
+    """`send`는 버튼이 붙은 마지막 조각의 메시지 id를 돌려줄 수 있다(텔레그램, 답한 뒤 버튼을 거둘 때 쓴다).
+
+    `clear_buttons(message_id)`가 있으면 답한 회차의 버튼을 거둔다(SP3-4 6.4.5). 없는 전송(시험용)은 건너뛴다.
+    """
+
+    async def send(self, out: Outbound) -> object: ...
 
     async def typing(self) -> None: ...
 
@@ -293,6 +298,7 @@ class Dispatcher:
         self._seq = itertools.count()
         self._worker: asyncio.Task[None] | None = None
         self._timers: set[asyncio.Task[None]] = set()
+        self._background: set[asyncio.Task[None]] = set()  # 버튼 거두기(답한 회차, 즉시 갈래에서 걸어 둔다)
         self._stopping = False
         self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
 
@@ -326,6 +332,8 @@ class Dispatcher:
             with contextlib.suppress(asyncio.CancelledError):
                 await worker
         self._cancel_timers()  # 혹시 남은 것까지
+        if self._background:  # 걸어 둔 버튼 거두기는 끝까지(짧다. 안 되면 로그만 남긴다)
+            await asyncio.gather(*self._background, return_exceptions=True)
         self._worker = None
 
     def _cancel_timers(self) -> None:
@@ -340,9 +348,47 @@ class Dispatcher:
         assert self.tools is not None, "즉시 갈래에는 도구가 있어야 한다"
         deps = ActionDeps(
             tools=self.tools, clock=self.clock, activity=self.activity, idempotency=self.idempotency,
-            confirms=self.confirms, state=self.state, router=self.router,
+            confirms=self.confirms, state=self.state, router=self.router, runs=self.runs, settings=self.settings,
+            mark_answered=self.mark_answered,
         )
         return _apply_action(deps, req)
+
+    def mark_answered(self, run_id: int, channel: Channel, *, at: datetime | None = None) -> bool:
+        """그 회차(합쳐진 회차면 primary)에 처음 답한 통로와 시각을 적는다(6.4.5, 7.5 M3). 처음이면 True.
+
+        처음 답이면 텔레그램에 보낸 회차 메시지의 버튼을 거둔다(`clear_buttons`). 동기 함수라 거두기는 이벤트
+        루프에 걸어 두고, 안 되면 `buttons_clear_error`만 남긴다(답 기록은 그대로).
+        경험치 원장(X3/X5/X8)은 티켓 15가 이 트랜잭션에 더한다.
+        """
+        if self.runs is None:
+            return False
+        run = self.runs.get(run_id)
+        if run is None:
+            return False
+        primary = self.runs.merged_into(run.id) or run
+        if not self.runs.mark_answered(primary.id, channel, at if at is not None else self.clock.now()):
+            return False
+        log.info("run_answered", extra={"run_id": primary.id, "channel": channel})
+        message_id = self.deliveries.telegram_message_id(primary.id) if self.deliveries is not None else None
+        clear = getattr(self.sender, "clear_buttons", None)
+        if message_id is not None and clear is not None:
+            self._clear_later(clear, message_id, primary.id)
+        return True
+
+    def _clear_later(self, clear: Callable[[int], Awaitable[object]], message_id: int, run_id: int) -> None:
+        async def go() -> None:
+            try:
+                await clear(message_id)
+            except Exception as e:  # noqa: BLE001 - 버튼이 남아도 답은 기록됐다(누르면 그대로 처리된다)
+                log.warning("buttons_clear_error", extra={"run_id": run_id, "error_type": type(e).__name__})
+
+        try:
+            t = asyncio.get_running_loop().create_task(go(), name=f"clear-buttons-{run_id}")
+        except RuntimeError:  # 이벤트 루프 밖(시험의 동기 호출): 거둘 수 없다
+            log.warning("buttons_clear_error", extra={"run_id": run_id, "error_type": "NoEventLoop"})
+            return
+        self._background.add(t)
+        t.add_done_callback(self._background.discard)
 
     def submit_message(self, m: Inbound) -> None:
         if m.channel == "app":
@@ -371,10 +417,12 @@ class Dispatcher:
 
         앱이 보낸 id가 열린 앱 대화면 그것, 아니면 지금 이어질 앱 대화(열린 앱 `plan`, 30분 안의 앱 `chat`), 없으면 None.
         """
+        now = self.clock.now()
         conv = self.convs.get(conversation_id) if conversation_id is not None else None
-        if conv is not None and conv.channel == "app" and conv.closed_at is None:
+        # 보낸 id도 라우팅과 같은 규칙으로 본다(계획 2시간, chat 30분, 회차 답장 창. 06 리뷰 N1)
+        if conv is not None and conv.channel == "app" and self.router.continues(conv, now):
             return conv
-        return self.router.current_app(self.clock.now())
+        return self.router.current_app(now)
 
     def has_inflight(self, client_msg_id: str) -> bool:
         """같은 `client_msg_id`의 앱 메시지가 큐에 있거나 처리 중이다."""
@@ -619,28 +667,40 @@ class Dispatcher:
             text = text[: limits.input_max_chars]
         age = self.clock.now() - min(m.sent_at for m in batch)
         stale_hours = age.total_seconds() / 3600
-        notices = build_notices(
-            # 시작 때 다시 넣은 메시지는 저장해 둔 가린 글이라 `[가림]`이 남아 있는지로 본다
-            redacted=any(r for _, r in redacted_parts) or any(m.recovered and MASK in m.text for m in batch),
-            stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
-            truncated_to=limits.input_max_chars if truncated else None,
-        )
         app = self._cur
+        channel: Channel = "app" if app is not None else "telegram"
         if app is not None:
             # 앱: 받을 때 고른 대화로(닫혔으면 다시 고른다, M3)
             conv = self._app_conversation(app)
         else:
             # 답장 창은 보낸 시각으로 고른다(스펙 갭 7 결정). 묶음의 첫 메시지 기준
             conv = self.router.for_user_message(batch[0].at, sent_at=batch[0].sent_at)
+        notices = build_notices(
+            # 시작 때 다시 넣은 메시지는 저장해 둔 가린 글이라 `[가림]`이 남아 있는지로 본다
+            redacted=any(r for _, r in redacted_parts) or any(m.recovered and MASK in m.text for m in batch),
+            stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
+            truncated_to=limits.input_max_chars if truncated else None,
+            elsewhere=self._elsewhere(conv, channel),
+        )
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
         self.convs.touch(conv.id)
+        if conv.kind is ConversationKind.run and conv.run_id is not None:
+            # 회차 대화에 들어온 사용자 메시지는 그 회차의 답이다(6.4.5, 7.5 M3). 처음 한 번만, 보낸 시각으로
+            self._answer_by_message(conv.run_id, channel, batch[0].sent_at)
 
         run_ctx = self._message_ctx(conv.id, lead)
         body = _join(self._recorded_condition(), f"## 메시지\n{text}")
         with self._awake.hold():
             fell_back = False
             self._log_user_lines(batch, conv.id, pending, lead)
-            resumed = conv.session_id is not None
+            # 갈라 연 회차 대화의 첫 호출: 원래 대화의 세션을 `fork_session`으로 갈라 이어 간다(7.2, S11)
+            session_id, fork = conv.session_id, False
+            origin_text = self._fork_origin_text(conv)
+            if session_id is None and conv.forked_from is not None:
+                origin = self.convs.get(conv.forked_from)
+                if origin is not None and origin.session_id is not None:
+                    session_id, fork = origin.session_id, True
+            resumed = session_id is not None
             # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택").
             instructions = "" if conv.kind is ConversationKind.run else prompts.load(CONVERSATION_PROMPTS[conv.kind])
             history = ""
@@ -651,24 +711,29 @@ class Dispatcher:
                 notices,
                 "" if resumed else instructions,
                 self._preamble(resumed),
+                "" if resumed else origin_text,
                 f"## 최근 대화\n{history}" if history else "",
                 body,
             )
             if app is not None:
                 app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
                 app.writer.start_step()
-            result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
+            result = await self._call_brain(prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork)
             if resumed and result.resume_failed:
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
+                # 가르기가 안 됐으면(S11 대체 경로) 원래 대화의 회차 본문을 앞에 붙인다(7.2)
                 history = self.transcripts.recent(conv.id, 20, skip_last=len(batch))
                 prompt = _join(
                     notices,
                     instructions,
                     self._preamble(False),
+                    origin_text,
                     f"## 최근 대화\n{history}" if history else "",
                     body,
                 )
                 fell_back = True
+                if fork:
+                    log.warning("fork_session_failed", extra={"conversation_id": conv.id})
                 run_ctx = self._message_ctx(conv.id, lead)
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
@@ -684,9 +749,17 @@ class Dispatcher:
                 await self._sleep(delay)
                 # run_ctx는 그대로 쓴다(여기까지 온 호출들은 도구 이벤트가 없다)
                 result = await self._call_brain(
-                    prompt, session_id=None if fell_back else conv.session_id, run_ctx=run_ctx
+                    prompt, session_id=None if fell_back else session_id, run_ctx=run_ctx,
+                    fork_session=fork and not fell_back,
                 )
-            if result.session_id or fell_back:  # 대체 경로가 세션을 못 얻었으면 깨진 세션 ID를 지운다
+            if fork and not fell_back:
+                # 갈라 얻은 새 세션만 적는다. 원래 세션 id가 그대로 오면(갈라지지 않았거나 오류) 적지 않는다:
+                # 두 통로가 한 세션을 쓰지 않게 하고, 다음 메시지가 다시 가른다
+                if result.session_id and result.session_id != session_id:
+                    self.convs.set_session(conv.id, result.session_id)
+                elif result.status == "ok":
+                    log.warning("fork_session_not_forked", extra={"conversation_id": conv.id})
+            elif result.session_id or fell_back:  # 대체 경로가 세션을 못 얻었으면 깨진 세션 ID를 지운다
                 self.convs.set_session(conv.id, result.session_id)
             self.convs.touch(conv.id)
 
@@ -758,6 +831,47 @@ class Dispatcher:
         self._messages_done(update_ids, reply=sent, confirmation=confirmation)
         self._transcribe_reply(None, full, [])
         return True
+
+    def _elsewhere(self, conv: Conversation, channel: Channel) -> list[str] | None:
+        """이 대화의 마지막 메시지 뒤에 다른 통로에서 생긴 활동의 `summary`(최대 5줄, 7.1 "다른 곳에서 바뀐 것").
+
+        기준은 받기 직전 그 대화의 `last_message_at`이다. 갈라 연 회차 대화의 첫 호출은 회차를 보낸 때부터 본다
+        (갈라 받은 세션은 회차 때까지만 안다).
+        """
+        if self.activity is None:
+            return None
+        base = self.router.notice_base(conv)
+        if (
+            conv.forked_from is not None and conv.session_id is None and conv.run_id is not None
+            and self.runs is not None
+        ):
+            run = self.runs.get(conv.run_id)
+            if run is not None and run.finished_at is not None:
+                base = min(base, run.finished_at)
+        return [a.summary for a in self.activity.other_channel_since(base, channel, limit=5)] or None
+
+    def _fork_origin_text(self, conv: Conversation) -> str:
+        """갈라 연 회차 대화가 새 세션으로 시작할 때 앞에 붙이는 원래 회차 본문(`## 회차 메시지`, 7.2)."""
+        if conv.forked_from is None or conv.run_id is None or self.runs is None:
+            return ""
+        run = self.runs.get(conv.run_id)
+        if run is None or not run.outbound_text:
+            return ""
+        return f"## 회차 메시지\n{run.outbound_text}"
+
+    def _answer_by_message(self, run_id: int, channel: Channel, sent_at: datetime) -> None:
+        """회차 대화에 온 메시지가 보낸 시각 기준 답장 창 안이면 답으로 적는다. 안 돼도 답은 계속한다."""
+        assert self.runs is not None
+        run = self.runs.get(run_id)
+        if run is None:
+            return
+        primary = self.runs.merged_into(run.id) or run
+        if not self.router.run_in_window(primary, sent_at):
+            return
+        try:
+            self.mark_answered(primary.id, channel, at=sent_at)
+        except Exception as e:  # noqa: BLE001 - 답 표시가 안 돼도 메시지에는 답한다
+            log.warning("run_answer_record_error", extra={"run_id": run_id, "error_type": type(e).__name__})
 
     def _message_ctx(self, conversation_id: int, lead: int) -> RunContext:
         """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1)를 싣는다."""
@@ -1020,8 +1134,9 @@ class Dispatcher:
                 return
             conv, out, tool_names = prepared
             # (b) 전송: 바로 3회까지. 그래도 안 되면 failed로 두고 5분 뒤 전송만 한 번 더
-            if await self._send_run(out, run.id, attempts=SEND_ATTEMPTS):
-                self._run_delivered(run, merged, conv, out.text, tool_names)
+            sent, message_id = await self._send_run(out, run.id, attempts=SEND_ATTEMPTS)
+            if sent:
+                self._run_delivered(run, merged, conv, out.text, tool_names, telegram_message_id=message_id)
                 return
             for r in (run, *merged):
                 runs.mark_failed(r.id, "send")
@@ -1169,12 +1284,18 @@ class Dispatcher:
         due = Due(run.loop, run.scheduled_for, run.cadence)
         return self.clock.now() > limit_for(due, s, s.timezone, s.day_boundary)
 
-    async def _send_run(self, out: Outbound, run_id: int, *, attempts: int) -> bool:
+    async def _send_run(self, out: Outbound, run_id: int, *, attempts: int) -> tuple[bool, int | None]:
+        """(보냈나, 버튼이 붙은 마지막 조각의 텔레그램 메시지 id). id는 전송이 돌려준 정수일 때만."""
+        got: list[object] = []
+
+        async def send() -> None:
+            got.append(await self.sender.send(out))
+
         err = await send_with_retry(
-            lambda: self.sender.send(out), sleep=self._sleep, attempts=attempts, event="run_send_error",
-            extra={"run_id": run_id},
+            send, sleep=self._sleep, attempts=attempts, event="run_send_error", extra={"run_id": run_id},
         )
-        return err is None
+        mid = got[-1] if got else None
+        return err is None, mid if isinstance(mid, int) and not isinstance(mid, bool) else None
 
     def _later(self, delay: float, job: _ResendJob) -> None:
         if self._stopping:
@@ -1208,8 +1329,11 @@ class Dispatcher:
                 draft_task_ids=list(job.draft_task_ids),
                 ask_condition_for=job.ask_condition_for,
             )
-            if await self._send_run(out, run.id, attempts=1) and conv is not None:
-                self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names)
+            sent, message_id = await self._send_run(out, run.id, attempts=1)
+            if sent and conv is not None:
+                self._run_delivered(
+                    run, job.merged, conv, run.outbound_text, job.tool_names, telegram_message_id=message_id
+                )
 
     def _release_carry(self, runs: Iterable[Run]) -> None:
         """넘겨 받은 회고가 끝났으면(보냄, 건너뜀) `carry_review_run_id`를 지운다. 러너는 합칠 때 지우지 않는다."""
@@ -1218,7 +1342,8 @@ class Dispatcher:
             self.state.set(CARRY_REVIEW_KEY, None)
 
     def _run_delivered(
-        self, run: Run, merged: list[Run], conv: Conversation, text: str, tool_names: list[str]
+        self, run: Run, merged: list[Run], conv: Conversation, text: str, tool_names: list[str], *,
+        telegram_message_id: int | None = None,
     ) -> None:
         """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1, 그다음 원문 기록, 대화 갱신, 회고 저장."""
         assert self.runs is not None
@@ -1230,7 +1355,9 @@ class Dispatcher:
                 self._release_carry([run, *merged])
                 self.state.incr_usage(self._today(), "proactive_messages")
                 if self.deliveries is not None:  # 지금은 텔레그램 전송뿐이다(앱·대체는 티켓 08)
-                    self.deliveries.record(run.id, "telegram", "full", "sent")
+                    self.deliveries.record(
+                        run.id, "telegram", "full", "sent", telegram_message_id=telegram_message_id
+                    )
         except Exception:
             # 한 트랜잭션이 안 됐다(디스크, 잠금 등). 회차가 running으로 남으면 다음 시작 때 다시 보낼 수 있으니
             # done만 따로 적는다(중복 전송 방지). 카운터와 전달 기록은 비운 채 둔다. 이것도 안 되면 그대로 올린다
@@ -1290,9 +1417,9 @@ class Dispatcher:
         return from_iso(v) if v else None
 
     async def _call_brain(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
     ) -> BrainResult:
-        """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다."""
+        """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다. `fork_session`: `session_id`를 갈라 새 세션으로(7.2)."""
         if run_ctx.stream is not None:
             run_ctx.stream.begin_attempt()  # 앞 시도가 글을 보냈으면 새 단계로 나눈다(06b)
         self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7, 두 통로가 함께)
@@ -1305,7 +1432,9 @@ class Dispatcher:
             # anyio 취소 범위를 쓴다: SDK가 CLI 자식을 정리하는 차폐 구간(close())이 끝까지 돈다.
             # asyncio.wait_for의 날 취소는 그 차폐 안의 다음 await에서 터져 자식이 고아로 남을 수 있다
             with anyio.fail_after(self.settings.limits.brain_timeout_s):
-                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx)
+                # 가를 때만 넘긴다: SP1의 두뇌 구현(시험용 포함)은 이 인자를 모른다
+                fork = {"fork_session": True} if fork_session else {}
+                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **fork)
         except TimeoutError:
             result = BrainResult(text="", session_id=session_id, turns=0, status="error", error="timeout")
         finally:
@@ -1325,6 +1454,7 @@ class Dispatcher:
                 "status": result.status,
                 "error": result.error,
                 "resumed": session_id is not None,
+                "forked": fork_session,
             },
         )
         return result

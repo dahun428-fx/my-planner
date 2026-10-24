@@ -53,8 +53,13 @@ class BrainResult:
 
 
 class Brain(Protocol):
+    """`fork_session=True`: `session_id`를 이어 가되 새 세션으로 갈라 시작한다(회차 대화 가르기, SP3-4 7.2).
+
+    디스패처는 가를 때만 이 인자를 넘긴다(SP1의 두뇌 구현은 받지 않아도 된다).
+    """
+
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
     ) -> BrainResult: ...
 
 
@@ -185,7 +190,7 @@ class ClaudeBrain:
         return self._app_system_prompt if channel == "app" else self._system_prompt
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
     ) -> BrainResult:
         server = build_planner_server(self._tools_factory(), run_ctx)
         # 앱 채팅(스트림 쓰개가 있음)만 글 조각을 받는다(SP3-4 S11, 6.4.1). 조각이 안 오면 06처럼 끝난 뒤 글 블록 하나
@@ -197,6 +202,9 @@ class ClaudeBrain:
             system_prompt=self.system_prompt_for(run_ctx.channel),
             cli_path=self._cli_path,
             include_partial_messages=run_ctx.stream is not None,
+            # S11: `resume=<원래 세션>` + `fork_session=True`면 CLI가 새 세션 id로 갈라 시작한다(결과의 session_id).
+            # 가르기가 안 되면(세션 파일 없음 등) resume 실패와 같은 모양이라 디스패처가 SP1 대체 경로로 간다
+            fork_session=fork_session and session_id is not None,
         )
         messages: list[object] = []
         text_stream = _TextStreamer(run_ctx.stream) if run_ctx.stream is not None else None

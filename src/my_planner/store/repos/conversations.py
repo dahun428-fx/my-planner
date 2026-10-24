@@ -47,14 +47,15 @@ class ConversationsRepo:
 
     def open(
         self, kind: ConversationKind | str, logical_date: date, run_id: int | None = None, *,
-        channel: Channel = "telegram",
+        channel: Channel = "telegram", forked_from: int | None = None,
     ) -> Conversation:
+        """`forked_from`: 다른 통로의 회차 대화를 갈라 연 대화면 그 원래 대화(SP3-4 7.2 가르기)."""
         now = to_iso(self.clock.now())
         with transaction(self.conn):
             cur = self.conn.execute(
-                "INSERT INTO conversations (kind, run_id, logical_date, opened_at, last_message_at, channel) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (ConversationKind(kind).value, run_id, logical_date.isoformat(), now, now, channel),
+                "INSERT INTO conversations (kind, run_id, logical_date, opened_at, last_message_at, channel, "
+                "forked_from) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (ConversationKind(kind).value, run_id, logical_date.isoformat(), now, now, channel, forked_from),
             )
         conv = self.get(cur.lastrowid)
         assert conv is not None
@@ -77,6 +78,11 @@ class ConversationsRepo:
                 "UPDATE conversations SET session_id = ? WHERE id = ?", (session_id, id)
             )
 
+    def set_channel(self, id: int, channel: Channel) -> None:
+        """대화의 통로를 바꾼다(회차 대화는 전체 본문을 받은 통로에 둔다, 7.3 D5)."""
+        with transaction(self.conn):
+            self.conn.execute("UPDATE conversations SET channel = ? WHERE id = ?", (channel, id))
+
     def close(self, id: int) -> None:
         with transaction(self.conn):
             self.conn.execute(
@@ -85,9 +91,13 @@ class ConversationsRepo:
             )
 
     def latest_open_run_opened_by(self, at: datetime) -> Conversation | None:
-        """`at`(보낸 시각) 이전에 열린 열린 `run` 대화 가운데 가장 최근 것."""
+        """`at`(보낸 시각) 이전에 열린 열린 `run` 대화 가운데 가장 최근 것. 통로와 상관없다(SP3-4 7.2 규칙 3).
+
+        갈라 연 대화(`forked_from`)는 보지 않는다: 회차를 보낸 때 연 원래 대화만 "가장 최근에 보낸 회차"를 가리킨다.
+        """
         r = self.conn.execute(
-            "SELECT * FROM conversations WHERE kind = 'run' AND closed_at IS NULL AND opened_at <= ? "
+            "SELECT * FROM conversations WHERE kind = 'run' AND closed_at IS NULL AND forked_from IS NULL "
+            "AND opened_at <= ? "
             "ORDER BY opened_at DESC, id DESC LIMIT 1",
             (to_iso(at),),
         ).fetchone()
@@ -99,6 +109,15 @@ class ConversationsRepo:
             "SELECT * FROM conversations WHERE kind = ? AND channel = ? AND closed_at IS NULL "
             "ORDER BY last_message_at DESC, id DESC LIMIT 1",
             (ConversationKind(kind).value, channel),
+        ).fetchone()
+        return _row(r) if r is not None else None
+
+    def run_conversation(self, run_id: int, channel: Channel) -> Conversation | None:
+        """그 회차의 그 통로 쪽 열린 회차 대화(7.2). 여럿이면 가장 나중에 연 것."""
+        r = self.conn.execute(
+            "SELECT * FROM conversations WHERE kind = 'run' AND run_id = ? AND channel = ? AND closed_at IS NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (run_id, channel),
         ).fetchone()
         return _row(r) if r is not None else None
 
