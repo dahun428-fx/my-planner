@@ -245,8 +245,8 @@ def gather(gh: GitHub, env: dict[str, str], config: dict, now: datetime) -> Inpu
         require_staging_be=env.get("REQUIRE_STAGING_BE", "").lower() == "true",
         dev_login=env.get("DEV_STATUS_LOGIN") or None,
         vercel_contexts={
-            "web/app/": env.get("VERCEL_CONTEXT_APP", "Vercel – my-planner"),
-            "web/dashboard/": env.get("VERCEL_CONTEXT_DASHBOARD", ""),
+            "web/app/": env.get("VERCEL_CONTEXT_APP") or "Vercel – my-planner",
+            "web/dashboard/": env.get("VERCEL_CONTEXT_DASHBOARD") or "Vercel – my-planner-dashboard",
         },
         trigger_sha=trigger,
         skip_staging_be=env.get("SKIP_STAGING_BE", "").lower() == "true",
