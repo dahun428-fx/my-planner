@@ -190,6 +190,59 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 3. 연결 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣습니다. 토큰은 이 기기 안에만 남습니다.
 4. 설정 › 이 기기 알림에서 허용하기를 누르고 "시험 알림 보내기"로 확인합니다. VAPID 키가 없으면 알림은 텔레그램으로 갑니다(위 "토큰과 푸시 키").
 
+## 대시보드
+
+인생곡선, 상태 창, 할 일과 컨디션, BE 상태를 보는 읽기 전용 대시보드(`web/dashboard/`)도 Vercel에 정적 파일로 올립니다. 운영 앱과 같은 BE와 같은 `API_TOKEN`을 씁니다.
+
+**Vercel 프로젝트 설정**
+
+- 운영 앱과 **다른 프로젝트**로 만들고, Root Directory는 `web/dashboard`입니다. 빌드 설정은 `web/dashboard/vercel.json`이 고정합니다(Framework 없음, `npm run build`, 출력 `out`).
+- 환경 변수는 운영 앱과 같은 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나뿐입니다. CSP `connect-src`에 들어가며, 없으면 빌드가 멈추고 틀리면 BE에 닿지 않습니다. 값을 바꾸면 다시 배포합니다. BE 주소와 토큰은 넣지 않습니다(정적 파일은 누구나 받을 수 있습니다). Vercel 분석은 켜지 않습니다.
+- 배포 주소가 정해지면 `config.toml`의 `[api] cors_origins`에 그 주소를 **더합니다**(운영 앱 주소는 그대로 둡니다). 그 뒤 작업을 다시 켭니다.
+
+  ```toml
+  [api]
+  cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://<대시보드>.vercel.app"]
+  ```
+
+**연결하기**
+
+1. 폰이나 노트북에서 Tailscale을 켜고 대시보드 주소를 엽니다.
+2. 설정 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣고 "연결 확인"을 누릅니다. 둘은 그 브라우저 안에만 남습니다.
+3. 처음 연결할 때 데스크톱이나 Android Chrome이 로컬 네트워크 접근 권한 창을 띄울 수 있습니다(사설망 접근, PNA). 뜨면 허용합니다. 브라우저와 버전에 따라 안 뜰 수도 있습니다.
+4. 화면 위 연결 표시줄에 "BE 꺼짐"이 보이면 BE에 닿지 않는 것입니다. 노트북이 꺼졌거나 잠들었는지, my-planner가 돌고 있는지, 폰과 노트북의 Tailscale이 켜져 있는지 봅니다. 마지막으로 응답한 시각이 함께 나옵니다.
+
+**인생 시드 가져오기**
+
+처음 한 번, 검토를 마친 시드 파일에서 챕터와 사건을 가져옵니다. 점수는 가져오지 않습니다(회고에서 답할 때 생깁니다).
+
+명령은 모두 저장소 폴더(`E:\my-planner`)에서 실행합니다.
+
+1. 시드 파일을 노트북의 `data\seed\` 아래로 옮기고, 검토를 마쳤으면 `meta.reviewed`를 `true`로 넣습니다. `sensitive: true`이거나 `storage` 키가 있는 항목은 `confirmed: true`를 넣은 것만 가져옵니다.
+2. my-planner를 멈춥니다. 5분마다 도는 워치독이 다시 띄우지 않도록 작업을 잠시 끕니다.
+
+   ```powershell
+   Disable-ScheduledTask -TaskName my-planner
+   Stop-ScheduledTask -TaskName my-planner
+   ```
+
+   그리고 미리 봅니다. 가져올 개수와 건너뛸 이유별 개수만 나오고 내용은 나오지 않습니다. 가져올 개수가 파일의 챕터·사건 수에서 확인 안 한 민감 항목을 뺀 것과 맞는지 봅니다. `invalid`가 있으면 형식이 틀린 항목이 있는 것입니다.
+
+   ```powershell
+   .venv\Scripts\python.exe -m my_planner seed-life data\seed\<파일> --dry-run
+   ```
+
+3. 개수가 맞으면 `--dry-run` 없이 한 번 더 실행해 가져오고, 작업을 다시 켭니다.
+
+   ```powershell
+   Enable-ScheduledTask -TaskName my-planner
+   Start-ScheduledTask -TaskName my-planner
+   ```
+
+4. 노트북 밖에 만든 사본(클라우드 파일, 메신저 등)은 직접 지웁니다.
+
+종료 코드: `0` 끝남, `3` my-planner가 실행 중, `4` 이미 가져옴, `5` `meta.reviewed`가 `true`가 아님, `6` 읽을 수 없거나 JSON이 아닌 파일, 또는 DB가 항목을 거절함(이때는 아무것도 저장되지 않습니다).
+
 ## 데이터는 어디에 남나요
 
 | 위치 | 내용 |
@@ -197,6 +250,8 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 | `state\planner.db` | 원본 데이터(SQLite) |
 | `data\transcripts\YYYY\MM\YYYY-MM-DD.md` | 원문 기록. 하루 경계는 04:00이라 새벽 0시~3시 59분의 대화는 전날 파일에 들어갑니다 |
 | `state\logs\my-planner.jsonl` | 시스템 로그. 메시지 본문은 남기지 않습니다. 하루 단위로 회전하고 30일 치를 보관합니다 |
+| `data\seed\` | 인생 시드 파일(가져오기 전 원본). Git에 들어가지 않습니다 |
+| `data\curve\chapters.md` | 인생 챕터와 사건을 사람이 읽게 내보낸 파일 |
 | `state\backups\planner-YYYY-MM-DD.db` | DB 백업. 매일 처음 도는 tick에 하나 만들고 최근 14개를 남깁니다 |
 | `%USERPROFILE%\.claude\projects\` | Claude Agent SDK가 따로 남기는 **세션 기록 사본**입니다. 원본은 `data\transcripts\`이고, 이 사본에는 가리기 전 내용이 없도록 두뇌에는 가린 글만 넘깁니다. 지우고 싶으면 이 폴더의 my-planner 관련 하위 폴더를 지우면 됩니다 |
 
