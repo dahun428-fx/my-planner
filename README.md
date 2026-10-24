@@ -124,7 +124,7 @@ Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 
 **끄기**
 
-- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않고, `watch.yml`도 수리를 다시 부르지 않습니다(죽은 시도 정리만 합니다).
+- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않고, `watch.yml`도 수리를 다시 부르지 않습니다(죽은 시도 정리만 합니다). 이미 돌고 있는 수리 실행(`repair #N`, 길면 약 100분)은 `off`로 멈추지 않으니 Actions에서 그 실행을 손으로 취소합니다.
 - medic 전체 멈추기: `config.medic.toml`에 `enabled = false`를 적고 medic을 다시 띄웁니다(하트비트만 보내고 감시·배포는 하지 않습니다). 작업 자체를 없애려면 `register_task.ps1 -NoMedic`을 다시 실행합니다.
 
 **medic 자신의 갱신**

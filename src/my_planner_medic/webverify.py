@@ -12,11 +12,15 @@
   promote_check와 같다), `vercel:<컨텍스트>` → 그 컨텍스트. 만든 계정이 `vercel[bot]`인 상태만, 그중 가장 새 것.
 - 커밋 R은 업데이터가 `merged`로 둘 때 적은 `Repairs #N` 커밋(`detail["repair_sha"]`). 없으면(업그레이드 전) 처음
   본 `main` 머리.
-- 그 컨텍스트의 폴더(`web/app`·`web/dashboard`)를 알면, R과 그 뒤 `main` 커밋 중 그 폴더를 바꾼 가장 새 커밋 W를 본다.
-  Vercel은 `ignoreCommand`로 그 폴더를 안 바꾼 커밋의 빌드를 건너뛰므로 그런 커밋에는 상태가 없고, 운영에 도는
-  것은 W다. R 뒤로 그 폴더를 바꾼 커밋이 없으면(수리가 웹 폴더를 안 바꿨다, 예: BE 응답을 고친 앱 오류) 다시 빌드할
-  것이 없으니 지금 운영 중인 배포(그 폴더를 바꾼 가장 새 커밋)를 보고, 확인은 조용한 시간이 맡는다.
+- 그 컨텍스트의 폴더(`web/app`·`web/dashboard`)를 알면, R과 그 뒤 `main` 커밋 중 그 폴더를 바꾼 가장 새 커밋 W를
+  찾고, W부터 `main`을 따라 앞으로 걸어 그 컨텍스트 상태가 처음 있는 커밋을 본다. Vercel은 푸시마다 **머리 커밋만**
+  빌드하고(승격은 develop 커밋 여럿을 한 푸시로 ff한다), `ignoreCommand`로 그 폴더를 안 바꾼 푸시는 건너뛴다.
+  그래서 W 자신에는 상태가 없을 수 있고, W의 변경을 담은 빌드는 W 뒤 첫 상태다(재리뷰 I-4).
+  R 뒤로 그 폴더를 바꾼 커밋이 없으면(수리가 웹 폴더를 안 바꿨다, 예: BE 응답을 고친 앱 오류) 다시 빌드할 것이
+  없다: Vercel 기다림을 건너뛰고 바로 조용한 시간으로 간다. 단 `vercel:` 빌드 실패는 다시 빌드되어야 고쳐지므로
+  R부터 걸어 기다린다.
 - 폴더를 모르는 `vercel:` 컨텍스트는 R부터 차례로 그 컨텍스트 상태가 처음 있는 커밋을 본다.
+- 걷기는 `WALK_MAX`(50) 커밋까지만(한 회차의 API 호출 상한). 넘으면 이번 회차는 기다린다(3시간 뒤 실패).
 
 진행은 장애의 `detail["web"]` = `{"sha", "since", "ok_at"}`에 둔다(medic.db). GitHub이 안 되면 그 회차만 멈춘다.
 실패 처리는 N을 먼저 `detail["web"]["fail"]`에 저장하고 라벨을 쓴다(응답이 끊겨 다시 해도 같은 N, `recurred`는
@@ -40,6 +44,7 @@ log = logging.getLogger(__name__)
 
 WEB_PARTS = ("app", "dashboard", "vercel")
 VERCEL_WAIT = timedelta(hours=3)
+WALK_MAX = 50  # 상태를 찾아 앞으로 걷는 커밋 수 상한
 _FAILED_RE = re.compile(r"^failed-(\d+)$")
 
 
@@ -118,11 +123,15 @@ class WebVerifier:
         head = self._gh.head_sha("main")
         span = [repair, *([] if head == repair else self._gh.commits_after(repair, head))]
         folder = {self._cfg.vercel_context_app: "web/app", self._cfg.vercel_context_dashboard: "web/dashboard"}.get(ctx)
+        start = 0
         if folder is not None:
-            touched = self._gh.path_commits(folder, "main")
-            target = next((c for c in touched if c in span), touched[0] if touched else repair)
-            return self._gh.vercel_state(target, ctx) == "success"
-        for sha in span:
+            touched = set(self._gh.path_commits(folder, "main"))
+            last = next((k for k in range(len(span) - 1, -1, -1) if span[k] in touched), None)
+            if last is None and inc.part != "vercel":
+                return True  # R 뒤로 그 폴더를 바꾼 커밋이 없다: 다시 빌드할 것이 없다(조용한 시간이 확인한다)
+            # `vercel:` 빌드 실패는 다시 빌드되어야만 고쳐진다: 폴더를 안 바꾼 수리면 R부터 걸어 기다린다
+            start = last or 0
+        for sha in span[start:start + WALK_MAX]:  # W(또는 R)부터 앞으로: 처음 상태가 있는 커밋이 그 변경의 빌드
             state = self._gh.vercel_state(sha, ctx)
             if state is not None:
                 return state == "success"

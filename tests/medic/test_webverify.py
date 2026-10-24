@@ -287,15 +287,67 @@ def test_later_commit_that_touched_the_folder_is_what_is_live(tmp_path: Path) ->
     assert e.ok_at(APP_FP) is not None
 
 
-def test_repair_that_did_not_touch_the_folder_checks_the_live_deploy(tmp_path: Path) -> None:
-    """수리가 웹 폴더를 안 바꿨으면(예: BE 응답을 고친 앱 오류) Vercel은 다시 빌드하지 않는다: 운영 중인 배포
-    (그 폴더를 바꾼 가장 새 커밋)를 보고, 확인은 조용한 60분이 맡는다."""
+def test_repair_that_did_not_touch_the_folder_skips_the_vercel_wait(tmp_path: Path) -> None:
+    """재리뷰 I-4 장면 A: 수리가 웹 폴더를 안 바꿨다(BE에서 고친 앱 오류). 그 폴더를 바꾼 가장 새 커밋은 지난 승격의
+    중간 커밋이라 Vercel 상태가 없다(Vercel은 푸시 머리만 빌드). 다시 빌드할 것이 없으니 기다리지 않고 조용한 60분으로."""
     e = make(tmp_path)
-    e.merged(APP_FP, "app")
-    e.server.path_commits["web/app"] = ["old", "older"]
-    e.vercel("old", SUCCESS)
+    n = e.merged(APP_FP, "app")
+    e.server.path_commits["web/app"] = ["promote-mid", "older"]  # 둘 다 상태 없음
     e.verifier.tick()
     assert e.ok_at(APP_FP) is not None
+    e.clock.advance(minutes=60)
+    e.verifier.tick()
+    assert e.store.get(APP_FP).state == "resolved" and e.server.issues[n]["state"] == "closed"
+
+
+def test_promote_after_repair_judges_the_push_head_build(tmp_path: Path) -> None:
+    """재리뷰 I-4 장면 B: 노트북이 꺼진 사이 앱을 바꾸는 승격(커밋 여러 개, 한 푸시)이 수리 뒤에 들어왔다. W(승격 안에서
+    앱을 바꾼 마지막 커밋)에는 상태가 없고 푸시 머리만 있다: W에서 main을 따라 처음 상태가 있는 커밋을 본다."""
+    e = make(tmp_path)
+    e.merged(APP_FP, "app")
+    e.main_moves("p4", ["p1", "p2", "p3", "p4"], touched={"web/app": ["p2", "p1", "sha1"]})
+    e.vercel("sha1", [st(APP_CTX, "success")])  # 수리 자체의 배포(지금 운영은 아니다)
+    e.vercel("p4", [st(APP_CTX, "pending")])
+    e.verifier.tick()
+    assert e.ok_at(APP_FP) is None
+    e.vercel("p4", [st(APP_CTX, "failure")])
+    e.verifier.tick()
+    assert e.ok_at(APP_FP) is None
+    e.vercel("p4", [st(APP_CTX, "success")])
+    e.verifier.tick()
+    assert e.ok_at(APP_FP) is not None
+
+
+def test_repair_in_a_multi_commit_push_judges_the_push_head(tmp_path: Path) -> None:
+    """수리 커밋 R 자신도 푸시 머리가 아닐 수 있다(R 뒤 커밋과 함께 한 푸시): R에서 앞으로 걸어 상태를 찾는다."""
+    e = make(tmp_path)
+    e.merged(APP_FP, "app")
+    e.main_moves("sha2", ["sha2"], touched={"web/app": ["sha1"]})
+    e.vercel("sha2", [st(APP_CTX, "success")])
+    e.verifier.tick()
+    assert e.ok_at(APP_FP) is not None
+
+
+def test_vercel_build_failure_is_not_skipped_when_repair_did_not_touch_the_folder(tmp_path: Path) -> None:
+    """`vercel:` 빌드 실패는 새 빌드가 성공해야 고쳐진다: 폴더를 안 바꾼 수리로는 건너뛰지 않는다."""
+    e = make(tmp_path)
+    e.merged(VERCEL_FP, "vercel")
+    e.server.path_commits["web/app"] = ["older"]
+    e.vercel("older", [st(APP_CTX, "failure")])
+    e.verifier.tick()
+    assert e.store.get(VERCEL_FP).state == "merged"
+
+
+def test_walk_to_the_built_commit_is_bounded(tmp_path: Path) -> None:
+    e = make(tmp_path)
+    e.merged(APP_FP, "app")
+    later = [f"c{i}" for i in range(80)]
+    e.main_moves("c79", later, touched={"web/app": ["sha1"]})
+    e.vercel("c79", [st(APP_CTX, "success")])  # 50개 너머
+    e.verifier.tick()
+    assert e.ok_at(APP_FP) is None
+    statuses = [r for r in e.http.requests if r.path.endswith("/statuses")]
+    assert len(statuses) == 50
 
 
 def test_web_sha_is_the_repairs_commit_not_main_head(tmp_path: Path) -> None:
