@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import type { Habit } from "../../api/types.gen";
+import { apiGet } from "../../api/client";
+import type { Habit, HabitsList } from "../../api/types.gen";
 import { useToast } from "../../components/Toast";
 import { copy, habitMeta } from "../../lib/copy";
 import type { PartProps } from "../types";
@@ -15,29 +16,59 @@ const isHabit = (v: unknown): v is Habit =>
  * The habit rows (SP7 6.1, 9장), the same on Today, in a check-in card and in chat. A press checks
  * or unchecks that day at once (no confirm: the toast carries "되돌리기"); a checked row only fills
  * its circle, the title stays as it is. `readOnly`: offline, a restored chat card, a snapshot.
+ *
+ * After "되돌리기" (which may be this list's write, another one, or something else entirely: the
+ * toast does not say which) the rows must show the truth, never the props they started from. A
+ * caller that reads again on undo itself (Today) leaves `readsOnUndo` off; a card (chat, check-in)
+ * turns it on and reads `GET /habits` for its date. If that read fails, the rows stay as they are.
  */
-export function HabitList({ habits, date, readOnly, onChanged }: { habits: Habit[]; date: string; readOnly: boolean; onChanged: () => void }) {
+export function HabitList({
+  habits,
+  date,
+  readOnly,
+  onChanged,
+  readsOnUndo = false,
+}: {
+  habits: Habit[];
+  date: string;
+  readOnly: boolean;
+  onChanged: () => void;
+  readsOnUndo?: boolean;
+}) {
   const act = usePartAction();
-  // The BE's answer ({habit, date, already}) until the caller reads again (a chat card never does).
+  // The BE's answer ({habit, date, already}) until the rows are read again.
   const [answered, setAnswered] = useState<ReadonlyMap<number, Habit>>(new Map());
+  // The rows read after an undo (cards only), until the caller hands new ones.
+  const [reread, setReread] = useState<Habit[] | null>(null);
   const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
   const inFlight = useRef(new Set<number>());
-  useEffect(() => setAnswered(new Map()), [habits]);
-  // "되돌리기" on the toast: drop the answers kept here (a chat card falls back to the rows it was
-  // given) and let the caller read again (a check-in does not listen to the toast itself).
-  const toast = useToast();
-  const changed = useRef(onChanged);
-  changed.current = onChanged;
-  useEffect(
-    () =>
-      toast.onUndone(() => {
-        setAnswered(new Map());
-        changed.current();
-      }),
-    [toast],
-  );
+  useEffect(() => {
+    setAnswered(new Map());
+    setReread(null);
+  }, [habits]);
 
-  if (habits.length === 0) {
+  const toast = useToast();
+  const dateRef = useRef(date);
+  dateRef.current = date;
+  useEffect(() => {
+    if (!readsOnUndo) return;
+    let alive = true;
+    const off = toast.onUndone(() => {
+      const q = new URLSearchParams({ date: dateRef.current, status: "active" });
+      void apiGet<HabitsList>(`/habits?${q.toString()}`, "HabitsList").then((r) => {
+        if (!alive || r.kind !== "ok") return; // offline or refused: keep what is shown
+        setReread(r.data.items);
+        setAnswered(new Map());
+      });
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [toast, readsOnUndo]);
+
+  const rows = reread ?? habits;
+  if (rows.length === 0) {
     return (
       <Link href="/habits/" className={styles.habitAdd}>
         {copy.habits.addRow}
@@ -64,7 +95,7 @@ export function HabitList({ habits, date, readOnly, onChanged }: { habits: Habit
 
   return (
     <ul className={`${styles.rows} ${styles.habitRows} ${readOnly ? styles.readOnly : ""}`}>
-      {habits.map((given) => {
+      {rows.map((given) => {
         const h = answered.get(given.id) ?? given;
         return (
           <CheckRow
@@ -97,7 +128,7 @@ export function HabitCheck({ props, data, ctx }: PartProps<{ date: string }>) {
   const readOnly = ctx.readOnly || ctx.restored === true;
   return (
     <Part title={copy.habits.heading} readOnly={ctx.readOnly}>
-      <HabitList habits={habits} date={props.date} readOnly={readOnly} onChanged={ctx.onAfterAction} />
+      <HabitList habits={habits} date={props.date} readOnly={readOnly} onChanged={ctx.onAfterAction} readsOnUndo />
     </Part>
   );
 }

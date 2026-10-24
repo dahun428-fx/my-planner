@@ -135,11 +135,18 @@ describe("Checkin", () => {
     expect(bodies[0]).toMatchObject({ action: "uncheck_habit", args: { id: 1, date: "2026-10-24" } });
     await waitFor(() => expect(hits.checkin).toBeGreaterThan(reads));
 
-    // "되돌리기" on the toast: the check-in reads again so the card shows the undone state.
-    server.use(http.post(`${BASE}/activity/900/undo`, () => HttpResponse.json({ status: "undone", confirmation: "↩ 습관 체크 취소: 물 마시기" })));
-    const afterPress = hits.checkin;
+    // "되돌리기" on the toast: the card reads its habits again for its date and shows what the BE says.
+    const habitReads: string[] = [];
+    server.use(
+      http.post(`${BASE}/activity/900/undo`, () => HttpResponse.json({ status: "undone", confirmation: "↩ 습관 체크 취소: 물 마시기" })),
+      http.get(`${BASE}/habits`, ({ request }) => {
+        habitReads.push(new URL(request.url).searchParams.toString());
+        return HttpResponse.json({ date: "2026-10-24", week: "2026-W43", items: habitCard.data.habits });
+      }),
+    );
     await userEvent.click(await screen.findByRole("button", { name: copy.activity.undo }));
-    await waitFor(() => expect(hits.checkin).toBeGreaterThan(afterPress));
+    await waitFor(() => expect(habitReads).toEqual(["date=2026-10-24&status=active"]));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") })).toBeChecked());
   });
 
   it("evening shows open todos with tomorrow and done", async () => {
