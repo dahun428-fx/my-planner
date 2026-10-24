@@ -77,6 +77,46 @@ async def test_chat_stream_order_and_headers(tmp_path):
     assert pending == 0
 
 
+async def test_chat_stream_order_with_deltas(tmp_path):
+    """06b: `deltas`가 있으면 글이 도구 조각보다 앞서 조각으로 가고, 끝난 뒤 글 블록을 다시 보내지 않는다."""
+    script = [FakeTurn([DENTIST], "내일 치과를 추가할게요.", deltas=["내일 치과를 ", "추가할게요."])]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        _, raw = await env.chat("내일 치과 추가해 줘")
+
+    chunks = parse_sse(raw)
+    assert types(chunks) == [
+        "start", "data-status", "data-status", "start-step", "text-start", "text-delta", "text-delta", "text-end",
+        "tool-input-available", "tool-output-available", "finish-step", "data-activity", "finish",
+    ]
+    assert [c["delta"] for c in chunks if c["type"] == "text-delta"] == ["내일 치과를 ", "추가할게요."]
+    assert all(c.get("id") != "h-confirm" for c in chunks)  # 확인 문구는 글 조각이 아니다
+    assert _one(chunks, "data-activity")["data"]["confirmation"] == "✓ 추가: 치과 → 내일"
+
+
+async def test_streamed_text_is_never_sent_twice_but_fixed_notice_still_is():
+    from fakes import ListSink
+
+    from my_planner.harness.dispatcher import Outbound
+    from my_planner.harness.stream import AppReplySender, UiMessageWriter
+
+    async def reply(streamed: list[str], text: str) -> list[str]:
+        sink = ListSink()
+        w = UiMessageWriter(sink, None)
+        w.start_step()
+        if streamed:
+            w.text_start("t1")
+            for d in streamed:
+                w.text_delta("t1", d)
+            w.text_end("t1")
+        await AppReplySender().send(Outbound(text=text, channel="app", writer=w))
+        return [c["delta"] for c in sink.chunks if c["type"] == "text-delta"]
+
+    assert await reply(["안녕", "하세요"], "안녕하세요") == ["안녕", "하세요"]  # 같은 글: 다시 보내지 않는다
+    assert await reply(["도구 전에 ", "한 말. ", "마지막 말."], "마지막 말.") == ["도구 전에 ", "한 말. ", "마지막 말."]
+    assert await reply([], "안녕하세요") == ["안녕하세요"]  # 조각이 없으면 06 그대로(글 블록 하나)
+    assert await reply(["일부"], "고정 안내 문구") == ["일부", "고정 안내 문구"]  # 다른 글(고정 안내)은 보낸다
+
+
 async def test_tool_chunk_name_has_no_prefix_and_output_is_utc(tmp_path):
     timed = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-25",
                           "scheduled_at": "2026-10-25T14:00:00+09:00"})

@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+import pytest
 from be_env import BeEnv
 from fakes import FakeTurn
 from test_dispatcher_messages import kst
@@ -155,12 +156,13 @@ async def test_undo_end_to_end(tmp_path):
         ("task_added", "user", "app"), ("task_completed", "secretary", "telegram"), ("undo", "user", "app")]
 
 
-async def test_chat_end_to_end(tmp_path):
+@pytest.mark.parametrize("deltas", [None, ["내일 치과를 ", "추가할게요."]])
+async def test_chat_end_to_end(tmp_path, deltas):
     """앱 채팅(SP3-4 티켓 06): `POST /chat` → 대화 기록 → 다음 날 텔레그램 `/today`에 같은 할 일."""
     from ui_stream import parse_sse
 
     add = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-25"})
-    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([add], "내일 치과를 추가할게요.")]) as env:
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([add], "내일 치과를 추가할게요.", deltas=deltas)]) as env:
         resp, raw = await env.chat("내일 치과 추가해 줘", message_id="msg-e2e")
         chunks = parse_sse(raw)
         conv_id = int(resp.headers["x-conversation-id"])

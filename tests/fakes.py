@@ -31,6 +31,7 @@ class FakeTurn:
     delay: float = 0.0  # 이 초만큼 걸린 것처럼 한다(FakeClock이 그만큼 움직일 때까지 기다린다)
     hang: bool = False  # 도구를 부른 뒤 영영 돌아오지 않는다(두뇌 호출 시간 상한 시험)
     gate: asyncio.Event | None = None  # 도구를 부른 뒤 이 이벤트가 설 때까지 기다린다(처리 중 시험)
+    deltas: list[str] | None = None  # 앱 채팅에서 도구 호출 전에 이 조각들로 글 블록을 스트리밍한다(06b)
 
 
 class FakeBrain:
@@ -53,6 +54,13 @@ class FakeBrain:
         if not self.script:
             raise AssertionError("FakeBrain: 시나리오가 더 없다")
         turn = self.script.pop(0)
+        if turn.deltas and run_ctx.stream is not None:
+            w = run_ctx.stream
+            text_id = w.next_text_id()
+            w.text_start(text_id)
+            for d in turn.deltas:
+                w.text_delta(text_id, d)
+            w.text_end(text_id)
         for name, args in turn.tool_calls:
             if self.tools is None:
                 raise AssertionError(f"FakeBrain: 도구 {name}를 부를 tools가 없다")

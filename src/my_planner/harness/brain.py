@@ -16,6 +16,7 @@ from claude_agent_sdk import (
     RateLimitEvent,
     ResultError,
     ResultMessage,
+    StreamEvent,
     SystemMessage,
     TextBlock,
     query,
@@ -187,6 +188,7 @@ class ClaudeBrain:
         self, prompt: str, *, session_id: str | None, run_ctx: RunContext
     ) -> BrainResult:
         server = build_planner_server(self._tools_factory(), run_ctx)
+        # 앱 채팅(스트림 쓰개가 있음)만 글 조각을 받는다(SP3-4 S11, 6.4.1). 조각이 안 오면 06처럼 끝난 뒤 글 블록 하나
         options = build_options(
             server=server,
             session_id=session_id,
@@ -194,14 +196,23 @@ class ClaudeBrain:
             max_turns=self._max_turns,
             system_prompt=self.system_prompt_for(run_ctx.channel),
             cli_path=self._cli_path,
+            include_partial_messages=run_ctx.stream is not None,
         )
         messages: list[object] = []
+        text_stream = _TextStreamer(run_ctx.stream) if run_ctx.stream is not None else None
         exc: Exception | None = None
         try:
             async for message in query(prompt=prompt, options=options):
+                if isinstance(message, StreamEvent):  # 부분 메시지는 분류와 답 글에 쓰지 않는다
+                    if text_stream is not None and message.parent_tool_use_id is None:
+                        text_stream.feed(message.event)
+                    continue
                 messages.append(message)
         except Exception as e:  # noqa: BLE001 - ResultError/ProcessError 등을 classify가 판정한다. CancelledError는 그대로 올린다.
             exc = e
+        finally:
+            if text_stream is not None:
+                text_stream.close()  # 끊기거나 오류로 끝나도 열린 글 블록은 닫는다
 
         status, error, retry_at = classify(messages, exc, datetime.now(UTC))
         _log_rate_warnings(messages)
@@ -215,6 +226,63 @@ class ClaudeBrain:
             resume_failed=detect_resume_failed(session_id, messages, status),
             retry_at=retry_at,
         )
+
+
+def text_block_event(event: dict[str, Any]) -> tuple[Literal["start", "delta", "stop"], int, str] | None:
+    """`StreamEvent.event`(원본 Anthropic 스트리밍 이벤트)에서 글 블록 조각을 읽는다. 글 조각이 아니면 None.
+
+    S11 필드 경로는 모두 여기에만 있다(SDK 소스 `types.StreamEvent`와 Anthropic 스트리밍 규격에서 가져온 것이고,
+    노트북 S11 시험으로 확인하거나 고칠 것, docs/spikes/2026-11-sp3-4.md):
+    - 시작: `type == "content_block_start"`, `content_block.type == "text"`, 번호 `index`
+    - 조각: `type == "content_block_delta"`, `delta.type == "text_delta"`, 글 `delta.text`, 번호 `index`
+    - 끝: `type == "content_block_stop"`, 번호 `index`
+    돌려주는 값: `(종류, index, 글)`. 시작과 끝의 글은 빈 문자열이다.
+    """
+    kind = event.get("type")
+    index = event.get("index")
+    if not isinstance(index, int):
+        return None
+    if kind == "content_block_start":
+        block = event.get("content_block")
+        if isinstance(block, dict) and block.get("type") == "text":
+            return "start", index, ""
+    elif kind == "content_block_delta":
+        delta = event.get("delta")
+        if isinstance(delta, dict) and delta.get("type") == "text_delta" and isinstance(delta.get("text"), str):
+            return "delta", index, delta["text"]
+    elif kind == "content_block_stop":
+        return "stop", index, ""
+    return None
+
+
+class _TextStreamer:
+    """글 블록 조각을 `UiMessageWriter`의 `text-start/delta/end`로 옮긴다. 블록 번호(`index`)마다 글 id 하나."""
+
+    def __init__(self, writer: Any) -> None:
+        self._writer = writer
+        self._open: dict[int, str] = {}
+
+    def feed(self, event: dict[str, Any]) -> None:
+        parsed = text_block_event(event)
+        if parsed is None:
+            return
+        kind, index, text = parsed
+        if kind == "start":
+            if index not in self._open:
+                self._open[index] = self._writer.next_text_id()
+                self._writer.text_start(self._open[index])
+        elif kind == "delta":
+            if index not in self._open:  # 시작을 못 받았어도 글은 잃지 않는다
+                self._open[index] = self._writer.next_text_id()
+                self._writer.text_start(self._open[index])
+            if text:
+                self._writer.text_delta(self._open[index], text)
+        elif index in self._open:
+            self._writer.text_end(self._open.pop(index))
+
+    def close(self) -> None:
+        for index in list(self._open):
+            self._writer.text_end(self._open.pop(index))
 
 
 def _reply_text(messages: list[object], result: ResultMessage | None) -> str:

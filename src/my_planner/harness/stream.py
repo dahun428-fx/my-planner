@@ -236,16 +236,26 @@ class UiMessageWriter:
         return "".join(self._streamed)
 
 
+def already_streamed(writer: UiMessageWriter, text: str) -> bool:
+    """`text`가 이미 `text-delta`로 나갔는가(06b). 같은 글을 두 번 보내지 않는다.
+
+    두뇌가 도구를 부르며 글 블록을 여럿 냈으면 `ResultMessage.result`는 마지막 블록뿐이라, 보낸 글의 끝이
+    `text`와 같은 경우도 이미 나간 것으로 본다. 고정 안내처럼 보낸 글과 다른 글은 새 글 블록으로 간다.
+    """
+    streamed = writer.streamed_text.strip()
+    return bool(streamed) and streamed.endswith(text.strip())
+
+
 def write_reply(
     writer: UiMessageWriter, text: str, *, activity_ids: list[int] | None = None, undo_ids: list[int] | None = None,
     confirmation: str | None = None, metadata: dict[str, Any] | None = None,
 ) -> None:
-    """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생). 순서: start-step → 글 → finish-step → data-activity → finish.
+    """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생, 조각이 오지 않은 두뇌 답: S11 대체 경로). 순서: start-step → 글 → finish-step → data-activity → finish.
 
     활동도 확인 문구도 없으면 `data-activity`를 보내지 않는다(6.4.1).
     """
     writer.start_step()
-    if text:
+    if text and not already_streamed(writer, text):
         writer.text(writer.next_text_id(), text)
     writer.finish_step()
     if activity_ids or confirmation:
