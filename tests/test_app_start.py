@@ -827,3 +827,28 @@ def test_bad_cors_config_is_settings_error(started, bad):
     toml.write_text("\n".join(lines) + "\n", encoding="utf-8")
     assert app.main() == app.EXIT_BAD_SETTINGS
     assert calls == []
+
+
+async def test_be_env_telegram_and_press(tmp_path):
+    from datetime import date
+
+    from be_env import BeEnv
+    from fakes import FakeTurn
+    from test_dispatcher_messages import kst
+
+    from my_planner.bot.commands import today_text
+
+    start = kst(2026, 10, 24, 13, 0)
+    async with BeEnv.start(tmp_path, start=start, script=[FakeTurn([], "반가워요")]) as env:
+        assert await env.telegram("/today") == "command"
+        tools = env.parts.tools
+        assert env.bot.sent[-1] == (42, today_text(tools.tasks, env.clock.now(), tools.tz, tools.boundary))
+
+        assert await env.press("c:2026-10-24:4") == "recorded"
+        cond = env.parts.conditions.get(date(2026, 10, 24))
+        assert cond is not None and cond.score == 4
+        assert env.bot.answers[-1][1] == "컨디션 4 기록했어요."
+
+        await env.telegram("안녕")  # 보통 글은 디스패처 → 가짜 두뇌 → 가짜 전송
+        assert [o.text for o in env.sender.sent] == ["반가워요"]
+        assert env.brain.calls and not env.parts.state.pending_inbound()
