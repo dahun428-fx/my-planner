@@ -19,9 +19,13 @@ export function EditTodoSheet({
   onDone(): Promise<void>;
   guard: (out: ActionOutcome | null) => Promise<void>;
 }) {
+  // The last edit stays drawn while the sheet slides out, so it does not leave empty.
+  const last = useRef<Edit | null>(edit);
+  if (edit) last.current = edit;
+  const shown = edit ?? last.current;
   return (
-    <Sheet open={edit !== null} onClose={onClose} title={edit ? (edit.kind === "date" ? copy.todos.changeDate : copy.todos.editTitle) : undefined}>
-      {edit && <EditForm key={`${edit.kind}:${edit.todo.id}`} edit={edit} onClose={onClose} onDone={onDone} guard={guard} />}
+    <Sheet open={edit !== null} onClose={onClose} title={shown ? (shown.kind === "date" ? copy.todos.changeDate : copy.todos.editTitle) : undefined}>
+      {shown && <EditForm key={`${shown.kind}:${shown.todo.id}`} edit={shown} onClose={onClose} onDone={onDone} guard={guard} />}
     </Sheet>
   );
 }

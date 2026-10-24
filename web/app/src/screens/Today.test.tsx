@@ -360,6 +360,7 @@ describe("Today offline and refused", () => {
     expect(within(text.closest("section") as HTMLElement).getByRole("link", { name: copy.errors.goSettings })).toHaveAttribute("href", "/settings/");
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled();
+    expect(screen.getByRole("button", { name: copy.chat.launcher })).toHaveAccessibleDescription(copy.chat.launcherBlocked.unauthorized);
   });
 
   it("503 state", async () => {
@@ -367,6 +368,7 @@ describe("Today offline and refused", () => {
     renderWithProviders(<Today />, { conn: "safe_mode" });
     expect(await screen.findByText(copy.status.safeMode, { selector: "p" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled();
+    expect(screen.getByText(copy.chat.launcherBlocked.safe_mode)).toBeInTheDocument();
   });
 
   it("429 state", async () => {

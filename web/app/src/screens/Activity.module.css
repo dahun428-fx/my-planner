@@ -1,5 +1,6 @@
 .main {
-  padding-bottom: calc(var(--row) + env(safe-area-inset-bottom) + var(--gap));
+  /* Room for the tab bar and the launcher above it (5.3). */
+  padding-bottom: calc(var(--row) + 3.5rem + env(safe-area-inset-bottom) + var(--gap));
 }
 .line {
   margin: 0 var(--pad) var(--gap);

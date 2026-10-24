@@ -67,6 +67,21 @@ const needsConfirm = () =>
 const tabOf = (name: string) => screen.getByRole("radio", { name });
 
 describe("Todos", () => {
+  it("chat launcher: on when connected, off with the reason when not", async () => {
+    serve();
+    const { unmount } = renderWithProviders(<Todos tab="week" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
+    unmount();
+    const off = renderWithProviders(<Todos tab="week" />, { conn: "offline" });
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.offline.chatLater })).toBeDisabled());
+    off.unmount();
+    renderWithProviders(<Todos tab="week" />, { conn: "unauthorized" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: copy.chat.launcher })).toHaveAccessibleDescription(copy.chat.launcherBlocked.unauthorized),
+    );
+    expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled();
+  });
+
   it("defaults to week tab", async () => {
     serve();
     renderWithProviders(<Todos />);

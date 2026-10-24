@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ActionOutcome, useAction } from "../api/actions";
 import { type ApiResult, apiGet } from "../api/client";
 import type { Drafts, DraftItem, Priorities, Today as TodayData, Todo, Week } from "../api/types.gen";
+import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
+import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
@@ -116,6 +118,9 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     setVersion((v) => v + 1);
   }, [refreshToday, refreshWeek]);
   const guard = useNotAllowed(refreshAll);
+  const chat = useChatSheet();
+  // What was said in the sheet may have changed the lists: read again when it closes.
+  useEffect(() => chat.onClosed(() => void refreshAll()), [chat, refreshAll]);
 
   // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
   const todayDate = todayView.kind === "live" ? todayView.data.date : weekView.kind === "live" ? (weekView.data.days.find((d) => d.is_today)?.date ?? null) : null;
@@ -344,6 +349,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       {dropSheet}
       {todayDate && <AddTodoSheet open={adding} onClose={() => setAdding(false)} defaultDate={todayDate} onAdded={() => void refreshAll()} />}
       <EditTodoSheet edit={edit} onClose={() => setEdit(null)} onDone={refreshAll} guard={guard} />
+      <ChatLauncher disabled={!online} offline={offlineConn} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

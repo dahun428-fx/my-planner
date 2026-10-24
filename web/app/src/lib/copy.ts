@@ -66,9 +66,22 @@ export const copy = {
     title: "비서",
     subtitle: "앱 대화",
     queued: "비서가 앞의 일을 끝내는 중이에요",
-    elsewhere: "다른 곳에서 바뀐 것: ",
+    thinking: "비서가 생각하는 중이에요",
+    elsewhere: (summary: string) => `다른 곳에서 바뀐 것: ${summary}`,
+    newConversation: "새 대화",
+    notReceived: "답을 받지 못했어요",
+    retry: "다시 받기",
     send: "보내기",
+    inputLabel: "비서에게 보낼 말",
     undo: "되돌리기",
+    undone: "되돌렸어요",
+    messages: "대화 내용",
+    openFailed: "대화를 열지 못했어요. 다시 눌러 주세요.",
+    launcherBlocked: {
+      unauthorized: "열쇠를 다시 넣으면 말할 수 있어요",
+      rate_limited: "잠시 뒤에 말할 수 있어요",
+      safe_mode: "데이터베이스 점검 뒤에 말할 수 있어요",
+    },
   },
 
   checkin: {
