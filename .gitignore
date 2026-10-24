@@ -27,3 +27,6 @@ web/app/.next/
 web/app/out/
 web/app/next-env.d.ts
 web/app/tsconfig.tsbuildinfo
+web/app/e2e/__screens__/
+web/app/e2e/.results/
+web/app/playwright-report/

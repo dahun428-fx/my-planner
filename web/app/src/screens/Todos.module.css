@@ -122,22 +122,25 @@
   font-size: var(--size-meta);
   color: var(--muted);
 }
-.bulkRow {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 var(--pad) 0.5rem;
-}
+/* "모두 확정" at the right of the drafts heading: a 32px pill with a 44px hit area (9장). */
 .bulk {
-  min-height: var(--control-h);
+  position: relative;
+  flex: none;
+  min-height: var(--small-control-h);
   padding: 0 0.75rem;
   border: 0;
-  border-radius: var(--radius-field);
+  border-radius: var(--radius-pill);
   background: var(--primary);
   color: var(--on-primary);
   font: inherit;
   font-size: var(--size-meta);
   font-weight: 600;
   cursor: pointer;
+}
+.bulk::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
 }
 .bulk:disabled {
   opacity: 0.5;

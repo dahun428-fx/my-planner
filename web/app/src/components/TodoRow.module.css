@@ -27,15 +27,33 @@ span.check {
   outline-offset: -2px;
 }
 .circle {
+  position: relative;
   width: 1.5rem;
   height: 1.5rem;
   box-sizing: border-box;
   border: 2px solid var(--control);
   border-radius: var(--radius-pill);
 }
+/* 5.5.4: a check that can be pressed is a square box; read-only (offline, blocked) rows keep the
+   drawn round mark (span.check), so the two states differ by shape, not only by color. */
+button.check .circle {
+  border-radius: 0.375rem;
+}
 .filled {
   border-color: var(--muted);
   background: var(--muted);
+}
+/* The tick, so a done row does not read as a plain grey dot (not color alone, 9장). */
+.filled::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 0.3125rem;
+  height: 0.625rem;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 .text {
   flex: 1;

@@ -304,7 +304,7 @@ function CheckinBody({ id }: { id: number }) {
         </Link>
         {status !== null && <span className={styles.status} role="status">{status}</span>}
       </nav>
-      <LargeTitle title={data ? copy.loops[data.loop] : copy.checkin.title} meta={data ? deliveredLine(data) ?? undefined : undefined} />
+      <LargeTitle title={data ? copy.loops[data.loop] : copy.checkin.title} sub={data ? deliveredLine(data) ?? undefined : undefined} />
       {offline && <OfflineNotice savedAt={last?.at ?? null} onRetry={() => void recheck()} />}
       {body}
     </main>

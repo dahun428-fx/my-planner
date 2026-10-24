@@ -306,9 +306,10 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       {tab === "week" && weekOffline && <OfflineNotice savedAt={weekView.kind === "snapshot" ? weekView.savedAt : null} onRetry={() => void recheck()} />}
       {body}
       {draftList && (
-        <section>
-          {draftList.length >= 2 && (
-            <div className={styles.bulkRow}>
+        <Group
+          heading={copy.todos.drafts(draftList.length)}
+          action={
+            draftList.length >= 2 ? (
               <button
                 type="button"
                 className={styles.bulk}
@@ -317,29 +318,28 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
               >
                 {copy.todos.confirmAll}
               </button>
+            ) : undefined
+          }
+        >
+          <p className={styles.hint}>{copy.todos.draftsHint}</p>
+          {draftList.map(({ todo }) => (
+            <div key={todo.id} className={styles.draftRow}>
+              <span className={styles.draftTitle}>{todo.title}</span>
+              <button type="button" className={styles.draftButton} aria-label={copy.todos.dropLabel(todo.title)} disabled={draftBusy} onClick={() => void dropDraft(todo.id)}>
+                {copy.todos.drop}
+              </button>
+              <button
+                type="button"
+                className={`${styles.draftButton} ${styles.confirm}`}
+                aria-label={copy.todos.confirmLabel(todo.title)}
+                disabled={draftBusy}
+                onClick={() => void confirmDrafts([todo.id])}
+              >
+                {copy.todos.confirm}
+              </button>
             </div>
-          )}
-          <Group heading={copy.todos.drafts(draftList.length)}>
-            <p className={styles.hint}>{copy.todos.draftsHint}</p>
-            {draftList.map(({ todo }) => (
-              <div key={todo.id} className={styles.draftRow}>
-                <span className={styles.draftTitle}>{todo.title}</span>
-                <button type="button" className={styles.draftButton} aria-label={copy.todos.dropLabel(todo.title)} disabled={draftBusy} onClick={() => void dropDraft(todo.id)}>
-                  {copy.todos.drop}
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.draftButton} ${styles.confirm}`}
-                  aria-label={copy.todos.confirmLabel(todo.title)}
-                  disabled={draftBusy}
-                  onClick={() => void confirmDrafts([todo.id])}
-                >
-                  {copy.todos.confirm}
-                </button>
-              </div>
-            ))}
-          </Group>
-        </section>
+          ))}
+        </Group>
       )}
       {live && !draftsHidden && draftsErr && (
         <Group>

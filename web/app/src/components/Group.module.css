@@ -8,6 +8,18 @@
   font-weight: 600;
   color: var(--text);
 }
+.headRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  margin: 0 0 0.5rem;
+  padding: 0 0.25rem;
+}
+.headRow .heading {
+  margin: 0;
+  padding: 0;
+}
 .body {
   background: var(--surface);
   border-radius: var(--radius-group);

@@ -17,7 +17,7 @@ import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
-import { addDays } from "../lib/time";
+import { addDays, formatKst } from "../lib/time";
 import page from "../styles/page.module.css";
 import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
@@ -175,7 +175,15 @@ export function Today() {
           </section>
         )}
         {brief ? (
-          <Group>
+          <Group
+            heading={
+              <>
+                {copy.loops[brief.loop]}
+                {brief.sent_at && " "}
+                {brief.sent_at && <span className={styles.briefAt}>{formatKst(brief.sent_at, "HH:mm")}</span>}
+              </>
+            }
+          >
             <div className={styles.brief}>
               <p className={`${styles.briefText} ${folded ? styles.folded : ""}`}>{brief.text}</p>
               {longBrief && (
@@ -191,21 +199,28 @@ export function Today() {
         <Group heading={copy.today.condition}>
           <div className={styles.condition}>
             {showPills ? (
-              <div className={styles.pills}>
-                {SCORES.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`${styles.pill} ${score === n ? styles.picked : ""}`}
-                    aria-label={copy.today.conditionScore(n)}
-                    aria-pressed={score === n}
-                    disabled={readOnly}
-                    onClick={() => void record(n)}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className={styles.pills}>
+                  {SCORES.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`${styles.pill} ${score === n ? styles.picked : ""}`}
+                      aria-label={copy.today.conditionScore(n)}
+                      aria-pressed={score === n}
+                      disabled={readOnly}
+                      onClick={() => void record(n)}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {/* What the ends of the scale mean: without them 5 could be good or bad. */}
+                <div className={styles.ends}>
+                  <span>{copy.parts.scoreLow}</span>
+                  <span>{copy.parts.scoreHigh}</span>
+                </div>
+              </>
             ) : (
               <div className={styles.current}>
                 <span className={styles.value}>{copy.today.conditionScore(score)}</span>

@@ -231,7 +231,7 @@ export function Settings() {
       deviceTrailing = <Skeleton size="pill" />;
       break;
     case "on":
-      deviceTrailing = copy.settings.pushOn;
+      deviceTrailing = <span className={styles.value}>{copy.settings.pushOn}</span>;
       break;
     case "off":
       deviceTrailing = (
@@ -241,19 +241,19 @@ export function Settings() {
       );
       break;
     case "denied":
-      deviceTrailing = copy.settings.pushOff;
+      deviceTrailing = <span className={styles.value}>{copy.settings.pushOff}</span>;
       deviceNote = copy.settings.pushDenied;
       break;
     case "needs_home_screen":
-      deviceTrailing = copy.settings.pushOff;
+      deviceTrailing = <span className={styles.value}>{copy.settings.pushOff}</span>;
       deviceNote = copy.settings.needsHomeScreen;
       break;
     case "unsupported":
-      deviceTrailing = copy.settings.pushOff;
+      deviceTrailing = <span className={styles.value}>{copy.settings.pushOff}</span>;
       deviceNote = copy.settings.pushUnsupported;
       break;
     case "unavailable":
-      deviceTrailing = copy.settings.pushOff;
+      deviceTrailing = <span className={styles.value}>{copy.settings.pushOff}</span>;
       deviceNote = copy.settings.pushUnavailable;
       break;
   }

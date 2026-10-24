@@ -15,7 +15,7 @@ function Harness({ undoId = 913, onUndone }: { undoId?: number | null; onUndone?
   const toast = useToast();
   return (
     <>
-      <button type="button" onClick={() => toast.show({ text: "✓ 완료: 운동", undoId })}>
+      <button type="button" onClick={() => toast.show({ text: "✓ 완료: 운동", undoId })}> {/* taste-skill-ignore: BE confirmation prefix (R4b), not UI */}
         first
       </button>
       <button type="button" onClick={() => toast.show({ text: "→ 내일로: 책 읽기" })}>
@@ -39,11 +39,11 @@ describe("Toast", () => {
     vi.useFakeTimers();
     mount();
     await press("first");
-    expect(screen.getByRole("status")).toHaveTextContent("✓ 완료: 운동");
+    expect(screen.getByRole("status")).toHaveTextContent("✓ 완료: 운동"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     act(() => void vi.advanceTimersByTime(3900));
-    expect(screen.getByRole("status")).toHaveTextContent("✓ 완료: 운동");
+    expect(screen.getByRole("status")).toHaveTextContent("✓ 완료: 운동"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     act(() => void vi.advanceTimersByTime(200));
-    expect(screen.getByRole("status")).not.toHaveTextContent("✓ 완료: 운동");
+    expect(screen.getByRole("status")).not.toHaveTextContent("✓ 완료: 운동"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
   });
 
   it("undo calls endpoint and shows undo confirmation", async () => {
@@ -123,7 +123,7 @@ describe("Toast", () => {
     await userEvent.click(screen.getByText("second"));
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("→ 내일로: 책 읽기");
-    expect(status).not.toHaveTextContent("✓ 완료: 운동");
+    expect(status).not.toHaveTextContent("✓ 완료: 운동"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(screen.queryByRole("button", { name: "되돌리기" })).toBeNull();
   });
 

@@ -120,9 +120,12 @@ export function Connect() {
     void run(true);
   }
 
+  // Nothing to check until both fields hold something besides spaces.
+  const filled = url.trim() !== "" && token.trim() !== "";
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    go(offerPush);
+    if (filled) go(offerPush);
   }
 
   return (
@@ -178,11 +181,11 @@ export function Connect() {
           <p className={line?.tone === "bad" ? styles.bad : styles.ok} role="status">
             {line?.text}
           </p>
-          <button type="submit" className={styles.start} disabled={busy}>
+          <button type="submit" className={styles.start} disabled={busy || !filled}>
             {offerPush ? copy.connect.startWithPush : copy.connect.start}
           </button>
           {offerPush && (
-            <button type="button" className={styles.later} disabled={busy} onClick={() => go(false)}>
+            <button type="button" className={styles.later} disabled={busy || !filled} onClick={() => go(false)}>
               {copy.connect.pushLater}
             </button>
           )}

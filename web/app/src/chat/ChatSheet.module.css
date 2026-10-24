@@ -1,13 +1,10 @@
-/* Spec 5.5.2: the chat sheet. Tokens only; the one shadow of the app stays on the launcher. */
+/* Spec 5.5.2: the chat sheet. Tokens only; nothing here is raised (only the launcher is, 5.3). */
 .frame,
 .embedded {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.embedded {
-  min-height: 20rem;
 }
 .header {
   flex: none;
@@ -28,16 +25,17 @@
   font-size: var(--size-body);
   cursor: pointer;
 }
-.heading {
-  text-align: center;
-}
+/* 5.5.2: one row, "닫기" · "비서" · "앱 대화". */
 .title {
   margin: 0;
+  text-align: center;
   font-size: var(--size-body);
   font-weight: 600;
 }
 .subtitle {
+  justify-self: end;
   margin: 0;
+  padding: 0 0.5rem;
   color: var(--muted);
   font-size: var(--size-meta);
 }

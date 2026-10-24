@@ -40,26 +40,15 @@ const confirmation = (() => {
   return data.confirmation ?? null;
 })();
 
-// TODO: replace with chat_propose_tasks.sse when BE 09 lands. Same framing as the add_task golden
-// (start, status, step, tool input/output, text, finish), with a ui_todo_draft part between two texts.
-const draftTodo = { id: 7, title: "장보기", status: "draft", areas: [], planned_for: "2026-10-25", scheduled_at: null, parent_id: null, note: "", priority: null, completed_at: null };
-const proposeTasks = sse([
-  { type: "start", messageId: "m-1-7", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat", checkin_id: null } },
-  { type: "data-status", data: { state: "queued" }, transient: true },
-  { type: "data-status", data: { state: "thinking" }, transient: true },
-  { type: "start-step" },
-  { type: "text-start", id: "t1" },
-  { type: "text-delta", id: "t1", delta: "이번 주 할 일을 골라 봤어요." },
-  { type: "text-end", id: "t1" },
-  { type: "tool-input-available", toolCallId: "h_1", toolName: "ui_todo_draft", input: { task_ids: [7] } },
-  { type: "tool-output-available", toolCallId: "h_1", output: { ok: true, data: { todos: [draftTodo] } } },
-  { type: "text-start", id: "t2" },
-  { type: "text-delta", id: "t2", delta: "확정하면 할 일이 돼요." },
-  { type: "text-end", id: "t2" },
-  { type: "finish-step" },
-  { type: "finish", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat" } },
-  "[DONE]",
-]);
+// BE 09's golden: propose_tasks (brain, not drawn), a text, then the harness part h_draft_1
+// (ui_todo_draft) whose output carries the TodoRefs behind its ids.
+const proposeTasks = golden("chat_propose_tasks.sse");
+const PROPOSE_TEXT = "이번 주에 이 둘을 해 보면 어때요?";
+const proposeMessageId = (JSON.parse(events(proposeTasks)[0].slice("data: ".length)) as { messageId: string }).messageId;
+const draftPart = (() => {
+  const ev = events(proposeTasks).find((e) => e.includes('"toolCallId":"h_draft_1"') && e.includes('"tool-output-available"'));
+  return (JSON.parse(ev!.slice("data: ".length)) as { output: { data: unknown } }).output.data;
+})();
 
 describe("chat contract", () => {
   it("add_task: text, status line, conversation id, confirmation and undo", async () => {
@@ -85,7 +74,7 @@ describe("chat contract", () => {
       const box = screen.getByText(confirmation);
       expect(box.closest("[data-activity]")).toContainElement(undo);
     } else {
-      expect(screen.queryByText(/✓/)).toBeNull();
+      expect(screen.queryByText(/✓/)).toBeNull(); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     }
     expect(screen.queryByText(copy.parts.unknown)).toBeNull();
     expect(bodies[0]).toMatchObject({ conversation_id: null, checkin_id: null });
@@ -96,19 +85,22 @@ describe("chat contract", () => {
     expect(bodies[1].conversation_id).toBe(1);
   });
 
-  it("propose_tasks: ui_todo_draft between the texts, kept in localParts", async () => {
+  it("propose_tasks: ui_todo_draft after the text, kept in localParts", async () => {
     serveChat(() => sseResponse(proposeTasks));
     const { send } = await openSheet();
     await send("이번 주 할 일 정리해 줘");
-    const row = await screen.findByText("장보기");
-    const before = screen.getByText("이번 주 할 일을 골라 봤어요.");
-    const after = screen.getByText("확정하면 할 일이 돼요.");
-    expect(before.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(row.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole("button", { name: copy.parts.confirmCount(1) })).toBeInTheDocument();
+    const first = await screen.findByText("물 마시기");
+    const second = screen.getByText("스트레칭");
+    const before = screen.getByText(PROPOSE_TEXT);
+    expect(before.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(copy.parts.draftHeading)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy.parts.confirmCount(2) })).toBeInTheDocument();
+    // propose_tasks is a brain tool: not drawn (the part stands for it), and nothing unknown.
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
     await waitFor(async () =>
-      expect(await loadParts("m-1-7")).toEqual([
-        { kind: "ui", toolCallId: "h_1", name: "ui_todo_draft", props: { task_ids: [7] }, data: { todos: [draftTodo] } },
+      expect(await loadParts(proposeMessageId)).toEqual([
+        { kind: "ui", toolCallId: "h_draft_1", name: "ui_todo_draft", props: { task_ids: [1, 2] }, data: draftPart },
       ]),
     );
   });

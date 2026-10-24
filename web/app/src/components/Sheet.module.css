@@ -18,7 +18,7 @@
   pointer-events: none;
 }
 .leaving .backdrop {
-  animation: fade-out 280ms ease-in forwards;
+  animation: fade-out 280ms ease-out forwards;
 }
 .panel {
   position: relative;

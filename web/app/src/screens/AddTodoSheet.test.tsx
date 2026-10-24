@@ -18,7 +18,7 @@ function actions(answer: (body: Record<string, unknown>) => Response | Promise<R
   );
   return bodies;
 }
-const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "✓ 추가: 치과" });
+const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "✓ 추가: 치과" }); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
 
 function open(onClose = vi.fn()) {
   renderWithProviders(<AddTodoSheet open onClose={onClose} defaultDate="2026-10-24" />);
@@ -99,7 +99,7 @@ describe("AddTodoSheet", () => {
     fireEvent.click(addButton());
     await waitFor(() => expect(bodies).toHaveLength(1));
     release();
-    await waitFor(() => expect(screen.getByText("✓ 추가: 치과")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("✓ 추가: 치과")).toBeInTheDocument()); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(bodies).toHaveLength(1);
   });
 

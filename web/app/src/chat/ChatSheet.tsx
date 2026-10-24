@@ -1,3 +1,4 @@
+import "./zodJitless"; // first: before "@ai-sdk/react" and "ai" build their schemas
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -232,10 +233,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
           <button type="button" className={styles.close} onClick={onClose}>
             {copy.chat.close}
           </button>
-          <div className={styles.heading}>
-            <h2 className={styles.title}>{copy.chat.title}</h2>
-            <p className={styles.subtitle}>{copy.chat.subtitle}</p>
-          </div>
+          <h2 className={styles.title}>{copy.chat.title}</h2>
+          <p className={styles.subtitle}>{copy.chat.subtitle}</p>
         </header>
       )}
       <div ref={list} className={styles.list} role="log" aria-label={copy.chat.messages}>

@@ -1,9 +1,11 @@
 .header {
+  padding: var(--gap) var(--pad) 0.75rem;
+}
+.row {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--pad);
-  padding: var(--gap) var(--pad) 0.5rem;
 }
 .text {
   min-width: 0;
@@ -19,6 +21,13 @@
   font-weight: 700;
   line-height: 1.2;
   color: var(--text);
+}
+.sub {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  line-height: 1.45;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .trailing {
   flex: none;

@@ -27,9 +27,16 @@
   font-weight: 600;
   color: var(--notice-ink);
 }
+/* The brief is the secretary's words, not something it changed: no --hue here (5.1). */
 .brief {
   padding: 0.75rem var(--pad);
-  border-left: 3px solid var(--hue);
+}
+.briefAt {
+  float: right;
+  font-size: var(--size-meta);
+  font-weight: 400;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .briefText {
   margin: 0;
@@ -75,6 +82,13 @@
 .pills {
   display: flex;
   gap: 0.5rem;
+}
+.ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
 }
 .pill {
   flex: 1;

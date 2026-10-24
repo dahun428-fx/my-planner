@@ -296,7 +296,7 @@ export function Activity() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <LargeTitle title={copy.activity.title} meta={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
+      <LargeTitle title={copy.activity.title} sub={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
       {body}
       <ChatLauncher disabled={state?.kind !== "online"} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
