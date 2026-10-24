@@ -66,3 +66,15 @@ def test_set_state_validation_and_context_manager(tmp_path: Path) -> None:
             store.set_state("missing", "open")
     with pytest.raises(sqlite3.ProgrammingError):
         store.get("fp1")
+
+
+def test_notice_counts_and_spill_roundtrip(tmp_path: Path) -> None:
+    store = MedicStore(tmp_path / "medic.db")
+    store.add_notice("2026-10-26", "a", "2026-10-26T01:00:00+00:00")
+    store.add_notice("2026-10-26", "b", None)
+    store.add_notice("2026-10-27", "c", "2026-10-27T01:00:00+00:00")
+    assert store.sent_notices("2026-10-26") == 1
+    assert store.spilled_notices() == [(2, "b")]
+    store.mark_notices_sent([2], "2026-10-27T00:00:00+00:00")
+    assert store.spilled_notices() == []
+    assert store.sent_notices("2026-10-26") == 2

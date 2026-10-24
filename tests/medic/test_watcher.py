@@ -14,7 +14,14 @@ from my_planner_medic.github import GitHub
 from my_planner_medic.store import MedicStore
 from my_planner_medic.watcher import Watcher, _trim_rows
 
-from .fakes import FakeClock, FakeGitHub, FakeHttp, FakeResponse, make_config
+from .fakes import (
+    FakeClock,
+    FakeGitHub,
+    FakeHttp,
+    FakeNotifier,
+    FakeResponse,
+    make_config,
+)
 
 REPO = "o/r"
 ISSUES = f"/repos/{REPO}/issues"
@@ -502,3 +509,38 @@ def test_trim_rows_keeps_non_info_first_then_newest_info_in_order() -> None:
     many = [_row(i, "ERROR") for i in range(25)] + [_row(i, "INFO") for i in range(25, 30)]
     assert [r["msg"] for r in _trim_rows(many)] == [f"e{i}" for i in range(5, 25)]
     assert _trim_rows(rows[:3]) == rows[:3]
+
+
+def test_ci_main_resolve_sends_one_result_notice(tmp_path: Path) -> None:
+    e = make_env(tmp_path)
+    notifier = FakeNotifier()
+    e.watcher = Watcher(e.watcher._cfg, e.store, e.watcher._gh, e.http, e.clock, notifier)
+    e.tick()
+    c = e.server.add_issue("[incident] ci:main", ["incident"])
+    e.server.branches["main"] = "h2"
+    e.server.runs.append({"name": "ci", "head_sha": "h2", "event": "push", "status": "completed",
+                          "conclusion": "success", "id": 2})
+    e.tick(30)
+    assert e.store.get("ci:main").state == "resolved"
+    assert notifier.fixed_calls == [("main의 CI가 다시 성공했어요", f"https://github.com/{REPO}/issues/{c}")]
+    e.tick(2)
+    assert len(notifier.fixed_calls) == 1
+    assert notifier.flushes >= 2  # 회차마다 쌓인 알림을 살핀다
+
+
+def test_watcher_ticks_web_verifier(tmp_path: Path) -> None:
+    from my_planner_medic.signals import Signal
+
+    e = make_env(tmp_path)
+    notifier = FakeNotifier()
+    e.watcher = Watcher(e.watcher._cfg, e.store, e.watcher._gh, e.http, e.clock, notifier)
+    e.tick()
+    fp = "vercel:Vercel – app"
+    n = e.server.add_issue(f"[incident] {fp}", ["incident", "merged"])
+    e.store.upsert_signal(Signal(fp, "vercel", "health", e.clock.now()), e.clock.now())
+    e.store.set_state(fp, "merged", issue_number=n)
+    e.server.branches["main"] = "h1"
+    e.server.statuses["h1"] = [{"context": "Vercel – app", "state": "success"}]
+    e.tick(2)
+    assert e.store.get(fp).state == "resolved"
+    assert len(notifier.fixed_calls) == 1
