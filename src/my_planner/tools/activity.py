@@ -1,7 +1,7 @@
 """활동 기록 (SP3-4 스펙 5.2, 6.4.4). 변경 도구가 데이터 변경과 같은 트랜잭션 안에서 부른다.
 
 대상 문자열(5.2): `task:12`, `condition:2026-10-24`, `priorities:week:2026-W43`, `ladder:2026-10`, `areas:2026-Q4`,
-`milestone:7`, `chapter:3`, `card:2`. `summary`는 확인 문구 한 줄이고 메시지 본문(메모 포함)은 넣지 않는다.
+`milestone:7`, `chapter:3`, `card:2`, `cards:order`. `summary`는 확인 문구 한 줄이고 메시지 본문(메모 포함)은 넣지 않는다.
 """
 
 from __future__ import annotations
@@ -32,6 +32,13 @@ def condition_target(d: date) -> str:
 
 def priorities_target(cadence: str, period: str) -> str:
     return f"priorities:{cadence}:{period}"
+
+
+CARDS_ORDER_TARGET = "cards:order"  # 고정 카드 순서(`reorder_cards`)
+
+
+def card_target(card_id: int) -> str:
+    return f"card:{card_id}"
 
 
 def tasks_target(ids: list[int]) -> tuple[str | None, list[str]]:

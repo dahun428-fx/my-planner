@@ -224,7 +224,7 @@ class TodayTodo(_Model):
 
 
 class AppCard(_Model):
-    """고정 카드 (6.3.2 `cards`, 운영 앱용). 티켓 09 전에는 목록이 비어 있다."""
+    """고정 카드 (6.3.2 `cards`, 운영 앱용). `data`는 props에 `task_ids`가 있을 때만(`TodoRefs`, 초안·삭제 뺌)."""
 
     id: int
     component: str

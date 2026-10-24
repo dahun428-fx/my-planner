@@ -182,7 +182,7 @@ class ClaudeBrain:
         self._max_turns = max_turns
         self._cli_path = cli_path
         self._system_prompt = prompts.load("system.md")
-        # 앱 통로는 `system.md` 뒤에 `channel_app.md`를 붙인다(SP3-4 6.4.7, 지금은 빈 자리, 티켓 09가 채운다)
+        # 앱 통로는 `system.md` 뒤에 `channel_app.md`(화면 도구·카드 도구 지시)를 붙인다(SP3-4 6.4.7)
         app_part = prompts.load("channel_app.md").strip()
         self._app_system_prompt = f"{self._system_prompt}\n\n{app_part}" if app_part else self._system_prompt
 

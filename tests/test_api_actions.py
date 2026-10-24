@@ -45,8 +45,11 @@ async def test_complete_task_applied_shape(tmp_path):
     assert row["summary"] == "✓ 완료: 운동"
 
 
-def _public_cases(ids):
-    """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d)."""
+CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
+
+
+def _public_cases(ids, card):
+    """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드."""
     a, b, c, d = ids
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
@@ -58,6 +61,9 @@ def _public_cases(ids):
         "confirm_tasks": {"ids": [d]},
         "set_priorities": {"cadence": "week", "period": "2026-W43", "task_ids": [a]},
         "record_condition": {"score": 4},
+        "pin_card": {"component": "ui_summary_card", "props": CARD},
+        "unpin_card": {"id": card},
+        "reorder_cards": {"ids": [card]},
         "decline_confirm": None,  # 토큰을 따로 만든다
     }
 
@@ -68,7 +74,8 @@ async def test_every_public_action_applies(tmp_path, action):
         a, b, c = [await _add(env, t) for t in ("가", "나", "다")]
         await env.action("complete_task", {"id": c})
         d = env.parts.tools.propose_tasks(_ctx(), tasks=[{"title": "초안", "areas": ["health"]}])["proposed"][0]["id"]
-        cases = _public_cases((a, b, c, d))
+        card = env.parts.tools.pin_card(_ctx(), component="ui_summary_card", props=CARD)["id"]
+        cases = _public_cases((a, b, c, d), card)
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         if action == "decline_confirm":

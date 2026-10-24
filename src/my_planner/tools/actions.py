@@ -355,6 +355,10 @@ ACTIONS: dict[str, ActionSpec] = {
     "confirm_tasks": ActionSpec("confirm_tasks"),
     "set_priorities": ActionSpec("set_priorities", needs_confirm=priorities_need_confirm, target=_priorities_target),
     "record_condition": ActionSpec("record_condition"),
+    # 고정 카드(6.4.2, 10장). 확인이 필요 없다(stale 대상이 필요 없다)
+    "pin_card": ActionSpec("pin_card"),
+    "unpin_card": ActionSpec("unpin_card"),
+    "reorder_cards": ActionSpec("reorder_cards"),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),

@@ -108,6 +108,8 @@ class Outbound:
     undo_ids: list[int] = field(default_factory=list)
     # 두뇌 글이 `text-delta`로 이미 나갔다(상태 ok일 때만): 앱 답이 글 블록을 다시 보내지 않는다(06b)
     streamed: bool = False
+    # 앱 초안 카드 `ui_todo_draft`의 `data.todos`(지금 값 `TodoRef`, 초안 포함, 6.4.1). `_reply_out`이 채운다
+    draft_todos: list[dict[str, Any]] | None = None
 
 
 class Sender(Protocol):
@@ -963,6 +965,8 @@ class Dispatcher:
         out.confirmation = confirmation or None
         out.activity_ids = list(activity_ids)
         out.undo_ids = list(undo_ids)
+        if out.draft_task_ids and self.tools is not None:
+            out.draft_todos = self.tools.ui_todo_refs(out.draft_task_ids, drafts=True)
         return out
 
     def _log_user_lines(

@@ -36,6 +36,7 @@ from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_ra
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
 from my_planner.status.snapshot import status_snapshot
+from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
@@ -50,6 +51,7 @@ from my_planner.store.views import (
     draft_live,
     today_view,
     todo_dict,
+    todo_refs,
     week_view,
 )
 from my_planner.tools.ui import catalog
@@ -129,9 +131,23 @@ def get_today(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
             {"group": g.name, "todo": todo_dict(t, tasks, view.date)} for g in view.groups for t in g.tasks
         ],
         "checkins": checkins,
-        "cards": [],  # 고정 카드는 티켓 09
+        "cards": today_cards(CardsRepo(conn, deps.clock), tasks, view.date),
     }
     return dump(Today, body)
+
+
+def today_cards(cards: CardsRepo, tasks: TasksRepo, today: date) -> list[dict[str, Any]]:
+    """고정 카드(6.3.2 `cards`): `sort_order` 순. props에 `task_ids`가 있으면 지금 값 `data.todos`(초안·소프트 삭제 뺌)."""
+    out: list[dict[str, Any]] = []
+    for c in cards.active():
+        card: dict[str, Any] = {
+            "id": c.id, "component": c.component, "order": c.sort_order, "pinned_at": to_iso(c.pinned_at),
+            "props": c.props,
+        }
+        if isinstance(c.props.get("task_ids"), list):
+            card["data"] = {"todos": todo_refs(c.props["task_ids"], tasks, today, drafts=False)}
+        out.append(card)
+    return out
 
 
 def _brief(runs: RunsRepo, today: date, deps: ApiDeps) -> dict[str, Any] | None:
