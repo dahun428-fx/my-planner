@@ -17,6 +17,7 @@ from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # 시각 변환의 정본은 `my_planner.timefmt`다. API 쪽 가져오기가 그대로 되도록 다시 내보낸다
+from my_planner.domain import SkipReason
 from my_planner.timefmt import TIME_KEYS, api_time, is_time_key, to_api_times  # noqa: F401 - 다시 내보냄
 
 log = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ class HealthRun(_Model):
     cadence: Literal["day", "week", "month", "quarter", "year"]
     scheduled_for: str
     status: str
-    skip_reason: str | None
+    skip_reason: SkipReason | None  # 스키마에 `SkipReason` 열거가 들어간다(대시보드 사유 표시, 티켓 16)
     delivered_via: list[Literal["telegram", "app"]]
     checkin_state: Literal["pending", "answered", "missed"] | None
 
