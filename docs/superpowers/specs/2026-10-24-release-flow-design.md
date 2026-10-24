@@ -153,6 +153,7 @@ post_commit_status = true     # staging/be 올림
 |---|---|
 | `status` (작업 수준 `if: context == 'staging/be'`) | 주 경로. medic-dev가 develop 머리를 30분 정상으로 돌린 뒤 `success`를, 확인 실패면 `failure`를 올린다(6.3). Vercel 등 다른 상태는 `if`로 걸러 러너를 띄우지 않는다 |
 | `schedule` `40 0 * * 1-5`, `10 9 * * 1-5`, `40 1 * * 0,6`, `40 9 * * 0,6` (UTC = KST 평일 09:40·18:10, 주말 10:40·18:40) | 회차 차단 구간(6.2의 6) 때문에 미뤄진 승격을 다시 본다 |
+| `workflow_run` (`ci` 완료, `develop`) | `staging/be`가 먼저 와서 CI·Windows를 기다리던 승격을 CI가 끝날 때 다시 본다 |
 | `workflow_dispatch` (입력 `skip_staging_be: boolean`) | 수동. 6.4 |
 | 임시: `schedule` `0 23,0-14 * * *` (UTC = KST 08–23시 매시 정각) | `staging/be`가 생기기 전까지만. 저장소 변수 `REQUIRE_STAGING_BE`가 `"true"`가 되면 지운다 |
 
@@ -171,7 +172,7 @@ post_commit_status = true     # staging/be 올림
 
 모두 통과하면 `RELEASE_PAT`으로 `PATCH /git/refs/heads/main {sha: S, force: false}`(빨리감기만). 실패하면(경합 등) 다음 트리거에 다시 본다. 결과는 작업 요약에 한 줄로 남긴다(승격한 SHA, 들어간 PR 번호들).
 
-**막힘 알림**: 검사 1, 2, 3이 실패이거나 `staging/be`가 `failure`면 `release:blocked` 라벨 이슈를 연다. 열린 것이 있으면 새로 열지 않고, 원인이나 SHA가 지난 댓글과 다를 때만 댓글을 단다(원인 한 줄, SHA). 다음 승격이 성공하면 그 이슈를 닫는다. SP6 감시자는 이 라벨을 장애로 들이지 않는다(운영 장애가 아님). Claude 스레드가 이 이슈를 보고 고친다(다음 develop 머지가 `S`를 바꾼다). 대기 중(30분 안 됨, Vercel 빌드 중, 차단 구간)은 막힘이 아니다.
+**막힘 알림**: 검사 1, 2, 3, 5가 실패이거나(Vercel 빌드 실패는 저절로 풀리지 않는다) `staging/be`가 `failure`면, 또는 `main..S`가 250커밋을 넘어 compare가 다 주지 못하면 `release:blocked` 라벨 이슈를 연다. 열린 것이 있으면 새로 열지 않고, 원인이나 SHA가 지난 댓글과 다를 때만 댓글을 단다(원인 한 줄, SHA). 다음 승격이 성공하면 그 이슈를 닫는다. SP6 감시자는 이 라벨을 장애로 들이지 않는다(운영 장애가 아님). Claude 스레드가 이 이슈를 보고 고친다(다음 develop 머지가 `S`를 바꾼다). 대기 중(30분 안 됨, Vercel 빌드 중, 차단 구간)은 막힘이 아니다.
 
 ### 6.3 `staging/be` 신호 (SP6 후속, medic-dev)
 
@@ -193,7 +194,7 @@ post_commit_status = true     # staging/be 올림
   - `main`이 이미 `develop`의 조상이면(빨리감기 승격 뒤의 보통 경우) 아무것도 하지 않는다.
   - 아니면 `POST /merges {base: develop, head: main}`로 `develop`에 merge commit을 만든다(PAT 푸시라 develop push CI가 돈다). 리뷰는 없다(이미 `main`에서 리뷰·CI를 거친 변경).
   - 충돌(409)이면 `release:blocked` 이슈에 "동기화 충돌"을 남긴다. Claude 스레드가 `sync/main-to-develop` 브랜치에서 풀고 PR(base `develop`, merge commit 머지, 리뷰어 돌림)로 넣는다. squash하지 않는다(squash하면 `main`이 `develop`의 조상이 되지 않는다).
-- 동기화 전까지 6.2의 1번이 승격을 막는다. 동기화되면 다음 승격이 정상으로 돈다.
+- 동기화 전까지 6.2의 1번이 승격을 막는다. 동기화되면 다음 승격이 정상으로 돈다. 핫픽스 푸시 직후 `sync-develop.yml`이 끝나기 전에 승격이 돌면 `release:blocked`가 잠깐 열릴 수 있다. 다음 승격 성공 때 닫히므로 그대로 둔다.
 
 ## 8. Dahun이 할 일 (한 번)
 

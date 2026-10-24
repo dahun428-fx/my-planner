@@ -13,6 +13,11 @@ on:
     - cron: "40 9 * * 0,6"  # recheck
     # 임시: staging/be가 생기기 전까지 KST 08–23시 매시. REQUIRE_STAGING_BE=true가 되면 지운다
     - cron: "0 23,0-14 * * *"
+  # staging/be가 먼저 와서 CI·Windows를 기다리던(wait) 승격을 CI가 끝날 때 다시 본다
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [develop]
   workflow_dispatch:
     inputs:
       skip_staging_be:

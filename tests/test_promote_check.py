@@ -95,11 +95,13 @@ def test_windows_checked_on_last_be_commit_not_head():
     assert pc.decide(inputs(cs, windows=w)).action == "blocked"
 
 
-def test_windows_skips_commit_without_run():
-    # 묶여 푸시돼 실행이 없는 BE 커밋은 건너뛰고, 실행이 있는 더 오래된 BE 커밋을 본다
-    cs = [commit("a1", "src/a.py"), commit("a2", "tests/test_a.py"), commit("a3", "docs/x.md")]
-    w = {"a1": "success", "a3": "skipped"}
-    assert pc.decide(inputs(cs, windows=w, ci={"a1": "success", "a3": "success"})).action == "promote"
+def test_windows_bundled_push_uses_later_run():
+    # a1(BE)과 a2가 한 번에 푸시돼 a1에는 실행이 없다: 그 변경을 시험한 a2 실행을 본다(더 앞 커밋이 아님)
+    cs = [commit("a0", "src/old.py"), commit("a1", "src/a.py"), commit("a2", "docs/x.md")]
+    ci = {"a0": "success", "a2": "success"}
+    assert pc.decide(inputs(cs, ci=ci, windows={"a0": "success", "a2": "success"})).action == "promote"
+    assert pc.decide(inputs(cs, ci=ci, windows={"a0": "success", "a2": "failure"})).action == "blocked"
+    assert pc.decide(inputs(cs, ci=ci, windows={"a0": "success", "a2": None})).action == "wait"
 
 
 def test_staging_be_rules():
@@ -109,6 +111,7 @@ def test_staging_be_rules():
     assert pc.decide(inputs(cs, statuses={"a1": {pc.STAGING_CONTEXT: ok("failure")}})).action == "blocked"
     other = {"a1": {pc.STAGING_CONTEXT: ok(creator="someone")}}
     assert pc.decide(inputs(cs, statuses=other)).action == "wait"
+    assert pc.decide(inputs(cs, dev_login=None)).action == "reject"
 
 
 def test_without_staging_be_waits_30_minutes():
@@ -183,3 +186,18 @@ def test_recheck_cron_matches_schedule_end_of_blackout():
             end = (h * 60 + m + 40 - 9 * 60) % (24 * 60)
             expected.add(f"{end % 60} {end // 60} * * {dow}")
     assert crons == expected
+
+
+def test_promote_lists_prs_and_truncated_blocks():
+    cs = [replace(commit("a1", "docs/x.md"), prs=("148",)), replace(commit("a2", "docs/y.md"), prs=("149",))]
+    d = pc.decide(inputs(cs))
+    assert d.action == "promote"
+    assert d.prs == ("148", "149")
+    assert "#148 #149" in d.reason
+    assert pc.decide(inputs(cs, truncated=True)).action == "blocked"
+
+
+def test_develop_behind_main_is_noop():
+    d = pc.decide(replace(inputs([commit("a1", "docs/x.md")]), commits=[]))
+    assert d.action == "noop"
+    assert "새 커밋이 없음" in d.reason

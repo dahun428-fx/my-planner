@@ -35,11 +35,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           n=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&branch=develop&status=success" \
-            --jq '[.workflow_runs[] | select(.name == "ci")] | length')
+            --jq '[.workflow_runs[] | select(.name == "ci")] | length') || n=0  # 조회 실패면 전부 돈다
           echo "already_green=$([ "${n:-0}" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # push는 push 전 커밋과 비교한다. 없으면 develop push를 main과의 merge-base로 비교해 매번 다 돈다
+          base: ${{ github.ref }}
           filters: |
             be:
               - 'src/**'

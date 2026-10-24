@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 import tomllib
 import urllib.error
@@ -38,6 +39,7 @@ class Commit:
     sha: str
     files: tuple[str, ...]
     committed_at: datetime  # UTC
+    prs: tuple[str, ...] = ()  # 커밋 메시지의 (#N)
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ class Inputs:
     vercel_contexts: dict[str, str]  # 폴더 → Vercel 상태 컨텍스트
     trigger_sha: str | None = None  # status 트리거의 sha
     skip_staging_be: bool = False
+    truncated: bool = False  # compare가 커밋을 다 주지 못함(250개 넘음)
 
 
 @dataclass(frozen=True)
@@ -78,8 +81,12 @@ def _touches(c: Commit, prefixes: tuple[str, ...]) -> bool:
 def decide(i: Inputs) -> Decision:
     if i.trigger_sha is not None and i.trigger_sha != i.head:
         return Decision("noop", f"트리거 {i.trigger_sha[:7]}은 develop 머리가 아님")
-    if i.main == i.head or not i.commits:
+    if i.main == i.head:
         return Decision("noop", "main이 이미 develop 머리")
+    if not i.commits:
+        return Decision("noop", "develop에 main보다 새 커밋이 없음")
+    if i.truncated:
+        return Decision("blocked", "main..develop 커밋이 250개를 넘어 검사할 수 없음")
     # 1. 빨리감기 가능
     if i.behind_by != 0:
         return Decision("blocked", "main이 develop의 조상이 아님: main → develop 동기화 필요")
@@ -92,27 +99,31 @@ def decide(i: Inputs) -> Decision:
         return Decision("wait", f"{i.head[:7]} CI 진행 중이거나 없음")
     if ci != "success":
         return Decision("blocked", f"{i.head[:7]} CI {ci}")
-    # 3. BE를 바꾼 마지막 커밋(실행이 있는 것)의 Windows 작업
-    for c in reversed(i.commits):
-        if not _touches(c, BE_CI) or c.sha not in i.windows:
-            continue
-        w = i.windows[c.sha]
+    # 3. BE를 바꾼 마지막 커밋의 Windows 작업. 묶음 푸시라 그 커밋에 실행이 없으면,
+    # 그 변경을 시험한 실행은 같은 푸시의 머리(더 뒤 커밋)에 있다
+    last_be = next((k for k in range(len(i.commits) - 1, -1, -1) if _touches(i.commits[k], BE_CI)), None)
+    if last_be is not None:
+        run = next((c for c in i.commits[last_be:] if c.sha in i.windows), None)
+        if run is None:
+            return Decision("wait", f"{i.commits[last_be].sha[:7]} Windows 실행 없음")
+        w = i.windows[run.sha]
         if w is None:
-            return Decision("wait", f"{c.sha[:7]} Windows 진행 중")
+            return Decision("wait", f"{run.sha[:7]} Windows 진행 중")
         if w != "success":
-            return Decision("blocked", f"{c.sha[:7]} Windows {w}")
-        break
+            return Decision("blocked", f"{run.sha[:7]} Windows {w}")
     # 4. 스테이징 BE
     if i.require_staging_be and not i.skip_staging_be:
         st = i.statuses.get(i.head, {}).get(STAGING_CONTEXT)
         if st is None or st.state == "pending":
             return Decision("wait", f"{i.head[:7]} staging/be 대기")
+        if not i.dev_login:
+            return Decision("reject", "DEV_STATUS_LOGIN 미설정")
         if st.creator != i.dev_login:
             return Decision("wait", f"{i.head[:7]} staging/be를 다른 계정({st.creator})이 올림")
         if st.state != "success":
             return Decision("blocked", f"{i.head[:7]} staging/be {st.state}")
     elif not i.require_staging_be:
-        head_time = i.commits[-1].committed_at
+        head_time = next(c.committed_at for c in i.commits if c.sha == i.head)
         if i.now - head_time < QUIET:
             return Decision("wait", f"{i.head[:7]} 30분 대기")
     # 5. 웹 폴더를 바꾼 마지막 커밋의 Vercel 상태
@@ -129,7 +140,9 @@ def decide(i: Inputs) -> Decision:
     # 6. 회차 차단 구간
     if be_restart and any(start <= i.now < end for start, end in i.blackouts):
         return Decision("wait", "회차 차단 구간")
-    return Decision("promote", f"{i.main[:7]} → {i.head[:7]} ({len(i.commits)}커밋)")
+    prs = tuple(dict.fromkeys(pr for c in i.commits for pr in c.prs))
+    listed = f", {' '.join('#' + n for n in prs)}" if prs else ""
+    return Decision("promote", f"{i.main[:7]} → {i.head[:7]} ({len(i.commits)}커밋{listed})", prs)
 
 
 def blackouts(config: dict, now: datetime, tz: str | None = None) -> list[tuple[datetime, datetime]]:
@@ -210,8 +223,7 @@ def _statuses_for(gh: GitHub, sha: str) -> dict[str, Status]:
     return out
 
 
-def gather(gh: GitHub, env: dict[str, str], config: dict, now: datetime) -> Inputs:
-    head = gh.get("/branches/develop")["commit"]["sha"]
+def gather(gh: GitHub, env: dict[str, str], config: dict, now: datetime, head: str) -> Inputs:
     main_sha = gh.get("/branches/main")["commit"]["sha"]
     cmp = gh.get(f"/compare/main...{head}")
     commits: list[Commit] = []
@@ -222,7 +234,8 @@ def gather(gh: GitHub, env: dict[str, str], config: dict, now: datetime) -> Inpu
         detail = gh.get(f"/commits/{c['sha']}")
         files = tuple(f["filename"] for f in detail.get("files", []))
         at = datetime.fromisoformat(detail["commit"]["committer"]["date"])
-        commits.append(Commit(c["sha"], files, at))
+        prs = tuple(re.findall(r"\(#(\d+)\)", c["commit"]["message"].split("\n", 1)[0]))
+        commits.append(Commit(c["sha"], files, at, prs))
     for c in commits:
         conclusion, win, has_run = _ci_for(gh, c.sha)
         if c.sha == head or has_run:
@@ -250,11 +263,13 @@ def gather(gh: GitHub, env: dict[str, str], config: dict, now: datetime) -> Inpu
         },
         trigger_sha=trigger,
         skip_staging_be=env.get("SKIP_STAGING_BE", "").lower() == "true",
+        truncated=int(cmp.get("total_commits", 0)) > len(commits),
     )
 
 
 def _open_blocked(gh: GitHub) -> dict | None:
-    issues = gh.get(f"/issues?state=open&labels={urllib.request.quote(BLOCKED_LABEL)}&per_page=5")
+    issues = gh.get(f"/issues?state=open&labels={urllib.request.quote(BLOCKED_LABEL)}&per_page=10")
+    issues = [x for x in issues if "pull_request" not in x]  # /issues는 PR도 준다
     return issues[0] if issues else None
 
 
@@ -264,8 +279,11 @@ def report_blocked(gh: GitHub, reason: str, sha: str) -> None:
     if issue is None:
         gh.call("POST", "/issues", {"title": "develop → main 승격이 막혔어요", "body": line, "labels": [BLOCKED_LABEL]})
         return
-    comments = gh.get(f"/issues/{issue['number']}/comments?per_page=100")
-    last = comments[-1]["body"] if comments else issue.get("body", "")
+    last = issue.get("body", "")
+    if issue.get("comments", 0):  # 오래된 것부터 오므로 마지막 쪽을 읽는다
+        page = (int(issue["comments"]) - 1) // 100 + 1
+        comments = gh.get(f"/issues/{issue['number']}/comments?per_page=100&page={page}")
+        last = comments[-1]["body"] if comments else last
     if last.strip() != line:
         gh.call("POST", f"/issues/{issue['number']}/comments", {"body": line})
 
@@ -285,7 +303,7 @@ def main() -> int:
     head = gh.get("/branches/develop")["commit"]["sha"]
     raw = gh.get(f"/contents/config.toml?ref={head}")["content"]
     config = tomllib.loads(base64.b64decode(raw).decode("utf-8"))
-    inputs = gather(gh, env, config, datetime.now(UTC))
+    inputs = gather(gh, env, config, datetime.now(UTC), head)
     d = decide(inputs)
     print(f"{d.action}: {d.reason}")
     summary = env.get("GITHUB_STEP_SUMMARY")
