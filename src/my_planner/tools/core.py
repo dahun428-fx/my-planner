@@ -15,16 +15,19 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, local, logical_date, to_iso
+from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
+from my_planner.store.repos.conditions import Condition
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.activity import (
+    SUPERSEDED,
     condition_target,
     priorities_target,
     record_activity,
+    register_undo,
     task_target,
     tasks_target,
 )
@@ -633,3 +636,90 @@ class Tools:
             return _err(f"원문 기록은 최대 {TRANSCRIPT_MAX_DAYS}일까지 읽을 수 있어요.")
         text = self.transcripts.read_range(start, end)
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
+
+
+# --- 종류별 되돌리기 (SP3-4 스펙 6.4.3). `undo`는 그 활동의 `undo_json`(바꾸기 전 값, 시각은 UTC ISO) ---
+
+
+def _dt(v: Any) -> datetime | None:
+    return from_iso(v) if v else None
+
+
+def _undo_task_added(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """소프트 삭제(`deleted_at` = 지금). 상태와 완료 시각은 그대로 둔다."""
+    t = tools.tasks.get(undo["task_id"])
+    if t is not None:
+        tools.tasks.restore(t.id, status=t.status, completed_at=t.completed_at, deleted_at=tools.clock.now())
+    return None
+
+
+def _undo_task_updated(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """바뀐 필드만 이전 값으로."""
+    before: dict[str, Any] = undo["before"]
+    changes: dict[str, Any] = {k: before[k] for k in ("title", "note", "areas") if k in before}
+    if "planned_for" in before:
+        changes["planned_for"] = date.fromisoformat(before["planned_for"]) if before["planned_for"] else None
+    if "scheduled_at" in before:
+        changes["scheduled_at"] = _dt(before["scheduled_at"])
+    tools.tasks.update(undo["task_id"], **changes)
+    return None
+
+
+def _undo_task_moved(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    pf = undo["planned_for"]
+    tools.tasks.update(
+        undo["task_id"], event_kind="moved", planned_for=date.fromisoformat(pf) if pf else None,
+        scheduled_at=_dt(undo["scheduled_at"]),
+    )
+    return None
+
+
+def _undo_task_status(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """완료·다시 열기·내려놓기: 이전 상태와 이전 `completed_at` 그대로. 내려놓기로 지워진 우선순위 칸은 비어 있을
+    때만 되살리고, 차 있으면 `superseded`(쓴 것은 바깥이 되돌린다)."""
+    tid = undo["task_id"]
+    tools.tasks.restore(tid, status=undo["status"], completed_at=_dt(undo["completed_at"]), deleted_at=None)
+    for cadence, period, rank in undo.get("priorities", []):
+        if not tools.tasks.restore_priority(cadence, period, rank, tid):
+            return SUPERSEDED
+    return None
+
+
+def _undo_tasks_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """아직 `open`인 것을 `draft`로. `proposed` 이벤트를 새로 써서 초안 만료 시계가 되돌린 시각부터 다시 센다.
+
+    나중에 바뀐 할 일이 하나라도 있으면 U3이 이미 막았다(여러 대상 활동).
+    """
+    for i in undo["task_ids"]:
+        t = tools.tasks.get(i)
+        if t is not None and t.status is TaskStatus.open:
+            tools.tasks.restore(t.id, status=TaskStatus.draft, completed_at=None, deleted_at=None)
+    return None
+
+
+def _undo_priorities_set(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    tools.tasks.set_priorities(undo["cadence"], undo["period"], list(undo["task_ids"]))
+    return None
+
+
+def _undo_condition_recorded(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """이전 행 그대로(`recorded_at` 포함). 없었으면 행을 지운다."""
+    d = date.fromisoformat(undo["date"])
+    b = undo["before"]
+    before = Condition(d, b["score"], b["note"], from_iso(b["recorded_at"])) if b else None
+    tools.conditions.restore(d, before)
+    return None
+
+
+for _kind, _handler in (
+    ("task_added", _undo_task_added),
+    ("task_updated", _undo_task_updated),
+    ("task_moved", _undo_task_moved),
+    ("task_completed", _undo_task_status),
+    ("task_reopened", _undo_task_status),
+    ("task_dropped", _undo_task_status),
+    ("tasks_confirmed", _undo_tasks_confirmed),
+    ("priorities_set", _undo_priorities_set),
+    ("condition_recorded", _undo_condition_recorded),
+):
+    register_undo(_kind, _handler)

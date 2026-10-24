@@ -121,3 +121,35 @@ async def test_actions_end_to_end(tmp_path):
     assert "운동" not in today_text
     assert after["todos"] == []
     assert rows == [("task_added", "secretary", "telegram"), ("task_completed", "user", "app")]
+
+
+async def test_undo_end_to_end(tmp_path):
+    # 토요일 낮: 앱에서 할 일을 넣고, 텔레그램 대화에서 비서(가짜 두뇌)가 완료하고, 앱에서 되돌린다
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0)) as env:
+        _, added = await env.action("add_task", {"title": "운동", "areas": ["health"], "planned_for": "2026-10-24"})
+        tid = added["result"]["id"]
+        env.brain.script.append(FakeTurn([("complete_task", {"id": tid})], "완료했어요"))
+        await env.telegram("운동 다 했어요")
+        listing = await (await env.get("/activity?order=desc")).json()
+        done = listing["items"][0]
+        mid = await (await env.get("/today")).json()
+
+        env.clock.advance(minutes=10)
+        resp = await env.post(f"/activity/{done['undo_id']}/undo", json={"client_msg_id": "e2e-undo"})
+        body = await resp.json()
+        today = await (await env.get("/today")).json()
+        await env.telegram("/today")
+        today_text = env.bot.sent[-1][1]
+        again = await env.post(f"/activity/{done['undo_id']}/undo", json={"client_msg_id": "e2e-undo"})
+        again_body = await again.json()
+        after = await (await env.get("/activity")).json()
+
+    assert (done["kind"], done["actor"], done["channel"]) == ("task_completed", "secretary", "telegram")
+    assert done["undo_id"] == done["id"] and mid["todos"] == []
+    assert resp.status == 200 and body["status"] == "undone" and body["confirmation"] == "↩ 되돌림: 운동 완료"
+    assert [x["todo"]["title"] for x in today["todos"]] == ["운동"]
+    assert today["todos"][0]["todo"]["status"] == "open"
+    assert "운동" in today_text
+    assert again.status == 200 and again_body == {"status": "already_undone", "activity_id": body["activity_id"]}
+    assert [(i["kind"], i["actor"], i["channel"]) for i in after["items"]] == [
+        ("task_added", "user", "app"), ("task_completed", "secretary", "telegram"), ("undo", "user", "app")]

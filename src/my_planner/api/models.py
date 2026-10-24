@@ -560,6 +560,42 @@ class ActionRejected(_Model):
     error: ErrorDetail
 
 
+class UndoRequestBody(_Model):
+    """`POST /activity/{id}/undo` 요청 (6.4.3). `client_msg_id`는 필수다(6.1 중복 방지)."""
+
+    client_msg_id: str = Field(min_length=1, max_length=200)
+
+
+class UndoResponse(_Model):
+    """되돌림(200). `undone`: 되돌린 활동 id. `already_undone`(U4)이면 `activity_id`는 앞선 되돌리기 활동이고
+    `undone`, `confirmation`은 없다."""
+
+    status: Literal["undone", "already_undone"]
+    activity_id: int | None
+    undone: int | None = None
+    confirmation: str | None = None
+
+
+class ActivityItem(_Model):
+    id: int
+    at: str
+    actor: Literal["secretary", "user"]
+    channel: Literal["app", "telegram", "scheduler"]
+    kind: str
+    summary: str
+    risk: Literal["low", "confirm"]
+    undo_id: int | None  # 지금 되돌릴 수 있을 때만(U1~U3을 지금 시각으로), 값은 `id`와 같다
+    undone_at: str | None
+
+
+class ActivityResponse(_Model):
+    """`GET /activity` (6.4.4). `next_before`는 `desc`이고 더 앞선 행이 남았을 때만, 아니면 null."""
+
+    items: list[ActivityItem]
+    next_since: str | None
+    next_before: str | None
+
+
 def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -590,6 +626,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "ActionApplied": ActionApplied,
     "ActionNeedsConfirm": ActionNeedsConfirm,
     "ActionRejected": ActionRejected,
+    "UndoRequestBody": UndoRequestBody,
+    "UndoResponse": UndoResponse,
+    "ActivityResponse": ActivityResponse,
 }
 
 

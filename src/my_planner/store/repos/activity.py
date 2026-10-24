@@ -91,14 +91,70 @@ class ActivityRepo:
         r = self.conn.execute("SELECT * FROM activity WHERE id = ?", (id,)).fetchone()
         return _activity(r) if r is not None else None
 
-    def changed_after(self, target: str, after: datetime) -> bool:
-        """`after`보다 나중에 그 대상을 바꾼 활동이 있다(확인 토큰의 `stale` 판정, 5.2). 여러 대상 활동도 본다."""
-        r = self.conn.execute(
-            "SELECT 1 FROM activity_targets t JOIN activity a ON a.id = t.activity_id "
-            "WHERE t.target = ? AND a.at > ? LIMIT 1",
-            (target, to_iso(after)),
-        ).fetchone()
-        return r is not None
+    def changed_after(
+        self, target: str, after: datetime, *, after_id: int | None = None, skip_undone: bool = False
+    ) -> bool:
+        """`after`보다 나중에 그 대상을 바꾼 활동이 있다. 여러 대상 활동도 본다(`activity_targets`).
+
+        확인 토큰의 `stale` 판정(5.2)은 시각만 본다. 되돌리기 U3(6.4.3)은 그 활동 `(at, id)`보다 나중 행을 보고
+        (`after_id`: 같은 시각이면 id가 큰 행이 나중이다), 되돌린 활동은 빼고(`skip_undone`) 되돌리기 활동은 센다.
+        """
+        sql = "SELECT 1 FROM activity_targets t JOIN activity a ON a.id = t.activity_id WHERE t.target = ? AND "
+        args: list[object] = [target, to_iso(after)]
+        if after_id is None:
+            sql += "a.at > ?"
+        else:
+            sql += "(a.at > ? OR (a.at = ? AND a.id > ?))"
+            args += [to_iso(after), after_id]
+        if skip_undone:
+            sql += " AND a.undone_at IS NULL"
+        return self.conn.execute(sql + " LIMIT 1", args).fetchone() is not None
+
+    def mark_undone(self, id: int, undo_id: int) -> None:
+        """원래 행에 `undone_at`(되돌리기 활동의 시각)과 `undone_by`를 적는다(U5). 이미 되돌린 행이면 예외."""
+        with transaction(self.conn):
+            cur = self.conn.execute(
+                "UPDATE activity SET undone_at = (SELECT at FROM activity WHERE id = ?), undone_by = ? "
+                "WHERE id = ? AND undone_at IS NULL",
+                (undo_id, undo_id, id),
+            )
+            if cur.rowcount != 1:
+                raise LookupError(f"activity {id} is missing or already undone")
+
+    def since(
+        self,
+        after: datetime | None,
+        limit: int,
+        *,
+        order: Literal["asc", "desc"] = "asc",
+        before: Activity | None = None,
+    ) -> tuple[list[Activity], bool]:
+        """`GET /activity`(6.4.4)의 한 쪽과, 더 앞선 행이 남았는지(`desc`의 `next_before`).
+
+        `asc`: `after`보다 나중 행을 `(at, id)` 순으로 `limit`개. 마지막 행과 같은 시각의 행은 쪽을 넘쳐도 함께 준다
+        (다음 쪽은 `since=<마지막 at>`이라 같은 시각의 나머지가 빠지면 다시 받을 길이 없다).
+        `desc`: 최근 것부터 `limit`개. `before`(앞 쪽의 마지막 행)가 있으면 그보다 앞선 `(at, id)`만.
+        """
+        where: list[str] = []
+        args: list[object] = []
+        if after is not None:
+            where.append("at > ?")
+            args.append(to_iso(after))
+        if order == "asc":
+            sql = "SELECT * FROM activity" + (" WHERE " + " AND ".join(where) if where else "")
+            rows = [_activity(r) for r in self.conn.execute(sql + " ORDER BY at, id LIMIT ?", (*args, limit))]
+            if len(rows) == limit:
+                tail = self.conn.execute(
+                    "SELECT * FROM activity WHERE at = ? AND id > ? ORDER BY id", (to_iso(rows[-1].at), rows[-1].id)
+                ).fetchall()
+                rows += [_activity(r) for r in tail]
+            return rows, False
+        if before is not None:
+            where.append("(at < ? OR (at = ? AND id < ?))")
+            args += [to_iso(before.at), to_iso(before.at), before.id]
+        sql = "SELECT * FROM activity" + (" WHERE " + " AND ".join(where) if where else "")
+        got = [_activity(r) for r in self.conn.execute(sql + " ORDER BY at DESC, id DESC LIMIT ?", (*args, limit + 1))]
+        return got[:limit], len(got) > limit
 
 
 def _activity(r: sqlite3.Row) -> Activity:

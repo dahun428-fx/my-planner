@@ -6,13 +6,15 @@
 
 from __future__ import annotations
 
-from datetime import date
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.domain import ActivityChannel, Actor, Risk, RunContext
 
 if TYPE_CHECKING:
-    from my_planner.store.repos.activity import ActivityRepo
+    from my_planner.store.repos.activity import Activity, ActivityRepo
+    from my_planner.tools.core import Tools
 
 
 def activity_origin(ctx: RunContext) -> tuple[Actor, ActivityChannel]:
@@ -66,3 +68,40 @@ def record_activity(
     if risk == "low" and undo is not None:
         ctx.undo_ids.append(aid)
     return aid
+
+
+# --- 되돌리기 (6.4.3) ---
+
+UNDO_WINDOW = timedelta(hours=24)  # U2: 활동 뒤 24시간이 되면(딱 24시간 포함) 되돌릴 수 없다
+UNDO_KIND = "undo"
+SUPERSEDED = "superseded"
+
+# 종류별 되돌리기: (도구, 활동의 `undo_json`, 맥락) → None(되돌림) 또는 `"superseded"`(되살릴 칸이 이미 찼다).
+# 처리 함수는 바깥 트랜잭션 안에서 불리고, `"superseded"`를 돌려주면 그 쓰기는 모두 되돌려진다.
+UndoHandler = Callable[["Tools", dict[str, Any], RunContext], str | None]
+UNDO_HANDLERS: dict[str, UndoHandler] = {}
+
+UndoBlock = Literal["not_undoable", "undo_expired", "superseded"]
+
+
+def register_undo(kind: str, handler: UndoHandler) -> None:
+    """활동 종류 하나의 되돌리기를 더한다(`tools/core.py`가 할 일·우선순위·컨디션을, 티켓 09·11이 나머지를)."""
+    if kind == UNDO_KIND:
+        raise ValueError("되돌리기는 되돌리지 않는다(U5)")
+    UNDO_HANDLERS[kind] = handler
+
+
+def undo_block(a: Activity, repo: ActivityRepo, now: datetime) -> UndoBlock | None:
+    """U1~U3을 `now`로 판정한다. 되돌릴 수 있으면 None. 이미 되돌린 행(U4)은 따로 본다."""
+    if a.risk != "low" or a.undo is None or a.kind not in UNDO_HANDLERS:
+        return "not_undoable"  # U1. 되돌리기 활동은 `undo_json`이 없다(U5)
+    if now >= a.at + UNDO_WINDOW:
+        return "undo_expired"  # U2
+    if any(repo.changed_after(t, a.at, after_id=a.id, skip_undone=True) for t in repo.targets(a.id)):
+        return "superseded"  # U3. 여러 대상 활동은 하나라도 나중에 바뀌면
+    return None
+
+
+def undoable_now(a: Activity, repo: ActivityRepo, now: datetime) -> bool:
+    """지금 되돌릴 수 있다(U1~U3, 아직 되돌리지 않았다). `GET /activity`의 `undo_id`(6.4.4)."""
+    return a.undone_at is None and undo_block(a, repo, now) is None

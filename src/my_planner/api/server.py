@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
 
-from my_planner.api.actions import post_actions
+from my_planner.api.actions import get_activity, post_actions, post_undo
 from my_planner.api.auth import AuthLimiter, bearer_ok
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
@@ -176,6 +176,7 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/conversations/{id}/messages", get_conversation_messages),
     ("/ui/catalog", get_ui_catalog),
     ("/schema", get_schema),
+    ("/activity", get_activity),
 )
 
 
@@ -190,6 +191,7 @@ def write_handler(view: Callable[[web.Request, ApiDeps], Awaitable[web.StreamRes
 
 WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]], ...] = (
     ("/actions", post_actions),
+    ("/activity/{id}/undo", post_undo),
 )
 
 
