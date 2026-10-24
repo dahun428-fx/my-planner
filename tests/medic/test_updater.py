@@ -1530,3 +1530,59 @@ def test_malformed_staging_window_does_not_stop_deploys(tmp_path: Path) -> None:
     env.store.kv_json_set("staging_ff", {"sha": NEW, "elapsed_s": "x", "last_tick_at": 5})
     env.tick()
     assert env.has("merge --ff-only")  # 창이 깨져도 배포는 간다
+
+
+# --- fix round 2: 실패한 코드가 남은 경우만 막는다 ------------------------------------
+
+NEW3 = "d" * 40
+
+
+def test_staging_be_failed_ff_window_does_not_poison_later_heads(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.changed("docs/notes.md")
+    env.tick()  # PREV -> NEW 재시작 없는 빨리감기, 창이 열린다
+    env.signal(FP)  # 창 안에 일시적인 새 지문 하나
+    env.tick(5)
+    assert _statuses(env) == [(NEW, "failure")]
+    _next_docs_head(env, NEW)  # BE 코드는 그대로이고 이제 정상이다
+    for _ in range(9):
+        env.tick(5)
+    assert _statuses(env) == [(NEW, "failure"), (NEW2, "success")]
+
+
+def test_staging_be_kept_failed_code_chains_through_ff_heads_until_a_deploy_passes(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    deployed(env)
+    env.shell.enabled = False  # 롤백 거부: 실패한 NEW 코드가 남는다
+    env.signal(FP)
+    env.tick(4)
+    env.tick(5)
+    assert env.store.kv_json_get("kept_failed_code") is True
+    env.shell.enabled = True
+    _next_docs_head(env, NEW)
+    env.tick(60)
+    assert env.updater._git.head() == NEW2  # NEW2로 빨리감기된 상태
+    _next_docs_head3 = (NEW2, NEW3)
+    remote = ("git", "rev-parse", "--verify", f"refs/remotes/origin/{env.cfg.branch}")
+    env.shell.rules = [r for r in env.shell.rules if r[0] != remote]  # 먼저 건 규칙이 이긴다: 원격 머리를 NEW3로 바꾼다
+    env.shell.on("git", "rev-parse", "--verify", f"refs/remotes/origin/{env.cfg.branch}", returns=(0, NEW3 + "\n"))
+    env.shell.on("git", "merge-base", "--is-ancestor", NEW3, NEW2, returns=(1, ""))
+    env.shell.on("git", "merge-base", "--is-ancestor", NEW2, NEW3, returns=(0, ""))
+    env.shell.on("git", "diff", "--name-only", "-z", NEW2, NEW3, returns=(0, "docs/y.md\0"))
+    env.server.compares[_next_docs_head3] = ["docs: y"]
+    env.ci(NEW3)
+    env.tick(5)
+    got = _statuses(env)
+    assert (NEW2, "failure") in got and (NEW3, "failure") in got
+    assert not [s for s in got if s[1] == "success"]
+
+
+def test_staging_be_current_head_ci_lookup_backs_off(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.shell.on("git", "rev-parse", "--verify", f"refs/remotes/origin/{env.cfg.branch}", returns=(0, PREV + "\n"))
+    env.ci(PREV, status="in_progress", conclusion=None)
+    for _ in range(5):
+        env.tick(5)
+    assert len(env.http.calls("GET", RUNS)) == 1  # 30분에 한 번만 본다
+    env.tick(30)
+    assert len(env.http.calls("GET", RUNS)) == 2

@@ -83,6 +83,9 @@ STAGING_PENDING = "staging_be_pending"
 STAGING_POSTED = "staging_be_posted"
 STAGING_FF = "staging_ff"  # BE 파일이 안 바뀌어 재시작 없이 빨리감기한 머리의 확인 창
 STAGING_KEEP = 20
+KEPT_FAILED = "kept_failed_code"  # 롤백을 못 해 확인에 실패한 코드가 디스크에 남았다(배포가 확인을 통과하면 지운다)
+STAGING_CI_CHECK = "staging_ci_check"  # 현재 머리 CI가 성공이 아니었던 SHA와 시각(30분에 한 번만 다시 본다)
+STAGING_CI_EVERY = timedelta(minutes=30)
 STAGING_TEXT = {
     "success": "medic-dev: 배포 뒤 헬스 정상, 새 오류 지문 없음",
     "failure": "medic-dev: 확인 실패 또는 배포 롤백",
@@ -489,6 +492,7 @@ class Updater:
                     self._resolve(inc, now)
             self.self_updated = medic_changed
             self._queue_staging(new, "success")
+            self._store.kv_delete(KEPT_FAILED)  # 새 코드가 확인을 통과했다
             log.info("verify_ok")
         else:
             log.info("rollback_verify_ok")
@@ -741,6 +745,8 @@ class Updater:
     # --- 8단계: 포기 ----------------------------------------------------------
 
     def _give_up(self, dip: dict[str, Any], *, rolled_back: bool, note: str | None = None) -> None:
+        if not rolled_back:
+            self._store.kv_json_set(KEPT_FAILED, True)  # 실패한 코드가 그대로다: 뒤따르는 빨리감기 머리도 실패
         blamed = list(dip.get("blamed") or []) or list(dip.get("repaired") or [])
         for fp in blamed:
             inc = self._store.get(fp)
@@ -819,9 +825,9 @@ class Updater:
             self._store.kv_delete(STAGING_PENDING)
 
     def _running_code_failed(self, sha: str) -> bool:
-        """지금 도는 코드(`sha`)가 확인에 실패한 채 남았나: 나쁜 커밋으로 적혔거나 그 SHA에 `failure`를 올렸다."""
-        posted = self._store.kv_json_get(STAGING_POSTED)
-        return sha in self._bad_shas() or (isinstance(posted, dict) and posted.get(sha) == "failure")
+        """지금 도는 코드가 확인에 실패한 채 남았나: `sha`가 나쁜 커밋이거나 롤백을 못 해 실패한 코드가 남았다.
+        재시작 없는 빨리감기 창이 실패한 것은 세지 않는다(BE 코드는 이미 확인을 통과한 것이다)."""
+        return sha in self._bad_shas() or self._store.kv_json_get(KEPT_FAILED) is True
 
     def _open_staging_ff(self, sha: str, now: datetime) -> None:
         self._store.kv_json_set(STAGING_FF, {
@@ -838,12 +844,18 @@ class Updater:
             isinstance(x, dict) and x.get("sha") == head for x in (pending if isinstance(pending, list) else [])
         ):
             return
+        seen = self._store.kv_json_get(STAGING_CI_CHECK)
+        at = _parse(seen.get("at")) if isinstance(seen, dict) else None
+        if isinstance(seen, dict) and seen.get("sha") == head and at is not None and now - at < STAGING_CI_EVERY:
+            return
         try:
             if self._gh.ci_conclusion(head) != "success":
+                self._store.kv_json_set(STAGING_CI_CHECK, {"sha": head, "at": iso_utc(now)})
                 return
         except GitHubUnavailable as exc:
             log.warning("updater_ci_unavailable %s (%d)", exc.kind, exc.status)
             return
+        self._store.kv_delete(STAGING_CI_CHECK)
         self._open_staging_ff(head, now)
 
     def _staging_ff_tick(self) -> None:
