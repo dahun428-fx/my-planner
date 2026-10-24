@@ -30,7 +30,7 @@
 6. 대화에서 꺼낸 사건은 초안으로만 저장되고, 버튼이나 자연어로 확정하기 전에는 곡선, 칭호, `GET /curve`에 나오지 않는다.
 7. `python -m my_planner seed-life <파일>`이 검토를 마친 시드 파일에서 챕터와 사건을 가져온다. `sensitive`이거나 `storage` 표시가 있는데 `confirmed: true`가 아닌 항목은 저장하지 않는다. 사다리 점수와 영역 점수는 비어 있다.
 8. 경험치 원장의 모든 행은 양수이고, 어떤 순서로 도구, 되돌리기, 회차를 실행해도 경험치 합계와 레벨은 줄지 않는다(속성 테스트).
-9. (운영 앱용) `POST /api/v1/chat`의 응답이 AI SDK UI message stream 형식(SSE)이고, 운영 앱 스레드가 제공하는 기준 응답(golden)과 같은 파서로 읽힌다. `POST /actions`의 낮은 위험 변경은 `undo_id`를 주고, `POST /activity/{id}/undo`가 그 변경을 정확히 한 번 되돌린다.
+9. (운영 앱용) `POST /api/v1/chat`의 응답이 AI SDK UI message stream 형식(SSE)이고, 기준 응답(golden, `tests/fixtures/app_golden/`, 16장)과 같은 파서로 읽힌다. 기준 응답은 BE가 6.4.1과 AI SDK UI message stream 규격으로 만들고 운영 앱 스레드가 확인한다. `POST /actions`의 낮은 위험 변경은 `undo_id`를 주고, `POST /activity/{id}/undo`가 그 변경을 정확히 한 번 되돌린다.
 10. (운영 앱용) 주 통로가 기본값 `app`이고 유효한 푸시 구독이 하나 이상이면 아침 브리핑이 웹 푸시로 오고 텔레그램에는 오지 않는다. 구독이 없거나 푸시가 안 되면 텔레그램으로 온다. 어느 경우든 `usage_state.proactive_messages`는 회차마다 1만 오른다.
 11. 16장의 자동 테스트가 모두 통과하고, SP1의 테스트도 그대로 통과한다.
 
@@ -143,6 +143,7 @@ flowchart LR
 | `push_subscriptions` 추가·삭제, `app_state.notify_primary` | `POST`/`DELETE /push/subscriptions`, `PUT /settings/notify` → `apply_action` | 즉시 갈래 |
 | `push_subscriptions.last_success_at`·`failure_count`·`disabled_at`, `run_deliveries` | `harness/delivery.py`. 회차 전달은 두뇌 갈래 작업 안에서, `POST /push/test`는 즉시 갈래로 결과를 기록한다(보내기는 `asyncio.to_thread`, 기록은 루프 스레드) | 두뇌 갈래 또는 즉시 갈래 |
 | `api_idempotency` 쓰기, `inbound_pending`(통로 `app`) | 받을 때 `api/chat.py`(`inbound_pending` 저장), 끝낼 때 디스패처(7.5 M5). `/actions`·`/undo`·명령은 `apply_action`이 결과와 함께 쓴다 | 해당 요청의 갈래 |
+| `conversations`(앱 요청이 여는 대화, 가르기 포함) | 디스패처의 동기 함수 `Dispatcher.route_app_message(at, *, conversation_id, checkin_id)`(6.4.1, 7.2). `api/chat.py`가 받을 때 부르고, 다시 넣은 행의 대화가 닫혔으면 디스패처가 다시 부른다(7.5 M6). 쓰기 경로 감시(16장)에 넣는다 | 갈래 밖(SP1의 대화 열기와 같음) |
 | `runs` 상태, `app_state`(`notify_primary` 빼고), `usage_state`, `telegram_updates`, 백업 | SP1처럼 `loop`와 디스패처가 직접. 하네스가 자기 일을 기록하는 운영 상태다 | 갈래 밖(SP1과 같음) |
 
 갈래 밖의 쓰기는 모두 이벤트 루프 스레드 위의 동기 호출이라 트랜잭션끼리 섞이지 않는다.
@@ -216,7 +217,8 @@ CREATE TABLE run_deliveries (
 );
 ```
 
-- 기존 행은 모두 `telegram`이다(SP1은 텔레그램만 있었다). `PendingInbound`(store/repos/state.py)에 `channel`, `client_msg_id`, `checkin_id`를 더하고, 시작 때 다시 넣기는 이 통로를 보고 답을 보낼 곳을 정한다(7.5 M5).
+- 기존 행은 모두 `telegram`이다(SP1은 텔레그램만 있었다). `PendingInbound`(store/repos/state.py)에 `channel`, `client_msg_id`, `checkin_id`, `conversation_id`를 더하고, 시작 때 다시 넣기는 이 통로를 보고 답을 보낼 곳을 정한다(7.5 M5).
+- **받을 때 고른 대화**: 앱 행은 `api/chat.py`가 받을 때 `route_app_message`로 고른 대화 id를 `inbound_pending.conversation_id`에 미리 적는다. 이 열은 SP1 `005_inbound_pending.sql`에 이미 있다(SP1은 `brain_done`일 때 `save_inbound_reply`로 답이 속한 대화를 적고 `brain_done` 행에서만 읽는다. 앱 행에서 그 값을 덮어쓰는 것은 SP1과 같다). 그래서 **열을 더하는 마이그레이션은 없다**: 계획 초안의 `011_inbound_conversation.sql`은 만들지 않고, 이 개정의 마지막 판은 `010`이다. SQLite의 `ALTER`로는 외래 키를 더할 수 없으므로 FK도 두지 않는다. 시작 때 다시 넣기(`resubmit_inbound`)가 이 값을 `Inbound.conversation_id`로 넘기고, 그 대화가 닫혔으면 디스패처가 `route_app_message`로 다시 고른다(7.5 M6).
 - **앱 메시지의 `inbound_id`**: `inbound_pending.update_id`는 텔레그램 `update_id`(양수)다. 앱 메시지는 `app_state.app_inbound_seq`에서 **음수**(−1, −2, …)를 받아 같은 열에 쓴다. 그래서 `tool_events_log.inbound_id`와 SP1 5.2의 다시 넣기 규칙(사용자 줄, 저장한 답, 도구 기록, 3회 뒤 버림)을 그대로 쓴다. 앱 메시지의 `sent_at`은 받은 시각과 같다(브라우저 시계는 믿지 않는다).
 
 ### 5.2 `007_activity.sql`: 활동 기록, 요청 중복 방지
@@ -246,7 +248,7 @@ CREATE TABLE api_idempotency (
     client_msg_id   TEXT PRIMARY KEY,
     endpoint        TEXT NOT NULL CHECK (endpoint IN ('chat', 'actions', 'undo')),
     status_code     INTEGER NOT NULL,
-    response_json   TEXT NULL,     -- actions·undo: 응답 JSON. chat: {"conversation_id", "reply_text"(가린 뒤의 답 글, 확인 문구 포함)}
+    response_json   TEXT NULL,     -- actions·undo: 응답 JSON. chat: {"conversation_id", "reply_text"(가린 뒤의 답 글), "confirmation"(확인 문구, 없으면 null. 명령 답에는 없다)}
     conversation_id INTEGER NULL,
     at              TEXT NOT NULL
 );
@@ -418,7 +420,7 @@ CREATE TABLE status_titles (
 |---|---|
 | 주소 | BE는 `api.host`(기본 `127.0.0.1`), `api.port`(기본 `8787`)에만 연다. 지금은 `tailscale serve`가 `https://<노트북>.<tailnet>.ts.net` → `http://127.0.0.1:8787`로 넘긴다. FE는 BE URL을 설정값으로 받는다(나중에 클라우드로 옮겨도 FE 코드는 같다) |
 | 판 | 경로 앞머리 `/api/v1`. 깨지는 변경은 `/api/v2`로 낸다. 필드 추가는 깨지지 않는 변경이고, 클라이언트는 모르는 필드를 무시한다 |
-| 인증 | 모든 경로(사전 요청 `OPTIONS` 제외)에 `Authorization: Bearer <API_TOKEN>`. 토큰은 `.env`의 `API_TOKEN`(32바이트 이상 무작위, `python -m my_planner gen-token`이 만든다). 비교는 `hmac.compare_digest`. 쿼리 문자열이나 쿠키로는 받지 않는다 |
+| 인증 | 모든 경로(사전 요청 `OPTIONS` 제외)에 `Authorization: Bearer <API_TOKEN>`. 토큰은 `.env`의 `API_TOKEN`(32바이트 이상 무작위, `python -m my_planner gen-token`이 만든다). 비교는 `hmac.compare_digest`. 쿼리 문자열이나 쿠키로는 받지 않는다. **`API_TOKEN`이 없거나 43자(`secrets.token_urlsafe(32)`의 길이) 미만이면 API를 열지 않는다**: `api_token_missing` 경고 한 줄(토큰 값은 남기지 않는다)을 남기고 텔레그램과 루프는 그대로 돈다(15장) |
 | 형식 | 요청·응답 `application/json; charset=utf-8`(`/chat` 응답만 `text/event-stream`). 본문 상한 64KB(`api.max_body_kb`) |
 | 시각 | 응답의 시각은 UTC ISO 8601(`2026-10-24T09:00:00Z`), 날짜는 논리적 날짜, 기간은 `priorities.period` 형식. 화면 표시는 FE가 `Asia/Seoul`로 바꾼다. 도구 결과(`Tools._task_dict`는 `+09:00` 현지 시각을 준다)를 담는 `/actions`의 `result`와 `/chat`의 `tool-output-available.output`도 **API 경계에서 UTC로 바꾼다**(`api/models.py`가 시각 필드를 변환). 두뇌가 받는 도구 결과는 SP1 그대로 현지 시각이다 |
 | ID | DB의 정수 id를 그대로 쓴다(`task_id`, `run_id`, `conversation_id`, `activity_id`). 클라이언트가 만드는 것은 `client_msg_id`(UUID 문자열) 하나다 |
@@ -454,11 +456,13 @@ CREATE TABLE status_titles (
 | GET | `/conditions?from&to` | 대시보드, 운영 앱 | 없음 | 6.3.4 |
 | GET | `/curve?zoom&from&to&include_sensitive` | 대시보드, 운영 앱 | 없음 | 6.3.5 |
 | GET | `/status` | 대시보드, 운영 앱 | 없음 | 6.3.6 |
+| GET | `/priorities?cadence&period` | 운영 앱용 | 없음 | 6.3.7 |
+| GET | `/drafts` | 운영 앱용 | 없음 | 6.3.8 |
 | GET | `/schema` | 운영 앱(빌드 때) | 없음 | 6.4 |
 | POST | `/chat` | 운영 앱용 | 두뇌 갈래 | 6.4.1 |
 | POST | `/actions` | 운영 앱용 | 즉시 갈래 | 6.4.2 |
 | POST | `/activity/{id}/undo` | 운영 앱용 | 즉시 갈래 | 6.4.3 |
-| GET | `/activity?since&limit` | 운영 앱용 | 없음 | 6.4.4 |
+| GET | `/activity?since&limit&order&before` | 운영 앱용 | 없음 | 6.4.4 |
 | GET | `/checkins?date`, `/checkins/{id}` | 운영 앱용 | 없음 | 6.4.5 |
 | GET | `/conversations?channel&limit`, `/conversations/{id}/messages` | 운영 앱용 | 없음 | 6.4.6 |
 | GET | `/ui/catalog` | 운영 앱용 | 없음 | 6.4.7 |
@@ -482,7 +486,15 @@ CREATE TABLE status_titles (
   "completed_at": null }
 ```
 
-`priority`는 그 할 일이 **지금 기간**(오늘, 이번 주, 이번 달, 이번 분기, 올해)의 우선순위면 가장 큰 주기 하나, 아니면 `null`이다. 초안(`draft`)과 소프트 삭제한 할 일은 어떤 `GET`에도 나오지 않는다(체크인 상세의 초안 카드만 예외, 6.4.5).
+`priority`는 그 할 일이 **지금 기간**(오늘, 이번 주, 이번 달, 이번 분기, 올해)의 우선순위면 가장 큰 주기 하나, 아니면 `null`이다. 초안(`draft`)과 소프트 삭제한 할 일은 어떤 `GET`에도 나오지 않는다. 예외는 둘이다: 초안 목록 `GET /drafts`(6.3.8)와 체크인 상세의 초안 카드(6.4.5). 소프트 삭제한 할 일은 예외 없이 나오지 않는다.
+
+화면 조각이 붙이는 할 일 요약 `TodoRef`(대화의 `ui_todo_list`·`ui_todo_draft` 도구 출력, 체크인 `cards[].data`, 6.4.1·6.4.5·6.4.7):
+
+```json
+{ "id": 55, "title": "치과 예약", "cadence": "week", "area": "health", "status": "draft" }
+```
+
+`cadence`는 그 할 일 `Todo.priority`의 `cadence`(지금 기간 우선순위가 아니면 `null`), `area`는 `areas`의 첫 영역(SP1 영역 순서, 없으면 `null`), `status`는 `draft` | `open` | `done` | `dropped`다. 소프트 삭제한 할 일은 빠진다.
 
 #### 6.3.1 `GET /health`
 
@@ -491,7 +503,7 @@ CREATE TABLE status_titles (
 ```json
 {
   "status": "ok",
-  "version": {"app": "0.2.0", "api": "v1", "schema": 10, "ui_catalog": "2026-10-24.1"},
+  "version": {"app": "0.2.0", "api": "v1", "schema": 10, "ui_catalog": "2026-10-24.2"},
   "now": "2026-10-24T08:00:05Z",
   "started_at": "2026-10-24T00:01:10Z",
   "last_tick_at": "2026-10-24T08:00:00Z",
@@ -617,6 +629,31 @@ CREATE TABLE status_titles (
 
 필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
 
+#### 6.3.7 `GET /priorities?cadence=week|month|quarter|year&period=…` (운영 앱용)
+
+운영 앱 할 일 화면의 이번 주·달·분기·올해 탭이다.
+
+```json
+{ "cadence": "quarter", "period": "2026-Q4",
+  "items": [ {…Todo}, {…Todo} ] }
+```
+
+- `cadence`는 필수이고 `week` | `month` | `quarter` | `year`다(오늘 우선순위는 `GET /today`의 `priority` 묶음). `period`는 선택이고, 없으면 지금 기간(`period_of(cadence, 오늘 논리적 날짜)`)이다. `period`는 `priorities.period` 형식(`2026-W43`, `2026-10`, `2026-Q4`, `2026`)이어야 하고, 주기와 맞지 않으면 `400 invalid_request`다.
+- `items`는 그 기간의 `priorities` 행을 `rank` 순서대로 `Todo`(6.3)로 준다. 초안과 소프트 삭제한 할 일을 가리키는 행은 뺀다. 우선순위가 없으면 `items: []`다.
+
+#### 6.3.8 `GET /drafts` (운영 앱용)
+
+운영 앱 할 일 화면의 초안 묶음이다. 아직 만료되지 않은 할 일 초안만 준다.
+
+```json
+{ "items": [ {"todo": {…Todo, "status": "draft"}, "proposed_at": "2026-10-24T09:01:10Z",
+              "expires_at": "2026-10-27T09:01:10Z", "run_id": 341, "conversation_id": 44} ] }
+```
+
+- `proposed_at`은 그 할 일의 가장 최근 `proposed` 이벤트 시각(없으면 `created_at`)이다. 초안 만료가 보는 시각과 같다(6.4.3 `tasks_confirmed` 되돌리기). `expires_at = proposed_at + limits.draft_ttl_days`(3일)이고, `expires_at`이 지금 이후인 초안만 넣는다(하루 한 번 작업이 아직 지우지 않은 지난 초안도 뺀다).
+- `run_id`, `conversation_id`는 그 초안을 만든 `propose_tasks` 도구 기록(`tool_events_log`)의 회차와 대화다. 없으면 `null`이다.
+- 순서는 `proposed_at` 오래된 것부터, 같으면 `id` 순이다. 확정·빼기는 `/actions confirm_tasks`, `drop_task`(6.4.2)다.
+
 ### 6.4 운영 앱용 (계약 수준)
 
 이 절은 운영 앱 스레드가 보낸 모양을 SP1 규칙에 맞춰 정한 것이다. 화면은 운영 앱 스레드가 정한다. `GET /schema`는 6장의 모든 요청·응답 모델의 JSON 스키마(`api/models.py`에서 생성)를 `{ "api": "v1", "models": { "<이름>": {JSON Schema} } }`로 준다. 운영 앱은 빌드 때 이것으로 타입을 만든다.
@@ -633,6 +670,8 @@ AI SDK `useChat` + `DefaultChatTransport`(`api` = `<BE URL>/api/v1/chat`, `heade
 ```
 
 - `conversation_id`: 앱이 마지막으로 받은 대화 id. 없거나 `null`이면 BE가 고른다. 아래 7.2 규칙으로 **이을 수 없으면 새 대화를 열고** 새 id를 응답 메타데이터로 알린다(오류가 아니다).
+- **대화는 받을 때 고른다**: 첫 조각 `start`와 헤더 `x-conversation-id`에 대화 id가 있어야 하므로, 두뇌 갈래가 메시지를 꺼낼 때가 아니라 `api/chat.py`가 요청을 받을 때 디스패처의 동기 함수 `route_app_message(at, *, conversation_id, checkin_id) -> Conversation`이 7.2 규칙으로 고른다(필요하면 새 대화를 연다, 4.3 표). 고른 id는 `inbound_pending.conversation_id`(5.1)와 `Inbound.conversation_id`에 적고, 두뇌 갈래는 그 대화로 보낸다. 꺼낼 때 그 대화가 이미 닫혔으면 `route_app_message`가 다시 고른다.
+- `messageId`(`start` 조각): `m-<conversation_id>-<|inbound_id|>`(앱 메시지의 음수 `inbound_id`의 절댓값, 5.1). 같은 `client_msg_id`의 재생과 M8에서도 같은 값이고, 6.4.6 비서 줄의 `id`와 같다.
 - `checkin_id`: 앱의 체크인 화면에서 답할 때 그 회차 id. 7.2 규칙 1.
 - `parts`의 `text`만 읽고 이어 붙인다. 글이 하나도 없으면(그림 등) SP1 `NON_TEXT_REPLY` 문구로 답한다.
 - `/`로 시작하는 글은 텔레그램과 같은 명령으로 처리한다(`bot/commands.py`의 같은 함수). `/today`, `/week`, `/pause`, `/unpause`, `/done`, `/status`, `/help`는 두뇌 없이 답하고, 답은 글 조각 하나다. 이 명령들은 `inbound_pending`과 두뇌 갈래를 타지 않는다: 상태를 바꾸는 `/pause`, `/unpause`, `/done`은 `apply_action`(즉시 갈래)으로 처리하고, 중복 방지는 `api_idempotency`(`endpoint='chat'`, `response_json.reply_text`에 명령의 답)로 한다. 같은 `client_msg_id`가 다시 오면 명령을 다시 실행하지 않고 그 답을 돌려준다. **`/plan [주제]`는 예외**다: SP1(`bot/telegram_io.py handle_update`)처럼 앱 통로의 계획 대화를 열고 주제를 두뇌 갈래로 넘기므로, 일반 메시지와 같은 스트림으로 답한다.
@@ -651,10 +690,7 @@ data: {"type":"text-end","id":"t1"}
 data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"add_task","input":{"title":"치과","areas":["health"],"planned_for":"2026-10-25"}}
 data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"id":53,"status":"open"}}
 data: {"type":"finish-step"}
-data: {"type":"text-start","id":"h-confirm"}
-data: {"type":"text-delta","id":"h-confirm","delta":"✓ 추가: 치과 → 내일"}
-data: {"type":"text-end","id":"h-confirm"}
-data: {"type":"data-activity","data":{"activity_ids":[912],"undo_ids":[912]}}
+data: {"type":"data-activity","data":{"activity_ids":[912],"undo_ids":[912],"confirmation":"✓ 추가: 치과 → 내일"}}
 data: {"type":"finish","messageMetadata":{"conversation_id":41,"channel":"app","kind":"chat"}}
 data: [DONE]
 ```
@@ -663,14 +699,14 @@ data: [DONE]
 |---|---|
 | `start` | 첫 조각. `messageMetadata`에 `conversation_id`, `channel`, `kind`(`chat` \| `plan` \| `run`), `checkin_id` |
 | `data-status` | `transient`(기록에 남지 않음). 두뇌 큐에서 기다리면 `queued`, 두뇌가 시작하면 `thinking`. 기다리는 동안 15초마다 SSE 주석 줄 `: ping`을 보낸다 |
-| 글 | 두뇌의 글 블록마다 `text-start`/`text-delta`/`text-end` 한 벌. 글 조각은 SDK `StreamEvent`에서 온다(S11). 확인 문구(SP1 5.5)는 하네스가 만든 마지막 글 조각(`id: "h-confirm"`)이다. 텔레그램에서 두뇌 답 아래 붙는 것과 같은 글이다 |
+| 글 | 두뇌의 글 블록마다 `text-start`/`text-delta`/`text-end` 한 벌. 글 조각은 SDK `StreamEvent`에서 온다(S11). 확인 문구(SP1 5.5)는 앱 통로에서 **글 조각으로 보내지 않는다**(`h-confirm` 글 조각은 없다. AI SDK의 글 부분에는 조각 id가 남지 않아 확인 문구를 두뇌 글과 가를 수 없다). 확인 문구는 `data-activity`의 `confirmation`으로 간다. 텔레그램은 SP1 그대로 두뇌 답 아래에 같은 글을 붙인다 |
 | 도구 | 두뇌가 부른 `mcp__planner__*` 도구마다 `tool-input-available`(이름은 `mcp__planner__` 앞머리를 뺀다) + `tool-output-available`(도구 결과 dict) 또는 `tool-output-error`. MCP 처리기(`tools/mcp_adapter.py _handler`)가 입력을 검증한 뒤에 보낸다 |
-| 화면 도구 | `ui_*`도 도구 조각이다. `input`이 그 컴포넌트의 props다(6.4.7). 하네스가 만든 화면 조각은 `toolCallId`가 `h_`로 시작한다(초안 카드, 컨디션 고르기, 사다리 고르기, 확인 카드 `ui_confirm`) |
-| `data-activity` | 이 답에서 생긴 활동 id와 되돌릴 수 있는 id(6.4.3) |
+| 화면 도구 | `ui_*`도 도구 조각이다. `input`이 그 컴포넌트의 props다(6.4.7). 하네스가 만든 화면 조각은 `toolCallId`가 `h_`로 시작한다(초안 카드, 컨디션 고르기, 사다리 고르기, 확인 카드 `ui_confirm`). 할 일을 가리키는 `ui_todo_list`(두뇌)와 `ui_todo_draft`(하네스)의 `tool-output-available.output`은 `{"ok": true, "data": {"todos": [TodoRef]}}`다(6.3, props의 `task_ids` 순서, 소프트 삭제한 것은 빠진다). 다른 `ui_*`의 출력은 `{"ok": true}`다 |
+| `data-activity` | 이 답에서 생긴 활동 id(`activity_ids`), 되돌릴 수 있는 id(`undo_ids`, 6.4.3), 확인 문구 `confirmation`(SP1 5.5 형식의 줄들을 `\n`으로 이은 글, 없으면 `null`). 확인이 필요한 변경(10.1의 `confirm_requested`, 아직 바뀐 것 없음)의 확인 문구 줄도 `confirmation`에 들어가고, 그 확인 카드는 `h_` 화면 조각 `ui_confirm`이다. 활동도 확인 문구도 없으면 이 조각을 보내지 않는다. 순서는 두뇌 글·도구 조각 → 하네스 화면 조각 → `data-activity` → `finish` |
 | `finish` | 마지막 조각. 그 뒤 `[DONE]` |
 | `error` | 프로토콜 수준 문제(요청이 잘못돼 스트림 도중 끊을 때)만. 두뇌 오류, 하루 상한, 사용 한도, 로그인 문제는 SP1과 같은 고정 문구를 **글 조각**으로 보내고 정상 `finish`로 끝낸다 |
 
-- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다. 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
+- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다. 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 저장한 `confirmation`이 있으면 그 뒤에 `data-activity`(`activity_ids`는 그 메시지의 `activity.inbound_id`로 찾고, `undo_ids`는 지금 시각으로 판정, 6.4.4)로 보낸다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`·`confirmation`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
 - 하루 두뇌 호출 상한 60회는 두 통로가 함께 쓴다.
 
 #### 6.4.2 `POST /actions` (운영 앱용)
@@ -749,15 +785,17 @@ data: [DONE]
 
 응답: `200 {"status": "undone", "activity_id": 920, "undone": 913, "confirmation": "↩ 되돌림: 운동 완료"}`.
 
-#### 6.4.4 `GET /activity?since=<ISO>&limit=50` (운영 앱용)
+#### 6.4.4 `GET /activity?since=<ISO>&limit=50&order=asc|desc&before=<커서>` (운영 앱용)
 
 ```json
 { "items": [ {"id": 913, "at": "…", "actor": "user", "channel": "app", "kind": "task_completed",
               "summary": "✓ 완료: 운동", "risk": "low", "undo_id": 913, "undone_at": null} ],
-  "next_since": "…" }
+  "next_since": "…", "next_before": null }
 ```
 
-- `since`보다 나중 행, 오래된 것부터, `limit` 최대 200. 메시지 본문은 없다. `summary`는 확인 문구 한 줄이다(할 일 제목은 들어간다).
+- `order`(기본 `asc`): `asc`는 지금처럼 `since`보다 나중 행을 오래된 것부터 준다. `desc`는 최근 것부터 준다(운영 앱 기록 화면). `limit` 최대 200.
+- `before`(`desc`에서만): 앞 응답의 `next_before` 값을 그대로 넣으면 그보다 앞선 행을 이어서 준다. 클라이언트는 이 값을 만들거나 풀지 않는다(BE는 마지막 행의 `id`를 문자열로 쓴다. `at`이 같은 행이 있어도 빠지거나 겹치지 않는다). `desc`에서 `since`도 있으면 `since`보다 나중 행만 본다. `asc`에 `before`를 주면 `400 invalid_request`다.
+- `next_before`: `desc`이고 더 앞선 행이 남아 있으면 다음 쪽 커서, 아니면 `null`. `asc`에서는 늘 `null`이다. `next_since`는 받은 행 가운데 가장 늦은 `at`이다(`asc`는 마지막 행, `desc`는 첫 행). 그 뒤의 새 활동은 `order=asc&since=<next_since>`로 받는다. 메시지 본문은 없다. `summary`는 확인 문구 한 줄이다(할 일 제목은 들어간다).
 - `undo_id`는 지금 되돌릴 수 있을 때만(U1~U3을 지금 시각으로 판정).
 - `actor`/`channel`: 두뇌가 바꾸면 `secretary` + 그 대화의 통로(회차 첫 호출은 `scheduler`). 버튼은 `user` + `telegram`. `/actions`는 `user` + `app`. 하루 한 번 작업(초안 만료)은 `secretary` + `scheduler`.
 - `kind` 값: `task_added`, `tasks_proposed`, `tasks_confirmed`, `task_updated`, `task_moved`, `task_completed`, `task_reopened`, `task_dropped`, `drafts_expired`, `milestone_drafts_expired`, `chapter_drafts_expired`, `priorities_set`, `condition_recorded`, `ladder_recorded`, `area_scores_recorded`, `milestone_proposed`, `milestones_confirmed`, `milestone_dropped`, `chapter_proposed`, `chapters_confirmed`, `chapter_dropped`, `xp_granted_by_secretary`, `rest_days_granted`(X9, `scheduler`), `card_pinned`, `card_unpinned`, `cards_reordered`, `notify_changed`, `push_subscribed`, `push_unsubscribed`, `confirm_requested`(10.1, 바뀐 것 없음), `confirm_declined`, `undo`.
@@ -782,21 +820,37 @@ data: [DONE]
   "reply_until": "2026-10-24T19:00:00Z",
   "conversation_ids": {"app": 44, "telegram": null},
   "text": "…회차 본문…",
-  "cards": [ {"toolCallId": "h_cond_341", "component": "ui_condition_picker", "props": {"date": "2026-10-24"}},
-             {"toolCallId": "h_draft_341", "component": "ui_todo_draft", "props": {"task_ids": [55, 56]}} ] }
+  "cards": [ {"toolCallId": "h_draft_341", "component": "ui_todo_draft", "props": {"task_ids": [55, 56]},
+              "data": {"todos": [ {"id": 55, "title": "…", "cadence": null, "area": "health", "status": "draft"},
+                                  {"id": 56, "title": "…", "cadence": null, "area": "career", "status": "draft"} ]}},
+             {"toolCallId": "h_cond_341", "component": "ui_condition_picker", "props": {"date": "2026-10-24"}} ] }
 ```
 
-`GET /checkins?date=`(기본 오늘)는 위에서 `text`와 `cards`를 뺀 요약 목록이다. `cards`는 SP1에서 텔레그램 버튼을 만드는 것과 같은 재료(`Outbound.draft_task_ids`, `ask_condition_for`, 사다리 단계)에서 만든다.
+`GET /checkins?date=`(기본 오늘)는 위에서 `text`와 `cards`를 뺀 요약 목록이다.
+
+**`cards` 만들기**: 텔레그램 버튼 재료(`Outbound.draft_task_ids` 등)는 저장되지 않으므로, 읽을 때마다 DB에서 다시 만든다. SP1이 텔레그램 버튼을 만드는 규칙과 같은 뜻이고, 순서도 텔레그램 버튼 줄과 같다.
+
+| 카드 | `toolCallId` | 만드는 재료 | 빠지는 경우 |
+|---|---|---|---|
+| `ui_todo_draft {task_ids}` | `h_draft_<run_id>` | 그 회차(합친 회차 포함)의 `tool_events_log.run_id`로 찾은 `propose_tasks` 초안 가운데 아직 `draft`인 것 | 남은 초안이 없으면(모두 확정, 빼기, 만료) |
+| `ui_milestone_draft {milestone_ids}`, `ui_chapter_draft {chapter_ids}` | `h_mdraft_<run_id>`, `h_cdraft_<run_id>` | 같은 방법으로 찾은 사건·챕터 초안 가운데 남은 것(11.3) | 남은 초안이 없으면 |
+| `ui_condition_picker {date}` | `h_cond_<run_id>` | `ask_condition_for(run, merged, …)`(SP1 디스패처의 판정을 옮긴 순수 함수)가 고른 날짜 | 그 날짜의 컨디션이 이미 기록됐으면 |
+| `ui_ladder_picker`, `ui_area_scores` | `h_ladder_<run_id>`, `h_areas_<run_id>` | 회고 단계(11.1) | 그 단계의 값이 이미 기록됐으면 |
+| `ui_confirm {summary, confirm_token, action, args}` | `h_confirm_<run_id>_<n>`(`n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가 바뀌지 않는다) | 그 회차의 `pending_confirms`(`run_id`, `resolved_at IS NULL`, `expires_at` 전, 10.1) | 확인·거절·만료·`stale`로 닫혔으면 |
+
+- 할 일을 가리키는 카드(`ui_todo_draft`)는 `data.todos`에 지금 값 `TodoRef`(6.3)를 붙인다(`props.task_ids` 순서, 초안은 `status: "draft"`).
+- **확인을 기다리는 `ui_confirm` 카드는 이 `cards`로 읽는다.** 확인 카드만 모아 주는 경로는 따로 두지 않는다.
 
 #### 6.4.6 대화 기록 `GET /conversations`, `GET /conversations/{id}/messages` (운영 앱용)
 
 - `GET /conversations?channel=app&limit=20` → `{"items": [{"id", "kind", "channel", "run_id", "opened_at", "last_message_at", "closed_at"}]}` 최근 것부터.
-- `GET /conversations/{id}/messages` → `{"items": [{"at", "speaker": "user" | "secretary", "text", "tools": ["add_task"]}]}`. 원문 기록 md(`TranscriptStore`)에서 그 대화 id의 메시지를 읽는다. 글은 가린 뒤의 글이다. 도구 조각과 화면 조각은 원문 기록에 없어서(이름만 `tools`) 다시 보여 주지 않는다. 운영 앱이 최근 화면 조각을 보이려면 자기 기기에 둔다. 원문 기록이 원본이라는 원칙(ADR 0003)을 지키려고 받아들인 제약이다.
+- `GET /conversations/{id}/messages` → `{"items": [{"id", "at", "speaker": "user" | "secretary", "text", "tools": ["add_task"], "channel": "telegram" | "app"}]}`. 원문 기록 md(`TranscriptStore`)에서 그 대화 id의 메시지를 읽는다.
+- **`id`는 바뀌지 않는다**(운영 앱이 기기에 둔 화면 조각을 다시 붙이는 열쇠): 앱 통로의 비서 줄은 그 답의 `start.messageId`(`m-<conversation_id>-<|inbound_id|>`, 6.4.1), 앱 통로의 사용자 줄은 받은 `message.id`(`[A-Za-z0-9_-]{1,64}`가 아니면 `u-<conversation_id>-<|inbound_id|>`)다. 이 값은 원문 기록 머리글에 적는다(7.4). 텔레그램 줄과 id가 적히지 않은 옛 줄은 `t-<conversation_id>-<n>`(`n`은 그 대화의 줄을 원문 기록 순서로 센 번호, 1부터)이다. 원문 기록은 덧붙이기만 하므로 `n`도 바뀌지 않는다. 글은 가린 뒤의 글이다. 도구 조각과 화면 조각은 원문 기록에 없어서(이름만 `tools`) 다시 보여 주지 않는다. 운영 앱이 최근 화면 조각을 보이려면 자기 기기에 둔다. 원문 기록이 원본이라는 원칙(ADR 0003)을 지키려고 받아들인 제약이다.
 
 #### 6.4.7 생성형 UI `GET /ui/catalog` (운영 앱용)
 
 ```json
-{ "version": "2026-10-24.1",
+{ "version": "2026-10-24.2",
   "components": {
     "ui_todo_list":        {"origin": "brain",   "schema": {…JSON Schema…}},
     "ui_choice":           {"origin": "brain",   "schema": {…}},
@@ -805,6 +859,8 @@ data: [DONE]
     "ui_condition_picker": {"origin": "harness", "schema": {…}},
     "ui_ladder_picker":    {"origin": "harness", "schema": {…}},
     "ui_area_scores":      {"origin": "harness", "schema": {…}},
+    "ui_milestone_draft":  {"origin": "harness", "schema": {…}},
+    "ui_chapter_draft":    {"origin": "harness", "schema": {…}},
     "ui_confirm":          {"origin": "harness", "schema": {…}} } }
 ```
 
@@ -817,10 +873,14 @@ data: [DONE]
 | `ui_condition_picker` | `date` | `/actions record_condition` |
 | `ui_ladder_picker` | `period`, `field`(`now` \| `future`) | `/actions record_ladder_score` |
 | `ui_area_scores` | `period`, `previous{area: score}` | `/actions record_area_scores` |
+| `ui_milestone_draft` | `milestone_ids[]`(정수 1~10개) | 사건마다 `/actions confirm_milestones` 또는 `drop_milestone` |
+| `ui_chapter_draft` | `chapter_ids[]`(정수 1~5개) | 챕터마다 `/actions confirm_chapters` 또는 `drop_chapter` |
 | `ui_confirm` | `summary`, `confirm_token`, `action`, `args` | 확인: `/actions`에 `action`, `args`, `confirm_token`. 그대로 두기: `/actions decline_confirm` |
 
 - **ADR 0005 안에서**: 두뇌가 부르는 화면 도구는 `ui_todo_list`, `ui_choice`, `ui_summary_card` 셋이고, 같은 MCP 서버 `planner`에 있다(`mcp__planner__ui_*`). 그리기만 한다: props를 카탈로그 스키마로 검증하고 `{"ok": true}`를 돌려줄 뿐, DB와 파일을 건드리지 않는다(테스트로 확인, 16장). 스키마에 맞지 않으면 도구 오류로 돌려주고 조각을 보내지 않는다.
-- **하네스가 만드는 조각**: 초안 카드, 컨디션·사다리 고르기, 영역 점수는 SP1처럼 하네스가 도구 이벤트와 회차에서 만든다. 두뇌는 부르지 않는다. 운영 앱 스레드는 `ui_todo_draft`를 두뇌 도구로 상정했지만, SP1의 "초안 버튼은 하네스가 `ToolEvent`에서 만든다"(5.7) 규칙에 맞춰 바꿨고, 운영 앱 스레드가 동의했다.
+- **판 `2026-10-24.2`**: `.1`에 하네스 출처 `ui_milestone_draft`, `ui_chapter_draft` 둘을 더했다(컴포넌트 10개). 대화에서 꺼낸 사건·챕터 초안(11.3)을 앱에서도 확정·빼기 하려는 것이다. 텔레그램의 사건 초안 버튼(부록 A)과 같은 재료(`Outbound.draft_milestone_ids`, `draft_chapter_ids`)에서 만들고, 대화에서는 `h_mdraft_<n>`, `h_cdraft_<n>`(`n`은 그 답 안의 순번), 체크인에서는 6.4.5 표의 id다. 운영 앱 스레드가 이 판을 확인했다(SP5 스펙 7장).
+- **할 일 지금 값**: 할 일을 가리키는 `ui_todo_list`, `ui_todo_draft` 조각은 대화의 도구 출력 `{"ok": true, "data": {"todos": [TodoRef]}}`(6.4.1), 체크인 `cards[].data.todos`(6.4.5)로 제목과 상태를 함께 준다. props는 `task_ids`만 가진다.
+- **하네스가 만드는 조각**: 초안 카드(할 일·사건·챕터), 컨디션·사다리 고르기, 영역 점수는 SP1처럼 하네스가 도구 이벤트와 회차에서 만든다. 두뇌는 부르지 않는다. 운영 앱 스레드는 `ui_todo_draft`를 두뇌 도구로 상정했지만, SP1의 "초안 버튼은 하네스가 `ToolEvent`에서 만든다"(5.7) 규칙에 맞춰 바꿨고, 운영 앱 스레드가 동의했다.
 - **텔레그램 대화에는 `ui_*` 도구와 카드 도구(`pin_card`, `unpin_card`, `reorder_cards`, 10장)를 주지 않는다.** 앱 대화의 두뇌 설정만 `channel_app.md` 지시문과 함께 이 여섯을 허용한다.
 - 모르는 컴포넌트(새 판)는 FE가 글로 대신 보여 준다. `version`이 바뀌면 FE가 카탈로그를 다시 받는다.
 
@@ -884,7 +944,7 @@ SP1 5.3 표에 통로를 더한 것이다. 위에서부터 처음 맞는 규칙�
 
 ### 7.4 원문 기록의 통로 표시
 
-SP1 5.8 머리글 끝에 통로를 붙인다: `### 21:05 사용자 [44] (evening_checkin) @app`. 표시는 `@telegram` | `@app`이고, 통로 없는 머리글(이 개정 전 기록)은 `@telegram`으로 읽는다. 두 통로는 같은 날짜 파일에 시간 순으로 섞여 쓰인다(파일은 논리적 날짜마다 하나, SP1 그대로). `TranscriptStore.append(..., channel=...)`과 `_entries` 해석을 고친다. `read_transcript` 도구는 두 통로를 다 읽는다.
+SP1 5.8 머리글 끝에 통로를 붙이되, **앱 통로의 머리글에만** 붙인다: `### 21:05 사용자 [44] (evening_checkin) #msg-abc @app`. 텔레그램 머리글은 SP1과 한 글자도 다르지 않다(`### 01:00 사용자 [1]` 꼴. SP1 시험과 1장 완료 조건 11이 이 꼴을 본다). 읽을 때 ` @app`으로 끝나지 않는 머리글(텔레그램, 이 개정 전 기록)은 모두 `telegram`이다. 앱 머리글의 ` @app` 바로 앞 `#<id>`는 그 줄의 메시지 id다(6.4.6). 두 통로는 같은 날짜 파일에 시간 순으로 섞여 쓰인다(파일은 논리적 날짜마다 하나, SP1 그대로). `TranscriptStore.append(..., channel=...)`과 `_entries` 해석을 고친다. `read_transcript` 도구는 두 통로를 다 읽는다.
 
 ### 7.5 두뇌 갈래의 통로 처리 (운영 앱용)
 
@@ -894,10 +954,10 @@ SP1 5.8 머리글 끝에 통로를 붙인다: `### 21:05 사용자 [44] (evening
 |---|---|
 | M1 | **`Inbound`에 통로를 더한다**: `channel: "telegram" \| "app"`, `client_msg_id: str \| None`, `checkin_id: int \| None`, `sink: StreamSink \| None`(앱 요청 하나에 하나, `harness/stream.py`). 텔레그램 `Inbound`는 `channel="telegram"`, `sink=None`이다 |
 | M2 | **묶음은 같은 통로끼리만**: `_drain_messages(lead)`는 `lead`와 통로가 같은 메시지만 꺼내고 나머지는 제자리에 둔다. 텔레그램 메시지끼리는 SP1처럼 묶는다. **앱 메시지는 묶지 않는다**: 요청마다 스트림이 하나라 답을 나눠 줄 수 없다. 앱 메시지 하나 = 두뇌 호출 하나다. 다시 넣은 메시지(`recovered`)는 SP1처럼 묶지 않는다 |
-| M3 | **대상 대화**: 묶음의 대화는 7.2 규칙으로 통로마다 고른다. 묶음 안의 메시지는 모두 같은 통로라 같은 대화로 간다. 그 대화가 회차 대화이고 답장 창 안이면 디스패처가 `mark_answered(run, channel)`로 `runs.answered_at`, `answered_via`, X3/X5/X8 원장을 한 트랜잭션에 쓴다(처음 한 번만) |
-| M4 | **답은 통로별 보낼 곳으로**: `Dispatcher`는 `Sender` 하나 대신 `senders: dict[channel, Sender]`를 받는다. `telegram` → `TelegramSender`(SP1). `app` → `AppReplySender`: `Inbound.sink`에 글 조각, 확인 문구, 하네스 화면 조각을 쓴다. `Outbound`에 `channel`을 더해 고정 안내(하루 상한, 사용 한도, 로그인, 글 아님)도 같은 길로 간다. 회차 전달은 이 표가 아니라 7.3(`harness/delivery.py`)이 맡는다 |
-| M5 | **처리 완료 기록**: 텔레그램은 SP1 그대로(`telegram_updates` 기록 + `inbound_pending` 삭제, 한 트랜잭션). 앱은 `telegram_updates`에 쓰지 않는다(음수 id를 넣지 않는다). 대신 답을 싱크에 다 쓴 뒤(싱크가 끊겼으면 답을 `reply_text`에 저장한 뒤) `api_idempotency(client_msg_id, endpoint='chat', conversation_id, response_json = {conversation_id, reply_text})` 기록과 `inbound_pending` 행 삭제를 한 트랜잭션으로 한다. `reply_text`는 가린 뒤의 답 글(확인 문구 포함)이고, 재요청 재생(6.4.1)의 유일한 근거다. 2일 뒤 행과 함께 지워진다. 그다음 비서 줄을 원문 기록에 `@app`으로 쓴다 |
-| M6 | **시작 때 다시 넣기**(SP1 5.1 4b): `channel='app'` 행은 `sink=None`으로 다시 넣는다. SP1 5.2-4의 규칙(사용자 줄, 저장한 답, 도구 기록, 3회 뒤 버림)은 그대로지만, **답을 어디에도 보내지 않는다**: 텔레그램으로 보내지 않고 푸시도 하지 않는다. 답은 원문 기록과 `reply_text`에만 남고 M5로 끝낸다. 운영 앱은 `GET /conversations/{id}/messages`로 읽거나, 같은 `client_msg_id`로 다시 보내면 저장한 답을 받는다(6.4.1) |
+| M3 | **대상 대화**: 묶음의 대화는 7.2 규칙으로 통로마다 고른다. 텔레그램 묶음은 SP1처럼 꺼낼 때 고르고, 앱 메시지는 받을 때 `route_app_message`가 이미 고른 `Inbound.conversation_id`의 대화로 간다(6.4.1. 그 대화가 닫혔으면 다시 고른다). 묶음 안의 메시지는 모두 같은 통로라 같은 대화로 간다. 그 대화가 회차 대화이고 답장 창 안이면 디스패처가 `mark_answered(run, channel)`로 `runs.answered_at`, `answered_via`, X3/X5/X8 원장을 한 트랜잭션에 쓴다(처음 한 번만) |
+| M4 | **답은 통로별 보낼 곳으로**: `Dispatcher`는 SP1의 `sender`(텔레그램, `TelegramSender`)를 그대로 받고, 앱 답을 보낼 `app_sender: AppReplySender \| None = None`을 더 받는다(생성자를 `senders: dict`로 바꾸지 않는다: SP1의 `Dispatcher(sender=…)` 시험이 그대로 돈다). `telegram` → `sender`. `app` → `app_sender`: `Inbound.sink`에 글 조각, 하네스 화면 조각, `data-activity`(확인 문구 포함, 6.4.1)를 쓴다. `Outbound`에 `channel`을 더해 고정 안내(하루 상한, 사용 한도, 로그인, 글 아님)도 같은 길로 간다. 회차 전달은 이 표가 아니라 7.3(`harness/delivery.py`)이 맡는다 |
+| M5 | **처리 완료 기록**: 텔레그램은 SP1 그대로(`telegram_updates` 기록 + `inbound_pending` 삭제, 한 트랜잭션). 앱은 `telegram_updates`에 쓰지 않는다(음수 id를 넣지 않는다). 대신 답을 싱크에 다 쓴 뒤(싱크가 끊겼으면 답을 `reply_text`에 저장한 뒤) `api_idempotency(client_msg_id, endpoint='chat', conversation_id, response_json = {conversation_id, reply_text, confirmation})` 기록과 `inbound_pending` 행 삭제를 한 트랜잭션으로 한다. `reply_text`는 가린 뒤의 답 글, `confirmation`은 그 답의 확인 문구(앱 통로에서는 `data-activity`로 보낸 것, 6.4.1)이고, 둘이 재요청 재생(6.4.1)의 유일한 근거다. 2일 뒤 행과 함께 지워진다. 그다음 비서 줄을 원문 기록에 `@app`으로 쓴다 |
+| M6 | **시작 때 다시 넣기**(SP1 5.1 4b): `channel='app'` 행은 `sink=None`, `conversation_id = inbound_pending.conversation_id`(받을 때 고른 대화, 5.1)로 다시 넣는다. 그 대화가 닫혔으면 `route_app_message`가 다시 고른다. SP1 5.2-4의 규칙(사용자 줄, 저장한 답, 도구 기록, 3회 뒤 버림)은 그대로지만, **답을 어디에도 보내지 않는다**: 텔레그램으로 보내지 않고 푸시도 하지 않는다. 답은 원문 기록과 `reply_text`에만 남고 M5로 끝낸다. 운영 앱은 `GET /conversations/{id}/messages`로 읽거나, 같은 `client_msg_id`로 다시 보내면 저장한 답을 받는다(6.4.1) |
 | M7 | **싱크가 끊김**: 앱 요청의 연결이 끊기면 `AppReplySender`는 쓰기를 조용히 그만둔다(오류를 올리지 않는다). 두뇌 호출, 도구 쓰기, 원문 기록, M5는 끝까지 간다 |
 | M8 | **같은 `client_msg_id`가 처리 중에 다시 옴**: 새 `Inbound`를 만들지 않는다. 새 요청의 스트림을 처리 중인 메시지의 싱크에 덧붙여(싱크 하나에 연결 여럿 가능) 같은 조각을 받게 한다. 시작 때 다시 넣어 `sink=None`으로 처리 중인 행(M6)이면 새 요청의 싱크를 그 처리에 새로 붙인다. 끝난 뒤라면 6.4.1의 저장한 답 재생이다 |
 
@@ -1107,6 +1167,9 @@ python -m my_planner seed-life <파일> [--dry-run]
 - 두뇌를 거치지 않는다. `__main__.py`에 하위 명령(argparse)을 더한다. 인자가 없으면 지금처럼 BE를 시작한다.
 - **단일 작성자**: 시작할 때 `state/my-planner.lock`을 잡는다. 못 잡으면(BE가 돌고 있음) "my-planner가 실행 중이에요. 작업 스케줄러에서 멈춘 뒤 다시 실행해 주세요."를 출력하고 코드 3으로 끝낸다. 쓰기는 한 트랜잭션이고, 끝나면 `app_state.life_seed_imported_at`을 적는다. 이 값이 있으면 다시 가져오지 않는다(코드 4).
 - `--dry-run`은 쓰지 않고 가져올 개수와 건너뛸 개수, 건너뛰는 이유별 개수만 출력한다. **항목 내용(제목, 메모)은 출력하지 않는다**(터미널 기록에 남지 않게).
+- **파일 읽기**: `utf-8-sig`로 읽는다(Windows 메모장이 붙인 BOM이 있어도 된다). 파일이 없거나 읽을 수 없거나 JSON이 아니면(최상위가 객체가 아닌 경우 포함) 아무것도 쓰지 않고 코드 6으로 끝낸다. 오류 메시지에 파일 내용을 넣지 않는다.
+- **틀린 항목**: 형식에 맞지 않는 항목(예: `date: "2019-13"`, 모르는 `kind`, 빠진 필수 키)은 그 항목만 건너뛰고 이유 `invalid`로 센다. 출력은 이유별 개수(`sensitive_unconfirmed`, `storage_unconfirmed`, `invalid`)뿐이고, 어떤 항목이 틀렸는지는 출력하지 않는다.
+- **종료 코드**: `0` 가져옴(또는 `--dry-run` 끝남), `3` BE 실행 중(잠금), `4` 이미 가져옴, `5` `meta.reviewed`가 `true`가 아님, `6` 읽을 수 없거나 JSON이 아닌 파일.
 
 **파일 형식** (스키마만, 내용은 저장소에 넣지 않는다)
 
@@ -1129,7 +1192,7 @@ python -m my_planner seed-life <파일> [--dry-run]
 
 ### 13.1 공통
 
-- `web/dashboard/`, Next.js 정적 내보내기(`output: "export"`). 서버 함수, API 라우트, 서버 렌더링 데이터 가져오기는 쓰지 않는다. 모든 데이터는 **브라우저가 BE로 직접** 가져온다(ADR 0008). Vercel 분석, 외부 글꼴·스크립트는 넣지 않는다.
+- `web/dashboard/`, Next.js 정적 내보내기(`output: "export"`), **Pages Router**. App Router는 정적 내보내기에서도 인라인 스크립트(`self.__next_f`)를 넣어 `script-src 'self'`(14장)와 맞지 않으므로 쓰지 않는다. 서버 함수, API 라우트, 서버 렌더링 데이터 가져오기는 쓰지 않는다. 모든 데이터는 **브라우저가 BE로 직접** 가져온다(ADR 0008). Vercel 분석, 외부 글꼴·스크립트는 넣지 않는다.
 - **연결 설정**: 처음 열면 설정 화면에서 BE URL과 API 토큰을 넣는다. 둘은 그 브라우저의 `localStorage`에만 둔다(빌드나 Vercel 환경 변수에 넣지 않는다: 정적 파일은 누구나 받을 수 있다). "연결 확인" 버튼이 `GET /health`를 부른다.
 - 화면의 시각은 모두 한국 시각(`Asia/Seoul`)으로 보인다(API는 UTC).
 - **화면 제작 도구**: UI UX Pro Max 스킬(github `nextlevelbuilder/ui-ux-pro-max-skill`)과 taste 스킬(github `Leonxlnx/taste-skill`). 색, 글꼴, 간격, 차트 모양은 구현 계획 단계에서 이 도구로 정한다. 아래 와이어프레임은 배치와 데이터만 정한다.
@@ -1265,14 +1328,14 @@ python -m my_planner seed-life <파일> [--dry-run]
 | CORS | 허용 출처는 `config.toml`의 `api.cors_origins`(정확한 문자열 목록)와 선택 `api.cors_origin_regex`(팀 범위 미리보기 주소용, 예: `^https://my-planner-dash-[a-z0-9-]+-<팀>\.vercel\.app$`). `*.vercel.app` 전체는 허용하지 않는다(누구나 그 주소에 배포할 수 있다). 허용 헤더 `Authorization, Content-Type`, 메서드 `GET, POST, PUT, DELETE`, 노출 헤더 `x-conversation-id`, 자격 증명(쿠키) 허용 안 함. 사전 요청에 `Access-Control-Request-Private-Network`가 있으면 `Access-Control-Allow-Private-Network: true`(S9). 허용 밖 출처는 CORS 헤더 없이 답한다(토큰 검사는 그대로) |
 | CSRF | 쿠키를 쓰지 않고 `Authorization` 헤더만 받으므로 해당 없다 |
 | 로그 | aiohttp 기본 접근 로그를 끈다(`access_log=None`). 대신 요청마다 `method`, **경로 틀**(`/api/v1/activity/{id}/undo`), 상태 코드, 소요 시간만 남긴다. 쿼리 문자열, 헤더, 본문, 토큰, 푸시 `endpoint`, 할 일 제목, 도구 인자는 남기지 않는다(SP1 7장 로그 규칙). 로그 검사 테스트가 시험 토큰과 시험 문장이 로그 파일에 없는지 본다 |
-| 브라우저 | 대시보드는 엄격한 CSP(`default-src 'self'; script-src 'self'; connect-src 'self' https://*.<tailnet>.ts.net`, 외부 스크립트 없음)로 `localStorage`의 토큰을 XSS에서 지킨다. BE URL은 기기마다 넣는 런타임 값이라 CSP에 그대로 넣을 수 없으므로, `connect-src`는 빌드 상수 `NEXT_PUBLIC_CONNECT_SRC`(tailnet 도메인 와일드카드, 비밀값 아님)로 정하고 Vercel 헤더 설정(`vercel.json`)에 넣는다. 설정 화면은 이 범위 밖의 BE URL을 받지 않는다. BE를 클라우드로 옮기면 이 상수를 바꿔 다시 빌드한다. 화면 데이터는 메모리에만 둔다 |
+| 브라우저 | 대시보드는 엄격한 CSP로 `localStorage`의 토큰을 XSS에서 지킨다: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ${NEXT_PUBLIC_CONNECT_SRC}; base-uri 'none'; form-action 'none'`(외부 스크립트, 인라인 스크립트, 인라인 스타일 없음. `default-src`만 두면 인라인 스타일도 막히므로 `style-src`를 따로 적는다). BE URL은 기기마다 넣는 런타임 값이라 CSP에 그대로 넣을 수 없으므로, `connect-src`는 빌드 상수 `NEXT_PUBLIC_CONNECT_SRC`(tailnet 도메인 와일드카드 `https://*.<tailnet>.ts.net`, 비밀값 아님)로 정한다. `vercel.json`은 빌드 상수를 읽지 못하므로 **CSP는 `pages/_document.tsx`의 `<head>` 첫 요소 `<meta http-equiv="Content-Security-Policy">`**로 넣는다(어떤 `<script>`보다 앞). `<meta>`로는 줄 수 없는 것은 `vercel.json` 헤더로 준다: `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: frame-ancestors 'none'`, 최소 `Permissions-Policy`. 빌드 뒤 `scripts/check-csp.mjs`가 `out/**/*.html`마다 인라인 `<script>`(`application/json` 제외)·`<style>`·`style=`가 0개이고 CSP `<meta>`가 첫 `<script>`보다 앞인지 확인한다(16장). 설정 화면은 이 범위 밖의 BE URL을 받지 않는다. BE를 클라우드로 옮기면 이 상수를 바꿔 다시 빌드한다. 화면 데이터는 메모리에만 둔다 |
 | 푸시 | `VAPID_PRIVATE_KEY`는 `.env`에만. 페이로드는 RFC 8291 암호화. 구독 `endpoint`는 비밀값처럼 다룬다(로그 금지) |
 | 개인 데이터와 Git | `data/`, `state/`, `.env`는 지금처럼 `.gitignore`. 이번에 `*.seed.json`, `life-seed/`, `life-curve-seed*.json`을 더한다. 시드 파일 내용, 사건, 점수는 코드, 테스트, 문서, 커밋 메시지에 넣지 않는다. 테스트 고정 자료는 꾸며 낸 내용만 |
 | 로컬 우선 | 데이터 원본은 노트북뿐이다. Vercel과 푸시 서비스에는 데이터가 머무르지 않는다(정적 파일, 암호화된 알림). 클라우드 백업 금지(마스터 6장) 그대로 |
 
 ## 15. 설정과 의존성
 
-- `.env` 추가: `API_TOKEN`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`(`mailto:` 주소). `.env.example`에 자리 표시 값을 둔다. `python -m my_planner gen-vapid`가 키 한 쌍을 출력한다. VAPID 값이 없으면 푸시 경로만 꺼진다(`/push/*`는 `404`, 실제 통로는 늘 `telegram`).
+- `.env` 추가: `API_TOKEN`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`(`mailto:` 주소). `.env.example`에 자리 표시 값을 둔다. `API_TOKEN`이 없거나 43자 미만이면 `api.enabled = true`여도 API를 열지 않고 `api_token_missing` 경고를 남긴다. 텔레그램과 루프는 계속 돈다(6.1, 아래 포트 오류와 같은 원칙). `python -m my_planner gen-vapid`가 키 한 쌍을 출력한다. VAPID 값이 없으면 푸시 경로만 꺼진다(`/push/*`는 `404`, 실제 통로는 늘 `telegram`).
 - `config.toml` 추가:
 
 ```toml
@@ -1313,19 +1376,20 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 
 | 대상 | 경우 |
 |---|---|
-| 인증 | 토큰 없음/틀림 → 401, 맞음 → 200, 실패 10회 → 429, `OPTIONS`는 토큰 없이 |
+| 인증 | 토큰 없음/틀림 → 401, 맞음 → 200, 실패 10회 → 429, `OPTIONS`는 토큰 없이. `.env`의 `API_TOKEN`이 없거나 43자 미만 → API가 열리지 않고 `api_token_missing` 경고, 텔레그램·루프는 계속 |
 | CORS | 허용 출처의 사전 요청 헤더, 허용 밖 출처는 헤더 없음, 정규식, Private Network 헤더 |
 | 로그 | 시험 토큰·시험 문장·푸시 endpoint가 로그 파일에 없음, 경로 틀만 있음 |
 | `/health` | 각 필드 출처, `degraded` 조건, 안전 모드 응답 |
-| 계약 | `/today`·`/week`가 `today_text`·`week_text`와 같은 할 일을 같은 순서로(같은 고정 자료), `/status`와 `/status` 명령이 같은 숫자. 응답이 `GET /schema`의 스키마에 맞음 |
-| `/chat` | 조각 순서(start → … → finish → [DONE]), 확인 문구 조각, 도구 조각 이름에서 앞머리 제거, 하루 상한·사용 한도·로그인 문제는 글 조각, 같은 `client_msg_id` 재요청은 두뇌 없이 저장한 답, 연결 끊김 뒤에도 도구 쓰기와 원문 기록 완료, 명령(`/today`) 처리, 글 아닌 부분. 운영 앱 스레드의 기준 응답과 비교(받으면) |
+| 계약 | `/today`·`/week`가 `today_text`·`week_text`와 같은 할 일을 같은 순서로(같은 고정 자료), `/status`와 `/status` 명령이 같은 숫자. 응답이 `GET /schema`의 스키마에 맞음. 초안은 `/drafts`와 체크인 카드에만, 소프트 삭제는 어디에도 없음 |
+| `/priorities`, `/drafts` | 주기 넷의 기본 기간과 `period` 지정, 주기와 맞지 않는 `period` → 400, `rank` 순서, 초안·삭제 할 일 빠짐. `/drafts`는 만료 전 초안만, `proposed_at`이 확정 되돌리기 뒤의 `proposed` 이벤트, `run_id`·`conversation_id`(없으면 `null`) |
+| `/chat` | 조각 순서(start → … → finish → [DONE]), 도구 조각 이름에서 앞머리 제거, 하루 상한·사용 한도·로그인 문제는 글 조각, 같은 `client_msg_id` 재요청은 두뇌 없이 저장한 답, 연결 끊김 뒤에도 도구 쓰기와 원문 기록 완료, 명령(`/today`) 처리, 글 아닌 부분. 앱 통로에 `h-confirm` 글 조각이 없고 확인 문구가 `data-activity.confirmation`에 있음(확인이 필요한 변경의 줄 포함), 재생도 같음. `ui_todo_list`·`ui_todo_draft` 출력의 `data.todos`가 `TodoRef`. 대화 id를 받을 때 골라 `start`·`x-conversation-id`·`inbound_pending.conversation_id`가 같음. 아래 기준 응답과 비교 |
 | 섞인 큐(7.5) | 텔레그램 메시지 2개와 앱 메시지 2개가 한 번에 큐에 있을 때: 텔레그램 둘은 한 묶음·한 두뇌 호출, 앱은 하나씩 두 호출, 답은 각자 통로로(텔레그램 가짜 봇, 앱 싱크 둘), 대화가 섞이지 않음. 앱 처리 완료가 `telegram_updates`에 음수 id를 쓰지 않음. 시작 때 다시 넣은 `channel='app'` 행이 텔레그램으로 답하지 않고 `reply_text`·원문 기록·`api_idempotency`만 남김. 싱크가 끊긴 뒤에도 M5 완료. 처리 중 같은 `client_msg_id` 재요청은 두뇌 호출 하나 |
 | 통로 | 텔레그램 `chat`과 앱 `chat`이 서로 잇지 않음, 회차 답이 다른 통로에서 오면 가르기(`fork_session`), `checkin_id` 규칙, 계획 모드 대기는 어느 통로든, 다른 통로 변경 알림 5줄 |
 | 전달 | D1a~D8: 기본 `app`인데 구독 없음 → 처음부터 텔레그램(`effective`), 주 통로 `telegram`/`app`, 푸시가 모두 안 됨 → 텔레그램 대체, 404/410 → 구독 끔, `proactive_messages`는 회차마다 1, 5분 뒤 재전송, 고정 안내 통로 |
-| 답할 회차 | `pending`/`answered`/`missed`, 보낸 시각 기준, 한쪽 답 → 텔레그램 버튼 거둠, 합친 회차의 답장 창 |
+| 답할 회차 | `pending`/`answered`/`missed`, 보낸 시각 기준, 한쪽 답 → 텔레그램 버튼 거둠, 합친 회차의 답장 창. `cards`를 DB에서 다시 만듦(6.4.5 표): 남은 초안만, 기록한 컨디션은 빠짐, 열린 확인 토큰마다 `ui_confirm`, `data.todos` |
 | `/actions` | 표의 모든 동작, `needs_confirm` 조건과 토큰 만료, 거절 422, 중복 `client_msg_id` |
 | 되돌리기 | U1~U6 전부, 종류별 되돌리기 표, 24시간 경계, `superseded`, 두 번 되돌리기, 경험치 그대로 |
-| 활동 | 변경과 같은 트랜잭션(도구 예외 시 둘 다 없음), `actor`/`channel` 매핑, 본문 없음 |
+| 활동 | 변경과 같은 트랜잭션(도구 예외 시 둘 다 없음), `actor`/`channel` 매핑, 본문 없음. `order=desc` 최근 것부터, `before`/`next_before`로 끝까지 빠짐·겹침 없이(같은 `at`의 행 포함), `asc`의 `before` → 400 |
 | 화면 도구 | `ui_*`가 DB 파일과 데이터 폴더를 바꾸지 않음(호출 전후 비교), 스키마 오류 → 도구 오류 + 조각 없음, 텔레그램 대화의 허용 도구에 없음 |
 | 카드 도구 | `pin_card`·`unpin_card`·`reorder_cards`가 앱 대화의 허용 도구에만 있음, `pin_card` props를 고정하는 컴포넌트의 스키마로 검증(다른 컴포넌트 스키마로는 거절), 활동 `actor = secretary`, 되돌리기 |
 | 회차 차례의 확인(10.1) | A1 판정: 회차 차례(`run_id` 있고 `inbound_id` 없음)와 사용자 차례(회차 대화의 답 포함)를 두 통로에서. 회차 차례의 `drop_task`·`set_priorities`(주기 다섯)·`scheduled_at` 바꾸는 `update_task`·시각 있는 할 일의 `move_task` → 데이터 그대로, `pending_confirms` 행, `ui_confirm` 조각과 텔레그램 `k:` 버튼. 사용자 차례에는 SP1 그대로 바로 적용(SP1 시험 그대로 통과). `add_task`는 회차 차례에서도 바로. 확인 → 적용과 활동, 그대로 두기 → 변화 없음, 두 번 누름·만료·`stale` → 적용 안 함. 재시작 뒤에도 토큰 유효 |
@@ -1333,11 +1397,11 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 상태창 | X1~X10 표, X2의 가장 큰 주기, 원장 UNIQUE, X9 쉬는 날(멈춤, 꺼진 날, 14일 상한), 레벨 표, 디버프 조건, 회복 퀘스트 우선순위, 칭호 생성·삭제 |
 | 속성 | 무작위 순서의 도구·되돌리기·회차 뒤에도 `xp_total`과 `level`이 줄지 않음(완료 조건 8) |
 | 회고 단계 | 마지막 일요일 판정(5주 있는 달, 12/27), 분기·연말 겹침, 넘겨 받은 회고가 원래 날짜로 판정, 사다리 두 단계 버튼, 건너뛰기, 답장 창 뒤에는 묻지 않음, 늦은 회고 뒤 다음 회고가 두 번 묻지 않음 |
-| `seed-life` | 꾸며 낸 시드로: `reviewed` 없음 → 아무것도 안 함, 민감·`storage` 항목은 `confirmed`일 때만, 점수 안 가져옴, `turning` → `turning_point`, 다시 실행 거절, BE 실행 중 거절(잠금), `--dry-run` 출력에 제목이 없음 |
-| 원문 기록 | `@app`/`@telegram` 표시, 표시 없는 옛 머리글 읽기 |
-| 마이그레이션 | 0→010, 005→010(SP1 데이터 보존: 기존 대화·inbound는 `telegram`) |
+| `seed-life` | 꾸며 낸 시드로: `reviewed` 없음 → 아무것도 안 함(코드 5), 민감·`storage` 항목은 `confirmed`일 때만, 점수 안 가져옴, `turning` → `turning_point`, 다시 실행 거절(코드 4), BE 실행 중 거절(잠금, 코드 3), `--dry-run` 출력에 제목이 없음. BOM 있는 파일을 읽음, JSON이 아닌 파일 → 코드 6, 틀린 항목은 `invalid` 개수로만 |
+| 원문 기록 | 앱 머리글만 `#<id> @app`, 텔레그램 머리글은 SP1과 같음, 표시 없는 머리글은 `telegram`으로 읽기. `GET /conversations/{id}/messages`의 `id`가 다시 읽어도 같고, 앱 비서 줄의 `id`가 그 답의 `start.messageId`와 같음 |
+| 마이그레이션 | 0→010, 005→010(SP1 데이터 보존: 기존 대화·inbound는 `telegram`). 다시 넣은 앱 행이 `inbound_pending.conversation_id`(005의 열)의 대화로 가고, 닫혔으면 다시 고른 대화로 |
 | 시각 | `/actions`의 `result`와 `tool-output-available.output`의 시각이 UTC `Z` 꼴, 두뇌가 받는 도구 결과는 `+09:00` 그대로 |
-| 쓰기 경로 | 4.3 표의 표마다 다른 경로로 쓰지 않음(쓰기 연결 감시 이음매로 호출 위치 기록) |
+| 쓰기 경로 | 4.3 표의 표마다 다른 경로로 쓰지 않음(쓰기 연결 감시 이음매로 호출 위치 기록). 앱 요청이 여는 `conversations`는 `route_app_message`에서만 |
 
 **실행 명령과 기대 출력**
 
@@ -1350,6 +1414,10 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 린트 | `ruff check src tests` | `All checks passed!` |
 | 대시보드 | `cd web/dashboard && npm test` | 실패 0 |
 | 대시보드 빌드 | `cd web/dashboard && npm run build` | `out/`에 정적 파일 생성(서버 함수 없음) |
+| 대시보드 CSP | `cd web/dashboard && npm run check:csp` | `CSP OK: 0 inline scripts, 0 inline styles, meta first` |
+| 기준 응답 | `python -m pytest tests/test_app_golden.py` | 실패 0 |
+
+**운영 앱 기준 응답(golden)**: 운영 앱 스레드가 따로 주는 기준 응답은 없다. BE가 6.4.1과 AI SDK UI message stream 규격대로 `tests/fixtures/app_golden/`에 만든다: `chat_add_task.sse`(도구 하나와 확인 문구), `chat_daily_cap.sse`(하루 상한 고정 문구), `chat_replay.sse`(같은 `client_msg_id` 재생), `chat_propose_tasks.sse`(하네스 `ui_todo_draft` 조각 `h_draft_*`), 그리고 응답 헤더 `headers.json`. `tests/test_app_golden.py`가 가짜 두뇌와 가짜 시계로 같은 요청을 보내 `messageId`만 바꿔 두고(`normalize_sse`) 이 파일과 바이트 단위로 비교하고, 모든 파일이 시험용 파서 `parse_sse`(첫 `start`, `text-*` id 짝, 같은 `toolCallId`의 출력, 마지막 `finish`와 `[DONE]`, 규격 밖 조각 종류는 오류)를 통과하는지 본다. `python -m pytest tests/test_app_golden.py --update-app-golden`이 파일을 다시 쓴다. 파일과 파서 규칙은 운영 앱 스레드에 보내 확인받지만, BE 작업은 그 답을 기다리지 않는다. 차이가 나오면 새 이슈로 고치고 다시 쓴다. 꾸며 낸 내용만 쓴다.
 
 **대시보드 테스트**: 가짜 BE(MSW)로 화면마다 정상, 빈 상태, 꺼짐(네트워크 오류, 10초 초과), 401, 503, 모양 오류를 그린다. `localStorage`가 막힌 브라우저에서도 꺼짐 표시가 "기록 없음"으로 그려진다.
 
@@ -1417,6 +1485,8 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 2026-10-24 | v1 | 운영 앱 계약 추가: 생성형 UI 카탈로그, `/actions`·되돌리기·활동, `/today` 카드, 답할 회차 상태, 푸시 페이로드, `/settings/notify`, `/chat` SSE | 운영 앱 스레드 요청 2차. `ui_todo_draft`는 SP1 규칙에 맞춰 하네스 생성으로 바꿈 |
 | 2026-10-24 | v3 | 운영 앱 스레드 승인(6~7장, 14장)의 두 차이: 앱 대화 전용 두뇌 도구 `pin_card`, `unpin_card`, `reorder_cards`(앱 대화 28개). 회차 차례의 확인 규칙 10.1, `pending_confirms` 표, 하네스 확인 카드 `ui_confirm`과 텔레그램 확인 버튼, `decline_confirm` 동작, 미결 13 | 운영 앱 스레드 |
 | 2026-10-24 | v2 | 문서 리뷰 반영(BLOCKER 1, SHOULD 13, NIT 12): 두뇌 갈래의 통로 처리 7.5(통로별 묶음, 통로별 보낼 곳, 다시 넣은 앱 행, 처리 완료 기록), 4.3 표별 작성자, 사다리 콜백과 기간 기본값, 컨디션 다음 사다리, `now` NULL 허용, 챕터 FK `ON DELETE SET NULL`, 초안 `draft_since`, API 경계 UTC, CSP, 시드 위치, `drop_curve_drafts`, 쉬는 날 용어, 시험 명령. 주 통로 기본값 `app`(텔레그램은 대체), 운영 앱 스레드가 동의한 두 항목을 미결에서 뺌 | 리뷰, 운영 앱 스레드 정정 |
+| 2026-10-24 | v4 | 구현 계획의 계약 결정(빈 곳 1~7, 9, 11, 13, 15) 반영: 앱 머리글에만 `@app`(7.4), 받을 때 대화 고르기 `route_app_message`(6.4.1, 7.5 M3, 4.3 표), Pages Router와 `_document` `<meta>` CSP·`check-csp`(13.1, 14장), `API_TOKEN` 없음·짧음(6.1, 15장), `seed-life` 코드 6·BOM·`invalid`(12장), 체크인 `cards` 다시 만들기(6.4.5), 카탈로그 `2026-10-24.2`와 `ui_milestone_draft`·`ui_chapter_draft`(6.4.7), BE가 만드는 기준 응답(1장 조건 9, 16장), `sender` + `app_sender`(7.5 M4), 받을 때 고른 대화를 SP1 `005`의 `inbound_pending.conversation_id`에 적음(5.1, 7.5 M6. 계획 초안의 `011_inbound_conversation.sql`은 열이 이미 있어 만들지 않음) | SP3-4 구현 계획 "스펙 빈 곳과 이 계획의 결정" 표, 티켓 01 리뷰(011 중복 열) |
+| 2026-10-24 | v4 | 운영 앱 스레드 요청(SP5 스펙 12장) R1 `GET /priorities`(6.3.7), R2 `GET /drafts`(6.3.8, 6.3 초안 규칙 고침), R4a `GET /activity`의 `order=desc`·`before`·`next_before`(6.4.4), R4b 확인 문구를 `data-activity.confirmation`으로, 앱 통로의 `h-confirm` 글 조각 없앰(6.4.1, 7.5 M4·M5, 5.2), R4c `TodoRef`와 `data.todos`(6.3, 6.4.1, 6.4.5, 6.4.7), R4d 메시지 `id`(6.4.6, 7.4). 확인을 기다리는 `ui_confirm`은 `GET /checkins/{id}`의 `cards`로 읽는다(새 경로 없음) | 운영 앱 스레드(SP5 스펙 PR #67 12장) |
 
 **마스터 설계와 ADR에 반영할 것** (이 스펙이 승인되면 고친다)
 
