@@ -33,7 +33,7 @@ def api_time(dt: datetime) -> str:
 
 
 # 시각 필드 이름(스펙 6.1 "시각 필드를 변환"). 이 이름이거나 `_at`으로 끝나는 키의 값만 바꾼다
-TIME_KEYS = frozenset({"now", "scheduled_for", "since", "limited_until", "paused_until", "reply_until"})
+TIME_KEYS = frozenset({"now", "at", "scheduled_for", "since", "limited_until", "paused_until", "reply_until"})
 
 
 def is_time_key(key: str | None) -> bool:
@@ -57,6 +57,16 @@ def to_api_times(value: Any, *, key: str | None = None) -> Any:
         except ValueError:
             return value
     return value
+
+
+class ApiError(Exception):
+    """처리기가 던지면 `read_handler`가 6.1 오류 모양으로 바꾼다. `message`에는 요청 값을 넣지 않는다."""
+
+    def __init__(self, status: int, code: ErrorCode, message: str) -> None:
+        super().__init__(code)
+        self.status = status
+        self.code: ErrorCode = code
+        self.message = message
 
 
 def error_response(status: int, code: ErrorCode, message: str) -> web.Response:
@@ -181,13 +191,261 @@ class SafeModeHealth(_Model):
     now: str
 
 
+# --- 읽기 (6.3, 6.4.5~6.4.7) ---
+
+AreaName = Literal["career", "finance", "health", "relationships", "learning", "quality_of_life"]
+CadenceName = Literal["day", "week", "month", "quarter", "year"]
+LoopName = Literal["morning_brief", "evening_checkin", "review", "return"]
+ChannelName = Literal["telegram", "app"]
+TodoStatus = Literal["draft", "open", "done", "dropped"]
+
+
+class TodoPriority(_Model):
+    cadence: CadenceName
+    period: str
+    rank: int
+
+
+class Todo(_Model):
+    """공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: "draft"`로 나온다."""
+
+    id: int
+    title: str
+    status: TodoStatus
+    planned_for: str | None
+    scheduled_at: str | None
+    parent_id: int | None
+    areas: list[AreaName]
+    note: str
+    priority: TodoPriority | None
+    completed_at: str | None
+
+
+class TodoRef(_Model):
+    """화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`."""
+
+    id: int
+    title: str
+    cadence: CadenceName | None
+    area: AreaName | None
+    status: TodoStatus
+
+
+class TodoRefs(_Model):
+    """화면 조각 `data`의 모양 `{"todos": [TodoRef]}` (6.4.1 도구 출력, 6.4.5)."""
+
+    todos: list[TodoRef]
+
+
+class ConditionItem(_Model):
+    date: str
+    score: int
+    note: str | None
+
+
+class TodayBrief(_Model):
+    run_id: int
+    loop: LoopName
+    text: str
+    sent_at: str | None
+
+
+class TodayTodo(_Model):
+    group: Literal["priority", "scheduled", "open"]
+    todo: Todo
+
+
+class AppCard(_Model):
+    """고정 카드 (6.3.2 `cards`, 운영 앱용). 티켓 09 전에는 목록이 비어 있다."""
+
+    id: int
+    component: str
+    order: int
+    pinned_at: str
+    props: dict[str, Any]
+    data: dict[str, Any] | None = None
+
+
+class CheckinConversationIds(_Model):
+    app: int | None
+    telegram: int | None
+
+
+class CheckinSummary(_Model):
+    """답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 "지나감"이다."""
+
+    id: int
+    loop: LoopName
+    cadence: CadenceName
+    scheduled_for: str
+    sent_at: str | None
+    delivered_via: list[ChannelName]
+    state: Literal["pending", "answered", "missed"]
+    answered_via: ChannelName | None
+    answered_at: str | None
+    reply_until: str
+    conversation_ids: CheckinConversationIds
+
+
+class CheckinCard(_Model):
+    toolCallId: str
+    component: str
+    props: dict[str, Any]
+    data: dict[str, Any] | None = None  # 할 일을 가리키는 카드만(`TodoRefs`)
+
+
+class CheckinDetail(CheckinSummary):
+    text: str
+    cards: list[CheckinCard]
+
+
+class CheckinList(_Model):
+    items: list[CheckinSummary]
+
+
+class Today(_Model):
+    """`GET /today` (6.3.2)."""
+
+    date: str
+    weekday: str
+    brief: TodayBrief | None
+    condition: ConditionItem | None
+    todos: list[TodayTodo]
+    checkins: list[CheckinSummary]
+    cards: list[AppCard]
+
+
+class WeekDay(_Model):
+    date: str
+    weekday: str
+    is_today: bool
+    todos: list[Todo]
+
+
+class Week(_Model):
+    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다."""
+
+    week: str
+    start: str
+    end: str
+    priorities: list[Todo]
+    days: list[WeekDay]
+
+
+class Conditions(_Model):
+    """`GET /conditions` (6.3.4)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    items: list[ConditionItem]
+    days_logged: int
+    average: float | None
+
+
+class Priorities(_Model):
+    """`GET /priorities` (6.3.7)."""
+
+    cadence: Literal["week", "month", "quarter", "year"]
+    period: str
+    items: list[Todo]
+
+
+class DraftItem(_Model):
+    todo: Todo
+    proposed_at: str
+    expires_at: str
+    run_id: int | None
+    conversation_id: int | None
+
+
+class Drafts(_Model):
+    """`GET /drafts` (6.3.8): 만료 전 초안만."""
+
+    items: list[DraftItem]
+
+
+class ConversationItem(_Model):
+    id: int
+    kind: Literal["run", "chat", "plan"]
+    channel: ChannelName
+    run_id: int | None
+    opened_at: str
+    last_message_at: str
+    closed_at: str | None
+
+
+class Conversations(_Model):
+    items: list[ConversationItem]
+
+
+class MessageItem(_Model):
+    """대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`."""
+
+    id: str
+    at: str
+    speaker: Literal["user", "secretary"]
+    text: str
+    tools: list[str]
+    channel: ChannelName
+
+
+class Messages(_Model):
+    items: list[MessageItem]
+
+
+class UiComponent(_Model):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    origin: Literal["brain", "harness"]
+    schema_: dict[str, Any] = Field(alias="schema")
+
+
+class UiCatalog(_Model):
+    """`GET /ui/catalog` (6.4.7)."""
+
+    version: str
+    components: dict[str, UiComponent]
+
+
+class SchemaBundle(_Model):
+    """`GET /schema` (6.4): 모든 모델의 JSON 스키마."""
+
+    api: Literal["v1"]
+    models: dict[str, dict[str, Any]]
+
+
+def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
+    """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
+    return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
+
+
 MODELS: dict[str, type[BaseModel]] = {
     "Error": ErrorBody,
     "Health": Health,
     "SafeModeHealth": SafeModeHealth,
+    "Todo": Todo,
+    "TodoRef": TodoRef,
+    "TodoRefs": TodoRefs,
+    "Today": Today,
+    "Week": Week,
+    "Conditions": Conditions,
+    "Priorities": Priorities,
+    "Drafts": Drafts,
+    "CheckinList": CheckinList,
+    "CheckinSummary": CheckinSummary,
+    "CheckinDetail": CheckinDetail,
+    "Conversations": Conversations,
+    "Messages": Messages,
+    "UiCatalog": UiCatalog,
+    "SchemaBundle": SchemaBundle,
 }
 
 
 def schema_bundle() -> dict[str, Any]:
-    """모델 이름 → JSON 스키마(`GET /schema`, `python -m my_planner schema`는 티켓 02)."""
-    return {name: model.model_json_schema(by_alias=True) for name, model in sorted(MODELS.items())}
+    """`GET /schema`와 `python -m my_planner schema`의 본문: `{"api": "v1", "models": {이름: JSON 스키마}}` (6.4)."""
+    return {
+        "api": "v1",
+        "models": {name: model.model_json_schema(by_alias=True) for name, model in sorted(MODELS.items())},
+    }

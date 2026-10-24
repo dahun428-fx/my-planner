@@ -27,12 +27,12 @@ from my_planner.store.repos.state import (
     PAUSE_UNTIL_KEY,
     StateRepo,
 )
+from my_planner.tools.ui import UI_CATALOG_VERSION
 
 if TYPE_CHECKING:
     from my_planner.api.server import ApiDeps
 
 API_VERSION = "v1"
-UI_CATALOG_VERSION = "2026-10-24.1"  # 스펙 6.4.7. 티켓 02가 tools/ui.py로 옮긴다
 _OWN_PREFIX = "my_planner"
 
 

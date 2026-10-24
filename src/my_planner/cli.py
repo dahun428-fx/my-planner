@@ -1,7 +1,8 @@
 """명령줄 `python -m my_planner [명령]` (SP3-4 스펙 6.1, 15).
 
 인자가 없으면 BE를 띄운다(`app.main()`). `gen-token`은 API 토큰 하나를 출력한다(`.env`의 `API_TOKEN`에 넣는다).
-뒤 티켓이 더한다: `schema`(02), `gen-vapid`(08), `seed-life`(12).
+`schema`는 `GET /schema`와 같은 JSON 스키마 묶음을 출력한다(운영 앱이 빌드 때 쓴다).
+뒤 티켓이 더한다: `gen-vapid`(08), `seed-life`(12).
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import secrets
 import sys
 from collections.abc import Sequence
 
-USAGE = "사용법: python -m my_planner [gen-token]"
+USAGE = "사용법: python -m my_planner [gen-token | schema]"
 EXIT_USAGE = 2
 
 
@@ -27,6 +28,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return app.main()
     if args == ["gen-token"]:
         print(gen_token())
+        return 0
+    if args == ["schema"]:
+        import json
+
+        from my_planner.api.models import (
+            schema_bundle,  # 텔레그램·SDK 없이 모델만 불러온다
+        )
+
+        print(json.dumps(schema_bundle(), ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     print(USAGE, file=sys.stderr)
     return EXIT_USAGE

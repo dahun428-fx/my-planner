@@ -114,3 +114,28 @@ async def test_chunked_body_over_limit_413(env):
         assert (await resp.json())["error"]["code"] == "too_large"
     finally:
         await client.close()
+
+
+async def test_read_endpoints_log_no_titles_bodies_or_ids(tmp_path):
+    from datetime import date
+
+    from fakes import FakeTurn
+
+    from my_planner.domain import Area, TaskStatus
+
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "비밀 답장 문장")]) as env:
+        setup_logging(env.settings.paths.state_dir, 30)
+        env.parts.tasks.create("비밀 할 일 제목", [Area.career], TaskStatus.open, date(2026, 10, 24), None, None, "비밀 메모")
+        await env.telegram("비밀 사용자 문장")
+        cid = (await (await env.get("/conversations")).json())["items"][0]["id"]
+        for path in (
+            "/today", "/week", "/drafts", "/conditions?from=2026-10-01", "/checkins", f"/conversations/{cid}/messages",
+            "/priorities?cadence=week&period=SECRET-PERIOD", "/checkins/SECRET-ID",
+        ):
+            await env.get(path)
+        raw = _raw(env.settings.paths.state_dir)
+        routes = {e["route"] for e in _entries(env.settings.paths.state_dir, "api_request")}
+
+    for secret in ("비밀 할 일 제목", "비밀 메모", "비밀 사용자 문장", "비밀 답장 문장", "SECRET-PERIOD", "SECRET-ID", "2026-10-01"):
+        assert secret not in raw
+    assert "/api/v1/conversations/{id}/messages" in routes and "/api/v1/checkins/{id}" in routes

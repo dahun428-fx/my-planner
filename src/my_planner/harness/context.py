@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from my_planner.clock import local, logical_date, period_of
-from my_planner.domain import Cadence, TaskStatus
+from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.store.exports import format_task
 
 if TYPE_CHECKING:
+    from my_planner.config import Settings
     from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import Task, TasksRepo
 
 OPEN_TASKS_MAX = 30
@@ -99,3 +102,37 @@ def build_preamble(
             "그때까지 비서가 먼저 연락하지 않아요(묻는 말에는 답합니다)."
         )
     return "\n\n".join(sections)
+
+
+def _evening_done(d: date, *, runs: RunsRepo, settings: Settings) -> bool:
+    """그 논리적 날짜의 저녁 체크인 회차가 done인지. 회차가 없으면 done이 아니다."""
+    start = datetime.combine(d, settings.day_boundary, ZoneInfo(settings.timezone))
+    got = runs.between(start - timedelta(microseconds=1), start + timedelta(days=1))
+    return any(
+        r.loop is LoopKey.evening_checkin
+        and r.status is RunStatus.done
+        and logical_date(r.scheduled_for, settings.timezone, settings.day_boundary) == d
+        for r in got
+    )
+
+
+def ask_condition_for(
+    run: Run, merged: list[Run] | None, *, conditions: ConditionsRepo | None, runs: RunsRepo, settings: Settings
+) -> date | None:
+    """컨디션 버튼의 날짜(스펙 5.4). 저녁 체크인은 그 회차의 논리적 날짜다.
+
+    저녁 체크인이 다른 회차(예: 일요일 회고)에 합쳐졌어도 그 저녁 체크인의 날짜를 쓴다. 텔레그램 버튼과
+    앱의 `ui_condition_picker` 카드(6.4.5)가 같은 판정을 쓰도록 디스패처에서 옮겼다. 읽기만 한다.
+    """
+    if conditions is None:
+        return None
+    for r in (run, *(merged or [])):
+        if r.loop is LoopKey.evening_checkin:
+            return logical_date(r.scheduled_for, settings.timezone, settings.day_boundary)
+    today = logical_date(run.scheduled_for, settings.timezone, settings.day_boundary)
+    if run.loop is LoopKey.morning_brief:
+        # 어제 기록이 없고 어제 저녁 체크인이 done이 아니면(늦음, 복귀 인사, 멈춤 등 이유와 상관없이) 어제를 묻는다
+        yesterday = today - timedelta(days=1)
+        if conditions.get(yesterday) is None and not _evening_done(yesterday, runs=runs, settings=settings):
+            return yesterday
+    return None

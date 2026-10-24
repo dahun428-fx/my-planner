@@ -47,3 +47,17 @@ class ConditionsRepo:
             note=r["note"],
             recorded_at=from_iso(r["recorded_at"]),
         )
+
+    def between(self, from_: date, to: date) -> list[Condition]:
+        """`from_`~`to`(포함)에 기록한 컨디션, 날짜순. 기록 없는 날은 넣지 않는다."""
+        rows = self.conn.execute(
+            "SELECT * FROM conditions WHERE date >= ? AND date <= ? ORDER BY date",
+            (from_.isoformat(), to.isoformat()),
+        ).fetchall()
+        return [
+            Condition(
+                date=date.fromisoformat(r["date"]), score=r["score"], note=r["note"],
+                recorded_at=from_iso(r["recorded_at"]),
+            )
+            for r in rows
+        ]
