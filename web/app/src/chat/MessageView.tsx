@@ -10,14 +10,15 @@ import styles from "./ChatSheet.module.css";
 type UndoState = { kind: "idle" } | { kind: "busy" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
 
 // The grey box of a data-activity part (12장 R4b) and its undo. Before R4b there is no
-// confirmation: then only the undo button shows.
-function ActivityBox({ confirmation, undoId }: { confirmation: string | null; undoId: number | null }) {
+// confirmation: then only the undo button shows. Read-only (offline, an answer coming) turns the
+// undo off like every other write.
+function ActivityBox({ confirmation, undoId, readOnly }: { confirmation: string | null; undoId: number | null; readOnly: boolean }) {
   const toast = useToast();
   const [undo, setUndo] = useState<UndoState>({ kind: "idle" });
   const lock = useRef(false);
 
   const run = async (id: number) => {
-    if (lock.current) return; // the answer to the first press has not come yet
+    if (lock.current || readOnly) return; // the answer to the first press has not come yet
     lock.current = true;
     setUndo({ kind: "busy" });
     try {
@@ -45,7 +46,7 @@ function ActivityBox({ confirmation, undoId }: { confirmation: string | null; un
   else if (undo.kind === "blocked") trailing = <span className={styles.note}>{copy.activity.undoBlocked[undo.reason]}</span>;
   else if (undoId !== null) {
     trailing = (
-      <button type="button" className={styles.undo} disabled={undo.kind === "busy"} onClick={() => void run(undoId)}>
+      <button type="button" className={styles.undo} disabled={readOnly || undo.kind === "busy"} onClick={() => void run(undoId)}>
         {copy.chat.undo}
       </button>
     );
@@ -101,7 +102,7 @@ export function MessageView({
             </div>
           );
         }
-        return <ActivityBox key={i} confirmation={p.confirmation} undoId={p.undoIds[0] ?? null} />;
+        return <ActivityBox key={i} confirmation={p.confirmation} undoId={p.undoIds[0] ?? null} readOnly={readOnly} />;
       })}
     </div>
   );
