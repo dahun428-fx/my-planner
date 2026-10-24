@@ -190,6 +190,44 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 3. 연결 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣습니다. 토큰은 이 기기 안에만 남습니다.
 4. 설정 › 이 기기 알림에서 허용하기를 누르고 "시험 알림 보내기"로 확인합니다. VAPID 키가 없으면 알림은 텔레그램으로 갑니다(위 "토큰과 푸시 키").
 
+## 대시보드
+
+인생곡선, 상태 창, 할 일과 컨디션, BE 상태를 보는 읽기 전용 대시보드(`web/dashboard/`)도 Vercel에 정적 파일로 올립니다. 운영 앱과 같은 BE와 같은 `API_TOKEN`을 씁니다.
+
+**Vercel 프로젝트 설정**
+
+- 운영 앱과 **다른 프로젝트**로 만들고, Root Directory는 `web/dashboard`입니다. 빌드 설정은 `web/dashboard/vercel.json`이 고정합니다(Framework 없음, `npm run build`, 출력 `out`).
+- 환경 변수는 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나뿐입니다. BE 주소와 토큰은 넣지 않습니다(정적 파일은 누구나 받을 수 있습니다). Vercel 분석은 켜지 않습니다.
+- 배포 주소가 정해지면 `config.toml`의 `[api] cors_origins`에 그 주소를 **더합니다**(운영 앱 주소는 그대로 둡니다). 그 뒤 작업을 다시 켭니다.
+
+  ```toml
+  [api]
+  cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://<대시보드>.vercel.app"]
+  ```
+
+**연결하기**
+
+1. 폰이나 노트북에서 Tailscale을 켜고 대시보드 주소를 엽니다.
+2. 설정 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣고 "연결 확인"을 누릅니다. 둘은 그 브라우저 안에만 남습니다.
+3. 데스크톱이나 Android Chrome이 "로컬 네트워크의 기기에 접근" 같은 권한 창을 띄우면 허용합니다(사설망 접근, PNA). BE는 tailnet 안에만 있으므로 이 권한이 있어야 닿습니다.
+4. 띠에 "BE 꺼짐"이 보이면 노트북이 꺼져 있거나 Tailscale이 꺼진 것입니다. 마지막으로 응답한 시각이 함께 나옵니다.
+
+**인생 시드 가져오기**
+
+처음 한 번, 검토를 마친 시드 파일에서 챕터와 사건을 가져옵니다. 점수는 가져오지 않습니다(회고에서 답할 때 생깁니다).
+
+1. 시드 파일을 노트북의 `data/seed/` 아래로 옮기고, 검토를 마쳤으면 `meta.reviewed`를 `true`로 넣습니다. 민감한 항목은 `confirmed: true`를 넣은 것만 가져옵니다.
+2. 작업 스케줄러에서 my-planner를 멈춘 뒤 미리 봅니다. 개수만 나오고 내용은 나오지 않습니다.
+
+   ```powershell
+   .venv\Scripts\python.exe -m my_planner seed-life data\seed\<파일> --dry-run
+   ```
+
+3. 개수가 맞으면 `--dry-run` 없이 한 번 더 실행해 가져오고, 작업을 다시 켭니다.
+4. 노트북 밖에 만든 사본(클라우드 파일, 메신저 등)은 직접 지웁니다.
+
+종료 코드: `0` 끝남, `3` my-planner가 실행 중, `4` 이미 가져옴, `5` `meta.reviewed`가 `true`가 아님, `6` 읽을 수 없거나 JSON이 아닌 파일.
+
 ## 데이터는 어디에 남나요
 
 | 위치 | 내용 |
