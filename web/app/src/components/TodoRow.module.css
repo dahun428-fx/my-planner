@@ -1,0 +1,59 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: var(--row);
+  padding: 0.25rem var(--pad) 0.25rem 0;
+}
+.check {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+span.check {
+  cursor: default;
+}
+.check:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.circle {
+  width: 1.5rem;
+  height: 1.5rem;
+  box-sizing: border-box;
+  border: 2px solid var(--control);
+  border-radius: var(--radius-pill);
+}
+.filled {
+  border-color: var(--muted);
+  background: var(--muted);
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  font-size: var(--size-body);
+  line-height: 1.35;
+  color: var(--text);
+}
+.done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.meta {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

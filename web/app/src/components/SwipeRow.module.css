@@ -1,0 +1,79 @@
+.wrap {
+  position: relative;
+  overflow: hidden;
+}
+.wrap + .wrap {
+  border-top: 1px solid var(--rule);
+}
+.surface {
+  position: relative;
+  background: var(--surface);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.animate {
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+  background: var(--raised);
+}
+.action {
+  width: 5rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.action:focus-visible,
+.menuItem:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.negative,
+.negativeText {
+  color: var(--negative);
+}
+.menu {
+  display: flex;
+  flex-direction: column;
+}
+.menuItem {
+  min-height: var(--row);
+  padding: 0 var(--pad);
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.menuItem:first-child {
+  border-top: 0;
+}
+.more {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--control-h);
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+.more:focus,
+.more:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}

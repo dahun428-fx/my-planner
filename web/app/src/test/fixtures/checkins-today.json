@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": 340,
+      "loop": "morning_brief",
+      "cadence": "day",
+      "state": "answered",
+      "scheduled_for": "2026-10-24T01:00:00Z",
+      "sent_at": "2026-10-24T01:00:12Z",
+      "reply_until": "2026-10-24T01:00:00Z",
+      "answered_at": "2026-10-24T01:20:00Z",
+      "answered_via": "app",
+      "delivered_via": [
+        "app"
+      ],
+      "conversation_ids": {
+        "app": null,
+        "telegram": null
+      }
+    },
+    {
+      "id": 341,
+      "loop": "evening_checkin",
+      "cadence": "day",
+      "state": "pending",
+      "scheduled_for": "2026-10-24T09:00:00Z",
+      "sent_at": "2026-10-24T09:00:05Z",
+      "reply_until": "2026-10-24T09:00:00Z",
+      "answered_at": null,
+      "answered_via": null,
+      "delivered_via": [
+        "app"
+      ],
+      "conversation_ids": {
+        "app": null,
+        "telegram": null
+      }
+    }
+  ]
+}

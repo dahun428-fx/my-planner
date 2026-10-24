@@ -2,6 +2,8 @@
 // `npm run lint:copy` rejects Hangul literals anywhere else. Templates are functions.
 // Later tickets add entries to these groups.
 
+const CHAT_LATER = "비서가 다시 연결되면 말할 수 있어요";
+
 export const copy = {
   appName: "비서",
 
@@ -38,11 +40,20 @@ export const copy = {
     noTodos: "오늘 잡힌 할 일이 없어요. 비서에게 말하거나 + 로 추가할 수 있어요.",
     completedAt: (hhmm: string) => `${hhmm} 완료`,
     pinnedBy: "비서가 올려 둔 카드",
+    priority: "우선",
+    lessPlain: "접기",
+    dateLine: (m: number, d: number, weekday: string) => `${m}월 ${d}일 ${weekday}요일`,
+    checkinLine: (name: string) => `${name} · 답장할 수 있어요`,
+    conditionScore: (n: number) => `컨디션 ${n}`,
+    checkLabel: (title: string) => `${title} 체크`,
+    doneLabel: (title: string) => `${title} 완료됨, 다시 열기`,
+    menu: "이 할 일에 할 수 있는 일",
+    moreActions: (title: string) => `${title} 더 보기`,
   },
 
   chat: {
     launcher: "비서에게 말하기",
-    launcherOffline: "비서가 다시 연결되면 말할 수 있어요",
+    launcherOffline: CHAT_LATER,
     close: "닫기",
     title: "비서",
     subtitle: "앱 대화",
@@ -147,6 +158,9 @@ export const copy = {
     noSnapshot: "아직 받아 둔 내용이 없어요. 노트북이 켜지면 보여 드릴게요.",
     reconnect: "다시 연결",
     check: "연결 확인",
+    writeLater: "비서가 다시 연결되면 할 수 있어요",
+    catchUp: "노트북이 켜지면 지나간 체크인부터 차례로 따라잡아요.",
+    chatLater: CHAT_LATER,
   },
 
   errors: {
@@ -154,6 +168,7 @@ export const copy = {
     retry: "다시 시도",
     notFound: "찾는 화면이 없어요.",
     goToday: "오늘로 가기",
+    goSettings: "설정 열기",
   },
 
   actions: {
