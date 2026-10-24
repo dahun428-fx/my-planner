@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { useRouter } from "next/router";
 import { type FormEvent, useEffect, useState } from "react";
 import { StateNotice } from "../components/StateNotice";
@@ -117,20 +116,13 @@ export default function Settings() {
           {outcome.text}
         </p>
       )}
-      {outcome?.kind === "result" &&
-        (outcome.result.kind === "ok" ? (
-          <div className="notice" data-kind="ok" role="status">
-            <p>{T.ok}</p>
-            <p>
-              <Link href="/">{T.home}</Link>
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="meta">{T.saved}</p>
-            <StateNotice result={outcome.result} settingsLink={false} />
-          </>
-        ))}
+      {/* A good answer goes home at once (the band there says it is on); only a failed check stays. */}
+      {outcome?.kind === "result" && outcome.result.kind !== "ok" && (
+        <>
+          <p className="meta">{T.saved}</p>
+          <StateNotice result={outcome.result} settingsLink={false} />
+        </>
+      )}
       <Help />
     </>
   );

@@ -16,7 +16,8 @@ export interface PollingOptions {
 /**
  * Spec 13.1 "새로 고침": load when the screen opens and every `intervalMs` while the tab is visible,
  * once more when a hidden tab comes back. A 401 stops the timer (the token has to be fixed first);
- * `refresh()` (the "연결 확인" button) always loads. A new `resetKey` (another BE or token) starts over.
+ * `refresh()` (the "연결 확인" button) always loads, and an offline answer to it puts the wait back to the
+ * first retry step instead of moving it up. A new `resetKey` (another BE or token) starts over.
  * The next load is counted from the end of the last one. `retryMs` is the wait in use while offline.
  */
 export function usePolling<T>(
@@ -48,11 +49,12 @@ export function usePolling<T>(
     timer.current = setTimeout(() => tickRef.current(), ms);
   }, []);
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (manual = false) => {
     const mine = ++seq.current;
     const r = await loadRef.current();
     if (!alive.current || mine !== seq.current) return; // unmounted, or a newer load answered first
     stopped.current = r.kind === "unauthorized";
+    if (manual) offlineRun.current = 0; // a press starts the ladder again, it never climbs it
     const delays = delaysRef.current;
     let next = intervalRef.current;
     let retry: number | null = null;
@@ -65,11 +67,15 @@ export function usePolling<T>(
     }
     setResult(r);
     setRetryMs(retry);
-    schedule(next);
+    if (stopped.current) {
+      if (timer.current !== null) clearTimeout(timer.current);
+      timer.current = null;
+    } else schedule(next);
   }, [schedule]);
 
   const tick = useCallback(() => {
-    if (isVisible() && !stopped.current) void run();
+    if (stopped.current) return; // only refresh() or a new resetKey starts it again
+    if (isVisible()) void run();
     else schedule(intervalRef.current);
   }, [run, schedule]);
   tickRef.current = tick;
@@ -98,5 +104,6 @@ export function usePolling<T>(
     void run();
   }, [wake, run]);
 
-  return { result, refresh: run, retryMs };
+  const refresh = useCallback(() => run(true), [run]);
+  return { result, refresh, retryMs };
 }

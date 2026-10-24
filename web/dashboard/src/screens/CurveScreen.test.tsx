@@ -61,7 +61,7 @@ function today(iso = "2026-10-24T03:00:00Z") {
 }
 afterEach(() => vi.useRealTimers());
 
-const FIRST_LADDER = "10월 25일(일) 월말 회고에서 첫 사다리 점수를 여쭤볼게요.";
+const FIRST_LADDER = "11월 29일(일) 월말 회고에서 첫 사다리 점수를 여쭤볼게요.";
 const AREAS_DAY = "12월 27일(일) 분기 회고에서 영역 점수를 함께 정해요.";
 
 describe("CurveScreen", () => {
@@ -262,8 +262,8 @@ describe("CurveScreen", () => {
     expect(await screen.findByText("시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요.")).toBeInTheDocument();
     const curve = screen.getByRole("region", { name: "인생곡선" });
     const marks = within(curve).getByRole("list", { name: "곧 그려질 것" });
-    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["10월 25일(일)첫 사다리", "12월 27일(일)영역 점수"]);
-    expect(within(marks).getAllByRole("listitem").map((li) => li.querySelector("time")?.getAttribute("datetime"))).toEqual(["2026-10-25", "2026-12-27"]);
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["11월 29일(일)첫 사다리", "12월 27일(일)영역 점수"]);
+    expect(within(marks).getAllByRole("listitem").map((li) => li.querySelector("time")?.getAttribute("datetime"))).toEqual(["2026-11-29", "2026-12-27"]);
     expect(within(curve).getByText(FIRST_LADDER)).toBeInTheDocument();
     const radar = screen.getByRole("region", { name: "영역" });
     expect(within(radar).getByText(AREAS_DAY)).toBeInTheDocument();
@@ -273,16 +273,29 @@ describe("CurveScreen", () => {
     expect(text()).not.toMatch(/%|D-[0-9]|남은|일 남/);
   });
 
-  it("works the review days out in Korean time", async () => {
-    today("2026-10-25T15:30:00Z"); // 10/26 00:30 in Korea, the day after October's last Sunday
+  it("works the review days out from the logical date in Korea (04:00 turn)", async () => {
+    today("2026-11-29T19:00:00Z"); // 11/30 04:00 in Korea: the day after November's review
+    server.use(curveAnswers.ok(curveEmpty));
+    const view = renderScreen();
+    expect(await screen.findByText("12월 27일(일) 월말 회고에서 첫 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
+    expect(screen.getByText(AREAS_DAY)).toBeInTheDocument();
+    view.unmount();
+
+    today("2026-11-29T18:59:00Z"); // 11/30 03:59 in Korea: still the review day's logical date
+    renderScreen();
+    expect(await screen.findByText(FIRST_LADDER)).toBeInTheDocument();
+  });
+
+  it("never promises a ladder before 11/29 (11.2), and moves on after it", async () => {
+    today("2026-12-05T03:00:00Z");
     server.use(curveAnswers.ok(curveEmpty));
     renderScreen();
-    expect(await screen.findByText("11월 29일(일) 월말 회고에서 첫 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
-    expect(screen.getByText(AREAS_DAY)).toBeInTheDocument();
+    const marks = await screen.findByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["12월 27일(일)첫 사다리", "12월 27일(일)영역 점수"]);
   });
 
   it("the review day itself is still the day", async () => {
-    today("2026-12-26T15:00:00Z"); // 12/27 00:00 in Korea: monthly and quarterly reviews on one Sunday
+    today("2026-12-26T19:00:00Z"); // 12/27 04:00 in Korea: monthly and quarterly reviews on one Sunday
     server.use(curveAnswers.ok(curveEmpty));
     renderScreen();
     const marks = await screen.findByRole("list", { name: "곧 그려질 것" });
@@ -307,11 +320,29 @@ describe("CurveScreen", () => {
     expect(screen.getByRole("figure")).toBeInTheDocument();
     // the areas are scored: only the ladder is to come
     const marks = screen.getByRole("list", { name: "곧 그려질 것" });
-    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["10월 25일(일)첫 사다리"]);
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["11월 29일(일)첫 사다리"]);
   });
 
-  it("does not call it the first ladder when the wide request has one", async () => {
+  it("does not call it the first ladder when the wide request has an earlier one", async () => {
     today();
+    const earlier = curveYear.ladder.filter((l) => l.period !== "2026-10");
+    server.use(
+      http.get(`${BASE}/curve`, ({ request }) => {
+        const zoom = new URL(request.url).searchParams.get("zoom");
+        const body = zoom === "year" ? { ...curveYear, ladder: earlier } : { ...curveMonth, ladder: [] };
+        return HttpResponse.json(body as Record<string, unknown>);
+      }),
+    );
+    renderScreen();
+    expect(await screen.findByText("11월 29일(일) 월말 회고에서 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
+    const marks = screen.getByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["11월 29일(일)사다리"]);
+    expect(screen.queryByText(FIRST_LADDER)).toBeNull();
+  });
+
+  it("promises nothing when this month's ladder is already in and only the zoom is empty (11.1)", async () => {
+    today();
+    expect(curveYear.ladder.some((l) => l.period === "2026-10" && l.now !== null)).toBe(true);
     server.use(
       http.get(`${BASE}/curve`, ({ request }) => {
         const zoom = new URL(request.url).searchParams.get("zoom");
@@ -320,10 +351,9 @@ describe("CurveScreen", () => {
       }),
     );
     renderScreen();
-    expect(await screen.findByText("10월 25일(일) 월말 회고에서 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
-    const marks = screen.getByRole("list", { name: "곧 그려질 것" });
-    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["10월 25일(일)사다리"]);
-    expect(screen.queryByText(FIRST_LADDER)).toBeNull();
+    await screen.findByRole("figure");
+    await waitFor(() => expect(screen.queryByRole("list", { name: "곧 그려질 것" })).toBeNull());
+    expect(text()).not.toContain("월말 회고에서");
   });
 
   it("lists the reassurance months of the wide request, whatever the zoom (B2)", async () => {

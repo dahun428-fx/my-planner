@@ -11,7 +11,7 @@ import { useConnection } from "../lib/ConnectionProvider";
 import type { Zoom } from "../lib/curveLayout";
 import { CURVE_TEXT as T } from "../lib/labels";
 import { usePolling } from "../lib/polling";
-import { nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulToday } from "../lib/reviews";
+import { nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulLogicalToday } from "../lib/reviews";
 
 const NONE = { kind: "broken", code: "no_connection" } as const;
 const ZOOMS: Zoom[] = ["day", "week", "month", "quarter", "year"];
@@ -55,7 +55,7 @@ const hasLadder = (c: Curve) => c.ladder.some((l) => l.now !== null); // five-ye
  * the one before it, and 안심 보기 lists every compared month, whatever zoom is shown (13.4, B2). It also says
  * whether a ladder score exists at all, so an empty zoom does not call the next one the first. Until that
  * answer is in, the zoom's own answer stands in for it.
- * The empty curve shows the next review days (DU-05), worked out from today in Korea.
+ * The empty curve shows the next review days (DU-05), worked out from the logical date in Korea (04:00 turn).
  */
 export function CurveView({ curve: c, wide = null }: { curve: Curve; wide?: Curve | null }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -76,12 +76,15 @@ export function CurveView({ curve: c, wide = null }: { curve: Curve; wide?: Curv
   const all = wide ?? c;
   const areas = all.areas;
   const firstLadder = !hasLadder(all);
-  const today = seoulToday();
+  const today = seoulLogicalToday();
   const ladderDay = nextMonthlyReview(today);
   const areasDay = nextQuarterReview(today);
+  // This month's ladder is already in (11.1 skips step 1 then): an empty zoom has nothing to promise.
+  const scoredThisMonth = all.ladder.some((l) => l.period === today.slice(0, 7) && l.now !== null);
+  const askLadder = noLadder && !scoredThisMonth;
   const marks: UpcomingMark[] = [];
-  if (noLadder) marks.push({ day: ladderDay, what: firstLadder ? T.upcoming.firstLadderMark : T.upcoming.ladderMark });
-  if (noLadder && areas.length === 0) marks.push({ day: areasDay, what: T.upcoming.areasMark });
+  if (askLadder) marks.push({ day: ladderDay, what: firstLadder ? T.upcoming.firstLadderMark : T.upcoming.ladderMark });
+  if (askLadder && areas.length === 0) marks.push({ day: areasDay, what: T.upcoming.areasMark });
   const ladderLine = (firstLadder ? T.upcoming.firstLadder : T.upcoming.ladder)(reviewDayLabel(ladderDay));
 
   return (
@@ -89,10 +92,10 @@ export function CurveView({ curve: c, wide = null }: { curve: Curve; wide?: Curv
       <section className="panel curve-panel" aria-label={T.title}>
         {drawn && <CurveChart curve={c} selected={selected?.id ?? null} onSelect={select} />}
         {selected && <MilestonePopover milestone={selected} onClose={close} />}
-        {(noEvents || noLadder) && (
+        {(noEvents || askLadder) && (
           <div className="curve-empty">
             {noEvents && <p className="empty">{T.empty.events}</p>}
-            {noLadder && (
+            {askLadder && (
               <>
                 <Upcoming marks={marks} />
                 <p className="empty">{ladderLine}</p>

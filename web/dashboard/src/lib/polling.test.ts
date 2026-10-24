@@ -119,6 +119,42 @@ describe("usePolling", () => {
     expect(load).toHaveBeenCalledTimes(8);
   });
 
+  it("a manual refresh while offline puts the wait back to the first step, never up a step", async () => {
+    const load = vi.fn(async (): Promise<ApiResult<number>> => ({ kind: "offline" }));
+    const { result } = renderHook(() => usePolling(load, 60_000, "", { retryDelays: [10_000, 20_000, 40_000, 60_000] }));
+    await act(async () => {});
+    // two automatic checks: the wait is up to 40 s
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(result.current.retryMs).toBe(40_000);
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.retryMs).toBe(10_000);
+    }
+    expect(load).toHaveBeenCalledTimes(6);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_999);
+    });
+    expect(load).toHaveBeenCalledTimes(6);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(load).toHaveBeenCalledTimes(7);
+    expect(result.current.retryMs).toBe(20_000); // the automatic ladder goes on from the first step
+  });
+
+  it("sets no timer after unauthorized", async () => {
+    const load = vi.fn(async (): Promise<ApiResult<number>> => ({ kind: "unauthorized" }));
+    renderHook(() => usePolling(load));
+    await act(async () => {});
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("keeps the plain interval while offline without retry delays", async () => {
     const load = vi.fn(async (): Promise<ApiResult<number>> => ({ kind: "offline" }));
     const { result } = renderHook(() => usePolling(load));

@@ -36,6 +36,8 @@ export function OfflineCard({ settingsLink = true }: { settingsLink?: boolean })
           <Link href="/settings/">{STATE_TEXT.openSettings}</Link>
         </p>
       )}
+      {/* retryMs is the /health ladder: while /health is off too, the screen's content comes back through the
+          backOnline signal once /health answers, not on its own 60 s poll. With /health on, the screen's poll. */}
       <p className="meta">{T.retry(T.every(retryMs ?? SCREEN_INTERVAL_MS))}</p>
       <p>{STATE_TEXT.offline}</p>
     </div>

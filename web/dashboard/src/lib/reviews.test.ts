@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { lastSunday, nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulToday } from "./reviews";
+import { FIRST_LADDER_REVIEW, lastSunday, nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulLogicalToday, seoulToday } from "./reviews";
 
 const original = process.env.TZ;
 
@@ -25,10 +25,19 @@ describe("review dates (SP3-4 11.2)", () => {
     expect(lastSunday(2027, 3)).toBe("2027-03-28");
   });
 
-  it("monthly ladder: the last Sunday of this month, or of the next once it has passed", () => {
-    expect(nextMonthlyReview("2026-10-24")).toBe("2026-10-25");
-    expect(nextMonthlyReview("2026-10-25")).toBe("2026-10-25"); // the review day itself
+  it("logical today turns at 04:00 in Korea, not at midnight", () => {
+    expect(seoulLogicalToday(new Date("2026-11-29T18:59:59Z"))).toBe("2026-11-29"); // 11/30 03:59:59 KST
+    expect(seoulLogicalToday(new Date("2026-11-29T19:00:00Z"))).toBe("2026-11-30"); // 11/30 04:00 KST
+  });
+
+  it("monthly ladder: the last Sunday of this month, or of the next once it has passed, from 11/29 (11.2)", () => {
+    expect(FIRST_LADDER_REVIEW).toBe("2026-11-29");
+    expect(nextMonthlyReview("2026-10-24")).toBe("2026-11-29");
+    expect(nextMonthlyReview("2026-10-25")).toBe("2026-11-29"); // October's last Sunday asks no ladder
     expect(nextMonthlyReview("2026-10-26")).toBe("2026-11-29");
+    expect(nextMonthlyReview("2026-11-29")).toBe("2026-11-29"); // the review day itself
+    expect(nextMonthlyReview("2026-11-30")).toBe("2026-12-27");
+    expect(nextMonthlyReview("2026-12-05")).toBe("2026-12-27");
     expect(nextMonthlyReview("2026-12-28")).toBe("2027-01-31");
   });
 

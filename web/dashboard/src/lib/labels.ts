@@ -140,9 +140,7 @@ export const SETTINGS_TEXT = {
   token: "API 토큰",
   check: "연결 확인",
   checking: "확인 중",
-  ok: "연결했어요.",
   saved: "저장했어요.",
-  home: "비서 상태 보기",
   urlErrors: {
     not_https: "https 주소만 넣을 수 있어요.",
     out_of_range: "이 대시보드가 허용한 tailnet 주소가 아니에요.",
@@ -298,7 +296,7 @@ export const CURVE_TEXT = {
   },
 } as const;
 
-// Review days (DU-05), for example "10월 25일(일)".
+// Review days (DU-05), for example "11월 29일(일)".
 export const REVIEW_TEXT = {
   weekdays: ["일", "월", "화", "수", "목", "금", "토"],
   day: (m: number, d: number, weekday: string) => `${m}월 ${d}일(${weekday})`,

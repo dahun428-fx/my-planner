@@ -10,7 +10,7 @@ export interface UpcomingMark {
 }
 
 /**
- * DU-05: the reviews that will start drawing an empty curve, each on its day ("10월 25일(일) 첫 사다리").
+ * DU-05: the reviews that will start drawing an empty curve, each on its day ("11월 29일(일) 첫 사다리").
  * Only dates: no percentages, no countdown, no count of days.
  */
 export function Upcoming({ marks }: { marks: UpcomingMark[] }) {

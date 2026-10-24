@@ -35,9 +35,10 @@ describe("settings", () => {
   it("saves the BE URL and token and checks /health", async () => {
     renderSettings();
     await fill(`${ORIGIN}/api/v1`, "fake-token-abc");
-    expect(await screen.findByText("연결했어요.")).toBeInTheDocument();
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
     expect(saved()).toEqual({ beUrl: ORIGIN, token: "fake-token-abc" });
-    expect(screen.getByRole("link", { name: "비서 상태 보기" })).toHaveAttribute("href", "/");
+    // the band on the home screen says it is connected: no notice of its own here
+    expect(document.querySelector('.notice[data-kind="ok"]')).toBeNull();
   });
 
   it("goes to the home screen once connected (DU-04)", async () => {
@@ -127,7 +128,7 @@ describe("settings", () => {
     expect(await screen.findByText("unauthorized")).toBeInTheDocument();
     server.resetHandlers(); // the BE accepts the token again
     await userEvent.click(screen.getByRole("button", { name: "연결 확인" }));
-    expect(await screen.findByText("연결했어요.")).toBeInTheDocument();
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
     await waitFor(() => expect(screen.getByTestId("probe")).toHaveTextContent("ok"));
   });
 
