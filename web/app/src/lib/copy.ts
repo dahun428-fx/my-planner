@@ -204,6 +204,7 @@ export const copy = {
     pushTurnOnFailed: "알림을 켜지 못했어요. 다시 해 주세요.",
     deviceLabel: "폰",
     testPush: "시험 알림 보내기",
+    testNoDevices: "알림을 받을 기기가 없어요. 먼저 이 기기 알림을 허용해 주세요.",
     testResult: (ok: number, failed: number) => (failed === 0 ? `${ok}대에 보냈어요` : `${ok}대에 보냈고 ${failed}대에는 안 갔어요`),
     weekdays: "평일",
     weekend: "주말",

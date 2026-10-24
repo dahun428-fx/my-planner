@@ -30,6 +30,7 @@ function fakeCaches(seed: Record<string, Record<string, string>> = {}) {
     api: {
       open,
       keys: async () => [...store.keys()],
+      has: async (name: string) => store.has(name),
       delete: async (name: string) => store.delete(name),
       match: async (r: Request | string, opts?: { ignoreSearch?: boolean }) => {
         for (const m of store.values()) {
@@ -262,8 +263,32 @@ describe("sw.js", () => {
     await expect(Promise.all(e.waits)).resolves.toBeDefined();
   });
 
+  it("a failed install keeps the last good cache", async () => {
+    const caches = fakeCaches({ "app-old": { [`${ORIGIN}/`]: "old shell" } });
+    let up = true;
+    const { fire } = load({
+      buildId: "b1",
+      caches,
+      fetch: async () => {
+        if (!up) throw new TypeError("offline");
+        throw new TypeError("offline during install");
+      },
+    });
+    const install = extendable();
+    fire("install", install);
+    await Promise.all(install.waits);
+    const activate = extendable();
+    fire("activate", activate);
+    await Promise.all(activate.waits);
+    expect(caches.store.has("app-old")).toBe(true);
+    up = false;
+    const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+    fire("fetch", nav);
+    expect(await (await nav.responded!).text()).toBe("old shell");
+  });
+
   it("old caches removed on activate", async () => {
-    const caches = fakeCaches({ "app-old": {}, "app-b1": {}, other: {} });
+    const caches = fakeCaches({ "app-old": {}, "app-b1": { [`${ORIGIN}/`]: "shell" }, other: {} });
     const { fire, sandbox } = load({ buildId: "b1", caches });
     const e = extendable();
     fire("activate", e);

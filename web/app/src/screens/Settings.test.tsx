@@ -3,20 +3,24 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear, get, set } from "idb-keyval";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { hardReplace } from "../lib/nav";
 import { copy } from "../lib/copy";
 import { formatKst } from "../lib/time";
 import degraded from "../test/fixtures/health-degraded.json";
 import paused from "../test/fixtures/health-paused.json";
 import notify from "../test/fixtures/notify.json";
 import notifyTelegram from "../test/fixtures/notify-effective-telegram.json";
-import { device, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
+import { device, storePushId, storedPushId, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
 import { renderWithProviders, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Settings } from "./Settings";
 
+vi.mock("../lib/nav", () => ({ hardReplace: vi.fn() }));
+
 let env: PushEnv | null = null;
 afterEach(async () => {
+  vi.mocked(hardReplace).mockClear();
   env?.restore();
   env = null;
   resetDevice();
@@ -110,7 +114,7 @@ describe("Settings", () => {
   describe("device push states", () => {
     it("on", async () => {
       env = installPush({ permission: "granted", existing: fakeSub() });
-      localStorage.setItem("mp.pushId", "3");
+      storePushId(3);
       serve();
       renderWithProviders(<Settings />, { route: "/settings/" });
       expect(await within(await pushRow()).findByText(copy.settings.pushOn)).toBeInTheDocument();
@@ -157,7 +161,7 @@ describe("Settings", () => {
       expect(await within(await pushRow()).findByText(copy.settings.pushOn)).toBeInTheDocument();
       expect(calls.posted).toBe(1);
       expect(env.requestPermission).toHaveBeenCalledOnce();
-      expect(localStorage.getItem("mp.pushId")).toBe("3");
+      expect(storedPushId()).toEqual({ beUrl: TEST_BE_URL, id: 3 });
     });
 
     it("allow refused shows the denied guide", async () => {
@@ -171,7 +175,15 @@ describe("Settings", () => {
 
     it("allow when iOS dropped the subscription", async () => {
       env = installPush({ permission: "granted", existing: null });
-      localStorage.setItem("mp.pushId", "3");
+      storePushId(3);
+      serve();
+      renderWithProviders(<Settings />, { route: "/settings/" });
+      expect(await within(await pushRow()).findByRole("button", { name: copy.settings.pushAllow })).toBeInTheDocument();
+    });
+
+    it("allow when the stored id belongs to another BE", async () => {
+      env = installPush({ permission: "granted", existing: fakeSub() });
+      storePushId(3, "https://other.example.ts.net");
       serve();
       renderWithProviders(<Settings />, { route: "/settings/" });
       expect(await within(await pushRow()).findByRole("button", { name: copy.settings.pushAllow })).toBeInTheDocument();
@@ -191,7 +203,7 @@ describe("Settings", () => {
 
   it("test push result", async () => {
     env = installPush({ permission: "granted", existing: fakeSub() });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     const calls = serve({ hold: true });
     renderWithProviders(<Settings />, { route: "/settings/" });
     const user = userEvent.setup();
@@ -203,6 +215,19 @@ describe("Settings", () => {
     expect(calls.tests).toBe(1);
     expect(copy.settings.testResult(2, 0)).toBe("2대에 보냈어요");
     expect(copy.settings.testResult(2, 1)).toBe("2대에 보냈고 1대에는 안 갔어요");
+  });
+
+  it("test push with no devices says so", async () => {
+    env = installPush({ permission: "granted", existing: fakeSub() });
+    storePushId(3);
+    serve();
+    server.use(http.post(`${BASE}/push/test`, () => HttpResponse.json({ ok: 0, failed: 0 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const button = await screen.findByRole("button", { name: copy.settings.testPush });
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    expect(await screen.findByText(copy.settings.testNoDevices)).toBeInTheDocument();
   });
 
   it("schedule is read-only constants", async () => {
@@ -266,7 +291,7 @@ describe("Settings", () => {
 
   it("disconnect clears device and goes connect", async () => {
     env = installPush({ permission: "granted", existing: fakeSub() });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     localStorage.setItem("mp.theme", "dark");
     localStorage.setItem("mp.lastHealthOk", "2026-10-24T08:00:00Z");
     localStorage.setItem("other.key", "kept");
@@ -274,7 +299,7 @@ describe("Settings", () => {
     await set("parts:1", []);
     await set("catalog", {});
     const calls = serve();
-    const { router } = renderWithProviders(<Settings />, { route: "/settings/" });
+    renderWithProviders(<Settings />, { route: "/settings/" });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: copy.settings.disconnect }));
     const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
@@ -285,7 +310,9 @@ describe("Settings", () => {
     await user.click(screen.getByRole("button", { name: copy.settings.disconnect }));
     const again = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
     await user.dblClick(within(again).getByRole("button", { name: copy.settings.disconnectConfirm }));
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/connect/"));
+    // A full page load, so nothing of the old connection stays in memory.
+    await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
+    expect(hardReplace).toHaveBeenCalledOnce();
     expect(calls.deleted).toEqual(["3"]);
     expect(env.current()?.unsubscribe).toHaveBeenCalledOnce();
     for (const k of ["mp.beUrl", "mp.token", "mp.lastHealthOk", "mp.pushId", "mp.theme"]) expect(localStorage.getItem(k)).toBeNull();
@@ -298,15 +325,15 @@ describe("Settings", () => {
 
   it("disconnect goes on when the BE cannot be reached", async () => {
     env = installPush({ permission: "granted", existing: fakeSub() });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     serve();
     server.use(http.delete(`${BASE}/push/subscriptions/:id`, () => HttpResponse.error()));
-    const { router } = renderWithProviders(<Settings />, { route: "/settings/" });
+    renderWithProviders(<Settings />, { route: "/settings/" });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: copy.settings.disconnect }));
     const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
     await user.click(within(sheet).getByRole("button", { name: copy.settings.disconnectConfirm }));
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/connect/"));
+    await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
     expect(localStorage.getItem("mp.token")).toBeNull();
   });
 

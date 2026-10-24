@@ -1,5 +1,6 @@
 import { apiFetch } from "../api/client";
 import type { PushSubscribed, VapidPublicKey } from "../api/types.gen";
+import { loadConn } from "./connection";
 import { copy } from "./copy";
 import { isIos, isStandalone } from "./platform";
 
@@ -35,17 +36,38 @@ export function permission(): NotificationPermission {
   }
 }
 
-export function loadPushId(): string | null {
+// `mp.pushId` is `{"beUrl": ..., "id": n}`: the id only means something to the BE that gave it.
+// An older plain id ("3") does not say which BE it came from, so it is read as unknown and cleared.
+type PushRecord = { beUrl: string; id: number };
+
+function loadPushRecord(): PushRecord | null {
+  let raw: string | null;
   try {
-    return localStorage.getItem(K_PUSH_ID);
+    raw = localStorage.getItem(K_PUSH_ID);
   } catch {
     return null;
   }
+  if (raw === null) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<PushRecord> | null;
+    if (v && typeof v === "object" && typeof v.beUrl === "string" && Number.isSafeInteger(v.id)) return { beUrl: v.beUrl, id: v.id as number };
+  } catch {
+    // not JSON: the old plain form
+  }
+  clearPushId();
+  return null;
 }
 
-function savePushId(id: number): void {
+/** This device's subscription id at the BE it is connected to now, or null (none, or another BE's). */
+export function loadPushId(): number | null {
+  const rec = loadPushRecord();
+  const beUrl = loadConn()?.beUrl;
+  return rec && beUrl && rec.beUrl === beUrl ? rec.id : null;
+}
+
+function savePushId(beUrl: string, id: number): void {
   try {
-    localStorage.setItem(K_PUSH_ID, String(id));
+    localStorage.setItem(K_PUSH_ID, JSON.stringify({ beUrl, id }));
   } catch {
     // blocked storage: the subscription works, it just is not re-made when iOS drops it
   }
@@ -56,6 +78,29 @@ function clearPushId(): void {
     localStorage.removeItem(K_PUSH_ID);
   } catch {
     // blocked storage
+  }
+}
+
+async function dropBrowserSubscription(): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator) || !navigator.serviceWorker) return;
+  try {
+    await (await currentSubscription())?.unsubscribe();
+  } catch {
+    // the browser may already have dropped it
+  }
+}
+
+/**
+ * Before another BE address is saved (connect screen): the browser subscription and its id belong
+ * to the old BE, so both go. The old BE is not asked to delete it (its id means nothing to the new
+ * one, and the old one drops the endpoint when the push service answers 410).
+ */
+export async function forgetPushForOtherBe(newBeUrl: string): Promise<void> {
+  const rec = loadPushRecord();
+  const oldBeUrl = loadConn()?.beUrl;
+  if ((rec && rec.beUrl !== newBeUrl) || (oldBeUrl && oldBeUrl !== newBeUrl)) {
+    await dropBrowserSubscription();
+    clearPushId();
   }
 }
 
@@ -102,7 +147,7 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 
 /** Whether this device holds a live push subscription that the BE knows (`mp.pushId`). */
 export async function hasLiveSubscription(): Promise<boolean> {
-  if (pushSupport() !== "ok" || permission() !== "granted" || !loadPushId()) return false;
+  if (pushSupport() !== "ok" || permission() !== "granted" || loadPushId() === null) return false;
   return (await currentSubscription()) !== null;
 }
 
@@ -110,6 +155,8 @@ type Made = SubscribeResult | { kind: "not_allowed" };
 
 // VAPID key -> pushManager.subscribe -> POST /push/subscriptions -> mp.pushId (F7, after permission).
 async function makeSubscription(): Promise<Made> {
+  const beUrl = loadConn()?.beUrl;
+  if (!beUrl) return { kind: "failed" };
   const key = await apiFetch<VapidPublicKey>("GET", "/push/vapid-public-key", { model: "VapidPublicKey" });
   if (key.kind === "error" && key.status === 404) return { kind: "unavailable" };
   if (key.kind !== "ok") return { kind: "failed" };
@@ -140,7 +187,8 @@ async function makeSubscription(): Promise<Made> {
   });
   if (r.kind === "error" && r.status === 404) return { kind: "unavailable" };
   if (r.kind !== "ok") return { kind: "failed" };
-  savePushId(r.data.id);
+  if (loadConn()?.beUrl !== beUrl) return { kind: "failed" }; // the connection changed meanwhile
+  savePushId(beUrl, r.data.id);
   return { kind: "subscribed", id: r.data.id };
 }
 
@@ -172,24 +220,26 @@ export async function subscribePush(asked?: Promise<NotificationPermission>): Pr
  * may refuse: then "needs_tap", and the settings row offers "허용하기".
  */
 export async function ensurePushSubscription(): Promise<"ok" | "needs_tap"> {
-  if (pushSupport() !== "ok" || !loadPushId()) return "ok";
+  if (pushSupport() !== "ok") return "ok";
+  const rec = loadPushRecord();
+  if (!rec) return "ok";
+  if (rec.beUrl !== loadConn()?.beUrl) {
+    // Made for another BE: nothing to restore here; settings offers "허용하기" for this one.
+    await dropBrowserSubscription();
+    clearPushId();
+    return "ok";
+  }
   if ((await currentSubscription()) !== null) return "ok";
   if (permission() !== "granted") return "needs_tap";
   const made = await makeSubscription();
   return made.kind === "subscribed" || made.kind === "unavailable" ? "ok" : "needs_tap";
 }
 
-/** "이 기기 연결 해제": tell the BE, drop the browser subscription, forget the id. Never throws. */
+/** "이 기기 연결 해제": tell the BE (only the one that gave the id), drop the browser subscription, forget the id. Never throws. */
 export async function unsubscribePush(): Promise<void> {
   const id = loadPushId();
-  if (id && /^\d+$/.test(id)) await apiFetch("DELETE", `/push/subscriptions/${id}`);
-  if (typeof navigator !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker) {
-    try {
-      await (await currentSubscription())?.unsubscribe();
-    } catch {
-      // the browser may already have dropped it
-    }
-  }
+  if (id !== null) await apiFetch("DELETE", `/push/subscriptions/${id}`);
+  await dropBrowserSubscription();
   clearPushId();
 }
 
@@ -199,13 +249,24 @@ const TODAY_REFRESH = "mp:refresh-today";
 let navigateTo: ((url: string) => void) | null = null;
 let listeningOn: ServiceWorkerContainer | null = null;
 
-/** A path inside this app ("/x", never "//host" or a full URL). */
-const inApp = (url: unknown): url is string => typeof url === "string" && url.startsWith("/") && !url.startsWith("//") && !url.startsWith("/\\");
+/** The in-app path (pathname + search) of a URL on this origin, or null for anything else. */
+function inAppPath(url: unknown): string | null {
+  if (typeof url !== "string") return null;
+  let u: URL;
+  try {
+    u = new URL(url, window.location.origin);
+  } catch {
+    return null;
+  }
+  if (u.origin !== window.location.origin || u.pathname.startsWith("//")) return null;
+  return u.pathname + u.search;
+}
 
 function onMessage(e: MessageEvent): void {
   const data = e.data as { navigate?: unknown; refresh?: unknown } | null;
   if (!data || typeof data !== "object") return;
-  if (inApp(data.navigate)) navigateTo?.(data.navigate);
+  const path = inAppPath(data.navigate);
+  if (path !== null) navigateTo?.(path);
   if (data.refresh === "today") window.dispatchEvent(new Event(TODAY_REFRESH));
 }
 

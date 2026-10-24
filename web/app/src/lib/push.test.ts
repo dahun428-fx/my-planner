@@ -9,8 +9,10 @@ import {
   registerServiceWorker,
   subscribePush,
   unsubscribePush,
+  forgetPushForOtherBe,
+  hasLiveSubscription,
 } from "./push";
-import { device, FAKE_AUTH, FAKE_ENDPOINT, FAKE_P256DH, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
+import { device, storePushId, storedPushId, FAKE_AUTH, FAKE_ENDPOINT, FAKE_P256DH, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
 import { TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
 
@@ -73,7 +75,7 @@ describe("subscribePush", () => {
     expect(Buffer.from(key).toString("base64url")).toBe(FAKE_VAPID);
     expect(be.posted).toEqual([{ endpoint: FAKE_ENDPOINT, keys: { p256dh: FAKE_P256DH, auth: FAKE_AUTH }, label: copy.settings.deviceLabel }]);
     expect(copy.settings.deviceLabel).toBe("폰");
-    expect(localStorage.getItem("mp.pushId")).toBe("3");
+    expect(storedPushId()).toEqual({ beUrl: TEST_BE_URL, id: 3 });
   });
 
   it("denied returns denied and does not post", async () => {
@@ -119,18 +121,18 @@ describe("subscribePush", () => {
 describe("ensurePushSubscription", () => {
   it("re-subscribes when iOS dropped it", async () => {
     install({ permission: "granted", existing: null });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     const be = serveBe();
     await expect(ensurePushSubscription()).resolves.toBe("ok");
     expect(env?.requestPermission).not.toHaveBeenCalled();
     expect(env?.subscribe).toHaveBeenCalledOnce();
     expect(be.posted).toHaveLength(1);
-    expect(localStorage.getItem("mp.pushId")).toBe("3");
+    expect(storedPushId()).toEqual({ beUrl: TEST_BE_URL, id: 3 });
   });
 
   it("leaves a live subscription alone", async () => {
     install({ permission: "granted", existing: fakeSub() });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     const be = serveBe();
     await expect(ensurePushSubscription()).resolves.toBe("ok");
     expect(env?.subscribe).not.toHaveBeenCalled();
@@ -145,14 +147,14 @@ describe("ensurePushSubscription", () => {
 
   it("needs tap when resubscribe is refused", async () => {
     install({ permission: "granted", subscribeError: new DOMException("no gesture", "NotAllowedError") });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     serveBe();
     await expect(ensurePushSubscription()).resolves.toBe("needs_tap");
   });
 
   it("needs tap when permission is no longer granted", async () => {
     install({ permission: "default" });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     await expect(ensurePushSubscription()).resolves.toBe("needs_tap");
     expect(env?.requestPermission).not.toHaveBeenCalled();
   });
@@ -162,7 +164,7 @@ describe("unsubscribePush", () => {
   it("unsubscribe deletes then clears", async () => {
     const sub = fakeSub();
     install({ permission: "granted", existing: sub });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     const be = serveBe();
     await unsubscribePush();
     expect(be.deleted).toEqual(["3"]);
@@ -173,11 +175,66 @@ describe("unsubscribePush", () => {
   it("still clears when the BE cannot be reached", async () => {
     const sub = fakeSub();
     install({ permission: "granted", existing: sub });
-    localStorage.setItem("mp.pushId", "3");
+    storePushId(3);
     server.use(http.delete(`${BASE}/push/subscriptions/:id`, () => HttpResponse.error()));
     await expect(unsubscribePush()).resolves.toBeUndefined();
     expect(sub.unsubscribe).toHaveBeenCalledOnce();
     expect(localStorage.getItem("mp.pushId")).toBeNull();
+  });
+});
+
+describe("push id per BE", () => {
+  const OTHER = "https://other.example.ts.net";
+
+  it("an old plain id is unknown: cleared, nothing re-made", async () => {
+    install({ permission: "granted", existing: null });
+    localStorage.setItem("mp.pushId", "3");
+    const be = serveBe();
+    await expect(ensurePushSubscription()).resolves.toBe("ok");
+    expect(env?.subscribe).not.toHaveBeenCalled();
+    expect(be.posted).toEqual([]);
+    expect(localStorage.getItem("mp.pushId")).toBeNull();
+  });
+
+  it("an id from another BE counts as no subscription", async () => {
+    install({ permission: "granted", existing: fakeSub() });
+    storePushId(3, OTHER);
+    await expect(hasLiveSubscription()).resolves.toBe(false);
+    storePushId(3);
+    await expect(hasLiveSubscription()).resolves.toBe(true);
+  });
+
+  it("ensure does not re-subscribe for an id of another BE", async () => {
+    install({ permission: "granted", existing: null });
+    storePushId(3, OTHER);
+    const be = serveBe();
+    await expect(ensurePushSubscription()).resolves.toBe("ok");
+    expect(env?.subscribe).not.toHaveBeenCalled();
+    expect(be.posted).toEqual([]);
+    expect(storedPushId()).toBeNull();
+  });
+
+  it("unsubscribe never sends DELETE for another BE's id", async () => {
+    const sub = fakeSub();
+    install({ permission: "granted", existing: sub });
+    storePushId(3, OTHER);
+    const be = serveBe();
+    await unsubscribePush();
+    expect(be.deleted).toEqual([]);
+    expect(sub.unsubscribe).toHaveBeenCalledOnce();
+    expect(storedPushId()).toBeNull();
+  });
+
+  it("forgetPushForOtherBe drops the browser subscription and id only when the BE changes", async () => {
+    const sub = fakeSub();
+    install({ permission: "granted", existing: sub });
+    storePushId(3);
+    await forgetPushForOtherBe(TEST_BE_URL);
+    expect(sub.unsubscribe).not.toHaveBeenCalled();
+    expect(storedPushId()).toEqual({ beUrl: TEST_BE_URL, id: 3 });
+    await forgetPushForOtherBe(OTHER);
+    expect(sub.unsubscribe).toHaveBeenCalledOnce();
+    expect(storedPushId()).toBeNull();
   });
 });
 
@@ -192,10 +249,14 @@ describe("registerServiceWorker", () => {
     env?.emit({ navigate: "/checkin/?id=341" });
     env?.emit({ navigate: "https://evil.example/x" });
     env?.emit({ navigate: "//evil.example/x" });
+    env?.emit({ navigate: "/\t/evil.example/x" });
+    env?.emit({ navigate: "/\\evil.example/x" });
+    env?.emit({ navigate: `${window.location.origin}//evil.example/x` });
+    env?.emit({ navigate: `${window.location.origin}/todos/?tab=week#x` });
     env?.emit({ refresh: "today" });
     off();
     env?.emit({ refresh: "today" });
-    expect(go.mock.calls).toEqual([["/checkin/?id=341"]]);
+    expect(go.mock.calls).toEqual([["/checkin/?id=341"], ["/todos/?tab=week"]]);
     expect(refreshed).toHaveBeenCalledOnce();
   });
 

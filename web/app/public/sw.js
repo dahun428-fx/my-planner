@@ -92,9 +92,20 @@ async function install() {
   }
 }
 
+// This build's cache holds the shell only if its install got that far.
+async function populated() {
+  if (!(await self.caches.has(CACHE))) return false;
+  const cache = await self.caches.open(CACHE);
+  return Boolean(await cache.match("/"));
+}
+
 async function activate() {
-  const names = await self.caches.keys();
-  await Promise.all(names.filter((n) => n !== CACHE).map((n) => self.caches.delete(n)));
+  // Older caches go only once this build's is filled; after a failed install the last good shell
+  // stays and still answers offline page loads.
+  if (await populated()) {
+    const names = await self.caches.keys();
+    await Promise.all(names.filter((n) => n !== CACHE).map((n) => self.caches.delete(n)));
+  }
   await self.clients.claim();
 }
 

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { useRouter } from "next/router";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import pkg from "../../package.json";
 import { failureText } from "../api/actions";
@@ -18,6 +17,7 @@ import { useToast } from "../components/Toast";
 import { CONN_CHANGED, loadLastHealthOk } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { hardReplace } from "../lib/nav";
 import { usePolling } from "../lib/polling";
 import { hasLiveSubscription, permission, pushSupport, subscribePush, unsubscribePush } from "../lib/push";
 import { clearDeviceData } from "../lib/snapshot";
@@ -51,7 +51,6 @@ function shortHost(beUrl: string): string {
 
 // Spec 5.5.7, F7: connection, check-in notifications, schedule, pause, this device, about. No chat launcher.
 export function Settings() {
-  const router = useRouter();
   const toast = useToast();
   const { state, conn, recheck } = useConnection();
   const { catalog } = useCatalog();
@@ -142,7 +141,10 @@ export function Settings() {
     setTesting(true);
     try {
       const r = await apiFetch<PushTestResult>("POST", "/push/test", { model: "PushTestResult" });
-      if (r.kind === "ok") toast.show({ text: copy.settings.testResult(r.data.ok, r.data.failed) });
+      if (r.kind === "ok") {
+        const none = r.data.ok === 0 && r.data.failed === 0;
+        toast.show({ text: none ? copy.settings.testNoDevices : copy.settings.testResult(r.data.ok, r.data.failed) });
+      }
       else if (r.kind === "error" && r.status === 404) {
         setDevice("unavailable");
         toast.show({ text: copy.settings.pushUnavailable });
@@ -203,10 +205,10 @@ export function Settings() {
       await clearDeviceData();
       applyTheme("system");
       window.dispatchEvent(new Event(CONN_CHANGED));
-      await router.replace("/connect/");
     } finally {
-      disconnectLock.current = false;
-      setDisconnecting(false);
+      // A full load of /connect/: the chat sheet, catalog and polls of the old BE leave memory too.
+      // The lock stays held: the page is going away.
+      hardReplace("/connect/");
     }
   };
 

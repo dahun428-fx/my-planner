@@ -6,7 +6,7 @@ import type { ChatSheetProps } from "../chat/ChatSheet";
 import { chatSheetChunk } from "../chat/loadChatSheet";
 import { type ChatSheetApi, ChatSheetContext } from "../chat/sheetContext";
 import { ToastProvider, useToast } from "../components/Toast";
-import { ConnectionProvider } from "../lib/ConnectionProvider";
+import { ConnectionProvider, useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
 import { applyTheme, loadTheme } from "../lib/theme";
@@ -34,6 +34,9 @@ class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode
 // there to read offline (F9).
 function ChatHost({ children }: { children: ReactNode }) {
   const toast = useToast();
+  // Another BE address (re-entered on /connect/) gets a fresh sheet: the old conversation, its id
+  // and any stream still coming must never reach the new BE.
+  const beUrl = useConnection().conn?.beUrl ?? "";
   const toastRef = useRef(toast);
   toastRef.current = toast;
   const [open, setOpen] = useState(false);
@@ -85,7 +88,7 @@ function ChatHost({ children }: { children: ReactNode }) {
     <ChatSheetContext.Provider value={api}>
       {children}
       {Sheet && (
-        <ChatBoundary key={generation} onError={fail}>
+        <ChatBoundary key={`${generation}|${beUrl}`} onError={fail}>
           <Sheet open={open} onClose={close} />
         </ChatBoundary>
       )}

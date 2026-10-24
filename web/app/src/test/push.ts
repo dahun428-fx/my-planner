@@ -92,6 +92,16 @@ export function installPush(opts: PushEnvOptions = {}): PushEnv {
   };
 }
 
+/** `mp.pushId` as push.ts keeps it: the id and the BE it belongs to. */
+export function storePushId(id: number, beUrl = "https://gp76.example.ts.net"): void {
+  localStorage.setItem("mp.pushId", JSON.stringify({ beUrl, id }));
+}
+
+export function storedPushId(): unknown {
+  const raw = localStorage.getItem("mp.pushId");
+  return raw === null ? null : JSON.parse(raw);
+}
+
 const originalUa = navigator.userAgent;
 export const IPHONE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
 

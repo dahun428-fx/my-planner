@@ -2,10 +2,11 @@ import { useRouter } from "next/router";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { getHealth } from "../api/client";
 import { LargeTitle } from "../components/LargeTitle";
+import { useToast } from "../components/Toast";
 import { type Conn, normalizeBeUrl, normalizeToken, saveConn, saveLastHealthOk } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { isIos, isStandalone } from "../lib/platform";
-import { askPermission, pushSupport, subscribePush } from "../lib/push";
+import { askPermission, forgetPushForOtherBe, pushSupport, subscribePush } from "../lib/push";
 import styles from "./Connect.module.css";
 
 type Line = { tone: "ok" | "bad"; text: string } | null;
@@ -19,6 +20,7 @@ const URL_REASON = {
 // Spec 5.5.8 / F1: address and key, checked against /health; saved only when the secretary answers.
 export function Connect() {
   const router = useRouter();
+  const toast = useToast();
   const [guideOnly, setGuideOnly] = useState<boolean | null>(null);
   // The iPhone home screen app offers "알림 허용하고 시작하기"; a computer browser just "시작하기".
   const [offerPush, setOfferPush] = useState(false);
@@ -92,11 +94,16 @@ export function Connect() {
       const permission = asked.current;
       if (proceed) asked.current = null;
       if (proceed && conn) {
+        await forgetPushForOtherBe(conn.beUrl);
         saveConn(conn);
         saveLastHealthOk(new Date().toISOString());
         // Subscribe when asked; whatever the answer (denied, no push on this BE, a failure), go on:
         // settings shows this device's push state and can try again.
-        if (permission) await subscribePush(permission);
+        if (permission) {
+          const r = await subscribePush(permission);
+          if (r.kind === "unavailable") toast.show({ text: copy.settings.pushUnavailable });
+          else if (r.kind === "failed" || r.kind === "unsupported") toast.show({ text: copy.settings.pushTurnOnFailed });
+        }
         await router.push("/");
       }
     } finally {
@@ -107,7 +114,9 @@ export function Connect() {
 
   function go(withPush: boolean) {
     // Asked here, before any await, so the prompt still counts as an answer to this tap (iOS).
-    if (withPush && !asked.current) asked.current = askPermission();
+    // Only for an address and key that can be checked at all; the check itself still decides.
+    const usable = normalizeBeUrl(url).ok && normalizeToken(token) !== "";
+    if (withPush && usable && !asked.current) asked.current = askPermission();
     void run(true);
   }
 
