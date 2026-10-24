@@ -214,6 +214,13 @@ class GitHub:
             if isinstance(st, dict) and str(st.get("context", "")).startswith(context_prefix)
         }
 
+    def post_status(self, sha: str, state: str, context: str, description: str) -> None:
+        """커밋 상태를 올린다(`POST /statuses/{sha}`). 개발용 PAT은 Commit statuses 쓰기만 있으면 된다."""
+        self._call(
+            "POST", f"/statuses/{sha}",
+            json={"state": state, "context": context, "description": description},
+        )
+
     def repairs_in_range(self, base: str, head: str) -> list[int]:
         """`base...head` 커밋 메시지의 `Repairs #N`(처음 나온 순서, 중복 없이)."""
         body = self._call("GET", f"/compare/{base}...{head}")

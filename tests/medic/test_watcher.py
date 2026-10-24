@@ -566,3 +566,35 @@ def test_heartbeat_only_posts_heartbeat_without_reading_health(tmp_path: Path) -
     hb = env.heartbeat_issue
     assert env.server.issues[hb]["body"].startswith("last_seen: 2026-10-25T16:00:00Z, sha: abc1234")
     assert not [r for r in env.http.requests if r.path.endswith("/health")]
+
+
+# --- medic-dev: watch_incidents / heartbeat 끄기 (릴리스 흐름 스펙 5.3) -----------
+
+
+def _issue_calls(env: Env) -> list[Any]:
+    return [r for r in env.http.requests if r.url.startswith("https://api.github.com") and "/issues" in r.path]
+
+
+def test_watch_incidents_false_makes_no_issue_calls(tmp_path: Path) -> None:
+    env = make_env(tmp_path, watch_incidents=False, heartbeat=False)
+    env.server.add_issue("[incident] ci:main", ["incident"])  # 가져오기·닫기 대상이 될 만한 이슈
+    env.tick()  # 첫 회차: 로그 위치를 잡는다
+    env.log(env.exc())
+    env.tick(2)
+    env.tick(40)  # 가져오기(30분)·하트비트(30분) 주기를 넘긴다
+    assert _issue_calls(env) == []
+    assert not [r for r in env.http.requests if "/repos/" in r.path]  # 저장소 API 호출 자체가 없다
+    inc = env.store.get(EXC_FP)  # 로그 신호 수집과 로컬 상태는 그대로
+    assert inc is not None and inc.state == "open" and inc.issue_number is None
+
+
+def test_heartbeat_false_writes_no_heartbeat(tmp_path: Path) -> None:
+    env = make_env(tmp_path, heartbeat=False)
+    env.tick()  # 첫 회차: 로그 위치를 잡는다
+    env.log(env.exc())
+    env.tick(2)
+    assert env.server.issues[env.heartbeat_issue]["body"] == ""
+    assert env.store.kv_get("last_heartbeat_at") is None
+    assert len(env.incident_posts()) == 1  # 장애 동기화는 그대로
+    env.watcher.heartbeat()  # enabled = false 경로도 하트비트를 쓰지 않는다
+    assert env.server.issues[env.heartbeat_issue]["body"] == ""

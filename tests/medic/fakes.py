@@ -122,6 +122,7 @@ class FakeGitHub:
         self.comments: dict[int, list[str]] = defaultdict(list)
         self.runs: list[dict[str, Any]] = []
         self.statuses: dict[str, list[dict[str, Any]]] = {}
+        self.posted_statuses: list[tuple[str, dict[str, Any]]] = []  # POST /statuses/{sha}로 올라온 것
         self.compares: dict[tuple[str, str], list[str]] = {}
         self.pulls: list[dict[str, Any]] = []
         self.branches: dict[str, str] = {}
@@ -237,6 +238,10 @@ class FakeGitHub:
                 return 200, {"total_count": len(runs), "workflow_runs": runs}, ok
             case "GET", ["commits", sha, "status"]:
                 return 200, {"sha": sha, "statuses": self.statuses.get(sha, [])}, ok
+            case "POST", ["statuses", sha]:
+                self.posted_statuses.append((sha, dict(json)))
+                self.statuses.setdefault(sha, []).append(dict(json))
+                return 201, {"id": len(self.posted_statuses)}, ok
             case "GET", ["compare", rng]:
                 base, _, head = rng.partition("...")
                 msgs = self.compares.get((base, head))

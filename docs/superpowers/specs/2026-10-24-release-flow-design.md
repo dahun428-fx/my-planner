@@ -108,7 +108,7 @@ Vercel 규칙: 여러 규칙에 맞으면 하나라도 `true`면 배포한다(mi
    - 안전 모드 알림과 `POST /internal/notify`는 보낼 통로가 없으므로 로그로만 남긴다.
 3. `GET /api/v1/health`와 API 계약은 바꾸지 않는다.
 
-### 5.3 medic-dev (SP6 후속, 5.4와 6.3)
+### 5.3 medic-dev (SP6 후속, 들어옴: 티켓 12)
 
 `config.medic.local.toml`(개발용 체크아웃에만)이 `config.medic.toml` 위에 같은 깊은 병합으로 겹친다. Git에 든 `config.medic.toml`은 고치지 않는다(작업 폴더가 깨끗해야 SP6 업데이터가 배포한다).
 
@@ -121,7 +121,7 @@ heartbeat = false
 post_commit_status = true     # staging/be 올림
 ```
 
-`staging/be` 올리기는 이 이슈 경로 밖(업데이터의 확인 결과 직후)에서 돈다. `MedicConfig`에 위 키가 없으면 조용히 무시되므로(알 수 없는 키 필터), SP6 후속이 필드를 더한다. SP6 스레드 확인(2026-10-24): 업데이터는 이미 `branch`, `be_task_name`, 체크아웃 루트를 설정에서 읽는다.
+`staging/be` 올리기는 이 이슈 경로 밖(업데이터의 확인 결과 직후)에서 돈다. `MedicConfig`에 위 키가 없으면 조용히 무시되므로(알 수 없는 키 필터), SP6 후속(티켓 12)이 필드를 더했다. SP6 스레드 확인(2026-10-24): 업데이터는 이미 `branch`, `be_task_name`, 체크아웃 루트를 설정에서 읽는다.
 
 ### 5.4 토큰
 
@@ -174,14 +174,14 @@ post_commit_status = true     # staging/be 올림
 
 **막힘 알림**: 검사 1, 2, 3, 5가 실패이거나(Vercel 빌드 실패는 저절로 풀리지 않는다) `staging/be`가 `failure`면, 또는 `main..S`가 250커밋을 넘어 compare가 다 주지 못하면 `release:blocked` 라벨 이슈를 연다. 열린 것이 있으면 새로 열지 않고, 원인이나 SHA가 지난 댓글과 다를 때만 댓글을 단다(원인 한 줄, SHA). 다음 승격이 성공하면 그 이슈를 닫는다. SP6 감시자는 이 라벨을 장애로 들이지 않는다(운영 장애가 아님). Claude 스레드가 이 이슈를 보고 고친다(다음 develop 머지가 `S`를 바꾼다). 대기 중(30분 안 됨, Vercel 빌드 중, 차단 구간)은 막힘이 아니다.
 
-### 6.3 `staging/be` 신호 (SP6 후속, medic-dev)
+### 6.3 `staging/be` 신호 (SP6 후속, 들어옴: 티켓 12, medic-dev)
 
 - medic-dev는 develop 머리를 끌어와 개발용 BE를 재시작하고(BE 파일이 바뀐 경우), SP6의 확인 절차(헬스, 로그 오류)로 본다.
 - 그 뒤 `verify_minutes`(30분) 동안 헬스가 정상이고 새 오류 지문이 없으면 그 SHA에 `POST /statuses/{sha}` `context=staging/be, state=success`. 확인 실패·롤백이면 `failure`.
-- 30분 안에 develop 머리가 바뀌면 그 SHA에는 아무것도 올리지 않고 새 머리로 다시 시작한다.
+- 30분 안에 develop 머리가 바뀌면 그 SHA에는 아무것도 올리지 않고 새 머리로 다시 시작한다. (구현: 재시작 없는 빨리감기 창은 그렇게 버린다. 재시작한 배포의 확인은 끝까지 가서 그 SHA에도 올리며, 승격은 머리 SHA의 상태만 보므로 해가 없다.)
 - BE 파일이 안 바뀐 develop 커밋(웹·문서만)도 재시작 없이 같은 방식으로 30분 뒤 `success`를 올린다. 그래서 승격 트리거가 하나로 통일된다.
 
-**SP6 후속이 들어오기 전**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows·Vercel 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
+**SP6 후속(티켓 12)이 들어오기 전에는**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows·Vercel 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
 
 ### 6.4 노트북이 꺼져 있으면
 
@@ -189,7 +189,7 @@ post_commit_status = true     # staging/be 올림
 
 ## 7. 핫픽스와 동기화 (SP6 자동 수리)
 
-- 자동 수리는 계속 `main`을 대상으로 한다(장애 대응, SP6 그대로). 기본 브랜치가 `main`이라 `repair.yml`의 checkout과 PR base도 `main`이다. 혹시 모를 변경에 대비해 SP6 후속에서 `actions/checkout`에 `ref: main`, PR 생성에 base `main`을 명시한다.
+- 자동 수리는 계속 `main`을 대상으로 한다(장애 대응, SP6 그대로). 기본 브랜치가 `main`이라 `repair.yml`의 checkout과 PR base도 `main`이다. 혹시 모를 변경에 대비해 `actions/checkout`에 `ref: main`, PR 생성에 base `main`을 명시했다(들어옴: 티켓 10).
 - `sync-develop.yml` (`push: branches: [main]`, `RELEASE_PAT`):
   - `main`이 이미 `develop`의 조상이면(빨리감기 승격 뒤의 보통 경우) 아무것도 하지 않는다.
   - 아니면 `POST /merges {base: develop, head: main}`로 `develop`에 merge commit을 만든다(PAT 푸시라 develop push CI가 돈다). 리뷰는 없다(이미 `main`에서 리뷰·CI를 거친 변경).
@@ -203,7 +203,7 @@ post_commit_status = true     # staging/be 올림
 | D1 | GitHub → fine-grained PAT 만들기 → 저장소 시크릿 `RELEASE_PAT` | 5.4 권한. 만료일을 변수 `RELEASE_PAT_EXPIRES`에 |
 | D2 | Vercel 두 프로젝트 → Settings → Environment Variables | `NEXT_PUBLIC_CONNECT_SRC`를 Preview, 브랜치 `develop`에만 `https://*.<tailnet>.ts.net:8443`로 추가. Production 값은 그대로 |
 | D3 | Vercel 두 프로젝트 → Settings | Git: Production Branch가 `main`인지 확인. Deployment Protection: Preview 보호가 켜져 있으면 스테이징 별칭을 열 수 있는지 확인. 첫 develop 배포 뒤 별칭 주소 두 개를 Claude에게 알려 줌(개발용 CORS에 넣음) |
-| D4 | GitHub → 개발용 PAT | 5.4 권한. 노트북 개발용 `.env`에 넣고, 계정 이름을 변수 `DEV_STATUS_LOGIN`에 (SP6 후속이 들어올 때) |
+| D4 | GitHub → 개발용 PAT | 5.4 권한. 노트북 개발용 `.env`에 넣고, 계정 이름을 변수 `DEV_STATUS_LOGIN`에 (SP6 후속, 티켓 12가 들어올 때) |
 | D5 | 노트북 | `E:\my-planner-dev` 클론과 `.env`, `config.local.toml`, `config.medic.local.toml`, 작업 두 개 등록, `tailscale serve --https=8443`. Claude가 스크립트(`scripts/setup_dev.ps1`)를 주고 원격 제어 세션으로 같이 돌린다 |
 | D6 | 스테이징 앱·대시보드 | 개발용 BE 주소와 토큰을 한 번 넣는다 |
 
@@ -216,7 +216,7 @@ D1이 없으면 승격이 돌지 않는다(첫 승격부터 워크플로 파일�
 3. `develop`을 그 `main`에서 만든다. 저장소 변수 `REQUIRE_STAGING_BE=false`.
 4. 코디네이터가 모든 스레드에 공지: 기능 PR은 `base: develop`을 명시, 브랜치는 `origin/develop`에서 딴다, 열려 있는 `main` 대상 기능 PR은 대상을 `develop`으로 바꾸고 `develop`에 다시 얹는다.
 5. D1 뒤 첫 develop 머지로 승격이 한 번 도는지 확인.
-6. SP6 후속 티켓: medic `config.medic.local.toml`·깊은 병합·새 필드(5.3), `staging/be` 올리기, `repair.yml` `ref`/base 명시, `watch.yml` PAT 만료 알림 추가(SP6 티켓 10에서 들어감). 들어오면 D4, `REQUIRE_STAGING_BE=true`, 임시 트리거 삭제.
+6. SP6 후속 티켓: medic `config.medic.local.toml`·깊은 병합·새 필드(5.3), `staging/be` 올리기, `repair.yml` `ref`/base 명시, `watch.yml` PAT 만료 알림 추가(SP6 티켓 10, 12에서 들어옴). 들어오면 D4, `REQUIRE_STAGING_BE=true`, 임시 트리거 삭제.
 7. D5: 노트북 개발용 BE 설치.
 
 ## 10. 테스트

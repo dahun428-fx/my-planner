@@ -103,6 +103,8 @@ def apply(api: gh.Api, actions: list[Action], *, auto_repair: str) -> None:
 
 
 def main() -> int:
+    if gh.no_token():
+        return 0
     api = gh.from_env()
     apply(api, sweep(api, now=datetime.now(UTC)), auto_repair=os.environ.get("AUTO_REPAIR", "on"))
     return 0
