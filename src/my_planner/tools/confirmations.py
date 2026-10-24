@@ -51,6 +51,10 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         "task_dropped": f"✓ 내려놓음: {title}",
         "task_updated": f"✓ 바꿈: {title}",
         "tasks_confirmed": f"✓ 확정: {title}",
+        # 고정 카드(SP3-4 10장). `title`은 `card_label`
+        "card_pinned": f"✓ 카드 고정: {title}",
+        "card_unpinned": f"✓ 카드 고정 해제: {title}",
+        "cards_reordered": "✓ 카드 순서 바꿈",
     }.get(e.kind)
 
 
@@ -73,23 +77,11 @@ def condition_summary(score: int) -> str:
 _CARD_LABEL = {"ui_todo_list": "할 일 목록", "ui_choice": "고르기", "ui_summary_card": "요약"}
 
 
-def _card_label(component: str, props: Any) -> str:
-    """카드 활동의 이름: props의 제목(`title`, `ui_choice`는 `question`), 없으면 컴포넌트 이름."""
+def card_label(component: str, props: Any) -> str:
+    """카드 확인 문구의 이름: props의 제목(`title`, `ui_choice`는 `question`), 없으면 컴포넌트 이름."""
     p = props if isinstance(props, dict) else {}
     name = p.get("title") if component != "ui_choice" else p.get("question")
     return name.strip() if isinstance(name, str) and name.strip() else _CARD_LABEL.get(component, component)
-
-
-def card_pinned_summary(component: str, props: Any) -> str:
-    return f"✓ 카드 고정: {_card_label(component, props)}"
-
-
-def card_unpinned_summary(component: str, props: Any) -> str:
-    return f"✓ 카드 고정 해제: {_card_label(component, props)}"
-
-
-def cards_reordered_summary() -> str:
-    return "✓ 카드 순서 바꿈"
 
 
 def drafts_expired_summary(count: int) -> str:

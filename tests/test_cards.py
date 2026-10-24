@@ -163,3 +163,64 @@ async def test_today_cards_filled_with_current_task_data(tmp_path):
     ]}
     assert (second["id"], second["order"], second["props"]) == (summary, 2, SUMMARY)
     assert second.get("data") is None
+
+
+PIN = ("pin_card", {"component": "ui_summary_card", "props": SUMMARY})
+
+
+async def test_pin_card_then_brain_error_is_not_retried(tmp_path):
+    """고정한 뒤 두뇌가 오류로 끝나도 다시 부르지 않는다(중복 쓰기 방지, 스펙 5.4-3): 카드는 한 장."""
+    from fakes import FakeTurn
+    from ui_stream import parse_sse
+
+    script = [FakeTurn([PIN], "", status="error", error="boom"), FakeTurn([PIN], "고정했어요.")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        _, raw = await env.chat("요약 고정해 줘")
+        calls = len(env.brain.calls)
+        today = await (await env.get("/today")).json()
+        kinds = [r["kind"] for r in env.activity()]
+        logged = [r["kind"] for r in env.conn.execute("SELECT kind FROM tool_events_log ORDER BY id")]
+
+    assert calls == 1
+    assert len(today["cards"]) == 1 and kinds == ["card_pinned"] and logged == ["card_pinned"]
+    (activity,) = [c for c in parse_sse(raw) if c["type"] == "data-activity"]
+    assert activity["data"]["confirmation"] == "✓ 카드 고정: 꾸민 요약"
+
+
+async def test_requeued_after_restart_does_not_pin_twice(tmp_path, conn, state):
+    """두뇌 호출 도중 멈춘 뒤 다시 넣은 행은 기록된 도구 호출을 보고 두뇌를 다시 부르지 않는다: 카드는 한 장."""
+    import asyncio
+    from datetime import timedelta
+
+    from fakes import FakeTurn
+    from test_dispatcher_messages import Env
+    from test_inbound_recovery import _kill, _receive
+
+    from my_planner.loop.runner import resubmit_inbound
+
+    first = Env(tmp_path, conn, state, script=[FakeTurn([PIN], "", hang=True)], start=START, with_tools=True)
+    first.tools.cards = CardsRepo(conn, first.clock)
+    first.dispatcher.start()
+    await _receive(first, state, 44, "요약 고정해 줘")
+    while not first.brain.calls:
+        await asyncio.sleep(0)
+    await _kill(first)
+
+    second = Env(tmp_path, conn, state, script=[], start=START + timedelta(minutes=5), with_tools=True)
+    second.tools.cards = CardsRepo(conn, second.clock)
+    assert resubmit_inbound(state, second.dispatcher) == 1
+    await second.process()
+
+    assert second.brain.calls == []
+    assert len(second.tools.cards.active()) == 1
+    assert second.sender.sent[-1].text.endswith("✓ 카드 고정: 꾸민 요약")
+    assert state.pending_inbound() == []
+
+
+async def test_reorder_cards_rejects_empty_list(tmp_path):
+    async with BeEnv.start(tmp_path, start=START) as env:
+        status, body = await env.action("reorder_cards", {"ids": []})
+        rows = env.activity()
+
+    assert status == 422 and body["status"] == "rejected"
+    assert rows == []

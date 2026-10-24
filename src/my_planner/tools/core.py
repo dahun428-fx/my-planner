@@ -19,7 +19,7 @@ from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
-from my_planner.store.repos.cards import Card
+from my_planner.store.repos.cards import Card, CardsRepo
 from my_planner.store.repos.conditions import Condition
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -36,9 +36,7 @@ from my_planner.tools.activity import (
     tasks_target,
 )
 from my_planner.tools.confirmations import (
-    card_pinned_summary,
-    card_unpinned_summary,
-    cards_reordered_summary,
+    card_label,
     condition_summary,
     confirmation_line,
     drafts_expired_summary,
@@ -93,7 +91,7 @@ class Tools:
         boundary: time,
         conditions: Any = None,
         activity: Any = None,
-        cards: Any = None,
+        cards: CardsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -610,6 +608,16 @@ class Tools:
 
     # --- 카드 도구 (SP3-4 10장, 6.4.2): 고정 카드(`app_cards`). 활동은 되돌릴 수 있다 ---
 
+    def _card_event(
+        self, ctx: RunContext, kind: str, target: str, data: dict[str, Any], undo: dict[str, Any]
+    ) -> None:
+        """카드 변경과 같은 트랜잭션 안에서: 호출 기록(`tool_events_log`: 중단 뒤 다시 처리할 때 두 번 쓰지 않게,
+        스펙 5.4-3), 활동(확인 문구 한 줄), `ctx.events`(두뇌 재시도 방지와 `data-activity.confirmation`)."""
+        self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
+        event = ToolEvent(kind=kind, task_id=None, data=data)
+        self._record(ctx, kind, target, confirmation_line(event, self.today()), undo)
+        ctx.events.append(event)
+
     @staticmethod
     def _card_dict(c: Card) -> dict[str, Any]:
         return {"id": c.id, "component": c.component, "order": c.sort_order}
@@ -625,8 +633,8 @@ class Tools:
             return _err(f"화면 조각 형식이 맞지 않아요: {err}")
         with transaction(self.cards.conn):
             card = self.cards.pin(component, props, conversation_id=ctx.conversation_id)
-            self._record(ctx, "card_pinned", card_target(card.id), card_pinned_summary(component, props),
-                         {"card_id": card.id})
+            self._card_event(ctx, "card_pinned", card_target(card.id), {"title": card_label(component, props)},
+                             {"card_id": card.id})
         return self._card_dict(card)
 
     @_tool
@@ -639,9 +647,9 @@ class Tools:
         order = self.cards.order()
         with transaction(self.cards.conn):
             self.cards.unpin(before.id)
-            self._record(ctx, "card_unpinned", card_target(before.id),
-                         card_unpinned_summary(before.component, before.props),
-                         {"card_id": before.id, "index": order.index(before.id)})
+            self._card_event(ctx, "card_unpinned", card_target(before.id),
+                             {"title": card_label(before.component, before.props)},
+                             {"card_id": before.id, "index": order.index(before.id)})
         return {"id": before.id}
 
     @_tool
@@ -651,13 +659,15 @@ class Tools:
             return _err("카드 순서를 바꿀 수 없어요.")
         if not isinstance(ids, list) or any(not isinstance(i, int) or isinstance(i, bool) for i in ids):
             return _err("ids는 카드 번호(숫자) 목록이에요.")
+        if not ids:  # 고정 카드가 없을 때도: 바뀐 것 없는 활동을 남기지 않는다
+            return _err("순서를 바꿀 고정 카드 번호를 알려 주세요.")
         before = self.cards.order()
         with transaction(self.cards.conn):
             try:
                 self.cards.reorder(ids)
             except ValueError:
                 return _err("ids에는 고정한 카드 번호를 모두 한 번씩 새 순서로 넣어 주세요.")
-            self._record(ctx, "cards_reordered", CARDS_ORDER_TARGET, cards_reordered_summary(), {"order": before})
+            self._card_event(ctx, "cards_reordered", CARDS_ORDER_TARGET, {}, {"order": before})
         return {"ids": self.cards.order()}
 
     # --- 읽기 도구 ---
@@ -824,12 +834,14 @@ def _undo_condition_recorded(tools: Tools, undo: dict[str, Any], ctx: RunContext
 
 def _undo_card_pinned(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
     """고정을 푼다(행은 남긴다). 다른 카드의 순서는 그대로다."""
+    assert tools.cards is not None
     tools.cards.unpin(undo["card_id"])
     return None
 
 
 def _undo_card_unpinned(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
     """다시 고정하고 풀기 전 자리(지금 순서의 그 번째)에 넣는다."""
+    assert tools.cards is not None
     c = tools.cards.get(undo["card_id"])
     if c is None:
         return SUPERSEDED
@@ -842,6 +854,7 @@ def _undo_card_unpinned(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> 
 
 def _undo_cards_reordered(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
     """이전 순서로. 그 뒤에 고정을 푼 카드는 빼고, 그 뒤에 고정한 카드는 지금 순서대로 맨 뒤에 둔다."""
+    assert tools.cards is not None
     now = tools.cards.order()
     before = [i for i in undo["order"] if i in now]
     tools.cards.restore_order([*before, *(i for i in now if i not in before)])
