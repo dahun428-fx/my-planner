@@ -261,8 +261,9 @@ describe("Todos", () => {
     await user.click(screen.getByRole("button", { name: copy.todos.save }));
     expect(await screen.findByText(SUMMARY)).toBeInTheDocument();
     expect(screen.queryByText(copy.actions.failed)).toBeNull();
-    // "그대로 두기" first: nothing is sent and the date sheet is still there for another try.
-    await user.click(screen.getByRole("button", { name: copy.todos.keep }));
+    // Escape (as "그대로 두기") closes only the confirm sheet: nothing is sent and the date sheet
+    // is still there for another try.
+    fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByText(SUMMARY)).toBeNull());
     expect(bodies).toHaveLength(1);
     expect(screen.getByLabelText(copy.todos.dateLabel)).toBeInTheDocument();
