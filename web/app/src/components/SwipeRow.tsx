@@ -50,6 +50,7 @@ export function SwipeRow({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swallowClick = useRef(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // No actions (a done row) means no swipe and no menu: nothing to edit there.
   const off = disabled || actions.length === 0;
 
   const place = (value: string, animate: boolean) => {

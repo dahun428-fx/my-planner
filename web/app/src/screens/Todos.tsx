@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ActionOutcome, useAction } from "../api/actions";
-import { apiGet } from "../api/client";
+import { type ApiResult, apiGet } from "../api/client";
 import type { Drafts, DraftItem, Priorities, Today as TodayData, Todo, Week } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
@@ -10,7 +10,6 @@ import { LargeTitle } from "../components/LargeTitle";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
-import { Sheet } from "../components/Sheet";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { TodoRow } from "../components/TodoRow";
@@ -21,6 +20,7 @@ import { useSnapshotted } from "../lib/snapshot";
 import { addDays } from "../lib/time";
 import page from "../styles/page.module.css";
 import { AddTodoSheet } from "./AddTodoSheet";
+import { type Edit, EditTodoSheet } from "./EditTodoSheet";
 import styles from "./Todos.module.css";
 import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
@@ -40,12 +40,10 @@ const is404 = (r: { kind: string; status?: number }) => r.kind === "error" && r.
 // Open rows first, done rows after them (spec 5.5.1), each keeping the BE's order.
 const openFirst = (todos: Todo[]) => [...todos.filter((t) => t.status !== "done"), ...todos.filter((t) => t.status === "done")];
 
-type Edit = { kind: "date" | "title"; todo: Todo };
-
 // Spec 5.5.5, F6.
 export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const router = useRouter();
-  const { state, recheck } = useConnection();
+  const { state, conn, recheck } = useConnection();
   const { run } = useAction();
 
   const { view: todayView, refresh: refreshToday } = useSnapshotted<TodayData>("today", "/today", "Today");
@@ -55,20 +53,28 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   // /priorities (R1) and /drafts (R2) may not exist yet: a 404 hides the tabs or the bundle.
   const [rangesHidden, setRangesHidden] = useState(false);
   const [prio, setPrio] = useState<Priorities | null>(null);
-  const [prioFailed, setPrioFailed] = useState(false);
+  const [prioErr, setPrioErr] = useState<ApiResult<unknown> | null>(null);
   const [drafts, setDrafts] = useState<DraftItem[] | null>(null);
   const [draftsHidden, setDraftsHidden] = useState(false);
+  const [draftsErr, setDraftsErr] = useState<ApiResult<unknown> | null>(null);
   const [version, setVersion] = useState(0);
   const [adding, setAdding] = useState(false);
   const [edit, setEdit] = useState<Edit | null>(null);
 
   const tab: TodosTab = rangesHidden && isRange(requested) ? "week" : requested;
   const online = state?.kind === "online";
+  const fellBack = tab !== requested;
+  useEffect(() => {
+    if (fellBack) void router.replace("/todos/?tab=week");
+  }, [fellBack, router]);
 
   const loadDrafts = useCallback(async () => {
     const r = await apiGet<Drafts>("/drafts", "Drafts");
-    if (r.kind === "ok") setDrafts(r.data.items);
-    else if (is404(r)) setDraftsHidden(true);
+    if (r.kind === "ok") {
+      setDrafts(r.data.items);
+      setDraftsErr(null);
+    } else if (is404(r)) setDraftsHidden(true);
+    else if (r.kind !== "offline") setDraftsErr(r);
   }, []);
 
   useEffect(() => {
@@ -77,29 +83,27 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   }, [online, draftsHidden, loadDrafts, version]);
 
   // Without this the month tab would only vanish after someone taps it.
+  const probed = useRef<string | null>(null);
   useEffect(() => {
-    if (!online || isRange(requested)) return;
-    let alive = true;
+    if (!online || !conn || probed.current === conn.beUrl) return;
+    probed.current = conn.beUrl; // once per connection, not on every tab change
     void apiGet<Priorities>("/priorities?cadence=month", "Priorities").then((r) => {
-      if (alive && is404(r)) setRangesHidden(true);
+      if (is404(r)) setRangesHidden(true);
     });
-    return () => {
-      alive = false;
-    };
-  }, [online, requested]);
+  }, [online, conn]);
 
   useEffect(() => {
+    setPrioErr(null);
     if (!online || !isRange(tab)) return;
     let alive = true;
     void apiGet<Priorities>(`/priorities?cadence=${tab}`, "Priorities").then((r) => {
       if (!alive) return;
       if (r.kind === "ok") {
         setPrio(r.data);
-        setPrioFailed(false);
       } else if (is404(r)) {
         setRangesHidden(true);
-      } else {
-        setPrioFailed(true);
+      } else if (r.kind !== "offline") {
+        setPrioErr(r);
       }
     });
     return () => {
@@ -134,24 +138,29 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   };
 
   // One draft write at a time: "모두 확정" and a single "확정" must not both go out for the same drafts.
+  const draftLock = useRef(false);
   const [draftBusy, setDraftBusy] = useState(false);
   const confirmDrafts = async (ids: number[]) => {
-    if (ids.length === 0 || draftBusy) return;
+    if (ids.length === 0 || draftLock.current) return;
+    draftLock.current = true;
     setDraftBusy(true);
     try {
       const out = await run("confirm_tasks", { ids });
       if (out?.kind === "applied") await refreshAll();
       else await guard(out);
     } finally {
+      draftLock.current = false;
       setDraftBusy(false);
     }
   };
   const dropDraft = async (id: number) => {
-    if (draftBusy) return;
+    if (draftLock.current) return;
+    draftLock.current = true;
     setDraftBusy(true);
     try {
       await drop(id);
     } finally {
+      draftLock.current = false;
       setDraftBusy(false);
     }
   };
@@ -251,10 +260,10 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, false)}
       </Group>
     );
-  } else if (prioFailed) {
+  } else if (prioErr) {
     body = (
       <Group>
-        <BlockError code="priorities" onRetry={() => setVersion((v) => v + 1)} />
+        <BlockError code={prioErr.kind === "error" ? prioErr.code : prioErr.kind} onRetry={() => setVersion((v) => v + 1)} />
       </Group>
     );
   } else {
@@ -265,7 +274,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     );
   }
 
-  const draftList = live && !draftsHidden && drafts && drafts.length > 0 ? drafts : null;
+  const draftList = live && !draftsHidden && !draftsErr && drafts && drafts.length > 0 ? drafts : null;
   const options = TABS.filter((t) => !(rangesHidden && isRange(t))).map((t) => ({ value: t, label: LABEL[t] }));
 
   return (
@@ -293,6 +302,18 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       {body}
       {draftList && (
         <section>
+          {draftList.length >= 2 && (
+            <div className={styles.bulkRow}>
+              <button
+                type="button"
+                className={styles.bulk}
+                disabled={draftBusy}
+                onClick={() => void confirmDrafts(draftList.map((d) => d.todo.id))}
+              >
+                {copy.todos.confirmAll}
+              </button>
+            </div>
+          )}
           <Group heading={copy.todos.drafts(draftList.length)}>
             <p className={styles.hint}>{copy.todos.draftsHint}</p>
             {draftList.map(({ todo }) => (
@@ -313,91 +334,16 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
               </div>
             ))}
           </Group>
-          {draftList.length >= 2 && (
-            <div className={styles.bulkRow}>
-              <button
-                type="button"
-                className={styles.bulk}
-                disabled={draftBusy}
-                onClick={() => void confirmDrafts(draftList.map((d) => d.todo.id))}
-              >
-                {copy.todos.confirmAll}
-              </button>
-            </div>
-          )}
         </section>
+      )}
+      {live && !draftsHidden && draftsErr && (
+        <Group>
+          <BlockError code={draftsErr.kind === "error" ? draftsErr.code : draftsErr.kind} onRetry={() => void loadDrafts()} />
+        </Group>
       )}
       {dropSheet}
       {todayDate && <AddTodoSheet open={adding} onClose={() => setAdding(false)} defaultDate={todayDate} onAdded={() => void refreshAll()} />}
-      <EditSheet edit={edit} onClose={() => setEdit(null)} onDone={refreshAll} guard={guard} />
+      <EditTodoSheet edit={edit} onClose={() => setEdit(null)} onDone={refreshAll} guard={guard} />
     </main>
-  );
-}
-
-// "날짜 바꾸기" (`move_task`) and "제목 고치기" (`update_task`) from the row menu (spec 5.5.5, accessibility).
-function EditSheet({
-  edit,
-  onClose,
-  onDone,
-  guard,
-}: {
-  edit: Edit | null;
-  onClose(): void;
-  onDone(): Promise<void>;
-  guard: (out: ActionOutcome | null) => Promise<void>;
-}) {
-  return (
-    <Sheet open={edit !== null} onClose={onClose} title={edit ? (edit.kind === "date" ? copy.todos.changeDate : copy.todos.editTitle) : undefined}>
-      {edit && <EditForm key={`${edit.kind}:${edit.todo.id}`} edit={edit} onClose={onClose} onDone={onDone} guard={guard} />}
-    </Sheet>
-  );
-}
-
-function EditForm({ edit, onClose, onDone, guard }: { edit: Edit; onClose(): void; onDone(): Promise<void>; guard: (out: ActionOutcome | null) => Promise<void> }) {
-  const { run } = useAction();
-  const id = useId();
-  const isDate = edit.kind === "date";
-  const initial = isDate ? (edit.todo.planned_for ?? "") : edit.todo.title;
-  const [value, setValue] = useState(initial);
-  const [busy, setBusy] = useState(false);
-  const clean = isDate ? value : value.trim();
-  const ok = clean !== "" && clean !== initial;
-
-  const save = async () => {
-    if (!ok || busy) return;
-    setBusy(true);
-    try {
-      const out = isDate ? await run("move_task", { id: edit.todo.id, planned_for: clean }) : await run("update_task", { id: edit.todo.id, title: clean });
-      if (out === null) return;
-      if (out.kind === "applied") await onDone();
-      else if (out.kind === "conflict" || out.kind === "needs_confirm") await guard(out);
-      else return; // rejected / failed: useAction said why, the sheet stays for another try
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form
-      className={styles.editForm}
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <label className={styles.label} htmlFor={id}>
-        {isDate ? copy.todos.dateLabel : copy.todos.titleLabel}
-      </label>
-      <input id={id} className={styles.input} type={isDate ? "date" : "text"} value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" />
-      <div className={styles.buttons}>
-        <button type="button" className={styles.cancel} onClick={onClose}>
-          {copy.todos.close}
-        </button>
-        <button type="submit" className={styles.save} disabled={!ok || busy}>
-          {copy.todos.save}
-        </button>
-      </div>
-    </form>
   );
 }

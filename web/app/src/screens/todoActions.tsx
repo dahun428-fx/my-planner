@@ -97,6 +97,7 @@ export function useConfirmedDrop(refresh: () => Promise<void>) {
   const notAllowed = useNotAllowed(refresh);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
 
   const drop = async (id: number) => {
     const out = await run("drop_task", { id });
@@ -106,7 +107,8 @@ export function useConfirmedDrop(refresh: () => Promise<void>) {
   };
 
   const confirmDrop = async () => {
-    if (!confirm || busy) return;
+    if (!confirm || lock.current) return;
+    lock.current = true;
     setBusy(true);
     try {
       const out = await run("drop_task", { id: confirm.id }, { confirmToken: confirm.token });
@@ -119,6 +121,7 @@ export function useConfirmedDrop(refresh: () => Promise<void>) {
       setConfirm(null);
       if (out.kind === "applied") await refresh();
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   };

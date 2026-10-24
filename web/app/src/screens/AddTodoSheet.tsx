@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useAction } from "../api/actions";
 import type { Todo } from "../api/types.gen";
 import { Segmented } from "../components/Segmented";
@@ -42,6 +42,7 @@ function AddForm({ onClose, defaultDate, onAdded }: Omit<AddTodoSheetProps, "ope
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
 
   const planned = mode === "today" ? defaultDate : mode === "tomorrow" ? addDays(defaultDate, 1) : mode === "pick" ? picked || null : null;
   const trimmed = title.trim();
@@ -54,7 +55,8 @@ function AddForm({ onClose, defaultDate, onAdded }: Omit<AddTodoSheetProps, "ope
     });
 
   const submit = async () => {
-    if (trimmed === "" || busy) return;
+    if (trimmed === "" || lock.current) return;
+    lock.current = true;
     setBusy(true);
     try {
       const args: Record<string, unknown> = { title: trimmed, areas: AREAS.filter((a) => areas.has(a)) };
@@ -72,6 +74,7 @@ function AddForm({ onClose, defaultDate, onAdded }: Omit<AddTodoSheetProps, "ope
         toast.show({ text: copy.actions.failed });
       }
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   };

@@ -1,3 +1,5 @@
+import type { Todo } from "../api/types.gen";
+
 // Every Korean sentence the app shows lives here (spec 10장). Screen code takes text from `copy`;
 // `npm run lint:copy` rejects Hangul literals anywhere else. Templates are functions.
 // Later tickets add entries to these groups.
@@ -248,7 +250,7 @@ export const copy = {
     relationships: "관계",
     learning: "배움",
     quality_of_life: "삶의 질",
-  },
+  } satisfies Record<Todo["areas"][number], string>,
 
   loops: {
     morning_brief: "아침 브리핑",

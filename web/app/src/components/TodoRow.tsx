@@ -17,7 +17,7 @@ export interface TodoRowProps {
   onEditTitle?(): void;
 }
 
-// One to-do on the Today screen (spec 5.5.1 block 6). A done row is grey with a strike-through and
+// One to-do on the Today and to-dos screens (spec 5.5.1 block 6, 5.5.5). A done row is grey with a strike-through and
 // the time it was done, never a count. The optimistic flip is the caller's: it passes a todo that
 // already looks done and takes it back if the write fails.
 export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPress, onChangeDate, onEditTitle }: TodoRowProps) {
@@ -25,6 +25,7 @@ export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPr
   const meta: string[] = [];
   if (todo.priority) meta.push(copy.today.priority);
   if (done && todo.completed_at) meta.push(copy.today.completedAt(formatKst(todo.completed_at, "HH:mm")));
+  // A done row is not editable, so it has no swipe actions and no menu.
   const actions = done
     ? []
     : [

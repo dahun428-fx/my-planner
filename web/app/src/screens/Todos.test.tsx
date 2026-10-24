@@ -237,4 +237,77 @@ describe("Todos", () => {
     renderWithProviders(<Todos tab="day" />);
     expect(await screen.findByText("운동 30분")).toBeInTheDocument();
   });
+
+  it("double tap on 확정 sends one request", async () => {
+    serve();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const bodies = actions(async () => {
+      await gate;
+      return applied();
+    });
+    renderWithProviders(<Todos tab="week" />);
+    const btn = await screen.findByRole("button", { name: copy.todos.confirmLabel("치과 예약하기") });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    fireEvent.click(screen.getByRole("button", { name: copy.todos.confirmAll }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    release();
+    await screen.findByText("✓ 처리했어요");
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("bulk confirm sits above the drafts group", async () => {
+    serve();
+    renderWithProviders(<Todos tab="week" />);
+    const bulk = await screen.findByRole("button", { name: copy.todos.confirmAll });
+    const heading = screen.getByRole("heading", { name: copy.todos.drafts(2) });
+    expect(Boolean(bulk.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
+  it("a failing /drafts shows a retryable block error", async () => {
+    serve({ drafts: () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) });
+    renderWithProviders(<Todos tab="week" />);
+    expect(await screen.findByText(copy.errors.block("internal"))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy.errors.retry })).toBeInTheDocument();
+  });
+
+  it("a failing /priorities shows its real code", async () => {
+    serve({ priorities: () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) });
+    renderWithProviders(<Todos tab="quarter" />);
+    expect(await screen.findByText(copy.errors.block("internal"))).toBeInTheDocument();
+  });
+
+  it("falls back to week in the URL when ranges are hidden", async () => {
+    serve({ priorities: notFound });
+    const { router } = renderWithProviders(<Todos tab="quarter" />);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/todos/?tab=week"));
+  });
+
+  it("probes priorities once per connection", async () => {
+    const cadences = serve();
+    const { router } = renderWithProviders(<Todos tab="week" />);
+    await screen.findByText("장보기");
+    await waitFor(() => expect(cadences.length).toBeGreaterThan(0));
+    expect(cadences).toEqual(["month"]);
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("keyboard user edits a title from the 더 보기 button", async () => {
+    serve();
+    const bodies = actions(() => applied());
+    renderWithProviders(<Todos tab="week" />);
+    const user = userEvent.setup();
+    const more = await screen.findByRole("button", { name: copy.today.moreActions("장보기") });
+    more.focus();
+    await user.keyboard("{Enter}");
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.todos.editTitle }));
+    const dialog = await screen.findByRole("dialog");
+    const field = within(dialog).getByLabelText(copy.todos.titleLabel);
+    await user.clear(field);
+    await user.type(field, "마트");
+    await user.click(within(dialog).getByRole("button", { name: copy.todos.save }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ action: "update_task", args: { id: 34, title: "마트" } });
+  });
 });
