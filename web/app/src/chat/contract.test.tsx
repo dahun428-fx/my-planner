@@ -20,7 +20,7 @@ const noop = () => {};
 
 async function openSheet() {
   const user = userEvent.setup();
-  renderWithProviders(<ChatSheet open onClose={noop} conversationId={null} />, { catalog: true });
+  renderWithProviders(<ChatSheet open onClose={noop} conversationId={null} />);
   const input = await screen.findByRole("textbox", { name: copy.chat.inputLabel });
   await waitFor(() => expect(input).toBeEnabled());
   return {

@@ -312,7 +312,7 @@ describe("Activity", () => {
   it("confirm block on top from pending checkins", async () => {
     serve({ checkins: () => HttpResponse.json(checkinsToday) });
     server.use(http.get(`${BASE}/checkins/:id`, ({ params }) => HttpResponse.json({ ...checkin341, id: Number(params.id) })));
-    renderWithProviders(<Activity />, { catalog: true });
+    renderWithProviders(<Activity />);
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
     const heading = screen.getByRole("heading", { name: copy.activity.needsConfirm });
     const first = await screen.findByText("‘장보기’를 내일로 옮겼어요");
@@ -321,7 +321,7 @@ describe("Activity", () => {
 
   it("no confirm block when nothing is pending", async () => {
     serve();
-    renderWithProviders(<Activity />, { catalog: true });
+    renderWithProviders(<Activity />);
     await screen.findByText("‘장보기’를 내일로 옮겼어요");
     expect(screen.queryByRole("heading", { name: copy.activity.needsConfirm })).toBeNull();
   });
@@ -348,7 +348,7 @@ describe("Activity", () => {
 
   it("offline connection disables everything even when /activity answers", async () => {
     serve({ checkins: () => HttpResponse.json(checkinsToday) });
-    renderWithProviders(<Activity />, { conn: "offline", catalog: true });
+    renderWithProviders(<Activity />, { conn: "offline" });
     expect(await screen.findByText(copy.offline.later)).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 200));
     expect(screen.queryByRole("button", { name: copy.activity.undo })).toBeNull();

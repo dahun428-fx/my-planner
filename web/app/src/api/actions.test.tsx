@@ -230,7 +230,8 @@ describe("useAction", () => {
 
   it("shows the offline text when the retry fails too", async () => {
     record(() => HttpResponse.error());
-    renderWithProviders(<Rows />);
+    // No catalog: its good answer would bring the connection back and the "reconnected" toast over this one.
+    renderWithProviders(<Rows />, { catalog: false });
     await userEvent.click(screen.getByText("row1"));
     expect(await screen.findByText(copy.actions.offline)).toBeInTheDocument();
   });

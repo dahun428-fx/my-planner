@@ -85,7 +85,7 @@ describe("ChatSheet", () => {
     ]);
     const bodies = serveChat(() => sseResponse(golden("chat_replay.sse")));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     expect(await screen.findByText("골라 봤어요")).toBeInTheDocument();
     expect(screen.getByText("이번 주 정리해 줘")).toBeInTheDocument();
     expect(await screen.findByText("장보기")).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe("ChatSheet", () => {
   it("a restored draft card does not write: its rows may have changed since it was kept", async () => {
     await keepDraft();
     history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "골라 봤어요" }]);
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     expect(await screen.findByText("장보기")).toBeInTheDocument();
     await ready();
     expect(screen.getByRole("checkbox", { name: copy.parts.checkLabel("장보기") })).toBeDisabled();
@@ -116,7 +116,7 @@ describe("ChatSheet", () => {
       { at: "2026-10-24T01:00:00Z", speaker: "user", text: "이번 주 정리해 줘" },
       { at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "골라 봤어요" },
     ]);
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     expect(await screen.findByText("골라 봤어요")).toBeInTheDocument();
     await ready();
     expect(screen.queryByText("장보기")).toBeNull();
@@ -126,7 +126,7 @@ describe("ChatSheet", () => {
     const seen = serveHistory({ messages: { 8: [{ id: "m-8-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "체크인 대화예요" }] } });
     const bodies = serveChat(() => sseResponse(textAnswer("m-8-2", 8, "네")));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={8} checkinId={341} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={8} checkinId={341} />);
     expect(await screen.findByText("체크인 대화예요")).toBeInTheDocument();
     expect(seen.conversations).toBe(0);
     await sendText(user, "3점이요");
@@ -136,7 +136,7 @@ describe("ChatSheet", () => {
 
   it("opens an empty conversation for null", async () => {
     const seen = serveHistory({ conversations: [{ id: 5, last_message_at: "2026-10-24T01:00:00Z" }] });
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await ready();
     expect(seen.conversations).toBe(0);
     expect(seen.messages).toEqual([]);
@@ -149,7 +149,7 @@ describe("ChatSheet", () => {
       { id: "m-5-1", at: "2026-10-24T01:09:00Z", speaker: "secretary", text: "둘" },
       { id: "u-5-2", at: "2026-10-24T01:20:00Z", speaker: "user", text: "셋" },
     ]);
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     expect(await screen.findByText("셋")).toBeInTheDocument();
     const at = (iso: string) => formatKst(iso, "HH:mm");
     expect(screen.getByText(at("2026-10-24T01:00:00Z"))).toBeInTheDocument(); // the conversation starts
@@ -160,7 +160,7 @@ describe("ChatSheet", () => {
   it("drag down closes", async () => {
     serveHistory();
     const onClose = vi.fn();
-    renderWithProviders(<ChatSheet open onClose={onClose} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={onClose} conversationId={null} />);
     await ready();
     const handle = document.querySelector("[data-sheet-handle]") as HTMLElement;
     const panel = screen.getByRole("dialog");
@@ -181,7 +181,7 @@ describe("ChatSheet", () => {
   it("closes with an exit animation unless motion is reduced", async () => {
     serveHistory();
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
-    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await ready();
     rerender(<ChatSheet open={false} onClose={() => {}} conversationId={null} />);
     const dialog = screen.getByRole("dialog", { hidden: true });
@@ -211,7 +211,7 @@ describe("ChatSheet", () => {
         ],
       },
     );
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     expect(await screen.findByText(copy.chat.elsewhere("넷"))).toBeInTheDocument();
     expect(screen.getByText(copy.chat.elsewhere("셋"))).toBeInTheDocument();
     expect(screen.getByText(copy.chat.elsewhere("둘"))).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe("ChatSheet", () => {
     });
     serveChat(() => sseResponse(textAnswer("m-5-2", 5, "네, 그럴게요")));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     const line = await screen.findByText(copy.chat.elsewhere("하나"));
     await sendText(user, "고마워");
     const reply = await screen.findByText("네, 그럴게요");
@@ -248,7 +248,7 @@ describe("ChatSheet", () => {
       http.get(`${BASE}/conversations`, () => (fail ? HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) : undefined)),
     );
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     const retry = await screen.findByRole("button", { name: copy.errors.retry });
     expect(screen.getByText(copy.errors.block("internal"))).toBeInTheDocument();
     fail = false;
@@ -273,7 +273,7 @@ describe("ChatSheet", () => {
     const headers = { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1" };
     const bodies = serveChat(() => sseResponse(command, headers), () => sseResponse(golden("chat_replay.sse")));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await screen.findByText("좋아요");
     await sendText(user, "/today");
     expect(await screen.findByText("오늘 할 일은 셋이에요.")).toBeInTheDocument();
@@ -287,7 +287,7 @@ describe("ChatSheet", () => {
     history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "좋아요" }]);
     const bodies = serveChat(() => sseResponse(textAnswer("m-6-1", 6, "새로 시작해요")));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await screen.findByText("좋아요");
     expect(screen.queryByText(copy.chat.newConversation)).toBeNull();
     await sendText(user, "다른 얘기");
@@ -314,7 +314,7 @@ describe("ChatSheet", () => {
       () => sseResponse(textAnswer("m-1-2", 1, "운동부터 해요")),
     );
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await sendText(user, "뭐부터 할까");
     await user.click(await screen.findByRole("button", { name: "운동" }));
     expect(await screen.findByText("운동부터 해요")).toBeInTheDocument();
@@ -331,7 +331,7 @@ describe("ChatSheet", () => {
     const gate = gatedResponse(golden("chat_add_task.sse"), [2]);
     const bodies = serveChat(gate.response);
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await sendText(user, "내일 치과 추가해 줘");
     const input = screen.getByRole("textbox", { name: copy.chat.inputLabel });
     await user.type(input, "하나 더");
@@ -348,7 +348,7 @@ describe("ChatSheet", () => {
     serveHistory();
     const bodies = serveChat(() => sseResponse(golden("chat_replay.sse")));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     const input = await ready();
     await user.type(input, "안녕");
     const send = screen.getByRole("button", { name: copy.chat.send });
@@ -360,7 +360,7 @@ describe("ChatSheet", () => {
 
   it("offline shows last view read-only", async () => {
     history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "좋아요" }]);
-    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await screen.findByText("좋아요");
     await ready();
     rerender(<ChatSheet open={false} onClose={() => {}} />);
@@ -383,7 +383,7 @@ describe("ChatSheet", () => {
       }),
     );
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await sendText(user, "내일 치과 추가해 줘");
     const undo = await screen.findByRole("button", { name: copy.chat.undo });
     fireEvent.click(undo);
@@ -401,7 +401,7 @@ describe("ChatSheet", () => {
     let answer = () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) as Response;
     server.use(http.post(`${BASE}/activity/:id/undo`, () => answer()));
     const user = userEvent.setup();
-    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { catalog: true });
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await sendText(user, "내일 치과 추가해 줘");
     await user.click(await screen.findByRole("button", { name: copy.chat.undo }));
     expect(await screen.findByText(copy.actions.undoFailed)).toBeInTheDocument();
@@ -417,7 +417,7 @@ describe("ChatSheet", () => {
     const seen = serveHistory();
     serveChat(() => sseResponse(golden("chat_add_task.sse")));
     const user = userEvent.setup();
-    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await sendText(user, "내일 치과 추가해 줘");
     const box = await screen.findByText("✓ 추가: 치과 → 내일"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(box.closest("[data-activity]")).not.toBeNull();
