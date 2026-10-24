@@ -1,44 +1,25 @@
 import type { UIMessage } from "ai";
-import { useRef, useState } from "react";
-import { failureText, type UndoBlockReason, undoActivity } from "../api/actions";
-import { useToast } from "../components/Toast";
+import { useState } from "react";
+import { type UndoBlockReason, useUndo } from "../api/actions";
 import { copy } from "../lib/copy";
 import { UiPart } from "../ui/registry";
 import type { ViewPart } from "./parts";
 import styles from "./ChatSheet.module.css";
 
-type UndoState = { kind: "idle" } | { kind: "busy" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
+type UndoState = { kind: "idle" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
 
 // The grey box of a data-activity part (12장 R4b) and its undo. Before R4b there is no
 // confirmation: then only the undo button shows. Read-only (offline, an answer coming) turns the
 // undo off like every other write.
 function ActivityBox({ confirmation, undoId, readOnly }: { confirmation: string | null; undoId: number | null; readOnly: boolean }) {
-  const toast = useToast();
+  const { undo: send, busy } = useUndo();
   const [undo, setUndo] = useState<UndoState>({ kind: "idle" });
-  const lock = useRef(false);
 
   const run = async (id: number) => {
-    if (lock.current || readOnly) return; // the answer to the first press has not come yet
-    lock.current = true;
-    setUndo({ kind: "busy" });
-    try {
-      const out = await undoActivity(id);
-      if (out.kind === "undone") {
-        toast.show({ text: out.confirmation });
-        setUndo({ kind: "done" });
-      } else if (out.kind === "already_undone") {
-        setUndo({ kind: "done" });
-      } else if (out.kind === "blocked") {
-        setUndo({ kind: "blocked", reason: out.reason });
-      } else {
-        const k = out.result.kind;
-        const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
-        toast.show({ text: known ? failureText(out.result) : copy.actions.undoFailed });
-        setUndo({ kind: "idle" });
-      }
-    } finally {
-      lock.current = false;
-    }
+    if (readOnly) return;
+    const out = await send(id);
+    if (out?.kind === "undone" || out?.kind === "already_undone") setUndo({ kind: "done" });
+    else if (out?.kind === "blocked") setUndo({ kind: "blocked", reason: out.reason });
   };
 
   let trailing: React.ReactNode = null;
@@ -46,7 +27,7 @@ function ActivityBox({ confirmation, undoId, readOnly }: { confirmation: string 
   else if (undo.kind === "blocked") trailing = <span className={styles.note}>{copy.activity.undoBlocked[undo.reason]}</span>;
   else if (undoId !== null) {
     trailing = (
-      <button type="button" className={styles.undo} disabled={readOnly || undo.kind === "busy"} onClick={() => void run(undoId)}>
+      <button type="button" className={styles.undo} disabled={readOnly || busy.has(undoId)} onClick={() => void run(undoId)}>
         {copy.chat.undo}
       </button>
     );

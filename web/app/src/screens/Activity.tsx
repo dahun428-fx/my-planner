@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { failureText, undoActivity, type UndoBlockReason } from "../api/actions";
+import { failureText, type UndoBlockReason, useUndo } from "../api/actions";
 import { type ApiResult, apiFetch, apiGet } from "../api/client";
 import type { ActivityItem, ActivityResponse, CheckinList, Today } from "../api/types.gen";
 import { validateModel } from "../api/validate";
@@ -99,8 +99,7 @@ export function Activity() {
 
   const [notes, setNotes] = useState<Readonly<Record<number, UndoBlockReason>>>({});
   const [undone, setUndone] = useState<Readonly<Record<number, string>>>({});
-  const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
-  const undoing = useRef(new Set<number>());
+  const { undo: send, busy } = useUndo();
 
   // Only the first page is read again; the older pages stay as they are.
   const readAgain = useCallback(() => refresh(), [refresh]);
@@ -144,28 +143,12 @@ export function Activity() {
   };
 
   const undo = async (rowId: number, undoId: number) => {
-    if (undoing.current.has(rowId)) return; // the answer to the first press has not come yet
-    undoing.current.add(rowId);
-    setBusy(new Set(undoing.current));
-    try {
-      const out = await undoActivity(undoId);
-      if (out.kind === "undone") {
-        setUndone((u) => ({ ...u, [rowId]: new Date().toISOString() }));
-        toast.show({ text: out.confirmation });
-        await readAgain();
-      } else if (out.kind === "already_undone") {
-        setUndone((u) => ({ ...u, [rowId]: new Date().toISOString() }));
-        await readAgain();
-      } else if (out.kind === "blocked") {
-        setNotes((n) => ({ ...n, [rowId]: out.reason }));
-      } else {
-        const k = out.result.kind;
-        const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
-        toast.show({ text: known ? failureText(out.result) : copy.actions.undoFailed });
-      }
-    } finally {
-      undoing.current.delete(rowId);
-      setBusy(new Set(undoing.current));
+    const out = await send(undoId);
+    if (out?.kind === "undone" || out?.kind === "already_undone") {
+      setUndone((u) => ({ ...u, [rowId]: new Date().toISOString() }));
+      await readAgain();
+    } else if (out?.kind === "blocked") {
+      setNotes((n) => ({ ...n, [rowId]: out.reason }));
     }
   };
 
@@ -194,7 +177,7 @@ export function Activity() {
     else if (note) trailing = <span className={styles.note}>{copy.activity.undoBlocked[note]}</span>;
     else if (undoId !== null) {
       trailing = (
-        <button type="button" className={styles.undo} disabled={busy.has(a.id)} onClick={() => void undo(a.id, undoId)}>
+        <button type="button" className={styles.undo} disabled={busy.has(undoId)} onClick={() => void undo(a.id, undoId)}>
           {copy.activity.undo}
         </button>
       );
