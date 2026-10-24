@@ -29,3 +29,36 @@ async def test_health_after_morning_brief(tmp_path):
     assert body["notify"] == {"primary": "app", "effective": "telegram"}
     assert body["status"] == "ok"
 
+
+
+async def test_today_after_chat_and_checkin(tmp_path):
+    # 월요일 09:00:30. 낮에 텔레그램으로 일정을 넣고, 저녁 체크인이 초안 둘을 제안한다
+    add = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-27",
+                        "scheduled_at": "2026-10-27T14:00:00+09:00"})
+    propose = ("propose_tasks", {"tasks": [{"title": "물 마시기", "areas": ["health"]},
+                                           {"title": "스트레칭", "areas": ["health"]}]})
+    script = [FakeTurn([add], "치과 넣었어요"), FakeTurn([propose], "오늘 어떠셨어요?")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 9, 0) + timedelta(seconds=30), script=script) as env:
+        env.clock.set(kst(2026, 10, 26, 13, 0))
+        await env.telegram("내일 2시 치과")
+        env.clock.set(kst(2026, 10, 26, 17, 30) + timedelta(seconds=30))
+        await env.tick()
+
+        # 바로(10/26 밤): 그 체크인은 pending이고 상세에 카드 둘(초안, 컨디션)
+        listing = await (await env.get("/checkins?date=2026-10-26")).json()
+        (item,) = [i for i in listing["items"] if i["loop"] == "evening_checkin"]
+        assert item["state"] == "pending"
+        detail = await (await env.get(f"/checkins/{item['id']}")).json()
+        assert len(detail["cards"]) == 2
+        assert [t["title"] for t in detail["cards"][0]["data"]["todos"]] == ["물 마시기", "스트레칭"]
+
+        # 10/27 09:00: 답장 창은 04:00에 끝났다
+        env.clock.set(kst(2026, 10, 27, 9, 0))
+        today = await (await env.get("/today")).json()
+        after = await (await env.get(f"/checkins/{item['id']}")).json()
+
+    assert today["date"] == "2026-10-27"
+    (dentist,) = [x for x in today["todos"] if x["todo"]["title"] == "치과"]
+    assert dentist["group"] == "scheduled" and dentist["todo"]["scheduled_at"] == "2026-10-27T05:00:00Z"
+    assert after["state"] == "missed"
+    assert "물 마시기" not in str(today["todos"])  # 초안은 오늘 목록에 없다

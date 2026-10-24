@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
-from zoneinfo import ZoneInfo
 
 import anyio
 
@@ -23,14 +22,13 @@ from my_planner.domain import (
     ConversationKind,
     LoopKey,
     RunContext,
-    RunStatus,
     SkipReason,
     TaskStatus,
     ToolEvent,
 )
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
-from my_planner.harness.context import build_notices, build_preamble
+from my_planner.harness.context import ask_condition_for, build_notices, build_preamble
 from my_planner.harness.redact import MASK, redact
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
@@ -787,23 +785,11 @@ class Dispatcher:
         )
 
     def _ask_condition_for(self, run: Run, merged: list[Run] | None = None) -> date | None:
-        """컨디션 버튼의 날짜(스펙 5.4). 저녁 체크인은 그 회차의 논리적 날짜다.
-
-        저녁 체크인이 다른 회차(예: 일요일 회고)에 합쳐졌어도 그 저녁 체크인의 날짜를 쓴다.
-        """
-        if self.conditions is None:
-            return None
-        s = self.settings
-        for r in (run, *(merged or [])):
-            if r.loop is LoopKey.evening_checkin:
-                return logical_date(r.scheduled_for, s.timezone, s.day_boundary)
-        today = logical_date(run.scheduled_for, s.timezone, s.day_boundary)
-        if run.loop is LoopKey.morning_brief:
-            # 어제 기록이 없고 어제 저녁 체크인이 done이 아니면(늦음, 복귀 인사, 멈춤 등 이유와 상관없이) 어제를 묻는다
-            yesterday = today - timedelta(days=1)
-            if self.conditions.get(yesterday) is None and not self._evening_done(yesterday):
-                return yesterday
-        return None
+        """컨디션 버튼의 날짜. 판정은 `harness.context.ask_condition_for`(앱 카드와 같은 함수)."""
+        assert self.runs is not None
+        return ask_condition_for(
+            run, merged, conditions=self.conditions, runs=self.runs, settings=self.settings
+        )
 
     def _recorded_condition(self) -> str:
         """오늘과 어제(논리적 날짜) 기록된 컨디션. 버튼은 두뇌를 거치지 않으니 매 호출 메시지 앞에 알린다."""
@@ -816,19 +802,6 @@ class Dispatcher:
             if c is not None:
                 lines.append(f"- {label}({d.month}/{d.day}): {c.score}/5")
         return "## 기록된 컨디션\n" + "\n".join(lines) if lines else ""
-
-    def _evening_done(self, d: date) -> bool:
-        """그 논리적 날짜의 저녁 체크인 회차가 done인지. 회차가 없으면 done이 아니다."""
-        assert self.runs is not None
-        s = self.settings
-        start = datetime.combine(d, s.day_boundary, ZoneInfo(s.timezone))
-        runs = self.runs.between(start - timedelta(microseconds=1), start + timedelta(days=1))
-        return any(
-            r.loop is LoopKey.evening_checkin
-            and r.status is RunStatus.done
-            and logical_date(r.scheduled_for, s.timezone, s.day_boundary) == d
-            for r in runs
-        )
 
     def _may_rerun(self, run: Run, result: BrainResult) -> bool:
         """두뇌 단계 오류는 도구 이벤트가 하나도 없고 한계 안일 때만 한 번 다시 실행한다.

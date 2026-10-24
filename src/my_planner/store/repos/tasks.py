@@ -8,7 +8,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 
-from my_planner.clock import Clock, from_iso, local, to_iso
+from my_planner.clock import Clock, from_iso, local, period_of, to_iso
 from my_planner.domain import Area, Cadence, TaskStatus
 from my_planner.store.db import transaction
 
@@ -289,6 +289,20 @@ class TasksRepo:
         tasks = [self.get(r["task_id"]) for r in rows]
         return [t for t in tasks if t is not None]
 
+    def current_priority(self, task_id: int, today: date) -> tuple[Cadence, str, int] | None:
+        """그 할 일이 지금 기간(오늘, 이번 주, 이번 달, 분기, 올해)의 우선순위이면 가장 큰 주기의 (주기, 기간, 순위)."""
+        periods = [(c, period_of(c, today)) for c in Cadence]
+        where = " OR ".join("(cadence = ? AND period = ?)" for _ in periods)
+        rows = self.conn.execute(
+            f"SELECT cadence, period, rank FROM priorities WHERE task_id = ? AND ({where})",
+            (task_id, *(x for cp in periods for x in (cp[0].value, cp[1]))),
+        ).fetchall()
+        if not rows:
+            return None
+        order = list(Cadence)
+        best = max(rows, key=lambda r: order.index(Cadence(r["cadence"])))
+        return Cadence(best["cadence"]), best["period"], best["rank"]
+
     # --- 도구 호출 기록 ---
 
     def log_tool_event(
@@ -332,6 +346,36 @@ class TasksRepo:
             (conversation_id,),
         ).fetchall()
         return [r["task_id"] for r in rows]
+
+    def proposed_task_ids_for_runs(self, run_ids: list[int]) -> list[int]:
+        """그 회차들(합친 회차 포함)이 `propose_tasks`로 제안한 할 일 번호(제안한 순서). 상태는 거르지 않는다."""
+        if not run_ids:
+            return []
+        marks = ",".join("?" * len(run_ids))
+        rows = self.conn.execute(
+            "SELECT task_id FROM tool_events_log "
+            f"WHERE run_id IN ({marks}) AND kind = 'tasks_proposed' AND task_id IS NOT NULL "
+            "GROUP BY task_id ORDER BY MIN(id)",
+            run_ids,
+        ).fetchall()
+        return [r["task_id"] for r in rows]
+
+    def proposed_at(self, task_id: int, fallback: datetime) -> datetime:
+        """가장 최근 `proposed` 이벤트 시각. 없으면 `fallback`(만든 시각)."""
+        r = self.conn.execute(
+            "SELECT at FROM task_events WHERE task_id = ? AND kind = 'proposed' ORDER BY at DESC, id DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return from_iso(r["at"]) if r is not None else fallback
+
+    def proposal_origin(self, task_id: int) -> tuple[int | None, int | None]:
+        """그 초안을 만든 `propose_tasks` 도구 기록의 (회차, 대화). 기록이 없으면 (None, None)."""
+        r = self.conn.execute(
+            "SELECT run_id, conversation_id FROM tool_events_log WHERE task_id = ? AND kind = 'tasks_proposed' "
+            "ORDER BY id DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return (r["run_id"], r["conversation_id"]) if r is not None else (None, None)
 
     def proposed_conversation_id(self, task_id: int) -> int | None:
         """그 할 일을 `propose_tasks`로 제안한 대화. 없으면 None."""

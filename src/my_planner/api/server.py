@@ -21,7 +21,20 @@ from aiohttp import web
 from my_planner.api.auth import AuthLimiter, bearer_ok
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
-from my_planner.api.models import error_response
+from my_planner.api.models import ApiError, error_response
+from my_planner.api.read import (
+    get_checkin,
+    get_checkins,
+    get_conditions,
+    get_conversation_messages,
+    get_conversations,
+    get_drafts,
+    get_priorities,
+    get_schema,
+    get_today,
+    get_ui_catalog,
+    get_week,
+)
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
@@ -127,6 +140,8 @@ def read_handler(view: Callable[[sqlite3.Connection, ApiDeps, web.Request], Any]
         conn = deps.read_conn()
         try:
             body = view(conn, deps, request)
+        except ApiError as e:
+            return error_response(e.status, e.code, e.message)
         finally:
             conn.close()
         return web.json_response(body)
@@ -144,6 +159,21 @@ async def _health(request: web.Request) -> web.StreamResponse:
 _health_read = read_handler(lambda conn, deps, _request: health_view(conn, deps))
 
 
+READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request], Any]], ...] = (
+    ("/today", get_today),
+    ("/week", get_week),
+    ("/conditions", get_conditions),
+    ("/priorities", get_priorities),
+    ("/drafts", get_drafts),
+    ("/checkins", get_checkins),
+    ("/checkins/{id}", get_checkin),
+    ("/conversations", get_conversations),
+    ("/conversations/{id}/messages", get_conversation_messages),
+    ("/ui/catalog", get_ui_catalog),
+    ("/schema", get_schema),
+)
+
+
 def build_app(deps: ApiDeps) -> web.Application:
     cfg = deps.settings.api
     app = web.Application(
@@ -159,6 +189,8 @@ def build_app(deps: ApiDeps) -> web.Application:
     app[DEPS_KEY] = deps
     app[LIMITER_KEY] = AuthLimiter(deps.clock)
     app.router.add_get(HEALTH_PATH, _health)
+    for path, view in READ_ROUTES:
+        app.router.add_get(API_PREFIX + path, read_handler(view))
     return app
 
 

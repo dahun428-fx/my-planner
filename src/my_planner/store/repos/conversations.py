@@ -99,3 +99,16 @@ class ConversationsRepo:
             (ConversationKind(kind).value,),
         ).fetchone()
         return _row(r) if r is not None else None
+
+    def recent(self, *, channel: str | None = None, limit: int = 20) -> list[Conversation]:
+        """마지막 메시지가 최근인 것부터. `channel`을 주면 그 통로 대화만."""
+        where, args = ("WHERE channel = ? ", [channel]) if channel is not None else ("", [])
+        rows = self.conn.execute(
+            f"SELECT * FROM conversations {where}ORDER BY last_message_at DESC, id DESC LIMIT ?", (*args, limit)
+        ).fetchall()
+        return [_row(r) for r in rows]
+
+    def for_run(self, run_id: int) -> list[Conversation]:
+        """그 회차에 붙은 대화(통로마다 있을 수 있다), id 순."""
+        rows = self.conn.execute("SELECT * FROM conversations WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+        return [_row(r) for r in rows]
