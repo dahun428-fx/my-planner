@@ -1,0 +1,38 @@
+{
+  "cadence": "month",
+  "period": "2026-10",
+  "items": [
+    {
+      "id": 41,
+      "title": "이사 견적 받기",
+      "status": "open",
+      "planned_for": null,
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": {
+        "cadence": "month",
+        "period": "2026-10",
+        "rank": 1
+      },
+      "completed_at": null
+    },
+    {
+      "id": 42,
+      "title": "건강검진 예약",
+      "status": "done",
+      "planned_for": null,
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": {
+        "cadence": "month",
+        "period": "2026-10",
+        "rank": 2
+      },
+      "completed_at": "2026-10-20T01:00:00Z"
+    }
+  ]
+}

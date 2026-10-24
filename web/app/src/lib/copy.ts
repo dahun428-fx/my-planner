@@ -1,3 +1,5 @@
+import type { Todo } from "../api/types.gen";
+
 // Every Korean sentence the app shows lives here (spec 10장). Screen code takes text from `copy`;
 // `npm run lint:copy` rejects Hangul literals anywhere else. Templates are functions.
 // Later tickets add entries to these groups.
@@ -99,6 +101,31 @@ export const copy = {
     confirmExpired: "확인 시간이 지났어요. 다시 해 주세요.",
     keep: "그대로 두기",
     change: "바꾸기",
+    periodsLabel: "기간",
+    weekPriorities: "이번 주 우선순위",
+    periodPriorities: (period: string) => `${period} 우선순위`,
+    noPriorities: "아직 정해진 우선순위가 없어요",
+    noTodos: "잡힌 할 일이 없어요",
+    dayHeading: (weekday: string, m: number, d: number, isToday: boolean) =>
+      `${weekday} · ${m}월 ${d}일${isToday ? " · 오늘" : ""}`,
+    confirmLabel: (title: string) => `${title} 확정`,
+    dropLabel: (title: string) => `${title} 빼기`,
+    changeDate: "날짜 바꾸기",
+    editTitle: "제목 고치기",
+    dateLabel: "날짜",
+    dateGroup: "날짜 정하기",
+    titleLabel: "제목",
+    save: "저장",
+    addTitle: "할 일 추가",
+    addSubmit: "추가",
+    areasLabel: "영역",
+    dateToday: "오늘",
+    dateTomorrow: "내일",
+    datePick: "날짜 고르기",
+    dateNone: "없음",
+    timeLabel: "시각",
+    noteLabel: "메모",
+    close: "닫기",
   },
 
   activity: {
@@ -165,6 +192,7 @@ export const copy = {
     reconnect: "다시 연결",
     check: "연결 확인",
     writeLater: "비서가 다시 연결되면 할 수 있어요",
+    later: "비서가 다시 연결되면 볼 수 있어요",
     catchUp: "노트북이 켜지면 지나간 체크인부터 차례로 따라잡아요.",
     chatLater: CHAT_LATER,
   },
@@ -222,7 +250,7 @@ export const copy = {
     relationships: "관계",
     learning: "배움",
     quality_of_life: "삶의 질",
-  },
+  } satisfies Record<Todo["areas"][number], string>,
 
   loops: {
     morning_brief: "아침 브리핑",

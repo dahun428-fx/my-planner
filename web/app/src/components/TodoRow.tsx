@@ -1,7 +1,7 @@
 import type { Todo } from "../api/types.gen";
 import { copy } from "../lib/copy";
 import { formatKst } from "../lib/time";
-import { SwipeRow } from "./SwipeRow";
+import { type SwipeAction, SwipeRow } from "./SwipeRow";
 import styles from "./TodoRow.module.css";
 
 export interface TodoRowProps {
@@ -12,24 +12,38 @@ export interface TodoRowProps {
   onTomorrow(): void;
   onDrop(): void;
   onLongPress?(): void;
+  /** Menu-only actions of the to-dos screen (long press, "…" button). */
+  onChangeDate?(): void;
+  onEditTitle?(): void;
 }
 
-// One to-do on the Today screen (spec 5.5.1 block 6). A done row is grey with a strike-through and
+// One to-do on the Today and to-dos screens (spec 5.5.1 block 6, 5.5.5). A done row is grey with a strike-through and
 // the time it was done, never a count. The optimistic flip is the caller's: it passes a todo that
 // already looks done and takes it back if the write fails.
-export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPress }: TodoRowProps) {
+export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPress, onChangeDate, onEditTitle }: TodoRowProps) {
   const done = todo.status === "done";
   const meta: string[] = [];
   if (todo.priority) meta.push(copy.today.priority);
   if (done && todo.completed_at) meta.push(copy.today.completedAt(formatKst(todo.completed_at, "HH:mm")));
+  // A done row is not editable, so it has no swipe actions and no menu.
   const actions = done
     ? []
     : [
         { label: copy.todos.tomorrow, tone: "neutral" as const, onPress: onTomorrow },
         { label: copy.todos.drop, tone: "negative" as const, onPress: onDrop },
       ];
+  const menuExtra: SwipeAction[] = [];
+  if (onChangeDate) menuExtra.push({ label: copy.todos.changeDate, tone: "neutral", onPress: onChangeDate });
+  if (onEditTitle) menuExtra.push({ label: copy.todos.editTitle, tone: "neutral", onPress: onEditTitle });
   return (
-    <SwipeRow actions={actions} disabled={readOnly} menuTitle={todo.title} onLongPress={onLongPress} moreLabel={copy.today.moreActions(todo.title)}>
+    <SwipeRow
+      actions={actions}
+      disabled={readOnly}
+      menuTitle={todo.title}
+      onLongPress={onLongPress}
+      moreLabel={copy.today.moreActions(todo.title)}
+      menuExtra={menuExtra}
+    >
       <div className={styles.row}>
         {readOnly ? (
           <span className={styles.check} aria-hidden="true">

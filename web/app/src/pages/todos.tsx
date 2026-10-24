@@ -1,18 +1,21 @@
 import Head from "next/head";
-import { LargeTitle } from "../components/LargeTitle";
+import { useRouter } from "next/router";
 import { TabBar } from "../components/TabBar";
 import { copy } from "../lib/copy";
-import page from "../styles/page.module.css";
+import { Todos, type TodosTab } from "../screens/Todos";
+
+const TABS: readonly string[] = ["day", "week", "month", "quarter", "year"];
 
 export default function Page() {
+  const { query } = useRouter();
+  const q = typeof query.tab === "string" ? query.tab : "week";
+  const tab = (TABS.includes(q) ? q : "week") as TodosTab;
   return (
     <>
       <Head>
         <title>{copy.tabs.todos}</title>
       </Head>
-      <main className={page.main}>
-        <LargeTitle title={copy.tabs.todos} />
-      </main>
+      <Todos tab={tab} />
       <TabBar current="todos" />
     </>
   );

@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet } from "../api/client";
 import type { CheckinDetail, Today as TodayData, TodayTodo } from "../api/types.gen";
-import { type ActionOutcome, useAction } from "../api/actions";
+import { useAction } from "../api/actions";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher } from "../components/ChatLauncher";
-import { ConfirmSheet } from "../components/ConfirmSheet";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
 import { OfflineNotice } from "../components/OfflineNotice";
@@ -23,16 +22,11 @@ import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
 import { PinnedCard } from "./PinnedCard";
 import styles from "./Today.module.css";
+import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 const SCORES = [1, 2, 3, 4, 5];
 const FOLD_LINES = 3;
 const FOLD_CHARS = 140;
-
-interface PendingConfirm {
-  id: number;
-  token: string;
-  summary: string;
-}
 
 function dateLine(data: TodayData): string {
   const [, m, d] = data.date.split("-").map(Number);
@@ -46,22 +40,10 @@ export function Today() {
   const { run } = useAction();
   const toast = useToast();
 
-  // Optimistic check (spec 4.6): todo id -> the done state the person asked for, until the answer is in.
-  const [flip, setFlip] = useState<Readonly<Record<number, boolean>>>({});
-  const busy = useRef(new Set<number>());
-  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
   const [changing, setChanging] = useState(false);
 
   useEffect(() => toast.onUndone(() => void refresh()), [toast, refresh]);
-
-  const unflip = useCallback((id: number) => {
-    setFlip((f) => {
-      const { [id]: _gone, ...rest } = f;
-      return rest;
-    });
-  }, []);
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
   const live = view.kind === "live";
@@ -102,78 +84,19 @@ export function Today() {
     setReread((n) => n + 1);
   }, [refresh]);
 
-  // A flip ends once the live list shows the state it asked for (or no longer has the row).
-  useEffect(() => {
-    if (view.kind !== "live") return;
-    setFlip((f) => {
-      const ids = Object.keys(f).map(Number);
-      const keep = ids.filter((id) => {
-        const row = view.data.todos.find((t) => t.todo.id === id);
-        return row !== undefined && (row.todo.status === "done") !== f[id];
-      });
-      if (keep.length === ids.length) return f;
-      return Object.fromEntries(keep.map((id) => [id, f[id]]));
-    });
-  }, [view]);
   const offline = view.kind === "snapshot" || view.kind === "none";
   const date = data?.date ?? "";
 
-  const toggle = async (item: TodayTodo) => {
-    const id = item.todo.id;
-    if (busy.current.has(id)) return; // the answer to the first press has not come yet
-    busy.current.add(id);
-    const wasDone = (flip[id] ?? item.todo.status === "done");
-    setFlip((f) => ({ ...f, [id]: !wasDone }));
-    let applied = false;
-    try {
-      const out = await run(wasDone ? "reopen_task" : "complete_task", { id });
-      applied = out?.kind === "applied";
-      if (out?.kind === "conflict") toast.show({ text: copy.actions.failed });
-      if (applied) await refresh();
-    } finally {
-      busy.current.delete(id);
-      // After an applied write the flip stays until an answer that shows the change arrives
-      // (the effect above), so a failed refresh does not make the row look unchecked again.
-      if (!applied) unflip(id);
-    }
-  };
+  const liveTodos = useMemo(() => (view.kind === "live" ? view.data.todos.map((t) => t.todo) : null), [view]);
+  const { show, toggle } = useOptimisticCheck(liveTodos, refresh);
+  const { drop, sheet: dropSheet } = useConfirmedDrop(refresh);
+  const notAllowed = useNotAllowed(refresh);
 
   const tomorrow = async (id: number) => {
     // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
     const out = await run("move_task", { id, planned_for: addDays(date, 1) });
     if (out?.kind === "applied") await refresh();
-  };
-
-  const drop = async (id: number) => {
-    const out = await run("drop_task", { id });
-    if (out?.kind === "applied") await refresh();
-    else if (out?.kind === "needs_confirm") setConfirm({ id, token: out.confirmToken, summary: out.summary });
-  };
-
-  const confirmDrop = async () => {
-    if (!confirm || confirmBusy) return;
-    setConfirmBusy(true);
-    try {
-      const out = await run("drop_task", { id: confirm.id }, { confirmToken: confirm.token });
-      if (out === null) return;
-      if (out.kind === "needs_confirm") {
-        setConfirm({ id: confirm.id, token: out.confirmToken, summary: out.summary });
-        return;
-      }
-      if (out.kind === "conflict") toast.show({ text: copy.todos.confirmExpired });
-      setConfirm(null);
-      if (out.kind === "applied") await refresh();
-    } finally {
-      setConfirmBusy(false);
-    }
-  };
-
-  // useAction toasts applied / rejected / failed; a card that changed under us (conflict) or an
-  // unexpected confirm question gets the failure sentence, and the screen reads again.
-  const notAllowed = async (out: ActionOutcome | null) => {
-    if (out?.kind !== "conflict" && out?.kind !== "needs_confirm") return;
-    toast.show({ text: copy.actions.failed });
-    await refresh();
+    else await notAllowed(out);
   };
 
   const unpin = async (id: number) => {
@@ -244,14 +167,7 @@ export function Today() {
     const folded = longBrief && !briefOpen;
     const score = t.condition?.score ?? null;
     const showPills = score === null || changing;
-    const list = t.todos.map((item) => {
-      const want = flip[item.todo.id];
-      if (want === undefined || want === (item.todo.status === "done")) return item;
-      return {
-        ...item,
-        todo: { ...item.todo, status: want ? ("done" as const) : ("open" as const), completed_at: want ? new Date().toISOString() : null },
-      };
-    });
+    const list = t.todos.map((item) => ({ ...item, todo: show(item.todo) }));
     // Open rows keep the BE's order; rows that are done go to the end of the list (spec 5.5.1).
     const display = [...list.filter((i) => i.todo.status !== "done"), ...list.filter((i) => i.todo.status === "done")];
     const openCount = display.filter((i) => i.todo.status !== "done").length;
@@ -337,7 +253,7 @@ export function Today() {
                 key={item.todo.id}
                 todo={item.todo}
                 readOnly={readOnly}
-                onToggle={() => void toggle(item)}
+                onToggle={() => void toggle(item.todo)}
                 onTomorrow={() => void tomorrow(item.todo.id)}
                 onDrop={() => void drop(item.todo.id)}
               />
@@ -367,7 +283,7 @@ export function Today() {
       {state?.kind === "online" && state.degraded && <p className={styles.line}>{state.degraded}</p>}
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
-      {confirm && <ConfirmSheet summary={confirm.summary} busy={confirmBusy} onKeep={() => setConfirm(null)} onChange={() => void confirmDrop()} />}
+      {dropSheet}
       <ChatLauncher disabled={!live} offline={offline} onOpen={() => {}} />
     </main>
   );

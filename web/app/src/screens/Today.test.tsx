@@ -163,6 +163,15 @@ describe("Today", () => {
     expect(bodies[0]).toMatchObject({ action: "move_task", args: { id: 12, planned_for: "2026-10-25" } });
   });
 
+  it("a conflict on tomorrow says it failed", async () => {
+    serve();
+    actions(() => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 }));
+    renderWithProviders(<Today />);
+    fireEvent.contextMenu(await screen.findByText("운동 30분"));
+    fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+  });
+
   it("drop needs confirm opens sheet", async () => {
     serve();
     const bodies = actions((b) =>

@@ -1,0 +1,22 @@
+{
+  "cadence": "quarter",
+  "period": "2026-Q4",
+  "items": [
+    {
+      "id": 43,
+      "title": "자격증 공부 시작",
+      "status": "open",
+      "planned_for": null,
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": {
+        "cadence": "quarter",
+        "period": "2026-Q4",
+        "rank": 1
+      },
+      "completed_at": null
+    }
+  ]
+}

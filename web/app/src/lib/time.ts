@@ -43,3 +43,9 @@ export function relativeChecked(iso: string, now: number): string {
   const minutes = Math.floor((now - Date.parse(iso)) / 60_000);
   return minutes < 1 ? copy.settings.checkedJustNow : copy.settings.checkedMinutesAgo(minutes);
 }
+
+// A KST wall-clock date + "HH:mm" as UTC ISO without milliseconds ("2026-10-25" + "14:00" -> "2026-10-25T05:00:00Z").
+// Korea has no daylight saving, so +09:00 is exact whatever the device zone is.
+export function kstToUtcIso(date: string, hhmm: string): string {
+  return new Date(`${date}T${hhmm}:00+09:00`).toISOString().replace(".000Z", "Z");
+}
