@@ -3,17 +3,18 @@
 // _app's first effect, so it may change after the first paint.
 export type Theme = "system" | "light" | "dark";
 
-// Colour preset on this device (`mp.palette`): :root[data-palette], none for ink (the spec 5.2
-// tokens). Each has a light and a dark set in tokens.css, so it goes with any theme.
-export const PALETTES = ["ink", "paper", "forest", "sea", "sunset", "lavender"] as const;
+// Colour preset on this device (`mp.palette`): :root[data-palette], none for paper (DESIGN.md's
+// default, "종이와 잉크"). Each has a light and a dark set in styles/global.css, so it goes with any theme.
+export const PALETTES = ["paper", "ink", "forest", "sea", "sunset", "lavender"] as const;
+export const DEFAULT_PALETTE: Palette = "paper";
 export type Palette = (typeof PALETTES)[number];
 
 const KEY = "mp.theme";
 const PALETTE_KEY = "mp.palette";
-// The --ground of each token set (tokens.css), for the browser chrome. contrast.test.ts checks them.
+// The --ground of each token set (styles/global.css), for the browser chrome. contrast.test.ts checks them.
 export const PALETTE_GROUND: Record<Palette, { light: string; dark: string }> = {
+  paper: { light: "#f6f3ec", dark: "#12110f" },
   ink: { light: "#f2f2f5", dark: "#000000" },
-  paper: { light: "#f4f1ea", dark: "#12100d" },
   forest: { light: "#eff3f0", dark: "#040806" },
   sea: { light: "#eef2f6", dark: "#03070b" },
   sunset: { light: "#f7f1ee", dark: "#0b0605" },
@@ -32,9 +33,9 @@ export function loadTheme(): Theme {
 export function loadPalette(): Palette {
   try {
     const v = localStorage.getItem(PALETTE_KEY);
-    return (PALETTES as readonly string[]).includes(v ?? "") ? (v as Palette) : "ink";
+    return (PALETTES as readonly string[]).includes(v ?? "") ? (v as Palette) : DEFAULT_PALETTE;
   } catch {
-    return "ink";
+    return DEFAULT_PALETTE;
   }
 }
 
@@ -42,7 +43,7 @@ export function loadPalette(): Palette {
 function paintChrome(): void {
   const root = document.documentElement;
   const t = root.dataset.theme;
-  const ground = PALETTE_GROUND[(root.dataset.palette as Palette | undefined) ?? "ink"] ?? PALETTE_GROUND.ink;
+  const ground = PALETTE_GROUND[(root.dataset.palette as Palette | undefined) ?? DEFAULT_PALETTE] ?? PALETTE_GROUND[DEFAULT_PALETTE];
   document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
     const own = /dark/.test(m.getAttribute("media") ?? "") ? ground.dark : ground.light;
     m.content = t === "light" || t === "dark" ? ground[t] : own;
@@ -60,7 +61,7 @@ export function applyTheme(t: Theme): void {
 export function applyPalette(p: Palette): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  if (p === "ink") delete root.dataset.palette;
+  if (p === DEFAULT_PALETTE) delete root.dataset.palette;
   else root.dataset.palette = p;
   paintChrome();
 }

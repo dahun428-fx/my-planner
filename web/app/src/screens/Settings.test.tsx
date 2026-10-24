@@ -393,23 +393,24 @@ describe("Settings", () => {
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 
-  it("colour presets: six swatches, ink chosen, a tap applies at once", async () => {
+  it("colour presets: six swatches, paper first and chosen, a tap applies at once", async () => {
     serve();
     renderWithProviders(<Settings />, { route: "/settings/" });
     const user = userEvent.setup();
     const group = await screen.findByRole("radiogroup", { name: copy.settings.palette });
     const radios = within(group).getAllByRole("radio");
     expect(radios.map((r) => r.textContent)).toEqual(PALETTES.map((p) => copy.settings.palettes[p]));
-    // Each swatch draws its own palette (data-palette on the swatch, colours from tokens.css).
+    expect(radios[0]).toHaveTextContent(copy.settings.palettes.paper);
+    // Each swatch draws its own palette (data-palette on the swatch, colours from global.css).
     expect(radios.map((r) => r.querySelector("[data-palette]")?.getAttribute("data-palette"))).toEqual([...PALETTES]);
-    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.paper })).toHaveAttribute("aria-checked", "true");
     expect(radios.filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(1);
 
     await user.click(within(group).getByRole("radio", { name: copy.settings.palettes.forest }));
     expect(document.documentElement.dataset.palette).toBe("forest");
     expect(localStorage.getItem("mp.palette")).toBe("forest");
     expect(within(group).getByRole("radio", { name: copy.settings.palettes.forest })).toHaveAttribute("aria-checked", "true");
-    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "false");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.paper })).toHaveAttribute("aria-checked", "false");
 
     // One tab stop; arrow keys move the choice.
     expect(radios.filter((r) => r.tabIndex === 0)).toEqual([within(group).getByRole("radio", { name: copy.settings.palettes.forest })]);
@@ -420,7 +421,7 @@ describe("Settings", () => {
     expect(document.documentElement.dataset.palette).toBe("lavender");
     await user.keyboard("{Home}");
     expect(document.documentElement.hasAttribute("data-palette")).toBe(false);
-    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.paper })).toHaveAttribute("aria-checked", "true");
   });
 
   it("the saved palette shows as chosen", async () => {

@@ -22,7 +22,7 @@ import { hardReplace } from "../lib/nav";
 import { usePolling } from "../lib/polling";
 import { hasLiveSubscription, permission, pushSupport, subscribePush, unsubscribePush } from "../lib/push";
 import { clearDeviceData } from "../lib/snapshot";
-import { applyPalette, applyTheme, loadPalette, loadTheme, type Palette, PALETTES, setPalette, setTheme, type Theme } from "../lib/theme";
+import { applyPalette, applyTheme, DEFAULT_PALETTE, loadPalette, loadTheme, type Palette, PALETTES, setPalette, setTheme, type Theme } from "../lib/theme";
 import { formatKst, relativeChecked } from "../lib/time";
 import page from "../styles/page.module.css";
 import { useCatalog } from "../ui/CatalogProvider";
@@ -194,7 +194,7 @@ export function Settings() {
     setTheme(t);
     setThemeState(t);
   };
-  const [palette, setPaletteState] = useState<Palette>("ink");
+  const [palette, setPaletteState] = useState<Palette>(DEFAULT_PALETTE);
   useEffect(() => setPaletteState(loadPalette()), []);
   const choosePalette = (p: Palette) => {
     setPalette(p);
@@ -216,7 +216,7 @@ export function Settings() {
       }
       await clearDeviceData();
       applyTheme("system");
-      applyPalette("ink");
+      applyPalette(DEFAULT_PALETTE);
       window.dispatchEvent(new Event(CONN_CHANGED));
     } finally {
       // A full load of /connect/: the chat sheet, catalog and polls of the old BE leave memory too.

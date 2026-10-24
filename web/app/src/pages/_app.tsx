@@ -13,8 +13,8 @@ import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
 import { pruneDeviceData } from "../lib/snapshot";
 import { applyPalette, applyTheme, loadPalette, loadTheme } from "../lib/theme";
 import { CatalogProvider } from "../ui/CatalogProvider";
-import "../styles/tokens.css";
-import "../styles/globals.css";
+// The design system (DESIGN.md): the generated copy of web/shared/global.css (`npm run sync:design`).
+import "../styles/global.css";
 // Every screen's styles go out with _app as one stylesheet. Otherwise Next's pages router carries a
 // page's CSS as inline <style> tags when the app moves between tabs, which style-src 'self' blocks.
 import "../screens/Activity";
