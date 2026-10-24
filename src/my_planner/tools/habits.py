@@ -28,6 +28,7 @@ from my_planner.tools.confirmations import (
     confirm_button_habit_archive,
     confirm_button_habit_update,
     confirm_habit_archive_summary,
+    confirm_habit_edit_summary,
     confirm_habit_rename_summary,
     confirm_habit_update_summary,
     habit_kind_label,
@@ -253,18 +254,22 @@ class HabitTools:
         prior = {"title": h.title, "area": h.area.value, "kind": h.kind, "target_per_week": h.target_per_week}
         changes = {k: v for k, v in changes.items() if v != prior[k]}
         before = {k: prior[k] for k in changes}  # 바뀐 필드의 이전 값만
-        if self._confirm_first(ctx) and changes:  # 규칙 H7. 바뀌는 것이 없으면 바로 적용한다
+        if not changes:  # 바뀌는 것이 없으면 아무것도 쓰지 않는다(`set_habit_status`의 같은 상태와 같다)
+            return {**self._habit_out(h), "already": True}
+        if self._confirm_first(ctx):  # 규칙 H7
             given = {"title": title, "area": area, "kind": kind, "target_per_week": target_per_week}
             args = {"id": h.id, **{k: v for k, v in given.items() if v is not None}}
             if "title" in args:
                 args["title"] = changes.get("title", h.title)
-            if set(changes) == {"title"}:
-                summary = confirm_habit_rename_summary(h.title, changes["title"])
-            else:
+            if "kind" in changes or "target_per_week" in changes:  # 주기가 바뀔 때만 주기 문구
                 summary = confirm_habit_update_summary(
                     changes.get("title", h.title),
                     habit_kind_label(changes.get("kind", h.kind), changes.get("target_per_week", h.target_per_week)),
                 )
+            elif set(changes) == {"title"}:
+                summary = confirm_habit_rename_summary(h.title, changes["title"])
+            else:  # 영역만, 또는 제목과 영역
+                summary = confirm_habit_edit_summary(changes.get("title", h.title))
             return self._request_confirm(ctx, "update_habit", args, summary, confirm_button_habit_update(h.title))
         with transaction(self.habits.conn):
             h = self.habits.update(h.id, now=self.clock.now(), **changes)
@@ -426,14 +431,19 @@ def _undo_habit_status_set(tools: Tools, undo: dict[str, Any], ctx: RunContext) 
 
 
 def _undo_habit_checked(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """체크 행을 지운다. 습관이 지워졌으면(되돌린 추가) superseded."""
     assert tools.habits is not None
+    if tools.habits.get(undo["habit_id"]) is None:
+        return SUPERSEDED
     tools.habits.uncheck(undo["habit_id"], date.fromisoformat(undo["date"]))
     return None
 
 
 def _undo_habit_unchecked(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
-    """이전 `checked_at` 그대로 되살린다."""
+    """이전 `checked_at` 그대로 되살린다. 습관이 지워졌으면(되돌린 추가) 고아 행을 만들지 않고 superseded."""
     assert tools.habits is not None
+    if tools.habits.get(undo["habit_id"]) is None:
+        return SUPERSEDED
     tools.habits.restore_check(undo["habit_id"], date.fromisoformat(undo["date"]), undo["checked_at"])
     return None
 

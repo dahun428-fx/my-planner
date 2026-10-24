@@ -266,6 +266,11 @@ def confirm_habit_rename_summary(before: str, after: str) -> str:
     return f"{before} 습관 이름을 {after}{_ro(after)} 바꿀까요?"
 
 
+def confirm_habit_edit_summary(title: str) -> str:
+    """주기가 바뀌지 않는 그 밖의 `update_habit`(영역만, 제목과 영역): `{제목} 습관을 고칠까요?`."""
+    return f"{title} 습관을 고칠까요?"
+
+
 def confirm_habit_archive_summary(title: str) -> str:
     """`set_habit_status(archived)`의 확인 요청(부록 A, 앱 `/actions`와 회차 차례가 같다)."""
     return f"{title} 습관을 그만둘까요? 기록은 남아요."

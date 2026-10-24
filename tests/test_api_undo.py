@@ -878,3 +878,22 @@ async def test_undo_pause_can_exceed_cap_then_add_rejected(tmp_path):
     assert add == {"error": "습관은 한 번에 10개까지 챙길 수 있어요. 하나를 쉬어 가거나 그만두면 더할 수 있어요."}
     assert resume == add
     assert check["already"] is False and check["habit"]["checked"] is True
+
+
+async def test_undo_check_of_deleted_habit_superseded(tmp_path):
+    """추가 → 체크 → 취소 → 추가 되돌리기 → 취소 되돌리기: 지운 습관에 체크 행을 되살리지 않는다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        add = _habit_call(env, "add_habit", title="물 마시기", area="health", kind="daily")
+        h = add["result"]["id"]
+        chk = _habit_call(env, "check_habit", id=h)
+        env.clock.advance(minutes=1)
+        unchk = _habit_call(env, "uncheck_habit", id=h)
+        env.clock.advance(minutes=1)
+        removed = await undo(env, add["undo_id"])
+        restored = await undo(env, unchk["undo_id"])
+        rechecked = await undo(env, chk["undo_id"])
+        checks = _checks(env)
+    assert removed[0] == 200
+    assert restored[0] == 409 and restored[1]["error"]["code"] == "superseded"
+    assert rechecked[0] == 409 and rechecked[1]["error"]["code"] == "superseded"
+    assert checks == []

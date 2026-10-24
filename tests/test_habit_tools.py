@@ -536,3 +536,36 @@ def test_logs_have_no_habit_titles(env, caplog):
     assert [(r.habit_id, r.date, r.already) for r in recs] == [(h, "2026-10-24", False), (h, "2026-10-24", True)]
     # 상태창 "최근 경험치" 줄(원장 `label`)에도 제목이 없다
     assert [r["label"] for r in env.conn.execute("SELECT label FROM status_xp_ledger")] == ["습관 체크"]
+
+
+# --- 리뷰 뒤 고친 것 ---
+
+
+def test_update_habit_without_change_is_already(env):
+    h = env.add("운동", kind="weekly", target=2)
+    log_n, act_n = len(env.tool_log()), len(env.acts())
+    for ctx in (env.user(), env.run()):
+        out = env.tools.update_habit(ctx, id=h, target_per_week=2, title=" 운동 ", area="health")
+        assert out["already"] is True and out["target_per_week"] == 2
+        assert ctx.events == [] and ctx.undo_ids == []
+    assert (len(env.tool_log()), len(env.acts())) == (log_n, act_n)
+    assert env.conn.execute("SELECT COUNT(*) FROM pending_confirms").fetchone()[0] == 0
+
+
+def test_run_turn_update_summary_without_cadence_change(env):
+    a = env.add("운동", kind="weekly", target=3)
+    ctx = env.run()
+    assert env.tools.update_habit(ctx, id=a, area="learning")["summary"] == "운동 습관을 고칠까요?"
+    assert env.tools.update_habit(ctx, id=a, title="달리기", area="learning")["summary"] == "달리기 습관을 고칠까요?"
+    assert env.tools.update_habit(ctx, id=a, title="달리기")["summary"] == "운동 습관 이름을 달리기로 바꿀까요?"
+    assert env.tools.update_habit(ctx, id=a, area="learning", target_per_week=3)["summary"] == "운동 습관을 고칠까요?"
+    assert env.tools.update_habit(ctx, id=a, area="learning", target_per_week=2)["summary"] == (
+        "운동 습관을 주 2회로 바꿀까요?")
+    assert env.habits.get(a).area.value == "health"
+
+
+def test_export_area_labels_match_status():
+    from my_planner.status.xp import AREA_LABELS
+    from my_planner.store.exports import _AREA_LABELS
+
+    assert _AREA_LABELS == AREA_LABELS
