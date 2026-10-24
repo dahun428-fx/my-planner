@@ -41,10 +41,30 @@ def card_target(card_id: int) -> str:
     return f"card:{card_id}"
 
 
+def ladder_target(period: str) -> str:
+    return f"ladder:{period}"
+
+
+def areas_target(period: str) -> str:
+    return f"areas:{period}"
+
+
+def milestone_target(milestone_id: int) -> str:
+    return f"milestone:{milestone_id}"
+
+
+def chapter_target(chapter_id: int) -> str:
+    return f"chapter:{chapter_id}"
+
+
+def many_target(every: list[str]) -> tuple[str | None, list[str]]:
+    """대상 여럿을 바꾼 활동의 (`target`, `targets`): 하나면 그 값, 여럿이면 NULL과 전부(5.2 `activity_targets`)."""
+    return (every[0] if len(every) == 1 else None), every
+
+
 def tasks_target(ids: list[int]) -> tuple[str | None, list[str]]:
     """할 일 여럿을 바꾼 활동의 (`target`, `targets`): 하나면 `task:12`, 여럿이면 NULL과 `task:` 전부."""
-    every = [task_target(i) for i in ids]
-    return (every[0] if len(every) == 1 else None), every
+    return many_target([task_target(i) for i in ids])
 
 
 def record_activity(
@@ -101,7 +121,7 @@ UndoBlock = Literal["not_undoable", "undo_expired", "superseded"]
 
 
 def register_undo(kind: str, handler: UndoHandler) -> None:
-    """활동 종류 하나의 되돌리기를 더한다(`tools/core.py`가 할 일·우선순위·컨디션을, 티켓 09·11이 나머지를)."""
+    """활동 종류 하나의 되돌리기를 더한다(`tools/core.py`가 할 일·우선순위·컨디션·카드·곡선을)."""
     if kind == UNDO_KIND:
         raise ValueError("되돌리기는 되돌리지 않는다(U5)")
     UNDO_HANDLERS[kind] = handler

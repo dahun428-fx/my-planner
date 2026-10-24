@@ -1,4 +1,8 @@
-"""status_xp_ledger, status_titles 표 읽기 (SP3-4 스펙 5.5). 원장은 쌓기만 하고 이 저장소에는 쓰는 함수가 없다."""
+"""status_xp_ledger, status_titles 표 (SP3-4 스펙 5.5).
+
+원장은 쌓기만 하고 이 저장소에는 원장을 쓰는 함수가 없다(원장 쓰기는 티켓 15). 칭호는 원장이 아니라서
+사건 확정을 되돌리면 지운다(9.4, 6.4.3 `milestones_confirmed`).
+"""
 
 from __future__ import annotations
 
@@ -6,7 +10,8 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 
-from my_planner.clock import Clock, from_iso
+from my_planner.clock import Clock, from_iso, to_iso
+from my_planner.store.db import transaction
 
 
 @dataclass
@@ -58,3 +63,17 @@ class StatusRepo:
             )
             for r in self.conn.execute(sql).fetchall()
         ]
+
+    def add_title(self, milestone_id: int, at: datetime) -> bool:
+        """그 사건의 칭호. 이미 있으면 그대로 둔다(False)."""
+        with transaction(self.conn):
+            cur = self.conn.execute(
+                "INSERT OR IGNORE INTO status_titles (milestone_id, granted_at) VALUES (?, ?)",
+                (milestone_id, to_iso(at)),
+            )
+        return cur.rowcount > 0
+
+    def remove_title(self, milestone_id: int) -> bool:
+        with transaction(self.conn):
+            cur = self.conn.execute("DELETE FROM status_titles WHERE milestone_id = ?", (milestone_id,))
+        return cur.rowcount > 0

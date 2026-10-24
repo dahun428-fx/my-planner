@@ -48,9 +48,11 @@ async def test_complete_task_applied_shape(tmp_path):
 CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
-def _public_cases(ids, card):
-    """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드."""
+def _public_cases(ids, card, curve=(None, None, None, None)):
+    """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
+    `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
+    m1, m2, h1, h2 = curve
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -64,6 +66,12 @@ def _public_cases(ids, card):
         "pin_card": {"component": "ui_summary_card", "props": CARD},
         "unpin_card": {"id": card},
         "reorder_cards": {"ids": [card]},
+        "record_ladder_score": {"now": 6},
+        "record_area_scores": {"scores": {"health": 7}},
+        "confirm_milestones": {"ids": [m1]},
+        "drop_milestone": {"id": m2},
+        "confirm_chapters": {"ids": [h1]},
+        "drop_chapter": {"id": h2},
         "decline_confirm": None,  # 토큰을 따로 만든다
     }
 
@@ -75,7 +83,14 @@ async def test_every_public_action_applies(tmp_path, action):
         await env.action("complete_task", {"id": c})
         d = env.parts.tools.propose_tasks(_ctx(), tasks=[{"title": "초안", "areas": ["health"]}])["proposed"][0]["id"]
         card = env.parts.tools.pin_card(_ctx(), component="ui_summary_card", props=CARD)["id"]
-        cases = _public_cases((a, b, c, d), card)
+        cv = env.parts.curve
+        curve = (
+            *(cv.add_milestone(date_text="2019", kind="high", title=t, status="draft", origin="chat").id
+              for t in ("꾸민 사건", "꾸민 사건 둘")),
+            *(cv.add_chapter(title=t, start_month="2019-01", status="draft", origin="review").id
+              for t in ("꾸민 챕터", "꾸민 챕터 둘")),
+        )
+        cases = _public_cases((a, b, c, d), card, curve)
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         if action == "decline_confirm":

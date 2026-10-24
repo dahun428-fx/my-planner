@@ -307,3 +307,42 @@ async def test_morning_brief_proposal_needs_confirm(tmp_path):
     assert [(x["group"], x["todo"]["id"]) for x in after["todos"]] == [("priority", tid)]
     assert rows[-1] == ("priorities_set", "user", "app", "confirm")
     assert ("confirm_requested", "secretary", "scheduler", "low") in rows
+
+
+async def test_curve_write_path(tmp_path):
+    from my_planner.clock import to_iso
+    from my_planner.store.repos.state import PAUSE_UNTIL_KEY
+
+    # 토요일 낮: 대화에서 나온 사건 초안(고점)을 앱에서 확정하고, 되돌리고, 3일 뒤 하루 한 번 작업이 지운다
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0)) as env:
+        mid = env.parts.curve.add_milestone(date_text="2019", kind="high", title="꾸민 여행", status="draft",
+                                            origin="chat").id
+        env.conn.commit()
+
+        async def seen():
+            curve = await (await env.get("/curve?zoom=year&from=2019-01-01&to=2026-12-31")).json()
+            status = await (await env.get("/status")).json()
+            return [m["title"] for m in curve["milestones"]], [t["title"] for t in status["titles"]]
+
+        draft = await seen()
+        code, body = await env.action("confirm_milestones", {"ids": [mid]})
+        confirmed = await seen()
+        resp = await env.post(f"/activity/{body['undo_id']}/undo", json={"client_msg_id": "e2e-curve-undo"})
+        undone = await seen()
+        still_draft = env.parts.curve.get_milestone(mid)
+
+        # 3일 동안 회차는 쉬게 두고(가짜 두뇌 시나리오 없이) 하루 한 번 작업만 돌린다
+        env.parts.state.set(PAUSE_UNTIL_KEY, to_iso(env.clock.now() + timedelta(days=30)))
+        env.clock.advance(days=3)
+        await env.tick()
+        after = env.parts.curve.get_milestone(mid)
+        expired = [r["kind"] for r in env.activity() if r["kind"] == "milestone_drafts_expired"]
+
+    assert draft == ([], [])
+    assert code == 200 and body["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 고점)\n칭호: 「꾸민 여행」의 순간"
+    assert confirmed == (["꾸민 여행"], ["「꾸민 여행」의 순간"])
+    assert resp.status == 200
+    assert undone == ([], [])
+    assert still_draft is not None and still_draft.status == "draft"
+    assert after is None
+    assert expired == ["milestone_drafts_expired"]
