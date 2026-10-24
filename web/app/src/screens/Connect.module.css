@@ -60,9 +60,9 @@
   color: var(--negative);
 }
 .start {
-  min-height: 50px;
+  min-height: 3.125rem;
   border: 0;
-  border-radius: var(--radius-field);
+  border-radius: var(--radius-pill);
   background: var(--primary);
   color: var(--on-primary);
   font: inherit;
@@ -82,7 +82,7 @@
   min-height: var(--control-h);
   margin-top: calc(var(--gap) * -0.5);
   border: 0;
-  border-radius: var(--radius-field);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text);
   font: inherit;

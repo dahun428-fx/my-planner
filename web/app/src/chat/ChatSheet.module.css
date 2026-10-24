@@ -1,13 +1,10 @@
-/* Spec 5.5.2: the chat sheet. Tokens only; the one shadow of the app stays on the launcher. */
+/* Spec 5.5.2: the chat sheet. Tokens only; nothing here is raised (only the launcher is, 5.3). */
 .frame,
 .embedded {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.embedded {
-  min-height: 20rem;
 }
 .header {
   flex: none;

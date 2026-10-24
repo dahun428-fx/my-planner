@@ -1,5 +1,5 @@
 .notice {
-  margin: 0 var(--pad);
+  margin: 0 var(--pad) var(--gap);
   padding: 0.75rem var(--pad);
   background: var(--notice-bg);
   border: 1px solid var(--notice-border);

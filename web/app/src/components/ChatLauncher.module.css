@@ -18,13 +18,19 @@
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--muted);
+  box-shadow: 0 0.125rem 0.75rem rgb(0 0 0 / 0.08); /* taste-skill-ignore: the one raised thing in the app (spec 5.3) */
   font: inherit;
   font-size: var(--size-body);
   text-align: left;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+/* Offline or blocked: a flat grey pill, not raised (5.5.4). --muted is too faint on --raised (5.2). */
 .launcher:disabled {
+  border-color: var(--raised);
+  background: var(--raised);
+  color: var(--text-2);
+  box-shadow: none; /* taste-skill-ignore: takes the shadow off */
   cursor: default;
 }
 .launcher:focus-visible {

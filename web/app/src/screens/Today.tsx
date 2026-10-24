@@ -17,7 +17,7 @@ import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
-import { addDays } from "../lib/time";
+import { addDays, formatKst } from "../lib/time";
 import page from "../styles/page.module.css";
 import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
@@ -175,7 +175,15 @@ export function Today() {
           </section>
         )}
         {brief ? (
-          <Group>
+          <Group
+            heading={
+              <>
+                {copy.loops[brief.loop]}
+                {brief.sent_at && " "}
+                {brief.sent_at && <span className={styles.briefAt}>{formatKst(brief.sent_at, "HH:mm")}</span>}
+              </>
+            }
+          >
             <div className={styles.brief}>
               <p className={`${styles.briefText} ${folded ? styles.folded : ""}`}>{brief.text}</p>
               {longBrief && (

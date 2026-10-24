@@ -22,7 +22,7 @@ export function serveActions(answer?: (body: Record<string, unknown>) => Respons
 }
 
 export const applied = () =>
-  HttpResponse.json({ status: "applied", activity_id: 901, undo_id: 901, result: {}, confirmation: "✓ 처리했어요" });
+  HttpResponse.json({ status: "applied", activity_id: 901, undo_id: 901, result: {}, confirmation: "\u2713 처리했어요" });
 
 export const makeTodo = (id: number, title: string, status: Todo["status"] = "open"): Todo => ({
   id,

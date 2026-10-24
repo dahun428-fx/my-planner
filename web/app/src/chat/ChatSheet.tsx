@@ -1,3 +1,4 @@
+import "./zodJitless"; // first: before "@ai-sdk/react" and "ai" build their schemas
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";

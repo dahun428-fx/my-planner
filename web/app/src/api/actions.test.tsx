@@ -9,7 +9,7 @@ import { BASE, server } from "../test/server";
 import { runAction, undoActivity, useAction } from "./actions";
 
 const UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const applied = { status: "applied", activity_id: 913, undo_id: 913, result: { id: 12 }, confirmation: "✓ 완료: 운동", xp: { gained: 10, level_up: null } };
+const applied = { status: "applied", activity_id: 913, undo_id: 913, result: { id: 12 }, confirmation: "\u2713 완료: 운동", xp: { gained: 10, level_up: null } };
 
 function record(answer: () => Response | Promise<Response>) {
   const bodies: Record<string, unknown>[] = [];
@@ -60,7 +60,7 @@ describe("runAction", () => {
       kind: "applied",
       activityId: 913,
       undoId: 913,
-      confirmation: "✓ 완료: 운동",
+      confirmation: "\u2713 완료: 운동",
       result: { id: 12 },
     });
 
@@ -215,7 +215,7 @@ describe("useAction", () => {
     record(() => HttpResponse.json(applied));
     renderWithProviders(<Rows />);
     await userEvent.click(screen.getByText("row1"));
-    expect(await screen.findByText("✓ 완료: 운동")).toBeInTheDocument();
+    expect(await screen.findByText("\u2713 완료: 운동")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "되돌리기" })).toBeInTheDocument();
   });
 

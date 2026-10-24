@@ -49,7 +49,7 @@ function actions(answer: (body: Record<string, unknown>) => Response | Promise<R
   return bodies;
 }
 
-const applied = (confirmation = "✓ 처리했어요") =>
+const applied = (confirmation = "\u2713 처리했어요") =>
   HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation });
 
 const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -85,6 +85,9 @@ describe("Today", () => {
     expect(before(title, line)).toBe(true);
     expect(before(line, brief)).toBe(true);
     expect(before(brief, condition)).toBe(true);
+    // The brief block is headed by its loop name and the time it was sent (5.5.1: text, sent_at).
+    const briefHeading = screen.getByRole("heading", { name: `${copy.loops.morning_brief} 10:00` });
+    expect(before(briefHeading, brief)).toBe(true);
     expect(before(condition, todos)).toBe(true);
     const rows = [a, b, c, d].map((t) => screen.getByText(t.todo.title));
     rows.forEach((r, i) => {
@@ -262,7 +265,7 @@ describe("Today", () => {
     failing = true;
     await userEvent.setup().click(box);
     await waitFor(() => expect(bodies).toHaveLength(1));
-    await screen.findByText("✓ 처리했어요");
+    await screen.findByText("\u2713 처리했어요");
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.getByRole("checkbox", { name: copy.today.doneLabel("장보기") })).toHaveAttribute("aria-checked", "true");
   });

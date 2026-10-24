@@ -60,7 +60,7 @@ function actions(answer: (body: Record<string, unknown>) => Response | Promise<R
   return bodies;
 }
 
-const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "✓ 처리했어요" });
+const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "\u2713 처리했어요" });
 const needsConfirm = () =>
   HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-1", summary: "이번 주 우선순위예요. 빼면 순서가 바뀌어요.", expires_at: "2026-10-24T09:00:00Z" });
 
@@ -268,7 +268,7 @@ describe("Todos", () => {
     fireEvent.click(screen.getByRole("button", { name: copy.todos.confirmAll }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     release();
-    await screen.findByText("✓ 처리했어요");
+    await screen.findByText("\u2713 처리했어요");
     expect(bodies).toHaveLength(1);
   });
 

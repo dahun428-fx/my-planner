@@ -1,10 +1,6 @@
+import "./zodJitless"; // first: before "ai" builds its schemas
 import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
-import { config as zodConfig } from "zod/v4/core";
 import type { Conn } from "../lib/connection";
-
-// The AI SDK checks every chunk with zod. Without this, zod probes `Function("")` to decide on its
-// compiled checks, which CSP (script-src 'self', no 'unsafe-eval') reports as a violation.
-zodConfig({ jitless: true });
 
 /** What the next POST /chat carries besides the message (SP3-4 6.4.1). */
 export type ChatCtx = { conversationId: number | null; checkinId: number | null };

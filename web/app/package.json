@@ -13,7 +13,8 @@
     "gen:types": "node scripts/gen-types.mjs",
     "check:csp": "node scripts/check-csp.mjs",
     "lint:copy": "node scripts/lint-copy.mjs",
-    "e2e": "playwright test"
+    "e2e": "NEXT_PUBLIC_CONNECT_SRC='https://*.example.ts.net' npm run build && playwright test",
+    "size": "node scripts/size.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.284",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@napi-rs/canvas": "^1.0.13",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",

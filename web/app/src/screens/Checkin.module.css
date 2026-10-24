@@ -45,7 +45,7 @@
 .todo {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
   min-height: var(--row);
   padding: 0.25rem var(--pad);
 }
@@ -65,18 +65,26 @@
   font-size: var(--size-meta);
   color: var(--muted);
 }
+/* 5.5.3 "내일로" · "완료": 32px grey pills (a side action of the row), 44px hit area (9장). */
 .act {
+  position: relative;
   flex: none;
   min-width: var(--control-h);
-  min-height: var(--control-h);
-  padding: 0 0.5rem;
-  background: transparent;
+  min-height: var(--small-control-h);
+  padding: 0 0.75rem;
+  background: var(--raised);
   border: 0;
+  border-radius: var(--radius-pill);
   font: inherit;
   font-size: var(--size-meta);
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
+}
+.act::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
 }
 .act:disabled {
   color: var(--muted);

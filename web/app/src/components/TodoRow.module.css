@@ -27,6 +27,7 @@ span.check {
   outline-offset: -2px;
 }
 .circle {
+  position: relative;
   width: 1.5rem;
   height: 1.5rem;
   box-sizing: border-box;
@@ -36,6 +37,18 @@ span.check {
 .filled {
   border-color: var(--muted);
   background: var(--muted);
+}
+/* The tick, so a done row does not read as a plain grey dot (not color alone, 9장). */
+.filled::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 0.3125rem;
+  height: 0.625rem;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 .text {
   flex: 1;
