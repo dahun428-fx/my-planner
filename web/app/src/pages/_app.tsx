@@ -2,6 +2,7 @@ import type { AppProps } from "next/app";
 import Head from "next/head";
 import { ToastProvider } from "../components/Toast";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
+import { CatalogProvider } from "../ui/CatalogProvider";
 import "../styles/tokens.css";
 import "../styles/globals.css";
 
@@ -13,7 +14,9 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       <ConnectionProvider>
         <ToastProvider>
-          <Component {...pageProps} />
+          <CatalogProvider>
+            <Component {...pageProps} />
+          </CatalogProvider>
         </ToastProvider>
       </ConnectionProvider>
     </>

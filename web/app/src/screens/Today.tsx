@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Today as TodayData, TodayTodo } from "../api/types.gen";
-import { useAction } from "../api/actions";
+import { apiGet } from "../api/client";
+import type { CheckinDetail, Today as TodayData, TodayTodo } from "../api/types.gen";
+import { type ActionOutcome, useAction } from "../api/actions";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher } from "../components/ChatLauncher";
 import { ConfirmSheet } from "../components/ConfirmSheet";
@@ -18,6 +19,9 @@ import { copy } from "../lib/copy";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays } from "../lib/time";
 import page from "../styles/page.module.css";
+import { UiPart } from "../ui/registry";
+import type { PartData } from "../ui/types";
+import { PinnedCard } from "./PinnedCard";
 import styles from "./Today.module.css";
 
 const SCORES = [1, 2, 3, 4, 5];
@@ -35,7 +39,7 @@ function dateLine(data: TodayData): string {
   return copy.today.dateLine(m, d, data.weekday);
 }
 
-// Spec 5.5.1 blocks 1, 2, 4, 5, 6 (3 and 7 come with A04), 5.5.4 offline, F3, F9.
+// Spec 5.5.1 blocks 1-7, 5.5.4 offline, F3, F9.
 export function Today() {
   const { state, recheck } = useConnection();
   const { view, refresh } = useSnapshotted<TodayData>("today", "/today", "Today");
@@ -61,6 +65,42 @@ export function Today() {
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
   const live = view.kind === "live";
+
+  // Block 3: the ui_confirm cards of every pending check-in (read again after any write on them).
+  type ConfirmCard = { key: string; props: unknown };
+  const [byCheckin, setByCheckin] = useState<Readonly<Record<number, ConfirmCard[]>>>({});
+  const [reread, setReread] = useState(0);
+  const pendingKey = view.kind === "live" ? view.data.checkins.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
+  const pendingIds = pendingKey === "" ? [] : pendingKey.split(",").map(Number);
+  // Read again only when the set of pending check-ins changes or after a write on a part (not on every poll).
+  useEffect(() => {
+    if (pendingKey === "") return;
+    const ids = pendingKey.split(",").map(Number);
+    let alive = true;
+    void Promise.all(ids.map((id) => apiGet<CheckinDetail>(`/checkins/${id}`, "CheckinDetail"))).then((results) => {
+      if (!alive) return;
+      setByCheckin((prev) => {
+        const next = { ...prev };
+        results.forEach((r, i) => {
+          const id = ids[i];
+          if (r.kind === "ok") {
+            next[id] = r.data.cards.filter((c) => c.component === "ui_confirm").map((c) => ({ key: `${id}:${c.toolCallId}`, props: c.props }));
+          } else if (r.kind === "error" && r.status === 404) {
+            delete next[id]; // gone
+          } // any other failure keeps what that check-in showed before
+        });
+        return next;
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [pendingKey, reread]);
+  const confirms = pendingIds.flatMap((id) => byCheckin[id] ?? []);
+  const afterPartAction = useCallback(() => {
+    void refresh();
+    setReread((n) => n + 1);
+  }, [refresh]);
 
   // A flip ends once the live list shows the state it asked for (or no longer has the row).
   useEffect(() => {
@@ -126,6 +166,28 @@ export function Today() {
     } finally {
       setConfirmBusy(false);
     }
+  };
+
+  // useAction toasts applied / rejected / failed; a card that changed under us (conflict) or an
+  // unexpected confirm question gets the failure sentence, and the screen reads again.
+  const notAllowed = async (out: ActionOutcome | null) => {
+    if (out?.kind !== "conflict" && out?.kind !== "needs_confirm") return;
+    toast.show({ text: copy.actions.failed });
+    await refresh();
+  };
+
+  const unpin = async (id: number) => {
+    const out = await run("unpin_card", { id });
+    if (out?.kind === "applied") await refresh();
+    else await notAllowed(out);
+  };
+
+  const move = async (ids: number[], at: number, by: -1 | 1) => {
+    const next = [...ids];
+    [next[at], next[at + by]] = [next[at + by], next[at]];
+    const out = await run("reorder_cards", { ids: next });
+    if (out?.kind === "applied") await refresh();
+    else await notAllowed(out);
   };
 
   const record = async (score: number) => {
@@ -194,6 +256,8 @@ export function Today() {
     const display = [...list.filter((i) => i.todo.status !== "done"), ...list.filter((i) => i.todo.status === "done")];
     const openCount = display.filter((i) => i.todo.status !== "done").length;
     const readOnly = !live;
+    const pinned = [...t.cards].sort((a, b) => a.order - b.order);
+    const pinnedIds = pinned.map((c) => c.id);
 
     body = (
       <>
@@ -204,7 +268,16 @@ export function Today() {
             ))}
           </Group>
         )}
-        {/* A04: "확인이 필요해요" (ui_confirm bundle) goes here. */}
+        {confirms.length > 0 && (
+          <section className={styles.block}>
+            <h2 className={styles.blockHeading}>{copy.today.needsConfirm}</h2>
+            {confirms.map((c) => (
+              <div key={c.key} className={styles.blockItem}>
+                <UiPart name="ui_confirm" props={c.props} ctx={{ where: "today", readOnly, onAfterAction: afterPartAction }} />
+              </div>
+            ))}
+          </section>
+        )}
         {brief ? (
           <Group>
             <div className={styles.brief}>
@@ -271,7 +344,19 @@ export function Today() {
             ))
           )}
         </Group>
-        {/* A04: pinned cards (/today.cards) go here. */}
+        {pinned.map((card, i) => (
+          <PinnedCard
+            key={card.id}
+            card={card}
+            readOnly={readOnly}
+            canMoveUp={i > 0}
+            canMoveDown={i < pinned.length - 1}
+            onUnpin={() => void unpin(card.id)}
+            onMove={(by) => void move(pinnedIds, i, by)}
+          >
+            <UiPart name={card.component} props={card.props} data={(card.data ?? undefined) as PartData | undefined} ctx={{ where: "today", readOnly, onAfterAction: afterPartAction }} />
+          </PinnedCard>
+        ))}
       </>
     );
   }

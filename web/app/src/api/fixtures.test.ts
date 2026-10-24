@@ -11,6 +11,9 @@ const table: [string, ModelName][] = [
   ["today.json", "Today"],
   ["today-empty.json", "Today"],
   ["checkins-today.json", "CheckinList"],
+  ["catalog.json", "UiCatalog"],
+  ["checkin-341.json", "CheckinDetail"],
+  ["today-cards.json", "Today"],
 ];
 
 const dir = join(__dirname, "../test/fixtures");

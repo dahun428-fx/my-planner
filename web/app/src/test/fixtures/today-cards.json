@@ -1,0 +1,177 @@
+{
+  "date": "2026-10-24",
+  "weekday": "토",
+  "brief": {
+    "run_id": 340,
+    "loop": "morning_brief",
+    "sent_at": "2026-10-24T01:00:12Z",
+    "text": "좋은 아침이에요. 오늘은 토요일이라 일정이 가벼워요.\n운동과 장보기가 잡혀 있어요."
+  },
+  "condition": null,
+  "todos": [
+    {
+      "group": "priority",
+      "todo": {
+        "id": 12,
+        "title": "운동 30분",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": null,
+        "parent_id": null,
+        "areas": [],
+        "note": "",
+        "priority": {
+          "cadence": "day",
+          "period": "2026-10-24",
+          "rank": 1
+        },
+        "completed_at": null
+      }
+    },
+    {
+      "group": "scheduled",
+      "todo": {
+        "id": 13,
+        "title": "장보기",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": "2026-10-24T05:00:00Z",
+        "parent_id": null,
+        "areas": [],
+        "note": "",
+        "priority": null,
+        "completed_at": null
+      }
+    },
+    {
+      "group": "open",
+      "todo": {
+        "id": 14,
+        "title": "책 열 쪽 읽기",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": null,
+        "parent_id": null,
+        "areas": [],
+        "note": "",
+        "priority": null,
+        "completed_at": null
+      }
+    },
+    {
+      "group": "open",
+      "todo": {
+        "id": 15,
+        "title": "빨래 널기",
+        "status": "done",
+        "planned_for": "2026-10-24",
+        "scheduled_at": null,
+        "parent_id": null,
+        "areas": [],
+        "note": "",
+        "priority": null,
+        "completed_at": "2026-10-24T00:40:00Z"
+      }
+    }
+  ],
+  "checkins": [
+    {
+      "id": 340,
+      "loop": "morning_brief",
+      "cadence": "day",
+      "state": "answered",
+      "scheduled_for": "2026-10-24T01:00:00Z",
+      "sent_at": "2026-10-24T01:00:12Z",
+      "reply_until": "2026-10-24T01:00:00Z",
+      "answered_at": "2026-10-24T01:20:00Z",
+      "answered_via": "app",
+      "delivered_via": [
+        "app"
+      ],
+      "conversation_ids": {
+        "app": null,
+        "telegram": null
+      }
+    },
+    {
+      "id": 341,
+      "loop": "evening_checkin",
+      "cadence": "day",
+      "state": "pending",
+      "scheduled_for": "2026-10-24T09:00:00Z",
+      "sent_at": "2026-10-24T09:00:05Z",
+      "reply_until": "2026-10-24T09:00:00Z",
+      "answered_at": null,
+      "answered_via": null,
+      "delivered_via": [
+        "app"
+      ],
+      "conversation_ids": {
+        "app": null,
+        "telegram": null
+      }
+    }
+  ],
+  "cards": [
+    {
+      "id": 7,
+      "component": "ui_summary_card",
+      "order": 2,
+      "pinned_at": "2026-10-23T12:00:00Z",
+      "props": {
+        "title": "이번 주 운동",
+        "lines": [
+          "월 · 걷기 30분",
+          "수 · 스트레칭",
+          "금 · 아직 비어 있어요"
+        ]
+      },
+      "data": null
+    },
+    {
+      "id": 5,
+      "component": "ui_todo_list",
+      "order": 1,
+      "pinned_at": "2026-10-23T11:00:00Z",
+      "props": {
+        "title": "이번 주에 챙길 것",
+        "task_ids": [
+          12,
+          13
+        ]
+      },
+      "data": {
+        "todos": [
+          {
+            "id": 12,
+            "title": "운동 30분",
+            "status": "open",
+            "planned_for": "2026-10-24",
+            "scheduled_at": null,
+            "parent_id": null,
+            "areas": [],
+            "note": "",
+            "priority": {
+              "cadence": "day",
+              "period": "2026-10-24",
+              "rank": 1
+            },
+            "completed_at": null
+          },
+          {
+            "id": 13,
+            "title": "장보기",
+            "status": "open",
+            "planned_for": "2026-10-24",
+            "scheduled_at": "2026-10-24T05:00:00Z",
+            "parent_id": null,
+            "areas": [],
+            "note": "",
+            "priority": null,
+            "completed_at": null
+          }
+        ]
+      }
+    }
+  ]
+}
