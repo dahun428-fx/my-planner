@@ -109,3 +109,33 @@ class FakeShell:
             if tuple(args[: len(prefix)]) == prefix:
                 return results.pop(0) if len(results) > 1 else results[0]
         return 0, ""
+
+
+SCHEDULE = {
+    "morning_brief": {"weekday": "09:00", "weekend": "10:00"},
+    "evening_checkin": {"weekday": "17:30", "weekend": "18:00"},
+    "review": {"week": {"day": "sun", "time": "18:00"}},
+}
+
+
+def make_config(root: Path | None = None, **overrides: Any) -> Any:
+    """config.toml의 실제 [schedule] 모양을 가진 MedicConfig."""
+    from datetime import time
+
+    from my_planner_medic.config import MedicConfig
+
+    values: dict[str, Any] = {
+        "root": root or Path("/repo"),
+        "enabled": True,
+        "api_base": "http://127.0.0.1:8787/api/v1",
+        "api_enabled": True,
+        "api_token": None,
+        "github_token": None,
+        "telegram_token": None,
+        "owner_telegram_id": None,
+        "timezone": "Asia/Seoul",
+        "day_boundary": time(4, 0),
+        "schedule": SCHEDULE,
+    }
+    values.update(overrides)
+    return MedicConfig(**values)
