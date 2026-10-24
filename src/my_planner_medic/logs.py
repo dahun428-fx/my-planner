@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -14,12 +15,6 @@ from typing import Any
 
 ACTIVE = "my-planner.jsonl"
 _ROTATED_RE = re.compile(r"^" + re.escape(ACTIVE) + r"\.\d{4}-\d{2}-\d{2}$")
-
-
-@dataclass(frozen=True)
-class LogCursor:
-    file: str
-    offset: int
 
 
 def _read_from(path: Path, offset: int, *, final: bool = False) -> tuple[bytes, int]:
@@ -53,9 +48,37 @@ def _parse(chunk: bytes) -> tuple[list[dict[str, Any]], int]:
     return records, bad
 
 
-def _newest_rotated(log_dir: Path) -> Path | None:
-    rotated = sorted(p for p in log_dir.iterdir() if _ROTATED_RE.match(p.name))
-    return rotated[-1] if rotated else None
+_SIG_SEP = "#"
+_SIG_READ = 64 * 1024  # 첫 줄은 이보다 짧다(로그 한 줄)
+
+
+@dataclass(frozen=True)
+class LogCursor:
+    """`file`은 `my-planner.jsonl#<첫 줄 sha1 앞 12자>`. 첫 줄이 아직 완성되지 않았으면 서명 없이 `my-planner.jsonl`."""
+
+    file: str
+    offset: int
+
+    @property
+    def signature(self) -> str:
+        return self.file.partition(_SIG_SEP)[2]
+
+
+def signature(path: Path) -> str:
+    """파일 첫 완성 줄의 서명. 비었거나 첫 줄이 반쯤이면 ""."""
+    with path.open("rb") as fh:
+        head = fh.read(_SIG_READ)
+    nl = head.find(b"\n")
+    return "" if nl < 0 else hashlib.sha1(head[: nl + 1]).hexdigest()[:12]
+
+
+def _cursor(sig: str, offset: int) -> LogCursor:
+    return LogCursor(f"{ACTIVE}{_SIG_SEP}{sig}" if sig else ACTIVE, offset)
+
+
+def _rotated(log_dir: Path) -> list[Path]:
+    """회전 파일, 오래된 것부터(이름의 날짜순)."""
+    return sorted(p for p in log_dir.iterdir() if _ROTATED_RE.match(p.name))
 
 
 def _complete_end(path: Path) -> int:
@@ -63,29 +86,52 @@ def _complete_end(path: Path) -> int:
     return end
 
 
+def _rotated_chunks(log_dir: Path, cursor: LogCursor, active_sig: str) -> tuple[list[bytes], bool]:
+    """커서가 가리키던 파일이 회전됐으면 (읽을 회전 파일 조각들, True). 아니면 ([], False).
+
+    - 서명이 둘 다 있으면 서명으로 판정한다. 다르면 회전 파일을 최근 것부터 찾아, 맞는 파일은 위치부터
+      끝까지, 그보다 새 회전 파일은 처음부터 읽는다. 맞는 것이 없으면 지금 파일만 처음부터 읽는다.
+    - 어느 한쪽 서명이 없으면(옛 커서, 첫 줄이 반쯤) 크기로 판정한다: 위치가 지금 파일보다 크면
+      가장 최근 회전 파일의 남은 줄을 읽는다.
+    """
+    if cursor.signature and active_sig:
+        if cursor.signature == active_sig:
+            return [], False
+        rotated = _rotated(log_dir)
+        for i in range(len(rotated) - 1, -1, -1):
+            if signature(rotated[i]) == cursor.signature:
+                chunks = [_read_from(rotated[i], cursor.offset, final=True)[0]]
+                chunks += [_read_from(p, 0, final=True)[0] for p in rotated[i + 1:]]
+                return chunks, True
+        return [], True
+    if (log_dir / ACTIVE).stat().st_size >= cursor.offset:
+        return [], False
+    rotated = _rotated(log_dir)
+    if rotated and rotated[-1].stat().st_size >= cursor.offset:
+        return [_read_from(rotated[-1], cursor.offset, final=True)[0]], True
+    return [], True
+
+
 def read_new_lines(
     log_dir: Path, cursor: LogCursor | None
 ) -> tuple[list[dict[str, Any]], LogCursor, int]:
-    """지난 위치 뒤의 새 레코드, 새 커서, 깨진 줄 수.
+    """지난 위치 뒤의 새 레코드, 새 커서, 깨진 줄 수. 파일은 부를 때마다 열고 닫는다.
 
     - 커서가 없으면(첫 실행) 지금 파일의 끝(완성된 줄 끝)에서 시작한다. 지난 기록으로 이슈를 열지 않는다.
-    - 읽던 위치가 지금 파일 크기보다 크면 회전된 것으로 본다: 가장 최근 회전 파일의 남은 줄을 한 번
-      읽고, 새 파일은 처음부터 읽는다.
+    - 회전 판정은 `_rotated_chunks`. 회전됐으면 회전 파일의 남은 줄을 한 번 읽고 새 파일은 처음부터 읽는다.
     """
     active = log_dir / ACTIVE
     if not active.exists():
         return [], LogCursor(ACTIVE, 0), 0
+    active_sig = signature(active)
     if cursor is None:
-        return [], LogCursor(ACTIVE, _complete_end(active)), 0
+        return [], _cursor(active_sig, _complete_end(active)), 0
+    chunks, rotated = _rotated_chunks(log_dir, cursor, active_sig)
+    chunk, end = _read_from(active, 0 if rotated else cursor.offset)
     records: list[dict[str, Any]] = []
     bad = 0
-    offset = cursor.offset
-    if active.stat().st_size < offset:
-        rotated = _newest_rotated(log_dir)
-        if rotated is not None and rotated.stat().st_size >= offset:
-            chunk, _ = _read_from(rotated, offset, final=True)
-            records, bad = _parse(chunk)
-        offset = 0
-    chunk, end = _read_from(active, offset)
-    more, more_bad = _parse(chunk)
-    return records + more, LogCursor(ACTIVE, end), bad + more_bad
+    for c in (*chunks, chunk):
+        more, more_bad = _parse(c)
+        records += more
+        bad += more_bad
+    return records, _cursor(active_sig, end), bad

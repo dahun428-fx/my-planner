@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import my_planner_medic.tz as tz_mod
 from my_planner_medic.schedule import next_run, next_slot
 
 from .fakes import make_config
@@ -31,13 +32,30 @@ def test_next_run(now: datetime, expected: datetime) -> None:
     assert got.tzinfo is not None
 
 
-def test_next_slot_names_loop_and_prefers_review_on_sunday_tie() -> None:
-    at, loop = next_slot(make_config(), kst(2026, 11, 1, 17))
-    assert at == kst(2026, 11, 1, 18)
-    assert loop in ("evening_checkin", "review")
+def test_next_slot_names_loop() -> None:
+    # 일요일 18:00은 저녁 회차와 주간 회고가 겹친다: (시각, 루프) 정렬로 evening_checkin이 먼저다
+    assert next_slot(make_config(), kst(2026, 11, 1, 17)) == (kst(2026, 11, 1, 18), "evening_checkin")
     at, loop = next_slot(make_config(), kst(2026, 10, 26, 10))
     assert (at, loop) == (kst(2026, 10, 26, 17, 30), "evening_checkin")
 
 
 def test_next_run_is_strictly_after_now() -> None:
     assert next_run(make_config(), kst(2026, 10, 26, 9)) == kst(2026, 10, 26, 17, 30)
+
+
+def test_timezone_falls_back_to_fixed_kst_without_tzdata(monkeypatch: pytest.MonkeyPatch) -> None:
+    from zoneinfo import ZoneInfoNotFoundError
+
+    def broken(name: str) -> ZoneInfo:
+        raise ZoneInfoNotFoundError(name)
+
+    monkeypatch.setattr(tz_mod, "ZoneInfo", broken)
+    got = next_run(make_config(), kst(2026, 10, 26, 8))
+    assert got == kst(2026, 10, 26, 9)
+    assert got.utcoffset().total_seconds() == 9 * 3600
+    assert tz_mod.zone("Asia/Seoul").tzname(None) == "Asia/Seoul"
+    assert tz_mod.zone("Europe/Nowhere").utcoffset(None).total_seconds() == 0
+
+
+def test_zone_bad_name_value_error_falls_back() -> None:
+    assert tz_mod.zone("../etc").utcoffset(None).total_seconds() == 0

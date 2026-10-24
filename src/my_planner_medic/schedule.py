@@ -6,11 +6,11 @@ BE `loop/schedule.py`와 같은 규칙: 아침·저녁은 Asia/Seoul 달력 요�
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from .config import MedicConfig
+from .tz import zone as _zone
 
 _WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _DEFAULTS: dict[str, Any] = {
@@ -25,7 +25,7 @@ def _hm(value: str) -> time:
     return time(*parts)
 
 
-def _slots_on(d: date, schedule: dict[str, Any], zone: ZoneInfo) -> list[tuple[datetime, str]]:
+def _slots_on(d: date, schedule: dict[str, Any], zone: tzinfo) -> list[tuple[datetime, str]]:
     out: list[tuple[datetime, str]] = []
     weekend = d.weekday() >= 5
     for loop in ("morning_brief", "evening_checkin"):
@@ -40,7 +40,7 @@ def _slots_on(d: date, schedule: dict[str, Any], zone: ZoneInfo) -> list[tuple[d
 
 def next_slot(cfg: MedicConfig, now: datetime) -> tuple[datetime, str]:
     """`now`보다 뒤의 첫 회차(시각, 루프). 시각은 설정 시간대의 aware datetime."""
-    zone = ZoneInfo(cfg.timezone)
+    zone = _zone(cfg.timezone)
     local = now.astimezone(zone)
     for offset in range(8):
         d = local.date() + timedelta(days=offset)

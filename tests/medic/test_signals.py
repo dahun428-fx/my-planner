@@ -236,3 +236,16 @@ def test_no_reply_after_10_minutes() -> None:
     later = oldest + timedelta(minutes=11)
     sigs, _ = health_signals(HealthProbe(200, b), later, streak=0, suppress=False, cfg=CFG)
     assert sigs == [Signal("no_reply", "be", "no_reply", later)]
+
+
+@pytest.mark.parametrize("kw", [{"plan_open": True}, {"proactive": {"sent_today": 3, "cap": 3}}])
+def test_tick_stalled_ignores_normal_delay_reasons(kw: dict[str, Any]) -> None:
+    now = kst(17, 46)
+    b = body(runs_today=[run("evening_checkin", kst(17, 30) - timedelta(days=1), "done")],
+             last_tick_at=kst(16).isoformat(), **kw)
+    sigs, _ = health_signals(HealthProbe(200, b), now, streak=0, suppress=False, cfg=CFG)
+    assert fps(sigs) == ["late_run:tick_stalled"]
+    # 코드 밖 사유와 suppress는 그대로 막는다
+    paused = dict(b, paused_until=(now + timedelta(hours=1)).isoformat())
+    assert health_signals(HealthProbe(200, paused), now, streak=0, suppress=False, cfg=CFG)[0] == []
+    assert health_signals(HealthProbe(200, b), now, streak=0, suppress=True, cfg=CFG)[0] == []

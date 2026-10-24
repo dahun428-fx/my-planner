@@ -68,6 +68,11 @@ def exception_fingerprint(exc_type: str, exc_where: Any, root: PurePath | str) -
 
 
 def has_bind_error(records: list[dict[str, Any]]) -> bool:
+    """이번 tick 레코드에 `api_bind_error`가 있는가.
+
+    한 tick의 레코드만 본다. `api_bind_error`는 BE 시작 때 한 번만 남으므로, 호출자(티켓 06)는 이 값을
+    kv에 걸어 두고(latch) 헬스가 한 번 성공할 때까지 `health_signals(bind_error=True)`로 넘겨야 한다.
+    """
     return any(r.get("msg") == BIND_ERROR_MSG and _is_own_logger(r.get("logger")) for r in records)
 
 
@@ -163,25 +168,30 @@ def _failure(probe: HealthProbe, bind_error: bool) -> str | None:
 
 
 def _late_runs(health: dict[str, Any], now: datetime, cfg: MedicConfig) -> list[str]:
+    """`runs_today`에서 예정 시각 + 15분이 지났는데 `pending`인 회차의 루프."""
     grace = timedelta(minutes=cfg.late_run_grace_minutes)
-    rows = [r for r in health.get("runs_today") or [] if isinstance(r, dict)]
     late: list[str] = []
-    for r in rows:
+    for r in health.get("runs_today") or []:
+        if not isinstance(r, dict):
+            continue
         at = _parse_time(r.get("scheduled_for"))
         if r.get("status") == "pending" and at is not None and now > at + grace:
             loop = safe_token(r.get("loop"))
             if loop not in late:
                 late.append(loop)
-    # 행 없는 지연: runs 행은 tick만 만든다. 마지막 tick 뒤 첫 회차 + 15분이 지났는데 그 행이 없으면 tick이 멈췄다
-    last_tick = _parse_time(health.get("last_tick_at"))
-    if last_tick is not None:
-        slot_at, slot_loop = next_slot(cfg, last_tick)
-        has_row = any(
-            r.get("loop") == slot_loop and _parse_time(r.get("scheduled_for")) == slot_at for r in rows
-        )
-        if now > slot_at + grace and not has_row:
-            late.append("tick_stalled")
     return late
+
+
+def _tick_stalled(health: dict[str, Any], now: datetime, cfg: MedicConfig) -> bool:
+    """행 없는 지연: runs 행은 tick만 만든다. 마지막 tick 뒤 첫 회차 + 15분이 지났는데 그 행이 없으면 tick이 멈췄다."""
+    last_tick = _parse_time(health.get("last_tick_at"))
+    if last_tick is None:
+        return False
+    slot_at, slot_loop = next_slot(cfg, last_tick)
+    if now <= slot_at + timedelta(minutes=cfg.late_run_grace_minutes):
+        return False
+    rows = [r for r in health.get("runs_today") or [] if isinstance(r, dict)]
+    return not any(r.get("loop") == slot_loop and _parse_time(r.get("scheduled_for")) == slot_at for r in rows)
 
 
 def _no_reply(health: dict[str, Any], now: datetime, cfg: MedicConfig) -> bool:
@@ -203,7 +213,8 @@ def health_signals(
     - `suppress`(절전 직후 유예·배포 중)면 아무것도 세지 않고 연속 수를 0으로 되돌린다.
     - 실패(연결 안 됨, 401, safe_mode, 그 밖의 비 200)가 `health_fail_streak`(3)번째부터 `health:*`.
       `safe_mode`는 `kind="record"`. `bind_error`(로그에 `api_bind_error`)면 연결 실패를 `health:bind`로.
-    - 성공 응답에 코드 밖 사유가 있으면 회차 지연·무응답도 없다. `plan_open`·`proactive_cap`은 회차 지연만 막는다.
+    - 성공 응답에 코드 밖 사유가 있으면 회차 지연·무응답도 없다. `plan_open`·`proactive_cap`은 `pending` 행의
+      회차 지연만 막고, `late_run:tick_stalled`(행 없음)는 막지 않는다.
     """
     if suppress:
         return [], 0
@@ -219,8 +230,10 @@ def health_signals(
     if outside_reasons(health, now):
         return [], 0
     out: list[Signal] = []
-    if not normal_delay_reasons(health):
+    if not normal_delay_reasons(health):  # 따라잡기가 일부러 둔 pending만 봐 준다
         out += [Signal(f"late_run:{loop}", "be", "late_run", now) for loop in _late_runs(health, now, cfg)]
+    if _tick_stalled(health, now, cfg):  # 행이 없으면 tick이 죽은 것이다(plan_open과 무관)
+        out.append(Signal("late_run:tick_stalled", "be", "late_run", now))
     if _no_reply(health, now, cfg):
         out.append(Signal("no_reply", "be", "no_reply", now))
     return out, 0
