@@ -6,6 +6,7 @@ from be_env import BeEnv
 from test_dispatcher_messages import kst
 
 from my_planner.api.models import schema_bundle
+from my_planner.store.exports import export_tasks
 from my_planner.tools.actions import ACTIONS
 
 SAT_1300 = kst(2026, 10, 24, 13, 0)  # 토요일 낮: 예정된 회차가 없다
@@ -229,6 +230,7 @@ async def test_decline_confirm_closes_token_changes_nothing(tmp_path):
     assert status == 200 and body["status"] == "applied" and "undo_id" not in body
     assert before == after
     assert row["kind"] == "confirm_declined" and row["undo_json"] is None and token not in row["summary"]
+    assert row["summary"] == "✗ 그대로 뒀어요 (이번 분기 우선순위 1개를 바꿔요)"
     assert resolution == "declined"
     assert again == 409 and apply_after == 409
 
@@ -297,12 +299,16 @@ async def test_actions_result_and_idempotency_atomic(tmp_path, monkeypatch):
         state = env.parts.tasks.get(tid).status.value
         rows = (len(env.activity()), env.conn.execute("SELECT count(*) FROM api_idempotency").fetchone()[0])
         events = env.conn.execute("SELECT count(*) FROM tool_events_log WHERE kind = 'task_completed'").fetchone()[0]
+        export = env.parts.tools.export_path.read_text(encoding="utf-8")
+        expected = tmp_path / "expected.md"
+        export_tasks(env.parts.tasks, expected, env.parts.tools.today())  # 되돌린 DB에서 다시 만든 모양
         monkeypatch.setattr(env.parts.idempotency, "put", real_put)
         retry, retry_body = await env.action("complete_task", {"id": tid}, client_msg_id="atomic-1")
         state_after = env.parts.tasks.get(tid).status.value
 
     assert status == 500 and body["error"]["code"] == "internal"
     assert state == "open" and rows == (n_activity, n_idem) and events == 0
+    assert export == expected.read_text(encoding="utf-8")  # tasks.md도 DB와 같다(완료로 남지 않았다)
     assert retry == 200 and retry_body["status"] == "applied" and state_after == "done"
 
 
@@ -321,3 +327,42 @@ async def test_actions_log_has_no_title_args_or_token(tmp_path, caplog):
     assert "action_handled" in text
     for secret in ("꾸민제목문장", "꾸민메모문장", nc["confirm_token"]):
         assert secret not in text
+
+
+@pytest.mark.parametrize("which", ["old", "new"])
+async def test_priorities_token_stale_when_listed_task_dropped(tmp_path, which):
+    """분기 우선순위 토큰 뒤에 지금 목록이나 새 목록의 할 일을 내려놓으면 그 토큰은 stale(409)이다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        old, new = await _add(env, "가"), await _add(env, "나")
+        q = {"cadence": "quarter", "period": "2026-Q4"}
+        await env.action("set_priorities", {**q, "task_ids": [old]})
+        _, nc = await env.action("set_priorities", {**q, "task_ids": [old, new]})
+        env.clock.advance(minutes=1)
+        victim = old if which == "old" else new
+        st, body = await env.action("drop_task", {"id": victim})
+        if body["status"] == "needs_confirm":  # 지금 분기 우선순위인 할 일은 내려놓기도 확인을 받는다
+            st, body = await env.action("drop_task", {"id": victim}, confirm_token=body["confirm_token"])
+        assert (st, body["status"]) == (200, "applied")
+        env.clock.advance(minutes=1)
+        status, err = await env.action("set_priorities", {**q, "task_ids": [old, new]},
+                                       confirm_token=nc["confirm_token"])
+        resolution = _token_row(env, nc["confirm_token"])["resolution"]
+        kept = [t.id for t in env.parts.tasks.priorities("quarter", "2026-Q4")]
+
+    assert status == 409 and err["error"]["code"] == "conflict"
+    assert resolution == "stale"
+    assert kept == ([] if which == "old" else [old])
+
+
+def test_needs_confirm_without_confirms_repo_never_applies(tmp_path, conn):
+    from test_activity import ActivityEnv
+
+    from my_planner.tools.actions import ActionDeps, ActionRequest, apply_action
+
+    env = ActivityEnv(tmp_path, conn)
+    tid = env.tools.add_task(env.ctx(), title="운동", areas=["health"])["id"]
+    env.tools.set_priorities(env.ctx(), cadence="day", period="2026-10-24", task_ids=[tid])
+    deps = ActionDeps(tools=env.tools, clock=env.clock, activity=env.activity, confirms=None)
+    with pytest.raises(RuntimeError):
+        apply_action(deps, ActionRequest("drop_task", {"id": tid}, actor="user", channel="app"))
+    assert env.repo.get(tid).status.value == "open"

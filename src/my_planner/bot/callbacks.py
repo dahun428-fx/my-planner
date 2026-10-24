@@ -22,7 +22,11 @@ from my_planner.clock import Clock
 from my_planner.domain import RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.actions import ActionRequest, ActionResult
-from my_planner.tools.confirmations import draft_dropped_reply, render_confirmations
+from my_planner.tools.confirmations import (
+    condition_summary,
+    draft_dropped_reply,
+    render_confirmations,
+)
 from my_planner.tools.core import Tools
 
 if TYPE_CHECKING:
@@ -59,7 +63,7 @@ def _parse_condition(data: str | None) -> tuple[date, int] | None:
 
 
 def condition_reply(score: int) -> str:
-    return f"컨디션 {score} 기록했어요."
+    return condition_summary(score)  # 활동 한 줄과 같은 문구(SP1)
 
 
 async def handle_callback(

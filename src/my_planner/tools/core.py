@@ -26,6 +26,7 @@ from my_planner.tools.activity import (
     priorities_target,
     record_activity,
     task_target,
+    tasks_target,
 )
 from my_planner.tools.confirmations import (
     condition_summary,
@@ -162,17 +163,26 @@ class Tools:
             "scheduled_at": self._local_iso(t.scheduled_at),
         }
 
-    def _finish(self, ctx: RunContext, kind: str, t: Task, *, undo: dict[str, Any] | None = None) -> dict[str, Any]:
-        """트랜잭션 안에서 부른다: 호출 기록과 활동(확인 문구 한 줄, 바꾸기 전 값). 끝난 뒤 `_after`를 부른다."""
+    def _finish(
+        self, ctx: RunContext, kind: str, t: Task, *, undo: dict[str, Any] | None = None, extra: tuple[str, ...] | list[str] = ()
+    ) -> dict[str, Any]:
+        """트랜잭션 안에서 부른다: 호출 기록과 활동(확인 문구 한 줄, 바꾸기 전 값). 끝난 뒤 `_after`를 부른다.
+
+        `extra`는 할 일 말고도 바뀐 대상(내려놓기로 지워진 우선순위 칸)이다.
+        """
         data = self._event_data(t)
         self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, kind, inbound_id=ctx.inbound_id, data=data)
-        self._record(ctx, kind, task_target(t.id), confirmation_line(ToolEvent(kind, t.id, data), self.today()), undo)
+        summary = confirmation_line(ToolEvent(kind, t.id, data), self.today())
+        self._record(ctx, kind, task_target(t.id), summary, undo, targets=[task_target(t.id), *extra])
         return self._task_dict(t)
 
     def _record(
-        self, ctx: RunContext, kind: str, target: str | None, summary: str | None, undo: dict[str, Any] | None
+        self, ctx: RunContext, kind: str, target: str | None, summary: str | None, undo: dict[str, Any] | None,
+        *, targets: list[str] | None = None,
     ) -> None:
-        record_activity(self.activity, ctx, kind=kind, target=target, summary=summary or kind, undo=undo)
+        record_activity(
+            self.activity, ctx, kind=kind, target=target, summary=summary or kind, undo=undo, targets=targets
+        )
 
     @staticmethod
     def _before(t: Task) -> dict[str, Any]:
@@ -278,10 +288,9 @@ class Tools:
                     inbound_id=ctx.inbound_id, data={"ids": [t.id], "titles": [t.title]},
                 )
                 made.append(t)
-            self._record(
-                ctx, "tasks_proposed", task_target(made[0].id) if len(made) == 1 else None,
-                titles_summary("제안", [t.title for t in made]), None,
-            )
+            target, targets = tasks_target([t.id for t in made])
+            self._record(ctx, "tasks_proposed", target, titles_summary("제안", [t.title for t in made]), None,
+                         targets=targets)
         ids = [t.id for t in made]
         ctx.events.append(
             ToolEvent(kind="tasks_proposed", task_id=None, data={"ids": ids, "titles": [t.title for t in made]})
@@ -310,11 +319,12 @@ class Tools:
                 confirmed.append(t)
             if confirmed:
                 one = len(confirmed) == 1
+                target, targets = tasks_target([t.id for t in confirmed])
                 self._record(
-                    ctx, "tasks_confirmed", task_target(confirmed[0].id) if one else None,
+                    ctx, "tasks_confirmed", target,
                     confirmation_line(ToolEvent("tasks_confirmed", confirmed[0].id, self._event_data(confirmed[0])),
                                       self.today()) if one else titles_summary("확정", [t.title for t in confirmed]),
-                    {"task_ids": [t.id for t in confirmed]},
+                    {"task_ids": [t.id for t in confirmed]}, targets=targets,
                 )
         for t in confirmed:
             ctx.events.append(ToolEvent(kind="tasks_confirmed", task_id=t.id, data=self._event_data(t)))
@@ -395,11 +405,14 @@ class Tools:
         if t.status not in allowed:
             return _err(why)
         undo = self._before(t)
+        extra: list[str] = []
         if new is TaskStatus.dropped:  # 내려놓으면 우선순위 칸이 지워진다. 비어 있으면 되살린다(6.4.3)
-            undo["priorities"] = [list(row) for row in self.tasks.priority_rows(t.id)]
+            rows = self.tasks.priority_rows(t.id)
+            undo["priorities"] = [list(row) for row in rows]
+            extra = [priorities_target(c, p) for c, p, _ in rows]  # 그 목록도 바뀐 대상이다
         with self.tasks.transaction():
             t = self.tasks.set_status(t.id, new)
-            out = self._finish(ctx, kind, t, undo=undo)
+            out = self._finish(ctx, kind, t, undo=undo, extra=extra)
         self._after(ctx, kind, t)
         return out
 
@@ -532,7 +545,7 @@ class Tools:
                 {"score": prev.score, "note": prev.note, "recorded_at": to_iso(prev.recorded_at)} if prev else None
             )
             self._record(
-                ctx, "condition_recorded", condition_target(day), condition_summary(day, c.score, self.today()),
+                ctx, "condition_recorded", condition_target(day), condition_summary(c.score),
                 {"date": day.isoformat(), "before": before},
             )
         # 메모는 남기지 않는다. 날짜와 점수만.
@@ -545,10 +558,8 @@ class Tools:
         with self.tasks.transaction():
             ids = self.tasks.expire_drafts(older_than)
             if ids:
-                self._record(
-                    ctx, "drafts_expired", task_target(ids[0]) if len(ids) == 1 else None,
-                    drafts_expired_summary(len(ids)), None,
-                )
+                target, targets = tasks_target(ids)
+                self._record(ctx, "drafts_expired", target, drafts_expired_summary(len(ids)), None, targets=targets)
         if ids:
             self._export()
         return {"expired_ids": ids}

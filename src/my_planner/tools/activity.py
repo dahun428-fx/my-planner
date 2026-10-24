@@ -32,6 +32,12 @@ def priorities_target(cadence: str, period: str) -> str:
     return f"priorities:{cadence}:{period}"
 
 
+def tasks_target(ids: list[int]) -> tuple[str | None, list[str]]:
+    """할 일 여럿을 바꾼 활동의 (`target`, `targets`): 하나면 `task:12`, 여럿이면 NULL과 `task:` 전부."""
+    every = [task_target(i) for i in ids]
+    return (every[0] if len(every) == 1 else None), every
+
+
 def record_activity(
     repo: ActivityRepo | None,
     ctx: RunContext,
@@ -41,9 +47,11 @@ def record_activity(
     summary: str,
     risk: Risk | None = None,
     undo: dict[str, Any] | None,
+    targets: list[str] | None = None,
 ) -> int | None:
     """활동 한 행을 쓰고 `ctx.activity_ids`(되돌릴 수 있으면 `ctx.undo_ids`도)에 더한다. 저장소가 없으면 None.
 
+    `targets`는 바꾼 대상 전부(`activity_targets`, 없으면 `[target]`). `target`은 하나일 때만 그 값이다.
     `risk`를 주지 않으면 `ctx.risk`. `risk = confirm`으로 적용한 변경은 되돌릴 수 없다(6.4.2).
     """
     if repo is None:
@@ -52,7 +60,7 @@ def record_activity(
     risk = risk if risk is not None else ctx.risk
     aid = repo.add(
         actor=actor, channel=channel, kind=kind, target=target, summary=summary, risk=risk, undo=undo,
-        conversation_id=ctx.conversation_id, run_id=ctx.run_id, inbound_id=ctx.inbound_id,
+        conversation_id=ctx.conversation_id, run_id=ctx.run_id, inbound_id=ctx.inbound_id, targets=targets,
     )
     ctx.activity_ids.append(aid)
     if risk == "low" and undo is not None:

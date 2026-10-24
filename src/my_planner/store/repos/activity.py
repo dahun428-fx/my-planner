@@ -60,7 +60,10 @@ class ActivityRepo:
         conversation_id: int | None = None,
         run_id: int | None = None,
         inbound_id: int | None = None,
+        targets: list[str] | None = None,
     ) -> int:
+        """`targets`는 이 활동이 바꾼 대상 전부(`activity_targets`, 같은 트랜잭션). 없으면 `[target]`."""
+        every = list(dict.fromkeys(targets if targets is not None else ([target] if target else [])))
         with transaction(self.conn):
             cur = self.conn.execute(
                 "INSERT INTO activity (at, actor, channel, kind, target, summary, risk, undo_json, "
@@ -71,17 +74,29 @@ class ActivityRepo:
                     conversation_id, run_id, inbound_id,
                 ),
             )
-        assert cur.lastrowid is not None
-        return cur.lastrowid
+            aid = cur.lastrowid
+            assert aid is not None
+            self.conn.executemany(
+                "INSERT INTO activity_targets (activity_id, target) VALUES (?, ?)", [(aid, t) for t in every]
+            )
+        return aid
+
+    def targets(self, id: int) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT target FROM activity_targets WHERE activity_id = ? ORDER BY rowid", (id,)
+        ).fetchall()
+        return [r["target"] for r in rows]
 
     def get(self, id: int) -> Activity | None:
         r = self.conn.execute("SELECT * FROM activity WHERE id = ?", (id,)).fetchone()
         return _activity(r) if r is not None else None
 
     def changed_after(self, target: str, after: datetime) -> bool:
-        """`after`보다 나중에 그 대상을 바꾼 활동이 있다(확인 토큰의 `stale` 판정, 5.2)."""
+        """`after`보다 나중에 그 대상을 바꾼 활동이 있다(확인 토큰의 `stale` 판정, 5.2). 여러 대상 활동도 본다."""
         r = self.conn.execute(
-            "SELECT 1 FROM activity WHERE target = ? AND at > ? LIMIT 1", (target, to_iso(after))
+            "SELECT 1 FROM activity_targets t JOIN activity a ON a.id = t.activity_id "
+            "WHERE t.target = ? AND a.at > ? LIMIT 1",
+            (target, to_iso(after)),
         ).fetchone()
         return r is not None
 

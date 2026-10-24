@@ -63,9 +63,9 @@ def titles_summary(verb: str, titles: list[str]) -> str:
     return f"✓ {verb}: " + ", ".join(titles)
 
 
-def condition_summary(d: date, score: int, today: date) -> str:
-    """컨디션 기록 활동의 한 줄. 메모는 넣지 않는다(5.2)."""
-    return f"✓ 컨디션: {score} ({_day_label(d, today)})"
+def condition_summary(score: int) -> str:
+    """컨디션 기록 활동의 한 줄. SP1 버튼 답과 같은 문구이고 메모는 넣지 않는다(5.2)."""
+    return f"컨디션 {score} 기록했어요."
 
 
 def drafts_expired_summary(count: int) -> str:
@@ -73,7 +73,7 @@ def drafts_expired_summary(count: int) -> str:
 
 
 def confirm_declined_summary(summary: str) -> str:
-    return f"✗ 그대로 두기: {summary}"
+    return f"✗ 그대로 뒀어요 ({summary})"
 
 
 def period_label(cadence: str, period: str, current: str) -> str:

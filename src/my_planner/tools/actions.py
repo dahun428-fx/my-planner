@@ -26,12 +26,16 @@ import logging
 import sqlite3
 from collections.abc import Callable
 from dataclasses import KW_ONLY, dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.clock import Clock, period_of
 from my_planner.domain import ActivityChannel, Actor, Cadence, RunContext, TaskStatus
 from my_planner.store.db import transaction
+from my_planner.timefmt import (  # API 경계의 시각 변환(6.1). 도구 결과는 현지 시각이다
+    api_time,
+    to_api_times,
+)
 from my_planner.tools.activity import priorities_target, record_activity, task_target
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
@@ -110,7 +114,7 @@ class ActionSpec:
     tool: str | Handler
     needs_confirm: NeedsConfirm | None = None
     public: bool = True
-    target: Callable[[dict[str, Any]], str | None] | None = None
+    target: Callable[[Tools, dict[str, Any]], list[str]] | None = None
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
 
 
@@ -146,14 +150,22 @@ def priorities_need_confirm(tools: Tools, args: dict[str, Any], today: date) -> 
     return f"{label} 우선순위 {len(current)}개를 바꿔요"
 
 
-def _task_target(args: dict[str, Any]) -> str | None:
+def _task_target(tools: Tools, args: dict[str, Any]) -> list[str]:
     i = _int(args.get("id"))
-    return task_target(i) if i is not None else None
+    return [task_target(i)] if i is not None else []
 
 
-def _priorities_target(args: dict[str, Any]) -> str | None:
-    c, p = args.get("cadence"), args.get("period")
-    return priorities_target(c, p) if isinstance(c, str) and isinstance(p, str) else None
+def _priorities_target(tools: Tools, args: dict[str, Any]) -> list[str]:
+    """그 기간 목록과, 지금 목록·새 목록의 할 일 전부. 그 가운데 하나라도 토큰 뒤에 바뀌면 확인 문구가 맞지 않는다.
+
+    토큰 뒤에 목록에서 빠진 할 일(내려놓기)은 그 활동이 목록 대상(`priorities:…`)도 적으므로 함께 잡힌다.
+    """
+    c, p, ids = args.get("cadence"), args.get("period"), args.get("task_ids")
+    if not isinstance(c, str) or not isinstance(p, str) or c not in {x.value for x in Cadence}:
+        return []
+    current = [t.id for _, t in tools.tasks.priority_ranks(c, p)]
+    new = [i for i in ids if _int(i) is not None] if isinstance(ids, list) else []
+    return [priorities_target(c, p), *(task_target(i) for i in dict.fromkeys([*current, *new]))]
 
 
 # --- 내부 처리 함수 ---
@@ -211,10 +223,6 @@ def _rejected(message: str) -> ActionResult:
 
 
 def _applied(deps: ActionDeps, ctx: RunContext, result: dict[str, Any]) -> ActionResult:
-    from my_planner.api.models import (
-        to_api_times,  # API 경계의 시각 변환(6.1). 도구 결과는 현지 시각이다
-    )
-
     aid = ctx.activity_ids[0] if ctx.activity_ids else None
     confirmation = render_confirmations(ctx.events, deps.tools.today()) or None
     if confirmation is None and aid is not None and deps.activity is not None:
@@ -225,12 +233,6 @@ def _applied(deps: ActionDeps, ctx: RunContext, result: dict[str, Any]) -> Actio
         body["undo_id"] = aid  # 되돌릴 수 있을 때만, 값은 activity_id와 같다
     body.update({"result": to_api_times(result), "confirmation": confirmation, "xp": dict(NO_XP)})
     return ActionResult("applied", 200, body)
-
-
-def _api_time(dt: datetime) -> str:
-    from my_planner.api.models import api_time
-
-    return api_time(dt)
 
 
 # --- 즉시 갈래 ---
@@ -296,8 +298,8 @@ def _with_token(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: di
         return _error("conflict", 409, "conflict", STALE_TOKEN)
     if p.action != req.action or p.args != args:
         return _error("conflict", 409, "conflict", TOKEN_MISMATCH)
-    target = spec.target(args) if spec.target is not None else None
-    if target is not None and deps.activity is not None and deps.activity.changed_after(target, p.created_at):
+    targets = spec.target(deps.tools, args) if spec.target is not None else []
+    if deps.activity is not None and any(deps.activity.changed_after(t, p.created_at) for t in targets):
         deps.confirms.resolve(p.token, "stale")  # 확인 사이에 대상이 바뀌었다: 적용하지 않는다(5.2)
         return _error("conflict", 409, "conflict", STALE_TOKEN)
     ctx = _context(req)
@@ -313,9 +315,11 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
         return _decline(deps, req, args)
     if req.confirm_token is not None:
         return _with_token(deps, spec, req, args)
-    if req.channel == "app" and spec.needs_confirm is not None and deps.confirms is not None:
+    if req.channel == "app" and spec.needs_confirm is not None:
         summary = spec.needs_confirm(deps.tools, args, deps.tools.today())
         if summary is not None:
+            if deps.confirms is None:  # 확인을 받을 곳이 없으면 바로 적용하지 않는다
+                raise RuntimeError("needs_confirm without a confirms repo")
             p = deps.confirms.create(
                 action=req.action, args=args, summary=summary, origin="actions",
                 expires_at=deps.clock.now() + CONFIRM_TTL,
@@ -323,7 +327,7 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
             return ActionResult(
                 "needs_confirm", 200,
                 {"status": "needs_confirm", "confirm_token": p.token, "summary": summary,
-                 "expires_at": _api_time(p.expires_at)},
+                 "expires_at": api_time(p.expires_at)},
             )
     return _call(deps, spec, _context(req), args)
 

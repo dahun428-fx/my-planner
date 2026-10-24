@@ -111,3 +111,19 @@ def make_settings(root: Path, **overrides: Any) -> Settings:
         paths=PathsConfig.for_root(root),
         **overrides,
     )
+
+
+class RepoApplier:
+    """즉시 갈래(`Dispatcher.apply_action`)의 가짜: 하루 한 번 작업 `expire_drafts`만 저장소에 그대로 넘긴다."""
+
+    def __init__(self, tasks: Any) -> None:
+        self.tasks = tasks
+        self.requests: list[Any] = []
+
+    def apply_action(self, req: Any) -> Any:
+        from my_planner.tools.actions import ActionResult
+
+        self.requests.append(req)
+        assert req.action == "expire_drafts" and (req.actor, req.channel) == ("secretary", "scheduler")
+        ids = self.tasks.expire_drafts(req.args["older_than"])
+        return ActionResult("applied", 200, {"status": "applied", "result": {"expired_ids": ids}})

@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
-    from my_planner.store.repos.tasks import TasksRepo
 
 log = logging.getLogger(__name__)
 
@@ -55,22 +54,16 @@ def _scheduler(action: str, args: dict[str, object]) -> ActionRequest:
     return ActionRequest(action, args, actor="secretary", channel="scheduler")
 
 
-def expire_drafts(
-    target: TasksRepo | ActionApplier, clock: Clock, *, days: int = DRAFT_EXPIRE_DAYS
-) -> Callable[[date], None]:
+def expire_drafts(target: ActionApplier, clock: Clock, *, days: int = DRAFT_EXPIRE_DAYS) -> Callable[[date], None]:
     """하루 한 번 작업: `proposed_at`에서 `days`일이 지난 초안을 조용히 `dropped`로 바꾼다(알리지 않음, 스펙 5.7).
 
-    BE는 디스패처의 즉시 갈래(`apply_action`, `secretary`/`scheduler`, SP3-4 스펙 4.3)로 부른다. 그러면 활동
-    `drafts_expired`가 같은 트랜잭션에 남는다. 저장소를 주면 SP1처럼 저장소만 바꾼다.
+    디스패처의 즉시 갈래(`apply_action`, `secretary`/`scheduler`, SP3-4 스펙 4.3)로 부른다. 활동 `drafts_expired`가
+    같은 트랜잭션에 남는다.
     """
 
     def job(today: date) -> None:
-        older_than = clock.now() - timedelta(days=days)
-        if hasattr(target, "apply_action"):
-            res = target.apply_action(_scheduler("expire_drafts", {"older_than": older_than}))
-            count = len(res.body.get("result", {}).get("expired_ids", [])) if res.status == "applied" else 0
-        else:
-            count = len(target.expire_drafts(older_than))
+        res = target.apply_action(_scheduler("expire_drafts", {"older_than": clock.now() - timedelta(days=days)}))
+        count = len(res.body.get("result", {}).get("expired_ids", [])) if res.status == "applied" else 0
         log.info("drafts_expired", extra={"count": count})
 
     job.__name__ = "expire_drafts"

@@ -92,8 +92,8 @@ def test_every_mutation_records_activity_with_undo_before_values(aenv):
         ("task_dropped", f"task:{a}", "✓ 내려놓음: 아침 운동"),
         ("tasks_proposed", f"task:{d}", "✓ 제안: 산책"),
         ("tasks_confirmed", f"task:{d}", "✓ 확정: 산책"),
-        ("condition_recorded", "condition:2026-10-24", "✓ 컨디션: 3 (오늘)"),
-        ("condition_recorded", "condition:2026-10-24", "✓ 컨디션: 4 (오늘)"),
+        ("condition_recorded", "condition:2026-10-24", "컨디션 3 기록했어요."),
+        ("condition_recorded", "condition:2026-10-24", "컨디션 4 기록했어요."),
     ]
     undo = [json.loads(r["undo_json"]) if r["undo_json"] else None for r in rows]
     assert undo[0] == {"task_id": a}
@@ -160,7 +160,7 @@ async def test_activity_summary_has_no_message_body(tmp_path):
         await env.action("update_task", {"id": 1, "note": "꾸민 새 노트"})
         summaries = [r["summary"] for r in env.activity()]
 
-    assert summaries == ["✓ 추가: 물 마시기", "✓ 컨디션: 2 (오늘)", "✓ 바꿈: 물 마시기"]
+    assert summaries == ["✓ 추가: 물 마시기", "컨디션 2 기록했어요.", "✓ 바꿈: 물 마시기"]
     for s in summaries:
         for text in (body, "꾸민 노트 문장", "꾸민 컨디션 메모", "꾸민 새 노트"):
             assert text not in s
@@ -275,3 +275,78 @@ def test_repos_roundtrip(conn):
     assert (got.endpoint, got.status_code, got.body) == ("actions", 200, {"status": "applied"})
     clock.advance(days=2, seconds=1)
     assert idem.prune(clock.now() - timedelta(days=2)) == 1 and idem.get("c1") is None
+
+
+def test_multi_task_activity_targets_seen_by_changed_after(aenv):
+    """초안을 고친 뒤 묶어서 확정하면, 고친 대상의 `changed_after`가 그 확정을 본다(`activity_targets`, 011)."""
+    a, b = [x["id"] for x in aenv.tools.propose_tasks(
+        aenv.ctx(), tasks=[{"title": "산책", "areas": ["health"]}, {"title": "독서", "areas": ["learning"]}],
+    )["proposed"]]
+    aenv.clock.advance(minutes=1)
+    aenv.tools.update_task(aenv.ctx(), id=a, title="저녁 산책")
+    edited_at = aenv.clock.now()
+    assert not aenv.activity.changed_after(f"task:{a}", edited_at)
+    aenv.clock.advance(minutes=1)
+    aenv.tools.confirm_tasks(aenv.ctx(), ids=[a, b])
+
+    confirm = aenv.rows()[-1]
+    assert confirm["kind"] == "tasks_confirmed" and confirm["target"] is None  # 여럿이면 NULL 그대로
+    assert aenv.activity.targets(confirm["id"]) == [f"task:{a}", f"task:{b}"]
+    assert aenv.activity.changed_after(f"task:{a}", edited_at)
+    assert aenv.activity.changed_after(f"task:{b}", edited_at)
+    # 대상이 하나인 행도 같은 표에 적는다
+    edit = aenv.rows()[-2]
+    assert aenv.activity.targets(edit["id"]) == [f"task:{a}"]
+    every = aenv.conn.execute("SELECT count(DISTINCT activity_id) FROM activity_targets").fetchone()[0]
+    assert every == len(aenv.rows())
+
+
+def test_drop_task_targets_its_priority_lists(aenv):
+    tid = aenv.tools.add_task(aenv.ctx(), title="운동", areas=["health"])["id"]
+    aenv.tools.set_priorities(aenv.ctx(), cadence="quarter", period="2026-Q4", task_ids=[tid])
+    aenv.tools.drop_task(aenv.ctx(), id=tid)
+    drop = aenv.rows()[-1]
+    assert drop["target"] == f"task:{tid}"
+    assert aenv.activity.targets(drop["id"]) == [f"task:{tid}", "priorities:quarter:2026-Q4"]
+
+
+def test_activity_targets_rolled_back_with_activity(aenv):
+    import sqlite3
+
+    aenv.conn.execute(  # 대상 쓰기만 실패시킨다
+        "CREATE TEMP TRIGGER boom BEFORE INSERT ON activity_targets BEGIN SELECT RAISE(ABORT, 'boom'); END"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        aenv.tools.add_task(aenv.ctx(), title="운동", areas=["health"])
+    counts = [aenv.conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+              for t in ("tasks", "activity", "activity_targets", "tool_events_log")]
+    assert counts == [0, 0, 0, 0]
+
+
+async def test_button_confirm_all_goes_through_apply_action_with_transcript(tmp_path):
+    propose = ("propose_tasks", {"tasks": [{"title": "산책", "areas": ["health"]},
+                                           {"title": "스트레칭", "areas": ["health"]}]})
+    async with BeEnv.start(tmp_path, start=SAT_1300, script=[FakeTurn([propose], "어때요?")]) as env:
+        await env.telegram("오늘 뭐 할까")
+        a, b = [t.id for t in env.parts.tasks.list(status="draft")]
+        conv = env.parts.tasks.proposed_conversation_id(a)
+        seen = []
+        real = env.parts.callbacks.keywords["apply"]
+
+        def spy(req):
+            seen.append((req.action, req.args, req.actor, req.channel))
+            return real(req)
+
+        env.parts.callbacks.keywords["apply"] = spy
+        assert await env.press(f"d:all:{conv}") == "confirmed"
+        row = env.activity()[-1]
+        targets = env.parts.activity.targets(row["id"])
+        answer = env.bot.answers[-1][1]
+        day = next((tmp_path).rglob("2026-10-24.md")).read_text(encoding="utf-8")
+
+    assert seen == [("confirm_tasks", {"ids": [a, b]}, "user", "telegram")]
+    assert (row["kind"], row["actor"], row["channel"], row["target"]) == ("tasks_confirmed", "user", "telegram", None)
+    assert row["summary"] == "✓ 확정: 산책, 스트레칭"
+    assert targets == [f"task:{a}", f"task:{b}"]
+    assert answer == "✓ 확정: 산책\n✓ 확정: 스트레칭"  # SP1 여러 줄 확인 문구 그대로
+    assert "[버튼] 확정: 산책\n[버튼] 확정: 스트레칭" in day
