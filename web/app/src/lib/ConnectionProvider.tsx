@@ -35,6 +35,7 @@ export function useConnection(): ConnectionValue {
 }
 
 const HEALTH_EVERY_MS = 30_000;
+const HEALTH_ERRORS_TO_OFFLINE = 3;
 const isVisible = () => typeof document === "undefined" || document.visibilityState === "visible";
 const sameConn = (a: Conn | null, b: Conn | null) => a?.beUrl === b?.beUrl && a?.token === b?.token;
 
@@ -48,6 +49,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   const connRef = useRef<Conn | null>(null);
   const seq = useRef(0);
   const inFlight = useRef(0);
+  const errorStreak = useRef(0);
   const reconnect = useRef(new Set<() => void>());
 
   const apply = useCallback((next: ConnState | null) => {
@@ -64,6 +66,7 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
       if (!sameConn(connRef.current, next)) {
         connRef.current = next;
         seq.current += 1;
+        errorStreak.current = 0;
         stateRef.current = null;
         setState(null);
         setConn(next);
@@ -91,10 +94,15 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     }
     if (mine !== seq.current || !connRef.current) return; // a newer check or another connection took over
     if (r.kind === "error") {
-      // Not an answer about reachability: keep what we knew (5.4 handles it inside the block that asked).
-      if (stateRef.current === null) apply({ kind: "offline", lastOk: loadLastHealthOk() });
+      // One bad answer changes nothing (5.4 handles it inside the block that asked); a streak of
+      // three (about 90 s) means the secretary is not really there.
+      errorStreak.current += 1;
+      if (stateRef.current === null || errorStreak.current >= HEALTH_ERRORS_TO_OFFLINE) {
+        apply({ kind: "offline", lastOk: loadLastHealthOk() });
+      }
       return;
     }
+    errorStreak.current = 0;
     if (r.kind === "ok") saveLastHealthOk(new Date().toISOString());
     apply(deriveState(r, loadLastHealthOk()));
   }, [apply]);
@@ -119,8 +127,9 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
   // Any other request that fails to connect (or is refused) changes the state at once (F2, 5.4).
   useEffect(
     () =>
-      subscribeResults((r) => {
-        if (!connRef.current) return;
+      subscribeResults((r, from) => {
+        const cur = connRef.current;
+        if (!cur || cur.beUrl !== from.beUrl || cur.token !== from.token) return; // answer for an old connection
         if (r.kind === "offline") apply({ kind: "offline", lastOk: loadLastHealthOk() });
         else if (r.kind === "unauthorized" || r.kind === "safe_mode" || r.kind === "rate_limited") apply({ kind: r.kind });
         else if (r.kind === "ok" && inFlight.current === 0 && stateRef.current?.kind !== "online") void recheck();

@@ -85,7 +85,7 @@ export async function apiFetch<T>(
   const conn = opts.conn ?? loadConn();
   if (!conn) return { kind: "error", status: 0, code: "no_connection" };
   const result = await request<T>(method, path, opts, conn);
-  if (!opts.conn && !(result.kind === "error" && result.code === "aborted")) reportResult(result);
+  if (!opts.conn && !(result.kind === "error" && result.code === "aborted")) reportResult(result, conn);
   return result;
 }
 

@@ -10,7 +10,9 @@ export function usePolling<T>(
   load: () => Promise<ApiResult<T>>,
   intervalMs = 60_000,
 ): { result: ApiResult<T> | null; refresh(): Promise<void> } {
-  const { onReconnect } = useConnection();
+  const { onReconnect, conn } = useConnection();
+  const beUrl = conn?.beUrl;
+  const token = conn?.token;
   const [result, setResult] = useState<ApiResult<T> | null>(null);
   const loadRef = useRef(load);
   const seq = useRef(0);
@@ -48,7 +50,8 @@ export function usePolling<T>(
       document.removeEventListener("visibilitychange", onVisible);
       offReconnect();
     };
-  }, [intervalMs, onReconnect, refresh]);
+    // beUrl/token: a new connection starts polling afresh, even after a 401 stopped the old one.
+  }, [intervalMs, onReconnect, refresh, beUrl, token]);
 
   return { result, refresh };
 }

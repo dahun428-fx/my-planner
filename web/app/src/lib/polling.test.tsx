@@ -7,7 +7,7 @@ import { usePolling } from "./polling";
 
 let visibility: "visible" | "hidden" = "visible";
 const reconnectListeners = new Set<() => void>();
-const value: ConnectionValue = {
+let value: ConnectionValue = {
   state: null,
   conn: null,
   ready: true,
@@ -113,5 +113,25 @@ describe("usePolling", () => {
     expect(load).not.toHaveBeenCalled();
     await act(async () => setVisibility("visible"));
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes after a 401 when the connection changes", async () => {
+    const load = vi
+      .fn<() => Promise<ApiResult<number>>>()
+      .mockResolvedValueOnce({ kind: "unauthorized" })
+      .mockResolvedValue(okResult(7));
+    const conn = (token: string) => ({ beUrl: "https://gp76.example.ts.net", token });
+    value = { ...value, conn: conn("old") };
+    const { result, rerender } = setup(load);
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+    value = { ...value, conn: conn("new") };
+    rerender();
+    await act(async () => {});
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(result.current.result).toEqual(okResult(7));
   });
 });

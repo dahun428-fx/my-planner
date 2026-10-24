@@ -96,11 +96,12 @@ export function saveLastHealthOk(iso: string): void {
 // ---- results reported by apiFetch to the connection provider --------------------------------
 // A tiny emitter so client.ts need not import the React provider (no import cycle).
 
-type Listener = (r: ApiResult<unknown>) => void;
+type Listener = (r: ApiResult<unknown>, conn: Conn) => void;
 const listeners = new Set<Listener>();
 
-export function reportResult(r: ApiResult<unknown>): void {
-  listeners.forEach((l) => l(r));
+// `conn` is the connection the request was sent with, so a late answer from an old BE can be ignored.
+export function reportResult(r: ApiResult<unknown>, conn: Conn): void {
+  listeners.forEach((l) => l(r, conn));
 }
 
 export function subscribeResults(l: Listener): () => void {

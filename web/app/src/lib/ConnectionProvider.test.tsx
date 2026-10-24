@@ -69,4 +69,44 @@ describe("ConnectionProvider", () => {
     mount();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("safe_mode"));
   });
+
+  it("three health errors in a row go offline; one error then ok stays online", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("online"));
+    const recheck = () => act(async () => screen.getByRole("button", { name: "recheck" }).click());
+    const bad = http.get(`${BASE}/health`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }));
+    server.use(bad);
+    await recheck();
+    await recheck();
+    expect(screen.getByRole("status")).toHaveTextContent("online");
+    server.resetHandlers();
+    await recheck(); // an answer resets the streak
+    server.use(bad);
+    await recheck();
+    await recheck();
+    expect(screen.getByRole("status")).toHaveTextContent("online");
+    await recheck();
+    expect(screen.getByRole("status")).toHaveTextContent("offline");
+  });
+
+  it("a late answer from the old connection does not change the state", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("online"));
+    let release: () => void = () => {};
+    const gate = new Promise<void>((res) => (release = res));
+    server.use(
+      http.get(`${BASE}/today`, async () => {
+        await gate;
+        return HttpResponse.error();
+      }),
+    );
+    const late = apiFetch("GET", "/today"); // sent with connection A
+    await act(async () => saveConn({ beUrl: "https://gp76.example.ts.net", token: "other-key" })); // now B
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("online"));
+    await act(async () => {
+      release();
+      await late;
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("online");
+  });
 });
