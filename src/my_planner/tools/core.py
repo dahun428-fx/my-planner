@@ -686,19 +686,30 @@ def _undo_task_status(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> st
 
 
 def _undo_tasks_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
-    """아직 `open`인 것을 `draft`로. `proposed` 이벤트를 새로 써서 초안 만료 시계가 되돌린 시각부터 다시 센다.
+    """확정한 할 일 가운데 아직 `open`이고 나중 변경이 없는 것만 `draft`로(일부 되돌리기, 6.4.3). 나머지는 그대로.
 
-    나중에 바뀐 할 일이 하나라도 있으면 U3이 이미 막았다(여러 대상 활동).
+    `proposed` 이벤트를 새로 써서 초안 만료 시계가 되돌린 시각부터 다시 센다. 하나도 못 돌리면 superseded.
     """
+    live = set(undo["targets"])
+    reverted: list[str] = []
     for i in undo["task_ids"]:
         t = tools.tasks.get(i)
-        if t is not None and t.status is TaskStatus.open:
+        if task_target(i) in live and t is not None and t.status is TaskStatus.open:
             tools.tasks.restore(t.id, status=TaskStatus.draft, completed_at=None, deleted_at=None)
-    return None
+            reverted.append(task_target(i))
+    undo["targets"] = reverted
+    return None if reverted else SUPERSEDED
 
 
 def _undo_priorities_set(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
-    tools.tasks.set_priorities(undo["cadence"], undo["period"], list(undo["task_ids"]))
+    """이전 목록으로. 이전 목록의 할 일이 지금도 목록에 오를 수 있어야 한다(`set_priorities`와 같은 규칙: 있고,
+    지워지지 않았고, `open`). 하나라도 아니면 superseded. U3은 목록 대상만 본다(할 일 대상은 지켜보기만 한다)."""
+    ids = list(undo["task_ids"])
+    for i in ids:
+        t = tools.tasks.get(i)
+        if t is None or t.status is not TaskStatus.open:
+            return SUPERSEDED
+    tools.tasks.set_priorities(undo["cadence"], undo["period"], ids)
     return None
 
 

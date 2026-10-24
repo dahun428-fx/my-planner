@@ -78,6 +78,9 @@ def confirm_declined_summary(summary: str) -> str:
 
 
 _UNDO_VERB = {"되돌림": "다시 열기"}  # `✓ 되돌림: 운동`(다시 연 것)을 되돌리면 "운동 되돌림"이 겹친다
+# `confirmation_line`이 `추가`·`옮김` 뒤에 붙이는 날짜 꼬리. 제목 안의 "→ X"는 건드리지 않는다
+_DATE_TAIL = re.compile(r"( → (오늘|내일|날짜 없음|\d{1,2}/\d{1,2})| \(\d{1,2}/\d{1,2} \d{2}:\d{2}\))$")
+_DATE_TAIL_VERBS = frozenset({"추가", "옮김"})
 _SUMMARY = re.compile(r"^✓ (?P<verb>[^:]+): (?P<rest>.*)$")
 _CONDITION = re.compile(r"^(?P<what>컨디션 \d+) 기록했어요\.$")
 
@@ -92,7 +95,8 @@ def undo_summary(summary: str) -> str:
         if verb.startswith("우선순위"):
             gist = verb
         else:
-            rest = re.sub(r" (→ .*|\(\d+/\d+ \d{2}:\d{2}\))$", "", rest)
+            if verb in _DATE_TAIL_VERBS:
+                rest = _DATE_TAIL.sub("", rest)
             gist = f"{rest} {_UNDO_VERB.get(verb, verb)}"
     elif (c := _CONDITION.match(summary)) is not None:
         gist = f"{c['what']} 기록"

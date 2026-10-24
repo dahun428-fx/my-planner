@@ -70,6 +70,10 @@ def _state(env):
     return {"tasks": tasks, "areas": areas, "priorities": prios, "conditions": conds}
 
 
+def _ledger(env):
+    return [tuple(r) for r in env.conn.execute("SELECT * FROM status_xp_ledger ORDER BY id")]
+
+
 # --- 종류별 되돌리기 (6.4.3 표) ---
 
 
@@ -142,6 +146,7 @@ async def test_undo_each_kind(tmp_path, kind):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         action, args, gist = await CASES[kind](env)
         before = _state(env)
+        ledger_before = _ledger(env)
         env.clock.advance(minutes=1)
         body = await _apply(env, action, args)
         assert body["undo_id"] == body["activity_id"]
@@ -154,6 +159,7 @@ async def test_undo_each_kind(tmp_path, kind):
         new = _row(env, out["activity_id"])
         repo = ActivityRepo(env.conn, env.clock)
         new_targets, old_targets = repo.targets(new["id"]), repo.targets(original["id"])
+        ledger_after = _ledger(env)
 
     assert changed != before
     assert status == 200, out
@@ -165,7 +171,9 @@ async def test_undo_each_kind(tmp_path, kind):
     assert (new["kind"], new["undo_json"], new["risk"], new["actor"], new["channel"]) == (
         "undo", None, "low", "user", "app")
     assert new["summary"] == out["confirmation"] and new["target"] == original["target"]
-    assert new_targets == old_targets
+    # 되돌리기 행은 원래 행이 바꾼 대상을 적는다(목록 변경의 할 일 대상은 지켜보기만 하므로 빼고)
+    assert new_targets == [t for t in old_targets if not (kind == "priorities_set" and t.startswith("task:"))]
+    assert ledger_after == ledger_before  # U6
 
 
 async def test_undo_task_added_soft_deletes(tmp_path):
@@ -319,11 +327,6 @@ async def test_u3_superseded_chain(tmp_path):
         s3, b3 = await undo(env, done["undo_id"])  # 되돌리기 자체도 활동이다
         task = env.parts.tasks.get(a)
 
-        d1, d2 = _propose(env, "물 마시기", "스트레칭")
-        confirmed = await _apply(env, "confirm_tasks", {"ids": [d1, d2]})
-        await _apply(env, "complete_task", {"id": d2})  # 여러 대상 가운데 하나만 바뀌어도
-        s4, b4 = await undo(env, confirmed["undo_id"])
-        statuses = [env.parts.tasks.get(i).status.value for i in (d1, d2)]
         _, listing = await activity_list(env)
 
     superseded = {"code": "superseded", "message": "그 뒤에 바뀐 내용이 있어서 되돌릴 수 없어요."}
@@ -331,10 +334,109 @@ async def test_u3_superseded_chain(tmp_path):
     assert s2 == 200
     assert (s3, b3["error"]) == (409, superseded)
     assert task.status.value == "done" and task.planned_for.isoformat() == "2026-10-24"
-    assert (s4, b4["error"]) == (409, superseded) and statuses == ["open", "done"]
     by_id = {i["id"]: i for i in listing["items"]}
     assert by_id[done["activity_id"]]["undo_id"] is None
+
+
+async def test_undo_tasks_confirmed_partial(tmp_path):
+    """6.4.3: 확정한 할 일 가운데 아직 `open`이고 나중 변경이 없는 것만 `draft`로. 나머지는 그대로 둔다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        d1, d2, d3 = _propose(env, "물 마시기", "스트레칭", "산책")
+        confirmed = await _apply(env, "confirm_tasks", {"ids": [d1, d2, d3]})
+        done2 = await _apply(env, "complete_task", {"id": d2})  # 하나는 나중에 바뀌었다
+        _, listing = await activity_list(env)
+        status, body = await undo(env, confirmed["undo_id"])
+        statuses = [env.parts.tasks.get(i).status.value for i in (d1, d2, d3)]
+        undo_targets = ActivityRepo(env.conn, env.clock).targets(body["activity_id"])
+        # 되돌리기 행은 되돌린 할 일만 적는다: 그대로 둔 할 일의 완료는 여전히 되돌릴 수 있다
+        status2, _ = await undo(env, done2["undo_id"])
+        d2_after = env.parts.tasks.get(d2).status.value
+
+    by_id = {i["id"]: i for i in listing["items"]}
+    assert by_id[confirmed["activity_id"]]["undo_id"] == confirmed["activity_id"]
+    assert status == 200 and body["status"] == "undone"
+    assert statuses == ["draft", "done", "draft"]
+    assert undo_targets == [f"task:{d1}", f"task:{d3}"]
+    assert status2 == 200 and d2_after == "open"
+
+
+async def test_undo_tasks_confirmed_superseded_only_when_none_left(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        d1, d2 = _propose(env, "물 마시기", "스트레칭")
+        confirmed = await _apply(env, "confirm_tasks", {"ids": [d1, d2]})
+        await _apply(env, "complete_task", {"id": d1})
+        await _apply(env, "move_task", {"id": d2, "planned_for": "2026-10-26"})
+        _, listing = await activity_list(env)
+        n_rows = len(env.activity())
+        status, body = await undo(env, confirmed["undo_id"])
+        statuses = [env.parts.tasks.get(i).status.value for i in (d1, d2)]
+        rows = len(env.activity())
+
+    by_id = {i["id"]: i for i in listing["items"]}
     assert by_id[confirmed["activity_id"]]["undo_id"] is None
+    assert status == 409 and body["error"]["code"] == "superseded"
+    assert statuses == ["done", "open"] and rows == n_rows
+
+
+async def test_undo_tasks_confirmed_task_closed_without_activity_superseded(tmp_path):
+    """나중 활동은 없지만 할 일이 이미 `open`이 아니면 돌리지 않는다. 하나도 못 돌리면 superseded(쓴 것 없음)."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        (d,) = _propose(env, "물 마시기")
+        confirmed = await _apply(env, "confirm_tasks", {"ids": [d]})
+        env.parts.tasks.set_status(d, "done")  # 활동 없이
+        status, body = await undo(env, confirmed["undo_id"])
+        task = env.parts.tasks.get(d).status.value
+
+    assert status == 409 and body["error"]["code"] == "superseded" and task == "done"
+
+
+# --- priorities_set: 할 일 대상은 지켜보기만 한다(U3은 목록 대상만) ---
+
+WEEK = {"cadence": "week", "period": "2026-W43"}
+
+
+async def test_undo_complete_after_list_dropped_it_p1(tmp_path):
+    """P1: 목록 [a, b] → a 완료 → 목록 [b] → a 완료 되돌리기. 목록 변경은 a를 바꾼 것이 아니다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = await _add(env, "가"), await _add(env, "나")
+        await _apply(env, "set_priorities", {**WEEK, "task_ids": [a, b]})
+        done = await _apply(env, "complete_task", {"id": a})
+        await _apply(env, "set_priorities", {**WEEK, "task_ids": [b]})
+        status, body = await undo(env, done["undo_id"])
+        task = env.parts.tasks.get(a).status.value
+        listed = [t.id for t in env.parts.tasks.priorities("week", "2026-W43")]
+
+    assert status == 200 and body["status"] == "undone"
+    assert task == "open" and listed == [b]
+
+
+async def test_undo_list_after_listed_task_completed_p2(tmp_path):
+    """P2: 목록 [a] → a 완료 → 목록 되돌리기(이전 목록은 비어 있었다). 할 일 완료는 목록을 바꾼 것이 아니다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a = await _add(env, "가")
+        listed = await _apply(env, "set_priorities", {**WEEK, "task_ids": [a]})
+        await _apply(env, "complete_task", {"id": a})
+        status, body = await undo(env, listed["undo_id"])
+        rows = env.parts.tasks.priority_rows(a)
+        task = env.parts.tasks.get(a).status.value
+
+    assert status == 200 and body["status"] == "undone"
+    assert rows == [] and task == "done"
+
+
+async def test_undo_list_superseded_when_old_list_task_not_open(tmp_path):
+    """이전 목록의 할 일이 지금 목록에 오를 수 없으면(완료, 내려놓음, 지움) superseded이고 목록은 그대로다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = await _add(env, "가"), await _add(env, "나")
+        await _apply(env, "set_priorities", {**WEEK, "task_ids": [a]})
+        second = await _apply(env, "set_priorities", {**WEEK, "task_ids": [b]})
+        await _apply(env, "complete_task", {"id": a})
+        status, body = await undo(env, second["undo_id"])
+        listed = [t.id for t in env.parts.tasks.priorities("week", "2026-W43")]
+        undone_at = _row(env, second["activity_id"])["undone_at"]
+
+    assert status == 409 and body["error"]["code"] == "superseded"
+    assert listed == [b] and undone_at is None
 
 
 async def test_u4_double_undo_already_undone_same_with_same_client_msg_id(tmp_path):
@@ -485,3 +587,76 @@ async def test_undo_not_callable_through_actions(tmp_path):
         task = env.parts.tasks.get(a).status.value
 
     assert status == 400 and body["error"]["code"] == "invalid_request" and task == "done"
+
+
+async def test_u6_undo_leaves_xp_ledger(tmp_path):
+    """경험치는 그대로다: 완료로 쌓인 원장 행은 완료를 되돌려도 남고, 다시 완료해도 늘지 않는다(UNIQUE)."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a = await _add(env)
+        done = await _apply(env, "complete_task", {"id": a})
+        env.conn.execute(  # 티켓 15가 쌓을 행을 꾸며 넣는다
+            "INSERT INTO status_xp_ledger (at, logical_date, source_kind, source_ref, amount, area, label) "
+            "VALUES ('2026-10-24T04:00:00.000000+00:00', '2026-10-24', 'task_done', ?, 10, 'health', '할 일 완료')",
+            (f"task:{a}",),
+        )
+        env.conn.commit()
+        before = _ledger(env)
+        status, _ = await undo(env, done["undo_id"])
+        after_undo = _ledger(env)
+        await _apply(env, "complete_task", {"id": a})
+        after_redo = _ledger(env)
+
+    assert status == 200 and len(before) == 1
+    assert after_undo == before == after_redo
+
+
+async def test_undo_client_msg_id_reused_for_other_activity_conflict(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = await _add(env, "가"), await _add(env, "나")
+        da = await _apply(env, "complete_task", {"id": a})
+        db = await _apply(env, "complete_task", {"id": b})
+        s1, first = await undo(env, da["undo_id"], client_msg_id="u-same")
+        s2, second = await undo(env, db["undo_id"], client_msg_id="u-same")
+        s3, _ = await undo(env, 999, client_msg_id="u-404")
+        s4, other = await undo(env, da["undo_id"], client_msg_id="u-404")  # 404를 저장한 id를 다른 활동에
+        s5, replay = await undo(env, da["undo_id"], client_msg_id="u-same")
+        b_status = env.parts.tasks.get(b).status.value
+
+    assert s1 == 200 and first["status"] == "undone"
+    assert s2 == 409 and second["error"] == {"code": "conflict", "message": "이미 다른 요청에 쓴 client_msg_id예요."}
+    assert s3 == 404 and s4 == 409 and other["error"]["code"] == "conflict"
+    assert (s5, replay) == (200, {"status": "already_undone", "activity_id": first["activity_id"]})
+    assert b_status == "done"
+
+
+def test_undo_summary_keeps_title_arrow():
+    from my_planner.tools.confirmations import undo_summary
+
+    assert undo_summary("✓ 완료: 서울 → 부산") == "↩ 되돌림: 서울 → 부산 완료"
+    assert undo_summary("✓ 바꿈: 계획 → 실행") == "↩ 되돌림: 계획 → 실행 바꿈"
+    assert undo_summary("✓ 추가: 서울 → 부산 → 내일") == "↩ 되돌림: 서울 → 부산 추가"
+    assert undo_summary("✓ 추가: 서울 → 부산") == "↩ 되돌림: 서울 → 부산 추가"
+    assert undo_summary("✓ 추가: 치과 (10/27 14:00)") == "↩ 되돌림: 치과 추가"
+    assert undo_summary("✓ 옮김: 서울 → 부산 → 10/26") == "↩ 되돌림: 서울 → 부산 옮김"
+    assert undo_summary("✓ 옮김: 운동 → 날짜 없음") == "↩ 되돌림: 운동 옮김"
+
+
+def test_undo_handlers_registered_regardless_of_import_order():
+    """`tools.activity`만 가져온 새 인터프리터에서도 `undo_block`이 종류별 되돌리기를 본다."""
+    import subprocess
+    import sys
+
+    code = (
+        "from datetime import datetime, UTC\n"
+        "from my_planner.tools.activity import undo_block\n"
+        "from my_planner.store.repos.activity import Activity\n"
+        "class Repo:\n"
+        "    def targets(self, id): return ['task:1']\n"
+        "    def changed_after(self, *a, **kw): return False\n"
+        "now = datetime(2026, 10, 24, 4, tzinfo=UTC)\n"
+        "a = Activity(1, now, 'user', 'app', 'task_completed', 'task:1', 's', 'low', {'task_id': 1}, None, None,"
+        " None, None, None)\n"
+        "print(undo_block(a, Repo(), now))\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "None"

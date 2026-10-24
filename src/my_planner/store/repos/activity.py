@@ -92,12 +92,19 @@ class ActivityRepo:
         return _activity(r) if r is not None else None
 
     def changed_after(
-        self, target: str, after: datetime, *, after_id: int | None = None, skip_undone: bool = False
+        self,
+        target: str,
+        after: datetime,
+        *,
+        after_id: int | None = None,
+        skip_undone: bool = False,
+        ignore: tuple[tuple[str, str], ...] = (),
     ) -> bool:
         """`after`보다 나중에 그 대상을 바꾼 활동이 있다. 여러 대상 활동도 본다(`activity_targets`).
 
         확인 토큰의 `stale` 판정(5.2)은 시각만 본다. 되돌리기 U3(6.4.3)은 그 활동 `(at, id)`보다 나중 행을 보고
         (`after_id`: 같은 시각이면 id가 큰 행이 나중이다), 되돌린 활동은 빼고(`skip_undone`) 되돌리기 활동은 센다.
+        `ignore`의 (종류, 대상 접두)에 맞는 행은 그 대상을 바꾼 것으로 세지 않는다(지켜보기만 하는 대상).
         """
         sql = "SELECT 1 FROM activity_targets t JOIN activity a ON a.id = t.activity_id WHERE t.target = ? AND "
         args: list[object] = [target, to_iso(after)]
@@ -108,6 +115,9 @@ class ActivityRepo:
             args += [to_iso(after), after_id]
         if skip_undone:
             sql += " AND a.undone_at IS NULL"
+        for kind, prefix in ignore:
+            sql += " AND NOT (a.kind = ? AND substr(t.target, 1, ?) = ?)"
+            args += [kind, len(prefix), prefix]
         return self.conn.execute(sql + " LIMIT 1", args).fetchone() is not None
 
     def mark_undone(self, id: int, undo_id: int) -> None:
