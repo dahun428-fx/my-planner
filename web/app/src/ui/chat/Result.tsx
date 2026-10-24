@@ -79,7 +79,7 @@ function Item({ it, readOnly, restored, onUndone }: { it: ResultItem; readOnly: 
     <div className={styles.item}>
       <div className={styles.itemBody}>
         <p className={styles.itemHead}>
-          <span className={styles.changeChip}>{copy.parts.changeChip[it.change]}</span>
+          <span className={styles.changeChip}>{copy.parts.changeChip[it.change]}</span>{" "}
           <span className={struck ? `${styles.itemTitle} ${primitives.struck}` : styles.itemTitle}>{it.todo.title}</span>
         </p>
         {secondLine(it)}

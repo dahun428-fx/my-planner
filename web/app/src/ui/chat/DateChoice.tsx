@@ -93,7 +93,12 @@ export function DateChoice({ props, data, ctx }: PartProps<Props>) {
             onClick={() => void move(c.date)}
           >
             <span className={styles.candidateDay}>{candidateLabel(c.date, data.today)}</span>
-            {c.note && <span className={styles.candidateNote}>{c.note}</span>}
+            {c.note && (
+              <>
+                {" "}
+                <span className={styles.candidateNote}>{c.note}</span>
+              </>
+            )}
           </button>
         ))}
         <button type="button" className={primitives.pill} disabled={off || !ctx.onChoose} onClick={otherDay}>

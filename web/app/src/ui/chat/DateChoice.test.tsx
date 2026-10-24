@@ -29,6 +29,8 @@ describe("DateChoice", () => {
     expect(candidate(/^오늘 · 10월 24일 \(토\)/)).toBeInTheDocument();
     const tue = candidate(/^10월 27일 \(화\)/);
     expect(within(tue).getByText("오후가 비어요")).toBeInTheDocument();
+    // The day and its note read as two words, not one run-together name.
+    expect(tue).toHaveAccessibleName("10월 27일 (화) 오후가 비어요");
     expect(candidate(/^10월 30일 \(금\)/)).toBeInTheDocument();
     expect(candidate(copy.parts.otherDay)).toBeInTheDocument();
     expect(allButtons()).toHaveLength(4);

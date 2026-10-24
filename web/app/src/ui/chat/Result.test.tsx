@@ -55,6 +55,8 @@ describe("Result", () => {
     ];
     renderWithProviders(<Result props={{ task_ids: [53] }} data={{ today: "2026-10-24", items }} ctx={makeCtx()} />);
     const chips = [...document.querySelectorAll(".changeChip")].map((c) => c.textContent);
+    // The pill and the title are separate words to a screen reader.
+    expect(screen.getByText("치과 예약").parentElement).toHaveTextContent(/^옮김 치과 예약$/);
     expect(chips).toEqual(["옮김", "추가", "추가", "고침", "고침", "고침", "고침", "확정", "완료", "뺌", "다시 엶"]);
 
     const moved = screen.getAllByRole("img", { name: "이전 10월 25일 (일), 지금 10월 27일 (화)" });
