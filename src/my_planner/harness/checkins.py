@@ -9,10 +9,10 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.clock import logical_date
-from my_planner.domain import RunStatus, TaskStatus
+from my_planner.domain import RunStatus
 from my_planner.harness.context import ask_condition_for
 from my_planner.loop.schedule import Due, reply_window_end
-from my_planner.store.views import todo_refs
+from my_planner.store.views import draft_live, todo_refs
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -143,7 +143,7 @@ def checkin_cards(
     ids = [
         i
         for i in tasks.proposed_task_ids_for_runs([run.id, *(m.id for m in merged)])
-        if (t := tasks.get(i)) is not None and t.status is TaskStatus.draft
+        if (t := tasks.get(i)) is not None and draft_live(t, tasks, settings.limits.draft_ttl_days, now)
     ]
     if ids:
         cards.append(

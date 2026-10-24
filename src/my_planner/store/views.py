@@ -113,6 +113,17 @@ def condition_dict(c: Condition) -> dict[str, Any]:
     return {"date": c.date.isoformat(), "score": c.score, "note": c.note}
 
 
+def draft_expiry(t: Task, tasks: TasksRepo, ttl_days: int) -> tuple[datetime, datetime]:
+    """초안의 (`proposed_at`, `expires_at`). `GET /drafts`와 체크인 초안 카드가 같은 판정을 쓴다(6.3.8, 6.4.5)."""
+    proposed_at = tasks.proposed_at(t.id, t.created_at)
+    return proposed_at, proposed_at + timedelta(days=ttl_days)
+
+
+def draft_live(t: Task, tasks: TasksRepo, ttl_days: int, now: datetime) -> bool:
+    """아직 `draft`이고 `expires_at`이 지금 이후다(밤 작업이 아직 지우지 않은 지난 초안은 아니다)."""
+    return t.status is TaskStatus.draft and draft_expiry(t, tasks, ttl_days)[1] > now
+
+
 def _areas(t: Task) -> list[str]:
     return [a.value for a in sorted(t.areas, key=lambda a: AREA_ORDER[a])]
 

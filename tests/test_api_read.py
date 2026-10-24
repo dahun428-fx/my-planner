@@ -216,6 +216,7 @@ async def test_conditions_default_30_days_skips_empty(tmp_path):
         "/priorities?cadence=quarter&period=2026-Q5",
         "/priorities?cadence=month&period=2026-13",
         "/priorities?cadence=year&period=26",
+        "/priorities?cadence=week&period=",  # 빈 값은 기본 기간이 아니라 형식 오류
     ],
 )
 async def test_bad_query_values_400(tmp_path, path):
@@ -499,3 +500,19 @@ async def test_read_routes_get_only_read_only_connections(tmp_path):
             assert (await env.get(path)).status in (200, 404)
         assert env.parts.state.get("x") is None
     assert len(seen) == len(paths)
+
+
+async def test_expired_draft_hidden_in_cards_and_drafts_alike(tmp_path):
+    script = [FakeTurn([propose("오래된 초안")], "오늘 어떠셨어요?")]
+    async with BeEnv.start(tmp_path, start=MON_EVENING, script=script) as env:
+        await env.tick()
+        (item,) = [i for i in (await get_json(env, "/checkins?date=2026-10-26"))["items"]]
+        before = await get_json(env, f"/checkins/{item['id']}")
+        drafts_before = await get_json(env, "/drafts")
+        env.clock.advance(timedelta(days=3, minutes=1))  # 밤 작업은 아직 안 돌았다: 행은 draft로 남아 있다
+        after = await get_json(env, f"/checkins/{item['id']}")
+        drafts_after = await get_json(env, "/drafts")
+
+    assert [c["component"] for c in before["cards"]][0] == "ui_todo_draft" and drafts_before["items"]
+    assert "ui_todo_draft" not in [c["component"] for c in after["cards"]]
+    assert drafts_after["items"] == []

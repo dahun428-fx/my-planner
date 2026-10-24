@@ -30,7 +30,6 @@ async def test_health_after_morning_brief(tmp_path):
     assert body["status"] == "ok"
 
 
-
 async def test_today_after_chat_and_checkin(tmp_path):
     # 월요일 09:00:30. 낮에 텔레그램으로 일정을 넣고, 저녁 체크인이 초안 둘을 제안한다
     add = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-27",

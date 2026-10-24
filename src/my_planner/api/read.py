@@ -174,7 +174,9 @@ def get_priorities(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request
     if cadence not in ("week", "month", "quarter", "year"):
         raise _bad("cadence는 week, month, quarter, year 중 하나여야 해요.")
     today = _today(deps)
-    period = request.query.get("period") or period_of(cadence, today)
+    period = request.query.get("period")
+    if period is None:
+        period = period_of(cadence, today)
     if not _PERIOD_PATTERNS[cadence].match(period):
         raise _bad("period가 cadence와 맞지 않아요.")
     tasks = _tasks(conn, deps)
@@ -186,14 +188,13 @@ def get_drafts(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) ->
     """아직 만료되지 않은 초안만. `proposed_at`은 가장 최근 `proposed` 이벤트 시각(없으면 만든 시각)."""
     now = deps.clock.now()
     today = _today(deps)
-    ttl = timedelta(days=deps.settings.limits.draft_ttl_days)
+    ttl_days = deps.settings.limits.draft_ttl_days
     tasks = _tasks(conn, deps)
     rows = []
     for t in tasks.list(status=TaskStatus.draft):
-        proposed_at = tasks.proposed_at(t.id, t.created_at)
-        expires_at = proposed_at + ttl
-        if expires_at <= now:
+        if not draft_live(t, tasks, ttl_days, now):
             continue
+        proposed_at, expires_at = draft_expiry(t, tasks, ttl_days)
         run_id, conversation_id = tasks.proposal_origin(t.id)
         rows.append(
             (proposed_at, t.id, {

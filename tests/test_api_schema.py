@@ -150,7 +150,7 @@ def test_validate_props(component, props, ok):
 def test_validate_props_error_never_echoes_values():
     secret = "비밀스러운 제목"
     msg = validate_props("ui_todo_list", {"title": secret, "task_ids": "no"})
-    assert msg is not None and secret not in msg and "no" != msg
+    assert msg is not None and secret not in msg and "no" not in msg
     assert secret not in (validate_props("ui_summary_card", {"title": secret, "lines": [secret * 100]}) or "")
 
 
