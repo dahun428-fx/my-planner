@@ -1,0 +1,11 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "progress",
+      "label": "운동",
+      "value": 5,
+      "max": 101
+    }
+  ]
+}

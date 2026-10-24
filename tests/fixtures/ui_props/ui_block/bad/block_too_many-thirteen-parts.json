@@ -1,0 +1,61 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "group",
+      "layout": "row",
+      "children": [
+        {
+          "type": "stat",
+          "label": "가",
+          "value": "1"
+        },
+        {
+          "type": "stat",
+          "label": "나",
+          "value": "2"
+        }
+      ]
+    }
+  ]
+}

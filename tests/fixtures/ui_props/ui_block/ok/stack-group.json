@@ -1,0 +1,77 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "heading",
+      "text": "꾸민 제목"
+    },
+    {
+      "type": "group",
+      "layout": "stack",
+      "children": [
+        {
+          "type": "heading",
+          "text": "오전"
+        },
+        {
+          "type": "todo_rows",
+          "task_ids": [
+            3,
+            4
+          ]
+        },
+        {
+          "type": "divider"
+        },
+        {
+          "type": "bullets",
+          "items": [
+            "물 마시기"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "layout": "stack",
+      "children": [
+        {
+          "type": "stat",
+          "label": "완료",
+          "value": "4개",
+          "delta": {
+            "text": "0",
+            "trend": "same"
+          }
+        },
+        {
+          "type": "tags",
+          "items": [
+            {
+              "area": "learning"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "오늘 보기",
+          "do": {
+            "kind": "open",
+            "screen": "today"
+          }
+        },
+        {
+          "label": "기록",
+          "do": {
+            "kind": "open",
+            "screen": "activity"
+          }
+        }
+      ]
+    }
+  ]
+}

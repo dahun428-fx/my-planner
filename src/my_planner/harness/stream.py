@@ -19,6 +19,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
+from my_planner.timefmt import to_api_times
+
 if TYPE_CHECKING:
     from my_planner.harness.dispatcher import Outbound
 
@@ -314,7 +316,7 @@ def write_reply(
     for n, (prefix, component, props, output) in enumerate(cards or [], start=1):
         call_id = f"{prefix}_{n}"
         writer.tool_input(call_id, component, props)
-        writer.tool_output(call_id, output)
+        writer.tool_output(call_id, to_api_times(output))  # `data.todos[].scheduled_at`도 UTC `Z`(6.1)
     writer.finish_step()
     if activity_ids or confirmation:
         writer.data_activity(list(activity_ids or []), list(undo_ids or []), confirmation)

@@ -186,6 +186,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 ```
 
 - 줄 내용은 BE가 붙인 `data.todos`(`TodoRef`, 10.2)에서만 읽는다. props에는 id뿐이다.
+- `checkable`의 기본값은 `true`다(지금 `ui_todo_list`처럼 체크할 수 있음).
 - 한 줄 = `CheckRow`: 왼쪽 44px 체크 원, 제목(16 `--text`), 오른쪽 보조 글(13 `--muted`). 보조 글은 `scheduled_at`이 있으면 `HH:MM`, 없고 `planned_for`가 `data.today`와 다르면 `{M}월 {D}일 ({요일})`, 둘 다 아니면 없음.
 - `status`: `open` → 체크할 수 있음(`checkable`이 `false`면 원 대신 점). `done` → 회색 취소선, 원은 채움, 꺼짐. `dropped` → 회색 취소선, 원 없음, 보조 글 "뺌". `draft` → 나오지 않는다(`drafts=False`, 10.2).
 - 누르면 `/actions complete_task {id}`(8장). 다시 열기는 없다(지금 `ui_todo_list`와 같다).
@@ -422,7 +423,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 - **BE**: Pydantic 모델(`BlockProps`, 부품은 `type`으로 가르는 `Annotated[Union[…], Field(discriminator="type")]`)이 B2·B3과 5장의 길이·개수를 맡고, `model_validator(mode="after")`가 B1, B4~B8을, `validate_props`가 B9를 본다. 오류 문구는 지금 형식 그대로 `"{위치}: {code}"`(값을 담지 않는다)이고, 위 표의 새 `code`에는 두뇌가 고칠 수 있게 괄호로 한국어 한 마디를 붙인다(부록 B).
 - **앱**: 카탈로그 JSON Schema(`@cfworker/json-schema`)가 B2·B3과 길이를, 순수 함수 `checkBlock(props): boolean`(`ui/block/checkBlock.ts`)이 B1, B4~B8을 본다. B9는 보지 않는다(BE가 보냈으면 이미 맞다). 어느 하나라도 실패하면 카드 전체가 `UnknownPart`다(부분만 그리지 않는다).
-- 두 쪽의 판정은 공유 고정 자료로 맞춘다(13장): `tests/fixtures/ui_props/ui_block/ok/*.json`은 둘 다 통과, `bad/<code>-*.json`은 둘 다 실패(BE는 파일 이름의 `code`가 오류에 있어야 한다).
+- 두 쪽의 판정은 공유 고정 자료로 맞춘다(13장): `tests/fixtures/ui_props/ui_block/ok/*.json`은 둘 다 통과, `bad/<code>-*.json`은 둘 다 실패(BE는 파일 이름의 `code`가 오류에 있어야 한다). 예외는 BE 전용 판정이다: B9 `too_large`, 10.3의 `bad_char`·`banned_word`·`slash`, 그리고 `model_json_schema()`에 나오지 않는 `period_one`(`ui_period_list`), `value_over_max`(`progress`), 후보 날짜의 `not_unique`(`ui_date_choice`). 앱 공유 시험은 이 `code`의 `bad`를 건너뛴다. 정수 목록(`task_ids`, `highlight_task_ids`, `todo_rows.task_ids`)의 서로 다름은 JSON Schema `uniqueItems`로도 나가므로 양쪽이 본다. BE가 거절한 조각은 스트림에 오지 않는다(10.1).
 
 ### 7.3 BE가 붙이는 값
 
@@ -523,6 +524,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
   - **두뇌에게 주기**: `mcp_adapter.APP_ONLY_TOOLS`는 지금 `[*BRAIN_COMPONENTS, …]`라 카탈로그에 이름을 더하면 바로 두뇌에게 간다. BE-1은 이것을 `[*PINNABLE_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]`로 바꿔 지금의 6개를 지키고, BE-2가 새 넷을 더한다(14장).
   - **화면 도구 판정**: `call_tool`의 `ui = name in BRAIN_COMPONENTS`는 그대로 둔다(7개 모두 화면 도구).
 - JSON Schema는 `model_json_schema()`가 만든다(`$defs`와 `oneOf` + `discriminator`. `@cfworker/json-schema`는 `discriminator`를 모르는 키로 지나치고 `oneOf` + `type`의 `const`로 판정한다. BE-1이 공유 고정 자료로 확인한다).
+- **스키마가 보는 것과 BE만 보는 것**: 후보 날짜(6.2)는 스키마가 형식(`YYYY-MM-DD`)·개수·서로 다름만 보고, 오늘~90일 범위는 BE-2의 뜻 검사가 본다(스키마는 시계를 모른다). BE-1만 병합된 동안에는 두뇌가 이 도구를 받지 않으므로 빈틈이 없다. `model_validator`가 보는 서로 다름 가운데 정수 목록 셋은 `json_schema_extra`로 `uniqueItems: true`를 붙여 앱 검사기도 거른다. `day`·`week` 하나만(`period_one`), `value ≤ max`(`value_over_max`), 후보 날짜의 서로 다름(`not_unique`)은 JSON Schema에 나오지 않는 BE 전용 판정이다(7.2 끝).
 
 ### 10.2 지금 값 붙이기 (`mcp_adapter._stream_output`, `store/views.py`)
 
@@ -738,3 +740,4 @@ web/app/src/ui/
 |---|---|---|---|
 | 2026-10-24 | v1 | 첫 초안: Dahun 결정 G1~G7, 기본 부품 10개, 완성 카드 셋 추가, 조립 카드, 버튼 허용 목록, 두뇌 규칙, BE·앱 변경, 티켓 다섯 | 운영 앱 스레드 |
 | 2026-10-24 | v2 | 문서 리뷰 반영: `ui_result`의 `before` 꺼내기 표와 `undo_id` 조건(활동 하나·대상 하나), 앱 통로 `move_task` 확인(SP5 "늘 바로 적용" 바꿈), `todos_day`, 체크 줄 뜻은 카드마다, `activityIds` 읽기와 다시 연 대화의 확인 칸, `period_view` 규칙 하나와 서명, `outside` 이유 셋, `highlight_task_ids` 뜻 검사, 날짜 고르기 답에는 `ui_result` 없음, 날짜 고르기 대상 "시각 없는 열린 할 일", `send` 남는 위험, `registryNames()`, 도구 수는 상대 수로, 묶음 구분 유니언 두 단계, `UI_PARTS_PER_REPLY`, CSP 시험 이름 | 운영 앱 스레드 |
+| 2026-10-24 | v3 | G-BE1이 계획의 빈 곳 3·9·10을 옮김: `todo_rows.checkable` 기본값 `true`(5.3.5), 후보 날짜 범위는 BE-2 뜻 검사·정수 목록 `uniqueItems`·BE 전용 판정(10.1, 7.2) | SP3-4 BE 스레드 |

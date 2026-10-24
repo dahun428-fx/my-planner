@@ -1,0 +1,81 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "heading",
+      "text": "꾸민 제목"
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "group",
+      "layout": "row",
+      "children": [
+        {
+          "type": "stat",
+          "label": "가",
+          "value": "1"
+        },
+        {
+          "type": "stat",
+          "label": "나",
+          "value": "2"
+        },
+        {
+          "type": "stat",
+          "label": "다",
+          "value": "3"
+        }
+      ]
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "todo_rows",
+      "task_ids": [
+        1
+      ]
+    },
+    {
+      "type": "todo_rows",
+      "task_ids": [
+        2
+      ]
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "하나 끝",
+          "do": {
+            "kind": "complete",
+            "task_id": 1
+          }
+        },
+        {
+          "label": "둘 끝",
+          "do": {
+            "kind": "complete",
+            "task_id": 2
+          }
+        },
+        {
+          "label": "더 알려 줘",
+          "do": {
+            "kind": "send"
+          }
+        }
+      ]
+    }
+  ]
+}

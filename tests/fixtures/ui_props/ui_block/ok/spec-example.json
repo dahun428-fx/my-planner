@@ -1,0 +1,53 @@
+{
+  "title": "이번 주 운동",
+  "children": [
+    {
+      "type": "group",
+      "layout": "row",
+      "children": [
+        {
+          "type": "stat",
+          "label": "이번 주",
+          "value": "3회",
+          "delta": {
+            "text": "1회",
+            "trend": "up"
+          }
+        },
+        {
+          "type": "stat",
+          "label": "지난주",
+          "value": "2회"
+        }
+      ]
+    },
+    {
+      "type": "progress",
+      "label": "이번 주 목표",
+      "value": 3,
+      "max": 4
+    },
+    {
+      "type": "text",
+      "md": "**목요일** 오후가 비어 있어요."
+    },
+    {
+      "type": "todo_rows",
+      "task_ids": [
+        61
+      ]
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "운동 끝났어",
+          "do": {
+            "kind": "complete",
+            "task_id": 61
+          }
+        }
+      ]
+    }
+  ]
+}

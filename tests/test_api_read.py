@@ -277,8 +277,8 @@ async def test_checkin_states_and_detail_cards(tmp_path):
         assert draft["toolCallId"] == f"h_draft_{item['id']}" and draft["component"] == "ui_todo_draft"
         assert draft["data"] == {
             "todos": [
-                {"id": ids[0], "title": "저녁 스트레칭", "cadence": None, "area": "health", "status": "draft"},
-                {"id": ids[1], "title": "물 마시기", "cadence": None, "area": "health", "status": "draft"},
+                {"id": ids[0], "title": "저녁 스트레칭", "cadence": None, "area": "health", "status": "draft", "planned_for": None, "scheduled_at": None},
+                {"id": ids[1], "title": "물 마시기", "cadence": None, "area": "health", "status": "draft", "planned_for": None, "scheduled_at": None},
             ]
         }
         assert cond == {
@@ -473,7 +473,7 @@ async def test_app_message_ids_in_api(tmp_path):
 
 
 def test_todo_refs_follow_6_3(tmp_path, conn):
-    """R4c: `data.todos`는 `TodoRef{id,title,cadence,area,status}`. 소프트 삭제는 빠지고 `dropped`는 남는다."""
+    """R4c: `data.todos`는 `TodoRef{id,title,cadence,area,status,planned_for,scheduled_at}`. 소프트 삭제는 빠지고 `dropped`는 남는다."""
     from my_planner.clock import FakeClock
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.store.views import todo_refs
@@ -490,9 +490,9 @@ def test_todo_refs_follow_6_3(tmp_path, conn):
     conn.commit()
     got = todo_refs([b.id, a.id, c.id, d.id, 999], repo, date(2026, 10, 24))
     assert got == [
-        {"id": b.id, "title": "정리 둘", "cadence": None, "area": None, "status": "draft"},
-        {"id": a.id, "title": "정리 하나", "cadence": "month", "area": "career", "status": "open"},  # 영역 순서의 첫째
-        {"id": c.id, "title": "정리 셋", "cadence": None, "area": "health", "status": "dropped"},
+        {"id": b.id, "title": "정리 둘", "cadence": None, "area": None, "status": "draft", "planned_for": None, "scheduled_at": None},
+        {"id": a.id, "title": "정리 하나", "cadence": "month", "area": "career", "status": "open", "planned_for": None, "scheduled_at": None},  # 영역 순서의 첫째
+        {"id": c.id, "title": "정리 셋", "cadence": None, "area": "health", "status": "dropped", "planned_for": None, "scheduled_at": None},
     ]
 
 

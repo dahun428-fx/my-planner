@@ -1,0 +1,20 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "text",
+      "md": "꾸민 글이에요."
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "　/done",
+          "do": {
+            "kind": "send"
+          }
+        }
+      ]
+    }
+  ]
+}

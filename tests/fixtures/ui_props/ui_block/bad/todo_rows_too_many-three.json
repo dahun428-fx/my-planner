@@ -1,0 +1,33 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "todo_rows",
+      "task_ids": [
+        1
+      ]
+    },
+    {
+      "type": "todo_rows",
+      "task_ids": [
+        2
+      ]
+    },
+    {
+      "type": "group",
+      "layout": "stack",
+      "children": [
+        {
+          "type": "text",
+          "md": "꾸민 글이에요."
+        },
+        {
+          "type": "todo_rows",
+          "task_ids": [
+            3
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -9,11 +9,20 @@ def pytest_addoption(parser):
         "--update-app-golden", action="store_true", default=False,
         help="tests/fixtures/app_golden/의 운영 앱 기준 응답을 지금 스트림으로 다시 쓴다(SP3-4 16장)",
     )
+    parser.addoption(
+        "--update-dashboard-fixtures", action="store_true", default=False,
+        help="web/dashboard/src/test/fixtures/를 지금 BE 응답으로 다시 쓴다(SP3-4 티켓 16)",
+    )
 
 
 @pytest.fixture
 def update_app_golden(request):
     return request.config.getoption("--update-app-golden")
+
+
+@pytest.fixture
+def update_dashboard_fixtures(request):
+    return request.config.getoption("--update-dashboard-fixtures")
 
 
 @pytest.fixture

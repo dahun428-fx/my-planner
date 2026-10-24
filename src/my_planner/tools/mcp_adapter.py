@@ -9,7 +9,7 @@ from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_serv
 
 from my_planner.domain import Channel, RunContext
 from my_planner.timefmt import to_api_times
-from my_planner.tools.ui import BRAIN_COMPONENTS, UI_COMPONENTS
+from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
 
 SERVER_NAME = "planner"
 
@@ -47,8 +47,9 @@ TOOL_NAMES: list[str] = [
     "list_habits",
 ]
 
-# 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다
-APP_ONLY_TOOLS: list[str] = [*BRAIN_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]
+# 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다.
+# 카탈로그의 두뇌 조각(`BRAIN_COMPONENTS`)을 그대로 쓰지 않는다: SP6의 새 넷은 앱이 그릴 수 있게 된 뒤 G-BE2가 더한다
+APP_ONLY_TOOLS: list[str] = [*PINNABLE_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
@@ -396,7 +397,7 @@ _SPECS.update({
             "props는 그 조각의 형식과 같아야 합니다. 사용자가 고정해 달라고 할 때만 부릅니다."
         ),
         _schema(
-            {"component": {"enum": list(BRAIN_COMPONENTS)}, "props": {"type": "object"}},
+            {"component": {"enum": list(PINNABLE_COMPONENTS)}, "props": {"type": "object"}},
             ["component", "props"],
         ),
     ),

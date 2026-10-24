@@ -1,0 +1,28 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "heading",
+      "text": "꾸민 제목"
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "heading",
+      "text": "꾸민 제목"
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "오늘 보기",
+          "do": {
+            "kind": "open",
+            "screen": "today"
+          }
+        }
+      ]
+    }
+  ]
+}

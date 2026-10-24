@@ -1,0 +1,10 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "text",
+      "md": "가",
+      "color": "red"
+    }
+  ]
+}
