@@ -205,7 +205,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   } else if (tab === "week") {
     if (weekView.kind === "loading") {
       body = (
-        <Group>
+        <Group paper>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} size="row" />
           ))}
@@ -214,7 +214,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     } else if (weekView.kind === "blocked") {
       const r = weekView.result;
       body = (
-        <Group>
+        <Group paper>
           <BlockError code={r.kind === "error" ? r.code : r.kind} onRetry={() => void refreshWeek()} />
         </Group>
       );
@@ -225,7 +225,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
-          {w.priorities.length > 0 && <Group heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
+          {w.priorities.length > 0 && <Group paper heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
           {w.days.map((d) => {
             const [, m, day] = d.date.split("-").map(Number);
             if (d.todos.length === 0) {
@@ -236,7 +236,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
               );
             }
             return (
-              <Group key={d.date} heading={copy.todos.dayHeading(d.weekday, m, day, d.is_today)}>
+              <Group paper key={d.date} heading={copy.todos.dayHeading(d.weekday, m, day, d.is_today)}>
                 {rows(openFirst(d.todos.map(show)), readOnly)}
               </Group>
             );
@@ -247,35 +247,35 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   } else if (tab === "day") {
     if (todayView.kind === "live") {
       const list = openFirst(todayView.data.todos.map((t) => show(t.todo)));
-      body = <Group heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, !writable)}</Group>;
+      body = <Group paper heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, !writable)}</Group>;
     } else if (todayView.kind === "blocked") {
       body = (
-        <Group>
+        <Group paper>
           <BlockError code={todayView.result.kind === "error" ? todayView.result.code : todayView.result.kind} onRetry={() => void refreshToday()} />
         </Group>
       );
     } else {
       body = (
-        <Group>
+        <Group paper>
           <Skeleton size="row" />
         </Group>
       );
     }
   } else if (shownPrio) {
     body = (
-      <Group heading={copy.todos.periodPriorities(LABEL[tab])}>
+      <Group paper heading={copy.todos.periodPriorities(LABEL[tab])}>
         {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
       </Group>
     );
   } else if (prioErr) {
     body = (
-      <Group>
+      <Group paper>
         <BlockError code={prioErr.kind === "error" ? prioErr.code : prioErr.kind} onRetry={() => setVersion((v) => v + 1)} />
       </Group>
     );
   } else {
     body = (
-      <Group>
+      <Group paper>
         <Skeleton size="row" />
       </Group>
     );
@@ -291,7 +291,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         trailing={
           <span className={styles.trailing}>
             {state && <StatusDot state={state} />}
-            <button type="button" className={styles.add} aria-label={copy.todos.add} disabled={!writable || !todayDate} onClick={() => setAdding(true)}>
+            <button type="button" className={`${styles.add} pressable`} aria-label={copy.todos.add} disabled={!writable || !todayDate} onClick={() => setAdding(true)}>
               <Icon name="plus" />
             </button>
           </span>
@@ -308,7 +308,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       {tab === "week" && weekOffline && <OfflineNotice savedAt={weekView.kind === "snapshot" ? weekView.savedAt : null} onRetry={() => void recheck()} />}
       {body}
       {draftList && (
-        <Group
+        <Group paper
           heading={copy.todos.drafts(draftList.length)}
           action={
             draftList.length >= 2 ? (
@@ -344,7 +344,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         </Group>
       )}
       {live && !draftsHidden && draftsErr && (
-        <Group>
+        <Group paper>
           <BlockError code={draftsErr.kind === "error" ? draftsErr.code : draftsErr.kind} onRetry={() => void loadDrafts()} />
         </Group>
       )}

@@ -17,7 +17,7 @@
 .input {
   min-height: var(--control-h);
   padding: 0 0.75rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-field);
   background: var(--surface);
   font: inherit;
@@ -47,7 +47,7 @@
 .pill {
   min-height: var(--control-h);
   padding: 0 1rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;

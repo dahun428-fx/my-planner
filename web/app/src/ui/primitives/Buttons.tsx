@@ -41,7 +41,7 @@ export function Buttons({
           <button
             key={i}
             type="button"
-            className={styles.pill}
+            className={`${styles.pill} pressable`}
             aria-pressed={opens ? undefined : pressed === i}
             disabled={isDisabled(item) || (!opens && pressed !== null)}
             onClick={() => void press(i)}

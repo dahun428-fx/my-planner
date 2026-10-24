@@ -29,7 +29,7 @@ export function ChatLauncher({
           {why}
         </p>
       )}
-      <button type="button" className={styles.launcher} disabled={disabled} aria-describedby={why ? reasonId : undefined} onClick={onOpen}>
+      <button type="button" className={`${styles.launcher} pressable`} disabled={disabled} aria-describedby={why ? reasonId : undefined} onClick={onOpen}>
         {offline ? copy.offline.chatLater : copy.chat.launcher}
       </button>
     </div>

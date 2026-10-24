@@ -60,9 +60,15 @@ describe("primitives.module.css", () => {
     expect(row?.body).toMatch(/grid-auto-flow:\s*row/);
   });
 
-  it("a read-only card draws the round mark", () => {
+  // DESIGN.md (was: square while pressable, SP5 5.5.4): every check is the 22px round one; a
+  // read-only card draws it dashed, so the two states still differ by shape.
+  it("the check is a 22px circle; a read-only card draws it dashed", () => {
+    const circle = rules(css).find((r) => r.selector === ".circle");
+    expect(circle?.body).toMatch(/width:\s*var\(--check\)/);
+    expect(circle?.body).toMatch(/border-radius:\s*var\(--radius-pill\)/);
     const round = rules(css).find((r) => r.selector === "[data-read-only] .circle");
     expect(round?.body).toMatch(/border-radius:\s*var\(--radius-pill\)/);
+    expect(round?.body).toMatch(/border-style:\s*dashed/);
   });
 
   it("has no 700 weight (screen titles only)", () => {
@@ -76,6 +82,23 @@ describe("primitives.module.css", () => {
       return /\bstyle=\{|dangerouslySetInnerHTML/.test(text) ? [relative(ui, file)] : [];
     });
     expect(offenders).toEqual([]);
+  });
+});
+
+// DESIGN.md 비서 카드: every generative card (the G-A1 parts and the G-A2 chat cards draw in Part's
+// frame) is --surface with a 1px --rule, a 16px radius and 16px inside.
+describe("parts.module.css card frame", () => {
+  const parts = readFileSync(join(__dirname, "../components/parts.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  it("is --surface, 1px --rule, radius 16, padding 16", () => {
+    const card = rules(parts).find((r) => r.selector === ".card");
+    expect(card?.body).toMatch(/background:\s*var\(--surface\)/);
+    expect(card?.body).toMatch(/border:\s*1px solid var\(--rule\)/);
+    expect(card?.body).toMatch(/border-radius:\s*var\(--radius-container\)/);
+    expect(card?.body).toMatch(/padding:\s*var\(--pad\)/);
+    expect(readFileSync(join(__dirname, "../../styles/global.css"), "utf8")).toMatch(/--radius-container:\s*16px/);
+  });
+  it("has no hex colours", () => {
+    expect(parts.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
   });
 });
 

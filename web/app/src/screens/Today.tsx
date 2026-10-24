@@ -108,10 +108,10 @@ export function Today() {
   if (view.kind === "loading") {
     body = (
       <>
-        <Group>
+        <Group paper>
           <Row title={<Skeleton size="line" />} />
         </Group>
-        <Group>
+        <Group paper>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} size="row" />
           ))}
@@ -135,7 +135,7 @@ export function Today() {
       body = <p className={styles.line}>{copy.status.safeMode}</p>;
     } else {
       body = (
-        <Group>
+        <Group paper>
           <BlockError code={r.kind === "error" ? r.code : r.kind} onRetry={() => void refresh()} />
         </Group>
       );
@@ -162,7 +162,7 @@ export function Today() {
     body = (
       <>
         {pending.length > 0 && (
-          <Group>
+          <Group paper>
             {pending.map((c) => (
               <Row key={c.id} href={`/checkin/?id=${c.id}`} title={copy.today.checkinLine(copy.loops[c.loop])} />
             ))}
@@ -179,7 +179,7 @@ export function Today() {
           </section>
         )}
         {brief ? (
-          <Group
+          <Group paper
             heading={
               <>
                 {copy.loops[brief.loop]}
@@ -200,7 +200,7 @@ export function Today() {
         ) : (
           offline && <p className={styles.line}>{copy.offline.catchUp}</p>
         )}
-        <Group heading={copy.today.condition}>
+        <Group paper heading={copy.today.condition}>
           <div className={styles.condition}>
             {showPills ? (
               <>
@@ -209,7 +209,7 @@ export function Today() {
                     <button
                       key={n}
                       type="button"
-                      className={`${styles.pill} ${score === n ? styles.picked : ""}`}
+                      className={`${styles.pill} ${score === n ? styles.picked : ""} pressable`}
                       aria-label={copy.today.conditionScore(n)}
                       aria-pressed={score === n}
                       disabled={readOnly}
@@ -238,7 +238,7 @@ export function Today() {
         </Group>
         {/* SP7 6.1: between the condition and the to-dos. A snapshot from before habits has no field. */}
         {habits.length > 0 ? (
-          <Group
+          <Group paper
             heading={copy.habits.heading}
             action={
               <Link href="/habits/" className={styles.manage}>
@@ -255,7 +255,7 @@ export function Today() {
             <HabitList habits={habits} date={t.date} readOnly={readOnly} onChanged={afterHabit} />
           </div>
         )}
-        <Group
+        <Group paper
           heading={copy.today.todosHeading(openCount)}
           footer={
             <Link href="/todos/" className={styles.seeAll}>
