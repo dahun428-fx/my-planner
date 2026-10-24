@@ -14,7 +14,7 @@ import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
-import { type ChatCtx, makeTransport } from "./transport";
+import { type ChatCtx, InFlightError, makeTransport } from "./transport";
 
 const GAP_MS = 10 * 60_000;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -22,8 +22,10 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 // --- retries ---
 
 // A cut connection may have hidden an answer the BE did store: resend the same message once.
-// An `error` chunk or a refused request (4xx/5xx) is an answer, and is not sent again.
+// An `error` chunk or a refused request (4xx/5xx) is an answer, and is not sent again. A 409 for a
+// message still being answered is neither: "다시 받기" sends the same id later (not at once).
 const isCut = (e: Error | null) => e instanceof TypeError || e?.name === "AbortError" || e?.name === "StreamCutError";
+const isInFlight = (e: Error | null) => e instanceof InFlightError;
 
 const metaOf = (m: UIMessage): Meta => (isObj(m.metadata) ? (m.metadata as Meta) : {});
 
@@ -106,7 +108,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       if (isError || isAbort) {
         // Nothing here aborts on purpose, so an abort is a cut as well.
         const cut = isAbort || isCut(lastError.current);
+        const later = isInFlight(lastError.current);
         lastError.current = null;
+        if (later) {
+          settle("retry");
+          return;
+        }
         if (cut && !autoRetried.current) {
           autoRetried.current = true;
           void Promise.resolve().then(() => regenerateRef.current());
