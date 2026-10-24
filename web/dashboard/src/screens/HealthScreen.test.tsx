@@ -23,8 +23,10 @@ const text = () => document.body.textContent ?? "";
 describe("HealthScreen", () => {
   it("draws the status of 13.2 from the BE fixture", async () => {
     renderScreen();
-    expect(await screen.findByText("스키마 11")).toBeInTheDocument();
-    expect(text()).toContain("my-planner 0.2.0 · API v1 · 스키마 11");
+    // The schema number follows the BE's migrations (the fixture is regenerated with them).
+    const schema = health.version.schema;
+    expect(await screen.findByText(`스키마 ${schema}`)).toBeInTheDocument();
+    expect(text()).toContain(`my-planner 0.2.0 · API v1 · 스키마 ${schema}`);
     expect(text()).toContain("마지막 tick 17:00 · 텔레그램 폴링 연결됨");
     expect(text()).toContain("Claude 로그인 정상 · 사용 한도 없음");
     expect(text()).toContain("멈춤 없음 · 주 통로 앱 (지금 앱) · 푸시 구독 1");
