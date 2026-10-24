@@ -26,7 +26,7 @@ import type { PartData } from "../ui/types";
 import { PinnedCard } from "./PinnedCard";
 import styles from "./Today.module.css";
 import { useConfirms } from "./useConfirms";
-import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
+import { useConfirmedAction, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 const SCORES = [1, 2, 3, 4, 5];
 const FOLD_LINES = 3;
@@ -74,15 +74,13 @@ export function Today() {
 
   const liveTodos = useMemo(() => (view.kind === "live" ? view.data.todos.map((t) => t.todo) : null), [view]);
   const { show, toggle } = useOptimisticCheck(liveTodos, refresh);
-  const { drop, sheet: dropSheet } = useConfirmedDrop(refresh);
+  // Dropping, and moving a to-do that has a time (SP6 8), may ask first.
+  const { run: confirmed, sheet: confirmSheet } = useConfirmedAction(refresh);
+  const drop = (id: number) => confirmed("drop_task", { id });
   const notAllowed = useNotAllowed(refresh);
 
-  const tomorrow = async (id: number) => {
-    // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
-    const out = await run("move_task", { id, planned_for: addDays(date, 1) });
-    if (out?.kind === "applied") await refresh();
-    else await notAllowed(out);
-  };
+  // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
+  const tomorrow = (id: number) => confirmed("move_task", { id, planned_for: addDays(date, 1) });
 
   const unpin = async (id: number) => {
     const out = await run("unpin_card", { id });
@@ -303,7 +301,7 @@ export function Today() {
       {state?.kind === "online" && state.degraded && <p className={styles.line}>{state.degraded}</p>}
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
-      {dropSheet}
+      {confirmSheet}
       <ChatLauncher disabled={!canChat} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
     </main>
   );

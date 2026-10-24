@@ -87,36 +87,46 @@ export function useOptimisticCheck(todos: readonly Todo[] | null, refresh: () =>
 }
 
 interface PendingConfirm {
-  id: number;
+  action: ConfirmableAction;
+  args: object;
   token: string;
   summary: string;
 }
 
-/** `drop_task` with the BE's `needs_confirm` sheet: "바꾸기" sends again with the token and a NEW client_msg_id. */
-export function useConfirmedDrop(refresh: () => Promise<void>) {
-  const { run } = useAction();
+/** The row writes the BE may answer with a confirm question: dropping, and moving a to-do that has a time (SP6 8, BE-2). */
+export type ConfirmableAction = "drop_task" | "move_task";
+
+/**
+ * A write that may come back `needs_confirm` (spec 5.5.5): the BE's sheet, and "바꾸기" sends the
+ * same action again with the token and a NEW client_msg_id. Applied reads the screen again;
+ * conflict and the rest go to `useNotAllowed`. `run` resolves once the first answer is in
+ * (with the sheet open, if it asked).
+ */
+export function useConfirmedAction(refresh: () => Promise<void>) {
+  const { run: send } = useAction();
   const toast = useToast();
   const notAllowed = useNotAllowed(refresh);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
 
-  const drop = async (id: number) => {
-    const out = await run("drop_task", { id });
+  const run = async (action: ConfirmableAction, args: object): Promise<ActionOutcome | null> => {
+    const out = await send(action, args);
     if (out?.kind === "applied") await refresh();
-    else if (out?.kind === "needs_confirm") setConfirm({ id, token: out.confirmToken, summary: out.summary });
+    else if (out?.kind === "needs_confirm") setConfirm({ action, args, token: out.confirmToken, summary: out.summary });
     else await notAllowed(out);
+    return out;
   };
 
-  const confirmDrop = async () => {
+  const confirmIt = async () => {
     if (!confirm || lock.current) return;
     lock.current = true;
     setBusy(true);
     try {
-      const out = await run("drop_task", { id: confirm.id }, { confirmToken: confirm.token });
+      const out = await send(confirm.action, confirm.args, { confirmToken: confirm.token });
       if (out === null) return;
       if (out.kind === "needs_confirm") {
-        setConfirm({ id: confirm.id, token: out.confirmToken, summary: out.summary });
+        setConfirm({ ...confirm, token: out.confirmToken, summary: out.summary });
         return;
       }
       if (out.kind === "conflict") toast.show({ text: copy.todos.confirmExpired });
@@ -129,7 +139,7 @@ export function useConfirmedDrop(refresh: () => Promise<void>) {
   };
 
   const sheet = confirm ? (
-    <ConfirmSheet summary={confirm.summary} busy={busy} onKeep={() => setConfirm(null)} onChange={() => void confirmDrop()} />
+    <ConfirmSheet summary={confirm.summary} busy={busy} onKeep={() => setConfirm(null)} onChange={() => void confirmIt()} />
   ) : null;
-  return { drop, sheet };
+  return { run, sheet };
 }

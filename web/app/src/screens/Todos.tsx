@@ -24,7 +24,7 @@ import page from "../styles/page.module.css";
 import { AddTodoSheet } from "./AddTodoSheet";
 import { type Edit, EditTodoSheet } from "./EditTodoSheet";
 import styles from "./Todos.module.css";
-import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
+import { useConfirmedAction, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 export type TodosTab = "day" | "week" | "month" | "quarter" | "year";
 const TABS: TodosTab[] = ["day", "week", "month", "quarter", "year"];
@@ -133,13 +133,13 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     return null;
   }, [tab, todayView, weekView, shownPrio]);
   const { show, toggle } = useOptimisticCheck(liveTodos, refreshAll);
-  const { drop, sheet: dropSheet } = useConfirmedDrop(refreshAll);
+  // Dropping, and moving a to-do that has a time (SP6 8), may ask first.
+  const { run: confirmed, sheet: confirmSheet } = useConfirmedAction(refreshAll);
+  const drop = (id: number) => confirmed("drop_task", { id });
 
   const tomorrow = async (id: number) => {
     if (!todayDate) return;
-    const out = await run("move_task", { id, planned_for: addDays(todayDate, 1) });
-    if (out?.kind === "applied") await refreshAll();
-    else await guard(out);
+    await confirmed("move_task", { id, planned_for: addDays(todayDate, 1) });
   };
 
   // One draft write at a time: "모두 확정" and a single "확정" must not both go out for the same drafts.
@@ -348,7 +348,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
           <BlockError code={draftsErr.kind === "error" ? draftsErr.code : draftsErr.kind} onRetry={() => void loadDrafts()} />
         </Group>
       )}
-      {dropSheet}
+      {confirmSheet}
       {todayDate && (
         <AddTodoSheet
           open={adding}
