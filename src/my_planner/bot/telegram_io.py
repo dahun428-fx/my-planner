@@ -31,6 +31,7 @@ from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Inbound, Outbound, send_with_retry
 from my_planner.harness.redact import redact
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.habits import Habit, HabitsRepo
 from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -55,7 +56,9 @@ class _Submitter(Protocol):
 
 
 class _MessageBot(Protocol):
-    async def send_message(self, chat_id: int, text: str) -> object: ...
+    async def send_message(
+        self, chat_id: int, text: str, reply_markup: InlineKeyboardMarkup | None = None
+    ) -> object: ...
 
 
 def accept_update(update: Update, owner_id: int, state: StateRepo) -> Verdict:
@@ -184,10 +187,13 @@ async def _answer_command(
     deps = CommandDeps(
         tasks=tools.tasks, conditions=tools.conditions, state=state, router=router, clock=clock,
         settings=LocalTime(tools.tz, tools.boundary), apply=apply, status=tools.status, curve=tools.curve,
+        habits=tools.habits,
     )
     reply = run_command(cmd, text, deps, channel="telegram")
-    for part in split_message(reply):
-        if not await _send_text(bot, chat_id, part, sleep, None):
+    markup = _habits_markup(tools) if cmd == "/habits" else None
+    parts = split_message(reply)
+    for n, part in enumerate(parts, start=1):
+        if not await _send_text(bot, chat_id, part, sleep, None, markup=markup if n == len(parts) else None):
             return  # 처리 완료로 두지 않고 원문 기록도 남기지 않는다
     on_sent()  # 보낸 뒤에 먼저 처리 완료로 기록한다: 원문 기록이 실패해도 다시 받았을 때 두 번 답하지 않는다
     try:
@@ -197,12 +203,27 @@ async def _answer_command(
         log.warning("command_transcript_failed", extra={"error_type": type(e).__name__})
 
 
+def _habits_markup(tools: Tools) -> InlineKeyboardMarkup | None:
+    """`/habits` 답에 붙이는 오늘(논리적 날짜) 습관 버튼(SP7 5.7). 활성 습관이 없으면 None."""
+    if tools.habits is None:
+        return None
+    today = tools.today()
+    rows = habit_keyboard(tools.habits.list(), tools.habits.checked_on(today), today)
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
 async def _send_text(
-    bot: _MessageBot, chat_id: int, text: str, sleep: Callable[[float], Awaitable[None]], update_id: int | None
+    bot: _MessageBot, chat_id: int, text: str, sleep: Callable[[float], Awaitable[None]], update_id: int | None,
+    *, markup: InlineKeyboardMarkup | None = None,
 ) -> bool:
-    """글 하나를 바로 3회까지 보낸다. 끝내 안 되면 `message_send_failed`(예외 종류만)를 남기고 False."""
+    """글 하나를 바로 3회까지 보낸다(`markup`이 있으면 버튼을 붙여). 끝내 안 되면 `message_send_failed`(예외 종류만)를
+    남기고 False."""
     err = await send_with_retry(
-        lambda: bot.send_message(chat_id=chat_id, text=text), sleep=sleep, event="message_send_error",
+        lambda: (
+            bot.send_message(chat_id=chat_id, text=text, reply_markup=markup) if markup is not None
+            else bot.send_message(chat_id=chat_id, text=text)
+        ),
+        sleep=sleep, event="message_send_error",
         extra={"update_ids": [update_id] if update_id is not None else []},
     )
     if err is None:
@@ -345,6 +366,26 @@ def ladder_keyboard(period: str, field: Literal["n", "f"]) -> list[list[InlineKe
     return rows
 
 
+HABIT_LABEL_MAX = 10  # 습관 버튼 제목 글자 수(코드포인트, SP7 5.7). 넘으면 9자 + `…`
+HABIT_OFF, HABIT_ON = "☐", "✓"
+
+
+def habit_label(title: str, checked: bool) -> str:
+    """`☐ {제목 10자}` / `✓ {제목 10자}`. 코드포인트로 센다(이모지도 한 글자)."""
+    short = title if len(title) <= HABIT_LABEL_MAX else title[: HABIT_LABEL_MAX - 1] + "…"
+    return f"{HABIT_ON if checked else HABIT_OFF} {short}"
+
+
+def habit_keyboard(habits: list[Habit], checked: set[int], day: date) -> list[list[InlineKeyboardButton]]:
+    """습관 버튼(SP7 5.7): 한 줄에 둘. 콜백 데이터 `hb:<habit_id>:<YYYY-MM-DD>`(20바이트 남짓, 64바이트 이하).
+    습관이 없으면 빈 목록."""
+    buttons = [
+        InlineKeyboardButton(habit_label(h.title, h.id in checked), callback_data=f"hb:{h.id}:{day.isoformat()}")
+        for h in habits
+    ]
+    return [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+
+
 def confirm_keyboard(confirms: list[tuple[str, str]]) -> list[list[InlineKeyboardButton]]:
     """(토큰, 버튼 이름)마다 `✓ {버튼 이름 16자}` `✗ 그대로 두기` 한 줄(10.1 A5). 확인 문구 전부는 메시지 글에 있다.
 
@@ -361,17 +402,23 @@ def confirm_keyboard(confirms: list[tuple[str, str]]) -> list[list[InlineKeyboar
 
 def message_keyboard(
     out: Outbound, titles: dict[int, str], milestone_titles: dict[int, str] | None = None,
-    chapter_titles: dict[int, str] | None = None,
+    chapter_titles: dict[int, str] | None = None, *, habits: list[Habit] | None = None,
+    checked: set[int] | None = None,
 ) -> InlineKeyboardMarkup | None:
-    """메시지 아래 버튼: 할 일 초안 줄 → 사건 초안 줄 → 챕터 초안 줄 → 확인 줄(회차 차례의 확인) → 컨디션 1~5 줄
+    """메시지 아래 버튼: 할 일 초안 줄 → 사건 초안 줄 → 챕터 초안 줄 → 확인 줄(회차 차례의 확인) → 습관 줄
+    (`out.habit_date`가 있을 때, `habits`는 활성 습관, `checked`는 그날 체크한 id, SP7 5.7) → 컨디션 1~5 줄
     또는 사다리 0~10 줄(SP3-4 11.1: 한 메시지에 숫자 키보드는 한 종류라 사다리가 있으면 컨디션 줄은 없다).
     모두 없으면 None."""
     drafts = draft_keyboard(out.draft_task_ids, out.draft_conversation_id, titles)
+    habit_rows = (
+        habit_keyboard(habits, checked or set(), out.habit_date) if out.habit_date is not None and habits else []
+    )
     rows = [
         *(drafts.inline_keyboard if drafts else ()),
         *milestone_keyboard(out.draft_milestone_ids, out.draft_conversation_id, milestone_titles or {}),
         *chapter_keyboard(out.draft_chapter_ids, chapter_titles or {}),
         *confirm_keyboard(out.confirms),
+        *habit_rows,
         *(ladder_keyboard(*out.ladder) if out.ladder is not None else condition_keyboard(out.ask_condition_for)),
     ]
     return InlineKeyboardMarkup(rows) if rows else None
@@ -380,16 +427,19 @@ def message_keyboard(
 class TelegramSender:
     """디스패처의 Sender. 앱보다 먼저 `telegram.Bot(token)`으로 만든 봇을 받는다.
 
-    `tasks`를 주면 초안 버튼에 제목을 붙인다. `curve`를 주면 사건·챕터 초안 버튼에도.
+    `tasks`를 주면 초안 버튼에 제목을 붙인다. `curve`를 주면 사건·챕터 초안 버튼에도. `habits`를 주면
+    `out.habit_date`가 있는 메시지에 습관 줄을 붙인다(SP7 5.7, 보낼 때의 DB 상태).
     """
 
     def __init__(
-        self, bot: Bot, chat_id: int, *, tasks: TasksRepo | None = None, curve: CurveRepo | None = None
+        self, bot: Bot, chat_id: int, *, tasks: TasksRepo | None = None, curve: CurveRepo | None = None,
+        habits: HabitsRepo | None = None,
     ) -> None:
         self.bot = bot
         self.chat_id = chat_id
         self.tasks = tasks
         self.curve = curve
+        self.habits = habits
 
     def _titles(self, ids: list[int]) -> dict[int, str]:
         if self.tasks is None:
@@ -405,9 +455,18 @@ class TelegramSender:
         cs = (self.curve.get_chapter(i) for i in out.draft_chapter_ids)
         return {m.id: m.title for m in ms if m is not None}, {c.id: c.title for c in cs if c is not None}
 
+    def _habits(self, day: date | None) -> tuple[list[Habit], set[int]]:
+        """습관 줄의 재료: 활성 습관과 그날 체크한 id. 날짜나 저장소가 없으면 빈 것."""
+        if self.habits is None or day is None:
+            return [], set()
+        return self.habits.list(), self.habits.checked_on(day)
+
     async def send(self, out: Outbound) -> int | None:
         """조각마다 보낸다. 버튼이 붙었으면 그 마지막 조각의 메시지 id(답한 뒤 버튼을 거둘 때 쓴다), 없으면 None."""
-        markup = message_keyboard(out, self._titles(out.draft_task_ids), *self._curve_titles(out))
+        habits, checked = self._habits(out.habit_date)
+        markup = message_keyboard(
+            out, self._titles(out.draft_task_ids), *self._curve_titles(out), habits=habits, checked=checked
+        )
         parts = split_message(out.text)
         message_id: int | None = None
         for n, part in enumerate(parts, start=1):

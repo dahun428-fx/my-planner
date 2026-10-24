@@ -23,6 +23,7 @@ EXPECTED_MODELS = {
     "UiCatalog", "SchemaBundle", "ActionRequestBody", "ActionApplied", "ActionNeedsConfirm", "ActionRejected",
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
+    "Habit", "HabitsList", "HabitHistory",
 }
 
 
@@ -88,6 +89,24 @@ async def test_every_read_response_validates_against_schema(tmp_path):
     assert bodies[f"/checkins/{checkin['id']}"]["cards"] and bodies[f"/conversations/{cid}/messages"]["items"]
 
 
+def test_schema_includes_habit_models():
+    """SP7 5.5: `Habit`, `HabitsList`, `HabitHistory`(`from` 별칭), `Today.habits`. 앱 타입은 이 스키마로 다시 만든다."""
+    models = schema_bundle()["models"]
+    habit = models["Habit"]
+    assert set(habit["properties"]) == set(habit["required"]) == {
+        "id", "title", "area", "kind", "target_per_week", "status", "checked", "week_count",
+    }
+    assert habit["properties"]["kind"]["enum"] == ["daily", "weekly"]
+    assert habit["properties"]["status"]["enum"] == ["active", "paused", "archived"]
+    assert habit["additionalProperties"] is False
+    assert set(models["HabitsList"]["properties"]) == {"date", "week", "items"}
+    history = models["HabitHistory"]
+    assert set(history["properties"]) == {"habit", "from", "to", "checked_dates", "weeks"}
+    assert set(history["$defs"]["HabitWeek"]["properties"]) == {"week", "count"}
+    assert "habits" in models["Today"]["required"]
+    assert models["Today"]["properties"]["habits"]["items"] == {"$ref": "#/$defs/Habit"}
+
+
 def test_cli_schema_prints_bundle(capsys):
     assert cli.main(["schema"]) == 0
     out = capsys.readouterr().out
@@ -100,17 +119,17 @@ async def test_ui_catalog_version_and_components(tmp_path):
     async with BeEnv.start(tmp_path, start=MON_EVENING) as env:
         body = await get_json(env, "/ui/catalog")
         health = await get_json(env, "/health")
-    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.3"
+    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.4"
     assert health["version"]["ui_catalog"] == body["version"]
     assert list(body["components"]) == [
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
         "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
         "ui_chapter_draft", "ui_confirm",
     ]
-    assert len(body["components"]) == 14 == len(UI_COMPONENTS)
+    assert len(body["components"]) == 15 == len(UI_COMPONENTS)
     origins = {name: c["origin"] for name, c in body["components"].items()}
     assert [n for n, o in origins.items() if o == "brain"] == [
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
     ]
     for name, c in body["components"].items():
         jsonschema.Draft202012Validator.check_schema(c["schema"])

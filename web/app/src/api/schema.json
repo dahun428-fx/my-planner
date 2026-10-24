@@ -1783,6 +1783,319 @@
       "title": "ErrorBody",
       "type": "object"
     },
+    "Habit": {
+      "additionalProperties": false,
+      "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
+      "properties": {
+        "area": {
+          "enum": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "title": "Area",
+          "type": "string"
+        },
+        "checked": {
+          "title": "Checked",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "daily",
+            "weekly"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "archived"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "target_per_week": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Per Week"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "week_count": {
+          "title": "Week Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "area",
+        "kind",
+        "target_per_week",
+        "status",
+        "checked",
+        "week_count"
+      ],
+      "title": "Habit",
+      "type": "object"
+    },
+    "HabitHistory": {
+      "$defs": {
+        "Habit": {
+          "additionalProperties": false,
+          "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "title": "Area",
+              "type": "string"
+            },
+            "checked": {
+              "title": "Checked",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "daily",
+                "weekly"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "active",
+                "paused",
+                "archived"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "target_per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Per Week"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "week_count": {
+              "title": "Week Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "area",
+            "kind",
+            "target_per_week",
+            "status",
+            "checked",
+            "week_count"
+          ],
+          "title": "Habit",
+          "type": "object"
+        },
+        "HabitWeek": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "week": {
+              "title": "Week",
+              "type": "string"
+            }
+          },
+          "required": [
+            "week",
+            "count"
+          ],
+          "title": "HabitWeek",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /habits/{id}?weeks=` (SP7 5.5). 체크한 날, 체크가 있는 주만(빈 날·빈 주는 0이 아니라 없음).",
+      "properties": {
+        "checked_dates": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Checked Dates",
+          "type": "array"
+        },
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "habit": {
+          "$ref": "#/$defs/Habit"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "weeks": {
+          "items": {
+            "$ref": "#/$defs/HabitWeek"
+          },
+          "title": "Weeks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "habit",
+        "from",
+        "to",
+        "checked_dates",
+        "weeks"
+      ],
+      "title": "HabitHistory",
+      "type": "object"
+    },
+    "HabitsList": {
+      "$defs": {
+        "Habit": {
+          "additionalProperties": false,
+          "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "title": "Area",
+              "type": "string"
+            },
+            "checked": {
+              "title": "Checked",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "daily",
+                "weekly"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "active",
+                "paused",
+                "archived"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "target_per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Per Week"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "week_count": {
+              "title": "Week Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "area",
+            "kind",
+            "target_per_week",
+            "status",
+            "checked",
+            "week_count"
+          ],
+          "title": "Habit",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /habits?date=&status=` (SP7 5.5). `week`는 `date`가 든 ISO 주.",
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Habit"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "week": {
+          "title": "Week",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "week",
+        "items"
+      ],
+      "title": "HabitsList",
+      "type": "object"
+    },
     "Health": {
       "$defs": {
         "HealthBrain": {
@@ -2005,13 +2318,12 @@
             "skip_reason": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "$ref": "#/$defs/SkipReason"
                 },
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Skip Reason"
+              ]
             },
             "status": {
               "title": "Status",
@@ -2067,6 +2379,18 @@
           ],
           "title": "HealthVersion",
           "type": "object"
+        },
+        "SkipReason": {
+          "enum": [
+            "late",
+            "merged_into_return",
+            "paused",
+            "auth",
+            "rate_limit",
+            "daily_cap"
+          ],
+          "title": "SkipReason",
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -3250,6 +3574,80 @@
           "title": "ConditionItem",
           "type": "object"
         },
+        "Habit": {
+          "additionalProperties": false,
+          "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "title": "Area",
+              "type": "string"
+            },
+            "checked": {
+              "title": "Checked",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "daily",
+                "weekly"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "active",
+                "paused",
+                "archived"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "target_per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Per Week"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "week_count": {
+              "title": "Week Count",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "area",
+            "kind",
+            "target_per_week",
+            "status",
+            "checked",
+            "week_count"
+          ],
+          "title": "Habit",
+          "type": "object"
+        },
         "TodayBrief": {
           "additionalProperties": false,
           "properties": {
@@ -3459,7 +3857,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /today` (6.3.2).",
+      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.",
       "properties": {
         "brief": {
           "anyOf": [
@@ -3504,6 +3902,13 @@
           "title": "Day Boundary",
           "type": "string"
         },
+        "habits": {
+          "items": {
+            "$ref": "#/$defs/Habit"
+          },
+          "title": "Habits",
+          "type": "array"
+        },
         "todos": {
           "items": {
             "$ref": "#/$defs/TodayTodo"
@@ -3524,7 +3929,8 @@
         "condition",
         "todos",
         "checkins",
-        "cards"
+        "cards",
+        "habits"
       ],
       "title": "Today",
       "type": "object"
@@ -3675,7 +4081,7 @@
     },
     "TodoRef": {
       "additionalProperties": false,
-      "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.",
+      "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.\n\n`planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).",
       "properties": {
         "area": {
           "anyOf": [
@@ -3718,6 +4124,28 @@
           "title": "Id",
           "type": "integer"
         },
+        "planned_for": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Planned For"
+        },
+        "scheduled_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scheduled At"
+        },
         "status": {
           "enum": [
             "draft",
@@ -3738,7 +4166,9 @@
         "title",
         "cadence",
         "area",
-        "status"
+        "status",
+        "planned_for",
+        "scheduled_at"
       ],
       "title": "TodoRef",
       "type": "object"
@@ -3747,7 +4177,7 @@
       "$defs": {
         "TodoRef": {
           "additionalProperties": false,
-          "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.",
+          "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.\n\n`planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).",
           "properties": {
             "area": {
               "anyOf": [
@@ -3790,6 +4220,28 @@
               "title": "Id",
               "type": "integer"
             },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At"
+            },
             "status": {
               "enum": [
                 "draft",
@@ -3810,7 +4262,9 @@
             "title",
             "cadence",
             "area",
-            "status"
+            "status",
+            "planned_for",
+            "scheduled_at"
           ],
           "title": "TodoRef",
           "type": "object"

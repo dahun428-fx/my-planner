@@ -13,10 +13,12 @@ from my_planner.domain import Cadence, LoopKey, RunStatus
 from my_planner.harness.context import ask_condition_for, evening_done
 from my_planner.harness.stream import CHAPTER_CARD_MAX, MILESTONE_CARD_MAX
 from my_planner.loop.schedule import Due, reply_window_end
+from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.views import (
     chapter_refs,
     curve_draft_live,
     draft_live,
+    habits_view,
     milestone_refs,
     todo_refs,
 )
@@ -25,9 +27,9 @@ if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo
     from my_planner.store.repos.channels import DeliveriesRepo
-    from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.curve import CurveRepo
+    from my_planner.store.repos.habits import HabitsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.tools.actions import ActionRequest
@@ -105,6 +107,20 @@ def _condition_run(
     return None
 
 
+def _habit_run(day: date, runs: RunsRepo, now: datetime, settings: Settings) -> Run | None:
+    """그 날짜의 습관 줄을 다는 회차(SP7 5.7): 지금 답장 창 안의 저녁 체크인 회차(합쳐 보냈으면 primary)이고
+    `ask_condition_for`가 고른 날짜(그 저녁 체크인의 날짜)가 `day`인 것. 아침 브리핑에는 습관 줄이 없다."""
+    # 저녁 체크인의 날짜는 컨디션 기록과 상관없다. `ask_condition_for`가 저장소를 요구할 뿐이다(읽기만 한다)
+    conditions = ConditionsRepo(runs.conn, runs.clock)
+    for r in _open_checkins(runs, now, settings):
+        merged = _merged(r, runs)
+        if not any(b.loop is LoopKey.evening_checkin for b in (r, *merged)):
+            continue
+        if ask_condition_for(r, merged, conditions=conditions, runs=runs, settings=settings) == day:
+            return r
+    return None
+
+
 def run_answered_by(
     req: ActionRequest, *, runs: RunsRepo, tasks: TasksRepo, settings: Settings, now: datetime,
     activity: ActivityRepo | None = None, confirms: ConfirmsRepo | None = None,
@@ -112,6 +128,9 @@ def run_answered_by(
     """즉시 갈래 동작이 답한 회차(6.4.5 "답으로 치는 것"). `apply_action`이 적용한 뒤 부른다. 없으면 None.
 
     - `record_condition`: 그 날짜에 컨디션 버튼을 단, 지금 답장 창 안의 회차(저녁 체크인의 날짜 등)
+    - `check_habit`, `uncheck_habit`(앱만): 그 날짜(없으면 논리적 오늘)가 저녁 체크인의 날짜인, 지금 답장 창 안의
+      회차(SP7 5.7, `record_condition`과 같은 규칙). 텔레그램 `hb:` 버튼은 누른 메시지가 그 회차 메시지일 때만
+      답이다(`bot.callbacks._answer_run`). `/habits` 답의 버튼은 회차의 답이 아니다
     - `confirm_tasks`, `drop_task`: 그 초안을 제안한(`tool_events_log.run_id`), 지금 답장 창 안의 회차
     - 회차 차례의 확인 토큰으로 적용한 동작과 `decline_confirm`: 그 토큰을 만든, 지금 답장 창 안의 회차(10.1 A5의
       확인 카드·버튼도 그 회차에 붙은 버튼이다)
@@ -130,7 +149,7 @@ def run_answered_by(
             primary = (runs.merged_into(got.id) or got) if got is not None else None
             if primary is not None and primary.id in {r.id for r in _open_checkins(runs, now, settings)}:
                 return primary.id
-    if req.action == "record_condition":
+    if req.action in ("record_condition", "check_habit", "uncheck_habit"):
         raw = args.get("date")
         try:
             day = date.fromisoformat(raw) if isinstance(raw, str) else logical_date(
@@ -138,7 +157,12 @@ def run_answered_by(
             )
         except ValueError:
             return None
-        run = _condition_run(day, runs, now, settings, activity)
+        if req.action == "record_condition":
+            run = _condition_run(day, runs, now, settings, activity)
+        elif req.channel == "app":
+            run = _habit_run(day, runs, now, settings)
+        else:
+            return None
         return run.id if run is not None else None
     if req.action in ("record_ladder_score", "record_area_scores"):
         return _review_step_run(req.action, args.get("period"), runs, now, settings)
@@ -241,7 +265,7 @@ def checkin_summaries(
 def checkin_detail(
     run_id: int, *, runs: RunsRepo, convs: ConversationsRepo, deliveries: DeliveriesRepo, tasks: TasksRepo,
     conditions: ConditionsRepo, now: datetime, settings: Settings, confirms: ConfirmsRepo | None = None,
-    activity: ActivityRepo | None = None, curve: CurveRepo | None = None,
+    activity: ActivityRepo | None = None, curve: CurveRepo | None = None, habits: HabitsRepo | None = None,
 ) -> dict[str, Any] | None:
     """`GET /checkins/{id}` (6.4.5): 요약에 `text`와 `cards`를 더한다. 답할 회차가 아니면 None."""
     run = runs.get(run_id)
@@ -251,7 +275,7 @@ def checkin_detail(
     body["text"] = run.outbound_text or ""
     body["cards"] = checkin_cards(
         run, _merged(run, runs), tasks=tasks, conditions=conditions, runs=runs, settings=settings, now=now,
-        confirms=confirms, activity=activity, curve=curve,
+        confirms=confirms, activity=activity, curve=curve, habits=habits,
     )
     return body
 
@@ -259,7 +283,7 @@ def checkin_detail(
 def checkin_cards(
     run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo,
     settings: Settings, now: datetime, confirms: ConfirmsRepo | None = None, activity: ActivityRepo | None = None,
-    curve: CurveRepo | None = None,
+    curve: CurveRepo | None = None, habits: HabitsRepo | None = None,
 ) -> list[dict[str, Any]]:
     """텔레그램 버튼 재료는 저장되지 않으므로 읽을 때마다 DB에서 다시 만든다(6.4.5 표). 순서는 텔레그램 버튼 줄과 같다.
 
@@ -268,6 +292,9 @@ def checkin_cards(
       토큰 뒤에 대상이 바뀐 토큰(누르면 `stale`)은 카드를 빼고 토큰은 열린 채 둔다(읽기만 한다. 누를 때 닫힌다).
       `n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가
       바뀌지 않는다. 회차 차례에서만 생기므로 `/chat` 스트림에는 없다. `props.args`는 `/actions`에 그대로 보낸다.
+    - `ui_habit_check`(`h_habit_<run_id>`, SP7 6.3): 저녁 체크인(합친 회차 포함)이고 활성 습관이 하나 이상이면, 그 체크인의
+      날짜(`ask_condition_for`)로. `data.habits`는 그 날짜 기준 지금 값. 다 체크했어도 남는다(취소할 수 있게). 확인 카드
+      뒤, 컨디션 카드 앞(텔레그램 줄 순서). 아침 브리핑에는 없다.
     - `ui_condition_picker`(`h_cond_<run_id>`): `ask_condition_for`가 고른 날짜. 그 날짜의 컨디션이 있으면 카드가 없다.
     - `ui_milestone_draft`(`h_mdraft_<run_id>`), `ui_chapter_draft`(`h_cdraft_<run_id>`): 그 회차가 `add_milestone`·
       `propose_chapter`로 꺼내 아직 초안이고 만료 전인 것(11.3). `data.milestones`·`data.chapters`(6.4.7). 할 일 초안
@@ -330,6 +357,13 @@ def checkin_cards(
                 "props": {"summary": p.summary, "confirm_token": p.token, "action": p.action, "args": p.args},
             })
     ask = ask_condition_for(run, merged, conditions=conditions, runs=runs, settings=settings)
+    if ask is not None and habits is not None and any(r.loop is LoopKey.evening_checkin for r in (run, *merged)):
+        items = habits_view(habits, ask, ("active",))["items"]
+        if items:
+            cards.append({
+                "toolCallId": f"h_habit_{run.id}", "component": "ui_habit_check",
+                "props": {"date": ask.isoformat()}, "data": {"habits": items},
+            })
     if ask is not None and conditions.get(ask) is None:
         cards.append(
             {"toolCallId": f"h_cond_{run.id}", "component": "ui_condition_picker", "props": {"date": ask.isoformat()}}

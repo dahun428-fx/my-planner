@@ -119,6 +119,13 @@ async def test_week_and_help_commands(cenv):
     assert cenv.dispatcher.got == []
 
 
+def test_help_lists_habits():
+    from my_planner.bot.commands import COMMANDS, HELP_TEXT
+
+    assert "/habits — 오늘 습관 체크" in HELP_TEXT.splitlines()
+    assert "/habits" in COMMANDS
+
+
 async def test_command_logged_to_transcript(cenv):
     cenv.add("장보기", planned_for="2026-10-24")
     await cenv.send("/today")

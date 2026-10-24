@@ -49,7 +49,7 @@ TOOL_NAMES: list[str] = [
 
 # 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다.
 # 카탈로그의 두뇌 조각(`BRAIN_COMPONENTS`)을 그대로 쓰지 않는다: SP6의 새 넷은 앱이 그릴 수 있게 된 뒤 G-BE2가 더한다
-APP_ONLY_TOOLS: list[str] = [*PINNABLE_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]
+APP_ONLY_TOOLS: list[str] = [*PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
@@ -391,6 +391,13 @@ _SPECS.update({
         "앱 화면에 요약 카드를 그립니다(그리기만 합니다). lines는 최대 8줄, 줄마다 120자까지입니다.",
         UI_COMPONENTS["ui_summary_card"]["schema"],
     ),
+    "ui_habit_check": (
+        (
+            "앱 화면에 오늘 습관 줄 묶음을 그립니다(그리기만 합니다). date는 YYYY-MM-DD입니다. 체크 여부는 앱이 지금 값으로 "
+            "보여 줍니다. 체크는 check_habit로 따로 합니다. 같은 뜻을 답 글에도 씁니다."
+        ),
+        UI_COMPONENTS["ui_habit_check"]["schema"],
+    ),
     "pin_card": (
         (
             "화면 조각(ui_todo_list, ui_choice, ui_summary_card)을 앱의 고정 카드로 맨 뒤에 둡니다. "
@@ -419,6 +426,8 @@ def _stream_output(tools: Any, name: str, args: dict[str, Any], result: dict[str
     소프트 삭제 뺌)를 붙인다. 두뇌가 받는 결과는 `{"ok": true}` 그대로다."""
     if name == "ui_todo_list":
         return {**result, "data": {"todos": tools.ui_todo_refs(args.get("task_ids"), drafts=False)}}
+    if name == "ui_habit_check":
+        return {**result, "data": {"habits": tools.ui_habit_list(args.get("date"))}}
     return result
 
 
@@ -433,6 +442,8 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
     """
     w = ctx.stream
     ui = name in BRAIN_COMPONENTS
+    if name == "ui_habit_check" and args.get("date") is None:  # 날짜를 빼면 오늘: 조각 입력에도 채워 앱이 그릴 수 있게
+        args = {**args, "date": tools.today().isoformat()}
     call_id = w.next_tool_call_id() if w is not None and not ui else None  # 화면 도구는 조각을 쓸 때 받는다
     if w is not None and not ui:
         w.tool_input(call_id, name, args)

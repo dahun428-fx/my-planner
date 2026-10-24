@@ -512,7 +512,7 @@ async def test_read_routes_get_only_read_only_connections(tmp_path):
 
         env.deps.read_conn = spy
         paths = ["/today", "/week", "/conditions", "/priorities?cadence=year", "/drafts", "/checkins", "/checkins/1",
-                 "/conversations", "/conversations/1/messages", "/ui/catalog", "/schema"]
+                 "/conversations", "/conversations/1/messages", "/ui/catalog", "/schema", "/habits", "/habits/1"]
         for path in paths:
             assert (await env.get(path)).status in (200, 404)
         assert env.parts.state.get("x") is None

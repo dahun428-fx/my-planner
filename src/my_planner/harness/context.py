@@ -13,6 +13,7 @@ from my_planner.store.exports import format_task
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.habits import Habit, HabitsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import Task, TasksRepo
 
@@ -55,8 +56,14 @@ def build_preamble(
     conditions: ConditionsRepo | None = None,
     paused_until: datetime | None = None,
     merged: list[str] | None = None,
+    habits: HabitsRepo | None = None,
+    include_habits: bool = False,
+    habit_day: date | None = None,
 ) -> str:
-    """새 세션의 앞머리. 빈 섹션은 뺀다. `paused_until`이 지금 뒤면 `## 멈춤`(한국 시간)을 붙인다."""
+    """새 세션의 앞머리. 빈 섹션은 뺀다. `paused_until`이 지금 뒤면 `## 멈춤`(한국 시간)을 붙인다.
+
+    `include_habits`가 참이고 활성 습관이 있으면 `## 오늘 습관`을 붙인다(SP7 5.7, 아침 브리핑과 복귀 인사는 거짓).
+    """
     today = logical_date(now, tz, boundary)
     lt = local(now, tz)
     sections = [
@@ -106,6 +113,14 @@ def build_preamble(
             line = f"{y.score}/5" + (f" (메모: {y.note})" if y.note else "")
         sections.append(f"## 어제 컨디션\n{line}")
 
+    if include_habits and habits is not None:
+        active = habits.list()
+        if active:
+            day = habit_day or today
+            done = habits.checked_on(day)
+            counts = habits.week_counts(day - timedelta(days=day.weekday()))
+            sections.append("## 오늘 습관\n" + "\n".join(_today_habit_line(h, done, counts) for h in active))
+
     if paused_until is not None and now < paused_until:
         pt = local(paused_until, tz)
         sections.append(
@@ -113,6 +128,37 @@ def build_preamble(
             "그때까지 비서가 먼저 연락하지 않아요(묻는 말에는 답합니다)."
         )
     return "\n\n".join(sections)
+
+
+def _habit_label(h: Habit) -> str:
+    return f"{h.title} (매일)" if h.kind == "daily" else f"{h.title} (주 {h.target_per_week}회)"
+
+
+def _today_habit_line(h: Habit, done: set[int], counts: dict[int, int]) -> str:
+    if h.kind == "daily":
+        return f"- {_habit_label(h)}" + (": 오늘 ✓" if h.id in done else "")
+    return f"- {_habit_label(h)}: 이번 주 {counts.get(h.id, 0)}번"
+
+
+def habit_week_block(habits: HabitsRepo, review_day: date) -> str:
+    """주간 회고 회차의 `## 이번 주 습관`(SP7 5.7). 활성 습관마다 이번 주 체크 수와 지난 4주 수(오래된 주부터).
+
+    지난 4주는 이번 주 앞의 온전한 4주이고 0인 주도 쓴다. 이 숫자는 두뇌에게만 주는 맥락이다(원칙 13).
+    활성 습관이 없으면 빈 문자열.
+    """
+    active = habits.list()
+    if not active:
+        return ""
+    monday = review_day - timedelta(days=review_day.weekday())
+    this_week = habits.week_counts(monday)
+    past = [habits.week_counts(monday - timedelta(days=7 * i)) for i in (4, 3, 2, 1)]
+    lines = [
+        f"- {_habit_label(h)}: 이번 주 {this_week.get(h.id, 0)}번 · 지난 4주 "
+        + "·".join(str(w.get(h.id, 0)) for w in past)
+        + "번"
+        for h in active
+    ]
+    return "## 이번 주 습관\n" + "\n".join(lines)
 
 
 def evening_done(d: date, *, runs: RunsRepo, settings: Settings) -> bool:

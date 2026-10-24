@@ -3,7 +3,7 @@
 가짜 두뇌 + 가짜 시계(`BeEnv`). 날짜는 2026-10-26(월). 내용은 모두 꾸며 낸 것이다.
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from be_env import BeEnv
 from fakes import FakeTurn
@@ -65,3 +65,45 @@ async def test_states_pending_answered_missed_by_sent_time(tmp_path):
     assert evening_pending["state"] == "pending"
     assert by_loop(listing, "evening_checkin")["state"] == "missed"
     assert by_loop(listing, "morning_brief")["state"] == "answered"  # 창이 끝나도 답한 회차는 그대로
+
+
+# --- SP7-06: 체크인 카드의 습관 ---
+
+
+def _add_habit(env, title, kind="daily", target=None):
+    return env.parts.habits.add(title, "health", kind, target, env.clock.now())
+
+
+async def test_checkin_cards_habit_card_order(tmp_path):
+    """저녁 체크인: ui_confirm 뒤, ui_condition_picker 앞(텔레그램 버튼 줄 순서). 이미 다 체크해도 카드는 남는다."""
+    script = [FakeTurn([("propose_tasks", {"tasks": [{"title": "저녁 스트레칭", "areas": ["health"]}]})], "오늘 어떠셨어요?")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 18, 0) + timedelta(seconds=30), script=script) as env:
+        run_hab = _add_habit(env, "꾸민 운동")
+        paused = _add_habit(env, "쉬는 습관")
+        env.parts.habits.set_status(paused.id, "paused", env.clock.now())
+        await env.tick()
+        run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+        detail = await get_json(env, f"/checkins/{run_id}")
+        comps = [c["component"] for c in detail["cards"]]
+        assert comps == ["ui_todo_draft", "ui_habit_check", "ui_condition_picker"]
+        card = detail["cards"][1]
+        assert card["toolCallId"] == f"h_habit_{run_id}" and card["props"] == {"date": "2026-10-24"}
+        assert [h["title"] for h in card["data"]["habits"]] == ["꾸민 운동"]
+        assert card["data"]["habits"][0]["checked"] is False
+        env.parts.habits.check(run_hab.id, date(2026, 10, 24), env.clock.now())
+        again = (await get_json(env, f"/checkins/{run_id}"))["cards"][1]
+        assert again["data"]["habits"][0]["checked"] is True and again["data"]["habits"][0]["week_count"] == 1
+        env.parts.conditions.upsert(date(2026, 10, 24), 4, None)
+        after = await get_json(env, f"/checkins/{run_id}")
+        assert [c["component"] for c in after["cards"]] == ["ui_todo_draft", "ui_habit_check"]
+
+
+async def test_checkin_cards_no_habit_card_without_habits(tmp_path):
+    script = [FakeTurn([], "꾸민 저녁")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 18, 0) + timedelta(seconds=30), script=script) as env:
+        paused = _add_habit(env, "쉬는 습관")
+        env.parts.habits.set_status(paused.id, "paused", env.clock.now())
+        await env.tick()
+        run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+        detail = await get_json(env, f"/checkins/{run_id}")
+        assert [c["component"] for c in detail["cards"]] == ["ui_condition_picker"]  # 활성 습관이 없다

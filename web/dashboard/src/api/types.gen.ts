@@ -22,6 +22,9 @@ export interface ApiModels {
   Curve: Curve;
   Drafts: Drafts;
   Error: Error;
+  Habit: Habit;
+  HabitHistory: HabitHistory;
+  HabitsList: HabitsList;
   Health: Health;
   Messages: Messages;
   NotifyPutBody: NotifyPutBody;
@@ -432,6 +435,55 @@ export interface Error {
   error: ErrorDetail;
 }
 /**
+ * 공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든
+ * ISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "Habit".
+ */
+export interface Habit {
+  area: "career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life";
+  checked: boolean;
+  id: number;
+  kind: "daily" | "weekly";
+  status: "active" | "paused" | "archived";
+  target_per_week: number | null;
+  title: string;
+  week_count: number;
+}
+/**
+ * `GET /habits/{id}?weeks=` (SP7 5.5). 체크한 날, 체크가 있는 주만(빈 날·빈 주는 0이 아니라 없음).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HabitHistory".
+ */
+export interface HabitHistory {
+  checked_dates: string[];
+  from: string;
+  habit: Habit;
+  to: string;
+  weeks: HabitWeek[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HabitWeek".
+ */
+export interface HabitWeek {
+  count: number;
+  week: string;
+}
+/**
+ * `GET /habits?date=&status=` (SP7 5.5). `week`는 `date`가 든 ISO 주.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HabitsList".
+ */
+export interface HabitsList {
+  date: string;
+  items: Habit[];
+  week: string;
+}
+/**
  * `GET /health` (6.3.1).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -735,7 +787,7 @@ export interface StatusTitle {
   title: string;
 }
 /**
- * `GET /today` (6.3.2).
+ * `GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Today".
@@ -747,6 +799,7 @@ export interface Today {
   condition: ConditionItem | null;
   date: string;
   day_boundary: string;
+  habits: Habit[];
   todos: TodayTodo[];
   weekday: string;
 }

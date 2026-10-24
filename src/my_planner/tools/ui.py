@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import PydanticCustomError
 
-UI_CATALOG_VERSION = "2026-10-24.3"
+UI_CATALOG_VERSION = "2026-10-24.4"
 
 AreaName = Literal["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 
@@ -102,6 +102,12 @@ class PeriodListProps(_Props):
             raise PydanticCustomError("period_one", "day와 week 가운데 꼭 하나만 있어야 해요")
         _distinct(self.highlight_task_ids)
         return self
+
+
+class HabitCheckProps(_Props):
+    """오늘 습관 줄 묶음(SP7 스펙 9장). 지금 값은 BE가 `data.habits`로 붙인다. 달력에 없는 날짜는 도구가 거른다."""
+
+    date: str = Field(pattern=_DATE_PATTERN)
 
 
 # --- SP6 기본 부품 열 가지 (스펙 5장) ---
@@ -321,6 +327,7 @@ _COMPONENTS: dict[str, tuple[Origin, type[_Props]]] = {
     "ui_result": ("brain", ResultProps),
     "ui_period_list": ("brain", PeriodListProps),
     "ui_block": ("brain", BlockProps),
+    "ui_habit_check": ("brain", HabitCheckProps),
     "ui_todo_draft": ("harness", TodoDraftProps),
     "ui_condition_picker": ("harness", ConditionPickerProps),
     "ui_ladder_picker": ("harness", LadderPickerProps),

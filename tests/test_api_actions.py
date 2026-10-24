@@ -48,11 +48,12 @@ async def test_complete_task_applied_shape(tmp_path):
 CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
-def _public_cases(ids, card, curve=(None, None, None, None)):
+def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
     m1, m2, h1, h2 = curve
+    hb, hc = habits  # 습관 둘(체크 안 함, 오늘 체크함)
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -73,6 +74,12 @@ def _public_cases(ids, card, curve=(None, None, None, None)):
         "confirm_chapters": {"ids": [h1]},
         "drop_chapter": {"id": h2},
         "decline_confirm": None,  # 토큰을 따로 만든다
+        # 습관(SP7 5.5). 그만두기는 앱에서 확인을 받으므로 쉬어 가기로
+        "add_habit": {"title": "새 습관", "area": "health", "kind": "daily"},
+        "update_habit": {"id": hb, "title": "고친 습관"},
+        "set_habit_status": {"id": hb, "status": "paused"},
+        "check_habit": {"id": hb},
+        "uncheck_habit": {"id": hc},
     }
 
 
@@ -90,7 +97,10 @@ async def test_every_public_action_applies(tmp_path, action):
             *(cv.add_chapter(title=t, start_month="2019-01", status="draft", origin="review").id
               for t in ("꾸민 챕터", "꾸민 챕터 둘")),
         )
-        cases = _public_cases((a, b, c, d), card, curve)
+        hs = env.parts.habits
+        hb, hc = (hs.add(t, "health", "daily", None, env.clock.now()).id for t in ("꾸민 습관", "꾸민 습관 둘"))
+        hs.check(hc, env.parts.tools.today(), env.clock.now())
+        cases = _public_cases((a, b, c, d), card, curve, (hb, hc))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         if action == "decline_confirm":

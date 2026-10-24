@@ -276,8 +276,47 @@ class CheckinList(_Model):
     items: list[CheckinSummary]
 
 
+class Habit(_Model):
+    """공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든
+    ISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다)."""
+
+    id: int
+    title: str
+    area: AreaName
+    kind: Literal["daily", "weekly"]
+    target_per_week: int | None
+    status: Literal["active", "paused", "archived"]
+    checked: bool
+    week_count: int
+
+
+class HabitsList(_Model):
+    """`GET /habits?date=&status=` (SP7 5.5). `week`는 `date`가 든 ISO 주."""
+
+    date: str
+    week: str
+    items: list[Habit]
+
+
+class HabitWeek(_Model):
+    week: str
+    count: int
+
+
+class HabitHistory(_Model):
+    """`GET /habits/{id}?weeks=` (SP7 5.5). 체크한 날, 체크가 있는 주만(빈 날·빈 주는 0이 아니라 없음)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    habit: Habit
+    from_: str = Field(alias="from")
+    to: str
+    checked_dates: list[str]
+    weeks: list[HabitWeek]
+
+
 class Today(_Model):
-    """`GET /today` (6.3.2)."""
+    """`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`."""
 
     date: str
     weekday: str
@@ -287,6 +326,7 @@ class Today(_Model):
     todos: list[TodayTodo]
     checkins: list[CheckinSummary]
     cards: list[AppCard]
+    habits: list[Habit]
 
 
 class WeekDay(_Model):
@@ -746,6 +786,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "PushTestResult": PushTestResult,
     "NotifySettings": NotifySettings,
     "NotifyPutBody": NotifyPutBody,
+    "Habit": Habit,
+    "HabitsList": HabitsList,
+    "HabitHistory": HabitHistory,
 }
 
 
