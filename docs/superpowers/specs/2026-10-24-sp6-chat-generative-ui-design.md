@@ -3,7 +3,7 @@
 - 상태: 초안 v1 (Dahun 결정 반영), Dahun 검토 대기
 - 작성일: 2026-10-24
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 **정본**, 이 문서는 6.4.1, 6.4.7, 10장을 넓힌다), [SP5 운영 앱 스펙](2026-10-24-sp5-ops-app-design.md) (화면, 6장 생성형 UI 규칙, 7장 부품 목록, 9장 성능)
-- 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "기본 부품", "완성 카드", "조립 카드" 셋을 더한다, 14장 BE-1), 결정 기록: [`docs/adr/`](../../adr/) (새 ADR 없음. ADR 0005 "두뇌는 planner 도구만"의 범위 안이다)
+- 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "기본 부품", "완성 카드", "조립 카드" 셋을 더한다, 14장 BE-1), 결정 기록: [`docs/adr/`](../../adr/) (새 ADR 없음. ADR 0005 "두뇌는 planner 도구만"의 범위 안이다. 습관 기록 SP7이 0010을 쓰므로, 나중에 SP6에 ADR이 필요해지면 0011이다)
 - 범위: 운영 앱 **대화 시트** 안의 화면 조각을 넓힌다. 조각을 고르는 두뇌 규칙, 조각의 모양(카탈로그), BE가 붙이는 지금 값, 앱 컴포넌트까지. 오늘 화면의 고정 카드와 체크인 카드는 바꾸지 않는다(2장).
 - 구현: BE(카탈로그 `tools/ui.py`, 두뇌 도구, 프롬프트, 하네스의 조각 내보내기, 카탈로그 판, 기준 SSE)는 **SP3-4 BE 스레드**가 PR로, 앱 컴포넌트(`web/app/`)는 **운영 앱 스레드**가 PR로 만든다(14장).
 
@@ -21,8 +21,8 @@
 
 **완료 조건 (수용 기준)**
 
-1. 앱 대화에서 "다음 주에 치과 예약 추가해 줘"처럼 날짜가 분명하지 않은 할 일을 말하면, 비서가 할 일을 날짜 없이 추가하고 날짜 후보 2~4개가 담긴 `ui_date_choice`를 낸다. 후보 하나를 누르면 `POST /actions move_task`로 그 날짜가 잡히고 알림 줄에 확인 문구와 "되돌리기"가 보인다. 카드 안에서 제목이나 다른 필드를 고치는 칸은 없다.
-2. 비서가 대화 중 할 일 1~2개를 바꾸면 그 답에 `ui_result`가 나오고, 줄마다 바뀌기 전과 뒤(예: "10월 25일 (일) → 10월 27일 (화)")와 되돌릴 수 있으면 "되돌리기"가 보인다. 이때 같은 답의 회색 확인 칸(`data-activity`)은 보이지 않는다(11.4). 3개 이상을 바꾸면 `ui_period_list`가 나오고 바뀐 줄이 `--hue` 막대로 표시된다.
+1. 앱 대화에서 "다음 주에 치과 예약 추가해 줘"처럼 날짜가 분명하지 않은 할 일을 말하면, 비서가 할 일을 날짜 없이 추가하고 날짜 후보 2~4개가 담긴 `ui_date_choice`를 낸다. 후보 하나를 누르면 `POST /actions move_task`로 그 날짜가 잡히고 알림 줄에 확인 문구와 "되돌리기"가 보인다. 카드 안에서 제목이나 다른 필드를 고치는 칸은 없다. 이 답에는 `ui_result`가 나오지 않고, `add_task`의 회색 확인 칸(되돌리기 포함)이 그대로 보인다.
+2. 비서가 대화 중 할 일 1~2개를 바꾸면 그 답에 `ui_result`가 나오고, 줄마다 바뀌기 전과 뒤(예: "10월 25일 (일) → 10월 27일 (화)")와 되돌릴 수 있으면 "되돌리기"가 보인다. 줄마다 할 일 하나에 활동 하나일 때 "되돌리기"가 있고, 카드가 그 답의 활동을 모두 그렇게 덮으면 같은 답의 회색 확인 칸(`data-activity`)은 보이지 않는다(그 밖은 확인 칸이 남아 되돌리기를 맡는다, 6.3, 11.4). 3개 이상을 바꾸면 `ui_period_list`가 나오고 바뀐 줄이 `--hue` 막대로 표시된다.
 3. "이번 주 운동 몇 번 했지?"처럼 숫자나 진행을 물으면 비서가 `ui_block`(숫자·진행 막대 부품)으로 답하고, 답 글은 카드를 다시 읽어 주지 않는 한두 문장이다.
 4. 조각의 모든 버튼은 8장 표의 다섯 가지(체크·완료, 확정, 되돌리기, 이어 말하기, 앱 화면 열기)만 한다. 빼기, 우선순위, 시각 바꾸기 버튼은 어떤 조각에도 없다. 할 일을 가리키는 값은 id뿐이고 제목과 상태는 BE가 붙인 지금 값으로만 그린다.
 5. BE는 카탈로그 스키마와 7.3의 쌓기 규칙에 맞지 않는 조각을 도구 오류로 돌려주고 스트림에 보내지 않는다. 앱은 같은 공유 고정 자료(`tests/fixtures/ui_props/`)로 같은 판정을 한다(13장 양쪽 스키마 테스트).
@@ -258,7 +258,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 ### 6.2 `ui_date_choice` (날짜 고르기)
 
-**언제**: Dahun이 할 일을 말했는데 날짜가 분명하지 않을 때, 또는 날짜 없는 열린 할 일의 날짜를 정하자고 할 때(9.1).
+**언제**: Dahun이 할 일을 말했는데 날짜가 분명하지 않을 때, 또는 시각이 없는 열린 할 일(날짜는 있어도 없어도 된다)의 날짜를 정하자고 할 때(9.1).
 
 **흐름**: 두뇌가 먼저 `add_task`(`planned_for` 없이)로 할 일을 만든다(사용자가 말한 할 일이라 SP3-4 10.1 A4대로 바로 적용) → `ui_date_choice {task_id, question, candidates}`를 부른다 → Dahun이 후보 하나를 누르면 앱이 `/actions move_task {id, planned_for}`를 보낸다. 두뇌는 다시 불리지 않는다(하루 두뇌 호출 상한을 쓰지 않는다).
 
@@ -269,14 +269,14 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 | props | 규칙 |
 |---|---|
-| `task_id` | 정수. BE 뜻 검사: 있음, 소프트 삭제 아님, `status = open`, `scheduled_at = null` |
+| `task_id` | 정수. BE 뜻 검사: 있음, 소프트 삭제 아님, `status = open`, `scheduled_at = null`. `planned_for`는 있어도 없어도 된다 |
 | `question` | 1~60자 |
 | `candidates` | 2~4개. `date`는 `YYYY-MM-DD`, 서로 다름, 오늘(논리적 날짜) 이상, 오늘 + 90일 이하. `note?`는 1~12자 |
 
 - **시각이 잡힌 할 일은 받지 않는다**: 날짜를 옮기면 `scheduled_at`도 바뀌어(SP1 5.5) 시각 다시 잡기가 되고, 그것은 무거운 일이다(G5). 도구 오류 "시각이 잡힌 할 일은 날짜 고르기로 옮기지 않아요. 대화로 정해 주세요."
 - **BE가 붙이는 값**: `{"ok": true, "data": {"today": "2026-10-24", "todo": TodoRef}}`(10.2).
 - **그림**: 카드 제목 없이 `text`(질문) → 할 일 제목 한 줄(15 `--text-2`) → 후보마다 가로 꽉 찬 44px 버튼 "10월 27일 (화)"(오늘·내일이면 "오늘 · 10월 24일 (토)", "내일 · 10월 25일 (일)") + 오른쪽 `note`(13 `--muted`) → 맨 아래 테두리만 있는 버튼 "다른 날로 할게요".
-- **누르면**: 후보 → `move_task`(8장 `confirm` 동작). 기다리는 동안 모든 버튼이 꺼진다. `applied`면 누른 후보만 `aria-pressed="true"`로 진하게 남고 나머지는 꺼진다. 확인 문구와 "되돌리기"는 기존 알림 줄(SP5 F8)이 보인다. `rejected`·`failed`면 알림 줄에 이유가 나오고 버튼이 다시 켜진다. "다른 날로 할게요" → 그 글을 새 사용자 메시지로 `/chat`(8장 `send`).
+- **누르면**: 후보 → `move_task`(8장 `confirm` 동작). 기다리는 동안 모든 버튼이 꺼진다. 그 사이 할 일에 시각이 잡혀 `needs_confirm`이 오면(8장) 할 일 화면과 같은 확인 시트(`ConfirmSheet`)를 띄운다. `applied`면 누른 후보만 `aria-pressed="true"`로 진하게 남고 나머지는 꺼진다. 확인 문구와 "되돌리기"는 기존 알림 줄(SP5 F8)이 보인다. `rejected`·`failed`면 알림 줄에 이유가 나오고 버튼이 다시 켜진다. "다른 날로 할게요" → 그 글을 새 사용자 메시지로 `/chat`(8장 `send`).
 - **이미 정리됨**: `data.todo.status`가 `open`이 아니거나 `data.todo`가 없으면(지워짐) 후보 버튼을 그리지 않고 "이미 정리된 할 일이에요" 한 줄.
 
 ### 6.3 `ui_result` (방금 바꾼 것)
@@ -300,12 +300,22 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
    "change": "moved",
    "before": {"status": "open", "planned_for": "2026-10-25", "scheduled_at": null, "title": null},
    "after":  {"status": "open", "planned_for": "2026-10-27", "scheduled_at": null, "title": null},
-   "activity_id": 931, "undo_id": 931}]}}
+   "activity_ids": [931], "undo_id": 931}]}}
 ```
 
 - `change`는 그 할 일의 이번 답 활동에서 정한다: 활동 가운데 `task_added`가 있으면 `added`(`before = null`). 아니면 가장 늦은 활동의 종류: `task_moved` → `moved`, `task_completed` → `completed`, `task_reopened` → `reopened`, `task_dropped` → `dropped`, `task_updated` → `updated`, `tasks_confirmed` → `confirmed`.
-- `before`: 이번 답의 **가장 이른** 활동의 `undo_json`(바꾸기 전 값, `Tools._before`)에서 `status`, `planned_for`, `scheduled_at`, `title`(없으면 `null`). `after`: 지금 값. 시각은 UTC(SP3-4 6.1).
-- `activity_id`, `undo_id`: 가장 늦은 활동. `undo_id`는 지금 되돌릴 수 있을 때만(U1~U3, SP3-4 6.4.3), 아니면 `null`.
+- `before`: 이번 답에서 그 할 일의 **가장 이른** 활동(바뀌기 전 상태)의 `undo_json`에서 아래 표대로 꺼낸다. 표에 없는 필드는 `null`이다. `after`: 지금 값(`status`, `planned_for`, `scheduled_at`, `title`). 시각은 UTC(SP3-4 6.1).
+
+| 가장 이른 활동 | `undo_json` 모양 (`tools/core.py`) | `before` |
+|---|---|---|
+| `task_added` | `{task_id}` | `null` (`change = added`) |
+| `task_moved` | `{task_id, planned_for, scheduled_at}` | `planned_for`, `scheduled_at` (`status`는 `null`) |
+| `task_completed`, `task_reopened`, `task_dropped` | `_before(t)` = `{task_id, status, completed_at, planned_for, scheduled_at}`(빼기는 `priorities`도) | `status`, `planned_for`, `scheduled_at` |
+| `task_updated` | `{task_id, before: {바뀐 필드만}}` | `before` 안의 `title`, `planned_for`, `scheduled_at` 가운데 있는 것 |
+| `tasks_confirmed` | `{task_ids}` | `{"status": "draft"}` |
+
+- `activity_ids`: 이번 답에서 그 할 일을 대상으로 한 활동 id 전부(오래된 것부터).
+- `undo_id`: **그 할 일의 이번 답 활동이 정확히 하나이고, 그 활동의 대상(`activity_targets`)이 그 할 일 하나뿐일 때만** 그 활동 id(지금 되돌릴 수 있을 때, U1~U3, SP3-4 6.4.3). 그 밖은 `null`이다. 활동이 여럿이면(예: 옮긴 뒤 다시 옮김) 마지막 것만 되돌려 "A → C"를 보여 주고 B로 돌아가는 일이 생기고, 여러 할 일을 함께 바꾼 활동(`tasks_confirmed`)은 한 줄의 되돌리기가 다른 할 일까지 되돌린다. 이런 경우의 되돌리기는 확인 칸(11.4에서 숨기지 않는다)과 기록 화면이 맡는다.
 - 할 일이 그 사이 소프트 삭제됐으면(예: 같은 답에서 추가를 되돌림) 그 항목은 빠진다. 항목이 하나도 없으면 도구 오류 "보여 줄 바뀐 할 일이 없어요."
 
 **그림**: 카드 제목 없이, 항목마다 한 덩어리.
@@ -336,26 +346,26 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 | props | 규칙 |
 |---|---|
 | `day` 또는 `week` | 꼭 하나만. `day`: `YYYY-MM-DD`, 오늘 − 14일 ~ 오늘 + 56일. `week`: ISO 주 `YYYY-Www`(`priorities.period` 형식), 이번 주 − 2주 ~ 이번 주 + 8주 |
-| `highlight_task_ids?` | 정수 0~30개, 서로 다름. 뜻 검사 없음(이번 답에서 안 바꾼 할 일도 표시할 수 있다. 두뇌 규칙 9.2가 "바꾼 것만"을 정한다) |
+| `highlight_task_ids?` | 정수 0~30개, 서로 다름. BE 뜻 검사(`ui_result`와 같다): 모두 이번 답 활동의 대상 `task:<id>` 가운데 있어야 한다. 아니면 도구 오류 "바뀐 줄 표시는 이번 답에서 바꾼 할 일만 할 수 있어요." 보기만 하는 요청에는 비우거나 뺀다 |
 
 **BE가 붙이는 값** (10.2):
 
 ```json
 {"ok": true, "data": {"today": "2026-10-24", "start": "2026-10-26", "end": "2026-11-01",
   "days": [{"date": "2026-10-26", "weekday": "월", "is_today": false, "todos": [TodoRef]}],
-  "outside": [TodoRef]}}
+  "outside": [{"reason": "moved", "todo": TodoRef}]}}
 ```
 
-- `days`: `day`이면 하루, `week`이면 월~일 7일. 하루의 할 일은 새 순수 함수 `period_view(tasks, start, end, today)`(10.2)가 정한다: 그날이 오늘이면 `today_view`의 할 일 그대로(오늘 화면과 같은 목록), 아니면 `planned_for`가 그날인 `open`과 `done`(시각 있는 것 먼저, 그다음 `open`, `done` 순). 초안·소프트 삭제는 빠진다.
-- `outside`: `highlight_task_ids` 가운데 `days`에 없는 것(기간 밖으로 옮긴 것 등). 소프트 삭제한 것은 빠진다.
+- `days`: `day`이면 하루, `week`이면 월~일 7일. 하루의 할 일은 새 순수 함수 `period_view`(10.2)가 정하고 규칙은 하나다: **`planned_for`가 그날이고 `status`가 `open` 또는 `done`인 할 일**, 할 일마다 한 번. 오늘이어도 같다: 오늘 화면(`today_view`)과 달리 전에 잡은 열린 할 일을 끌어오지 않는다. 순서는 `open` 가운데 시각 있는 것(시각 순) → 시각 없는 `open` → `done`. 초안·소프트 삭제·`dropped`는 빠진다.
+- `outside`: `highlight_task_ids` 가운데 `days`에 없는 것을 이유와 함께. `reason`: `dropped`(뺀 할 일) → `no_date`(`planned_for`가 없음) → `moved`(날짜가 기간 밖) 순으로 먼저 맞는 하나. 소프트 삭제한 것은 빠진다.
 
 **그림**:
 
 - 카드 제목(15/600): `day`가 오늘·내일·어제면 "오늘"·"내일"·"어제", 아니면 "10월 27일 (화)". `week`가 이번 주면 "이번 주", 다음 주면 "다음 주", 지난주면 "지난주", 아니면 "10월 26일 ~ 11월 1일". 모두 `data.today` 기준이다(기기 달력을 쓰지 않는다, SP5 F3).
 - 주: 날짜 묶음마다 작은 머리 "{D}일 {요일}"(13/600 `--muted`, 오늘이면 뒤에 " · 오늘") + `CheckRow` 줄. 빈 날은 한 줄 "{요일} · 없음"(SP5 5.5.5와 같은 모양). 하루 묶음이 8줄을 넘으면 "n개 더"로 접는다.
 - 바뀐 줄(`highlight_task_ids`에 있음): `CheckRow highlight` = 줄 왼쪽 3px `--hue` 막대 + 낭독용 "비서가 바꿈".
-- `outside`가 있으면 맨 아래 머리 "기간 밖으로 옮긴 것" + 줄마다 보조 글로 그 날짜.
-- 맨 아래 버튼 줄: 기간이 오늘이면 "할 일 화면에서 보기"(`open todos_today`), 이번 주면 같은 글로 `open todos_week`, 그 밖의 기간에는 없음. `highlight_task_ids`가 있으면 "기록에서 보기"(`open activity`).
+- `outside`가 있으면 맨 아래에 이유별 머리로 나눠 보인다: `moved` "기간 밖으로 옮긴 것"(줄마다 보조 글로 그 날짜), `dropped` "뺀 것"(취소선, 체크 없음), `no_date` "날짜 없는 것". 빈 묶음은 그리지 않는다.
+- 맨 아래 버튼 줄: 기간이 오늘이면 "할 일 화면에서 보기"(`open todos_day`), 이번 주면 같은 글로 `open todos_week`, 그 밖의 기간에는 없음. `highlight_task_ids`가 있으면 "기록에서 보기"(`open activity`).
 - 체크는 `complete_task`(8장). 되돌리기는 이 카드에 없다: 여러 개 바꾼 답의 되돌리기는 같은 메시지의 확인 칸(SP5 5.5.2)과 기록 화면이 맡는다. 그래서 `ui_period_list`만 있는 메시지는 확인 칸을 숨기지 않는다(11.4).
 
 ### 6.5 공통 상태
@@ -402,7 +412,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 |---|---|---|---|
 | B1 | 부품 수는 묶음 안까지 모두 세어 12개 이하(`group` 하나는 1 + 아이 수) | 아니오 | `block_too_many` |
 | B2 | `group`은 맨 위 단계에만. 묶음 안에 묶음 없음 | 예 (`group.children`의 항목 종류에 `group` 없음) | `union_tag_invalid` |
-| B3 | `group layout=row`는 `stat`·`progress`만 2~3개, `layout=stack`은 `group`·`buttons`를 뺀 부품 2~6개 | 예 (`layout`별 모델 둘: `RowGroup`, `StackGroup`) | Pydantic 기본 코드 |
+| B3 | `group layout=row`는 `stat`·`progress`만 2~3개, `layout=stack`은 `group`·`buttons`를 뺀 부품 2~6개 | 예 (`layout`별 모델 둘 `RowGroup`, `StackGroup`을 `layout`으로 가르는 안쪽 구분 유니언, 10.1) | `layout` 값이 틀리면 `union_tag_invalid`, 없으면 `union_tag_not_found`(위치 `children.<n>.group`), 아이 수·종류가 틀리면 Pydantic 기본 코드(`too_short`, `too_long`, `union_tag_invalid`) |
 | B4 | `buttons`는 한 카드에 하나, 맨 위 단계의 마지막 | 아니오 | `buttons_place` |
 | B5 | `todo_rows`는 한 카드에 둘까지 | 아니오 | `todo_rows_too_many` |
 | B6 | `divider`는 처음·끝에 오지 않고 둘이 붙지 않음(묶음 안에서도) | 아니오 | `divider_place` |
@@ -424,8 +434,8 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 | 동작 | 부르는 것 | 어느 조각에서 | 대상 |
 |---|---|---|---|
-| 체크·완료 (`complete`) | `/actions complete_task {id}` | `CheckRow`가 있는 모든 카드, `ui_block`의 `complete` 버튼 | `data.todos`에 있고 `status = open`인 id만 |
-| 확정 (`confirm`) | `ui_date_choice`: `/actions move_task {id, planned_for}` · `ui_todo_draft`: `confirm_tasks`, `drop_task`(초안 빼기, 지금 그대로) · `ui_confirm`: 지금 그대로 | 완성 카드에만 | `move_task`의 `id`는 `data.todo.id`, `planned_for`는 props `candidates[].date` 가운데 하나(BE가 그릴 때 범위를 확인했다. `/actions`가 다시 검증한다) |
+| 체크·완료 (`complete`) | `/actions complete_task {id}` | `ui_todo_list`, `ui_period_list`, `ui_block`의 `todo_rows`와 `complete` 버튼 | `data.todos`(`ui_period_list`는 `data.days[].todos`)에 있고 `status = open`인 id만. `ui_todo_draft`의 체크 표시는 완료가 아니라 "고르기"다(확정·빼기할 것을 고른다, 지금 그대로). `CheckRow`의 `onToggle`이 무엇을 하는지는 카드마다 정한다 |
+| 확정 (`confirm`) | `ui_date_choice`: `/actions move_task {id, planned_for}` · `ui_todo_draft`: `confirm_tasks`, `drop_task`(초안 빼기, 지금 그대로) · `ui_confirm`: 지금 그대로 | 완성 카드에만 | `move_task`의 `id`는 `data.todo.id`, `planned_for`는 props `candidates[].date` 가운데 하나. 범위(오늘~90일)와 "시각 없는 열린 할 일"은 **그릴 때만** BE가 확인한다. 누를 때 `/actions move_task`가 보는 것은 할 일이 있는지, 날짜 형식, 그리고 BE-2가 더하는 확인 규칙(아래) 셋뿐이다 |
 | 되돌리기 (`undo`) | `POST /activity/{undo_id}/undo` | `ui_result` | BE가 붙인 `data.items[].undo_id`만. 두뇌는 활동 id를 모르고 props에 넣을 수도 없다 |
 | 이어 말하기 (`send`) | 버튼 이름 그대로를 새 사용자 메시지로 `/chat`(`ctx.onChoose`, 지금 `ui_choice`와 같다) | `ui_choice`, `ui_date_choice`의 "다른 날로 할게요", `ui_block`의 `send` 버튼 | 보내는 글 = 보이는 이름(1~16자, 따로 숨은 글이 없다). `/`로 시작하면 BE가 거절한다(명령이 되지 않게) |
 | 앱 화면 열기 (`open`) | 앱 라우터로 이동 후 대화 시트 닫기 | `ui_period_list`, `ui_block`의 `open` 버튼 | `screen` 열거값만(아래) |
@@ -435,13 +445,14 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 | `screen` | 주소 (SP5 4.5) |
 |---|---|
 | `today` | `/` |
-| `todos_today` | `/todos/?tab=today` |
+| `todos_day` | `/todos/?tab=day` |
 | `todos_week` | `/todos/?tab=week` |
 | `todos_month` | `/todos/?tab=month` |
 | `activity` | `/activity/` |
 | `settings` | `/settings/` |
 
 - **무거운 일은 버튼이 아니다**: 빼기(`drop_task`, 초안 빼기 제외), 우선순위(`set_priorities`), 시각 바꾸기(`update_task`의 `scheduled_at`, 시각 있는 할 일의 `move_task`)는 어떤 버튼에도 없다. Dahun이 대화로 시키면 두뇌가 도구를 부르고(사용자 요청이 곧 승인, SP3-4 10.1 A3), 회차 차례에서는 지금처럼 `needs_confirm` → `ui_confirm`이다. 할 일 화면의 줄 밀기·확인 시트(SP5 5.5.5)도 그대로다.
+- **앱 통로의 `move_task` 확인 (BE-2)**: 지금 `ACTIONS["move_task"]`(`tools/actions.py`)에는 `needs_confirm`이 없고, `Tools.move_task`의 확인은 회차 차례에서만 돈다(`_confirm_first`). 그래서 그릴 때와 누를 때 사이에 시각이 잡힌 할 일은 확인 없이 시각까지 옮겨진다(G5에 어긋난다). BE-2는 `move_task`에 `needs_confirm=move_needs_confirm`을 더한다: 할 일에 `scheduled_at`이 있고 `planned_for`가 바뀌면 확인 문구 한 줄(`confirm_move_summary`, 회차 차례와 같은 문구), 아니면 `None`. `drop_task`처럼 **앱 통로 요청에만** 적용된다(SP3-4 6.4.2). 이것은 SP5 5.5.5·F6의 "앱의 `move_task`는 늘 바로 적용된다"를 바꾼다: 할 일·오늘·체크인 화면의 "내일로"도 시각 있는 할 일이면 `drop_task`와 같은 확인 시트를 거친다. 그래서 SP3-4 6.4.2 표의 `move_task` 위험 칸("low. 시각이 있는 할 일의 날짜를 바꾸면 `confirm`")과 SP5 5.5.5·F6 문장을 BE-2·A-2 PR에서 함께 고친다. 텔레그램 버튼은 지금처럼 바로 적용된다.
 - **같은 누름 두 번**: 기존 `useAction`·`useUndo`의 진행 중 표시를 그대로 쓴다(SP5 4.6).
 - **누른 뒤**: 부품은 상태를 스스로 바꾸지 않고(누른 표시만), `ctx.onAfterAction()`을 부른다(SP5 6장).
 
@@ -451,7 +462,8 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 | 경우 | 그리는 것 | 글 |
 |---|---|---|
-| Dahun이 말한 할 일에 날짜가 분명하지 않음 ("다음 주에", "언젠가", 날짜 없음) | `add_task`(`planned_for` 없이) 뒤 `ui_date_choice`. 후보는 `list_tasks`로 본 그 기간의 빈 날 2~4개 | "날짜를 골라 주세요" 정도 한 문장 |
+| Dahun이 말한 할 일에 날짜가 분명하지 않음 ("다음 주에", "언젠가", 날짜 없음) | `add_task`(`planned_for` 없이) 뒤 `ui_date_choice`. 후보는 `list_tasks`로 본 그 기간의 빈 날 2~4개. 이 답에는 `ui_result`를 그리지 않는다(확인 칸이 추가를 보이고 되돌리기를 맡는다) | "날짜를 골라 주세요" 정도 한 문장 |
+| 시각이 없는 열린 할 일의 날짜를 정하자고 함 (날짜가 있어도 된다) | `ui_date_choice` | 한 문장 |
 | 비서가 이 답에서 할 일 1~2개를 바꿈 | 바꾼 뒤 `ui_result` | 한 문장 이하. 바뀐 내용을 되풀이하지 않는다 |
 | 이 답에서 할 일 3개 이상을 바꿈 | `ui_period_list`(바뀐 것이 가장 많이 든 하루나 주, `highlight_task_ids` = 바꾼 것) | 한 문장 이하 |
 | 하루·한 주의 할 일을 보여 달라 | `ui_period_list` | 한 문장 이하 |
@@ -461,6 +473,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 | 짧은 정리 몇 줄 | `ui_summary_card` | |
 | 위에 없는 짧은 답, 감정, 쉬자는 말 | 그리지 않는다 | 글만 |
 
+- 할 일을 바꾼 결과는 `ui_result`·`ui_period_list` 가운데 하나만 그리고, `ui_date_choice`를 그린 답에는 둘 다 그리지 않는다.
 - 한 답에 두뇌가 그리는 조각은 **두 개까지**(BE가 셋째를 거절한다, 10.4). 하네스 조각(초안 카드 등)은 세지 않는다.
 - 회차 차례(아침 브리핑 등)에는 그리지 않는다: 회차 답에는 스트림이 없어 그려지지 않는다(SP3-4 6.4.5, 회차 카드는 하네스가 만든다).
 - 텔레그램 대화에는 이 도구들이 없다(SP3-4 6.4.7, 지금 그대로).
@@ -474,12 +487,13 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 이 대화는 운영 앱입니다. 화면 조각 도구는 그리기만 하고 아무것도 저장하지 않습니다. 화면 조각을 그렸으면 그 내용을 답 글에서 다시 말하지 않고, 한두 문장으로만 답합니다. 한 답에 화면 조각은 두 개까지입니다.
 
 - 할 일을 바꿨으면 바꾼 뒤에 결과를 그립니다. 1~2개면 `ui_result`, 3개 이상이면 그 할 일들이 든 하루나 주의 `ui_period_list`(`highlight_task_ids`에 바꾼 할 일)를 그립니다.
-- 사용자가 말한 할 일의 날짜가 분명하지 않으면 날짜를 묻는 글을 쓰지 않습니다. `add_task`를 날짜 없이 부른 뒤, `list_tasks`로 그 기간을 보고 비어 있는 날 2~4개를 `ui_date_choice`로 제안합니다. 시각이 잡힌 할 일에는 쓰지 않습니다.
+- 사용자가 말한 할 일의 날짜가 분명하지 않으면 날짜를 묻는 글을 쓰지 않습니다. `add_task`를 날짜 없이 부른 뒤, `list_tasks`로 그 기간을 보고 비어 있는 날 2~4개를 `ui_date_choice`로 제안합니다. 이 답에는 `ui_result`를 그리지 않습니다. `ui_date_choice`는 시각이 없는 열린 할 일에만 쓰고(날짜는 있어도 됩니다), 시각이 잡힌 할 일에는 쓰지 않습니다.
 - 하루나 한 주의 할 일을 보여 줄 때는 `ui_period_list`, 날짜로 묶이지 않는 할 일 모음은 `ui_todo_list`를 씁니다.
 - 숫자나 진행을 보여 줄 때는 `ui_block`의 `stat`, `progress`를 씁니다. 숫자는 이번 차례의 도구 결과나 사용자가 말한 값만 씁니다. 비율(%)을 쓰지 않습니다. `progress`는 사용자가 스스로 정한 목표나 사용자가 물은 진행에만 쓰고, 하지 않은 일의 수로 쓰지 않습니다.
 - 고를 것이 2~4개면 `ui_choice`, 짧은 정리는 `ui_summary_card`를 씁니다. 그 밖의 짧은 답, 감정, 쉬자는 말에는 그리지 않습니다.
 - 화면 조각에 이모지, 주소(URL), 마크다운 표·제목을 넣지 않습니다. `ui_block`의 `text`는 `**굵게**`와 줄바꿈만 읽습니다.
-- 버튼은 이어 말하기(`send`), 앱 화면 열기(`open`), 할 일 완료(`complete`)만 있습니다. 빼기, 우선순위, 시각 바꾸기는 버튼으로 만들지 않습니다.
+- 버튼은 이어 말하기(`send`), 앱 화면 열기(`open`), 할 일 완료(`complete`)만 있습니다. 빼기, 우선순위, 시각 바꾸기는 버튼으로 만들지 않고, `send` 버튼의 이름으로도 빼기, 우선순위 바꾸기, 시각 바꾸기를 시키지 않습니다(그런 일은 사용자가 직접 말합니다).
+- `ui_result`, `ui_period_list`의 `highlight_task_ids`에는 이번 답에서 바꾼 할 일만 넣습니다.
 - 카드 고정(`pin_card`, `unpin_card`, `reorder_cards`)은 사용자가 고정하거나 내리거나 순서를 바꿔 달라고 할 때만 합니다. 고정할 수 있는 조각은 `ui_todo_list`, `ui_choice`, `ui_summary_card`입니다.
 ```
 
@@ -489,19 +503,20 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 | 도구 | 설명 | 입력 스키마 |
 |---|---|---|
-| `ui_date_choice` | "앱 화면에 날짜 고르기 조각을 그립니다(그리기만 합니다). task_id는 날짜가 없는 열린 할 일 번호이고, candidates는 2~4개의 날짜(오늘부터 90일 안)와 짧은 메모입니다. 사용자가 고르면 앱이 그 날짜로 옮깁니다. 시각이 잡힌 할 일에는 쓰지 않습니다." | `UI_COMPONENTS["ui_date_choice"]["schema"]` |
+| `ui_date_choice` | "앱 화면에 날짜 고르기 조각을 그립니다(그리기만 합니다). task_id는 시각이 없는 열린 할 일 번호이고(날짜는 있어도 됩니다), candidates는 2~4개의 날짜(오늘부터 90일 안)와 짧은 메모입니다. 사용자가 고르면 앱이 그 날짜로 옮깁니다. 시각이 잡힌 할 일에는 쓰지 않습니다." | `UI_COMPONENTS["ui_date_choice"]["schema"]` |
 | `ui_result` | "이번 답에서 바꾼 할 일 1~2개의 결과(전과 뒤, 되돌리기)를 앱 화면에 그립니다(그리기만 합니다). 바꾸는 도구를 부른 뒤에 부릅니다. 3개 이상이면 ui_period_list를 씁니다." | 같은 방식 |
 | `ui_period_list` | "하루(day) 또는 한 주(week, 예: 2026-W44)의 할 일을 날짜별로 앱 화면에 그립니다(그리기만 합니다). highlight_task_ids에는 이번 답에서 바꾼 할 일을 넣습니다." | 같은 방식 |
 | `ui_block` | "기본 부품을 쌓은 카드를 앱 화면에 그립니다(그리기만 합니다). 부품: heading, text(**굵게**·줄바꿈만), stat, progress, todo_rows, tags, bullets, buttons(send·open·complete), divider, group(row: stat·progress 2~3개, stack: 2~6개). 부품은 모두 12개까지, group은 한 단계, buttons는 하나만 맨 끝에, todo_rows는 둘까지입니다." | 같은 방식 |
 
 - 기존 `ui_todo_list`, `ui_choice`의 설명에서 "같은 뜻을 답 글에도 씁니다", "같은 질문을 답 글에도 씁니다"를 뺀다(9.2와 맞춘다).
-- 도구 수: 앱 대화 28개 → 32개(SP3-4 10장). 스파이크 S12(도구 수와 지연)를 BE-2에서 다시 잰다(14장).
+- 도구 수: BE-1은 앱 대화 도구 수를 바꾸지 않고, BE-2가 4개를 더한다(지금 코드는 `TOOL_NAMES` 21개 + 앱 전용 6개 = 27개, `grant_xp`가 아직 없어 SP3-4 10장의 28과 다르다. 시험은 절대 수가 아니라 "BE-1 전후 같음", "BE-2에서 +4"로 쓴다). 스파이크 S12(도구 수와 지연)를 BE-2에서 다시 잰다(14장).
 
 ## 10. BE 바꿀 것
 
 ### 10.1 카탈로그 (`tools/ui.py`)
 
-- 모델: `DateChoiceProps`, `ResultProps`, `PeriodListProps`(`day`·`week` 하나만: `model_validator`), `BlockProps`와 부품 모델 10개(`HeadingEl`, `TextEl`, `StatEl`(`Delta`), `ProgressEl`, `TodoRowsEl`, `TagsEl`(`TextTag` \| `AreaTag`), `BulletsEl`, `ButtonsEl`(`Button`, `do`: `SendDo` \| `OpenDo` \| `CompleteDo`, `kind`로 가름), `DividerEl`, `RowGroup` \| `StackGroup`). 모두 `_Props`(`extra="forbid"`, `strict=True`).
+- 모델: `DateChoiceProps`, `ResultProps`, `PeriodListProps`(`day`·`week` 하나만: `model_validator`), `BlockProps`와 부품 모델 10개(`HeadingEl`, `TextEl`, `StatEl`(`Delta`), `ProgressEl`, `TodoRowsEl`, `TagsEl`(`TextTag` \| `AreaTag`), `BulletsEl`, `ButtonsEl`(`Button`, `do`: `SendDo` \| `OpenDo` \| `CompleteDo`, `kind`로 가름), `DividerEl`, `GroupEl`). 모두 `_Props`(`extra="forbid"`, `strict=True`).
+- **묶음은 구분 유니언 두 단계**: 바깥 `Element = Annotated[Union[HeadingEl, …, DividerEl, GroupEl], Field(discriminator="type")]`, 그 안의 `GroupEl = Annotated[Union[RowGroup, StackGroup], Field(discriminator="layout")]`(둘 다 `type: Literal["group"]`). `type` 하나로는 둘을 가를 수 없어서다. JSON Schema에서는 `oneOf` 안의 `oneOf`가 되고, 앱 검사기는 `layout`의 `const`로 가른다.
 - `_COMPONENTS`에 넷을 `"brain"` 출처로 더한다: `ui_date_choice`, `ui_result`, `ui_period_list`, `ui_block`. 순서는 기존 두뇌 셋 뒤, 하네스 앞.
 - `BRAIN_COMPONENTS`는 지금처럼 출처에서 만들어 7개가 된다. 지금 이 값을 쓰는 세 곳을 나눈다.
   - **고정**: `PINNABLE_COMPONENTS = ("ui_todo_list", "ui_choice", "ui_summary_card")`. `pin_card`와 그 스키마의 `enum`이 이것을 쓴다(새 넷이 고정되지 않게).
@@ -515,13 +530,13 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 |---|---|---|
 | `ui_todo_list` | `{todos}` (지금 그대로) | `ui_todo_refs(…, drafts=False)` |
 | `ui_date_choice` | `{today, todo}` (`todo`가 지워졌으면 `null`) | `todo_refs([task_id], drafts=False)` |
-| `ui_result` | `{today, items[]}` (6.3) | 새 `Tools.ui_result_items(ctx, task_ids)`: `ctx.activity_ids`의 활동 행과 `activity_targets`에서 `task:<id>`를 찾는다. 읽기만 |
-| `ui_period_list` | `{today, start, end, days[], outside[]}` (6.4) | 새 순수 함수 `store/views.py period_view(tasks, start, end, today) -> list[DayView]` + `todo_refs` |
+| `ui_result` | `{today, items[]}` (6.3) | 새 `Tools.ui_result_items(ctx, task_ids)`: `ctx.activity_ids`의 활동 행과 `activity_targets`에서 `task:<id>`를 찾고, 6.3 표로 `before`를, 활동 수와 대상 수로 `undo_id`를 정한다. 읽기만 |
+| `ui_period_list` | `{today, start, end, days[], outside[]}` (6.4) | 새 순수 함수 `store/views.py period_view(tasks: TasksRepo, start: date, end: date, today: date) -> list[DayView]`(`TasksRepo.list(status=TaskStatus.open, from_=start, to=end)`와 `status=TaskStatus.done` 두 번 읽어 6.4 규칙으로 날짜별로 나눈다. `today`는 `DayView.is_today`에만 쓴다) + `todo_refs` + `outside`(6.4 이유 순서). 뜻 검사(`highlight_task_ids` ⊆ 이번 답 활동의 할 일)는 `ui_result`와 같은 함수 |
 | `ui_block` | `{today, todos?}` (7.3) | `todo_refs(ids, drafts=False)` |
 
 - **`TodoRef`에 필드 둘을 더한다**: `planned_for`(논리적 날짜 또는 `null`), `scheduled_at`(UTC 또는 `null`). 깨지지 않는 변경이다(SP3-4 6.1). `todo_ref`가 모든 곳(고정 카드, 체크인 카드 포함)에서 같은 모양을 준다. SP3-4 6.3의 `TodoRef` 예시와 설명을 같은 PR에서 고친다.
 - `today`는 논리적 날짜(`Tools.today()`)다. 앱이 "오늘", "내일"을 기기 달력으로 만들지 않게 한다.
-- 뜻 검사(6.2의 `task_id`, 6.3의 "이번 답에서 바뀐 것", 6.4의 범위)는 도구 메서드(`Tools.ui_date_choice` 등) 안에서 `_draw` 뒤에 한다. 모두 읽기만 하고 `ctx.events`, DB, 파일을 건드리지 않는다(SP3-4 6.4.7 "그리기만", 시험으로 확인).
+- 뜻 검사(6.2의 `task_id`, 6.3과 6.4의 "이번 답에서 바뀐 것", 6.4의 범위)는 도구 메서드(`Tools.ui_date_choice` 등) 안에서 `_draw` 뒤에 한다. 모두 읽기만 하고 `ctx.events`, DB, 파일을 건드리지 않는다(SP3-4 6.4.7 "그리기만", 시험으로 확인).
 
 ### 10.3 검사 (`validate_props`)
 
@@ -536,7 +551,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 
 ### 10.4 한 답 두 개 상한 (`mcp_adapter.call_tool`)
 
-`RunContext`에 `ui_drawn: int = 0`을 더한다. 두뇌 화면 도구가 검사를 지나 조각을 쓸 때 1을 더하고, 이미 2이면 부르지 않고 도구 오류 "한 답에 화면 조각은 2개까지예요."를 돌려준다(조각 없음). 하네스 조각과 `pin_card`는 세지 않는다. 스트림이 없는 차례(텔레그램, 회차)는 도구가 없거나 그려지지 않으므로 세지 않는다.
+`RunContext`에 `ui_drawn: int = 0`을, `mcp_adapter`에 상수 `UI_PARTS_PER_REPLY = 2`를 더한다. 두뇌 화면 도구가 검사를 지나 조각을 쓸 때 1을 더하고, 이미 `UI_PARTS_PER_REPLY`이면 부르지 않고 도구 오류 "한 답에 화면 조각은 2개까지예요."를 돌려준다(조각 없음). 하네스 조각과 `pin_card`는 세지 않는다. 스트림이 없는 차례(텔레그램, 회차)는 도구가 없거나 그려지지 않으므로 세지 않는다.
 
 ### 10.5 카탈로그 판
 
@@ -547,7 +562,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 ### 10.6 기준 SSE와 공유 고정 자료
 
 - **공유 props 자료** `tests/fixtures/ui_props/<컴포넌트>/{ok,bad}/*.json`(BE-1): 새 넷 모두, `ui_block`은 7.2의 B1~B9마다 `bad` 하나 이상과 부품 10개가 모두 나오는 `ok`. 꾸며 낸 내용만. 앱은 복사하지 않고 제자리에서 읽는다(SP5 F4의 기준 SSE와 같은 방식).
-- **기준 SSE** `tests/fixtures/app_golden/`(BE-2, `tests/test_app_golden.py`의 `CASES`에 더함): `chat_date_choice`(`add_task` → `ui_date_choice`), `chat_result`(`move_task` → `ui_result` + `data-activity`), `chat_period_list`(`move_task` 셋 → `ui_period_list`), `chat_block`(`ui_block` + `todo_rows`), `chat_ui_rejected`(쌓기 규칙 위반 → 조각 없음, 두뇌가 고쳐 다시 불러 하나만), `chat_gallery`(시험 전용: 새 조각과 기존 두뇌 셋이 모두 한 답에. 상한 10.4는 `BeEnv` 설정으로 끈다. 앱 스크린샷용).
+- **기준 SSE** `tests/fixtures/app_golden/`(BE-2, `tests/test_app_golden.py`의 `CASES`에 더함): `chat_date_choice`(`add_task` → `ui_date_choice`), `chat_result`(`move_task` → `ui_result` + `data-activity`), `chat_period_list`(`move_task` 셋 → `ui_period_list`), `chat_block`(`ui_block` + `todo_rows`), `chat_ui_rejected`(쌓기 규칙 위반 → 조각 없음, 두뇌가 고쳐 다시 불러 하나만), `chat_gallery`(시험 전용: 새 조각과 기존 두뇌 셋이 모두 한 답에. 시험이 `monkeypatch.setattr(mcp_adapter, "UI_PARTS_PER_REPLY", 10)`으로 상한 10.4를 푼다. `BeEnv`에는 설정을 더하지 않는다. 앱 스크린샷용).
 
 ## 11. 앱 바꿀 것
 
@@ -564,7 +579,7 @@ web/app/src/ui/
 
 ### 11.2 레지스트리
 
-- `registry.tsx`는 지금 10개 + `registerParts(entries)`를 내보낸다(같은 이름을 두 번 등록하면 개발 중 오류). `UiPart`의 판정 순서(이름 → 카탈로그 스키마 → 컴포넌트)는 그대로이고, `ui_block`만 스키마 다음에 `checkBlock`을 한 번 더 본다.
+- `registry.tsx`는 지금 10개 + `registerParts(entries)`를 내보낸다(같은 이름을 두 번 등록하면 개발 중 오류). 지금 `registryNames`는 가져올 때 `Object.keys`로 굳은 배열이라 등록 뒤의 이름을 모른다. A-2는 이것을 함수 `registryNames(): string[]`로 바꾸고, 그것을 쓰는 `ui/catalog.test.ts`(지금 "길이 10", "카탈로그 고정 자료와 같은 이름")를 `registerChatParts()`를 부른 뒤 14개, 카탈로그와 같은 이름으로 고친다. `UiPart`의 판정 순서(이름 → 카탈로그 스키마 → 컴포넌트)는 그대로이고, `ui_block`만 스키마 다음에 `checkBlock`을 한 번 더 본다.
 - **새 넷은 대화 묶음에서 등록한다**: `ui/chat/registerChatParts.ts`가 `ui_date_choice`, `ui_result`, `ui_period_list`, `ui_block`을 등록하고, `chat/MessageView.tsx`가 이것을 가져온다(대화 시트 묶음은 늦게 읽힌다, SP5 9장). 새 넷은 고정 카드와 체크인 카드에 나오지 않으므로(2장) 첫 화면 묶음에 넣지 않는다. 대화 밖에서 이 이름이 오면(있어서는 안 된다) 등록 전이라 `UnknownPart`다.
 - 기본 부품(`primitives/`)은 오늘 화면의 고정 카드(기존 넷)가 쓰므로 첫 화면 묶음에 들어간다.
 
@@ -576,13 +591,16 @@ web/app/src/ui/
 ### 11.4 메시지 그리기 (`chat/parts.ts`, `MessageView.tsx`)
 
 - 조각 읽기는 그대로다(`ui_`로 시작하는 도구 조각 → `ViewPart kind: "ui"`, `output.data` → `data`).
-- **확인 칸 숨김 규칙**: 한 메시지의 `ViewPart`를 다 모은 뒤, `ui_result` 조각들의 `data.items[].activity_id` 집합이 그 메시지 `data-activity.activity_ids`를 모두 담으면 `activity` 조각을 그리지 않는다. 하나라도 빠지면(예: 할 일 둘을 바꾸고 하나만 `ui_result`로 그림) 확인 칸을 그대로 그린다. `ui_period_list`는 이 집합에 넣지 않는다(6.4). 순수 함수 `hideCoveredActivity(parts: ViewPart[]): ViewPart[]`로 두고 시험한다.
+- **`activity_ids` 읽기 (A-2)**: 지금 `parts.ts`의 `activity` 조각은 `{confirmation, undoIds}`만 읽는다. BE는 `data-activity`에 `activity_ids`도 보내므로(`harness/stream.py data_activity`) A-2가 `ViewPart kind: "activity"`에 `activityIds: number[]`를 더해 읽는다(없으면 `[]`).
+- **확인 칸 숨김 규칙**: 한 메시지의 `ViewPart`를 다 모은 뒤, 확인 칸의 `activityIds`가 비어 있지 않고 그 id 하나하나가 **`undo_id`가 있는 `ui_result` 항목의 `activity_ids`(하나뿐)**와 같으면 `activity` 조각을 그리지 않는다. 하나라도 빠지면(할 일 둘을 바꾸고 하나만 그림, `undo_id: null`인 항목, `ui_period_list`만 있음) 확인 칸을 그대로 그린다. 순수 함수 `hideCoveredActivity(parts: ViewPart[]): ViewPart[]`로 두고 시험한다.
+- **다시 연 대화에서는 숨기지 않는다**: `hideCoveredActivity`는 지금 받은 메시지에만 쓴다. `restored` 메시지에는 쓰지 않는다(지금 `localParts`는 `ui` 조각만 두므로 다시 연 대화에는 확인 칸이 없다. 나중에 확인 칸을 저장하게 되면 늘 보인다).
 - 알림 줄(Toast)은 `useAction`이 지금처럼 띄운다(`ui_date_choice`의 확정, `CheckRow` 체크).
 
 ### 11.5 `PartContext`와 타입
 
+- `usePartAction`은 지금 `needs_confirm`을 실패 알림으로 바꾼다. A-2는 `ui_date_choice`가 쓸 수 있게 `needs_confirm`을 돌려받는 선택(`{onNeedsConfirm}`)을 더하고, 카드는 그때 `ConfirmSheet`를 연다(8장).
 - `PartContext`에 `onOpen?(screen: OpenScreen): void`를 더한다(대화 시트가 라우터 이동 + 시트 닫기로 채운다). 없으면 `open` 버튼을 그리지 않는다.
-- `PartData`에 `today?: string`, `todo?: PartTodo | null`, `items?: ResultItem[]`, `start?`, `end?`, `days?: DayTodos[]`, `outside?: PartTodo[]`를 더한다. `PartTodo`는 `planned_for`, `scheduled_at`을 더 읽는다(10.2).
+- `PartData`에 `today?: string`, `todo?: PartTodo | null`, `items?: ResultItem[]`, `start?`, `end?`, `days?: DayTodos[]`, `outside?: {reason: "moved" | "dropped" | "no_date"; todo: PartTodo}[]`를 더한다. `PartTodo`는 `planned_for`, `scheduled_at`을 더 읽는다(10.2).
 - `types.gen.ts`는 BE `GET /schema`에서 다시 만든다(`TodoRef` 필드 둘, `UiCatalog`).
 
 ### 11.6 바꾸지 않는 것
@@ -603,8 +621,9 @@ web/app/src/ui/
 | 마크다운으로 링크·그림·HTML | `parseMiniMd`는 `**`와 `\n`만 읽는다. 나머지는 글자 그대로 |
 | 링크 주소(`javascript:`, 외부 주소) | props 어디에도 주소가 없다. 화면 열기는 `screen` 열거값 6개를 앱이 주소로 바꾼다. 그래서 주소 체계 허용 목록이 필요 없다 |
 | 버튼이 큰 일을 함 | 8장 다섯 가지만. 앱은 버튼 동작을 `kind` 열거값으로만 받고 `ActionName`을 props에서 읽지 않는다 |
-| props의 글을 믿고 쓰기 | 쓰기에 들어가는 값은 BE가 붙인 id(`data.todos[].id`, `data.todo.id`, `data.items[].undo_id`)와 스키마로 범위를 확인한 날짜 후보뿐이다. 할 일 제목·상태는 `data`에서만 읽는다. `/actions`, `/undo`가 다시 검증한다 |
+| props의 글을 믿고 쓰기 | 쓰기에 들어가는 값은 BE가 붙인 id(`data.todos[].id`, `data.todo.id`, `data.items[].undo_id`)와 스키마로 범위를 확인한 날짜 후보뿐이다. 할 일 제목·상태는 `data`에서만 읽는다. 누를 때 BE는 id와 형식을 보고(`/actions`, `/undo`), 시각 있는 할 일의 날짜 옮기기는 확인을 거친다(8장, BE-2). 날짜 후보의 범위는 그릴 때만 본다 |
 | 이어 말하기로 명령 실행 | `send` 이름과 `ui_choice` `label`이 `/`로 시작하면 BE가 거절(10.3). 보이는 글과 보내는 글이 같다 |
+| 이어 말하기로 무거운 일 시키기 (남는 위험) | 버튼 이름이 "이거 빼 줘" 같은 글이면, 누르는 순간 Dahun의 메시지로 가고 사용자 메시지 차례라 확인 없이 적용된다(SP3-4 10.1 A3). 막는 것은 프롬프트 규칙(9.2)뿐이고 BE가 뜻을 검사하지 않는다. 받아들이는 이유: 이름이 그대로 보이고, 누르는 것이 곧 그 글을 보내는 것이며, 빼기·우선순위는 되돌릴 수 있다(6.4.3). 쓰다 문제가 되면 `send` 이름의 낱말 검사를 더한다 |
 | 방향 바꾸기 문자로 눈속임 | BE가 거절(10.3) |
 | 큰 props로 화면·저장 부풀리기 | 개수·길이 상한(5장, 7.2), props 8KB(B9), 한 답 두 개(10.4). `localParts`는 200개 상한 그대로 |
 | 로그로 새는 내용 | 도구 오류 문구에 값을 넣지 않는다(위치와 코드만). 시스템 로그에 props를 남기지 않는다(SP3-4 14장, 로그 검사 시험에 새 도구를 더한다) |
@@ -614,19 +633,19 @@ web/app/src/ui/
 
 | 층 | 무엇 | 도구 | 통과 기준 |
 |---|---|---|---|
-| BE 스키마 | `tests/fixtures/ui_props/**/ok`는 모두 통과, `bad/<code>-*`는 그 `code`로 실패. 금지어, 제어 문자, 방향 문자, `/` 시작 거절. 오류 문구에 값 없음. BE-1 뒤에도 앱 대화 도구가 지금의 28개 그대로 | pytest | `python -m pytest tests/test_ui_catalog.py` (새 파일) → 실패 0 |
-| BE 도구 | 새 도구 넷: 뜻 검사(6.2 시각 있는 할 일 거절, 6.3 이번 답에 안 바뀐 할 일 거절, 6.4 범위 밖 거절), DB·파일·`ctx.events`를 건드리지 않음, 한 답 두 개 상한, 텔레그램 통로에는 없음, `pin_card`가 새 넷을 거절 | pytest | `python -m pytest tests/test_ui_tools.py` → 실패 0 |
-| BE 지금 값 | `ui_result`의 `change`·`before`·`after`·`undo_id` (추가 뒤 옮김 → `added`, 완료 뒤 옮김 → `moved`이고 `undo_id`는 옮김, 확인으로 적용한 변경 → `undo_id: null`), `period_view`(오늘은 `today_view`와 같음, 초안·삭제 빠짐, `outside`), `TodoRef`의 새 필드가 UTC | pytest | `python -m pytest tests/test_ui_tools.py tests/test_period_view.py` (뒤는 새 파일) → 실패 0 |
+| BE 스키마 | `tests/fixtures/ui_props/**/ok`는 모두 통과, `bad/<code>-*`는 그 `code`로 실패. 금지어, 제어 문자, 방향 문자, `/` 시작 거절. 오류 문구에 값 없음. BE-1 전후 앱 대화 도구 수가 같음 | pytest | `python -m pytest tests/test_ui_catalog.py` (새 파일) → 실패 0 |
+| BE 도구 | 새 도구 넷: 뜻 검사(6.2 시각 있는 할 일 거절, 6.3 이번 답에 안 바뀐 할 일 거절, 6.4 범위 밖 거절), DB·파일·`ctx.events`를 건드리지 않음, 한 답 두 개 상한, 텔레그램 통로에는 없음, `pin_card`가 새 넷을 거절, BE-2에서 앱 대화 도구 수 +4. 앱 통로 `/actions move_task`가 시각 있는 할 일의 날짜를 바꾸면 `needs_confirm`, 시각 없으면 `applied`, 텔레그램 버튼은 바로 적용 | pytest | `python -m pytest tests/test_ui_tools.py` → 실패 0 |
+| BE 지금 값 | `ui_result`: 6.3 표의 활동 종류마다 `before`, 추가 뒤 옮김 → `added`이고 `undo_id: null`(활동 둘), 옮김 하나 → `undo_id` 있음, 옮김 둘(A→B→C) → `before`는 A이고 `undo_id: null`, `tasks_confirmed`(할 일 둘) → `undo_id: null`, 확인으로 적용한 변경 → `undo_id: null`. `highlight_task_ids`에 이번 답에서 안 바꾼 할 일 → 도구 오류. `period_view`: 오늘에도 전에 잡은 할 일을 끌어오지 않음, `open`·`done`만, 할 일마다 한 번, 순서, `outside`의 이유 셋. `TodoRef`의 새 필드가 UTC | pytest | `python -m pytest tests/test_ui_tools.py tests/test_period_view.py` (뒤는 새 파일) → 실패 0 |
 | BE 기준 SSE | 10.6의 여섯 파일이 `parse_sse`를 지나고 바이트 단위로 같음 | pytest | `python -m pytest tests/test_app_golden.py` → 실패 0 |
 | 앱 스키마 | 같은 `tests/fixtures/ui_props/`를 제자리에서 읽어 카탈로그 스키마 + `checkBlock`이 BE와 같은 판정 | Vitest | `npx vitest run src/ui/block` → `0 failed` |
 | 앱 부품 | 부품 10개: props로 그려짐, `parseMiniMd`(굵게, 줄바꿈, 짝 없는 `**`, `<b>`·`[a](b)`가 글자 그대로), `stat` 낭독 글, `<progress>` 값, `CheckRow` 상태 넷 | Vitest + Testing Library | `npx vitest run src/ui/primitives` → `0 failed` |
 | 앱 카드 | 새 넷: 6.5 표의 모든 칸(정상, 읽기 전용, 다시 연 대화, `data` 없음), 누름의 정확한 본문(`move_task {id, planned_for}`, `/activity/{id}/undo`, `/chat` 글, 라우터 주소), 이미 정리된 할 일. 기존 넷의 SP5 시험이 그대로 통과 | Vitest + MSW | `npx vitest run src/ui` → `0 failed` |
-| 앱 대화 계약 | 저장소의 `tests/fixtures/app_golden/chat_{date_choice,result,period_list,block,ui_rejected}.sse`를 `useChat` + `parts.ts`로 읽어 화면 결과 확인, `hideCoveredActivity`(전부 덮음 → 숨김, 일부 → 보임, `ui_period_list`만 → 보임) | Vitest + MSW | `npx vitest run src/chat` → `0 failed` |
+| 앱 대화 계약 | 저장소의 `tests/fixtures/app_golden/chat_{date_choice,result,period_list,block,ui_rejected}.sse`를 `useChat` + `parts.ts`로 읽어 화면 결과 확인, `hideCoveredActivity`(전부 덮음 → 숨김, 일부 → 보임, `undo_id: null` 항목 → 보임, `ui_period_list`만 → 보임, `restored` → 보임), `activityIds` 읽기 | Vitest + MSW | `npx vitest run src/chat` → `0 failed` |
 | 문구 | 부록 A의 문구가 `copy.ts`에 있고 금지어 없음 | Vitest, `lint-copy` | `npx vitest run src/lib/copy.test.ts` → `0 failed` |
 | 대비 | 새로 쓰는 쌍(`--raised` 위 `--text-2`, `--surface` 위 `--hue` 글자, 진행 막대 `--primary` 대 `--raised` 3:1)을 모든 프리셋 × 밝게·어둡게에서 | Vitest(대비 계산) | `npx vitest run src/styles` → `0 failed` |
 | 빌드·CSP | 정적 내보내기에 인라인 스크립트·스타일·쪽 CSS 없음 | `npm run build && npm run check:csp` | `CSP OK: <n> files` |
 | 크기 | 첫 화면 180KB 이하 | `npm run size` | 종료 코드 0 |
-| CSP 실행 | 빌드한 `out/`을 CSP 헤더로 띄우고 `chat_gallery.sse`로 대화를 열어 새 넷이 모두 부품으로 그려짐 + 콘솔 CSP 위반 0건 | Playwright | `npx playwright test csp.spec.ts` → 지금 시험 + `2 passed` 더함 |
+| CSP 실행 | 빌드한 `out/`을 CSP 헤더로 띄우고 `chat_gallery.sse`로 대화를 열어 새 넷이 모두 부품으로 그려짐 + 콘솔 CSP 위반 0건 | Playwright | `npx playwright test csp.spec.ts` → 지금 셋("chat part renders under CSP", "no CSP violations", "screens keep their styles after moving between tabs")에 "SP6 cards render under CSP", "SP6 gallery has no CSP violations"를 더해 `5 passed` |
 | 눈으로 | 390×844, `chat_gallery.sse` 대화 시트: (1) 기본 프리셋 밝게·어둡게에서 카드 7개(새 넷 + `ui_todo_list`, `ui_choice`, `ui_summary_card`) 하나씩 = 14장, (2) 프리셋 6개 × 밝게·어둡게 시트 전체 = 12장. 다시 짠 기존 넷은 SP6 전 스크린샷과 나란히 본다 | Playwright + MSW | `npx playwright test screens.spec.ts` → 26장 저장, 사람이 확인 |
 | 디자인 | taste 규칙 | `node <taste>/scripts/lint.mjs --app web/app/src` | `0 FAIL` |
 | 실기기 | 아이폰에서 날짜 없는 할 일 말하기 → 후보 누름 → 되돌리기, 할 일 둘 옮기기 → `ui_result` 되돌리기, 셋 옮기기 → `ui_period_list`, "이번 주 컨디션 어땠지" → `ui_block` | Dahun과 함께 | `docs/acceptance/sp5-checklist.md`에 SP6 줄을 더하고 모두 확인 |
@@ -641,8 +660,8 @@ web/app/src/ui/
 |---|---|---|---|---|
 | 1 | **BE-1** 카탈로그 | SP3-4 BE 스레드 | 10.1 모델·쌓기 규칙, 10.3 검사, `PINNABLE_COMPONENTS`, `TodoRef` 필드 둘(+ SP3-4 6.3 문서), 카탈로그 다음 판(10.5), 공유 props 자료(10.6), `GET /schema` 다시 만듦, `GLOSSARY.md`에 용어 셋. 도구 메서드는 아직 두뇌에게 주지 않는다(`APP_ONLY_TOOLS`에 넣지 않음) | 없음 |
 | 1 | **A-1** 기본 부품 | 운영 앱 스레드 | `ui/primitives/` 10개 + `CheckRow`, `parseMiniMd`, CSS를 `_app`에, 기존 넷을 부품으로 다시 짬(시험·스크린샷 그대로) | 없음 (BE-1과 나란히) |
-| 2 | **A-2** 새 카드 | 운영 앱 스레드 | `ui/chat/` 셋, `ui/block/`, `registerChatParts`, `hideCoveredActivity`, `onOpen`, 부록 A 문구, 공유 props 자료로 스키마 시험, `types.gen.ts` 다시 만듦. 손으로 쓴 MSW SSE로 카드 시험 | BE-1, A-1 |
-| 3 | **BE-2** 두뇌에게 주기 | SP3-4 BE 스레드 | 새 도구 넷의 메서드와 뜻 검사, 10.2 지금 값, `period_view`, 10.4 상한, `APP_ONLY_TOOLS`·`_SPECS`(9.3), `channel_app.md`(9.2), 기존 두 설명 고침, 기준 SSE 여섯(10.6), S12 다시 재기, 로그 검사 시험에 새 도구 | A-2가 Vercel에 배포됨 |
+| 2 | **A-2** 새 카드 | 운영 앱 스레드 | `ui/chat/` 셋, `ui/block/`, `registerChatParts`, `activityIds` 읽기, `hideCoveredActivity`, `onOpen`, `usePartAction`의 `onNeedsConfirm`, 시각 있는 할 일의 "내일로" 확인 시트(SP5 5.5.5·F6 고침, BE-2가 들어오기 전에는 `needs_confirm`이 오지 않아 그대로 돈다), `registryNames()`와 `catalog.test.ts`, 부록 A 문구, 공유 props 자료로 스키마 시험, `types.gen.ts` 다시 만듦. 손으로 쓴 MSW SSE로 카드 시험 | BE-1, A-1 |
+| 3 | **BE-2** 두뇌에게 주기 | SP3-4 BE 스레드 | 새 도구 넷의 메서드와 뜻 검사, 10.2 지금 값, `period_view`, 10.4 상한, 앱 통로 `move_task` 확인(8장, SP3-4 6.4.2 표 고침), `APP_ONLY_TOOLS`·`_SPECS`(9.3), `channel_app.md`(9.2), 기존 두 설명 고침, 기준 SSE 여섯(10.6), S12 다시 재기, 로그 검사 시험에 새 도구 | A-2가 Vercel에 배포됨 |
 | 4 | **A-3** 계약·눈으로 | 운영 앱 스레드 | 기준 SSE로 대화 계약 시험(손으로 쓴 SSE를 바꿈), CSP 실행 시험, 스크린샷 26장, 대비, 실기기 체크리스트 | BE-2, (프리셋 시험은) 색 프리셋 티켓 |
 
 - BE-1은 카탈로그만 바꾸고 BE-2는 카탈로그를 바꾸지 않는다(판은 BE-1에서 한 번만 오른다). BE-2에서 스키마를 고쳐야 하면 그 PR이 다음 판을 쓴다(10.5).
@@ -653,6 +672,7 @@ web/app/src/ui/
 없다. 아래는 정하고 넘어간 것이고, Dahun이 다르게 원하면 이 문서를 고친다.
 
 1. 날짜가 분명하지 않은 할 일은 **먼저 날짜 없이 추가**하고 고르면 날짜를 옮긴다(6.2). 초안(`propose_tasks`)으로 두면 고를 때 확정과 날짜 두 동작이 필요해 하나로 묶이지 않는다. 고르지 않으면 날짜 없는 열린 할 일로 남는다.
+4. 앱 통로의 `move_task`도 시각 있는 할 일의 날짜를 바꾸면 확인을 거친다(8장, 리뷰 결정). SP5의 "늘 바로 적용"을 바꾼다.
 2. 새 넷은 고정 카드로 올리지 않는다(`ui_block`의 숫자, `ui_result`의 결과는 그때의 값이라 오늘 화면에 남으면 낡는다). `ui_period_list` 고정은 다음 단계 후보다.
 3. 한 답에 두뇌 조각 두 개까지(10.4).
 
@@ -675,7 +695,7 @@ web/app/src/ui/
 | `confirmedDraft` | 초안을 확정했어요 | 6.3 `confirmed` |
 | `changeAria(a, b)` | 이전 {a}, 지금 {b} | 6.3 낭독 |
 | `resultCount(n)` | 바뀐 할 일 {n}개 | 6.5 `data` 없음 |
-| `outsideHead` | 기간 밖으로 옮긴 것 | 6.4 |
+| `outsideHead.moved` / `.dropped` / `.noDate` | 기간 밖으로 옮긴 것 / 뺀 것 / 날짜 없는 것 | 6.4 |
 | `openTodos` | 할 일 화면에서 보기 | 6.4 |
 | `openActivity` | 기록에서 보기 | 6.4 |
 | `periodFailed` | 할 일을 불러오지 못했어요 | 6.5 `data` 없음 |
@@ -704,9 +724,10 @@ web/app/src/ui/
 | `banned_word` | (쓰지 않는 말이 있어요) |
 | `slash` | (/로 시작하는 글은 쓸 수 없어요) |
 | 6.2 시각 있는 할 일 | 시각이 잡힌 할 일은 날짜 고르기로 옮기지 않아요. 대화로 정해 주세요. |
-| 6.2 열린 할 일 아님 | 날짜가 없는 열린 할 일만 고를 수 있어요. |
+| 6.2 열린 할 일 아님 | 시각이 없는 열린 할 일만 날짜를 고를 수 있어요. |
 | 6.2 후보 날짜 범위 | 후보 날짜는 오늘부터 90일 안이에요. |
 | 6.3 | 이번 답에서 바꾼 할 일만 보여 줄 수 있어요. |
+| 6.4 바뀐 줄 표시 | 바뀐 줄 표시는 이번 답에서 바꾼 할 일만 할 수 있어요. |
 | 6.3 모두 지워짐 | 보여 줄 바뀐 할 일이 없어요. |
 | 6.4 범위 | 하루는 2주 전부터 8주 뒤까지, 주는 2주 전부터 8주 뒤까지 보여 줄 수 있어요. |
 | 10.4 | 한 답에 화면 조각은 2개까지예요. |
@@ -716,3 +737,4 @@ web/app/src/ui/
 | 날짜 | 판 | 내용 | 누가 |
 |---|---|---|---|
 | 2026-10-24 | v1 | 첫 초안: Dahun 결정 G1~G7, 기본 부품 10개, 완성 카드 셋 추가, 조립 카드, 버튼 허용 목록, 두뇌 규칙, BE·앱 변경, 티켓 다섯 | 운영 앱 스레드 |
+| 2026-10-24 | v2 | 문서 리뷰 반영: `ui_result`의 `before` 꺼내기 표와 `undo_id` 조건(활동 하나·대상 하나), 앱 통로 `move_task` 확인(SP5 "늘 바로 적용" 바꿈), `todos_day`, 체크 줄 뜻은 카드마다, `activityIds` 읽기와 다시 연 대화의 확인 칸, `period_view` 규칙 하나와 서명, `outside` 이유 셋, `highlight_task_ids` 뜻 검사, 날짜 고르기 답에는 `ui_result` 없음, 날짜 고르기 대상 "시각 없는 열린 할 일", `send` 남는 위험, `registryNames()`, 도구 수는 상대 수로, 묶음 구분 유니언 두 단계, `UI_PARTS_PER_REPLY`, CSP 시험 이름 | 운영 앱 스레드 |
