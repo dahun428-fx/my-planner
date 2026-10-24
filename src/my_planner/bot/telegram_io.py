@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Literal, Protocol
 
 from telegram import (
@@ -19,27 +19,21 @@ from telegram.constants import ChatAction, ChatType
 from telegram.ext import Application, ContextTypes, TypeHandler
 
 from my_planner.bot.commands import (
-    HELP_TEXT,
-    NO_PLAN_REPLY,
-    NOT_PAUSED_REPLY,
-    PAUSE_USAGE,
-    PLAN_DONE_REPLY,
-    UNPAUSE_REPLY,
+    CommandDeps,
+    LocalTime,
     command_of,
-    pause_days,
-    pause_reply,
     plan_topic,
-    today_text,
-    week_text,
+    run_command,
 )
-from my_planner.clock import Clock, SystemClock, from_iso, to_iso
+from my_planner.clock import Clock, SystemClock
 from my_planner.config import Settings
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Inbound, Outbound, send_with_retry
 from my_planner.harness.redact import redact
-from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
+from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
+from my_planner.tools.actions import ActionRequest, ActionResult
 from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
@@ -48,6 +42,8 @@ Verdict = Literal["accept", "ignore", "duplicate", "non_text", "command", "callb
 
 # 버튼 누름 처리기: `functools.partial(bot.callbacks.handle_callback, owner_id=…, tools=…, …)`
 CallbackHandler = Callable[[CallbackQuery], Awaitable[str]]
+# 즉시 갈래(`Dispatcher.apply_action`): 상태를 바꾸는 명령(/pause /unpause /done)이 지난다. 없으면 바로 바꾼다(SP1 시험)
+ActionApplier = Callable[[ActionRequest], ActionResult]
 
 NON_TEXT_REPLY = "지금은 글로만 이야기할 수 있어요."
 NON_TEXT_MARK = "[글이 아닌 메시지]"
@@ -101,6 +97,7 @@ async def handle_update(
     callbacks: CallbackHandler | None = None,
     router: ConversationRouter | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    apply: ActionApplier | None = None,
 ) -> Verdict:
     """업데이트 하나를 판정하고 처리한다. 받은 글은 디스패처로 넘긴다. /today /week /help는 바로 답한다.
 
@@ -138,6 +135,7 @@ async def handle_update(
             await _answer_command(
                 msg.chat.id, msg.text, cmd, bot, tools, transcripts, clock, state,
                 lambda: state.mark_updates_done(done), router, sleep,
+                apply=apply,
             )
             return "command"
         _persist_and_submit(dispatcher, state, update.update_id, msg.text, msg.date, clock.now())
@@ -177,29 +175,16 @@ async def _answer_command(
     on_sent: Callable[[], None],
     router: ConversationRouter | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    *,
+    apply: ActionApplier | None = None,
 ) -> None:
-    """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다."""
+    """명령에 답하고, 보낸 뒤에 명령과 응답을 원문 기록(`[-]`)에 남긴다. 답은 앱과 같은 `run_command`가 만든다."""
     now = clock.now()
-    if cmd == "/help":
-        reply = HELP_TEXT
-    elif cmd == "/pause":
-        days = pause_days(text)
-        if days is None:
-            reply = PAUSE_USAGE
-        else:
-            until = now + timedelta(days=days)  # 지금부터 N×24시간(스펙 5.6)
-            state.set(PAUSE_UNTIL_KEY, to_iso(until))
-            reply = pause_reply(until, tools.tz)
-    elif cmd == "/unpause":
-        v = state.get(PAUSE_UNTIL_KEY)
-        state.set(PAUSE_UNTIL_KEY, None)
-        reply = UNPAUSE_REPLY if v and from_iso(v) > now else NOT_PAUSED_REPLY
-    elif cmd == "/done":
-        assert router is not None
-        reply = PLAN_DONE_REPLY if router.end_plan() else NO_PLAN_REPLY
-    else:
-        render = today_text if cmd == "/today" else week_text
-        reply = render(tools.tasks, now, tools.tz, tools.boundary)
+    deps = CommandDeps(
+        tasks=tools.tasks, conditions=tools.conditions, state=state, router=router, clock=clock,
+        settings=LocalTime(tools.tz, tools.boundary), apply=apply,
+    )
+    reply = run_command(cmd, text, deps, channel="telegram")
     for part in split_message(reply):
         if not await _send_text(bot, chat_id, part, sleep, None):
             return  # 처리 완료로 두지 않고 원문 기록도 남기지 않는다
@@ -352,6 +337,7 @@ def build_application(
     tools: Tools | None = None,
     callbacks: CallbackHandler | None = None,
     router: ConversationRouter | None = None,
+    apply: ActionApplier | None = None,
 ) -> Application:
     """롱폴링 앱. `bot`을 주면 Sender와 같은 봇을 쓴다(한 번만 초기화된다)."""
     builder = Application.builder()
@@ -376,6 +362,7 @@ def build_application(
             tools=tools,
             callbacks=callbacks,
             router=router,
+            apply=apply,
         )
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -139,3 +139,23 @@ async def test_read_endpoints_log_no_titles_bodies_or_ids(tmp_path):
     for secret in ("비밀 할 일 제목", "비밀 메모", "비밀 사용자 문장", "비밀 답장 문장", "SECRET-PERIOD", "SECRET-ID", "2026-10-01"):
         assert secret not in raw
     assert "/api/v1/conversations/{id}/messages" in routes and "/api/v1/checkins/{id}" in routes
+
+
+async def test_chat_logs_have_no_body_args_or_token(tmp_path):
+    """`POST /chat`: 시스템 로그에 메시지 본문, 도구 인자, 두뇌 답, 토큰이 없다(1장 완료 조건 3)."""
+    from fakes import FakeTurn
+
+    add = ("add_task", {"title": "꾸민제목-SECRET-ARG", "areas": ["health"], "planned_for": "2026-10-25"})
+    script = [FakeTurn([add], "꾸민답-SECRET-REPLY")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        setup_logging(env.settings.paths.state_dir, 30)
+        _, raw_stream = await env.chat("꾸민문장-SECRET-BODY", client_msg_id="cm-log")
+        await env.chat("꾸민문장-SECRET-BODY", client_msg_id="cm-log")  # 재생
+        await env.chat("/today")
+        raw = _raw(env.settings.paths.state_dir)
+        routes = [(e["method"], e["route"], e["status"]) for e in _entries(env.settings.paths.state_dir, "api_request")]
+
+    assert b"SECRET-REPLY" in raw_stream  # 스트림에는 있다
+    for secret in ("SECRET-BODY", "SECRET-ARG", "SECRET-REPLY", TEST_TOKEN, "cm-log"):
+        assert secret not in raw, secret
+    assert routes == [("POST", "/api/v1/chat", 200)] * 3

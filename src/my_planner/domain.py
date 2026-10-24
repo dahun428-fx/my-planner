@@ -92,3 +92,5 @@ class RunContext:
     risk: Risk = "low"  # `confirm`: 확인 토큰으로 적용한 변경(되돌릴 수 없다, 6.4.2)
     activity_ids: list[int] = field(default_factory=list)  # 이 묶음에서 생긴 활동 id
     undo_ids: list[int] = field(default_factory=list)  # 그 가운데 되돌릴 수 있는 것
+    # 앱 채팅의 조각 쓰개(`harness.stream.UiMessageWriter`, 6.4.1). 있으면 도구마다 `tool-*` 조각을 쓴다
+    stream: Any = None

@@ -7,7 +7,8 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server
 
-from my_planner.domain import RunContext
+from my_planner.domain import Channel, RunContext
+from my_planner.timefmt import to_api_times
 
 SERVER_NAME = "planner"
 
@@ -162,10 +163,42 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
 }
 
 
+def tool_names_for(channel: Channel) -> list[str]:
+    """그 통로 대화에 주는 도구(SP3-4 10장). 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 생긴다(티켓 09·13).
+
+    지금은 두 통로 모두 `TOOL_NAMES`다.
+    """
+    return list(TOOL_NAMES)
+
+
+def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """도구 하나를 부른다. `ctx.stream`(앱 채팅)이 있으면 입력 검증을 지난 뒤 `tool-input-available`을, 끝나면
+    `tool-output-available`(결과의 시각은 UTC로, 6.1) 또는 `tool-output-error`(도구 오류 문구)를 쓴다(6.4.1).
+
+    두뇌가 받는 결과는 그대로(현지 시각)다. 로그에는 아무것도 남기지 않는다.
+    """
+    w = ctx.stream
+    call_id = w.next_tool_call_id() if w is not None else None
+    if w is not None:
+        w.tool_input(call_id, name, args)
+    try:
+        result = getattr(tools, name)(ctx, **args)
+    except Exception:
+        if w is not None:
+            w.tool_error(call_id, "도구를 실행하지 못했어요.")
+        raise
+    if w is not None:
+        if "error" in result:
+            w.tool_error(call_id, str(result["error"]))
+        else:
+            w.tool_output(call_id, to_api_times(result))
+    return result
+
+
 def build_planner_tools(tools: Any, ctx: RunContext) -> list[SdkMcpTool[Any]]:
     """도구마다 `ctx`를 클로저로 감싼 SDK 도구 정의. 테스트는 `.handler`를 직접 await한다."""
     out: list[SdkMcpTool[Any]] = []
-    for name in TOOL_NAMES:
+    for name in tool_names_for(ctx.channel):
         description, schema = _SPECS[name]
         out.append(
             SdkMcpTool(name=name, description=description, input_schema=schema,
@@ -175,10 +208,10 @@ def build_planner_tools(tools: Any, ctx: RunContext) -> list[SdkMcpTool[Any]]:
 
 
 def _handler(tools: Any, ctx: RunContext, name: str) -> Any:
-    method = getattr(tools, name)
+    getattr(tools, name)  # 없는 도구는 서버를 만들 때 바로 알린다
 
     async def handler(args: dict[str, Any]) -> dict[str, Any]:
-        result = method(ctx, **args)
+        result = call_tool(tools, ctx, name, args)
         return {
             "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
             "is_error": "error" in result,

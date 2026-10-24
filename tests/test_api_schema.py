@@ -21,7 +21,7 @@ EXPECTED_MODELS = {
     "Error", "Health", "SafeModeHealth", "Todo", "TodoRef", "TodoRefs", "Today", "Week", "Conditions",
     "Priorities", "Drafts", "Curve", "Status", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "Messages",
     "UiCatalog", "SchemaBundle", "ActionRequestBody", "ActionApplied", "ActionNeedsConfirm", "ActionRejected",
-    "UndoRequestBody", "UndoResponse", "ActivityResponse",
+    "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
 }
 
 

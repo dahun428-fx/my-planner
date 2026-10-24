@@ -264,3 +264,29 @@ def test_error_counter_prunes_on_emit_without_snapshot():
     finally:
         lg.removeHandler(counter)
         lg.propagate = True
+
+
+async def test_daily_cap_shared_by_channels(tmp_path):
+    """하루 두뇌 호출 상한은 두 통로가 함께 쓴다(SP3-4 6.4.1)."""
+    from ui_stream import parse_sse
+
+    from my_planner.config import LimitsConfig
+    from my_planner.harness.dispatcher import DAILY_CAP_REPLY
+
+    script = [FakeTurn([], "텔레그램 답"), FakeTurn([], "앱 답")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=script,
+                           overrides={"limits": LimitsConfig(daily_brain_calls=2)}) as env:
+        await env.telegram("안녕")
+        _, first = await env.chat("앱에서 안녕")
+        _, capped = await env.chat("또 안녕")
+        await env.telegram("텔레그램도 또")
+        health = await (await env.get("/health")).json()
+        sent = [o.text for o in env.sender.sent]
+
+    def text(raw):
+        return "".join(c["delta"] for c in parse_sse(raw) if c["type"] == "text-delta")
+
+    assert text(first) == "앱 답"
+    assert text(capped) == DAILY_CAP_REPLY
+    assert sent == ["텔레그램 답", DAILY_CAP_REPLY]
+    assert health["brain"]["calls_today"] == 2

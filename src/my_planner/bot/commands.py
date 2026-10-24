@@ -1,16 +1,30 @@
-"""텔레그램 명령 /today /week /help /pause /unpause /plan /done (스펙 5.6). /plan 말고는 두뇌를 거치지 않고 하네스가 바로 답한다.
+"""명령 /today /week /help /pause /unpause /plan /done (스펙 5.6). /plan 말고는 두뇌를 거치지 않고 하네스가 바로 답한다.
 
 /today /week는 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
+
+텔레그램과 앱(`POST /chat`, SP3-4 6.4.1)이 같은 함수 `run_command`를 쓴다. 상태를 바꾸는 `/pause`, `/unpause`,
+`/done`은 즉시 갈래(`apply_action`의 내부 동작 `cmd_*`)로 처리하고, 앱 요청이면 그 자리에서 `api_idempotency`에
+답을 적는다(같은 `client_msg_id`가 다시 와도 다시 실행하지 않는다).
 """
 
 from __future__ import annotations
 
-from datetime import date, time, tzinfo
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date, time, timedelta, tzinfo
 from datetime import datetime as _datetime
+from typing import TYPE_CHECKING, Protocol
 
-from my_planner.clock import local
+from my_planner.clock import Clock, from_iso, local, to_iso
+from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.views import today_view, week_view
+
+if TYPE_CHECKING:
+    from my_planner.domain import Channel
+    from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.tools.actions import ActionRequest, ActionResult
 
 HELP_TEXT = (
     "쓸 수 있는 명령이에요.\n"
@@ -117,3 +131,104 @@ def week_text(tasks: TasksRepo, now: _datetime, tz: str | tzinfo, boundary: time
     if len(out) == 1:
         out.append("아직 비어 있어요. 하고 싶은 일을 말씀해 주세요.")
     return "\n\n".join(out)
+
+
+# --- 상태를 바꾸는 명령 (즉시 갈래의 내부 동작 `cmd_*`이 부른다) ---
+
+
+def cmd_pause(state: StateRepo, now: _datetime, text: str, tz: str | tzinfo) -> str:
+    days = pause_days(text)
+    if days is None:
+        return PAUSE_USAGE
+    until = now + timedelta(days=days)  # 지금부터 N×24시간(스펙 5.6)
+    state.set(PAUSE_UNTIL_KEY, to_iso(until))
+    return pause_reply(until, tz)
+
+
+def cmd_unpause(state: StateRepo, now: _datetime) -> str:
+    v = state.get(PAUSE_UNTIL_KEY)
+    state.set(PAUSE_UNTIL_KEY, None)
+    return UNPAUSE_REPLY if v and from_iso(v) > now else NOT_PAUSED_REPLY
+
+
+def cmd_done(router: ConversationRouter, channel: Channel) -> str:
+    return PLAN_DONE_REPLY if router.end_plan(channel) else NO_PLAN_REPLY
+
+
+# 상태를 바꾸는 명령 → 즉시 갈래의 내부 동작. 이 명령들은 즉시 갈래가 `api_idempotency`에 답을 적는다(6.4.1)
+STATEFUL_COMMANDS: dict[str, str] = {"/pause": "cmd_pause", "/unpause": "cmd_unpause", "/done": "cmd_done"}
+
+
+class TimeSettings(Protocol):
+    """명령이 쓰는 시간 설정(`config.Settings`가 이 모양이다)."""
+
+    @property
+    def timezone(self) -> str | tzinfo: ...
+
+    @property
+    def day_boundary(self) -> time: ...
+
+
+@dataclass(frozen=True)
+class LocalTime:
+    """`TimeSettings`의 단순한 구현(텔레그램 쪽은 `Tools`의 값으로 만든다)."""
+
+    timezone: str | tzinfo
+    day_boundary: time
+
+
+@dataclass
+class CommandDeps:
+    """명령 하나에 필요한 것. `apply`는 즉시 갈래(`Dispatcher.apply_action`). 없으면 같은 함수를 바로 부른다(SP1 시험)."""
+
+    tasks: TasksRepo
+    conditions: ConditionsRepo | None
+    state: StateRepo
+    router: ConversationRouter | None
+    clock: Clock
+    settings: TimeSettings
+    apply: Callable[[ActionRequest], ActionResult] | None = None
+
+
+def _tz(deps: CommandDeps) -> str | tzinfo:
+    return deps.settings.timezone
+
+
+def _boundary(deps: CommandDeps) -> time:
+    return deps.settings.day_boundary
+
+
+def run_command(
+    cmd: str, text: str, deps: CommandDeps, *, channel: Channel, client_msg_id: str | None = None
+) -> str:
+    """명령의 답 글. `/plan`은 두뇌 갈래로 가므로 여기 오지 않는다.
+
+    상태를 바꾸는 명령은 `deps.apply`(즉시 갈래)로: 앱 요청이면 `client_msg_id`로 답을 저장하고, 같은 값이 다시 오면
+    저장한 답을 돌려준다.
+    """
+    now = deps.clock.now()
+    if cmd == "/help":
+        return HELP_TEXT
+    if cmd in ("/today", "/week"):
+        render = today_text if cmd == "/today" else week_text
+        return render(deps.tasks, now, _tz(deps), _boundary(deps))
+    action = STATEFUL_COMMANDS.get(cmd)
+    if action is None:
+        raise ValueError(f"unknown command: {cmd}")
+    if deps.apply is None:
+        if cmd == "/pause":
+            return cmd_pause(deps.state, now, text, _tz(deps))
+        if cmd == "/unpause":
+            return cmd_unpause(deps.state, now)
+        assert deps.router is not None
+        return cmd_done(deps.router, channel)
+    from my_planner.tools.actions import ActionRequest
+
+    args = {"text": text} if cmd == "/pause" else {}
+    res = deps.apply(
+        ActionRequest(action, args, actor="user", channel=channel, client_msg_id=client_msg_id, endpoint="chat")
+    )
+    reply = res.body.get("reply_text")
+    if not isinstance(reply, str):
+        raise RuntimeError(f"command action failed: {res.status}")  # noqa: TRY004 - 동작 결과 오류다
+    return reply

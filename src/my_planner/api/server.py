@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 import time
@@ -20,6 +21,7 @@ from aiohttp import web
 
 from my_planner.api.actions import get_activity, post_actions, post_undo
 from my_planner.api.auth import AuthLimiter, bearer_ok
+from my_planner.api.chat import post_chat
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
@@ -66,6 +68,7 @@ class ApiDeps:
     started_at: datetime
     transcripts: TranscriptStore | None = None
     safe_mode: bool = False
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep  # `/chat`의 15초 `: ping`(시험이 바꾼다)
 
 
 DEPS_KEY = web.AppKey("deps", ApiDeps)
@@ -190,6 +193,7 @@ def write_handler(view: Callable[[web.Request, ApiDeps], Awaitable[web.StreamRes
 
 
 WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]], ...] = (
+    ("/chat", post_chat),
     ("/actions", post_actions),
     ("/activity/{id}/undo", post_undo),
 )

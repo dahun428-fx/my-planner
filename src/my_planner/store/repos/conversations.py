@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from my_planner.clock import Clock, from_iso, to_iso
-from my_planner.domain import ConversationKind
+from my_planner.domain import Channel, ConversationKind
 from my_planner.store.db import transaction
 
 
@@ -46,14 +46,15 @@ class ConversationsRepo:
         self.clock = clock
 
     def open(
-        self, kind: ConversationKind | str, logical_date: date, run_id: int | None = None
+        self, kind: ConversationKind | str, logical_date: date, run_id: int | None = None, *,
+        channel: Channel = "telegram",
     ) -> Conversation:
         now = to_iso(self.clock.now())
         with transaction(self.conn):
             cur = self.conn.execute(
-                "INSERT INTO conversations (kind, run_id, logical_date, opened_at, last_message_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (ConversationKind(kind).value, run_id, logical_date.isoformat(), now, now),
+                "INSERT INTO conversations (kind, run_id, logical_date, opened_at, last_message_at, channel) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (ConversationKind(kind).value, run_id, logical_date.isoformat(), now, now, channel),
             )
         conv = self.get(cur.lastrowid)
         assert conv is not None
@@ -92,11 +93,12 @@ class ConversationsRepo:
         ).fetchone()
         return _row(r) if r is not None else None
 
-    def latest_open(self, kind: ConversationKind | str) -> Conversation | None:
+    def latest_open(self, kind: ConversationKind | str, channel: Channel = "telegram") -> Conversation | None:
+        """그 통로의 열린 대화 가운데 마지막 메시지가 가장 최근인 것(SP3-4 7.1: 통로마다 따로)."""
         r = self.conn.execute(
-            "SELECT * FROM conversations WHERE kind = ? AND closed_at IS NULL "
+            "SELECT * FROM conversations WHERE kind = ? AND channel = ? AND closed_at IS NULL "
             "ORDER BY last_message_at DESC, id DESC LIMIT 1",
-            (ConversationKind(kind).value,),
+            (ConversationKind(kind).value, channel),
         ).fetchone()
         return _row(r) if r is not None else None
 

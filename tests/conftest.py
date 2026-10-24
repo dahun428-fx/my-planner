@@ -4,6 +4,18 @@ from my_planner.store.db import migrate, open_db
 from my_planner.store.repos.state import StateRepo
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update-app-golden", action="store_true", default=False,
+        help="tests/fixtures/app_golden/의 운영 앱 기준 응답을 지금 스트림으로 다시 쓴다(SP3-4 16장)",
+    )
+
+
+@pytest.fixture
+def update_app_golden(request):
+    return request.config.getoption("--update-app-golden")
+
+
 @pytest.fixture
 def conn(tmp_path):
     c = open_db(tmp_path / "state" / "planner.db")

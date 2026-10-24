@@ -87,6 +87,11 @@ class ActivityRepo:
         ).fetchall()
         return [r["target"] for r in rows]
 
+    def by_inbound(self, inbound_id: int) -> list[Activity]:
+        """그 사용자 메시지(`inbound_id`) 처리에서 생긴 활동, id 순(`POST /chat` 재생, 6.4.1)."""
+        rows = self.conn.execute("SELECT * FROM activity WHERE inbound_id = ? ORDER BY id", (inbound_id,)).fetchall()
+        return [_activity(r) for r in rows]
+
     def get(self, id: int) -> Activity | None:
         r = self.conn.execute("SELECT * FROM activity WHERE id = ?", (id,)).fetchone()
         return _activity(r) if r is not None else None

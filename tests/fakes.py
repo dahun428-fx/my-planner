@@ -14,6 +14,7 @@ from my_planner.config import PathsConfig, Settings
 from my_planner.domain import RunContext
 from my_planner.harness.brain import BrainResult
 from my_planner.harness.dispatcher import Outbound
+from my_planner.tools.mcp_adapter import call_tool
 
 
 @dataclass
@@ -29,6 +30,7 @@ class FakeTurn:
     resume_failed: bool = False
     delay: float = 0.0  # 이 초만큼 걸린 것처럼 한다(FakeClock이 그만큼 움직일 때까지 기다린다)
     hang: bool = False  # 도구를 부른 뒤 영영 돌아오지 않는다(두뇌 호출 시간 상한 시험)
+    gate: asyncio.Event | None = None  # 도구를 부른 뒤 이 이벤트가 설 때까지 기다린다(처리 중 시험)
 
 
 class FakeBrain:
@@ -54,9 +56,14 @@ class FakeBrain:
         for name, args in turn.tool_calls:
             if self.tools is None:
                 raise AssertionError(f"FakeBrain: 도구 {name}를 부를 tools가 없다")
+            if run_ctx.stream is not None:  # 앱 채팅: MCP 처리기와 같은 길(도구 조각, SP3-4 6.4.1)
+                call_tool(self.tools, run_ctx, name, args)
+                continue
             out = getattr(self.tools, name)(run_ctx, **args)
             if inspect.isawaitable(out):
                 await out
+        if turn.gate is not None:
+            await turn.gate.wait()
         if turn.hang:
             await asyncio.Event().wait()
         if turn.delay:
@@ -127,3 +134,54 @@ class RepoApplier:
         assert req.action == "expire_drafts" and (req.actor, req.channel) == ("secretary", "scheduler")
         ids = self.tasks.expire_drafts(req.args["older_than"])
         return ActionResult("applied", 200, {"status": "applied", "result": {"expired_ids": ids}})
+
+
+class ListSink:
+    """조각을 목록에 모으는 시험용 `StreamSink`(HTTP 없이 스트림 형식을 본다, SP3-4 16장)."""
+
+    def __init__(self) -> None:
+        self.chunks: list[dict[str, Any]] = []
+        self.pings = 0
+        self.closed = False
+        self.disconnected = False
+
+    def emit(self, chunk: dict[str, Any]) -> None:
+        self.chunks.append(chunk)
+
+    def ping(self) -> None:
+        self.pings += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+    @property
+    def types(self) -> list[str]:
+        return [c["type"] for c in self.chunks]
+
+    @property
+    def text(self) -> str:
+        return "".join(c["delta"] for c in self.chunks if c["type"] == "text-delta")
+
+
+class ManualSleep:
+    """부를 때마다 멈춰 있다가 `fire()`로 깨운다(`/chat`의 15초 `: ping` 시험). 받은 초를 적는다."""
+
+    def __init__(self) -> None:
+        self.seconds: list[float] = []
+        self._waiting: list[asyncio.Future[None]] = []
+
+    async def __call__(self, seconds: float) -> None:
+        self.seconds.append(seconds)
+        f: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._waiting.append(f)
+        await f
+
+    @property
+    def pending(self) -> int:
+        return sum(1 for f in self._waiting if not f.done())
+
+    def fire(self) -> None:
+        for f in self._waiting:
+            if not f.done():
+                f.set_result(None)
+        self._waiting.clear()
