@@ -1,4 +1,4 @@
-"""읽기 경로 (SP3-4 스펙 6.3.2~6.3.4, 6.3.7, 6.3.8, 6.4.5~6.4.7, 6.4 `/schema`).
+"""읽기 경로 (SP3-4 스펙 6.3.2~6.3.4, 6.3.7, 6.3.8, 6.4.5~6.4.7, 6.4 `/schema`, SP7 5.5 습관).
 
 모든 처리기는 읽기 전용 연결(`deps.read_conn()`) 하나만 받는다(스펙 4.3). 응답은 `to_api_times`로 UTC `Z`로 바꾼 뒤
 모델로 검증한다. 오류 문구에는 쿼리 값, 경로 값, 본문을 넣지 않는다.
@@ -21,6 +21,8 @@ from my_planner.api.models import (
     Conversations,
     Curve,
     Drafts,
+    HabitHistory,
+    HabitsList,
     Messages,
     Priorities,
     SchemaBundle,
@@ -42,6 +44,7 @@ from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -50,6 +53,8 @@ from my_planner.store.views import (
     conditions_view,
     draft_expiry,
     draft_live,
+    habit_history,
+    habits_view,
     today_view,
     todo_dict,
     todo_refs,
@@ -63,6 +68,10 @@ if TYPE_CHECKING:
 MAX_CONDITION_DAYS = 366
 DEFAULT_CONDITION_DAYS = 30
 CONVERSATIONS_DEFAULT_LIMIT, CONVERSATIONS_MAX_LIMIT = 20, 200
+HABIT_WEEKS_DEFAULT, HABIT_WEEKS_MAX = 4, 12  # `GET /habits/{id}?weeks=` (SP7 5.5)
+HABIT_STATUS_FILTERS: dict[str, tuple[str, ...]] = {
+    "active": ("active",), "paused": ("paused",), "archived": ("archived",), "all": ("active", "paused", "archived"),
+}
 
 # `priorities.period` 형식 (SP1 5.5, `clock.period_of`)
 _PERIOD_PATTERNS = {
@@ -133,6 +142,8 @@ def get_today(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
         ],
         "checkins": checkins,
         "cards": today_cards(CardsRepo(conn, deps.clock), tasks, view.date),
+        # 활성 습관, `sort_order` 순(SP7 5.5). 없으면 []
+        "habits": habits_view(HabitsRepo(conn, deps.clock), view.date, ("active",))["items"],
     }
     return dump(Today, body)
 
@@ -242,6 +253,34 @@ def get_conditions(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request
     if (to - from_).days + 1 > MAX_CONDITION_DAYS:
         raise _bad(f"기간은 {MAX_CONDITION_DAYS}일 이하여야 해요.")
     return dump(Conditions, conditions_view(ConditionsRepo(conn, deps.clock), from_, to))
+
+
+# --- 습관 (SP7 5.5) ---
+
+
+def get_habits(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """`date` 기본은 오늘, `status` 기본은 `active`(`all`은 세 상태 모두). 소프트 삭제한 습관은 없다."""
+    d = _query_date(request, "date") or _today(deps)
+    status = request.query.get("status", "active")
+    if status not in HABIT_STATUS_FILTERS:
+        raise _bad("status는 active, paused, archived, all 중 하나여야 해요.")
+    return dump(HabitsList, habits_view(HabitsRepo(conn, deps.clock), d, HABIT_STATUS_FILTERS[status]))
+
+
+def get_habit(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """`weeks`는 1~12(기본 4). 없는·소프트 삭제한 습관은 404(규칙 H3), 그만둔 습관은 기록을 준다."""
+    habit_id = _path_id(request)
+    raw = request.query.get("weeks")
+    weeks = HABIT_WEEKS_DEFAULT
+    if raw is not None:
+        if not _INT.match(raw) or not 1 <= int(raw) <= HABIT_WEEKS_MAX:
+            raise _bad(f"weeks는 1~{HABIT_WEEKS_MAX} 사이 정수여야 해요.")
+        weeks = int(raw)
+    habits = HabitsRepo(conn, deps.clock)
+    h = habits.get(habit_id)
+    if h is None:
+        raise ApiError(404, "not_found", "없는 습관이에요.")
+    return dump(HabitHistory, habit_history(habits, h, _today(deps), weeks))
 
 
 # --- 인생 곡선, 상태창 ---

@@ -66,6 +66,7 @@ from my_planner.tools.activity import (
     SUPERSEDED,
     UNDO_HANDLERS,
     UNDO_KIND,
+    habit_target,
     live_targets,
     priorities_target,
     record_activity,
@@ -75,6 +76,7 @@ from my_planner.tools.activity import (
 )
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
+    confirm_habit_archive_summary,
     period_label,
     render_confirmations,
     rest_days_summary,
@@ -216,6 +218,24 @@ def priorities_need_confirm(tools: Tools, args: dict[str, Any], today: date) -> 
         return None
     label = period_label(cadence, period, period_of(Cadence(cadence), today))
     return f"{label} 우선순위 {len(current)}개를 바꿔요"
+
+
+def habit_archive_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
+    """앱의 그만두기(`set_habit_status(archived)`, SP7 5.5): 실수로 누른 그만두기를 막는다. 앱 통로만 보는 판정은
+    `_decide`가 한다. 없는 습관이나 이미 그만둔 습관이면 묻지 않는다(도구가 거절하거나 `already`)."""
+    if args.get("status") != "archived" or tools.habits is None:
+        return None
+    i = _int(args.get("id"))
+    h = tools.habits.get(i) if i is not None else None
+    if h is None or h.status == "archived":
+        return None
+    return confirm_habit_archive_summary(h.title)
+
+
+def _habit_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """습관 하나(`habit:<id>`). 토큰 뒤에 그 습관을 고치거나 상태를 바꾸면 `stale`이다. 체크(`habit:<id>:<날짜>`)는 막지 않는다."""
+    i = _int(args.get("id"))
+    return [habit_target(i)] if i is not None else []
 
 
 def _task_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
@@ -456,6 +476,14 @@ ACTIONS: dict[str, ActionSpec] = {
     "pin_card": ActionSpec("pin_card"),
     "unpin_card": ActionSpec("unpin_card"),
     "reorder_cards": ActionSpec("reorder_cards"),
+    # 습관(SP7 5.5). 위험은 모두 low, 앱의 그만두기만 확인. 체크·취소는 stale 대상이 필요 없다(확인이 없다)
+    "add_habit": ActionSpec("add_habit"),
+    "update_habit": ActionSpec("update_habit", target=_habit_target),
+    "set_habit_status": ActionSpec(
+        "set_habit_status", needs_confirm=habit_archive_needs_confirm, target=_habit_target
+    ),
+    "check_habit": ActionSpec("check_habit"),
+    "uncheck_habit": ActionSpec("uncheck_habit"),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
