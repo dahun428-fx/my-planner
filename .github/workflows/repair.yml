@@ -1,0 +1,278 @@
+name: repair
+
+# 장애 이슈 자동 수리 (SP6 스펙 4.3). 판단은 .github/scripts/*.py, YAML은 얇게.
+# 수리는 핫픽스다: main에서 따고 main으로 머지한다(배포 흐름 스펙 7장). sync-develop.yml이 develop에 합친다.
+# 쓰기는 모두 REPAIR_PAT(스펙 4.2): GITHUB_TOKEN으로 만든 PR·라벨은 ci·repair를 깨우지 않는다.
+
+run-name: "repair #${{ github.event.issue.number || inputs.issue }}"  # sweep이 이 제목으로 실행과 이슈를 잇는다
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "장애 이슈 번호"
+        required: true
+        type: string
+      mode:
+        description: "full = 고치기부터, merge_only = 죽은 시도의 초록 PR 머지만"
+        type: choice
+        options: [full, merge_only]
+        default: full
+
+permissions: {}
+
+# 이슈마다 한 줄. 수리를 부르지 않는 라벨(be, failed-N, repairing …)의 실행은 따로 묶어,
+# "같은 그룹 대기는 하나만" 규칙 때문에 진짜 대기 실행을 밀어내지 않게 한다.
+concurrency:
+  group: >-
+    ${{ (github.event_name == 'workflow_dispatch'
+    || contains(fromJSON('["incident","rolled-back","recurred"]'), github.event.label.name))
+    && format('repair-{0}', github.event.issue.number || inputs.issue)
+    || format('repair-noop-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || contains(fromJSON('["incident","rolled-back","recurred"]'), github.event.label.name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      decision: ${{ steps.gate.outputs.decision }}
+      issue: ${{ steps.gate.outputs.issue }}
+      attempt: ${{ steps.gate.outputs.attempt }}
+      retry: ${{ steps.gate.outputs.retry }}
+      part: ${{ steps.gate.outputs.part }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Gate
+        id: gate
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OWNER_TELEGRAM_ID: ${{ secrets.OWNER_TELEGRAM_ID }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          MODE: ${{ inputs.mode || 'full' }}
+          AUTO_REPAIR: ${{ vars.AUTO_REPAIR }}
+          REPAIR_MAX_FAILURES: ${{ vars.REPAIR_MAX_FAILURES }}
+          REPAIR_MAX_MERGES_PER_DAY: ${{ vars.REPAIR_MAX_MERGES_PER_DAY }}
+        run: python .github/scripts/repair_gate.py
+
+  fix:
+    needs: gate
+    if: needs.gate.outputs.decision == 'go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.REPAIR_PAT }}  # Claude가 수리 브랜치를 이 신원으로 푸시한다
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: |
+          pip install -r requirements.lock
+          pip install -e ".[dev]" --no-deps
+      - name: Prompt
+        id: prompt
+        env:
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          ATTEMPT: ${{ needs.gate.outputs.attempt }}
+          RETRY: ${{ needs.gate.outputs.retry }}
+          PART: ${{ needs.gate.outputs.part }}
+        run: |
+          set -euo pipefail
+          eof="EOF_$(openssl rand -hex 8)"
+          {
+            echo "text<<$eof"
+            cat .github/repair-prompt.md
+            echo
+            echo "## 이번 실행"
+            echo "- 모드: fix"
+            echo "- 이슈: #$ISSUE"
+            echo "- 브랜치: auto-repair/$ISSUE-$ATTEMPT"
+            echo "- 재시도(rolled-back/recurred): $RETRY"
+            echo "- 조각: ${PART:-없음}"
+            echo "$eof"
+          } >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.REPAIR_PAT }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.REPAIR_PAT }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: --max-turns 60 --allowedTools "Bash,Edit,MultiEdit,Write,Read,Glob,Grep,Task,TodoWrite"
+
+  merge:
+    needs: [gate, fix]
+    # fix가 실패해도 돈다: PR이 없으면 no_pr로 실패를 센다. 취소면 sweep이 죽은 시도를 정리한다
+    if: >-
+      !cancelled()
+      && (needs.gate.outputs.decision == 'go' || needs.gate.outputs.decision == 'merge_only')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    concurrency:
+      group: repair-merge
+      cancel-in-progress: false
+    outputs:
+      result: ${{ steps.merge.outputs.result }}
+      pr: ${{ steps.merge.outputs.pr }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Wait for ci and merge
+        id: merge
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+        run: python .github/scripts/repair_merge.py merge --issue "$ISSUE"
+
+  # CI가 실패하면 같은 시도 안에서 Claude를 한 번 더(새 workflow_dispatch가 아니다, 계획의 결정 4)
+  refix:
+    needs: [gate, merge]
+    if: >-
+      !cancelled()
+      && needs.gate.outputs.decision == 'go'
+      && needs.merge.outputs.result == 'ci_failed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.REPAIR_PAT }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: |
+          pip install -r requirements.lock
+          pip install -e ".[dev]" --no-deps
+      - name: Prompt
+        id: prompt
+        env:
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          ATTEMPT: ${{ needs.gate.outputs.attempt }}
+          PR: ${{ needs.merge.outputs.pr }}
+        run: |
+          set -euo pipefail
+          eof="EOF_$(openssl rand -hex 8)"
+          {
+            echo "text<<$eof"
+            cat .github/repair-prompt.md
+            echo
+            echo "## 이번 실행"
+            echo "- 모드: ci_fix"
+            echo "- 이슈: #$ISSUE"
+            echo "- PR: #$PR"
+            echo "- 브랜치: auto-repair/$ISSUE-$ATTEMPT"
+            echo "$eof"
+          } >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.REPAIR_PAT }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.REPAIR_PAT }}
+          prompt: ${{ steps.prompt.outputs.text }}
+          claude_args: --max-turns 60 --allowedTools "Bash,Edit,MultiEdit,Write,Read,Glob,Grep,Task,TodoWrite"
+
+  remerge:
+    needs: [gate, merge, refix]
+    if: >-
+      !cancelled()
+      && needs.gate.outputs.decision == 'go'
+      && needs.merge.outputs.result == 'ci_failed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    concurrency:
+      group: repair-merge
+      cancel-in-progress: false
+    outputs:
+      result: ${{ steps.merge.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Wait for ci and merge
+        id: merge
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+        run: python .github/scripts/repair_merge.py merge --issue "$ISSUE"
+
+  # 머지도 시간 초과도 아니면(CI 두 번 실패, PR 없음, 단계 실패) failed-N +1, repairing 떼기, PR 닫기
+  settle:
+    needs: [gate, fix, merge, refix, remerge]
+    if: >-
+      !cancelled()
+      && (needs.gate.outputs.decision == 'go' || needs.gate.outputs.decision == 'merge_only')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Settle
+        env:
+          REPAIR_PAT: ${{ secrets.REPAIR_PAT }}
+          ISSUE: ${{ needs.gate.outputs.issue }}
+          FIRST: ${{ needs.merge.outputs.result }}
+          SECOND: ${{ needs.remerge.outputs.result }}
+        run: |
+          result="$FIRST"
+          if [ "$FIRST" = "ci_failed" ]; then result="$SECOND"; fi
+          python .github/scripts/repair_merge.py settle --issue "$ISSUE" --result "${result:-error}"

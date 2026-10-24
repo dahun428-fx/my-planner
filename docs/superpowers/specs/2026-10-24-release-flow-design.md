@@ -133,7 +133,7 @@ post_commit_status = true     # staging/be 올림
 
 - `GITHUB_TOKEN`으로는 승격할 수 없다: `.github/workflows/*`를 바꾼 커밋으로 ref를 옮기려면 Workflows 권한이 필요한데 `GITHUB_TOKEN`은 받을 수 없다. 그래서 `RELEASE_PAT`을 쓴다. PAT 푸시는 `main` push 워크플로(ci, Vercel)를 정상으로 깨운다.
 - 노트북에는 `main` 쓰기 권한을 주지 않는다(ADR 0010). 개발용 PAT의 상태 쓰기로 Vercel 컨텍스트를 위조하는 것을 막으려고, 승격 검사는 Vercel 상태를 만든 계정이 `vercel[bot]`인지 확인한다. `staging/be`의 만든 계정 검사(`DEV_STATUS_LOGIN`)는 **사실상 구별력이 없다**: fine-grained PAT은 만든 사람(Dahun) 계정으로 동작하고, `RELEASE_PAT`과 Claude 스레드도 같은 계정이다. 그래서 `staging/be`는 "Dahun 계정이 올렸다"까지만 보장한다. 1인 저장소에서 받아들이고, 필요해지면 상태 전용 GitHub App으로 바꾼다.
-- 만료 알림: `RELEASE_PAT`과 개발용 PAT의 만료일을 저장소 변수(`RELEASE_PAT_EXPIRES`, `DEV_PAT_EXPIRES`)로 두고 SP6 `heartbeat.yml`이 함께 알린다.
+- 만료 알림: `RELEASE_PAT`과 개발용 PAT의 만료일을 저장소 변수(`RELEASE_PAT_EXPIRES`, `DEV_PAT_EXPIRES`)로 두고 SP6 `watch.yml`이 함께 알린다.
 
 ### 5.5 CI (`.github/workflows/ci.yml`)
 
@@ -216,7 +216,7 @@ D1이 없으면 승격이 돌지 않는다(첫 승격부터 워크플로 파일�
 3. `develop`을 그 `main`에서 만든다. 저장소 변수 `REQUIRE_STAGING_BE=false`.
 4. 코디네이터가 모든 스레드에 공지: 기능 PR은 `base: develop`을 명시, 브랜치는 `origin/develop`에서 딴다, 열려 있는 `main` 대상 기능 PR은 대상을 `develop`으로 바꾸고 `develop`에 다시 얹는다.
 5. D1 뒤 첫 develop 머지로 승격이 한 번 도는지 확인.
-6. SP6 후속 티켓: medic `config.medic.local.toml`·깊은 병합·새 필드(5.3), `staging/be` 올리기, `repair.yml` `ref`/base 명시, `heartbeat.yml` PAT 만료 알림 추가. 들어오면 D4, `REQUIRE_STAGING_BE=true`, 임시 트리거 삭제.
+6. SP6 후속 티켓: medic `config.medic.local.toml`·깊은 병합·새 필드(5.3), `staging/be` 올리기, `repair.yml` `ref`/base 명시, `watch.yml` PAT 만료 알림 추가(SP6 티켓 10에서 들어감). 들어오면 D4, `REQUIRE_STAGING_BE=true`, 임시 트리거 삭제.
 7. D5: 노트북 개발용 BE 설치.
 
 ## 10. 테스트

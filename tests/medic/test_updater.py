@@ -515,6 +515,19 @@ def test_verify_fails_on_new_fingerprint_but_not_old_one(tmp_path: Path) -> None
 # --- 7단계: 배포 롤백 -------------------------------------------------------
 
 
+def test_second_rollback_relabels_rolled_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """지난 시도의 `rolled-back`이 남아 있으면 떼고 다시 단다. 그래야 `labeled`가 와서 repair.yml이 곧바로 돈다."""
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17, labels=("incident", "be", "rolled-back", "merged", "failed-1"))
+    monkeypatch.setattr(updater_mod.dbfile, "restore", lambda *a: None)
+    deployed(env)
+    env.signal("be:New y.py:g")
+    env.tick(5)
+    assert len(env.http.calls("DELETE", f"/repos/{REPO}/issues/17/labels/rolled-back")) == 1
+    labels = env.server.labels(17)
+    assert "rolled-back" in labels and "failed-2" in labels and "merged" not in labels
+
+
 def test_rollback_code_only_when_schema_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env = make_env(tmp_path, repairs=[17])
     env.incident(FP, issue=17, labels=("incident", "be", "merged", "failed-1"))

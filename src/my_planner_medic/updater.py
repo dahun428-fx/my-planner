@@ -795,6 +795,9 @@ class Updater:
                 self._store.kv_json_set(ISSUE_OPS, ops)  # 다시 해도 같은 N
             failed = int(op["failed"])
             self._gh.remove_label(n, "merged")
+            # 지난 시도의 `rolled-back`이 남아 있으면 다시 달아도 `labeled`가 안 온다(repair.yml이 sweep까지 기다림)
+            if f"failed-{failed}" not in self._gh.issue_labels(n):
+                self._gh.remove_label(n, "rolled-back")
             self._gh.add_labels(n, ["rolled-back", f"failed-{failed}"])  # 한 번에: repair 게이트가 N을 본다
             fp = op.get("fp")
             inc = self._store.get(fp) if isinstance(fp, str) else None

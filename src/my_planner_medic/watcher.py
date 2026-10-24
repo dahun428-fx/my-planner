@@ -46,7 +46,7 @@ RECUR_WINDOW = timedelta(hours=24)
 IMPORT_EVERY = timedelta(minutes=30)
 ROWS_KEEP = 20
 ROWS_WINDOW = timedelta(minutes=30)
-ACTIONS_TZ = "Asia/Seoul"  # heartbeat.yml의 "오늘"(스펙 3.5)
+ACTIONS_TZ = "Asia/Seoul"  # watch.yml의 "오늘"(스펙 3.5)
 ACTIVE_STATES = ("open", "repairing", "merged", "deploying", "gave_up")
 CI_MAIN = "ci:main"
 FIXED_COMMENT = "고쳤어요: `main`의 CI가 다시 성공했어요 ({sha})."
@@ -291,6 +291,11 @@ class Watcher:
                 n = self._gh.open_incident(inc.fingerprint, part, self._body(inc, health, sha))
             self._synced(inc, now, n)
         elif inc.detail.get("reopen"):
+            if not record:
+                # 닫힌 수리 이슈의 `merged`가 남으면 repair 게이트·sweep이 건너뛴다. 지난 `recurred`는 떼고 다시 달아야
+                # `labeled` 이벤트가 다시 온다(webverify와 같은 방법)
+                self._gh.remove_label(inc.issue_number, "merged")
+                self._gh.remove_label(inc.issue_number, "recurred")
             self._gh.reopen(inc.issue_number, [] if record else ["recurred"])
             self._gh.update_body(inc.issue_number, self._body(inc, health, sha))
             self._synced(inc, now, inc.issue_number)
