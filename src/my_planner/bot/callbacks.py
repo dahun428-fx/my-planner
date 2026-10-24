@@ -43,7 +43,8 @@ MarkAnswered = Callable[[int, Channel], object]  # `Dispatcher.mark_answered(run
 
 STALE_REPLY = "이미 정리된 할 일이에요."
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-_CONFIRM = re.compile(r"k:(?P<op>[ax]):(?P<token>ct_[A-Za-z0-9_-]{1,60})")
+# 토큰은 `ct_` + `secrets.token_urlsafe(16)`(22자): 콜백 데이터 29바이트(64바이트 이하)
+_CONFIRM = re.compile(r"k:(?P<op>[ax]):(?P<token>ct_[A-Za-z0-9_-]{22})")
 
 
 def _parse(data: str | None) -> tuple[str, int] | None:

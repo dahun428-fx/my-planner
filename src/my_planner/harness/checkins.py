@@ -206,6 +206,7 @@ def checkin_summaries(
 def checkin_detail(
     run_id: int, *, runs: RunsRepo, convs: ConversationsRepo, deliveries: DeliveriesRepo, tasks: TasksRepo,
     conditions: ConditionsRepo, now: datetime, settings: Settings, confirms: ConfirmsRepo | None = None,
+    activity: ActivityRepo | None = None,
 ) -> dict[str, Any] | None:
     """`GET /checkins/{id}` (6.4.5): 요약에 `text`와 `cards`를 더한다. 답할 회차가 아니면 None."""
     run = runs.get(run_id)
@@ -215,19 +216,20 @@ def checkin_detail(
     body["text"] = run.outbound_text or ""
     body["cards"] = checkin_cards(
         run, _merged(run, runs), tasks=tasks, conditions=conditions, runs=runs, settings=settings, now=now,
-        confirms=confirms,
+        confirms=confirms, activity=activity,
     )
     return body
 
 
 def checkin_cards(
     run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo,
-    settings: Settings, now: datetime, confirms: ConfirmsRepo | None = None,
+    settings: Settings, now: datetime, confirms: ConfirmsRepo | None = None, activity: ActivityRepo | None = None,
 ) -> list[dict[str, Any]]:
     """텔레그램 버튼 재료는 저장되지 않으므로 읽을 때마다 DB에서 다시 만든다(6.4.5 표). 순서는 텔레그램 버튼 줄과 같다.
 
     - `ui_todo_draft`(`h_draft_<run_id>`): 그 회차(합친 회차 포함)가 제안해 아직 `draft`인 할 일. 없으면 카드도 없다.
     - `ui_confirm`(`h_confirm_<run_id>_<n>`, 10.1 A5): 그 회차의 열린 확인 토큰(`resolved_at IS NULL`, 만료 전)마다.
+      토큰 뒤에 대상이 바뀐 토큰(누르면 `stale`)은 카드를 빼고 토큰은 열린 채 둔다(읽기만 한다. 누를 때 닫힌다).
       `n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가
       바뀌지 않는다. 회차 차례에서만 생기므로 `/chat` 스트림에는 없다. `props.args`는 `/actions`에 그대로 보낸다.
     - `ui_condition_picker`(`h_cond_<run_id>`): `ask_condition_for`가 고른 날짜. 그 날짜의 컨디션이 있으면 카드가 없다.
@@ -249,8 +251,14 @@ def checkin_cards(
                 "data": {"todos": todo_refs(ids, tasks, today)},
             }
         )
+    # 순환 가져오기를 피해 함수 안에서
+    from my_planner.tools.actions import confirm_targets
+
     for n, p in enumerate(confirms.for_run(run.id) if confirms is not None else [], start=1):
-        if p.open_at(now):
+        stale = activity is not None and any(
+            activity.changed_after(t, p.created_at) for t in confirm_targets(tasks, p.action, p.args)
+        )
+        if p.open_at(now) and not stale:
             cards.append({
                 "toolCallId": f"h_confirm_{run.id}_{n}",
                 "component": "ui_confirm",

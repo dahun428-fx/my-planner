@@ -16,7 +16,7 @@ import re
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, tzinfo
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
@@ -43,6 +43,10 @@ from my_planner.tools.activity import (
 from my_planner.tools.confirmations import (
     card_label,
     condition_summary,
+    confirm_button_drop,
+    confirm_button_move,
+    confirm_button_priorities,
+    confirm_button_schedule,
     confirm_drop_summary,
     confirm_move_summary,
     confirm_priorities_summary,
@@ -54,6 +58,9 @@ from my_planner.tools.confirmations import (
     titles_summary,
 )
 from my_planner.tools.ui import BRAIN_COMPONENTS, validate_props
+
+if TYPE_CHECKING:
+    from my_planner.store.repos.activity import ConfirmsRepo
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +112,7 @@ class Tools:
         conditions: Any = None,
         activity: Any = None,
         cards: CardsRepo | None = None,
-        confirms: Any = None,
+        confirms: ConfirmsRepo | None = None,
         reply_until: Callable[[int], datetime] | None = None,
     ) -> None:
         self.tasks = tasks
@@ -244,12 +251,15 @@ class Tools:
         """회차 차례이고 확인 토큰을 둘 곳이 있다(A1·A2)."""
         return ctx.run_turn and self.confirms is not None
 
-    def _request_confirm(self, ctx: RunContext, action: str, args: dict[str, Any], summary: str) -> dict[str, Any]:
+    def _request_confirm(
+        self, ctx: RunContext, action: str, args: dict[str, Any], summary: str, button: str
+    ) -> dict[str, Any]:
         """아무것도 바꾸지 않고 확인 토큰을 만든다(A2): `pending_confirms`(`origin = run_turn`, 만료 = 그 회차 답장 창
         끝), 호출 기록과 활동 `confirm_requested`(되돌릴 것 없음)는 한 트랜잭션. ToolEvent `confirm_requested`.
 
         `args`는 `/actions`에 그대로 다시 보낼 모양이다(`{"action": …, "args": …, "confirm_token": …}`, 6.4.2).
-        두뇌에게 `needs_confirm`은 오류가 아니다(A7).
+        `summary`(확인 문구 전부)는 토큰, 앱 `ui_confirm`, 회차 메시지 글에, `button`(짧은 동작 이름 + 대상)은
+        텔레그램 `✓` 버튼에 쓴다. 두뇌에게 `needs_confirm`은 오류가 아니다(A7).
         """
         assert self.confirms is not None and ctx.run_id is not None
         expires_at = (
@@ -261,7 +271,7 @@ class Tools:
                 action=action, args=args, summary=summary, origin="run_turn", expires_at=expires_at,
                 run_id=ctx.run_id, conversation_id=ctx.conversation_id,
             )
-            data = {"action": action, "summary": summary, "confirm_token": p.token}
+            data = {"action": action, "summary": summary, "button": button, "confirm_token": p.token}
             self.tasks.log_tool_event(
                 ctx.run_id, ctx.conversation_id, None, "confirm_requested", inbound_id=ctx.inbound_id, data=data
             )
@@ -429,7 +439,8 @@ class Tools:
             sa = changes["scheduled_at"]
             args = {"id": t.id, **fields, "scheduled_at": api_time(sa) if sa is not None else None}
             return self._request_confirm(
-                ctx, "update_task", args, confirm_schedule_summary(t.title, local(sa, self.tz) if sa else None)
+                ctx, "update_task", args, confirm_schedule_summary(t.title, local(sa, self.tz) if sa else None),
+                confirm_button_schedule(t.title),
             )
         prior = {**self._before(t), "title": t.title, "note": t.note, "areas": [a.value for a in t.areas]}
         before = {k: prior[k] for k in changes}  # 바뀐 필드의 이전 값만
@@ -447,9 +458,12 @@ class Tools:
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return _err(pf)
-        if self._confirm_first(ctx) and t.scheduled_at is not None:  # 날짜를 옮기면 시각도 바뀐다(A2)
+        # 날짜를 옮기면 시각도 바뀐다(A2). 같은 날로 옮기면 바뀌는 것이 없어 바로 적용한다
+        if self._confirm_first(ctx) and t.scheduled_at is not None and pf != t.planned_for:
             args = {"id": t.id, "planned_for": pf.isoformat() if pf is not None else None}
-            return self._request_confirm(ctx, "move_task", args, confirm_move_summary(t.title, pf, self.today()))
+            return self._request_confirm(
+                ctx, "move_task", args, confirm_move_summary(t.title, pf, self.today()), confirm_button_move(t.title)
+            )
         changes: dict[str, Any] = {"planned_for": pf}
         if pf is None:  # 날짜 없음: 시각도 함께 지운다
             changes["scheduled_at"] = None
@@ -516,8 +530,11 @@ class Tools:
     def drop_task(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
         if self._confirm_first(ctx):
             t = self._get(id)
-            if not isinstance(t, str) and t.status in (TaskStatus.open, TaskStatus.draft):  # 그 밖은 아래가 거절한다
-                return self._request_confirm(ctx, "drop_task", {"id": t.id}, confirm_drop_summary(t.title))
+            # 열린 할 일만. 초안(비서 자신의 제안)은 바로 뺀다. 그 밖은 아래가 거절한다
+            if not isinstance(t, str) and t.status is TaskStatus.open:
+                return self._request_confirm(
+                    ctx, "drop_task", {"id": t.id}, confirm_drop_summary(t.title), confirm_button_drop(t.title)
+                )
         return self._set_status(
             ctx,
             id,
@@ -572,12 +589,13 @@ class Tools:
             if t.status is not TaskStatus.open:
                 return _err(f"{t.id}번 할 일은 열린 할 일이 아니라서 우선순위에 올릴 수 없어요.")
         ids: list[int] = list(task_ids)
-        if self._confirm_first(ctx):
+        # 지금 목록과 같으면 바뀌는 것이 없어 바로 적용한다
+        if self._confirm_first(ctx) and [t.id for _, t in self.tasks.priority_ranks(c, period)] != ids:
             titles = [t.title for i in ids if not isinstance(t := self._get(i), str)]
             label = period_label(c.value, period, period_of(c, self.today()))
             return self._request_confirm(
                 ctx, "set_priorities", {"cadence": c.value, "period": period, "task_ids": ids},
-                confirm_priorities_summary(label, titles),
+                confirm_priorities_summary(label, titles), confirm_button_priorities(label),
             )
         ranked = self.tasks.priority_ranks(c, period)
         before = [t.id for _, t in ranked]

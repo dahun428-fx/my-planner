@@ -55,6 +55,8 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         "card_pinned": f"✓ 카드 고정: {title}",
         "card_unpinned": f"✓ 카드 고정 해제: {title}",
         "cards_reordered": "✓ 카드 순서 바꿈",
+        # 회차 차례의 확인(10.1): 바뀐 것은 없다. 회차 메시지 글에 확인 문구 전부를 남긴다(버튼은 짧다)
+        "confirm_requested": confirm_requested_summary(e.data.get("summary", "")),
     }.get(e.kind)
 
 
@@ -113,6 +115,25 @@ def confirm_move_summary(title: str, planned_for: date | None, today: date) -> s
     """시각 있는 할 일의 `move_task`."""
     label = _day_label(planned_for, today) if planned_for is not None else "날짜 없음"
     return f"날짜를 옮겨요: {title} → {label}"
+
+
+# 텔레그램 확인 버튼(`✓ {아래} 16자`): 짧은 동작 이름과 대상. 확인 문구 전부는 메시지 글과 앱 카드에 있다
+
+
+def confirm_button_drop(title: str) -> str:
+    return f"내려놓기: {title}"
+
+
+def confirm_button_priorities(label: str) -> str:
+    return f"우선순위: {label}"
+
+
+def confirm_button_schedule(title: str) -> str:
+    return f"일정 변경: {title}"
+
+
+def confirm_button_move(title: str) -> str:
+    return f"옮기기: {title}"
 
 
 def confirm_requested_summary(summary: str) -> str:

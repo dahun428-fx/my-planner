@@ -121,7 +121,7 @@ CASES = [
     ("set_priorities", lambda t, p: {"cadence": "week", "period": "2026-W44", "task_ids": [p, t]}, "이번 주 우선순위"),
     ("set_priorities", lambda t, p: {"cadence": "month", "period": "2026-10", "task_ids": [p]}, "이번 달 우선순위"),
     ("set_priorities", lambda t, p: {"cadence": "quarter", "period": "2026-Q4", "task_ids": [t]}, "이번 분기 우선순위"),
-    ("set_priorities", lambda t, p: {"cadence": "year", "period": "2026", "task_ids": []}, "올해 우선순위"),
+    ("set_priorities", lambda t, p: {"cadence": "year", "period": "2026", "task_ids": [p]}, "올해 우선순위"),
     ("update_task", lambda t, p: {"id": t, "scheduled_at": "2026-10-28T09:30"}, "시각을 바꿔요: 꾸민 진료"),
     ("update_task", lambda t, p: {"id": p, "scheduled_at": "2026-10-26T18:00"}, "시각을 바꿔요: 꾸민 산책"),
     ("move_task", lambda t, p: {"id": t, "planned_for": "2026-10-29"}, "날짜를 옮겨요: 꾸민 진료"),
@@ -189,6 +189,38 @@ def test_move_task_without_schedule_applies_in_run_turn(env):
     assert [e.kind for e in ctx.events] == ["task_moved", "task_updated"]
 
 
+def test_drop_draft_applies_in_run_turn(env):
+    """초안(비서 자신의 제안)을 빼는 것은 회차 차례에서도 바로 한다(리뷰 결정 1)."""
+    ctx = env.run_ctx()
+    (draft,) = env.tools.propose_tasks(ctx, tasks=[{"title": "꾸민 초안", "areas": ["health"]}])["proposed"]
+
+    out = env.tools.drop_task(ctx, id=draft["id"])
+
+    assert out["status"] == "dropped" and env.tasks.get(draft["id"]).status is TaskStatus.dropped
+    assert env.tokens() == []
+    assert [e.kind for e in ctx.events] == ["tasks_proposed", "task_dropped"]
+
+
+def test_no_change_applies_in_run_turn(env):
+    """바뀌는 것이 없는 호출은 토큰 없이 SP1처럼 적용한다: 지금과 같은 우선순위 목록, 시각 있는 할 일을 같은 날로
+    옮기기, 지금과 같은 시각으로 `update_task`(리뷰 결정 2, 지적 5)."""
+    timed, plain = _cases(env)
+    env.tools.set_priorities(env.user_ctx(), cadence="week", period="2026-W44", task_ids=[plain, timed])
+    ctx = env.run_ctx()
+
+    same_list = env.tools.set_priorities(ctx, cadence="week", period="2026-W44", task_ids=[plain, timed])
+    empty = env.tools.set_priorities(ctx, cadence="year", period="2026", task_ids=[])  # 비어 있는 목록을 그대로
+    same_day = env.tools.move_task(ctx, id=timed, planned_for="2026-10-27")
+    same_time = env.tools.update_task(ctx, id=timed, scheduled_at="2026-10-27T14:00", note="꾸민 메모")
+
+    assert [x.get("status") for x in (same_list, empty)] == [None, None]
+    assert [t["id"] for t in same_list["priorities"]] == [plain, timed]
+    assert same_day["planned_for"] == "2026-10-27" and same_day["scheduled_at"].startswith("2026-10-27T14:00")
+    assert same_time["note"] == "꾸민 메모"
+    assert env.tokens() == []
+    assert [e.kind for e in ctx.events] == ["priorities_set", "priorities_set", "task_moved", "task_updated"]
+
+
 def test_add_task_applies_in_run_turn(env):
     ctx = env.run_ctx()
     out = env.tools.add_task(ctx, title="꾸민 물 마시기", areas=["health"], scheduled_at="2026-10-26T15:00")
@@ -215,8 +247,7 @@ def test_sp1_user_turn_behavior_unchanged(env, action, make_args, summary_part, 
     assert "error" not in out and out.get("status") != "needs_confirm"
     assert env.tokens() == []
     assert "confirm_requested" not in [e.kind for e in ctx.events]
-    if not (action == "set_priorities" and make_args(timed, plain)["task_ids"] == []):
-        assert env.snapshot() != before
+    assert env.snapshot() != before
 
 
 # --- A5: 확인 카드와 텔레그램 버튼 ---
@@ -273,16 +304,17 @@ async def test_confirm_card_and_telegram_buttons(tmp_path):
     # 그대로(회차 차례에서는 바꾸지 않는다)
     assert prio_before == 0 and dropped_before is TaskStatus.open
     # 텔레그램: 초안 줄 → 확인 줄 둘 → 컨디션 줄
-    assert [s for _, s in sent.confirms] == [
-        "오늘 우선순위를 바꿔요: 1. 꾸민 독서 2. 꾸민 정리", "할 일을 내려놓아요: 꾸민 화분",
-    ]
+    assert [s for _, s in sent.confirms] == ["우선순위: 오늘", "내려놓기: 꾸민 화분"]
+    # 확인 문구 전부는 메시지 글에 있다(버튼은 짧다)
+    assert "확인을 기다려요: 오늘 우선순위를 바꿔요: 1. 꾸민 독서 2. 꾸민 정리" in sent.text
+    assert "확인을 기다려요: 할 일을 내려놓아요: 꾸민 화분" in sent.text
     rows = message_keyboard(sent, {}).inline_keyboard
     datas = [[b.callback_data for b in row] for row in rows]
     assert datas[0][0].startswith("d:c:") and datas[1] == ["d:all:" + datas[1][0].split(":")[2]]
     assert [d[0][:4] for d in datas[2:4]] == ["k:a:", "k:a:"]
     assert [d[1][:4] for d in datas[2:4]] == ["k:x:", "k:x:"]
     assert all(d[1][4:] == d[0][4:] for d in datas[2:4])
-    assert [r[0].text for r in rows[2:4]] == ["✓ 확인: 오늘 우선순위를 바꿔요: 1…", "✓ 확인: 할 일을 내려놓아요: 꾸민 …"]
+    assert [r[0].text for r in rows[2:4]] == ["✓ 우선순위: 오늘", "✓ 내려놓기: 꾸민 화분"]
     assert {r[1].text for r in rows[2:4]} == {"✗ 그대로 두기"}
     assert all(len(b.callback_data.encode()) <= 64 for row in rows for b in row)
     if sent.ask_condition_for is not None:
@@ -301,10 +333,12 @@ async def test_confirm_card_and_telegram_buttons(tmp_path):
 
 
 def test_confirm_keyboard_shape():
-    rows = confirm_keyboard([("ct_" + "a" * 22, "꾸민 확인 문구가 열여섯 글자보다 길어요")])
-    (row,) = rows
-    assert [b.text for b in row] == ["✓ 확인: 꾸민 확인 문구가 열여섯 글…", CONFIRM_KEEP_LABEL]
-    assert [b.callback_data for b in row] == ["k:a:ct_" + "a" * 22, "k:x:ct_" + "a" * 22]
+    rows = confirm_keyboard([("ct_" + "a" * 22, "옮기기: 꾸민 확인 문구가 열여섯 글자보다 길어요"),
+                             ("ct_" + "b" * 22, "내려놓기: 꾸민 아침 산책 준비")])
+    assert [b.text for b in rows[0]] == ["✓ 옮기기: 꾸민 확인 문구가…", CONFIRM_KEEP_LABEL]
+    assert rows[1][0].text == "✓ 내려놓기: 꾸민 아침 산책…"  # 줄임표 앞 공백은 지운다
+    assert [b.callback_data for b in rows[0]] == ["k:a:ct_" + "a" * 22, "k:x:ct_" + "a" * 22]
+    assert all(len(b.callback_data.encode()) <= 64 for row in rows for b in row)
     assert confirm_keyboard([]) == []
 
 
@@ -337,7 +371,7 @@ async def test_confirm_applies_with_activity_and_decline_changes_nothing(tmp_pat
     assert acts[-2:] == [("priorities_set", "user", "telegram", "confirm"), ("confirm_declined", "user", "telegram", "low")]
     assert ("confirm_requested", "secretary", "scheduler", "low") in acts
     assert answers == ["✓ 우선순위(오늘): 1. 꾸민 독서 2. 꾸민 정리", "✗ 그대로 뒀어요 (할 일을 내려놓아요: 꾸민 화분)"]
-    assert prio_summary.startswith("오늘 우선순위")
+    assert prio_summary == "우선순위: 오늘"
     assert (run["answered_via"]) == "telegram"  # 회차에 붙은 버튼이라 그 회차의 답이다
 
 
@@ -416,3 +450,47 @@ async def test_app_confirm_answers_run_and_clears_telegram_buttons(tmp_path):
     assert status == 200
     assert (detail["state"], detail["answered_via"]) == ("answered", "app")
     assert be.sender.cleared == [mid]
+
+
+async def test_stale_target_hides_card_but_keeps_token_open(tmp_path):
+    """토큰 뒤에 대상이 바뀌면 카드에서 빠진다. 토큰은 닫지 않는다(누를 때 `stale`로 닫힌다). 번호는 그대로다."""
+    async with BeEnv.start(tmp_path, start=NOW + timedelta(seconds=30)) as be:
+        ids = await _morning_with_proposals(be)
+        run_id = be.conn.execute("SELECT id FROM runs WHERE loop = 'morning_brief'").fetchone()["id"]
+        (prio_token, _), (drop_token, _) = be.sender.sent[-1].confirms
+        be.clock.set(kst(2026, 10, 26, 9, 20))
+        await be.action("complete_task", {"id": ids[0]})  # 우선순위 토큰의 대상
+        cards = await _cards(be, run_id)
+        row = be.conn.execute("SELECT resolved_at FROM pending_confirms WHERE token = ?", (prio_token,)).fetchone()
+
+    assert [(c["toolCallId"], c["props"]["confirm_token"]) for c in cards if c["component"] == "ui_confirm"] == [
+        (f"h_confirm_{run_id}_2", drop_token)
+    ]
+    assert row["resolved_at"] is None
+
+
+async def test_merged_run_token_expires_at_latest_reply_window(tmp_path):
+    """합친 회차(`merged_run_ids`)는 두뇌 호출 전에 적힌다. 그래서 토큰 만료는 묶음의 가장 늦은 답장 창 끝이다."""
+    from my_planner.domain import Cadence, LoopKey
+    from my_planner.harness.checkins import reply_until
+
+    start = kst(2026, 10, 25, 21, 0) + timedelta(seconds=30)  # 일요일 밤
+    async with BeEnv.start(tmp_path, start=start) as be:
+        _, added = await be.action("add_task", {"title": "꾸민 빨래", "areas": ["quality_of_life"]})
+        runs = be.parts.runs
+        evening = runs.ensure(LoopKey.evening_checkin, kst(2026, 10, 25, 21, 0))
+        review = runs.ensure(LoopKey.review, kst(2026, 10, 25, 21, 0), Cadence.week)
+        for r in (evening, review):
+            runs.mark_queued(r.id)
+        be.brain.script.append(FakeTurn([("drop_task", {"id": added["result"]["id"]})], "꾸민 회고"))
+        be.parts.dispatcher.submit_run(runs.get(evening.id), [runs.get(review.id)])
+        await be.drain()
+        (row,) = be.conn.execute("SELECT * FROM pending_confirms").fetchall()
+        own = reply_until(runs.get(review.id), runs=runs, settings=be.settings)
+        alone = kst(2026, 10, 26, 4, 0)  # 저녁 체크인만의 답장 창 끝
+        merged_ids = runs.get(evening.id).merged_run_ids
+        expires = be.parts.confirms.get(row["token"]).expires_at
+
+    assert merged_ids == [review.id]
+    assert row["run_id"] == evening.id
+    assert expires == own and expires > alone  # 회고의 24시간 창
