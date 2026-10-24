@@ -357,7 +357,7 @@ export const copy = {
     prevTitle: (t: string) => `이전 제목: ${t}`,
     editedOnly: "내용을 고쳤어요",
     confirmedDraft: "초안을 확정했어요",
-    changeArrow: (a: string, b: string) => `${a} → ${b}`,
+    arrow: " → ",
     changeAria: (a: string, b: string) => `이전 ${a}, 지금 ${b}`,
     resultCount: (n: number) => `바뀐 할 일 ${n}개`,
     outsideHead: {
