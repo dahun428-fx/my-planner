@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Curve, CurveMilestone } from "../api/types.gen";
 import { AreaRadar } from "../components/AreaRadar";
 import { CurveChart } from "../components/CurveChart";
@@ -46,14 +46,23 @@ function Loading() {
   );
 }
 
-export function CurveView({ curve: c }: { curve: Curve }) {
+/**
+ * `wideAreas` are the area scores of the wide (year, from 1900) request: the radar compares the latest scored
+ * quarter with the one before it whatever zoom is shown (13.4). Until that answer is in, the zoom's own `areas`.
+ */
+export function CurveView({ curve: c, wideAreas = null }: { curve: Curve; wideAreas?: Curve["areas"] | null }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = c.milestones.find((m) => m.id === selectedId) ?? null;
-  const close = useCallback(() => setSelectedId(null), []);
+  const close = useCallback(() => {
+    setSelectedId((id) => {
+      if (id !== null) document.querySelector<SVGGElement>(`.curve-marker[data-milestone-id="${id}"]`)?.focus();
+      return null;
+    });
+  }, []);
   const select = useCallback((m: CurveMilestone) => setSelectedId((id) => (id === m.id ? null : m.id)), []);
 
   const noEvents = c.chapters.length === 0 && c.milestones.length === 0;
-  const noLadder = c.ladder.length === 0;
+  const noLadder = c.ladder.every((l) => l.now === null); // five-years-ahead alone draws no "now" line
   const noCondition = c.condition.every((b) => b.average === null);
   const drawn = !(noEvents && noLadder && noCondition);
 
@@ -70,30 +79,56 @@ export function CurveView({ curve: c }: { curve: Curve }) {
         )}
       </section>
       <div className="curve-pair">
-        <AreaRadar areas={c.areas} />
+        <AreaRadar areas={wideAreas ?? c.areas} />
         <Reassurance items={c.reassurance} />
       </div>
     </>
   );
 }
 
-/** (c) 인생곡선, spec 13.4: `GET /curve?zoom=<z>` for the chosen zoom. Read only. */
+interface Loaded {
+  path: string;
+  curve: Curve;
+}
+
+const isLoaded = (r: ApiResult<Curve>, path: string): ApiResult<Loaded> => (r.kind === "ok" ? { kind: "ok", data: { path, curve: r.data } } : r);
+
+/** The wide request: the year zoom from `YEAR_FROM`, without sensitive milestones (they do not touch areas). */
+const WIDE_PATH = curvePath("year", false);
+
+/**
+ * (c) 인생곡선, spec 13.4: `GET /curve?zoom=<z>` for the chosen zoom, plus one wide `GET` (`WIDE_PATH`) the
+ * radar reads its quarters from. When the chosen zoom is that same request, the wide answer is reused.
+ * Read only.
+ */
 export function CurveScreen() {
   const { ready, conn } = useConnection();
   const [zoom, setZoomState] = useState<Zoom>(memory.zoom);
   const [sensitive, setSensitiveState] = useState(memory.sensitive);
   const path = curvePath(zoom, sensitive);
-  const key = ready && conn ? `${conn.beUrl}\n${conn.token}\n${path}` : "";
-  const load = useCallback(async (): Promise<ApiResult<Curve>> => (conn ? fetchApi(conn, path, isCurve) : NONE), [conn, path]);
-  const { result } = usePolling(load, 60_000, key);
+  const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
+
+  const wideLoad = useCallback(async (): Promise<ApiResult<Curve>> => (conn ? fetchApi(conn, WIDE_PATH, isCurve) : NONE), [conn]);
+  const wide = usePolling(wideLoad, 60_000, auth);
+  const wideRef = useRef(wide.result);
+  wideRef.current = wide.result;
+
+  const load = useCallback(async (): Promise<ApiResult<Loaded>> => {
+    if (!conn) return NONE;
+    const cached = wideRef.current;
+    if (path === WIDE_PATH && cached?.kind === "ok") return isLoaded(cached, path);
+    return isLoaded(await fetchApi(conn, path, isCurve), path);
+  }, [conn, path]);
+  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "");
 
   useEffect(() => {
     memory.zoom = zoom;
     memory.sensitive = sensitive;
   }, [zoom, sensitive]);
 
-  // The answer on screen must be for the zoom the buttons show (a slower older answer is not drawn).
-  const shown = result?.kind === "ok" && result.data.zoom !== zoom ? null : result;
+  // Only the answer to the request the controls show is drawn (not an older zoom or sensitive setting).
+  const shown = result?.kind === "ok" && result.data.path !== path ? null : result;
+  const wideAreas = wide.result?.kind === "ok" ? wide.result.data.areas : null;
 
   return (
     <>
@@ -116,7 +151,7 @@ export function CurveScreen() {
           <span>{T.sensitive}</span>
         </label>
       </div>
-      {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data} /> : <StateNotice result={shown} />}
+      {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data.curve} wideAreas={wideAreas} /> : <StateNotice result={shown} />}
     </>
   );
 }

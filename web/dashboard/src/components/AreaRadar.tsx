@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useId } from "react";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart } from "recharts";
 import type { CurveAreas } from "../api/types.gen";
 import { type RadarRow, radarRows } from "../lib/curveLayout";
@@ -18,8 +18,7 @@ interface TickProps {
  */
 export function AreaRadar({ areas }: { areas: CurveAreas[] }) {
   const headingId = useId();
-  const box = useRef<HTMLDivElement>(null);
-  const width = useWidth(box, 296);
+  const { ref: box, width } = useWidth<HTMLDivElement>(296);
   const { latest, previous, rows } = radarRows(areas);
   const byLabel = new Map<string, RadarRow>(rows.map((r) => [r.label, r]));
   const size = Math.min(width, 320);

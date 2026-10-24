@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -40,6 +40,15 @@ function renderScreen() {
   );
 }
 
+const WIDE = "zoom=year&from=1900-01-01";
+const notWide = (seen: string[]) => seen.filter((q) => q !== WIDE);
+
+/** A pointer tap at the centre of a marker's glyph: it lands on the lane's tap layer, as on a phone. */
+function tap(marker: HTMLElement) {
+  const layer = document.querySelector(".curve-tap")!;
+  fireEvent.click(layer, { clientX: Number(marker.dataset.cx), clientY: Number(marker.dataset.cy) });
+}
+
 const text = () => document.body.textContent ?? "";
 const firstMarker = () => screen.findByRole("button", { name: "고점 2025년 9월 꾸민 첫 전시" });
 
@@ -58,14 +67,16 @@ describe("CurveScreen", () => {
 
     for (const [label, zoom] of [["일", "day"], ["주", "week"], ["분기", "quarter"], ["년", "year"], ["월", "month"]] as const) {
       await user.click(within(group).getByRole("button", { name: label }));
-      await waitFor(() => expect(seen.at(-1)).toContain(`zoom=${zoom}`));
+      if (zoom !== "year") await waitFor(() => expect(seen.at(-1)).toContain(`zoom=${zoom}`));
       expect(within(group).getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
       // each answer is drawn once it is in: the figure covers that zoom's visible range
       const fx = BY_ZOOM[zoom] as { from: string; to: string };
       const from = zoom === "year" ? "2019-01-01" : fx.from;
       expect(await screen.findByRole("figure", { name: `인생곡선 ${from}~${fx.to}` })).toBeInTheDocument();
     }
-    expect(seen).toEqual(["zoom=month", "zoom=day", "zoom=week", "zoom=quarter", "zoom=year&from=1900-01-01", "zoom=month"]);
+    // the year zoom is the wide request the radar already made: it is reused, not asked again
+    expect(notWide(seen)).toEqual(["zoom=month", "zoom=day", "zoom=week", "zoom=quarter", "zoom=month"]);
+    expect(seen.filter((q) => q === WIDE)).toHaveLength(1);
   });
 
   it("asks the year zoom from 1900 so an event older than every chapter stays", async () => {
@@ -91,8 +102,8 @@ describe("CurveScreen", () => {
     expect(toggle).not.toBeChecked();
     await user.click(toggle);
     const marker = await screen.findByRole("button", { name: "저점 2025년 12월 꾸민 조용한 겨울" });
-    expect(seen).toEqual(["zoom=month", "zoom=month&include_sensitive=true"]);
-    await user.click(marker);
+    expect(notWide(seen)).toEqual(["zoom=month", "zoom=month&include_sensitive=true"]);
+    tap(marker);
     expect(within(screen.getByRole("dialog")).getByText(/민감한 사건/)).toBeInTheDocument();
 
     // nothing written to the browser: only the connection that was there before
@@ -103,11 +114,13 @@ describe("CurveScreen", () => {
 
     // still on when this tab comes back to the screen, off in a fresh tab
     view.unmount();
-    renderScreen();
+    const again = renderScreen();
     expect(await screen.findByRole("checkbox", { name: "민감한 사건 보기" })).toBeChecked();
     await screen.findByRole("button", { name: "저점 2025년 12월 꾸민 조용한 겨울" });
+    again.unmount();
     resetCurveMemory();
-    view.unmount();
+    renderScreen();
+    expect(await screen.findByRole("checkbox", { name: "민감한 사건 보기" })).not.toBeChecked();
   });
 
   it("milestone tap shows details", async () => {
@@ -115,19 +128,21 @@ describe("CurveScreen", () => {
     renderScreen();
     const marker = await firstMarker();
     expect(screen.queryByRole("dialog")).toBeNull();
-    await user.click(marker);
+    tap(marker);
     const dialog = screen.getByRole("dialog", { name: "꾸민 첫 전시" });
     expect(dialog.textContent).toContain("2025년 9월 · 고점");
     expect(dialog.textContent).toContain("꾸민 메모: 작은 카페 벽에 세 점");
     expect(marker).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "꾸민 첫 전시" })).toHaveFocus();
 
-    await user.click(screen.getByRole("button", { name: "전환점 2026년 2월 14일 꾸민 이사 결정" }));
+    tap(screen.getByRole("button", { name: "전환점 2026년 2월 14일 꾸민 이사 결정" }));
     const next = screen.getByRole("dialog", { name: "꾸민 이사 결정" });
     expect(next.textContent).toContain("2026년 2월 14일 · 전환점");
     expect(next.textContent).not.toContain("메모");
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("button", { name: "전환점 2026년 2월 14일 꾸민 이사 결정" })).toHaveFocus();
 
     const low = screen.getByRole("button", { name: "저점 2026년 6월 꾸민 긴 감기" });
     low.focus();
@@ -135,6 +150,33 @@ describe("CurveScreen", () => {
     expect(screen.getByRole("dialog", { name: "꾸민 긴 감기" })).toBeInTheDocument();
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "닫기" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(low).toHaveFocus();
+  });
+
+  it("the middle of each glyph opens its own milestone, even crowded on the year zoom", async () => {
+    // the seeded year answer plus the sensitive 2025-12 one: four milestones within ten months
+    const quiet = curveSensitive.milestones.find((m) => m.sensitive)!;
+    const year = { ...curveYear, milestones: [...curveYear.milestones, quiet] };
+    server.use(
+      http.get(`${BASE}/curve`, ({ request }) =>
+        HttpResponse.json((new URL(request.url).searchParams.get("zoom") === "year" ? year : curveMonth) as Record<string, unknown>),
+      ),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await firstMarker();
+    await user.click(screen.getByRole("button", { name: "년" }));
+    await screen.findByRole("button", { name: "고점 2019년 꾸민 첫 자전거" });
+    const markers = Array.from(document.querySelectorAll<HTMLElement>(".curve-marker"));
+    expect(markers).toHaveLength(5);
+    // at this width the 2025–26 centres are closer together than a fingertip
+    const xs = markers.map((m) => Number(m.dataset.cx)).sort((a, b) => a - b);
+    expect(Math.min(...xs.slice(1).map((x, i) => x - xs[i]))).toBeLessThan(16);
+    for (const m of markers) {
+      tap(m);
+      const title = year.milestones.find((x) => String(x.id) === m.dataset.milestoneId)!.title;
+      expect(screen.getByRole("dialog", { name: title })).toBeInTheDocument();
+    }
   });
 
   it("radar marks down vertex", async () => {
@@ -147,6 +189,31 @@ describe("CurveScreen", () => {
     expect(within(radar).getByText("건강 4 (Q3 6) ↓")).toBeInTheDocument();
     expect(radar.querySelector(".radar-now")).not.toBeNull();
     expect(radar.querySelector(".radar-prev")).not.toBeNull(); // the quarter before, dashed by CSS
+  });
+
+  it("takes the radar from the wide request, whatever the zoom's own areas are", async () => {
+    // e.g. 11/20 on the day zoom: the range is in Q4, which has no scores yet, but Q3 and Q2 do
+    const wideAreas = [
+      { period: "2026-Q2", scores: { ...curveMonth.areas[0].scores, health: 7 } },
+      { period: "2026-Q3", scores: curveMonth.areas[0].scores },
+    ];
+    const seen: string[] = [];
+    server.use(
+      http.get(`${BASE}/curve`, ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        seen.push(q.toString());
+        const body = q.get("zoom") === "year" ? { ...curveYear, areas: wideAreas } : { ...curveDay, areas: [] };
+        return HttpResponse.json(body as Record<string, unknown>);
+      }),
+    );
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await screen.findByRole("button", { name: "일" }));
+    await waitFor(() => expect(seen.at(-1)).toBe("zoom=day"));
+    const radar = await screen.findByRole("region", { name: "영역 (2026-Q3, 점선 Q2)" });
+    expect(within(radar).getByText("건강 6 (Q2 7) ↓")).toBeInTheDocument();
+    expect(screen.queryByText("영역 점수는 분기 마지막 주 회고에서 함께 정해요.")).toBeNull();
+    expect(seen).toContain(WIDE);
   });
 
   it("draws the ladder, conditions and chapters it got, and nothing for an empty month", async () => {
@@ -186,6 +253,22 @@ describe("CurveScreen", () => {
     expect(screen.getByText("영역 점수는 분기 마지막 주 회고에서 함께 정해요.")).toBeInTheDocument();
     expect(screen.getByText("사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요.")).toBeInTheDocument();
     expect(screen.queryByRole("figure")).toBeNull();
+  });
+
+  it("keeps a milestone the BE sent even when its middle is outside the range, at the edge", async () => {
+    const early = { ...curveMonth.milestones[0], id: 99, date: "2024", precision: "year", title: "꾸민 이른 해" };
+    server.use(curveAnswers.ok({ ...curveMonth, milestones: [...curveMonth.milestones, early] }));
+    renderScreen();
+    const marker = await screen.findByRole("button", { name: "고점 2024년 꾸민 이른 해" });
+    const xs = Array.from(document.querySelectorAll<HTMLElement>(".curve-marker")).map((m) => Number(m.dataset.cx));
+    expect(Number(marker.dataset.cx)).toBe(Math.min(...xs));
+  });
+
+  it("says there is no ladder score when only five-years-ahead scores exist", async () => {
+    server.use(curveAnswers.ok({ ...curveMonth, ladder: [{ period: "2026-10", now: null, future: 8, note: null }] }));
+    renderScreen();
+    expect(await screen.findByText("첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.")).toBeInTheDocument();
+    expect(screen.getByRole("figure")).toBeInTheDocument();
   });
 
   it("keeps the chart when only the ladder is missing, and has nothing to compare without a counted month", async () => {

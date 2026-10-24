@@ -1,13 +1,15 @@
-import { type RefObject, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
- * The content width of `ref`, kept up to date with a ResizeObserver. Charts get explicit pixel sizes from
- * this (no ResponsiveContainer). Where nothing can be measured (jsdom, first paint) it is `fallback`.
+ * The content width of an element, kept up to date with a ResizeObserver. Charts get explicit pixel sizes from
+ * this (no ResponsiveContainer). Pass `ref` as the element's callback ref, so an element that appears later
+ * (an empty panel that gets data on the next poll) is measured too. Where nothing can be measured (jsdom,
+ * first paint) the width is `fallback`.
  */
-export function useWidth(ref: RefObject<HTMLElement | null>, fallback = 328): number {
+export function useWidth<T extends HTMLElement>(fallback = 328): { ref: (el: T | null) => void; width: number } {
+  const [el, setEl] = useState<T | null>(null);
   const [width, setWidth] = useState(fallback);
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const read = () => {
       const w = Math.floor(el.clientWidth);
@@ -18,6 +20,6 @@ export function useWidth(ref: RefObject<HTMLElement | null>, fallback = 328): nu
     const ro = new ResizeObserver(read);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref]);
-  return width;
+  }, [el]);
+  return { ref: setEl, width };
 }

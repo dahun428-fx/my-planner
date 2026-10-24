@@ -238,3 +238,38 @@ export function radarRows(areas: CurveAreas[]): { latest: string | null; previou
   });
   return { latest: latest.period, previous: before?.period ?? null, rows };
 }
+
+/**
+ * Rows for milestone markers on the lane: 0 on the lane line, or −1 / +1 (above / below) for a marker closer
+ * than `minGap` px to its neighbour, alternating so neighbouring glyphs never sit on each other.
+ * Returned in the order of `xs`.
+ */
+export function markerRows(xs: number[], minGap: number): (-1 | 0 | 1)[] {
+  const order = xs.map((x, i) => ({ x, i })).sort((a, b) => a.x - b.x);
+  const rows: (-1 | 0 | 1)[] = xs.map(() => 0);
+  let runRow: -1 | 1 = 1;
+  order.forEach((p, k) => {
+    const prev = order[k - 1];
+    const next = order[k + 1];
+    const crowdedBefore = prev !== undefined && p.x - prev.x < minGap;
+    const crowdedAfter = next !== undefined && next.x - p.x < minGap;
+    if (!crowdedBefore && !crowdedAfter) return;
+    runRow = crowdedBefore ? (runRow === 1 ? -1 : 1) : -1;
+    rows[p.i] = runRow;
+  });
+  return rows;
+}
+
+/** The index of the point whose centre is nearest (x, y), if within `maxDist` px; a tap opens that one. */
+export function nearestIndex(points: { cx: number; cy: number }[], x: number, y: number, maxDist: number): number | null {
+  let best: number | null = null;
+  let bestD = maxDist;
+  points.forEach((p, i) => {
+    const d = Math.hypot(p.cx - x, p.cy - y);
+    if (d <= bestD) {
+      best = i;
+      bestD = d;
+    }
+  });
+  return best;
+}

@@ -951,9 +951,13 @@ h2 {
   stroke: var(--muted);
   stroke-width: 1.5px;
 }
-.curve-marker {
+.curve-tap {
+  fill: transparent;
   pointer-events: auto;
   cursor: pointer;
+}
+.curve-marker {
+  pointer-events: none;
   outline: none;
 }
 .curve-marker-hit {

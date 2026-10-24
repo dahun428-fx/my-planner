@@ -11,7 +11,9 @@ import {
   kstX,
   ladderSeries,
   ladderSteps,
+  markerRows,
   milestoneX,
+  nearestIndex,
   radarRows,
   reassuranceCopy,
   thinTicks,
@@ -179,5 +181,34 @@ describe("radarRows", () => {
 
   it("is empty without area scores", () => {
     expect(radarRows([])).toEqual({ latest: null, previous: null, rows: [] });
+  });
+});
+
+describe("markerRows", () => {
+  it("leaves a lone marker on the lane and alternates crowded ones above and below it", () => {
+    // 100 and 300 are alone; 200, 213, 224, 237 are each closer than 14 px to the one before
+    expect(markerRows([100, 200, 213, 224, 237, 300], 14)).toEqual([0, -1, 1, -1, 1, 0]);
+    expect(markerRows([], 14)).toEqual([]);
+  });
+
+  it("works on unsorted input, by position", () => {
+    expect(markerRows([213, 200], 14)).toEqual([1, -1]);
+  });
+});
+
+describe("nearestIndex", () => {
+  const pts = [
+    { cx: 100, cy: 20 },
+    { cx: 112, cy: 28 },
+    { cx: 123, cy: 20 },
+  ];
+  it("picks the marker whose centre is nearest the tap", () => {
+    expect(pts.map((p) => nearestIndex(pts, p.cx, p.cy, 20))).toEqual([0, 1, 2]);
+    expect(nearestIndex(pts, 117, 21, 20)).toBe(2);
+  });
+
+  it("is null for a tap far from every marker", () => {
+    expect(nearestIndex(pts, 200, 20, 20)).toBeNull();
+    expect(nearestIndex([], 0, 0, 20)).toBeNull();
   });
 });
