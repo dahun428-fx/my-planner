@@ -16,10 +16,15 @@ EXPECTED = """\
               - 'config.toml'
             workflow:
               - '.github/workflows/ci.yml'
+            # web/shared/global.css와 DESIGN.md가 바뀌면 두 사본 시험(sync-design.test.mjs)이 돌아야 한다
             web:
               - 'web/app/**'
+              - 'web/shared/**'
+              - 'DESIGN.md'
             dashboard:
               - 'web/dashboard/**'
+              - 'web/shared/**'
+              - 'DESIGN.md'
 """
 
 
