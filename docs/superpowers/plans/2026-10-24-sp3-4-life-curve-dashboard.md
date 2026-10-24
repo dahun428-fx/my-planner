@@ -64,6 +64,7 @@
 ## 작업 방식
 
 - SP1 계획의 TDD 주기: 슬라이스마다 테스트 하나 → `python -m pytest <파일>::<테스트> -v`로 FAIL(새 이름은 `ImportError`/`AttributeError`, 새 동작은 `AssertionError`) → 구현 → 같은 명령으로 PASS.
+- 수용 확인 명령(모든 티켓 공통): `python -m pytest <노드 id> -v` → `1 passed`("→ `passed`"로 줄여 적은 곳도 같다).
 - 티켓 끝 검증(BE 티켓 공통): `python -m pytest -q` → `0 failed`(Linux에서 Windows 전용 시험은 `skipped`), **SP1 시험 전부**가 고치지 않은 채 통과(완료 조건 11). `ruff check src tests` → `All checks passed!`. 그다음 `code-reviewer` 리뷰, 커밋.
 - 생성자는 키워드 전용, 새 인자는 기본값이 있어 SP1 호출이 그대로 돈다(`Dispatcher`, `Tools`, `Runner`, `ConversationRouter`, `TranscriptStore.append`, `ConversationsRepo.open/latest_open`).
 - 사용자에게 보이는 새 문구는 스펙 부록 A와 13장 그대로다. 부록 A에 없는 것은 끝의 **문구 표**(Dahun 확인 필요)에 있다.
@@ -109,10 +110,10 @@ web/dashboard/                   # Vercel 루트 디렉터리
 | # | 티켓 | 막는 티켓 | 라벨 |
 |---|---|---|---|
 | 00 | 착수 전 검증 S7~S12 | 없음 | `ready-for-agent`(클라우드 원형) + `needs-laptop`(S7~S10 기기 부분, 클라우드에 구독 로그인이 없으면 S11·S12) |
-| 01 | API 뼈대: 마이그레이션, 인증·CORS·로그, `/health`, `BeEnv` | 00(클라우드 부분) | `ready-for-agent` |
+| 01 | API 뼈대: 마이그레이션, 연결 단위 트랜잭션, 인증·CORS·로그, `/health`, `BeEnv` | 00(클라우드 부분) | `ready-for-agent` |
 | 02 | 읽기 API: 할 일·컨디션·답할 회차·대화·카탈로그·스키마 | 01, 21a | `ready-for-agent` |
 | 03 | 읽기 API: `/curve`, `/status` 읽기 모델 | 02 | `ready-for-agent` |
-| 04 | 즉시 갈래, 연결 단위 트랜잭션, 활동 기록, `POST /actions` | 02 | `ready-for-agent` |
+| 04 | 즉시 갈래, 활동 기록, `POST /actions` | 02 | `ready-for-agent` |
 | 05 | 되돌리기와 `GET /activity` | 04 | `ready-for-agent` |
 | 06 | 앱 채팅 `POST /chat` (글 블록 하나, S11 대체 경로) | 04 | `ready-for-agent` |
 | 06b | `/chat` 글 조각 스트리밍 | 06, 00(S11) | `ready-for-agent`(S11이 노트북에서 돌았으면 `needs-laptop` 없이) |
@@ -162,22 +163,22 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 ### 티켓 01: API 뼈대 — 마이그레이션, 인증·CORS·로그, `/health`, `BeEnv`
 
-**목표:** 폴링 시작 뒤 `127.0.0.1:8787`에 API를 연다. `/health`는 6.3.1, 인증·CORS·로그는 6.1·14장 그대로. 마이그레이션 006~010(5장 SQL 그대로). 회차 전달 기록(`run_deliveries`)의 텔레그램 쓰기도 여기서 시작한다. 모든 수용 시험이 쓰는 `BeEnv`를 만든다.
+**목표:** 폴링 시작 뒤 `127.0.0.1:8787`에 API를 연다. `/health`는 6.3.1, 인증·CORS·로그는 6.1·14장 그대로. 마이그레이션 006~010(5장 SQL 그대로). 연결 단위 트랜잭션 `transaction(conn)`을 만들고 저장소의 `with self.conn:` 17곳을 바꾼다(뒤 티켓의 "한 트랜잭션"이 모두 이것을 쓴다). 회차 전달 기록(`run_deliveries`)의 텔레그램 쓰기도 여기서 시작한다. 모든 수용 시험이 쓰는 `BeEnv`를 만든다.
 **막는 티켓:** 00(클라우드 부분). S7 노트북 결과가 실패면 `start_api`를 스펙 대안대로 고친다.
 **라벨:** `ready-for-agent`
 
 **Files:**
 - Create: `store/migrations/006_channels.sql`~`010_status.sql`, `cli.py`, `api/{__init__,server,auth,cors,models,health}.py`, `harness/checkins.py`, `store/repos/{channels,push}.py`, `tests/be_env.py`
-- Modify: `__main__.py`, `app.py`, `config.py`, `store/db.py`, `store/repos/{state,runs,conversations}.py`, `harness/dispatcher.py`(`_call_brain`, `_run_delivered`), `loop/runner.py`, `config.toml`, `.env.example`, `pyproject.toml`, `requirements.lock`
-- Test: `tests/test_migrations.py`, `tests/test_api_{auth,cors,health,logging,readonly,e2e}.py`, `tests/test_app_start.py`, `tests/test_cli.py`
+- Modify: `__main__.py`, `app.py`, `config.py`, `store/db.py`, `store/repos/*.py`(`with self.conn:` 17곳, `state`, `runs`, `conversations` 읽기), `harness/dispatcher.py`(생성자, `_call_brain`, `_run_delivered`), `loop/runner.py`, `config.toml`, `.env.example`, `pyproject.toml`, `requirements.lock`
+- Test: `tests/test_migrations.py`, `tests/test_transaction.py`, `tests/test_api_{auth,cors,health,logging,readonly,e2e}.py`, `tests/test_app_start.py`, `tests/test_cli.py`
 
 **Interfaces**
 - Consumes: `open_db`, `migrate`, `StateRepo`, `RunsRepo`, `Runner`, `Dispatcher`, `app._serve`, `handle_update`, `handle_callback`, `TelegramSender` (SP1)
 - Produces:
 - `config.py`: `ApiConfig(enabled=True, host="127.0.0.1", port=8787, cors_origins=[], cors_origin_regex="", max_body_kb=64)`, `NotifyConfig(default_primary="app")`, `Settings.api_token: SecretStr | None`, `API_TOKEN_MIN_CHARS = 43`.
-- `store/db.py open_ro(path) -> sqlite3.Connection`(4.3의 URI).
+- `store/db.py`: `open_ro(path) -> sqlite3.Connection`(4.3의 URI). `transaction(conn) -> ContextManager[None]`: 깊이를 연결마다 센다(`_DEPTH: dict[int, int]`, 키 `id(conn)`). 가장 바깥만 `BEGIN IMMEDIATE`·`commit`·`rollback`, 안쪽은 합류하고 예외를 올린다. `TasksRepo.transaction()`은 위임. 모든 저장소의 `with self.conn:`을 `with transaction(self.conn):`으로(지금은 바깥 트랜잭션 안에서 부르면 그 자리에서 커밋한다. 예: `StateRepo.incr_usage`). `LATEST_VERSION: int`(`store/migrations/`의 가장 큰 번호).
 - 읽기: `Run.answered_at/answered_via`, `RunsRepo.on_logical_date(d, tz, boundary)`, `Conversation.channel/forked_from`, `PushRepo.count_active()`, `.last_success_at()`, 상태 키 `brain_auth_state`, `brain_auth_checked_at`, `notify_primary`.
-- `DeliveriesRepo(conn, clock)`: `record(run_id, channel, mode: Literal["full", "fallback"], status: Literal["sent", "not_sent"], *, push_ok=0, push_failed=0) -> None`(같은 `(run_id, channel)`은 덮어씀), `sent_channels(run_id) -> list[str]`. `Dispatcher._run_delivered`가 텔레그램 전송 성공마다 `record(run.id, "telegram", "full", "sent")`를 `proactive_messages` 증가와 같은 트랜잭션에 쓴다(07이 `telegram_message_id`, 08이 앱·대체를 더한다).
+- `DeliveriesRepo(conn, clock)`: `record(run_id, channel, mode: Literal["full", "fallback"], status: Literal["sent", "not_sent"], *, push_ok=0, push_failed=0) -> None`(같은 `(run_id, channel)`은 덮어씀), `sent_channels(run_id) -> list[str]`. `Dispatcher(..., deliveries: DeliveriesRepo | None = None)`(None이면 SP1과 같다). `Dispatcher._run_delivered`가 텔레그램 전송 성공마다 `record(run.id, "telegram", "full", "sent")`를 `mark_done`·`proactive_messages` 증가와 같은 `transaction(conn)`에 쓴다(07이 `telegram_message_id`, 08이 앱·대체를 더한다).
 - `Dispatcher._call_brain`: 결과마다 `brain_auth_state`(`ok` | `login` | `billing`)와 시각. `Runner.polling_down -> bool`.
 - `harness/checkins.py`: `CheckinState = Literal["pending", "answered", "missed"]`, `checkin_state(run, *, runs, now, settings) -> CheckinState | None`, `runs_today(*, runs, deliveries, now, settings) -> list[dict]`.
 - `api/models.py`: pydantic 모델, `MODELS`, `schema_bundle() -> dict`, `to_api_times(value)`(오프셋 붙은 ISO만 `Z`로), `error_response(status, code, message)`.
@@ -189,10 +190,11 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - `tests/be_env.py BeEnv.start(tmp_path, *, script=[], start, overrides=None)`(async 컨텍스트): 임시 DB, `build_be(brain_factory=lambda tools: FakeBrain(script, tools, clock=clock), sender_factory=lambda tasks: FakeSender(), sleep=fake_sleep(clock))`, `TestClient`. 속성 `client`, `clock`, `brain`, `sender`, `parts`. 메서드 `get/post/put/delete(path, …, token=TEST_TOKEN)`, `async telegram(text, *, sent_at=None)`(`Update.de_json` → SP1 `handle_update` 경로 → 큐가 빌 때까지), `async press(data, *, message_id=None)`(가짜 `CallbackQuery` → `parts.callbacks`), `async tick()`, `async drain()`.
 
 **Slices**
-- [ ] `test_migrate_fresh_then_again`(SP1, `user_version == 10`), `test_migrate_5_to_10_keeps_sp1_rows`, `test_curve_and_status_checks`(5장 CHECK마다 `IntegrityError`)
+- [ ] `test_nested_joins_outer_and_outer_commits_once`, `test_repo_write_inside_transaction_does_not_commit_outer`(`transaction(conn)` 안 `ConditionsRepo.upsert`·`StateRepo.incr_usage` 뒤 예외 → 둘 다 그대로), `test_no_with_conn_left_in_store`, `test_sp1_tasks_transaction_unchanged`(`tests/test_tools_tasks.py -q` → `0 failed`) (`tests/test_transaction.py`)
+- [ ] `test_migrate_fresh_then_again`(SP1, `user_version == LATEST_VERSION`), `test_migrate_5_to_10_keeps_sp1_rows`, `test_curve_and_status_checks`(5장 CHECK마다 `IntegrityError`)
 - [ ] `test_no_token_401`, `test_wrong_token_401_body_has_no_reason`, `test_right_token_200`, `test_token_in_query_or_cookie_not_accepted`, `test_ten_failures_then_429_for_a_minute`, `test_options_preflight_without_token`
 - [ ] `test_allowed_origin_preflight_headers`, `test_private_network_preflight`, `test_regex_origin_allowed`, `test_other_vercel_app_not_allowed`(`https://evil.vercel.app` → `Allow-Origin` 없음), `test_expose_header_on_get`
-- [ ] `test_health_fields_from_sources`(`version.schema == 10`, 시각은 `Z`), `test_degraded_conditions`(매개변수 4), `test_brain_auth_unknown_until_first_call_then_written_by_dispatcher`, `test_error_counter_counts_event_names_in_24h_window`
+- [ ] `test_health_fields_from_sources`(`version.schema == LATEST_VERSION`, 시각은 `Z`), `test_degraded_conditions`(매개변수 4), `test_brain_auth_unknown_until_first_call_then_written_by_dispatcher`, `test_error_counter_counts_event_names_in_24h_window`
 - [ ] `test_runs_today_delivered_via_and_checkin_state`: `delivered_via == ["telegram"]`(`run_deliveries`에서), 창 안 `pending`·밖 `missed`·`answered_at` → `answered`
 - [ ] `test_run_delivered_records_delivery_same_transaction`: 기록 중 예외 → `proactive_messages`와 `run_deliveries` 둘 다 그대로
 - [ ] `test_safe_mode_health_only`, `test_get_handlers_receive_mode_ro_connection`
@@ -206,7 +208,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 **마무리**
 - [ ] `.env.example`에 `API_TOKEN=`, `config.toml`에 15장 `[api]`, `[notify]`.
-- [ ] **Review + Commit** `feat(api): API skeleton with auth, CORS, health, deliveries and SP3-4 migrations`
+- [ ] **Review + Commit** `feat(api): API skeleton with transactions, auth, CORS, health, deliveries and SP3-4 migrations`
 ---
 
 ### 티켓 02: 읽기 API — 할 일·컨디션·답할 회차·대화·카탈로그·스키마
@@ -240,7 +242,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - [ ] `test_schema_lists_all_models`, `test_every_read_response_validates_against_schema`, `test_cli_schema_prints_bundle`, `test_ui_catalog_version_and_components`(`.2`, 10개)
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
-- [ ] `tests/test_api_e2e.py::test_today_after_chat_and_checkin`: `start=kst(2026, 10, 26, 9, 0) + timedelta(seconds=30)`(월) → 13:00 `env.telegram("내일 2시 치과")` → FakeBrain `add_task(10/27 14:00)` → 17:30 `env.tick()`(FakeBrain이 `propose_tasks` 2) → 시계 10/27 → `GET /today`에 치과 `scheduled`, `GET /checkins?date=2026-10-26`에 `pending`, 상세 `cards` 2개. → `passed`
+- [ ] `tests/test_api_e2e.py::test_today_after_chat_and_checkin`: `start=kst(2026, 10, 26, 9, 0) + timedelta(seconds=30)`(월) → 13:00 `env.telegram("내일 2시 치과")` → FakeBrain `add_task(10/27 14:00)` → 17:30 `env.tick()`(FakeBrain이 `propose_tasks` 2) → 바로(10/26 밤) `GET /checkins?date=2026-10-26`에 그 체크인 `pending`, 상세 `cards` 2개 → 시계를 10/27 09:00으로(답장 창은 04:00에 끝남) → `GET /today`에 치과 `scheduled`, 같은 체크인 `missed`. → `1 passed`
 
 **마무리**
 - [ ] 카탈로그 변경(두 컴포넌트, 판 `.2`)을 조정자를 거쳐 운영 앱 스레드에 보내 확인받는다. 기다리지 않는다.
@@ -278,21 +280,20 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - [ ] **Review + Commit** `feat(api): curve and status read model`
 ---
 
-### 티켓 04: 즉시 갈래, 연결 단위 트랜잭션, 활동 기록, `POST /actions`
+### 티켓 04: 즉시 갈래, 활동 기록, `POST /actions`
 
-**목표:** `POST /actions`가 6.4.2대로 답한다. 변경 도구는 데이터, `tool_events_log`, `activity`(`/actions`면 `api_idempotency`까지)를 **한 트랜잭션**에 쓴다. 그러려고 트랜잭션을 연결 단위로 바꾸고 저장소의 `with self.conn:`을 모두 그것으로 바꾼다. 텔레그램 버튼과 하루 한 번 작업이 `apply_action`을 거친다.
+**목표:** `POST /actions`가 6.4.2대로 답한다. 변경 도구는 데이터, `tool_events_log`, `activity`(`/actions`면 `api_idempotency`까지)를 **한 트랜잭션**에 쓴다. 트랜잭션은 01의 `transaction(conn)`을 쓴다. 텔레그램 버튼과 하루 한 번 작업이 `apply_action`을 거친다.
 **막는 티켓:** 02
 **라벨:** `ready-for-agent`
 
 **Files:**
 - Create: `tools/{actions,activity}.py`, `store/repos/activity.py`, `api/actions.py`
-- Modify: `store/db.py`, `store/repos/*.py`(`with self.conn:` 17곳), `domain.py`, `tools/{core,confirmations}.py`, `harness/dispatcher.py`, `bot/callbacks.py`, `loop/runner.py`, `app.py`, `api/{models,server}.py`, `tests/be_env.py`
-- Test: `tests/test_transaction.py`, `tests/test_api_actions.py`, `tests/test_activity.py`, SP1 `tests/test_telegram_{drafts,conditions}.py`(그대로)
+- Modify: `domain.py`, `tools/{core,confirmations}.py`, `harness/dispatcher.py`, `bot/callbacks.py`, `loop/runner.py`, `app.py`, `api/{models,server}.py`, `tests/be_env.py`
+- Test: `tests/test_api_actions.py`, `tests/test_activity.py`, SP1 `tests/test_telegram_{drafts,conditions}.py`(그대로)
 
 **Interfaces**
-- Consumes: `Tools` 변경 메서드, `TasksRepo.transaction`, `render_confirmations`, `ApiDeps.dispatcher` (SP1, 01)
+- Consumes: `Tools` 변경 메서드, `transaction(conn)`, `render_confirmations`, `ApiDeps.dispatcher` (SP1, 01)
 - Produces:
-- `store/db.py transaction(conn) -> ContextManager[None]`: 깊이를 연결마다 센다(`_DEPTH: dict[int, int]`, 키 `id(conn)`). 가장 바깥만 `BEGIN IMMEDIATE`·`commit`·`rollback`, 안쪽은 합류하고 예외를 올린다. `TasksRepo.transaction()`은 위임. 모든 저장소의 `with self.conn:`을 `with transaction(self.conn):`으로(지금은 바깥 트랜잭션 안에서 부르면 그 자리에서 커밋한다).
 - `domain.py`: `Channel`, `ActivityChannel`, `Actor`. `RunContext`에 `actor="secretary"`, `activity_channel=None`, `channel="telegram"`, `activity_ids`, `undo_ids`.
 - `store/repos/activity.py`: `Activity(...)`(5.2 열), `ActivityRepo.add(...) -> int`, `.get(id)`, `.changed_after(target, after)`; `IdempotencyRepo.get/put/prune`; `ConfirmsRepo.create(*, action, args, summary, origin: Literal["actions", "run_turn"], expires_at, run_id=None, conversation_id=None)`(`"ct_" + token_urlsafe(16)`), `.get`, `.resolve`, `.expire`, `.prune`.
 - `tools/activity.py`: `activity_origin(ctx) -> (Actor, ActivityChannel)`, `record_activity(repo, ctx, *, kind, target, summary, risk, undo) -> int`(대상 문자열은 5.2).
@@ -304,7 +305,6 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - `api/actions.py post_actions`(`client_msg_id` 필수, `user`/`app`). 모델 `ActionRequestBody`, `ActionApplied`, `ActionNeedsConfirm`, `ActionRejected`.
 
 **Slices**
-- [ ] `test_nested_joins_outer_and_outer_commits_once`, `test_repo_write_inside_transaction_does_not_commit_outer`(`ConditionsRepo.upsert` 뒤 예외 → 행 없음), `test_no_with_conn_left_in_store`, `test_sp1_tasks_transaction_unchanged`(`tests/test_tools_tasks.py -q` → `0 failed`)
 - [ ] `test_complete_task_applied_shape`(`"✓ 완료: 운동"`, `Z`), `test_every_public_action_applies`, `test_rejected_422_uses_tool_message`
 - [ ] `test_needs_confirm_drop_priority_task_then_apply_with_token`, `test_set_priorities_quarter_replacing_nonempty_needs_confirm`, `test_set_priorities_quarter_first_time_applies`
 - [ ] `test_confirm_token_used_or_expired_409`, `test_confirm_token_stale_409`, `test_decline_confirm_closes_token_changes_nothing`
@@ -317,7 +317,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - [ ] `tests/test_api_e2e.py::test_actions_end_to_end`: `env.telegram("운동 추가")` → FakeBrain `add_task` → `POST /actions complete_task` → `env.telegram("/today")` 글과 `GET /today`에서 빠짐, 같은 `client_msg_id`는 같은 본문. → `passed`
 
 **마무리**
-- [ ] **Review + Commit** `feat(api): connection-level transactions, apply_action, activity log and POST /actions`
+- [ ] **Review + Commit** `feat(api): apply_action, activity log and POST /actions`
 ---
 
 ### 티켓 05: 되돌리기와 `GET /activity`
@@ -331,7 +331,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - Test: `tests/test_api_undo.py`, SP1 `tests/test_tools_drafts.py`(그대로)
 
 **Interfaces**
-- Consumes: `ActivityRepo`, `IdempotencyRepo`, `apply_action`, `transaction(conn)` (04)
+- Consumes: `ActivityRepo`, `IdempotencyRepo`, `apply_action`, `transaction(conn)` (01, 04)
 - Produces:
 - `UndoHandler = Callable[[Tools, dict, RunContext], str | None]`(칸이 차 있으면 `"superseded"`), `UNDO_HANDLERS`, `register_undo(kind, handler)`. 종류: `task_added`, `task_updated`, `task_moved`, `task_completed`, `task_reopened`, `task_dropped`, `tasks_confirmed`, `priorities_set`, `condition_recorded`(09·11이 더한다).
 - 복원 함수: `TasksRepo.restore(id, *, status, completed_at, deleted_at) -> None`(넘긴 시각 그대로. `task_added` → `deleted_at` 지금, `task_reopened` → 이전 `done`·`completed_at`), `TasksRepo.restore_priority(cadence, period, rank, task_id) -> bool`(칸이 비었을 때만), `ConditionsRepo.restore(d, before: Condition | None)`(None이면 행 삭제).
@@ -362,7 +362,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **Files:**
 - Create: `harness/stream.py`, `api/chat.py`, `store/migrations/011_inbound_conversation.sql`, `tests/ui_stream.py`, `tests/fixtures/app_golden/`
 - Modify: `domain.py`, `harness/{brain,dispatcher,conversations}.py`, `store/repos/{state,conversations}.py`, `loop/runner.py`(`resubmit_inbound`), `tools/mcp_adapter.py`, `bot/{commands,telegram_io}.py`, `app.py`, `api/{models,server}.py`, `tests/{fakes,conftest}.py`
-- Test: `tests/test_api_chat.py`, `tests/test_dispatcher_app_channel.py`, `tests/test_app_golden.py`
+- Test: `tests/test_api_chat.py`, `tests/test_dispatcher_app_channel.py`, `tests/test_app_golden.py`, `tests/test_migrations.py`, `tests/test_api_health.py`(01의 시험이 `LATEST_VERSION`과 비교하므로 고칠 숫자는 없다. `test_latest_version_is_11`과 `test_migrate_10_to_11_keeps_inbound_rows`를 더한다)
 
 **Interfaces**
 - Consumes: `Dispatcher._handle_messages`·`_drain_messages`·`_call_brain`, `StateRepo` 대기 메시지, `IdempotencyRepo`, `apply_action`, `command_of`, `build_planner_server` (SP1, 04)
@@ -576,7 +576,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **Files:** Modify `store/repos/{curve,status}.py`, `store/exports.py`, `tools/{core,confirmations,actions,activity}.py`, `loop/runner.py`, `app.py`. Test `tests/test_curve_actions.py`, `tests/test_curve_drafts.py`
 
 **Interfaces**
-- Consumes: `CurveRepo` 읽기(03), `ActivityRepo`, `register_undo`, `apply_action`, `transaction(conn)` (04, 05)
+- Consumes: `CurveRepo` 읽기(03), `ActivityRepo`, `register_undo`, `apply_action`, `transaction(conn)` (01, 04, 05)
 - Produces:
 - `CurveRepo` 쓰기: `add_chapter(*, title, start_month, status, origin, end_month=None, theme=None, sketch=None, certainty="fact", seed_key=None, source_ref=None)`, `add_milestone(*, date_text, kind, title, status, origin, note=None, chapter_id=None, sensitive=False, certainty="fact", kind_certainty="fact", conversation_id=None, source_ref=None)`(`precision`·`sort_date`는 `date_text`에서), `confirm_milestones(ids)`, `confirm_chapters(ids)`, `unconfirm_milestone(id, at)`, `unconfirm_chapter(id, at)`, `delete_milestone_draft(id) -> bool`, `delete_chapter_draft(id) -> bool`, `expire_drafts(older_than)`, `set_ladder(period, *, now, future, note)`, `restore_ladder(period, before)`, `set_area_scores(period, scores, *, notes, quests)`, `restore_area_scores(period, before)`, `set_area_default`, `add_question`, `next_open_question`, `mark_question`
 - `StatusRepo.add_title(milestone_id, at)`, `.remove_title(milestone_id)`(원장 쓰기는 15).
@@ -610,7 +610,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - Test: `tests/test_seed_life.py`
 
 **Interfaces**
-- Consumes: `CurveRepo` 쓰기, `StatusRepo.add_title`, `export_curve`, `SingleInstanceLock`, `open_db`, `migrate`, `transaction(conn)` (11, SP1)
+- Consumes: `CurveRepo` 쓰기, `StatusRepo.add_title`, `export_curve`, `SingleInstanceLock`, `open_db`, `migrate`, `transaction(conn)` (01, 11)
 - Produces:
 - `EXIT_OK = 0`, `EXIT_RUNNING = 3`, `EXIT_ALREADY = 4`, `EXIT_NOT_REVIEWED = 5`, `EXIT_BAD_FILE = 6`(빈 곳 5)
 - `SkipReason = Literal["sensitive_unconfirmed", "storage_unconfirmed", "invalid"]`
@@ -704,7 +704,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **Files:** Modify `store/repos/status.py`, `tools/{core,confirmations,actions,mcp_adapter}.py`, `harness/dispatcher.py`, `loop/runner.py`, `bot/{commands,telegram_io}.py`, `store/db.py`. Test `tests/test_status_{xp,property,command}.py`, `tests/test_write_paths.py`, `tests/test_api_logging.py`, `tests/test_brain_options.py`
 
 **Interfaces**
-- Consumes: `status/xp.py`(03), 변경 도구, `mark_answered`(07), `review_steps`(14), `status_snapshot`(03), `transaction(conn)`(04)
+- Consumes: `status/xp.py`(03), 변경 도구, `mark_answered`(07), `review_steps`(14), `status_snapshot`(03), `transaction(conn)`(01)
 - Produces:
 - `StatusRepo.grant(*, at, logical_date, source_kind, source_ref, amount, label, area=None) -> bool`(`ON CONFLICT DO NOTHING`, UPDATE·DELETE 함수 없음), `count_secretary_on(d)`.
 - 쌓는 자리는 9.1·4.3 표 그대로: X1/X2 `complete_task`(완료 순간 가장 큰 주기), X4, X6, X7은 그 도구, X3/X5/X8은 `Dispatcher.mark_answered`(`answered_at`과 한 `transaction(conn)`), X9는 하루 한 번 `apply_action(grant_rest_days)`, X10 `Tools.grant_xp(ctx, amount, reason)`(22/28개).
@@ -718,7 +718,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - [ ] `test_rest_days_rules`, `test_task_done_at_0130_counts_previous_day_so_no_rest_day` (Review Focus 5), `test_grant_xp_amounts_reason_and_daily_cap`
 - [ ] `test_level_up_line_once`(140 → 150 넘김, `xp.level_up == 2`), `test_ledger_has_no_update_delete_functions`, `test_xp_and_level_never_decrease`(`hypothesis`, 200회, 완료 조건 8)
 - [ ] `test_status_text_format`, `test_status_command_and_api_same_numbers`, `test_status_empty_stats_copy`, `test_help_lists_status`, `test_tool_counts_22_and_28`(S12)
-- [ ] `test_each_table_written_only_by_its_path`: `on_write`의 문마다 표 이름과 **`my_planner.store` 밖의 첫 `my_planner` 프레임**의 모듈을 4.3 표의 허용 집합과 비교. 허용: `my_planner.tools.*`, `my_planner.harness.dispatcher`, `my_planner.harness.delivery`, `my_planner.api.chat`(`inbound_pending`만), `my_planner.loop.*`(운영 상태), `my_planner.curve.seed`(`curve_*`, `status_titles`, `app_state.life_seed_imported_at`. 잠금을 잡은 별도 프로세스, 4.3·12장). 시나리오: 01~14 수용 흐름과 `run_seed_life`. `my_planner.api.read`의 쓰기는 0
+- [ ] `test_each_table_written_only_by_its_path`: `on_write`의 문마다 표 이름과 **`my_planner.store` 밖의 첫 `my_planner` 프레임**의 모듈을 4.3 표의 허용 집합과 비교. 집합은 `tests/test_write_paths.py`의 `ALLOWED: dict[str, set[str]]`(표 → 모듈)에 4.3 표의 줄마다 모두 적는다. 예: `my_planner.tools.*`, `my_planner.harness.dispatcher`, `my_planner.harness.conversations`(`conversations`), `my_planner.harness.checkins`, `my_planner.harness.delivery`, `my_planner.api.chat`(`inbound_pending`만), `my_planner.loop.*`·`my_planner.app`(운영 상태, `app_state`), `my_planner.curve.seed`(`curve_*`, `status_titles`, `app_state.life_seed_imported_at`. 잠금을 잡은 별도 프로세스, 4.3·12장). 시나리오: 01~14 수용 흐름과 `run_seed_life`. `my_planner.api.read`의 쓰기는 0
 - [ ] `test_full_scenario_logs_have_no_secrets`: 시험 토큰, "비밀 문장 7f3a", 할 일 제목, 도구 인자 값, 푸시 endpoint가 로그에 없다
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
@@ -750,7 +750,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - `ConnectionBand.tsx`, `StateNotice.tsx`, `HealthScreen.tsx`: 문구와 배치는 13.1·13.2 그대로.
 - `_document.tsx`: `<head>`의 **첫 요소**로 CSP `<meta httpEquiv>`(빈 곳 3: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ${NEXT_PUBLIC_CONNECT_SRC}; base-uri 'none'; form-action 'none'`). `vercel.json`: `nosniff`, `no-referrer`, `frame-ancestors 'none'`, 최소 `Permissions-Policy`. 차트·리스트는 `next/dynamic(..., {ssr: false})`.
 - `scripts/check-csp.mjs`: `out/**/*.html`마다 (1) `src` 없는 `<script>`(`application/json` 빼고), `<style>`, `style=` 0개 (2) CSP `<meta>`가 첫 `<script>`보다 앞. 출력 `CSP OK: 0 inline scripts, 0 inline styles, meta first`. `gen-types.mjs`: `schema.json` → `types.gen.ts`. 스크립트 `dev`, `build`, `test`, `gen:types`, `check:csp`, `typecheck`.
-- BE `tests/dashboard_seed.py seed_dashboard_db(conn, clock) -> None`: 꾸며 낸 고정 자료를 **SQL로 바로** 넣는다(할 일·우선순위, 컨디션 30일 중 21일, 회차·전달, 챕터·사건·사다리·영역 점수, 원장·칭호). `tests/test_dashboard_fixtures.py`: 그 DB의 `BeEnv` GET 응답 == `src/test/fixtures/<이름>.json`, `schema.json == schema_bundle()`, `--update-dashboard-fixtures`면 다시 쓴다. 17·18은 행만 더한다.
+- BE `tests/dashboard_seed.py seed_dashboard_db(conn, clock) -> None`: 꾸며 낸 고정 자료를 **SQL로 바로** 넣는다(할 일·우선순위, 컨디션 30일 중 21일, 회차·전달, 챕터·사건·사다리·영역 점수, 원장·칭호). `tests/test_dashboard_fixtures.py`: 그 DB의 `BeEnv` GET 응답 == `src/test/fixtures/<이름>.json`, `schema.json == schema_bundle()`(`/health`의 `version.schema`는 `LATEST_VERSION`), `--update-dashboard-fixtures`면 다시 쓴다. 17·18은 행만 더한다.
 
 **디자인 단계** (구현 전 한 번)
 - [ ] UI UX Pro Max 스킬과 taste 스킬을 작업 세션에 불러온다(각 README의 설치 방법).
@@ -879,7 +879,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 - [ ] `git fetch origin && git switch -c docs/sp3-4-spec-contract origin/main`
 - [ ] 각 줄의 결정 칸을 그 절의 문장으로(티켓 번호는 뺀다). 시드 내용·실제 사건·점수는 넣지 않는다.
-- [ ] 변경 기록 한 줄: `| <날짜> | v3 | 구현 계획의 계약 결정(빈 곳 1~7, 9, 11, 13, 15) 반영 | SP3-4 구현 계획 |`
+- [ ] 변경 기록 한 줄: `| <날짜> | v4 | 구현 계획의 계약 결정(빈 곳 1~7, 9, 11, 13, 15) 반영 | SP3-4 구현 계획 |`(21b가 먼저 머지되면 `v5`)
 - [ ] 확인: `grep -c "ui_milestone_draft\|ui_chapter_draft" <스펙>` ≥ 2, `grep -n "2026-10-24.2\|011_inbound_conversation" <스펙>` 각 한 줄 이상, `git diff --stat`이 스펙과 이 계획뿐
 - [ ] **Commit** `docs(spec): fold SP3-4 plan contract decisions into the spec`, `git push -u origin docs/sp3-4-spec-contract`, PR(본문: 빈 곳 번호와 바꾼 절의 짝 표)
 - [ ] **수용 확인**: 머지 뒤 스펙만 읽고 02·06·12·16의 해당 부분을 쓸 수 있다(짝 표의 줄마다 스펙 문장이 있다).
@@ -894,7 +894,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 **Files:** Modify 스펙(부록 A, 13.1 사유 표시, 11.1 1단계·이미 기록한 달, 변경 기록), 이 계획(문구 표)
 
-- [ ] `git switch -c docs/sp3-4-spec-copy origin/main`, 각 결정을 그 절에, 변경 기록 한 줄(`v3.1`, "확인 문구 C1~C4와 표시 반영").
+- [ ] `git switch -c docs/sp3-4-spec-copy origin/main`, 각 결정을 그 절에, 변경 기록 한 줄(21a 다음 판 `v5`, 21b가 먼저 머지되면 `v4`, "확인 문구 C1~C4와 표시 반영").
 - [ ] 확인: 부록 A에 C1~C4 네 줄, 13.1에 사유 여섯, `grep -nE "놓쳤어요|밀렸어요|늦었지만" <스펙>`이 금지어 목록 줄 밖에서 나오지 않음.
 - [ ] **Commit** `docs(spec): add SP3-4 confirmation copy and labels`, push, PR(본문: "C1~C4 Dahun 확인 필요"). Dahun이 고치면 같은 PR에서 고치고, 같은 날 이 계획의 문구 표와 11·13·14의 기대값을 맞춘다.
 - [ ] **수용 확인**: 머지 뒤 11·13·14의 문구 시험 기대값이 스펙 부록 A의 글과 같다.
