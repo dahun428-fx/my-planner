@@ -201,6 +201,7 @@ RESEND_DELAY_S = 5 * 60
 MAX_RUN_ATTEMPTS = 2  # 회차당 두뇌 호출 최대 2회
 MESSAGE_RETRY_DELAYS_S = (2, 4, 8)  # 사용자 메시지 오류: 지수 백오프로 3회 더(스펙 5.3)
 
+HISTORY_LINES = 20  # 새 세션에 붙이는 최근 원문 수(SP1 resume 실패 대체 경로, S11)
 INBOUND_MAX_ATTEMPTS = 3  # 다시 넣기 상한(SP1 5.2-4, `loop.runner`와 같은 값)
 _DEFAULT_APP_SENDER = AppReplySender()
 
@@ -728,17 +729,20 @@ class Dispatcher:
                 app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
                 app.writer.start_step()
             result = await self._call_brain(prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork)
-            # 가르기가 원래 세션 id를 그대로 돌려줬다: 갈라지지 않고 원래 세션을 이었다. 가르기 실패로 본다(그 세션은
-            # 쓰지 않는다). 도구가 아직 쓰지 않았으면 바로 대체 경로로 다시 부른다. 썼으면 다시 부르지 않고(중복 쓰기
-            # 방지) 그 답을 보내되, 다음 메시지부터 대체 경로로 간다
-            not_forked = (
-                fork and not result.resume_failed and result.session_id == session_id
-                and result.status in ("ok", "max_turns", "error")
-            )
-            if not_forked:
-                log.warning("fork_session_not_forked", extra={"conversation_id": conv.id})
-                self._no_fork.add(conv.id)
-            if resumed and (result.resume_failed or (not_forked and not run_ctx.events)):
+            # 가르기가 답을 냈는데 원래 세션 id를 그대로 돌려줬다: 갈라지지 않고 원래 세션을 이었다. 가르기 실패로
+            # 본다(그 세션은 쓰지 않고, 다음 메시지부터 대체 경로). 바로 대체 경로로 다시 부르는 것은 도구가 쓰지
+            # 않았고 글이 아직 클라이언트에 나가지 않았을 때만이다(답이 둘이 되거나 같은 쓰기를 두 번 하지 않게).
+            # 오류(`error`)는 여기서 보지 않는다: 메시지 없이 끝난 오류는 늘 원래 id를 돌려주므로 아래 재시도에 맡긴다
+            if self._not_forked(fork, session_id, result):
+                self._mark_no_fork(conv.id)
+                if run_ctx.events or (app is not None and app.writer.attempt_streamed):
+                    log.info("fork_fallback_deferred", extra={"conversation_id": conv.id})
+                    not_forked_now = False
+                else:
+                    not_forked_now = True
+            else:
+                not_forked_now = False
+            if resumed and (result.resume_failed or not_forked_now):
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
                 # 가르기가 안 됐으면(S11 대체 경로) 원래 대화의 회차 본문과 원래 대화의 최근 원문을 붙인다(7.2)
                 history = self._history(conv, len(batch))
@@ -771,6 +775,8 @@ class Dispatcher:
                     prompt, session_id=None if fell_back else session_id, run_ctx=run_ctx,
                     fork_session=fork and not fell_back,
                 )
+            if fork and not fell_back and self._not_forked(fork, session_id, result):
+                self._mark_no_fork(conv.id)  # 재시도가 낸 답도 갈라지지 않았다
             if fork and not fell_back:
                 # 갈라 얻은 새 세션만 적는다. 원래 세션 id가 그대로 오면(갈라지지 않았거나 오류) 적지 않는다:
                 # 두 통로가 한 세션을 쓰지 않는다
@@ -869,13 +875,29 @@ class Dispatcher:
                 base = min(base, run.finished_at)
         return [a.summary for a in self.activity.other_channel_since(base, channel, limit=5)] or None
 
+    @staticmethod
+    def _not_forked(fork: bool, session_id: str | None, result: BrainResult) -> bool:
+        """가르기 호출이 답(`ok`, `max_turns`)을 냈는데 원래 세션 id를 돌려줬다."""
+        return (
+            fork and not result.resume_failed and result.session_id == session_id
+            and result.status in ("ok", "max_turns")
+        )
+
+    def _mark_no_fork(self, conversation_id: int) -> None:
+        if conversation_id not in self._no_fork:
+            log.warning("fork_session_not_forked", extra={"conversation_id": conversation_id})
+        self._no_fork.add(conversation_id)
+
     def _history(self, conv: Conversation, skip_last: int) -> str:
-        """새 세션에 붙이는 최근 원문. 갈라 연 대화면 원래 대화의 최근 20개를 먼저, 그 뒤에 이 대화의 것(S11 대체 경로)."""
-        own = self.transcripts.recent(conv.id, 20, skip_last=skip_last)
+        """새 세션에 붙이는 최근 원문 20개(S11 대체 경로: "원문 기록 20개").
+
+        갈라 연 대화면 이 대화의 최근 것을 먼저 채우고, 남는 자리를 원래 대화의 최근 것으로 앞에 채운다(합쳐 20개).
+        """
+        own = self.transcripts.recent_entries(conv.id, HISTORY_LINES, skip_last=skip_last)
         if conv.forked_from is None:
-            return own
-        origin = self.transcripts.recent(conv.forked_from, 20)
-        return "\n".join(p for p in (origin, own) if p)
+            return "\n".join(own)
+        origin = self.transcripts.recent_entries(conv.forked_from, HISTORY_LINES - len(own))
+        return "\n".join([*origin, *own])
 
     def _fork_origin_text(self, conv: Conversation) -> str:
         """갈라 연 회차 대화가 새 세션으로 시작할 때 앞에 붙이는 원래 회차 본문(`## 회차 메시지`, 7.2)."""

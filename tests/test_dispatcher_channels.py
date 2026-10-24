@@ -491,3 +491,83 @@ async def test_answer_record_failure_keeps_committed_action(tmp_path, caplog):
     assert status == 200 and body["status"] == "applied"
     assert score == 4
     assert "action_answer_record_error" in caplog.text and "action_failed" not in caplog.text
+
+
+# --- fix2 ---
+
+
+async def test_streamed_not_forked_answer_is_kept_and_next_message_falls_back(tmp_path):
+    """같은 id를 돌려준 가르기가 이미 글을 스트리밍했으면 그 답을 그대로 둔다(답 둘 방지). 다음 메시지부터 대체 경로."""
+    script = [
+        FakeTurn([], RUN_TEXT, session_id="s-run"),
+        FakeTurn([], "갈라지지 않은 답", session_id="s-run", deltas=["갈라지지 ", "않은 답"]),
+        FakeTurn([], "대체 경로 답", session_id="s-new"),
+    ]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        _, raw = await env.chat("꾸민 앱 답")
+        fork_id = start_meta(raw)["conversation_id"]
+        after_first = len(env.brain.calls)
+        fork_before = conv_row(env, fork_id)["session_id"]
+        stored = env.parts.idempotency.get(env.conn.execute(
+            "SELECT client_msg_id FROM api_idempotency ORDER BY rowid DESC LIMIT 1").fetchone()[0])
+        env.clock.advance(timedelta(minutes=5))
+        await env.chat("꾸민 앱 둘째", conversation_id=fork_id)
+        fork_after = conv_row(env, fork_id)["session_id"]
+        calls = env.brain.calls
+        chunks = parse_sse(raw)
+
+    assert after_first == 2  # 대체 호출을 더 하지 않았다
+    assert "".join(c["delta"] for c in chunks if c["type"] == "text-delta") == "갈라지지 않은 답"
+    assert sum(1 for c in chunks if c["type"] == "text-start") == 1
+    assert stored.body["reply_text"] == "갈라지지 않은 답"
+    assert fork_before is None  # 원래 세션 id는 적지 않는다
+    assert (calls[2]["session_id"], calls[2]["fork_session"]) == (None, False)
+    assert f"## 회차 메시지\n{RUN_TEXT}" in calls[2]["prompt"]
+    assert fork_after == "s-new"
+
+
+async def test_fork_error_retries_and_keeps_forking(tmp_path):
+    """가르기 호출의 오류(원래 id가 돌아와도)는 가르기 실패가 아니다: 2/4/8초 재시도가 다시 가른다."""
+    script = [
+        FakeTurn([], RUN_TEXT, session_id="s-run"),
+        FakeTurn([], "", status="error", session_id="s-run"),
+        FakeTurn([], "다시 갈라 답해요", session_id="s-fork"),
+    ]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        _, raw = await env.chat("꾸민 앱 답")
+        fork = conv_row(env, start_meta(raw)["conversation_id"])
+        calls = [(c["session_id"], c["fork_session"]) for c in env.brain.calls[1:]]
+        no_fork = set(env.parts.dispatcher._no_fork)
+
+    assert calls == [("s-run", True), ("s-run", True)]
+    assert fork["session_id"] == "s-fork"
+    assert no_fork == set()
+
+
+async def test_fork_fallback_history_is_20_lines_total(tmp_path):
+    """대체 경로의 원문은 합쳐 20개: 갈라 연 대화의 것을 먼저, 남는 자리를 원래 대화의 최근 것으로(S11)."""
+    script = [
+        FakeTurn([], RUN_TEXT, session_id="s-run"),
+        FakeTurn([], "앱 첫 답", session_id="s-fork"),
+        FakeTurn([], "", status="error", session_id=None, resume_failed=True),
+        FakeTurn([], "새 세션 답", session_id="s-new"),
+    ]
+    async with await evening_env(tmp_path, script) as env:
+        await env.tick()
+        origin = env.brain.calls[0]["run_ctx"].conversation_id
+        for n in range(25):  # 원래 대화의 꾸민 원문 25줄
+            env.parts.transcripts.append(env.clock.now(), "사용자", origin, None, f"꾸민 줄 {n}")
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        _, raw = await env.chat("꾸민 앱 첫")
+        env.clock.advance(timedelta(minutes=5))
+        await env.chat("꾸민 앱 둘째", conversation_id=start_meta(raw)["conversation_id"])
+        prompt = env.brain.calls[3]["prompt"]
+
+    history = prompt.split("## 최근 대화\n", 1)[1].split("\n\n## 메시지", 1)[0].splitlines()
+    assert len(history) == 20
+    assert history[0].endswith("꾸민 줄 7") and history[17].endswith("꾸민 줄 24")
+    assert history[18].endswith("꾸민 앱 첫") and history[19].endswith("앱 첫 답")

@@ -35,6 +35,9 @@ class RecordingSender:
     async def typing(self):
         self.typing_count += 1
 
+    async def clear_buttons(self, message_id):  # Sender 프로토콜(메시지 id를 돌려주지 않으니 불리지 않는다)
+        pass
+
 
 def _env(tmp_path, conn, state, script, *, start=MON_0900 + timedelta(seconds=30), sender=None):
     env = Env(tmp_path, conn, state, script=script, start=start, sender=sender, with_tools=True)

@@ -137,6 +137,12 @@ class TranscriptStore:
 
         `skip_last`: 가장 최근 몇 개를 뺀다(방금 기록한 현재 메시지를 중복해 넣지 않으려고).
         """
+        return "\n".join(self.recent_entries(conversation_id, n, skip_last=skip_last))
+
+    def recent_entries(self, conversation_id: int, n: int = 20, *, skip_last: int = 0) -> list[str]:
+        """`recent`의 메시지 목록(시간순, 메시지마다 한 항목). `n`이 0 이하면 빈 목록."""
+        if n <= 0:
+            return []
         want = n + skip_last
         found: list[str] = []  # 최신 것부터
         for path in sorted(self.root.rglob("*.md"), reverse=True):
@@ -146,7 +152,7 @@ class TranscriptStore:
                 found.append(f"[{hhmm}] {speaker}: {body}")
                 if len(found) >= want:
                     break
-        return "\n".join(reversed(found[skip_last:]))
+        return list(reversed(found[skip_last:]))
 
 
 # 본문 줄이 `### `로 시작하면 머리글로 읽히지 않게 앞에 폭 없는 공백(U+200B)을 붙인다

@@ -58,6 +58,9 @@ class StatusAtSendSender:
     async def typing(self):
         pass
 
+    async def clear_buttons(self, message_id):  # Sender 프로토콜(메시지 id를 돌려주지 않으니 불리지 않는다)
+        pass
+
 
 async def test_merged_runs_marked_done_after_send(tmp_path, conn, state):
     sender = StatusAtSendSender()
