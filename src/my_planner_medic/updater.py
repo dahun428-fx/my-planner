@@ -18,7 +18,7 @@
 kv 키:
 - `deploy_in_progress`: `{prev_sha, new_sha, schema_before, started_at, phase, verify_started_at, verify_elapsed_s,
   last_tick_at, grace_until, window_from, repairs, repaired, medic_changed, cause, blamed, actions_done?,
-  ran_new?, marked?}`.
+  ran_new?, marked?, verify_failed_at?, rollback_decision? ("proceed"|"refused:<사유>"), refusals?, health_sleeps?}`.
   `phase`는 `deploy|verify|rollback|rollback_verify`. `window_from` 이후의 신호만 센다. 배포는 작업을 켜기 전에
   `verify`로, 롤백은 켜기 전에 `actions_done`을 적는다(켠 뒤 끊겨도 시작 시 복구가 같은 일을 되풀이하지 않게).
 - `deployed_sha`(성공 → new, 롤백 → prev), `bad_shas`(list), `deploy_deferred` `{since}`, `suppress_until`(ISO),
@@ -39,6 +39,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from . import dbfile
+from . import tasks as tasks_mod
 from .clock import Clock
 from .config import MedicConfig
 from .github import GitHub, GitHubUnavailable
@@ -66,6 +67,9 @@ SUPPRESS_AFTER = timedelta(minutes=3)
 WAKE_GRACE = timedelta(minutes=10)
 DEFER_MAX = timedelta(minutes=30)
 PIP_TIMEOUT = 1200
+MAX_HEALTH_SLEEPS = 3  # 헬스 대기 중 "잠듦" 판정 상한. 넘으면 헬스 결과로 판정한다
+MAX_TRANSIENT_REFUSALS = 3  # 작업 상태·DB를 일시적으로 못 읽을 때 다시 해 보는 횟수
+TRANSIENT_REFUSALS = ("task_state_unknown", "db_unreadable")
 
 DIP = "deploy_in_progress"
 TASK_FLAG = "be_task_disabled_by_medic"
@@ -366,7 +370,7 @@ class Updater:
     def _advance(self, dip: dict[str, Any]) -> None:
         now = self._clock.now()
         last = _parse(dip.get("last_tick_at")) or now
-        gap = (now - last).total_seconds()
+        gap = max(0.0, (now - last).total_seconds())  # 시계가 뒤로 가도 확인 시간을 줄이지 않는다
         dip["last_tick_at"] = iso_utc(now)
         self._refresh_suppression(now)
         if gap > 2 * self._cfg.deploy_interval_s:  # 잠들었다: 그 구간을 세지 않고 유예 뒤 창을 다시 시작
@@ -378,10 +382,13 @@ class Updater:
             self._store.kv_json_set(DIP, dip)
             return
         if dip.get("verify_started_at") is None:
-            health = self._await_health()
-            if health == "sleep":  # 헬스를 기다리다 잠들었다: 판정하지 않고 유예를 다시 시작
+            sleeps = int(dip.get("health_sleeps") or 0)
+            health = self._await_health(allow_sleep=sleeps < MAX_HEALTH_SLEEPS)
+            if health == "sleep":  # 헬스를 기다리다 잠들었다: 판정하지 않고 유예를 다시 시작(최대 3번)
+                dip["health_sleeps"] = sleeps + 1
                 self._restart_after_sleep(dip, self._clock.now())
                 return
+            dip["health_sleeps"] = 0
             if health == "fail":
                 self._verify_failed(dip, {"reason": "health", "fps": []})
                 return
@@ -456,7 +463,7 @@ class Updater:
         dbfile.prune(self._backups, "failed-*", self._cfg.keep_failed)
         self._store.kv_delete(DIP)
 
-    def _await_health(self) -> str:
+    def _await_health(self, *, allow_sleep: bool = True) -> str:
         """`/health`가 3분 안에 `ok`(코드 밖 사유만 있는 `degraded` 포함)면 `"ok"`, 아니면 `"fail"`.
 
         두 조회 사이 실제 시각이 `2 × HEALTH_POLL_S`보다 벌어지면 잠든 것이라 판정하지 않고 `"sleep"`.
@@ -474,7 +481,7 @@ class Updater:
                 return "fail"
             before = self._clock.now()
             self._sleep(HEALTH_POLL_S)
-            if (self._clock.now() - before).total_seconds() > 2 * HEALTH_POLL_S:
+            if allow_sleep and (self._clock.now() - before).total_seconds() > 2 * HEALTH_POLL_S:
                 log.info("health_wait_sleep_detected")
                 return "sleep"
 
@@ -488,25 +495,45 @@ class Updater:
     # --- 7단계: 배포 롤백 ------------------------------------------------------
 
     def _rollback(self, dip: dict[str, Any], cause: dict[str, Any]) -> None:
+        """배포 롤백. 하느냐 마느냐는 처음 들어올 때 한 번만 정하고(`rollback_decision`) dip에 적는다.
+
+        `proceed`로 정한 뒤에는 다시 판단하지 않고, 이어 받은 롤백도 남은(되풀이해도 안전한) 일을 끝까지 한다.
+        """
         prev, new = str(dip["prev_sha"]), str(dip["new_sha"])
-        if not dip.get("repaired"):  # 설치 실패·머지 뒤 중단: 확인 전에 왔어도 이 범위가 고친 BE 장애
-            dip["repaired"] = [i.fingerprint for i in self._by_issue(dip.get("repairs") or []) if i.part == "be"]
-        if "ran_new" not in dip:  # BE가 새 코드로 돌았나(확인 단계에서 왔나): DB 되돌리기 나이 제한에 쓴다
-            dip["ran_new"] = dip.get("phase") == "verify"
-        dip.update(phase="rollback", cause=cause)
-        if not dip.get("blamed"):
-            dip["blamed"] = list(dip.get("repaired") or []) or self._blame_fps(cause)
-        self._store.kv_json_set(DIP, dip)
-        bad = self._bad_shas()
-        if new not in bad:
-            self._store.kv_json_set("bad_shas", [*bad, new])
+        if dip.get("phase") != "rollback":  # 처음 들어옴(verify·deploy에서)
+            if not dip.get("repaired"):  # 설치 실패·머지 뒤 중단: 확인 전에 왔어도 이 범위가 고친 BE 장애
+                dip["repaired"] = [
+                    i.fingerprint for i in self._by_issue(dip.get("repairs") or []) if i.part == "be"
+                ]
+            dip["ran_new"] = dip.get("phase") == "verify"  # BE가 새 코드로 돌았나: DB 나이 제한에 쓴다
+            dip["verify_failed_at"] = iso_utc(self._clock.now())
+            dip.update(phase="rollback", cause=cause)
+            if not dip.get("blamed"):
+                dip["blamed"] = list(dip.get("repaired") or []) or self._blame_fps(cause)
+            self._store.kv_json_set(DIP, dip)
+            bad = self._bad_shas()
+            if new not in bad:
+                self._store.kv_json_set("bad_shas", [*bad, new])
         rolled = ok = bool(dip.get("actions_done"))
-        if not ok:
+        decision = dip.get("rollback_decision")
+        if not ok and decision is None:
             refusal = self._rollback_refusal(dip)
-            if refusal is not None:
-                log.warning("rollback_refused %s", refusal)
-                self._give_up(dip, rolled_back=False, note=DB_KEPT_TEXT if refusal.startswith("db_") else None)
-                return
+            if refusal in TRANSIENT_REFUSALS:
+                dip["refusals"] = int(dip.get("refusals") or 0) + 1
+                if dip["refusals"] < MAX_TRANSIENT_REFUSALS:  # 아직 아무것도 안 건드렸다: 다음 tick에 다시
+                    self._store.kv_json_set(DIP, dip)
+                    self._enable_if_medic_disabled()
+                    log.warning("rollback_deferred %s (%d)", refusal, dip["refusals"])
+                    return
+            decision = "proceed" if refusal is None else f"refused:{refusal}"
+            dip["rollback_decision"] = decision  # 무엇이든 망가뜨리기 전에 적는다
+            self._store.kv_json_set(DIP, dip)
+        if not ok and decision != "proceed":
+            reason = str(decision).partition(":")[2]
+            log.warning("rollback_refused %s", reason)
+            self._give_up(dip, rolled_back=False, note=DB_KEPT_TEXT if reason.startswith("db_") else None)
+            return
+        if not ok:
             self._store.kv_json_set(TASK_FLAG, True)
         self._watcher.suppressed = True
         try:
@@ -526,6 +553,7 @@ class Updater:
                 ok = True
         except Exception as exc:  # noqa: BLE001 - 상태 기계가 끝까지 가야 한다
             log.warning("rollback_failed %s", type(exc).__name__)
+            self._undo_db_move(dip)  # 켜기 전에: DB 없이 BE를 띄우면 빈 DB를 새로 만든다
         finally:
             self._enable_if_medic_disabled()
         if not ok:
@@ -541,9 +569,13 @@ class Updater:
         self._advance(dip)
 
     def _rollback_refusal(self, dip: dict[str, Any]) -> str | None:
-        """아무것도 건드리기 전에(BE는 아직 돈다) 롤백을 하지 않을 까닭. 없으면 None."""
-        if self._store.kv_json_get(TASK_FLAG) is not True and self._tasks.is_enabled() is not True:
-            return "task_disabled_by_hand"  # medic이 끈 것이 아니면 켜지도 끄지도 않는다
+        """아무것도 건드리기 전에(BE는 아직 돈다) 롤백을 하지 않을 까닭. 없으면 None. 처음 들어올 때만 부른다."""
+        if self._store.kv_json_get(TASK_FLAG) is not True:
+            enabled = self._tasks.is_enabled()
+            if enabled is None:
+                return "task_state_unknown"
+            if not enabled:
+                return "task_disabled_by_hand"  # medic이 끈 것이 아니면 켜지도 끄지도 않는다
         try:
             changed = self._schema_changed(dip)
         except sqlite3.Error:
@@ -553,10 +585,25 @@ class Updater:
         if not (self._backups / f"pre-deploy-{dip['prev_sha']}.db").exists():
             return "db_no_backup"
         started = _parse(dip.get("started_at"))
+        failed_at = _parse(dip.get("verify_failed_at"))
         max_age = timedelta(minutes=self._cfg.db_restore_max_age_minutes)
-        if dip.get("ran_new") and started is not None and self._clock.now() - started > max_age:
-            return "db_too_old"  # 그 사이 새 코드가 쓴 기록을 지우지 않는다. 옛 코드는 새 스키마를 모른다
+        if dip.get("ran_new") and started is not None and failed_at is not None and failed_at - started > max_age:
+            return "db_too_old"  # 확인이 실패한 때의 나이: 그 사이 새 코드가 쓴 기록을 지우지 않는다
         return None
+
+    def _undo_db_move(self, dip: dict[str, Any]) -> None:
+        """복사 전에 실패했으면 `failed-<new>/`로 옮긴 DB를 제자리로(덮지 않는다). 최선만 한다."""
+        failed = self._backups / f"failed-{dip['new_sha']}"
+        if self._db.exists() or not (failed / self._db.name).exists():
+            return
+        for name in (self._db.name, *(self._db.name + s for s in dbfile.SIDE_SUFFIXES)):
+            src, dest = failed / name, self._db.with_name(name)
+            if src.exists() and not dest.exists():
+                try:
+                    os.replace(src, dest)
+                except OSError as exc:
+                    log.warning("undo_db_move_failed %s", type(exc).__name__)
+        log.warning("rollback_db_put_back")
 
     def _schema_changed(self, dip: dict[str, Any]) -> bool:
         before = dip.get("schema_before")
@@ -751,9 +798,15 @@ class Updater:
             self._enable()
 
     def _keep_enabled(self) -> None:
-        """medic이 끈 작업은 켜고, 이미 켜진 작업은 켜고 시작한 상태로 둔다. 꺼졌거나 모르는 작업은 건드리지 않는다."""
-        if self._store.kv_json_get(TASK_FLAG) is True or self._tasks.is_enabled() is True:
+        """medic이 끈 작업은 켜고 시작한다. 이미 켜진 작업은 켜 두기만 하고, 돌고 있지 않을 때만 시작한다
+        (둘째 BE 인스턴스를 띄우지 않게). 꺼졌거나 모르는 작업은 건드리지 않는다."""
+        if self._store.kv_json_get(TASK_FLAG) is True:
             self._enable()
+        elif self._tasks.is_enabled() is True:
+            if self._tasks.state() == tasks_mod.RUNNING:
+                self._tasks.enable_only()
+            else:
+                self._tasks.enable_start()
 
     def _reenable_if_flagged(self) -> None:
         dip = self._store.kv_json_get(DIP)

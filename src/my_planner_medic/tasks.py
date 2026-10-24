@@ -29,6 +29,8 @@ ENABLE_START = (
     "$ErrorActionPreference='Stop'; "
     "Enable-ScheduledTask -TaskName {name} | Out-Null; Start-ScheduledTask -TaskName {name}"
 )
+# 이미 켜진 작업을 "켜 둔 채" 둘 때: Start는 하지 않는다(돌고 있는 BE 옆에 둘째 인스턴스를 띄우지 않게)
+ENABLE_ONLY = "$ErrorActionPreference='Stop'; Enable-ScheduledTask -TaskName {name} | Out-Null"
 TASK_STATE = "$ErrorActionPreference='Stop'; (Get-ScheduledTask -TaskName {name}).State"
 TASK_ENABLED = "$ErrorActionPreference='Stop'; (Get-ScheduledTask -TaskName {name}).Settings.Enabled"
 # BE 프로세스: 명령줄에 저장소 루트가 있고 `-m my_planner`로 끝나는 python/pythonw.
@@ -91,6 +93,16 @@ class TaskControl:
         if rc != 0 or value not in ("true", "false"):
             return None
         return value == "true"
+
+    def state(self, name: str | None = None) -> str | None:
+        """`Ready`·`Running`·`Disabled` 등. 조회 실패는 None."""
+        return self._state(self._name(name))
+
+    def enable_only(self, name: str | None = None) -> bool:
+        rc, _ = self._run(ENABLE_ONLY.format(name=self._name(name)))
+        if rc != 0:
+            log.warning("enable_failed rc=%d", rc)
+        return rc == 0
 
     def _state(self, name: str) -> str | None:
         rc, out = self._run(TASK_STATE.format(name=name))

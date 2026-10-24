@@ -23,6 +23,7 @@ from my_planner_medic.tasks import (
     FIND_BE_PIDS,
     POWERSHELL,
     TASK_ENABLED,
+    TASK_STATE,
     TaskControl,
 )
 from my_planner_medic.updater import Updater
@@ -987,3 +988,175 @@ def test_tick_swallows_unexpected_errors_logging_type_only(
 def test_backup_and_stop_failures_have_distinct_notices(tmp_path: Path) -> None:
     assert updater_mod.BACKUP_TEXT != updater_mod.BLOCKED_TEXT
     assert "백업" in updater_mod.BACKUP_TEXT
+
+
+# --- 고침 2회차 ------------------------------------------------------------------
+
+
+def _mid_rollback_dip(**extra: Any) -> dict[str, Any]:
+    return {
+        "prev_sha": PREV, "new_sha": NEW, "schema_before": 1, "started_at": iso_utc(START), "phase": "rollback",
+        "rollback_decision": "proceed", "ran_new": True, "verify_failed_at": iso_utc(START),
+        "repaired": [FP], "blamed": [FP], "cause": {"reason": "repaired_again", "fps": [FP]}, **extra,
+    }
+
+
+def _schema_changed_db_and_backup(env: Env) -> Path:
+    backups = env.root / "state" / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    backup = backups / f"pre-deploy-{PREV}.db"
+    make_db(backup, 1, rows=5)
+    conn = sqlite3.connect(env.db)
+    conn.execute("PRAGMA user_version=2")
+    conn.commit()
+    conn.close()
+    return backup
+
+
+def test_resume_mid_rollback_with_db_moved_finishes_after_10_hours(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    backup = _schema_changed_db_and_backup(env)
+    failed = tmp_path / "state" / "backups" / f"failed-{NEW}"
+    failed.mkdir()
+    os.replace(env.db, failed / "planner.db")  # DB를 옮긴 직후 medic이 죽었다
+    env.store.kv_json_set("deploy_in_progress", _mid_rollback_dip())
+    env.store.kv_json_set("be_task_disabled_by_medic", True)
+    env.shell.enabled = False
+    env.shell.on("git", "rev-parse", "HEAD", returns=(0, PREV))
+    env.clock.advance(hours=10)
+    env.updater.recover_on_start()
+    assert env.db.exists() and filecmp.cmp(backup, env.db, shallow=False)
+    assert env.shell.enabled is True and "Enable-ScheduledTask" in next(
+        c for c in reversed(env.cmds) if "ScheduledTask" in c)
+    assert env.notifier.gave_up_calls == []
+    assert env.dip()["phase"] == "rollback_verify"
+    assert env.store.kv_json_get("be_task_disabled_by_medic") is False
+
+
+def test_resume_after_reset_before_db_move_completes_db_rollback(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    backup = _schema_changed_db_and_backup(env)
+    env.store.kv_json_set("deploy_in_progress", _mid_rollback_dip())
+    env.store.kv_json_set("be_task_disabled_by_medic", True)
+    env.shell.enabled = False
+    env.shell.on("git", "rev-parse", "HEAD", returns=(0, PREV))  # reset --hard까지 하고 죽었다
+    env.clock.advance(hours=3)
+    env.updater.recover_on_start()
+    failed = tmp_path / "state" / "backups" / f"failed-{NEW}"
+    assert (failed / "planner.db").exists()
+    assert filecmp.cmp(backup, env.db, shallow=False)
+    assert env.notifier.gave_up_calls == []
+    assert env.dip()["phase"] == "rollback_verify"
+
+
+def test_refused_decision_is_kept_on_resume(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    env.store.kv_json_set("deploy_in_progress", _mid_rollback_dip(rollback_decision="refused:db_too_old"))
+    env.updater.recover_on_start()  # 포기 결정을 적고 포기 전에 죽었다: 다시 판단하지 않고 포기를 끝낸다
+    assert not env.has("reset --") and not env.has("Disable-ScheduledTask")
+    assert env.notifier.gave_up_calls == [(FP, False, f"https://github.com/{REPO}/issues/17", True)]
+    assert env.dip() is None
+
+
+def test_db_age_is_measured_when_verify_failed(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    _schema_changed_db_and_backup(env)
+    env.signal(FP)
+    env.tick(4)  # 배포 몇 분 뒤 확인 실패: 진행 결정
+    dip = env.dip()
+    assert dip["rollback_decision"] == "proceed" and dip["verify_failed_at"] is not None
+    assert (tmp_path / "state" / "backups" / f"failed-{NEW}" / "planner.db").exists()
+
+
+def test_failed_db_restore_puts_moved_db_back_before_enabling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    _schema_changed_db_and_backup(env)
+
+    def boom(src: Path, db: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(updater_mod.dbfile, "restore", boom)
+    env.signal(FP)
+    env.tick(4)
+    assert env.db.exists()  # BE가 빈 DB를 새로 만들지 않게: 옮긴 DB를 되돌려 놓고 켠다
+    check = sqlite3.connect(env.db)
+    assert check.execute("PRAGMA user_version").fetchone() == (2,)
+    check.close()
+    assert len(env.notifier.gave_up_calls) == 1
+    assert "Enable-ScheduledTask" in env.cmds[-1]
+
+
+@pytest.mark.parametrize("kind", ["task_unknown", "db_unreadable"])
+def test_transient_refusal_retries_then_gives_up_after_three(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    if kind == "task_unknown":
+        env.shell.on(*POWERSHELL, TASK_ENABLED.format(name="my-planner"), returns=(1, "error"))
+    else:
+        def unreadable(db: Path) -> int:
+            raise sqlite3.OperationalError("locked")
+
+        monkeypatch.setattr(updater_mod.dbfile, "schema_version", unreadable)
+    n = len(env.cmds)
+    env.signal(FP)
+    env.tick(4)
+    assert env.dip()["phase"] == "rollback" and env.dip()["refusals"] == 1
+    assert env.notifier.gave_up_calls == []
+    env.tick(5)
+    assert env.dip()["refusals"] == 2 and env.notifier.gave_up_calls == []
+    env.tick(5)
+    assert env.dip() is None and len(env.notifier.gave_up_calls) == 1
+    assert not any("Disable-ScheduledTask" in c or "reset --" in c for c in env.cmds[n:])
+
+
+def test_keep_enabled_does_not_start_a_running_task(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    env.signal(FP)
+    env.tick(4)
+    assert env.dip()["phase"] == "rollback_verify"
+    env.shell.on(*POWERSHELL, TASK_STATE.format(name="my-planner"), returns=(0, "Running\r\n"))
+    env.signal("no_reply", kind="no_reply")
+    env.tick(5)  # 롤백 뒤 확인 실패 → 포기: 이미 켜져 돌고 있으면 Start하지 않는다
+    assert env.dip() is None
+    last = env.cmds[-1]
+    assert "Enable-ScheduledTask" in last and "Start-ScheduledTask" not in last
+
+
+def test_health_sleep_verdicts_are_capped_at_three(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.health(503)
+
+    def sleep(s: float) -> None:
+        env.clock.advance(minutes=30, seconds=s)  # 쉴 때마다 잠든다
+
+    env.updater._sleep = sleep
+    env.tick()
+    for _ in range(2):
+        assert env.dip()["grace_until"] is not None and not env.has("reset --")
+        env.tick(10)  # 유예(10분)가 막 끝남
+    assert env.dip()["health_sleeps"] == 3
+    env.tick(10)  # 유예(10분)가 막 끝남  # 네 번째: 더 미루지 않고 헬스 결과로 판정
+    assert env.has(f"reset --hard --quiet {PREV}")
+
+
+def test_negative_tick_gap_is_clamped(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    deployed(env)
+    env.tick(5)
+    assert env.dip()["verify_elapsed_s"] == 300
+    env.tick(-3)  # 시계가 뒤로 감
+    assert env.dip()["verify_elapsed_s"] == 300
