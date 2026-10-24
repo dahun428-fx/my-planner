@@ -15,6 +15,8 @@ export type PartContext = {
   readOnly: boolean;
   /** The screen reads again after a write (parts never change state on their own). */
   onAfterAction(): void;
+  /** A copy kept on the device (4.6) after a reload: the rows behind it may have changed since. */
+  restored?: boolean;
   /** `ui_choice`: the chosen label goes to the chat as a new user message. */
   onChoose?(label: string): void;
 };

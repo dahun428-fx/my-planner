@@ -93,6 +93,17 @@ describe("ChatSheet", () => {
     expect(bodies[0].conversation_id).toBe(5);
   });
 
+  it("a restored draft card does not write: its rows may have changed since it was kept", async () => {
+    await saveParts("m-5-1", [draftPart]);
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "골라 봤어요" }]);
+    renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
+    expect(await screen.findByText("장보기")).toBeInTheDocument();
+    await ready();
+    expect(screen.getByRole("checkbox", { name: copy.parts.checkLabel("장보기") })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: copy.parts.dropChecked })).toBeNull();
+    expect(screen.queryByRole("button", { name: copy.parts.confirmCount(1) })).toBeNull();
+  });
+
   it("restores text only from a BE without message ids (before R4d)", async () => {
     await saveParts("m-5-1", [draftPart]);
     history(5, [

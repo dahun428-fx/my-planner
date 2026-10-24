@@ -97,7 +97,7 @@ export function MessageView({
         if (p.kind === "ui") {
           return (
             <div key={p.toolCallId} className={styles.part}>
-              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, onAfterAction: () => {}, onChoose }} />
+              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose }} />
             </div>
           );
         }
