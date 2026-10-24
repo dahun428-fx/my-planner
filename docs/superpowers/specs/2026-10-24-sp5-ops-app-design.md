@@ -500,10 +500,10 @@ web/app/                         # Vercel 루트 디렉터리
 | R2 | `GET /api/v1/drafts` → `{items: [{todo, proposed_at, expires_at, run_id, conversation_id}]}` | 할 일 화면의 초안 묶음. 지금은 초안이 어떤 `GET`에도 나오지 않는다(6.3) | 수락됨, 6.3 규칙도 고침, 티켓 02(2026-10-24) |
 | R3 | `/health`에 `schedule: {weekday: ["09:00","17:30"], weekend: ["10:00","18:00"]}` | 설정 화면의 체크인 시간을 앱 상수 대신 실제 값으로 | v1 이후, 요청 전 |
 
-| R4a | `GET /activity`에 `order=desc`(기본 `asc` 그대로)와 `before=<ISO>` 커서, 응답 `next_before` | 기록 화면은 최근 것부터 본다. 지금은 오래된 것부터만 준다(6.4.4) | 요청함(2026-10-24) |
-| R4b | `/chat`의 `data-activity`에 `confirmation`(확인 문구, 글). 앱 통로에서는 확인 문구를 `h-confirm` 글 조각으로 보내지 않는다 | AI SDK 5의 글 조각(`TextUIPart`)에는 스트림 id가 남지 않아 확인 문구를 다른 글과 가를 수 없다 | 요청함(2026-10-24) |
-| R4c | 할 일을 가리키는 `ui_*` 조각(`ui_todo_list`, `ui_todo_draft`)에 `/today.cards`처럼 지금 값 `data.todos`를 붙인다: 대화는 `tool-output-available.output = {"ok": true, "data": {"todos": [Todo]}}`, 체크인은 `cards[].data` (초안 할 일은 `status: draft`) | props가 `task_ids`뿐이라 대화·체크인에서 제목을 알 길이 없다 | 요청함(2026-10-24) |
-| R4d | `GET /conversations/{id}/messages` 항목에 `id`(비서 줄은 그 답의 SSE `start.messageId`, 사용자 줄은 받은 `message.id`) | 기기에 둔 화면 조각을 다시 붙일 열쇠 | 요청함(2026-10-24) |
+| R4a | `GET /activity`에 `order=desc`(기본 `asc` 그대로)와 `before=<ISO>` 커서, 응답 `next_before` | 기록 화면은 최근 것부터 본다. 지금은 오래된 것부터만 준다(6.4.4) | 받음(2026-10-24, SP3-4 21a, 티켓 05) |
+| R4b | `/chat`의 `data-activity`에 `confirmation`(확인 문구, 글). 앱 통로에서는 확인 문구를 `h-confirm` 글 조각으로 보내지 않는다 | AI SDK 5의 글 조각(`TextUIPart`)에는 스트림 id가 남지 않아 확인 문구를 다른 글과 가를 수 없다 | 받음(2026-10-24, SP3-4 21a, 티켓 06·10) |
+| R4c | 할 일을 가리키는 `ui_*` 조각(`ui_todo_list`, `ui_todo_draft`)에 `/today.cards`처럼 지금 값 `data.todos`를 붙인다: 대화는 `tool-output-available.output = {"ok": true, "data": {"todos": [Todo]}}`, 체크인은 `cards[].data` (초안 할 일은 `status: draft`) | props가 `task_ids`뿐이라 대화·체크인에서 제목을 알 길이 없다 | 받음(2026-10-24, SP3-4 21a, 티켓 02·09) |
+| R4d | `GET /conversations/{id}/messages` 항목에 `id`(비서 줄은 그 답의 SSE `start.messageId`, 사용자 줄은 받은 `message.id`) | 기기에 둔 화면 조각을 다시 붙일 열쇠 | 받음(2026-10-24, SP3-4 21a, 티켓 02) |
 
 R1, R2, R4a가 들어오기 전에는: 해당 경로가 `404`면 그 탭과 묶음을 숨기고, 기록은 F8의 대체 방법을 쓴다. R4b가 없으면 확인 문구 칸 없이 글로만 보이고 되돌리기는 알림 줄과 기록 화면에서 한다. R4c가 없으면 "할 일 {n}개" 한 줄(6장). R4d가 없으면 다시 연 대화에 조각이 붙지 않는다.
 
