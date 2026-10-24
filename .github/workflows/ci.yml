@@ -28,7 +28,18 @@ jobs:
         id: filter
         with:
           filters: |
-            # be 작업은 둘로 나눈다. 작업 수준 `if:`에서는 matrix를 쓸 수 없고, 단계에서만 건너뛰면
+            be:
+              - 'src/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - 'requirements.lock'
+              - 'pyproject.toml'
+            workflow:
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/app/**'
+
+  # be 작업은 둘로 나눈다. 작업 수준 `if:`에서는 matrix를 쓸 수 없고, 단계에서만 건너뛰면
   # Windows 러너가 떠서 분량을 쓰기 때문이다. 건너뛴 작업은 GitHub이 통과로 본다.
   be:
     name: be (ubuntu-latest)
