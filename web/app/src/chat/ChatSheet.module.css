@@ -215,9 +215,6 @@
   overflow-y: auto;
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.input::placeholder {
-  color: var(--muted);
-}
 .input[data-ready] {
   border-color: var(--primary);
   box-shadow: 0 0 0 0.5px var(--primary);
@@ -266,4 +263,6 @@
 }
 .input[data-ready]:focus-visible {
   border-color: var(--primary);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }

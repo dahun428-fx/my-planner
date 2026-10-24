@@ -168,5 +168,6 @@ self.addEventListener("fetch", function (event) {
   }
   if (url.origin !== self.location.origin) return; // the BE and anything else: the browser's own way
   if (request.mode === "navigate") event.respondWith(networkFirst(request));
-  else if (url.pathname.startsWith("/_next/static/")) event.respondWith(cacheFirst(request));
+  else if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/fonts/"))
+    event.respondWith(cacheFirst(request));
 });

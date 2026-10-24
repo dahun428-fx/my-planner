@@ -49,4 +49,9 @@ describe("chat styles", () => {
     expect(rule(".sendMark")).toMatch(/width:\s*2\.25rem/);
     expect(rule(".sendMark")).toMatch(/background:\s*var\(--primary\)/);
   });
+
+  it("the ready field still shows focus: a 2px --text outline off the field", () => {
+    expect(rule(".input[data-ready]:focus-visible")).toMatch(/outline:\s*2px solid var\(--text\)/);
+    expect(rule(".input[data-ready]:focus-visible")).toMatch(/outline-offset:\s*2px/);
+  });
 });

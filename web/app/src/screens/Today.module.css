@@ -203,7 +203,7 @@
 .manage::after {
   content: "";
   position: absolute;
-  inset: calc((1.25rem - var(--control-h)) / 2) -0.5rem;
+  inset: calc((1.25rem - var(--control-h)) / 2) -0.75rem;
 }
 .manage:focus-visible {
   outline: 2px solid var(--text);

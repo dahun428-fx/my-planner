@@ -206,7 +206,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (send(text)) setText("");
   };
   // Enter sends, as the keyboard's send key says; Shift+Enter is a new line, and an Enter that ends
-  // a Korean syllable (IME composition) is not a send.
+  // a Korean syllable (IME composition) is not a send. keyCode 229 covers Safari, which can
+  // report isComposing false on the Enter that ends a composition.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
     e.preventDefault();
