@@ -1,6 +1,6 @@
 # SP6 운영 앱 대화의 생성형 UI 넓히기 상세 설계
 
-- 상태: 초안 v1 (Dahun 결정 반영), Dahun 검토 대기
+- 상태: 초안 v2 (Dahun 결정과 문서 리뷰 반영), Dahun 검토 대기
 - 작성일: 2026-10-24
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 **정본**, 이 문서는 6.4.1, 6.4.7, 10장을 넓힌다), [SP5 운영 앱 스펙](2026-10-24-sp5-ops-app-design.md) (화면, 6장 생성형 UI 규칙, 7장 부품 목록, 9장 성능)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "기본 부품", "완성 카드", "조립 카드" 셋을 더한다, 14장 BE-1), 결정 기록: [`docs/adr/`](../../adr/) (새 ADR 없음. ADR 0005 "두뇌는 planner 도구만"의 범위 안이다. 습관 기록 SP7이 0010을 쓰므로, 나중에 SP6에 ADR이 필요해지면 0011이다)
