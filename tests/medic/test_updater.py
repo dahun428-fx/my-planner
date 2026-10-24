@@ -551,6 +551,13 @@ def test_rollback_restores_db_when_schema_changed(tmp_path: Path) -> None:
     live.execute("PRAGMA user_version=2")
     live.commit()
     assert Path(f"{env.db}-wal").exists()
+    # 실제로는 BE 작업이 꺼진 뒤라 연결이 없다. Windows는 열린 파일을 옮기지 못하므로
+    # 체크포인트 안 된 WAL을 복사해 두고 연결을 닫은 뒤(닫으면 WAL이 지워진다) 되돌려 놓는다
+    snap = {suffix: Path(f"{env.db}{suffix}").read_bytes() for suffix in ("", "-wal")}
+    live.close()
+    for suffix, data in snap.items():
+        Path(f"{env.db}{suffix}").write_bytes(data)
+    Path(f"{env.db}-shm").unlink(missing_ok=True)
     env.signal(FP)
     env.tick(5)
     failed = tmp_path / "state" / "backups" / f"failed-{NEW}"
@@ -558,7 +565,6 @@ def test_rollback_restores_db_when_schema_changed(tmp_path: Path) -> None:
     assert {"planner.db", "planner.db-wal"} <= names
     assert filecmp.cmp(backup, env.db, shallow=False)
     assert not Path(f"{env.db}-wal").exists()
-    live.close()
     check = sqlite3.connect(failed / "planner.db")
     assert check.execute("PRAGMA user_version").fetchone() == (2,)  # 손으로 되살릴 수 있다
     check.close()
