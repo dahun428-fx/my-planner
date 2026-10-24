@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { copy } from "../src/lib/copy";
-import { mockBe, seedConn } from "./routes";
+import { markdownSse, mockBe, seedConn } from "./routes";
 
 // Spec 13장 "CSP 실행": under the real CSP headers, the chat part is drawn (the json-schema check
 // and zod run without eval) and nothing breaks the policy. Two tests, so a failure says which.
@@ -63,6 +63,50 @@ test("no CSP violations", async ({ page }) => {
   problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `chat: securitypolicyviolation ${v}`));
 
   expect(problems).toEqual([]);
+});
+
+// The secretary's Markdown (its parser comes in its own chunk) draws a table, a code block and a
+// link under the CSP, and raw HTML in it stays text.
+test("markdown answer renders with no CSP violations", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => {
+    if (/content.security.policy|CSP/i.test(m.text())) problems.push(`console ${m.type()}: ${m.text()}`);
+  });
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI} at ${e.sourceFile}:${e.lineNumber}`));
+  });
+  await mockBe(page, { chat: [{ body: markdownSse() }] });
+  await page.goto("/");
+  await page.getByRole("button", { name: copy.chat.launcher }).click();
+  const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
+  await expect(input).toBeEnabled();
+  await input.fill("이번 주 정리해 줘");
+  await page.getByRole("button", { name: copy.chat.send }).click();
+
+  const answer = page.locator('[data-message="m-md"]');
+  await expect(answer.locator("table td").first()).toHaveText("월");
+  await expect(answer.locator("pre code")).toContainText("const week");
+  await expect(answer.locator("strong").first()).toHaveText("이번 주 정리");
+  await expect(answer.getByRole("link", { name: "달력" })).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(answer.getByRole("checkbox")).toHaveCount(2);
+  await expect(answer.locator("img")).toHaveCount(0);
+  await expect(answer).toContainText("<img src=x onerror=alert(1)>");
+  // The table and the code block scroll inside the answer; the page itself does not.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  for (const sel of ["pre", "table"]) {
+    const box = await answer.locator(sel).evaluate((el) => {
+      const scroller = el.tagName === "PRE" ? el : el.parentElement!;
+      return { overflow: getComputedStyle(scroller).overflowX, fits: scroller.getBoundingClientRect().right <= 390 };
+    });
+    expect(box, sel).toEqual({ overflow: "auto", fits: true });
+  }
+  await page.waitForLoadState("networkidle");
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `securitypolicyviolation ${v}`));
+  expect(problems).toEqual([]);
+  await page.screenshot({ path: "e2e/__screens__/chat-markdown.png" });
 });
 
 // Moving between tabs inside the app must keep each screen's styles: Next's pages router can carry

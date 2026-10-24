@@ -5,12 +5,8 @@
   overflow-wrap: anywhere;
   white-space: pre-line;
 }
-.root p,
-.root ul,
-.root ol,
-.root blockquote,
-.root pre,
-.root .tableWrap {
+/* :where() keeps the reset at zero specificity, so the block spacing below wins over it. */
+:where(.root) :where(p, ul, ol, blockquote, pre) {
   margin: 0;
 }
 .root > * + * {
@@ -22,9 +18,6 @@
 }
 .root li + li {
   margin-top: 0.125em;
-}
-.root li > p {
-  margin: 0;
 }
 .heading {
   font-weight: 600;

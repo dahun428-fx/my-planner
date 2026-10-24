@@ -43,9 +43,36 @@ function week(): Record<string, unknown> {
 }
 
 export type MockOptions = {
-  /** Golden SSE bodies for POST /chat, in turn (the last repeats). */
-  chat?: string[];
+  /** SSE bodies for POST /chat, in turn (the last repeats): a golden's file name, or `{ body }`. */
+  chat?: (string | { body: string })[];
 };
+
+/** An answer in Markdown, streamed in small pieces: emphasis, a list, a table, a code block, a link. */
+export const MARKDOWN_ANSWER = [
+  "## 이번 주 정리\n",
+  "**치과**는 *내일* 가요. ~~헬스장~~은 다음 주로.\n\n",
+  "- [x] 장보기\n- [ ] 보고서 초안\n\n",
+  "1. 오전: `메일 정리`\n2. 오후: 회의\n\n",
+  "> 쉬는 시간도 챙겨요.\n\n",
+  "| 요일 | 할 일 | 메모 |\n|---|---|---|\n| 월 | 보고서 초안 쓰기 | 오전 집중 시간에 끝내기 |\n| 화 | 치과 | 오후 3시, 늦지 않게 출발 |\n\n",
+  "```\nconst week = [\"월\", \"화\", \"수\", \"목\", \"금\"].map((d) => d + \"요일\");\n```\n\n",
+  "자세한 건 [달력](https://example.com/calendar)에서 봐요. <img src=x onerror=alert(1)>",
+].join("");
+
+export function markdownSse(text = MARKDOWN_ANSWER): string {
+  const ev = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  const pieces = text.match(/[\s\S]{1,12}/g) ?? [];
+  return [
+    ev({ type: "start", messageId: "m-md", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat", checkin_id: null } }),
+    ev({ type: "start-step" }),
+    ev({ type: "text-start", id: "t1" }),
+    ...pieces.map((delta) => ev({ type: "text-delta", id: "t1", delta })),
+    ev({ type: "text-end", id: "t1" }),
+    ev({ type: "finish-step" }),
+    ev({ type: "finish", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat" } }),
+    "data: [DONE]\n\n",
+  ].join("");
+}
 
 /** Answers every BE call from the fixtures; returns the POST /chat bodies it saw. */
 export async function mockBe(page: Page, opts: MockOptions = {}) {
@@ -82,8 +109,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/push/vapid-public-key") return json(route, { public_key: "BFixtureKeyNotReal" });
     if (req.method() === "POST" && path === "/chat") {
       chatBodies.push(req.postDataJSON());
-      const name = chat[Math.min(chatBodies.length - 1, chat.length - 1)];
-      return route.fulfill({ status: 200, headers: { ...CORS, ...sseHeaders }, body: golden(name) });
+      const next = chat[Math.min(chatBodies.length - 1, chat.length - 1)];
+      return route.fulfill({ status: 200, headers: { ...CORS, ...sseHeaders }, body: typeof next === "string" ? golden(next) : next.body });
     }
     return json(route, { error: { code: "not_found", message: `no fixture for ${req.method()} ${path}` } }, 404);
   });

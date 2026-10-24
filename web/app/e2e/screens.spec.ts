@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../src/lib/copy";
+import { PALETTES } from "../src/lib/theme";
 import { LONG_TITLE, beUnreachable, mockBe, seedConn } from "./routes";
 
 // Spec 13장 "눈으로": the eight canvas screens at 390×844, light and dark, saved to
@@ -106,6 +107,31 @@ for (const scheme of ["light", "dark"] as const) {
         await page.screenshot({ path: `e2e/__screens__/${s.name}-${scheme}.png` });
         // The whole page too, for what lies below the fold (fixed bars land where the first view ends).
         await page.screenshot({ path: `e2e/__screens__/full/${s.name}-${scheme}.png`, fullPage: true });
+      });
+    }
+  });
+}
+
+// Each colour preset (Settings › 색감): Today and the whole of Settings, light and dark, saved to
+// e2e/__screens__/palettes/ to be compared side by side.
+for (const scheme of ["light", "dark"] as const) {
+  test.describe(`palettes ${scheme}`, () => {
+    test.use({ colorScheme: scheme });
+    for (const palette of PALETTES) {
+      test(`${palette} (${scheme})`, async ({ page }) => {
+        await page.addInitScript((p) => localStorage.setItem("mp.palette", p), palette);
+        await seedConn(page);
+        await mockBe(page);
+        await page.goto("/");
+        await expect(page.getByText(LONG_TITLE).first()).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        expect(await page.evaluate(() => document.documentElement.dataset.palette ?? "ink")).toBe(palette);
+        await page.screenshot({ path: `e2e/__screens__/palettes/today-${palette}-${scheme}.png` });
+        await page.goto("/settings/");
+        await expect(page.getByRole("radiogroup", { name: copy.settings.palette })).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+        await page.screenshot({ path: `e2e/__screens__/palettes/settings-${palette}-${scheme}.png`, fullPage: true });
       });
     }
   });
