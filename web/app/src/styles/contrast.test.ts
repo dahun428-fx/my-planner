@@ -79,6 +79,7 @@ const PAIRS: [string, string][] = [
   ["--text", "--raised"],
   ["--hue", "--surface"],
   ["--hue", "--ground"],
+  ["--hue", "--raised"],
   ["--negative", "--surface"],
   ["--positive", "--surface"],
   ["--on-primary", "--primary"],

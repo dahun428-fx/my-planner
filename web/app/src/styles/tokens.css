@@ -167,7 +167,7 @@
   --rule: #efe6e2;     --border: #e6dad5;   --control: #d8c8c2;
   --text: #1d1413;     --muted: #72605b;    --text-2: #463834;
   --primary: #1d1413;  --on-primary: #fffcfa;
-  --hue: #b0461d;
+  --hue: #a8431c;
   --positive: #247b50; --negative: #c4242a;
 }
 @media (prefers-color-scheme: dark) {
