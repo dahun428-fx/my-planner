@@ -33,3 +33,12 @@ describe("kstToUtcIso", () => {
     expect(kstToUtcIso("2026-10-25", "00:30")).toBe("2026-10-24T15:30:00Z");
   });
 });
+
+describe("logicalDateOf", () => {
+  it("counts the hours before 04:00 Seoul as the day before", async () => {
+    const { logicalDateOf } = await import("./time");
+    expect(logicalDateOf("2026-10-24T15:30:00Z")).toBe("2026-10-24"); // 00:30 on the 25th
+    expect(logicalDateOf("2026-10-24T18:59:00Z")).toBe("2026-10-24"); // 03:59
+    expect(logicalDateOf("2026-10-24T19:00:00Z")).toBe("2026-10-25"); // 04:00
+  });
+});

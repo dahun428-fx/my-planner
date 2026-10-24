@@ -139,6 +139,12 @@ export const copy = {
       not_undoable: "되돌릴 수 없는 변경이에요",
     },
     more: "더 보기",
+    today: "오늘",
+    yesterday: "어제",
+    bySecretary: "비서가 한 일",
+    needsConfirm: "확인이 필요해요",
+    empty: "아직 기록이 없어요.",
+    meta: (hhmm: string, actor: string, channel: string) => `${hhmm} · ${actor} · ${channel}`,
   },
 
   settings: {
@@ -263,6 +269,7 @@ export const copy = {
     app: "앱",
     app_chat: "앱 대화",
     telegram: "텔레그램",
+    scheduler: "정해진 시각",
   },
 
   actors: {

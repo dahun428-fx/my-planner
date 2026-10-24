@@ -1,0 +1,133 @@
+.main {
+  padding-bottom: calc(var(--row) + env(safe-area-inset-bottom) + var(--gap));
+}
+.line {
+  margin: 0 var(--pad) var(--gap);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.dot {
+  display: block;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--hue);
+}
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.undone {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.note {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.undo {
+  position: relative;
+  min-height: var(--small-control-h);
+  padding: 0 0.875rem;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+/* 9장: the pill looks 32px tall but its hit area is the 44px control height. */
+.undo::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) -0.25rem;
+}
+.undo:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.undo:focus-visible,
+.more:focus-visible,
+.noticeAction:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.moreWrap {
+  display: flex;
+  justify-content: center;
+  margin: 0 var(--pad) var(--gap);
+}
+.more {
+  min-height: var(--control-h);
+  padding: 0 1rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.more:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.block {
+  margin: 0 var(--pad) var(--gap);
+}
+.blockHeading {
+  margin: 0 0 0.5rem;
+  padding: 0 0.25rem;
+  font-size: var(--size-section);
+  font-weight: 600;
+  color: var(--text);
+}
+.blockItem + .blockItem {
+  margin-top: 0.5rem;
+}
+.notice {
+  margin: 0 var(--pad) var(--gap);
+  padding: 0.75rem var(--pad);
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-group);
+  color: var(--notice-ink);
+}
+.noticeText {
+  margin: 0;
+  font-size: var(--size-meta);
+  line-height: 1.45;
+}
+.lead {
+  font-weight: 600;
+}
+.noticeActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.noticeAction {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  padding: 0 0.5rem;
+  margin-left: -0.5rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--notice-ink);
+  text-decoration: underline;
+  cursor: pointer;
+}

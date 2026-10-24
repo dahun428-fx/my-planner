@@ -1,6 +1,345 @@
 {
   "api": "v1",
   "models": {
+    "ActionApplied": {
+      "$defs": {
+        "ActionXp": {
+          "additionalProperties": false,
+          "properties": {
+            "gained": {
+              "title": "Gained",
+              "type": "integer"
+            },
+            "level_up": {
+              "title": "Level Up",
+              "type": "null"
+            }
+          },
+          "required": [
+            "gained",
+            "level_up"
+          ],
+          "title": "ActionXp",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "적용(200). `undo_id`는 되돌릴 수 있을 때만 있고 값은 `activity_id`와 같다.",
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activity Id"
+        },
+        "confirmation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confirmation"
+        },
+        "result": {
+          "additionalProperties": true,
+          "title": "Result",
+          "type": "object"
+        },
+        "status": {
+          "const": "applied",
+          "title": "Status",
+          "type": "string"
+        },
+        "undo_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Undo Id"
+        },
+        "xp": {
+          "$ref": "#/$defs/ActionXp"
+        }
+      },
+      "required": [
+        "status",
+        "activity_id",
+        "result",
+        "confirmation",
+        "xp"
+      ],
+      "title": "ActionApplied",
+      "type": "object"
+    },
+    "ActionNeedsConfirm": {
+      "additionalProperties": false,
+      "description": "확인 필요(200). 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다(10분).",
+      "properties": {
+        "confirm_token": {
+          "title": "Confirm Token",
+          "type": "string"
+        },
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        },
+        "status": {
+          "const": "needs_confirm",
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "confirm_token",
+        "summary",
+        "expires_at"
+      ],
+      "title": "ActionNeedsConfirm",
+      "type": "object"
+    },
+    "ActionRejected": {
+      "$defs": {
+        "ErrorDetail": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "unauthorized",
+                "not_found",
+                "conflict",
+                "superseded",
+                "undo_expired",
+                "too_large",
+                "rejected",
+                "not_undoable",
+                "too_many_auth_failures",
+                "safe_mode",
+                "internal"
+              ],
+              "title": "Code",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "title": "ErrorDetail",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "거절(422). `error.message`는 도구의 오류 문구다.",
+      "properties": {
+        "activity_id": {
+          "title": "Activity Id",
+          "type": "null"
+        },
+        "error": {
+          "$ref": "#/$defs/ErrorDetail"
+        },
+        "status": {
+          "const": "rejected",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "activity_id",
+        "error"
+      ],
+      "title": "ActionRejected",
+      "type": "object"
+    },
+    "ActionRequestBody": {
+      "additionalProperties": false,
+      "description": "`POST /actions` 요청 (6.4.2). `client_msg_id`는 필수다(6.1 중복 방지).",
+      "properties": {
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Client Msg Id",
+          "type": "string"
+        },
+        "confirm_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirm Token"
+        }
+      },
+      "required": [
+        "action",
+        "client_msg_id"
+      ],
+      "title": "ActionRequestBody",
+      "type": "object"
+    },
+    "ActivityResponse": {
+      "$defs": {
+        "ActivityItem": {
+          "additionalProperties": false,
+          "properties": {
+            "actor": {
+              "enum": [
+                "secretary",
+                "user"
+              ],
+              "title": "Actor",
+              "type": "string"
+            },
+            "at": {
+              "title": "At",
+              "type": "string"
+            },
+            "channel": {
+              "enum": [
+                "app",
+                "telegram",
+                "scheduler"
+              ],
+              "title": "Channel",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "title": "Kind",
+              "type": "string"
+            },
+            "risk": {
+              "enum": [
+                "low",
+                "confirm"
+              ],
+              "title": "Risk",
+              "type": "string"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "undo_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undo Id"
+            },
+            "undone_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Undone At"
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "actor",
+            "channel",
+            "kind",
+            "summary",
+            "risk",
+            "undo_id",
+            "undone_at"
+          ],
+          "title": "ActivityItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /activity` (6.4.4). `next_before`는 `desc`이고 더 앞선 행이 남았을 때만, 아니면 null.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ActivityItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Before"
+        },
+        "next_since": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Since"
+        }
+      },
+      "required": [
+        "items",
+        "next_since",
+        "next_before"
+      ],
+      "title": "ActivityResponse",
+      "type": "object"
+    },
     "CheckinDetail": {
       "$defs": {
         "CheckinCard": {
@@ -677,6 +1016,422 @@
         "items"
       ],
       "title": "Conversations",
+      "type": "object"
+    },
+    "Curve": {
+      "$defs": {
+        "CurveAreas": {
+          "additionalProperties": false,
+          "properties": {
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "scores": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "propertyNames": {
+                "enum": [
+                  "career",
+                  "finance",
+                  "health",
+                  "relationships",
+                  "learning",
+                  "quality_of_life"
+                ]
+              },
+              "title": "Scores",
+              "type": "object"
+            }
+          },
+          "required": [
+            "period",
+            "scores"
+          ],
+          "title": "CurveAreas",
+          "type": "object"
+        },
+        "CurveChapter": {
+          "additionalProperties": false,
+          "properties": {
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Certainty",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "sketch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sketch"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "theme": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "theme",
+            "start",
+            "end",
+            "sketch",
+            "certainty"
+          ],
+          "title": "CurveChapter",
+          "type": "object"
+        },
+        "CurveCondition": {
+          "additionalProperties": false,
+          "properties": {
+            "average": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Average"
+            },
+            "bucket": {
+              "title": "Bucket",
+              "type": "string"
+            },
+            "days_logged": {
+              "title": "Days Logged",
+              "type": "integer"
+            },
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          "required": [
+            "bucket",
+            "start",
+            "end",
+            "average",
+            "days_logged"
+          ],
+          "title": "CurveCondition",
+          "type": "object"
+        },
+        "CurveLadder": {
+          "additionalProperties": false,
+          "properties": {
+            "future": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Future"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "now": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Now"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          "required": [
+            "period",
+            "now",
+            "future",
+            "note"
+          ],
+          "title": "CurveLadder",
+          "type": "object"
+        },
+        "CurveMilestone": {
+          "additionalProperties": false,
+          "properties": {
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Certainty",
+              "type": "string"
+            },
+            "chapter_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chapter Id"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "high",
+                "low",
+                "turning_point"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "precision": {
+              "enum": [
+                "year",
+                "month",
+                "day"
+              ],
+              "title": "Precision",
+              "type": "string"
+            },
+            "sensitive": {
+              "title": "Sensitive",
+              "type": "boolean"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "precision",
+            "kind",
+            "title",
+            "note",
+            "chapter_id",
+            "sensitive",
+            "certainty"
+          ],
+          "title": "CurveMilestone",
+          "type": "object"
+        },
+        "CurveReassurance": {
+          "additionalProperties": false,
+          "properties": {
+            "condition_average": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Condition Average"
+            },
+            "condition_scaled": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Condition Scaled"
+            },
+            "days_logged": {
+              "title": "Days Logged",
+              "type": "integer"
+            },
+            "gap": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gap"
+            },
+            "ladder_now": {
+              "title": "Ladder Now",
+              "type": "integer"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          "required": [
+            "period",
+            "ladder_now",
+            "condition_average",
+            "condition_scaled",
+            "days_logged",
+            "gap"
+          ],
+          "title": "CurveReassurance",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /curve` (6.3.5).",
+      "properties": {
+        "areas": {
+          "items": {
+            "$ref": "#/$defs/CurveAreas"
+          },
+          "title": "Areas",
+          "type": "array"
+        },
+        "chapters": {
+          "items": {
+            "$ref": "#/$defs/CurveChapter"
+          },
+          "title": "Chapters",
+          "type": "array"
+        },
+        "condition": {
+          "items": {
+            "$ref": "#/$defs/CurveCondition"
+          },
+          "title": "Condition",
+          "type": "array"
+        },
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "ladder": {
+          "items": {
+            "$ref": "#/$defs/CurveLadder"
+          },
+          "title": "Ladder",
+          "type": "array"
+        },
+        "milestones": {
+          "items": {
+            "$ref": "#/$defs/CurveMilestone"
+          },
+          "title": "Milestones",
+          "type": "array"
+        },
+        "reassurance": {
+          "items": {
+            "$ref": "#/$defs/CurveReassurance"
+          },
+          "title": "Reassurance",
+          "type": "array"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "zoom": {
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "year"
+          ],
+          "title": "Zoom",
+          "type": "string"
+        }
+      },
+      "required": [
+        "zoom",
+        "from",
+        "to",
+        "chapters",
+        "milestones",
+        "ladder",
+        "areas",
+        "condition",
+        "reassurance"
+      ],
+      "title": "Curve",
       "type": "object"
     },
     "Drafts": {
@@ -1658,6 +2413,362 @@
       "title": "SchemaBundle",
       "type": "object"
     },
+    "Status": {
+      "$defs": {
+        "DailyQuest": {
+          "additionalProperties": false,
+          "properties": {
+            "parent_id": {
+              "title": "Parent Id",
+              "type": "integer"
+            },
+            "parent_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Title"
+            },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "task_id": {
+              "title": "Task Id",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "title",
+            "parent_id",
+            "parent_title",
+            "planned_for"
+          ],
+          "title": "DailyQuest",
+          "type": "object"
+        },
+        "FirstSteps": {
+          "additionalProperties": false,
+          "properties": {
+            "done": {
+              "title": "Done",
+              "type": "integer"
+            },
+            "open": {
+              "title": "Open",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "open",
+            "done"
+          ],
+          "title": "FirstSteps",
+          "type": "object"
+        },
+        "MainQuest": {
+          "additionalProperties": false,
+          "properties": {
+            "first_steps": {
+              "$ref": "#/$defs/FirstSteps"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "rank": {
+              "title": "Rank",
+              "type": "integer"
+            },
+            "task_id": {
+              "title": "Task Id",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "title",
+            "rank",
+            "period",
+            "first_steps"
+          ],
+          "title": "MainQuest",
+          "type": "object"
+        },
+        "RecentXp": {
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "title": "Amount",
+              "type": "integer"
+            },
+            "at": {
+              "title": "At",
+              "type": "string"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at",
+            "label",
+            "amount"
+          ],
+          "title": "RecentXp",
+          "type": "object"
+        },
+        "StatusHp": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Score"
+            }
+          },
+          "required": [
+            "date",
+            "score"
+          ],
+          "title": "StatusHp",
+          "type": "object"
+        },
+        "StatusStat": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "title": "Area",
+              "type": "string"
+            },
+            "debuff": {
+              "title": "Debuff",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "period": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period"
+            },
+            "prev_period": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prev Period"
+            },
+            "prev_score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prev Score"
+            },
+            "recovery_quest": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recovery Quest"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Score"
+            }
+          },
+          "required": [
+            "area",
+            "label",
+            "score",
+            "period",
+            "prev_score",
+            "prev_period",
+            "debuff",
+            "recovery_quest"
+          ],
+          "title": "StatusStat",
+          "type": "object"
+        },
+        "StatusTitle": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "granted_at": {
+              "title": "Granted At",
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "high",
+                "turning_point"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "milestone_id": {
+              "title": "Milestone Id",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "milestone_id",
+            "title",
+            "kind",
+            "date",
+            "granted_at"
+          ],
+          "title": "StatusTitle",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /status` (6.3.6).",
+      "properties": {
+        "daily_quests": {
+          "items": {
+            "$ref": "#/$defs/DailyQuest"
+          },
+          "title": "Daily Quests",
+          "type": "array"
+        },
+        "hp": {
+          "$ref": "#/$defs/StatusHp"
+        },
+        "level": {
+          "title": "Level",
+          "type": "integer"
+        },
+        "main_quests": {
+          "items": {
+            "$ref": "#/$defs/MainQuest"
+          },
+          "title": "Main Quests",
+          "type": "array"
+        },
+        "recent_xp": {
+          "items": {
+            "$ref": "#/$defs/RecentXp"
+          },
+          "title": "Recent Xp",
+          "type": "array"
+        },
+        "stats": {
+          "items": {
+            "$ref": "#/$defs/StatusStat"
+          },
+          "title": "Stats",
+          "type": "array"
+        },
+        "titles": {
+          "items": {
+            "$ref": "#/$defs/StatusTitle"
+          },
+          "title": "Titles",
+          "type": "array"
+        },
+        "xp_for_next": {
+          "title": "Xp For Next",
+          "type": "integer"
+        },
+        "xp_into_level": {
+          "title": "Xp Into Level",
+          "type": "integer"
+        },
+        "xp_total": {
+          "title": "Xp Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "level",
+        "xp_total",
+        "xp_into_level",
+        "xp_for_next",
+        "hp",
+        "stats",
+        "main_quests",
+        "daily_quests",
+        "titles",
+        "recent_xp"
+      ],
+      "title": "Status",
+      "type": "object"
+    },
     "Today": {
       "$defs": {
         "AppCard": {
@@ -2511,6 +3622,78 @@
         "components"
       ],
       "title": "UiCatalog",
+      "type": "object"
+    },
+    "UndoRequestBody": {
+      "additionalProperties": false,
+      "description": "`POST /activity/{id}/undo` 요청 (6.4.3). `client_msg_id`는 필수다(6.1 중복 방지).",
+      "properties": {
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Client Msg Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_msg_id"
+      ],
+      "title": "UndoRequestBody",
+      "type": "object"
+    },
+    "UndoResponse": {
+      "additionalProperties": false,
+      "description": "되돌림(200). `undone`: 되돌린 활동 id. `already_undone`(U4)이면 `activity_id`는 앞선 되돌리기 활동이고\n`undone`, `confirmation`은 없다.",
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activity Id"
+        },
+        "confirmation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmation"
+        },
+        "status": {
+          "enum": [
+            "undone",
+            "already_undone"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "undone": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Undone"
+        }
+      },
+      "required": [
+        "status",
+        "activity_id"
+      ],
+      "title": "UndoResponse",
       "type": "object"
     },
     "Week": {

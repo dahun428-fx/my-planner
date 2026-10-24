@@ -1,8 +1,7 @@
 import Head from "next/head";
-import { LargeTitle } from "../components/LargeTitle";
 import { TabBar } from "../components/TabBar";
 import { copy } from "../lib/copy";
-import page from "../styles/page.module.css";
+import { Activity } from "../screens/Activity";
 
 export default function Page() {
   return (
@@ -10,9 +9,7 @@ export default function Page() {
       <Head>
         <title>{copy.tabs.activity}</title>
       </Head>
-      <main className={page.main}>
-        <LargeTitle title={copy.tabs.activity} />
-      </main>
+      <Activity />
       <TabBar current="activity" />
     </>
   );

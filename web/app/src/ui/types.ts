@@ -7,7 +7,7 @@ export type Chapter = { id: number; title: string; start_month: string; end_mont
 export type PartData = { todos?: Todo[]; milestones?: Milestone[]; chapters?: Chapter[] };
 
 export type PartContext = {
-  where: "chat" | "today" | "checkin";
+  where: "chat" | "today" | "checkin" | "activity";
   /** Offline or blocked: buttons are disabled. */
   readOnly: boolean;
   /** The screen reads again after a write (parts never change state on their own). */
