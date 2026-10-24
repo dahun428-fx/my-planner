@@ -37,8 +37,21 @@ describe("kstToUtcIso", () => {
 describe("logicalDateOf", () => {
   it("counts the hours before 04:00 Seoul as the day before", async () => {
     const { logicalDateOf } = await import("./time");
-    expect(logicalDateOf("2026-10-24T15:30:00Z")).toBe("2026-10-24"); // 00:30 on the 25th
-    expect(logicalDateOf("2026-10-24T18:59:00Z")).toBe("2026-10-24"); // 03:59
-    expect(logicalDateOf("2026-10-24T19:00:00Z")).toBe("2026-10-25"); // 04:00
+    expect(logicalDateOf("2026-10-24T15:30:00Z", "04:00")).toBe("2026-10-24"); // 00:30 on the 25th
+    expect(logicalDateOf("2026-10-24T18:59:00Z", "04:00")).toBe("2026-10-24"); // 03:59
+    expect(logicalDateOf("2026-10-24T19:00:00Z", "04:00")).toBe("2026-10-25"); // 04:00
+  });
+
+  it("follows the boundary the BE sends", async () => {
+    const { logicalDateOf } = await import("./time");
+    expect(logicalDateOf("2026-10-24T19:30:00Z", "05:30")).toBe("2026-10-24"); // 04:30 with a 05:30 boundary
+    expect(logicalDateOf("2026-10-24T20:30:00Z", "05:30")).toBe("2026-10-25"); // 05:30
+    expect(logicalDateOf("2026-10-24T15:30:00Z", "00:00")).toBe("2026-10-25");
+  });
+
+  it("falls back to 04:00 when an older BE sends none", async () => {
+    const { logicalDateOf } = await import("./time");
+    expect(logicalDateOf("2026-10-24T18:59:00Z", undefined)).toBe("2026-10-24");
+    expect(logicalDateOf("2026-10-24T18:59:00Z", "garbage")).toBe("2026-10-24");
   });
 });

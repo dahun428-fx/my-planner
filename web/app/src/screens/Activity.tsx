@@ -170,11 +170,12 @@ export function Activity() {
   };
 
   // Day groups by the BE's logical day (hours before 04:00 Seoul belong to the day before); "today" is /today.date.
-  const today = todayPoll.result?.kind === "ok" ? todayPoll.result.data.date : logicalDateOf(new Date().toISOString());
+  const boundary = todayPoll.result?.kind === "ok" ? todayPoll.result.data.day_boundary : undefined;
+  const today = todayPoll.result?.kind === "ok" ? todayPoll.result.data.date : logicalDateOf(new Date().toISOString(), boundary);
   const yesterday = addDays(today, -1);
   const groups: { day: string; head: string; rows: ActivityItem[] }[] = [];
   for (const a of items) {
-    const day = logicalDateOf(a.at);
+    const day = logicalDateOf(a.at, boundary);
     let g = groups[groups.length - 1];
     if (!g || g.day !== day) {
       g = { day, head: day === today ? copy.activity.today : day === yesterday ? copy.activity.yesterday : copy.dateParts.monthDay(Number(day.slice(5, 7)), Number(day.slice(8, 10))), rows: [] };

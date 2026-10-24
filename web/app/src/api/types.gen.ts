@@ -6,6 +6,7 @@ export interface ApiModels {
   ActionRejected: ActionRejected;
   ActionRequestBody: ActionRequestBody;
   ActivityResponse: ActivityResponse;
+  ChatRequestBody: ChatRequestBody;
   CheckinDetail: CheckinDetail;
   CheckinList: CheckinList;
   CheckinSummary: CheckinSummary;
@@ -135,6 +136,34 @@ export interface ActivityItem {
   summary: string;
   undo_id: number | null;
   undone_at: string | null;
+}
+/**
+ * `POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ChatRequestBody".
+ */
+export interface ChatRequestBody {
+  checkin_id?: number | null;
+  client_msg_id: string;
+  conversation_id?: number | null;
+  message: ChatMessage;
+}
+/**
+ * AI SDK `UIMessage`(마지막 사용자 메시지 하나). `parts`의 `text`만 읽는다(6.4.1). 모르는 필드는 버린다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ChatMessage".
+ */
+export interface ChatMessage {
+  id?: string | null;
+  /**
+   * @maxItems 100
+   */
+  parts?: {
+    [k: string]: unknown;
+  }[];
+  role: "user";
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -639,6 +668,7 @@ export interface Today {
   checkins: CheckinSummary[];
   condition: ConditionItem | null;
   date: string;
+  day_boundary: string;
   todos: TodayTodo[];
   weekday: string;
 }

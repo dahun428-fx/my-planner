@@ -92,6 +92,15 @@ export const copy = {
     sentAt: (hhmm: string) => `${hhmm}에 보냄`,
     receivedApp: "앱 알림으로 받음",
     receivedTelegram: "텔레그램으로 받음",
+    receivedBoth: "앱 알림과 텔레그램으로 받음",
+    title: "체크인",
+    todosHeading: "남은 할 일",
+    noTodos: "남은 할 일이 없어요",
+    complete: "완료",
+    done: "완료",
+    tomorrowLabel: (title: string) => `${title} 내일로`,
+    completeLabel: (title: string) => `${title} 완료`,
+    replyFailed: "답장 칸을 불러오지 못했어요",
   },
 
   todos: {
