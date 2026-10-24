@@ -486,8 +486,10 @@ CREATE TABLE status_titles (
 | DELETE | `/push/subscriptions/{id}` | 운영 앱용 | 즉시 갈래 | 6.4.8 |
 | POST | `/push/test` | 운영 앱용 | 즉시 갈래(결과 기록) | 6.4.8 |
 | GET, PUT | `/settings/notify` | 운영 앱용 | PUT은 즉시 갈래 | 6.4.9 |
+| POST | `/client-errors` | 운영 앱·대시보드용 | 없음(로그 `client_error`만) | SP6 3.3 |
+| POST | `/internal/notify` | 자동 복구 감시자용 | 없음(고정 안내 길, 푸시 결과만 기록) | SP6 6장 |
 
-대시보드는 표의 `GET` 여섯 개만 쓴다.
+대시보드는 표의 `GET` 여섯 개와 `POST /client-errors`만 쓴다.
 
 ### 6.3 읽기 (대시보드와 운영 앱 공통)
 

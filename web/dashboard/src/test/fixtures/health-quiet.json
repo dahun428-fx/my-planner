@@ -27,6 +27,7 @@
     "primary": "app",
     "effective": "telegram"
   },
+  "inbound_pending_oldest_at": null,
   "runs_today": [],
   "errors": {
     "window_hours": 24,

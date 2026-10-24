@@ -99,6 +99,12 @@ def _plan_open(conn: sqlite3.Connection, now: datetime, idle: timedelta) -> bool
     return r is not None and now - from_iso(r[0]) <= idle
 
 
+def _inbound_pending_oldest(conn: sqlite3.Connection) -> str | None:
+    """받았지만 아직 답을 만들지 않은(`brain_done = 0`) 메시지 중 가장 오래된 것의 받은 시각. 없으면 None (SP6 3.4)."""
+    v = conn.execute("SELECT MIN(received_at) FROM inbound_pending WHERE brain_done = 0").fetchone()[0]
+    return api_time(from_iso(v)) if v else None
+
+
 def safe_mode_view(deps: ApiDeps) -> dict[str, Any]:
     return {"status": "safe_mode", "version": _version(None), "now": api_time(deps.clock.now())}
 
@@ -139,6 +145,7 @@ def health_view(conn: sqlite3.Connection, deps: ApiDeps) -> dict[str, Any]:
         "plan_open": _plan_open(conn, now, timedelta(hours=s.limits.plan_idle_hours)),
         # 실제 통로(7.3 D1a): 주 통로가 app이어도 VAPID와 켜진 구독이 없으면 telegram
         "notify": {"primary": primary, "effective": effective_channel(primary, push.count_active(), s.vapid is not None)},
+        "inbound_pending_oldest_at": _inbound_pending_oldest(conn),
         "runs_today": runs_today(runs=runs, deliveries=DeliveriesRepo(conn, deps.clock), now=now, settings=s),
         "errors": deps.errors.snapshot(),
         "push": {"subscriptions": push.count_active(), "last_success_at": last_success},

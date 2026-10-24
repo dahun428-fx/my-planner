@@ -17,6 +17,7 @@ export interface ApiModels {
   CheckinDetail: CheckinDetail;
   CheckinList: CheckinList;
   CheckinSummary: CheckinSummary;
+  ClientErrorBody: ClientErrorBody;
   Conditions: Conditions;
   Conversations: Conversations;
   Curve: Curve;
@@ -33,6 +34,8 @@ export interface ApiModels {
   PushSubscribeBody: PushSubscribeBody;
   PushSubscribed: PushSubscribed;
   PushTestResult: PushTestResult;
+  RecoveryNoticeBody: RecoveryNoticeBody;
+  RecoveryNoticeSent: RecoveryNoticeSent;
   SafeModeHealth: SafeModeHealth;
   SchemaBundle: SchemaBundle;
   Status: Status;
@@ -112,7 +115,8 @@ export interface ErrorDetail {
     | "not_undoable"
     | "too_many_auth_failures"
     | "safe_mode"
-    | "internal";
+    | "internal"
+    | "unavailable";
   message: string;
 }
 /**
@@ -249,6 +253,34 @@ export interface CheckinSummary {
   scheduled_for: string;
   sent_at: string | null;
   state: "pending" | "answered" | "missed";
+}
+/**
+ * `POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ClientErrorBody".
+ */
+export interface ClientErrorBody {
+  app: "app" | "dashboard";
+  at: string;
+  /**
+   * @maxItems 10
+   */
+  frames:
+    | []
+    | [string]
+    | [string, string]
+    | [string, string, string]
+    | [string, string, string, string]
+    | [string, string, string, string, string]
+    | [string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string]
+    | [string, string, string, string, string, string, string, string, string, string];
+  name: string;
+  route: string;
+  version: string;
 }
 /**
  * `GET /conditions` (6.3.4).
@@ -492,6 +524,7 @@ export interface HabitsList {
 export interface Health {
   brain: HealthBrain;
   errors: HealthErrors;
+  inbound_pending_oldest_at: string | null;
   last_tick_at: string | null;
   notify: HealthNotify;
   now: string;
@@ -670,6 +703,25 @@ export interface PushSubscribed {
 export interface PushTestResult {
   failed: number;
   ok: number;
+}
+/**
+ * `POST /internal/notify` 요청 (SP6 6장). 복구 감시자가 결과 알림을 보낼 때 쓴다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "RecoveryNoticeBody".
+ */
+export interface RecoveryNoticeBody {
+  kind: "recovery";
+  text: string;
+}
+/**
+ * `POST /internal/notify` 응답: 알림이 간 통로.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "RecoveryNoticeSent".
+ */
+export interface RecoveryNoticeSent {
+  channel: "telegram" | "app";
 }
 /**
  * 안전 모드의 `GET /health`: 상태, 판, 지금만.

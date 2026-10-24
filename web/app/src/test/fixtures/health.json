@@ -16,6 +16,7 @@
   "paused_until": null,
   "plan_open": false,
   "notify": { "primary": "app", "effective": "app" },
+  "inbound_pending_oldest_at": null,
   "runs_today": [
     {
       "id": 340,
