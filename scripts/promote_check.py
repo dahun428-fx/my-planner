@@ -27,6 +27,9 @@ WEB_FOLDERS = ("web/app/", "web/dashboard/")
 WINDOWS_JOB = "be (windows-latest)"
 STAGING_CONTEXT = "staging/be"
 VERCEL_LOGIN = "vercel[bot]"
+# 기본 Vercel 상태 컨텍스트(저장소 변수로 덮는다). medic의 config.medic.toml·MedicConfig 기본값과 같아야 한다
+DEFAULT_VERCEL_CONTEXT_APP = "Vercel – my-planner"
+DEFAULT_VERCEL_CONTEXT_DASHBOARD = "Vercel – my-planner-dashboard"
 QUIET = timedelta(minutes=30)  # staging/be가 없을 때(임시) develop 머리가 조용해야 하는 시간
 BLACKOUT_BEFORE = timedelta(minutes=20)
 BLACKOUT_AFTER = timedelta(minutes=40)
@@ -262,8 +265,8 @@ def gather(gh: GitHub, env: dict[str, str], config: dict, now: datetime, head: s
         require_staging_be=env.get("REQUIRE_STAGING_BE", "").lower() == "true",
         dev_login=env.get("DEV_STATUS_LOGIN") or None,
         vercel_contexts={
-            "web/app/": env.get("VERCEL_CONTEXT_APP") or "Vercel – my-planner",
-            "web/dashboard/": env.get("VERCEL_CONTEXT_DASHBOARD") or "Vercel – my-planner-dashboard",
+            "web/app/": env.get("VERCEL_CONTEXT_APP") or DEFAULT_VERCEL_CONTEXT_APP,
+            "web/dashboard/": env.get("VERCEL_CONTEXT_DASHBOARD") or DEFAULT_VERCEL_CONTEXT_DASHBOARD,
         },
         trigger_sha=trigger,
         skip_staging_be=env.get("SKIP_STAGING_BE", "").lower() == "true",

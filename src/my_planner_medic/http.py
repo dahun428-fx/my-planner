@@ -59,10 +59,22 @@ def _where(url: str) -> str:
     return f"{parts.hostname}{path}"
 
 
+class SameHostAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """다른 호스트로 넘기는 리디렉션에는 `Authorization`(토큰)을 싣지 않는다(최종 리뷰 M-9).
+
+    urllib 기본 처리기는 요청 머리를 그대로 새 URL로 옮긴다."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urlsplit(newurl).hostname != urlsplit(req.full_url).hostname:
+            new.remove_header("Authorization")
+        return new
+
+
 class UrllibHttp:
     def __init__(self) -> None:
-        self._direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        self._default = urllib.request.build_opener()
+        self._direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), SameHostAuthRedirect)
+        self._default = urllib.request.build_opener(SameHostAuthRedirect)
 
     def request(
         self,

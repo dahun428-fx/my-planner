@@ -553,7 +553,7 @@ def test_watcher_ticks_web_verifier(tmp_path: Path) -> None:
     e.store.upsert_signal(Signal(fp, "vercel", "health", e.clock.now()), e.clock.now())
     e.store.set_state(fp, "merged", issue_number=n)
     e.server.branches["main"] = "h1"
-    e.server.statuses["h1"] = [{"context": "Vercel – app", "state": "success"}]
+    e.server.statuses["h1"] = [{"context": "Vercel – app", "state": "success", "creator": {"login": "vercel[bot]"}}]
     e.tick(2)
     assert e.store.get(fp).state == "resolved"
     assert len(notifier.fixed_calls) == 1

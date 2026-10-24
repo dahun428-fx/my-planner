@@ -15,6 +15,9 @@ HEARTBEAT = "heartbeat"
 PART_LABELS = ("be", "app", "dashboard")  # 스펙 4.1 조각 라벨
 TITLE_PREFIX = "[incident] "
 _REPAIRS_RE = re.compile(r"\bRepairs #(\d+)\b")
+VERCEL_LOGIN = "vercel[bot]"
+COMPARE_PAGE = 100
+COMPARE_MAX_PAGES = 20  # 2000 커밋: 노트북이 오래 꺼져 있어도 `Repairs #N`을 놓치지 않게  # Vercel 상태를 올리는 계정(scripts/promote_check.py와 같다)
 
 Kind = Literal["network", "rate_limit", "auth", "server"]
 CiConclusion = Literal["success", "failure", "pending", "unknown"]
@@ -204,15 +207,41 @@ class GitHub:
                 return str(st.get("state", "unknown"))
         return "unknown"
 
-    def commit_states(self, sha: str, context_prefix: str) -> dict[str, str]:
-        """커밋 상태 중 컨텍스트가 `context_prefix`로 시작하는 것들의 {컨텍스트: state}."""
-        body = self._call("GET", f"/commits/{sha}/status")
-        statuses = body.get("statuses") if isinstance(body, dict) else None
-        return {
-            str(st["context"]): str(st.get("state", "unknown"))
-            for st in statuses or []
-            if isinstance(st, dict) and str(st.get("context", "")).startswith(context_prefix)
-        }
+    def vercel_state(self, sha: str, context: str) -> str | None:
+        """그 커밋에 `vercel[bot]`이 올린 상태 중 컨텍스트가 정확히 `context`인 가장 새 것의 `state`. 없으면 None.
+
+        목록 API(`/statuses`, 새 것부터)를 본다: 합친 `/status`에는 만든 계정이 없다(promote_check와 같다)."""
+        body = self._call("GET", f"/commits/{sha}/statuses", query={"per_page": 100})
+        for st in body if isinstance(body, list) else []:
+            if (
+                isinstance(st, dict) and st.get("context") == context
+                and (st.get("creator") or {}).get("login") == VERCEL_LOGIN
+            ):
+                return str(st.get("state", "unknown"))
+        return None
+
+    def _compare(self, base: str, head: str) -> list[Any]:
+        """`base...head`의 커밋(오래된 것부터). 한 번에 250개까지라 쪽으로 나눠 다 읽는다(최종 리뷰 M-5)."""
+        out: list[Any] = []
+        for page in range(1, COMPARE_MAX_PAGES + 1):
+            body = self._call("GET", f"/compare/{base}...{head}", query={"per_page": COMPARE_PAGE, "page": page})
+            commits = body.get("commits") if isinstance(body, dict) else None
+            got = commits if isinstance(commits, list) else []
+            out += got
+            total = body.get("total_commits") if isinstance(body, dict) else None
+            if len(got) < COMPARE_PAGE or not isinstance(total, int) or len(out) >= total:
+                break
+        return out
+
+    def commits_after(self, base: str, head: str) -> list[str]:
+        """`base...head`에서 `base` 뒤의 커밋 SHA(오래된 것부터)."""
+        return [str(c["sha"]) for c in self._compare(base, head) if isinstance(c, dict) and isinstance(c.get("sha"), str)]
+
+    def path_commits(self, path: str, branch: str = "main") -> list[str]:
+        """`branch`에서 `path`를 바꾼 커밋 SHA(새 것부터, 최근 100개)."""
+        body = self._call("GET", "/commits", query={"sha": branch, "path": path, "per_page": 100})
+        items = body if isinstance(body, list) else []
+        return [str(c["sha"]) for c in items if isinstance(c, dict) and isinstance(c.get("sha"), str)]
 
     def post_status(self, sha: str, state: str, context: str, description: str) -> None:
         """커밋 상태를 올린다(`POST /statuses/{sha}`). 개발용 PAT은 Commit statuses 쓰기만 있으면 된다."""
@@ -221,14 +250,17 @@ class GitHub:
             json={"state": state, "context": context, "description": description},
         )
 
-    def repairs_in_range(self, base: str, head: str) -> list[int]:
-        """`base...head` 커밋 메시지의 `Repairs #N`(처음 나온 순서, 중복 없이)."""
-        body = self._call("GET", f"/compare/{base}...{head}")
-        out: list[int] = []
-        for c in body.get("commits", []) if isinstance(body, dict) else []:
+    def repair_commits(self, base: str, head: str) -> dict[int, str]:
+        """`base...head` 커밋 메시지의 `Repairs #N` → 그것을 담은 커밋 SHA. 키는 처음 나온 순서이고, 같은 N이
+        여러 번이면 SHA는 가장 새 커밋(재시도의 수리)이다. 웹 확인은 이 커밋의 Vercel 배포를 본다(최종 리뷰 I-3)."""
+        out: dict[int, str] = {}
+        for c in self._compare(base, head):
             commit = c.get("commit") if isinstance(c, dict) else None
             msg = commit.get("message", "") if isinstance(commit, dict) else ""
             for num in _REPAIRS_RE.findall(str(msg)):
-                if int(num) not in out:
-                    out.append(int(num))
+                out[int(num)] = str(c.get("sha", ""))
         return out
+
+    def repairs_in_range(self, base: str, head: str) -> list[int]:
+        """`base...head` 커밋 메시지의 `Repairs #N`(처음 나온 순서, 중복 없이)."""
+        return list(self.repair_commits(base, head))

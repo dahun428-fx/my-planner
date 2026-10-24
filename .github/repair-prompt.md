@@ -16,6 +16,9 @@
   - `.repair-out/pr-body.md`: 원인, 수정, 재현 테스트, 되돌리는 법(`git revert <머지 커밋>`). 첫 줄
     `Repairs #<이슈>`는 셸 단계가 맞춰 넣는다.
   - `.repair-out/issue-comment.md`: 재현하지 못했을 때의 진단(커밋이 없을 때만 이슈 댓글로 올라간다).
+  - 제목·본문·커밋 메시지에 GitHub 닫기 낱말(`Fixes #N`, `Closes #N`, `Resolves #N`, `fixed owner/repo#N` 등)을 쓰지
+    않는다. 머지 때 이슈가 닫히면 배포 확인·롤백·재시도가 끊긴다. 이슈는 medic이 확인 뒤에 닫는다. 이슈를 가리킬
+    때는 `Refs #N`이라고 쓴다(셸 단계도 닫기 낱말을 `Refs`로 바꾼다).
 - `.github/workflows/`를 바꾸는 커밋은 푸시가 거부되어 이 시도가 실패로 끝난다. 다른 방법이 있으면 그쪽으로 고친다.
 
 ## 모드: fix (처음 시도)

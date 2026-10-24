@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import time
 from pathlib import Path
 
@@ -171,3 +172,30 @@ def test_runtime_that_is_not_a_table_does_not_crash(tmp_path: Path) -> None:
     _write_root(tmp_path)
     (tmp_path / "config.local.toml").write_text('runtime = "dev"\n', encoding="utf-8")
     assert load_config(tmp_path).telegram_token == TG
+
+
+def test_vercel_contexts_match_promote_check_and_shipped_toml() -> None:
+    """최종 리뷰 I-3: 웹 확인과 승격 검사는 같은 컨텍스트를 본다(한쪽만 바꾸지 않게)."""
+    import importlib.util
+    import sys
+    import tomllib
+
+    from my_planner_medic.config import MedicConfig
+    from my_planner_medic.github import VERCEL_LOGIN
+
+    root = Path(__file__).resolve().parents[2]
+    pc = sys.modules.get("promote_check")  # tests/test_promote_check.py가 먼저 읽었을 수 있다
+    if pc is None:
+        spec = importlib.util.spec_from_file_location("promote_check", root / "scripts" / "promote_check.py")
+        assert spec is not None and spec.loader is not None
+        pc = importlib.util.module_from_spec(spec)
+        sys.modules["promote_check"] = pc  # dataclass가 모듈을 찾는다
+        spec.loader.exec_module(pc)
+    defaults = {f.name: f.default for f in fields(MedicConfig)}
+    shipped = tomllib.loads((root / "config.medic.toml").read_text(encoding="utf-8"))
+    assert defaults["vercel_context_app"] == shipped["vercel_context_app"] == pc.DEFAULT_VERCEL_CONTEXT_APP
+    assert defaults["vercel_context_dashboard"] == shipped["vercel_context_dashboard"] == (
+        pc.DEFAULT_VERCEL_CONTEXT_DASHBOARD
+    )
+    assert "\u2013" in pc.DEFAULT_VERCEL_CONTEXT_APP  # en dash
+    assert VERCEL_LOGIN == pc.VERCEL_LOGIN

@@ -50,6 +50,10 @@ class MedicConfig:
     watch_incidents: bool = True  # 끄면 이슈 동기화·Actions 이슈 가져오기·ci:main 닫기·결과 알림을 모두 하지 않는다
     heartbeat: bool = True  # 끄면 하트비트 이슈를 쓰지 않는다
     post_commit_status: bool = False  # 켜면 확인이 끝난 머리 SHA에 `staging/be` 커밋 상태를 올린다
+    # 웹 확인이 보는 Vercel 커밋 상태 컨텍스트(최종 리뷰 I-3). 기본값은 scripts/promote_check.py와 같다
+    # (저장소 변수 VERCEL_CONTEXT_APP·VERCEL_CONTEXT_DASHBOARD를 바꾸면 여기도 같이 바꾼다). 대시는 en dash(–)
+    vercel_context_app: str = "Vercel – my-planner"
+    vercel_context_dashboard: str = "Vercel – my-planner-dashboard"
 
     def __repr__(self) -> str:
         parts = []
