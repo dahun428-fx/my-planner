@@ -326,7 +326,8 @@ async def test_merged_run_listed_once_with_latest_window(tmp_path):
     assert gone.status == 404
     assert listing["items"][0]["reply_until"] == latest.isoformat().replace("+00:00", "Z")
     assert detail["text"] == f"본문 {review.id}"
-    assert [c["component"] for c in detail["cards"]] == ["ui_condition_picker"]  # 합쳐진 저녁 체크인의 날짜
+    # 합쳐진 저녁 체크인의 날짜. 10/25는 10월의 마지막 일요일이라 월말 회고 사다리 카드도 붙는다(SP3-4 11.1)
+    assert [c["component"] for c in detail["cards"]] == ["ui_condition_picker", "ui_ladder_picker"]
     assert detail["cards"][0]["props"] == {"date": "2026-10-25"}
 
 

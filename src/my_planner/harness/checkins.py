@@ -8,8 +8,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
-from my_planner.clock import logical_date
-from my_planner.domain import LoopKey, RunStatus
+from my_planner.clock import logical_date, period_of
+from my_planner.domain import Cadence, LoopKey, RunStatus
 from my_planner.harness.context import ask_condition_for, evening_done
 from my_planner.harness.stream import CHAPTER_CARD_MAX, MILESTONE_CARD_MAX
 from my_planner.loop.schedule import Due, reply_window_end
@@ -110,6 +110,8 @@ def run_answered_by(
     - `confirm_tasks`, `drop_task`: 그 초안을 제안한(`tool_events_log.run_id`), 지금 답장 창 안의 회차
     - 회차 차례의 확인 토큰으로 적용한 동작과 `decline_confirm`: 그 토큰을 만든, 지금 답장 창 안의 회차(10.1 A5의
       확인 카드·버튼도 그 회차에 붙은 버튼이다)
+    - `record_ladder_score(period)`: 그 달(없으면 오늘이 든 달)의 월말 회고 회차, `record_area_scores(period)`: 그
+      분기(없으면 오늘이 든 분기)의 분기 마지막 회고 회차(11.1, 사다리 버튼과 `ui_ladder_picker`·`ui_area_scores`)
     사용자 동작(`app`, `telegram`)만 센다. 하루 한 번 작업(`scheduler`)은 답이 아니다.
     """
     if req.actor != "user" or req.channel not in ("app", "telegram") or not isinstance(req.args, dict):
@@ -133,6 +135,8 @@ def run_answered_by(
             return None
         run = _condition_run(day, runs, now, settings, activity)
         return run.id if run is not None else None
+    if req.action in ("record_ladder_score", "record_area_scores"):
+        return _review_step_run(req.action, args.get("period"), runs, now, settings)
     if req.action in ("confirm_tasks", "drop_task"):
         ids = args.get("ids") if req.action == "confirm_tasks" else [args.get("id")]
         open_ids = {r.id for r in _open_checkins(runs, now, settings)}
@@ -146,6 +150,24 @@ def run_answered_by(
             primary = runs.merged_into(got.id) or got
             if primary.id in open_ids:
                 return primary.id
+    return None
+
+
+def _review_step_run(
+    action: str, period: object, runs: RunsRepo, now: datetime, settings: Settings
+) -> int | None:
+    """그 기간의 회고 단계(월말 사다리, 분기 영역 점수)를 묻는, 지금 답장 창 안의 회고 회차(primary)."""
+    from my_planner.harness.review_steps import review_in
+
+    cadence = Cadence.month if action == "record_ladder_score" else Cadence.quarter
+    if not isinstance(period, str):
+        period = period_of(cadence, logical_date(now, settings.timezone, settings.day_boundary))
+    for r in _open_checkins(runs, now, settings):
+        of = review_in([r, *_merged(r, runs)], settings)
+        if of is None or not of.steps:
+            continue
+        if (cadence is Cadence.month and of.month == period) or (of.steps.quarter and of.quarter == period):
+            return r.id
     return None
 
 
@@ -245,7 +267,12 @@ def checkin_cards(
     - `ui_milestone_draft`(`h_mdraft_<run_id>`), `ui_chapter_draft`(`h_cdraft_<run_id>`): 그 회차가 `add_milestone`·
       `propose_chapter`로 꺼내 아직 초안이고 만료 전인 것(11.3). `data.milestones`·`data.chapters`(6.4.7). 할 일 초안
       다음, 확인 카드 앞(텔레그램 줄 순서). props 상한(10개, 5개)까지만 싣는다.
-    사다리·영역 점수 카드는 그 단계를 만드는 티켓이 더한다.
+    - `ui_ladder_picker`(`h_ladder_<run_id>`, 11.1): 월말 회고면 그 달 사다리. `now`가 없으면 `field: "now"`, 이
+      회차를 보낸 뒤 `now`를 기록했고 `future`가 없으면 `"future"`. 회차 전에 이미 `now`가 있었거나(빈 곳 14) 둘 다
+      있으면 카드가 없다.
+    - `ui_area_scores`(`h_areas_<run_id>`): 분기 마지막 회고이고 그 분기 영역 점수가 아직 없으면. `previous`는 바로
+      앞 분기 점수(없으면 빈 객체).
+    순서는 컨디션 카드 다음 사다리, 영역 점수(텔레그램에서 차례로 묻는 순서).
     """
     cards: list[dict[str, Any]] = []
     today = logical_date(now, settings.timezone, settings.day_boundary)
@@ -302,4 +329,32 @@ def checkin_cards(
         cards.append(
             {"toolCallId": f"h_cond_{run.id}", "component": "ui_condition_picker", "props": {"date": ask.isoformat()}}
         )
+    if curve is not None:
+        cards.extend(_review_step_cards(run, merged, curve, settings))
     return cards
+
+
+def _review_step_cards(run: Run, merged: list[Run], curve: CurveRepo, settings: Settings) -> list[dict[str, Any]]:
+    from my_planner.harness.review_steps import previous_scores, review_in
+
+    of = review_in([run, *merged], settings)
+    if of is None or not of.steps:
+        return []
+    out: list[dict[str, Any]] = []
+    ladder = curve.ladder(of.month)
+    field: str | None = None
+    if ladder is None or ladder.now is None:
+        field = "now"
+    elif ladder.future is None and run.finished_at is not None and ladder.recorded_at > run.finished_at:
+        field = "future"
+    if field is not None:
+        out.append({
+            "toolCallId": f"h_ladder_{run.id}", "component": "ui_ladder_picker",
+            "props": {"period": of.month, "field": field},
+        })
+    if of.steps.quarter and not curve.area_scores(of.quarter):
+        out.append({
+            "toolCallId": f"h_areas_{run.id}", "component": "ui_area_scores",
+            "props": {"period": of.quarter, "previous": previous_scores(of.quarter, curve)},
+        })
+    return out

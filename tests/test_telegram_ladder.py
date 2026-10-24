@@ -304,3 +304,86 @@ async def test_late_skipped_review_next_review_does_not_ask_twice(tmp_path):
     assert len(env.sender.sent) == 1
     assert "## 월말 회고" not in prompt
     assert november is None
+
+
+# --- 슬라이스 5: 새벽 경계, 답한 회차, 앱 카드 ---
+
+
+async def test_ladder_button_at_0130_records_button_month(tmp_path):
+    # Review Focus 5: 01:30에 누른 사다리 버튼은 버튼에 든 달에 기록한다(오늘이 든 달이 아니라)
+    async with _start(tmp_path) as env:
+        await _to_step1(env)
+        env.clock.set(kst(2026, 11, 30, 1, 30))  # 논리적 날짜 11/29, 답장 창 안
+        await env.press("l:2026-11:n:6")
+        in_window = env.sender.sent[-1]
+        env.clock.set(kst(2026, 12, 2, 1, 30))  # 논리적 날짜 12/1(12월), 답장 창 뒤
+        await env.press("l:2026-11:f:8")
+        nov, dec = env.parts.curve.ladder("2026-11"), env.parts.curve.ladder("2026-12")
+
+    assert in_window.text == LADDER_STEP2
+    assert (nov.now, nov.future) == (6, 8)
+    assert dec is None
+
+
+async def test_ladder_press_marks_review_answered(tmp_path):
+    async with _start(tmp_path) as env:
+        run_id, _ = await _review(env)
+        await env.press("l:2026-11:n:6")  # 1단계 메시지(회차 메시지가 아니다)의 버튼
+        tg = await (await env.get(f"/checkins/{run_id}")).json()
+    assert (tg["state"], tg["answered_via"]) == ("answered", "telegram")
+
+    async with _start(tmp_path / "app") as env:
+        run_id, _ = await _review(env)
+        status, body = await env.action("record_ladder_score", {"period": "2026-11", "now": 6})
+        app = await (await env.get(f"/checkins/{run_id}")).json()
+    assert status == 200 and body["status"] == "applied"
+    assert (app["state"], app["answered_via"]) == ("answered", "app")
+
+    # 다른 달의 사다리는 이 회고의 답이 아니다
+    async with _start(tmp_path / "other") as env:
+        run_id, _ = await _review(env)
+        await env.action("record_ladder_score", {"period": "2026-10", "now": 6})
+        other = await (await env.get(f"/checkins/{run_id}")).json()
+    assert other["state"] == "pending"
+
+
+async def test_app_checkin_cards_ladder_and_area(tmp_path):
+    from curve_sql import area_scores
+
+    from my_planner.tools.ui import validate_props
+
+    async with _start(tmp_path, at=SUN_1227 + timedelta(seconds=30)) as env:
+        area_scores(env.conn, "2026-Q3", career=7)
+        env.conn.commit()
+        run_id, _ = await _review(env)
+
+        async def cards():
+            return {c["component"]: c for c in (await (await env.get(f"/checkins/{run_id}")).json())["cards"]}
+
+        first = await cards()
+        env.clock.advance(minutes=1)
+        await env.action("record_ladder_score", {"period": "2026-12", "now": 6})
+        after_now = await cards()
+        await env.action("record_ladder_score", {"period": "2026-12", "future": 8})
+        after_future = await cards()
+        await env.action("record_area_scores", {"period": "2026-Q4", "scores": {"career": 8}})
+        after_areas = await cards()
+
+    assert list(first) == ["ui_condition_picker", "ui_ladder_picker", "ui_area_scores"]
+    ladder, areas = first["ui_ladder_picker"], first["ui_area_scores"]
+    assert ladder["toolCallId"] == f"h_ladder_{run_id}"
+    assert ladder["props"] == {"period": "2026-12", "field": "now"}
+    assert areas["toolCallId"] == f"h_areas_{run_id}"
+    assert areas["props"] == {"period": "2026-Q4", "previous": {"career": 7}}
+    assert validate_props("ui_ladder_picker", ladder["props"]) is None
+    assert validate_props("ui_area_scores", areas["props"]) is None
+    assert after_now["ui_ladder_picker"]["props"] == {"period": "2026-12", "field": "future"}
+    assert "ui_ladder_picker" not in after_future and "ui_area_scores" in after_future
+    assert "ui_area_scores" not in after_areas
+
+
+async def test_app_checkin_cards_none_outside_month_end(tmp_path):
+    async with _start(tmp_path, at=kst(2026, 11, 22, 18, 0) + timedelta(seconds=30)) as env:
+        run_id, _ = await _review(env)
+        detail = await (await env.get(f"/checkins/{run_id}")).json()
+    assert [c["component"] for c in detail["cards"]] == ["ui_condition_picker"]
