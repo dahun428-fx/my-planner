@@ -2,6 +2,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Today as TodayData } from "../api/types.gen";
 import { useAction } from "../api/actions";
+import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
@@ -33,6 +34,10 @@ function dateLine(data: TodayData): string {
   return copy.today.dateLine(m, d, data.weekday);
 }
 
+function launcherReason(kind: string | undefined): string | null {
+  return kind === "unauthorized" || kind === "rate_limited" || kind === "safe_mode" ? copy.chat.launcherBlocked[kind] : null;
+}
+
 // Spec 5.5.1 blocks 1-7, 5.5.4 offline, F3, F9.
 export function Today() {
   const { state, recheck } = useConnection();
@@ -43,7 +48,11 @@ export function Today() {
   const [briefOpen, setBriefOpen] = useState(false);
   const [changing, setChanging] = useState(false);
 
+  const chat = useChatSheet();
+
   useEffect(() => toast.onUndone(() => void refresh()), [toast, refresh]);
+  // What was said in the sheet may have changed today (F4): read again when it closes.
+  useEffect(() => chat.onClosed(() => void refresh()), [chat, refresh]);
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
   const live = view.kind === "live";
@@ -256,7 +265,7 @@ export function Today() {
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
       {dropSheet}
-      <ChatLauncher disabled={!live} offline={offline} onOpen={() => {}} />
+      <ChatLauncher disabled={!live} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

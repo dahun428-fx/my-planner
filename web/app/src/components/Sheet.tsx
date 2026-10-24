@@ -1,10 +1,22 @@
-import { type ReactNode, type RefObject, useEffect, useId, useRef } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import styles from "./Sheet.module.css";
 
 export interface SheetProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Accessible name when the sheet draws its own heading instead of `title`. */
+  ariaLabel?: string;
+  /** Full height (the screen less 50px at the top, spec 5.5.2); the children lay out the body. */
+  tall?: boolean;
   children: ReactNode;
   /** Element that gets focus back on close; defaults to whatever had focus when the sheet opened. */
   returnFocusTo?: RefObject<HTMLElement | null>;
@@ -12,14 +24,59 @@ export interface SheetProps {
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const CLOSE_DRAG_PX = 120;
+const EXIT_MS = 280;
 
-// Bottom sheet (spec 5.1, 9장): focus moves inside on open and back on close. Slides up 280ms
-// with transform only; reduced motion turns the animation off (globals.css).
-export function Sheet({ open, onClose, title, children, returnFocusTo }: SheetProps) {
+// No animation where motion is reduced (or cannot be asked about): the sheet just goes.
+const motionOk = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Bottom sheet (spec 5.1, 5.5.2, 9장): focus moves inside on open and back on close. Slides up and
+// down 280ms with transform only; dragging the handle down more than 120px closes it (the moving
+// value goes to the panel through CSSOM, never a style attribute).
+export function Sheet({ open, onClose, title, ariaLabel, tall = false, children, returnFocusTo }: SheetProps) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const [mounted, setMounted] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const drag = useRef<{ id: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setClosing(false);
+      if (panel.current) panel.current.style.transform = "";
+      return;
+    }
+    if (!mounted) return;
+    if (!motionOk()) {
+      setMounted(false);
+      return;
+    }
+    setClosing(true);
+    const fallback = setTimeout(() => {
+      setMounted(false);
+      setClosing(false);
+    }, EXIT_MS + 120);
+    return () => clearTimeout(fallback);
+  }, [open, mounted]);
+
+  // The exit ends with the panel's own animation (a native listener: React's name for the event
+  // depends on the browser's prefixes).
+  const leaving = !open && closing;
+  useEffect(() => {
+    const el = panel.current;
+    if (!leaving || !el) return;
+    const done = (e: AnimationEvent) => {
+      if (e.target !== el) return;
+      setMounted(false);
+      setClosing(false);
+    };
+    el.addEventListener("animationend", done);
+    return () => el.removeEventListener("animationend", done);
+  }, [leaving]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,19 +112,67 @@ export function Sheet({ open, onClose, title, children, returnFocusTo }: SheetPr
     };
   }, [open, returnFocusTo]);
 
-  if (!open) return null;
+  const place = (px: number | null) => {
+    const el = panel.current;
+    if (!el) return;
+    el.classList.toggle(styles.dragging, px !== null);
+    el.style.transform = px === null ? "" : `translateY(${px}px)`;
+  };
+
+  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!open || (e.pointerType === "mouse" && e.button !== 0)) return;
+    drag.current = { id: e.pointerId, y: e.clientY };
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      // capture is a nicety
+    }
+  };
+  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    place(Math.max(0, e.clientY - d.y));
+  };
+  const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    drag.current = null;
+    if (e.clientY - d.y > CLOSE_DRAG_PX) {
+      panel.current?.classList.remove(styles.dragging);
+      onCloseRef.current();
+    } else {
+      place(null);
+    }
+  };
+  const onCancel = () => {
+    drag.current = null;
+    place(null);
+  };
+
+  if (!open && !mounted) return null;
   return (
-    <div className={styles.layer}>
-      <div className={styles.backdrop} aria-hidden="true" onClick={onClose} />
+    <div className={`${styles.layer} ${leaving ? styles.leaving : ""}`}>
+      <div className={styles.backdrop} aria-hidden="true" onClick={open ? onClose : undefined} />
       <div
         ref={panel}
-        className={styles.panel}
+        className={`${styles.panel} ${tall ? styles.tall : ""} ${leaving ? styles.closing : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : ariaLabel}
         tabIndex={-1}
       >
-        <div className={styles.handle} aria-hidden="true" />
+        <div
+          className={styles.grab}
+          data-sheet-handle=""
+          aria-hidden="true"
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onCancel}
+        >
+          <div className={styles.handle} />
+        </div>
         {title && (
           <h2 id={titleId} className={styles.title}>
             {title}
