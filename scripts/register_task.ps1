@@ -18,7 +18,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Root = (Split-Path -Parent $PSScriptRoot),
+    [string]$Root = '',
     [switch]$NoWake
 )
 
@@ -32,6 +32,8 @@ $DaysXml = @{
     weekend = '<Saturday /><Sunday />'
 }
 
+# Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
+if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
 $python = Join-Path $Root '.venv\Scripts\python.exe'
 $pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
