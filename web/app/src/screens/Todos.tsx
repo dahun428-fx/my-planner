@@ -348,7 +348,15 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         </Group>
       )}
       {dropSheet}
-      {todayDate && <AddTodoSheet open={adding} onClose={() => setAdding(false)} defaultDate={todayDate} onAdded={() => void refreshAll()} />}
+      {todayDate && (
+        <AddTodoSheet
+          open={adding}
+          onClose={() => setAdding(false)}
+          defaultDate={todayDate}
+          dayBoundary={todayView.kind === "live" ? todayView.data.day_boundary : undefined}
+          onAdded={() => void refreshAll()}
+        />
+      )}
       <EditTodoSheet edit={edit} onClose={() => setEdit(null)} onDone={refreshAll} guard={guard} />
       <ChatLauncher disabled={!writable} offline={offlineConn} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>

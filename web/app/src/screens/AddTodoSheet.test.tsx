@@ -85,6 +85,18 @@ describe("AddTodoSheet", () => {
     expect(bodies[0]).toMatchObject({ args: { planned_for: "2026-10-25", scheduled_at: "2026-10-25T05:00:00Z" } });
   });
 
+  it("a time before the day boundary lands on the next calendar day", async () => {
+    const bodies = actions(() => applied());
+    renderWithProviders(<AddTodoSheet open onClose={vi.fn()} defaultDate="2026-10-24" dayBoundary="04:00" />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(copy.todos.titleLabel), "약 먹기");
+    fireEvent.change(screen.getByLabelText(copy.todos.timeLabel), { target: { value: "01:30" } });
+    await user.click(addButton());
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    // "오늘" is the logical 10-24, whose 01:30 is 10-25 01:30 in Seoul.
+    expect(bodies[0]).toMatchObject({ args: { planned_for: "2026-10-24", scheduled_at: "2026-10-24T16:30:00Z" } });
+  });
+
   it("double tap adds once", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
