@@ -175,6 +175,8 @@ class FakeGitHub:
                 n = self.add_issue(json["title"], list(json.get("labels", [])), body=json.get("body", ""),
                                    created_at=self._now())
                 return 201, self.issues[n], ok
+            case "GET", ["issues", num] if num.isdigit() and int(num) in self.issues:
+                return 200, self.issues[int(num)], ok
             case "PATCH", ["issues", num] if int(num) in self.issues:
                 issue = self.issues[int(num)]
                 for k in ("title", "body", "state"):
@@ -263,6 +265,24 @@ class FakeShell:
             if tuple(args[: len(prefix)]) == prefix:
                 return results.pop(0) if len(results) > 1 else results[0]
         return 0, ""
+
+
+class FakeNotifier:
+    """`NotifierLike`의 가짜. 호출을 기록만 한다."""
+
+    def __init__(self) -> None:
+        self.fixed_calls: list[tuple[str, str]] = []
+        self.gave_up_calls: list[tuple[str, bool, str, bool]] = []
+        self.daily_calls: list[tuple[str, str]] = []
+
+    def fixed(self, pr_title: str, pr_url: str) -> None:
+        self.fixed_calls.append((pr_title, pr_url))
+
+    def gave_up(self, fingerprint: str, rolled_back: bool, issue_url: str, *, direct: bool = False) -> None:
+        self.gave_up_calls.append((fingerprint, rolled_back, issue_url, direct))
+
+    def daily(self, text: str, key: str) -> None:
+        self.daily_calls.append((text, key))
 
 
 SCHEDULE = {

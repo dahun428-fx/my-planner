@@ -140,6 +140,23 @@ def test_ci_conclusion_reads_ci_push_runs_only() -> None:
         gh.ci_conclusion("s1")  # 조회 실패는 "unknown"이 아니라 예외
 
 
+def test_ci_conclusion_is_success_if_any_completed_run_for_the_sha_succeeded() -> None:
+    gh, server, http = make()
+    server.runs += [  # develop에서 통과한 SHA를 main으로 ff: main의 푸시 실행은 건너뛰거나 실패할 수 있다
+        {"id": 1, "name": "ci", "head_sha": "s1", "event": "push", "status": "completed", "conclusion": "success",
+         "created_at": "2026-10-26T00:00:00Z"},
+        {"id": 2, "name": "ci", "head_sha": "s1", "event": "push", "status": "completed", "conclusion": "skipped",
+         "created_at": "2026-10-26T01:00:00Z"},
+        {"id": 3, "name": "ci", "head_sha": "s2", "event": "push", "status": "completed", "conclusion": "failure",
+         "created_at": "2026-10-26T00:00:00Z"},
+        {"id": 4, "name": "ci", "head_sha": "s2", "event": "push", "status": "in_progress", "conclusion": None,
+         "created_at": "2026-10-26T01:00:00Z"},
+    ]
+    assert gh.ci_conclusion("s1") == "success"
+    assert "branch" not in http.requests[-1].query
+    assert gh.ci_conclusion("s2") == "pending"  # 성공이 없으면 가장 새 실행
+
+
 def test_commit_state_by_context_prefix() -> None:
     gh, server, _ = make()
     server.statuses["s"] = [
