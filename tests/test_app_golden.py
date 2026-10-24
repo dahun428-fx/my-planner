@@ -72,6 +72,12 @@ def test_parser_reads_spec_example():
     (b'data: {"type":"start"}\n\ndata: {"type":"tool-output-available","toolCallId":"x","output":{}}\n\n'
     b'data: {"type":"finish"}\n\ndata: [DONE]\n\n'),
     b'data: {"type":"start"}\n\ndata: {"type":"text-chunk","id":"t1"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n',
+    (b'data: {"type":"start"}\n\ndata: {"type":"start-step"}\n\n'
+     b'data: {"type":"data-status","data":{"state":"thinking"},"transient":true}\n\n'
+     b'data: {"type":"finish-step"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n'),  # 단계 뒤 data-status
+    (b'data: {"type":"start"}\n\ndata: {"type":"data-status","data":{"state":"thinking"},"transient":true}\n\n'
+     b'data: {"type":"data-status","data":{"state":"queued"},"transient":true}\n\n'
+     b'data: {"type":"finish"}\n\ndata: [DONE]\n\n'),  # thinking 뒤 queued
 ])
 def test_parser_rejects_broken_streams(bad):
     with pytest.raises(AssertionError):

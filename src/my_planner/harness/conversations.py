@@ -171,6 +171,14 @@ class ConversationRouter:
         assert touched is not None
         return touched
 
+    def current_app(self, at: datetime) -> Conversation | None:
+        """지금 앱 메시지가 이어질 대화(열린 앱 `plan`, 30분 안의 앱 `chat`). 새 대화는 열지 않는다."""
+        conv = self._open_plan(at, "app")
+        if conv is not None:
+            return conv
+        cur = self.convs.latest_open(ConversationKind.chat, "app")
+        return cur if cur is not None and at - cur.last_message_at <= self._idle() else None
+
     def for_run(self, run: Run) -> Conversation:
         """회차 실행은 늘 새 `run` 대화를 연다. 날짜는 실제로 보내는 때의 논리적 날짜다."""
         tz, boundary = self.settings.timezone, self.settings.day_boundary

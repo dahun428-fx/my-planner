@@ -393,6 +393,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
         application = build_application(
             settings, dispatcher, parts.state, parts.transcripts,
             bot=bot, clock=clock, tools=parts.tools, callbacks=parts.callbacks, router=parts.router,
+            apply=dispatcher.apply_action,
         )
 
         def polling_state() -> str:

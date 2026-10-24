@@ -33,6 +33,7 @@ from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
 from my_planner.harness.context import ask_condition_for, build_notices, build_preamble
 from my_planner.harness.redact import MASK, redact
 from my_planner.harness.stream import (
+    AppReplySender,
     QueueSink,
     StreamSink,
     UiMessageWriter,
@@ -60,7 +61,6 @@ from my_planner.tools.confirmations import render_confirmations
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
-    from my_planner.harness.stream import AppReplySender
     from my_planner.store.repos.activity import (
         ActivityRepo,
         ConfirmsRepo,
@@ -120,10 +120,27 @@ class _AppSlot:
     inbound: Inbound
     writer: UiMessageWriter
     conversation_id: int | None  # 지금 고른 대화(닫혀 있어 다시 고르면 바뀐다)
+    done: bool = False  # 처리 완료(M5)를 적었다
 
     @property
     def inbound_id(self) -> int:
         return self.inbound.update_ids[0]
+
+    @property
+    def id_conversation(self) -> int | None:
+        """메시지 id를 만드는 대화: 받을 때 고른 대화(`start`에 이미 알렸다). 다시 골라도 바뀌지 않는다(6.4.1)."""
+        return self.inbound.conversation_id if self.inbound.conversation_id is not None else self.conversation_id
+
+    def secretary_id(self) -> str | None:
+        """비서 줄 id = 이 답의 `start.messageId`. 다시 고른 대화로 가도 같다(6.4.1, 6.4.6)."""
+        if self.writer.message_id is not None:
+            return self.writer.message_id
+        cid = self.id_conversation
+        return app_secretary_message_id(cid, self.inbound_id) if cid is not None else None
+
+
+def _secretary_id(conversation_id: int | None, inbound_id: int) -> str | None:
+    return app_secretary_message_id(conversation_id, inbound_id) if conversation_id is not None else None
 
 
 def _app_key(m: Inbound) -> str:
@@ -173,6 +190,9 @@ SEND_RETRY_DELAYS_S = (1, 2, 4)  # 시도 사이 간격. 3회라 앞의 두 값(
 RESEND_DELAY_S = 5 * 60
 MAX_RUN_ATTEMPTS = 2  # 회차당 두뇌 호출 최대 2회
 MESSAGE_RETRY_DELAYS_S = (2, 4, 8)  # 사용자 메시지 오류: 지수 백오프로 3회 더(스펙 5.3)
+
+INBOUND_MAX_ATTEMPTS = 3  # 다시 넣기 상한(SP1 5.2-4, `loop.runner`와 같은 값)
+_DEFAULT_APP_SENDER = AppReplySender()
 
 FALLBACK_REPLY = "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요."
 MAX_TURNS_REPLY = "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
@@ -262,7 +282,7 @@ class Dispatcher:
         self.activity = activity
         self.idempotency = idempotency
         self.confirms = confirms
-        self.app_sender = app_sender  # 앱 답을 보낼 곳(M4). None이면 앱 답은 아무 데도 가지 않는다
+        self.app_sender = app_sender  # 앱 답을 보낼 곳(M4). None이면 기본 `AppReplySender`(쓰개에 쓴다)
         self._app: dict[str, _AppSlot] = {}
         self._cur: _AppSlot | None = None  # 지금 처리 중인 앱 메시지(작업자는 하나라 한 번에 하나)
         self._sleep = sleep
@@ -334,10 +354,53 @@ class Dispatcher:
     # --- 앱 통로 (SP3-4 6.4.1, 7.5) ---
 
     def route_app_message(
-        self, at: datetime, *, conversation_id: int | None, checkin_id: int | None
+        self, at: datetime, *, conversation_id: int | None, checkin_id: int | None, plan: bool = False
     ) -> Conversation:
-        """앱 메시지의 대화를 받을 때 고른다(동기, 7.2). 필요하면 새 앱 대화를 연다(4.3: 앱이 여는 대화는 여기서만)."""
+        """앱 메시지의 대화를 받을 때 고른다(동기, 7.2). 필요하면 새 앱 대화를 연다(4.3: 앱이 여는 대화는 여기서만).
+
+        `plan=True`(`/plan [주제]`): 앱 통로의 새 계획 대화를 연다(그 통로에 열려 있던 것은 닫는다).
+        """
+        if plan:
+            return self.router.start_plan("app")
         return self.router.for_app_message(at, conversation_id=conversation_id, checkin_id=checkin_id)
+
+    def current_app_conversation(self, conversation_id: int | None) -> Conversation | None:
+        """두뇌를 거치지 않는 앱 답(명령, 글 아닌 메시지)이 알릴 대화. 새 대화는 열지 않는다.
+
+        앱이 보낸 id가 열린 앱 대화면 그것, 아니면 지금 이어질 앱 대화(열린 앱 `plan`, 30분 안의 앱 `chat`), 없으면 None.
+        """
+        conv = self.convs.get(conversation_id) if conversation_id is not None else None
+        if conv is not None and conv.channel == "app" and conv.closed_at is None:
+            return conv
+        return self.router.current_app(self.clock.now())
+
+    def has_inflight(self, client_msg_id: str) -> bool:
+        """같은 `client_msg_id`의 앱 메시지가 큐에 있거나 처리 중이다."""
+        slot = self._app.get(client_msg_id)
+        return slot is not None and not slot.writer.finished
+
+    def resubmit_app_row(self, row: PendingInbound, sink: StreamSink, *, message_id: str | None = None) -> bool:
+        """행은 남았는데 처리 자리가 없는 앱 메시지(처리 중 예외 뒤)를 새 요청의 싱크로 다시 넣는다.
+
+        시작 때 다시 넣기와 같은 규칙이다(SP1 5.2-4): 넣을 때마다 `attempts`를 1 올리고, 이미
+        `INBOUND_MAX_ATTEMPTS`회 넣은 행은 버린다(False). 메시지 id는 처음 것 그대로다.
+        """
+        if row.attempts >= INBOUND_MAX_ATTEMPTS:
+            self.state.drop_pending_inbound(row.update_id)
+            log.warning(
+                "inbound_dropped", extra={"update_id": row.update_id, "reason": "max_attempts", "attempts": row.attempts}
+            )
+            return False
+        self.state.bump_inbound_attempts(row.update_id)
+        writer = UiMessageWriter(sink, _secretary_id(row.conversation_id, row.update_id))
+        writer.start({**self.chat_metadata(row.conversation_id), "checkin_id": row.checkin_id})
+        writer.status("queued")
+        self.submit_message(Inbound(
+            text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
+            channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=sink,
+            conversation_id=row.conversation_id, message_id=message_id,
+        ))
+        return True
 
     def chat_metadata(self, conversation_id: int | None) -> dict[str, Any]:
         conv = self.convs.get(conversation_id) if conversation_id is not None else None
@@ -345,9 +408,7 @@ class Dispatcher:
         return {"conversation_id": conversation_id, "channel": "app", "kind": kind}
 
     def _register_app(self, m: Inbound) -> None:
-        inbound_id = m.update_ids[0]
-        mid = app_secretary_message_id(m.conversation_id, inbound_id) if m.conversation_id is not None else None
-        writer = UiMessageWriter(m.sink, mid)
+        writer = UiMessageWriter(m.sink, _secretary_id(m.conversation_id, m.update_ids[0]))
         writer.metadata = self.chat_metadata(m.conversation_id)
         self._app[_app_key(m)] = _AppSlot(m, writer, m.conversation_id)
 
@@ -364,7 +425,7 @@ class Dispatcher:
         if w.sink is None:
             fresh = UiMessageWriter(sink, w.message_id)
             fresh.start({**self.chat_metadata(slot.conversation_id), "checkin_id": slot.inbound.checkin_id})
-            fresh.status("queued")
+            fresh.status("thinking" if w.step_open else "queued")
             if w.step_open:
                 fresh.start_step()
             w.sink = sink
@@ -372,7 +433,7 @@ class Dispatcher:
         elif isinstance(w.sink, QueueSink):
             w.sink.join(sink)
         else:
-            return False
+            return False  # 덧붙일 수 없는 싱크(시험용). 처리 중이라는 것은 `has_inflight`가 알린다
         log.info("chat_stream_attached", extra={"inbound_id": slot.inbound_id})
         return True
 
@@ -398,10 +459,12 @@ class Dispatcher:
         return conv
 
     def _release_app(self, slot: _AppSlot) -> None:
-        """처리가 끝난 앱 메시지의 자리를 비운다. 답을 쓰지 못하고 끝났으면(예외) 일반 문구로 스트림을 닫는다."""
+        """처리가 끝난 앱 메시지의 자리를 비운다. 처리 완료 전에 끝났으면(예외) 일반 문구로 스트림을 닫는다."""
         self._app.pop(_app_key(slot.inbound), None)
-        if not slot.writer.finished:
+        if not slot.writer.finished and not slot.done:
             write_reply(slot.writer, FALLBACK_REPLY)
+        elif not slot.writer.finished:
+            slot.writer.finish()  # 답은 이미 썼다. 스트림만 닫는다
 
     def activity_of(self, inbound_id: int) -> tuple[list[int], list[int]]:
         """그 메시지가 만든 활동 id와, 지금 되돌릴 수 있는 것(6.4.1 재생, 6.4.4)."""
@@ -590,7 +653,8 @@ class Dispatcher:
                 body,
             )
             if app is not None:
-                app.writer.start_step()  # 두뇌가 시작한다: 도구 조각이 이 단계 안에 온다
+                app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
+                app.writer.start_step()
             result = await self._call_brain(prompt, session_id=conv.session_id, run_ctx=run_ctx)
             if resumed and result.resume_failed:
                 # 새 세션으로 다시 부른다. 이 대화의 최근 원문 20개를 붙인다(방금 기록한 지금 메시지는 뺀다).
@@ -723,8 +787,8 @@ class Dispatcher:
         app = self._cur
         for m in batch:
             if app is not None:
-                # 앱 머리글: `#<사용자 줄 id> @app`(7.4). id는 받을 때 고른 대화로 만든다
-                cid = conversation_id if conversation_id is not None else app.conversation_id
+                # 앱 머리글: `#<사용자 줄 id> @app`(7.4). id는 받을 때 고른 대화로 만든다(다시 골라도 그대로)
+                cid = app.id_conversation
                 mid = app_user_message_id(cid, lead, m.message_id) if cid is not None else None
                 self.transcripts.append(
                     m.at, "사용자", conversation_id, None, redact(m.text)[0], channel="app", message_id=mid
@@ -798,8 +862,7 @@ class Dispatcher:
         `api_idempotency`에 남는다).
         """
         if out.channel == "app":
-            if self.app_sender is not None:
-                await self.app_sender.send(out)
+            await (self.app_sender or _DEFAULT_APP_SENDER).send(out)
             return True
         err = await send_with_retry(
             lambda: self.sender.send(out), sleep=self._sleep, event="message_send_error",
@@ -828,8 +891,9 @@ class Dispatcher:
         cid = conversation_id if conversation_id is not None else app.conversation_id
         self.state.finish_app_inbound(
             app.inbound_id, client_msg_id=app.inbound.client_msg_id, conversation_id=cid,
-            reply_text=redact(reply)[0], confirmation=confirmation or None,
+            reply_text=redact(reply)[0], confirmation=confirmation or None, message_id=app.secretary_id(),
         )
+        app.done = True
         # 이제부터 같은 `client_msg_id`는 저장한 답 재생이다(6.4.1)
         self._app.pop(_app_key(app.inbound), None)
 
@@ -841,8 +905,7 @@ class Dispatcher:
         app = self._cur
         try:
             if app is not None:
-                cid = conversation_id if conversation_id is not None else app.conversation_id
-                mid = app_secretary_message_id(cid, app.inbound_id) if cid is not None else None
+                mid = app.secretary_id()  # 그 답의 `start.messageId`(다시 고른 대화로 가도 같다)
                 self.transcripts.append(
                     self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools, channel="app",
                     message_id=mid,

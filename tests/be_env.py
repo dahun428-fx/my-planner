@@ -206,7 +206,7 @@ class BeEnv:
         verdict = await handle_update(
             update, bot=self.bot, owner_id=self.settings.owner_telegram_id, state=p.state, dispatcher=p.dispatcher,
             transcripts=p.transcripts, clock=self.clock, tools=p.tools, callbacks=p.callbacks, router=p.router,
-            sleep=fake_sleep(self.clock),
+            sleep=fake_sleep(self.clock), apply=p.dispatcher.apply_action,
         )
         await self.drain()
         return verdict

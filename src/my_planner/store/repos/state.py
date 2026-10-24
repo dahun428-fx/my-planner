@@ -172,16 +172,17 @@ class StateRepo:
         conversation_id: int | None,
         reply_text: str,
         confirmation: str | None = None,
+        message_id: str | None = None,
     ) -> None:
         """앱 메시지 처리 완료(SP3-4 7.5 M5): `api_idempotency`(`endpoint='chat'`) 기록과 `inbound_pending` 행 삭제를
         한 트랜잭션으로. `telegram_updates`에는 쓰지 않는다(음수 id를 넣지 않는다).
 
         `response_json`은 재요청 재생(6.4.1)의 근거다: `conversation_id`, `reply_text`(가린 뒤), `confirmation`,
-        그리고 `messageId`와 활동을 다시 찾을 `inbound_id`.
+        그리고 활동을 다시 찾을 `inbound_id`와 이 답의 `messageId`(`message_id`, 다시 골라 대화가 바뀌어도 처음 알린 값).
         """
         body = {
             "conversation_id": conversation_id, "reply_text": reply_text, "confirmation": confirmation,
-            "inbound_id": update_id,
+            "inbound_id": update_id, "message_id": message_id,
         }
         with transaction(self.conn):
             if client_msg_id is not None:

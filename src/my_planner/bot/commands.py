@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, time, timedelta, tzinfo
 from datetime import datetime as _datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, local, to_iso
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
@@ -23,6 +23,7 @@ from my_planner.store.views import today_view, week_view
 if TYPE_CHECKING:
     from my_planner.domain import Channel
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.tools.actions import ActionRequest, ActionResult
 
 HELP_TEXT = (
@@ -154,7 +155,26 @@ def cmd_done(router: ConversationRouter, channel: Channel) -> str:
     return PLAN_DONE_REPLY if router.end_plan(channel) else NO_PLAN_REPLY
 
 
-_STATEFUL = {"/pause": "cmd_pause", "/unpause": "cmd_unpause", "/done": "cmd_done"}
+# 상태를 바꾸는 명령 → 즉시 갈래의 내부 동작. 이 명령들은 즉시 갈래가 `api_idempotency`에 답을 적는다(6.4.1)
+STATEFUL_COMMANDS: dict[str, str] = {"/pause": "cmd_pause", "/unpause": "cmd_unpause", "/done": "cmd_done"}
+
+
+class TimeSettings(Protocol):
+    """명령이 쓰는 시간 설정(`config.Settings`가 이 모양이다)."""
+
+    @property
+    def timezone(self) -> str | tzinfo: ...
+
+    @property
+    def day_boundary(self) -> time: ...
+
+
+@dataclass(frozen=True)
+class LocalTime:
+    """`TimeSettings`의 단순한 구현(텔레그램 쪽은 `Tools`의 값으로 만든다)."""
+
+    timezone: str | tzinfo
+    day_boundary: time
 
 
 @dataclass
@@ -162,20 +182,20 @@ class CommandDeps:
     """명령 하나에 필요한 것. `apply`는 즉시 갈래(`Dispatcher.apply_action`). 없으면 같은 함수를 바로 부른다(SP1 시험)."""
 
     tasks: TasksRepo
-    conditions: Any
+    conditions: ConditionsRepo | None
     state: StateRepo
     router: ConversationRouter | None
     clock: Clock
-    settings: Any  # `timezone`, `day_boundary`가 있는 것(`Settings` 또는 `Tools`)
+    settings: TimeSettings
     apply: Callable[[ActionRequest], ActionResult] | None = None
 
 
 def _tz(deps: CommandDeps) -> str | tzinfo:
-    return getattr(deps.settings, "timezone", None) or deps.settings.tz
+    return deps.settings.timezone
 
 
 def _boundary(deps: CommandDeps) -> time:
-    return getattr(deps.settings, "day_boundary", None) or deps.settings.boundary
+    return deps.settings.day_boundary
 
 
 def run_command(
@@ -192,7 +212,7 @@ def run_command(
     if cmd in ("/today", "/week"):
         render = today_text if cmd == "/today" else week_text
         return render(deps.tasks, now, _tz(deps), _boundary(deps))
-    action = _STATEFUL.get(cmd)
+    action = STATEFUL_COMMANDS.get(cmd)
     if action is None:
         raise ValueError(f"unknown command: {cmd}")
     if deps.apply is None:

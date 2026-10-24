@@ -89,7 +89,7 @@ async def test_app_done_writes_no_telegram_updates(tmp_path):
     assert stored.endpoint == "chat" and stored.status_code == 200
     assert stored.body == {
         "conversation_id": stored.conversation_id, "reply_text": "넣었어요.", "confirmation": "✓ 추가: 치과 → 내일",
-        "inbound_id": -1,
+        "inbound_id": -1, "message_id": f"m-{stored.conversation_id}-1",
     }
     assert sink.text == "넣었어요."
 
@@ -137,6 +137,7 @@ async def test_recovered_app_row_accepts_new_stream(tmp_path):
     chunks = parse_sse(body)
     assert chunks[0]["messageId"] == f"m-{chunks[0]['messageMetadata']['conversation_id']}-1"
     assert [c["type"] for c in chunks][:3] == ["start", "data-status", "start-step"]
+    assert chunks[1]["data"] == {"state": "thinking"}  # 두뇌가 이미 시작한 뒤에 붙었다
     assert "".join(c["delta"] for c in chunks if c["type"] == "text-delta") == "넣었어요."
 
 
@@ -154,3 +155,15 @@ def test_app_tool_set_is_channel_specific():
     for channel in ("telegram", "app"):
         ctx = RunContext(conversation_id=None, run_id=None, channel=channel)
         assert [t.name for t in build_planner_tools(_Tools(), ctx)] == tool_names_for(channel)
+
+
+async def test_reply_without_app_sender_is_not_fallback(tmp_path):
+    """`app_sender` 없이 만든 디스패처도 앱 답을 쓰개에 쓴다. 끝난 답을 일반 문구로 덮지 않는다."""
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "진짜 답")]) as env:
+        env.parts.dispatcher.app_sender = None
+        sink = ListSink()
+        env.parts.dispatcher.submit_message(app_message(env, "안녕", sink, "cm-nosender"))
+        await env.drain()
+
+    assert sink.text == "진짜 답"
+    assert sink.closed and sink.types.count("finish") == 1

@@ -27,9 +27,15 @@ from pydantic import ValidationError
 from my_planner.api.actions import BAD_BODY, read_json_object
 from my_planner.api.cors import CORS_HEADERS_KEY
 from my_planner.api.models import ChatRequestBody, error_response
-from my_planner.bot.commands import CommandDeps, command_of, plan_topic, run_command
+from my_planner.bot.commands import (
+    STATEFUL_COMMANDS,
+    CommandDeps,
+    command_of,
+    plan_topic,
+    run_command,
+)
 from my_planner.bot.telegram_io import NON_TEXT_MARK, NON_TEXT_REPLY
-from my_planner.harness.dispatcher import Inbound
+from my_planner.harness.dispatcher import FALLBACK_REPLY, Inbound
 from my_planner.harness.redact import redact
 from my_planner.harness.stream import (
     PING_INTERVAL_S,
@@ -54,7 +60,7 @@ STREAM_HEADERS = {
     "X-Accel-Buffering": "no",
     "x-vercel-ai-ui-message-stream": "v1",
 }
-_STATEFUL_COMMANDS = ("/pause", "/unpause", "/done")  # 즉시 갈래가 `api_idempotency`에 답을 적는다
+IN_FLIGHT = "같은 메시지를 처리하고 있어요. 잠시 뒤에 다시 보내 주세요."
 
 
 def message_text(parts: list[dict[str, Any]]) -> str:
@@ -87,19 +93,16 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         row = d.state.pending_by_client_msg_id(cmid)
         log.info("chat_attached")
         return await stream_sink(request, deps, sink, row.conversation_id if row is not None else None)
+    if d.has_inflight(cmid):  # 처리 중인데 붙을 수 없는 스트림: 두 번 처리하지 않는다
+        return error_response(409, "conflict", IN_FLIGHT)
     row = d.state.pending_by_client_msg_id(cmid)
     if row is not None:
-        # 행은 있는데 처리 자리가 없다(처리 중 예외 뒤): 저장한 행으로 다시 넣는다(SP1 다시 넣기 규칙)
-        writer = UiMessageWriter(sink, _message_id(row.conversation_id, row.update_id))
-        writer.start({**d.chat_metadata(row.conversation_id), "checkin_id": row.checkin_id})
-        writer.status("queued")
-        d.submit_message(Inbound(
-            text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
-            channel="app", client_msg_id=cmid, checkin_id=row.checkin_id, sink=sink,
-            conversation_id=row.conversation_id,
-        ))
-        log.info("chat_resubmitted")
-        return await stream_sink(request, deps, sink, row.conversation_id)
+        # 행은 있는데 처리 자리가 없다(처리 중 예외 뒤): 시작 때 다시 넣기와 같은 규칙으로(3회 뒤 버림)
+        if d.resubmit_app_row(row, sink, message_id=req.message.id):
+            log.info("chat_resubmitted")
+            return await stream_sink(request, deps, sink, row.conversation_id)
+        d.record_chat_reply(cmid, FALLBACK_REPLY, conversation_id=row.conversation_id)
+        return await _direct_reply(request, deps, d, sink, FALLBACK_REPLY, row.conversation_id, row.checkin_id)
 
     text = message_text(req.message.parts)
     now = deps.clock.now()
@@ -117,17 +120,17 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
             settings=deps.settings, apply=d.apply_action,
         )
         reply = run_command(cmd, text, cdeps, channel="app", client_msg_id=cmid)
-        if cmd not in _STATEFUL_COMMANDS:
+        if cmd not in STATEFUL_COMMANDS:  # 상태를 바꾸는 명령은 즉시 갈래가 이미 적었다
             d.record_chat_reply(cmid, reply)
         _transcribe_direct(deps, redact(text)[0], reply)
         log.info("chat_command", extra={"command": cmd})
         return await _direct_reply(request, deps, d, sink, reply, req.conversation_id, req.checkin_id)
-    if cmd == "/plan":
-        d.router.start_plan("app")  # 앱 통로의 계획 대화를 연다(그 통로에 열린 것은 닫는다)
+    plan = cmd == "/plan"  # 앱 통로의 계획 대화를 연다(그 통로에 열린 것은 닫는다)
+    if plan:
         text = plan_topic(text)
 
     # 4. 대화를 받을 때 고르고, 저장한 뒤 두뇌 갈래에 넣는다
-    conv = d.route_app_message(now, conversation_id=req.conversation_id, checkin_id=req.checkin_id)
+    conv = d.route_app_message(now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan)
     inbound_id = d.state.next_app_inbound_id()
     d.state.add_pending_inbound(
         inbound_id, redact(text)[0], now, now, channel="app", client_msg_id=cmid, checkin_id=req.checkin_id,
@@ -162,7 +165,8 @@ async def _replay(
     if confirmation and isinstance(inbound_id, int):
         ids = d.activity_of(inbound_id)
     sink = QueueSink()
-    writer = UiMessageWriter(sink, _message_id(conv_id, inbound_id))
+    # 처음 알린 `messageId` 그대로(다시 골라 대화가 바뀌었어도 같다, 6.4.1)
+    writer = UiMessageWriter(sink, body.get("message_id") or _message_id(conv_id, inbound_id))
     meta = d.chat_metadata(conv_id)
     writer.start({**meta, "checkin_id": checkin_id})
     write_reply(
@@ -177,7 +181,14 @@ async def _direct_reply(
     request: web.Request, deps: ApiDeps, d: Dispatcher, sink: QueueSink, reply: str,
     conversation_id: int | None, checkin_id: int | None,
 ) -> web.StreamResponse:
-    """두뇌를 거치지 않은 답(명령, 글 아닌 메시지). 대화를 고르지 않는다: 메타데이터의 대화는 앱이 보낸 값이다."""
+    """두뇌를 거치지 않은 답(명령, 글 아닌 메시지). 새 대화는 열지 않는다.
+
+    알리는 대화는 앱이 보낸 id가 열린 앱 대화일 때 그것, 아니면 지금 이어질 앱 대화(`current_app_conversation`)다.
+    둘 다 없으면(아직 앱 대화가 없다) `conversation_id: null`이고 `x-conversation-id`는 보내지 않는다(알릴 대화가 없다).
+    `inbound_id`가 없으므로 `messageId`도 없다(6.4.6).
+    """
+    current = d.current_app_conversation(conversation_id)
+    conversation_id = current.id if current is not None else None
     writer = UiMessageWriter(sink, None)
     meta = d.chat_metadata(conversation_id)
     writer.start({**meta, "checkin_id": checkin_id})

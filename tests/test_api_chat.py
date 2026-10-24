@@ -51,7 +51,7 @@ async def test_chat_stream_order_and_headers(tmp_path):
 
     chunks = parse_sse(raw)
     assert types(chunks) == [
-        "start", "data-status", "start-step", "tool-input-available", "tool-output-available",
+        "start", "data-status", "data-status", "start-step", "tool-input-available", "tool-output-available",
         "text-start", "text-delta", "text-end", "finish-step", "data-activity", "finish",
     ]
     assert raw.endswith(b"data: [DONE]\n\n")
@@ -66,6 +66,7 @@ async def test_chat_stream_order_and_headers(tmp_path):
         "conversation_id": conv["id"], "channel": "app", "kind": "chat", "checkin_id": None,
     }
     assert chunks[1] == {"type": "data-status", "data": {"state": "queued"}, "transient": True}
+    assert chunks[2] == {"type": "data-status", "data": {"state": "thinking"}, "transient": True}  # 두뇌가 시작했다
     # 두뇌 글은 text-delta 하나이고, 확인 문구는 글 조각이 아니라 data-activity에
     assert [c["delta"] for c in chunks if c["type"] == "text-delta"] == ["내일 치과를 추가할게요."]
     assert all(c.get("id") != "h-confirm" for c in chunks)
@@ -302,3 +303,132 @@ async def test_chat_stream_carries_cors_headers(tmp_path):
     assert resp.headers["Access-Control-Allow-Origin"] == origin
     assert "x-conversation-id" in resp.headers["Access-Control-Expose-Headers"]
 
+
+
+async def test_rerouted_plan_message_keeps_message_id(tmp_path):
+    """큐에서 기다리던 계획 메시지의 대화가 `/done`으로 닫혀 다른 대화로 가도, 스트림·`/messages`·재생의 id는 같다."""
+    gate = asyncio.Event()
+    script = [FakeTurn([], "먼저 온 것", gate=gate), FakeTurn([], "계획을 같이 볼게요.")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+
+        async def send(text, cmid):
+            resp = await env.post("/chat", json=env.chat_body(text, client_msg_id=cmid))
+            return resp, await resp.read()
+
+        first = asyncio.create_task(send("하나", "cm-first"))
+        while not env.brain.calls:
+            await asyncio.sleep(0)
+        planned = asyncio.create_task(send("/plan 이사 준비", "cm-plan"))
+        while env.parts.state.pending_by_client_msg_id("cm-plan") is None:
+            await asyncio.sleep(0)
+        plan_conv = env.parts.state.pending_by_client_msg_id("cm-plan").conversation_id
+        done = await (await env.post("/chat", json=env.chat_body("/done"))).read()  # 바로 답한다: 계획 대화를 닫는다
+        gate.set()
+        (_, _), (resp, raw) = await asyncio.gather(first, planned)
+        await env.drain()
+        stored = env.parts.idempotency.get("cm-plan")
+        landed = stored.conversation_id
+        lines = env.parts.transcripts.messages(landed)
+        _, replay = await env.chat("/plan 이사 준비", client_msg_id="cm-plan")
+
+    chunks = parse_sse(raw)
+    advertised = chunks[0]["messageId"]
+    assert advertised == f"m-{plan_conv}-2"
+    assert resp.headers["x-conversation-id"] == str(plan_conv)
+    assert landed != plan_conv  # 다른 대화로 갔다
+    assert _text(parse_sse(done)) != ""
+    secretary = [m for m in lines if m.speaker == "비서"]
+    assert secretary[-1].id == advertised  # 옮겨 간 대화(먼저 온 앱 chat)의 마지막 비서 줄
+    assert secretary[-1].text == "계획을 같이 볼게요."
+    assert parse_sse(replay)[0]["messageId"] == advertised
+
+
+async def test_conversation_id_matches_across_pending_start_and_header(tmp_path):
+    """받을 때 고른 대화: `inbound_pending.conversation_id`, `start`(messageMetadata, messageId), 헤더가 같다(16장)."""
+    gate = asyncio.Event()
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "답", gate=gate)]) as env:
+        resp = await env.post("/chat", json=env.chat_body("안녕", client_msg_id="cm-match"))
+        first_line = await resp.content.readline()
+        row = env.parts.state.pending_by_client_msg_id("cm-match")
+        gate.set()
+        await resp.read()
+        await env.drain()
+
+    import json
+
+    start = json.loads(first_line.decode("utf-8")[len("data: "):])
+    assert row.channel == "app" and row.update_id == -1
+    assert resp.headers["x-conversation-id"] == str(row.conversation_id)
+    assert start["messageMetadata"]["conversation_id"] == row.conversation_id
+    assert start["messageId"] == f"m-{row.conversation_id}-1"
+
+
+async def test_resubmit_from_chat_counts_attempts_and_drops(tmp_path):
+    """행은 남았는데 처리 자리가 없으면 다시 넣는다. 넣을 때마다 시도 수를 세고 3회 뒤에는 버린다(SP1 5.2-4)."""
+    script = [FakeTurn([], "다시 넣은 답")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        p = env.parts
+        conv = p.dispatcher.route_app_message(env.clock.now(), conversation_id=None, checkin_id=None)
+        iid = p.state.next_app_inbound_id()
+        now = env.clock.now()
+        p.state.add_pending_inbound(iid, "남은 글", now, now, channel="app", client_msg_id="cm-left",
+                                    conversation_id=conv.id)
+        _, raw = await env.chat("남은 글", client_msg_id="cm-left", message_id="msg-left")
+        lines = p.transcripts.messages(conv.id)
+
+        iid2 = p.state.next_app_inbound_id()
+        p.state.add_pending_inbound(iid2, "끝내 안 된 글", now, now, channel="app", client_msg_id="cm-dead",
+                                    conversation_id=conv.id)
+        for _ in range(3):
+            p.state.bump_inbound_attempts(iid2)
+        _, dead = await env.chat("끝내 안 된 글", client_msg_id="cm-dead")
+        dropped = p.state.get_pending_inbound(iid2)
+        calls = len(env.brain.calls)
+
+    chunks = parse_sse(raw)
+    assert chunks[0]["messageId"] == f"m-{conv.id}-1"
+    assert _text(chunks) == "다시 넣은 답"
+    assert [m.id for m in lines] == ["msg-left", f"m-{conv.id}-1"]
+    from my_planner.harness.dispatcher import FALLBACK_REPLY
+
+    assert _text(parse_sse(dead)) == FALLBACK_REPLY
+    assert dropped is None and calls == 1
+
+
+async def test_direct_reply_announces_only_open_app_conversation(tmp_path):
+    """명령의 답이 알리는 대화: 앱이 보낸 id가 열린 앱 대화일 때만. 아니면 지금 이어질 앱 대화(없으면 null)."""
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "안녕하세요.")]) as env:
+        _, none_yet = await env.chat("/help", conversation_id=999)
+        none_headers = (await env.post("/chat", json=env.chat_body("/help", conversation_id=999))).headers
+        resp, _ = await env.chat("안녕")
+        app_conv = int(resp.headers["x-conversation-id"])
+        telegram_conv = env.parts.convs.open("chat", START.date())
+        r_valid, valid = await env.chat("/help", conversation_id=app_conv)
+        r_bogus, bogus = await env.chat("/help", conversation_id=telegram_conv.id)
+
+    assert parse_sse(none_yet)[0]["messageMetadata"]["conversation_id"] is None
+    assert "x-conversation-id" not in none_headers
+    for r, raw in ((r_valid, valid), (r_bogus, bogus)):
+        assert parse_sse(raw)[0]["messageMetadata"]["conversation_id"] == app_conv
+        assert r.headers["x-conversation-id"] == str(app_conv)
+        for name, value in FIVE_HEADERS.items():
+            assert r.headers[name] == value
+
+
+async def test_inflight_unattachable_stream_is_conflict_not_resubmit(tmp_path):
+    from fakes import ListSink
+    from test_dispatcher_app_channel import app_message
+
+    gate = asyncio.Event()
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "답", gate=gate)]) as env:
+        env.parts.dispatcher.submit_message(app_message(env, "하나", ListSink(), "cm-list"))
+        while not env.brain.calls:
+            await asyncio.sleep(0)
+        resp = await env.post("/chat", json=env.chat_body("하나", client_msg_id="cm-list"))
+        body = await resp.json()
+        gate.set()
+        await env.drain()
+        calls = len(env.brain.calls)
+
+    assert resp.status == 409 and body["error"]["code"] == "conflict"
+    assert calls == 1

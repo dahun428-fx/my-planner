@@ -8,6 +8,8 @@
   입력마다 출력은 하나다. 끝날 때 출력이 없는 입력도 오류다.
 - 조각 종류는 AI SDK UI message stream의 것(`data-*` 포함)만.
 - `start-step`/`finish-step`은 짝이 맞아야 한다.
+- `data-status`는 `transient: true`이고 상태는 `queued` 또는 `thinking`이다(6.4.1). 첫 단계(`start-step`) 전에만 오고,
+  `thinking` 뒤에 `queued`가 오지 않는다.
 
 `normalize_sse(body)`는 `messageId` 값만 `<id>`로 바꾼다(기준 응답과 바이트 단위로 비교할 때).
 """
@@ -74,9 +76,19 @@ def parse_sse(body: bytes) -> list[dict[str, Any]]:
     seen_text: set[str] = set()
     inputs: dict[str, int] = {}  # toolCallId → 출력 수
     step_open = False
+    stepped = False
+    thinking = False
     for c in chunks:
         t = c["type"]
-        if t == "start-step":
+        if t == "data-status":
+            state = c.get("data", {}).get("state")
+            if c.get("transient") is not True or state not in ("queued", "thinking"):
+                raise StreamFormatError(f"data-status 모양이 아니다: {c}")
+            if stepped or (thinking and state == "queued"):
+                raise StreamFormatError("data-status 순서가 틀렸다")
+            thinking = thinking or state == "thinking"
+        elif t == "start-step":
+            stepped = True
             if step_open:
                 raise StreamFormatError("start-step이 겹친다")
             step_open = True

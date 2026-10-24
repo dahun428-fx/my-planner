@@ -12,7 +12,11 @@ from typing import TYPE_CHECKING, Protocol
 
 from my_planner.clock import Clock, from_iso, logical_date, to_iso
 from my_planner.domain import LoopKey, RunStatus, SkipReason
-from my_planner.harness.dispatcher import MAX_RUN_ATTEMPTS, Inbound
+from my_planner.harness.dispatcher import (  # 다시 넣기 상한은 앱 재요청과 같다
+    INBOUND_MAX_ATTEMPTS,
+    MAX_RUN_ATTEMPTS,
+    Inbound,
+)
 from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
 from my_planner.loop.schedule import (
@@ -215,7 +219,6 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
             log.info("run_resend_on_start", extra={"run_id": run.id})
 
 
-INBOUND_MAX_ATTEMPTS = 3  # 시작 때 다시 넣는 횟수 상한. 넘으면 inbound_dropped
 
 
 def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:

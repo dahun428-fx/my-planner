@@ -2,6 +2,8 @@ data: {"type":"start","messageId":"<id>","messageMetadata":{"conversation_id":1,
 
 data: {"type":"data-status","data":{"state":"queued"},"transient":true}
 
+data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
+
 data: {"type":"start-step"}
 
 data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"add_task","input":{"title":"치과","areas":["health"],"planned_for":"2026-10-25"}}
