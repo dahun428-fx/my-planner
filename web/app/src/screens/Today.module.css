@@ -62,7 +62,7 @@
   font: inherit;
   font-size: var(--size-meta);
   font-weight: 600;
-  color: var(--hue);
+  color: var(--text);
   cursor: pointer;
 }
 .more::after {
