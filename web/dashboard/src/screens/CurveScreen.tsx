@@ -5,11 +5,13 @@ import { CurveChart } from "../components/CurveChart";
 import { MilestonePopover } from "../components/MilestonePopover";
 import { Reassurance } from "../components/Reassurance";
 import { StateNotice } from "../components/StateNotice";
+import { Upcoming, type UpcomingMark } from "../components/Upcoming";
 import { type ApiResult, fetchApi, isCurve } from "../lib/api";
 import { useConnection } from "../lib/ConnectionProvider";
 import type { Zoom } from "../lib/curveLayout";
 import { CURVE_TEXT as T } from "../lib/labels";
 import { usePolling } from "../lib/polling";
+import { nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulLogicalToday } from "../lib/reviews";
 
 const NONE = { kind: "broken", code: "no_connection" } as const;
 const ZOOMS: Zoom[] = ["day", "week", "month", "quarter", "year"];
@@ -46,11 +48,16 @@ function Loading() {
   );
 }
 
+const hasLadder = (c: Curve) => c.ladder.some((l) => l.now !== null); // five-years-ahead alone draws no "now" line
+
 /**
- * `wideAreas` are the area scores of the wide (year, from 1900) request: the radar compares the latest scored
- * quarter with the one before it whatever zoom is shown (13.4). Until that answer is in, the zoom's own `areas`.
+ * `wide` is the answer to the wide (year, from 1900) request. The radar compares the latest scored quarter with
+ * the one before it, and 안심 보기 lists every compared month, whatever zoom is shown (13.4, B2). It also says
+ * whether a ladder score exists at all, so an empty zoom does not call the next one the first. Until that
+ * answer is in, the zoom's own answer stands in for it.
+ * The empty curve shows the next review days (DU-05), worked out from the logical date in Korea (04:00 turn).
  */
-export function CurveView({ curve: c, wideAreas = null }: { curve: Curve; wideAreas?: Curve["areas"] | null }) {
+export function CurveView({ curve: c, wide = null }: { curve: Curve; wide?: Curve | null }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = c.milestones.find((m) => m.id === selectedId) ?? null;
   const close = useCallback(() => {
@@ -62,25 +69,45 @@ export function CurveView({ curve: c, wideAreas = null }: { curve: Curve; wideAr
   const select = useCallback((m: CurveMilestone) => setSelectedId((id) => (id === m.id ? null : m.id)), []);
 
   const noEvents = c.chapters.length === 0 && c.milestones.length === 0;
-  const noLadder = c.ladder.every((l) => l.now === null); // five-years-ahead alone draws no "now" line
+  const noLadder = !hasLadder(c);
   const noCondition = c.condition.every((b) => b.average === null);
   const drawn = !(noEvents && noLadder && noCondition);
+
+  const all = wide ?? c;
+  const areas = all.areas;
+  const firstLadder = !hasLadder(all);
+  const today = seoulLogicalToday();
+  const ladderDay = nextMonthlyReview(today);
+  const areasDay = nextQuarterReview(today);
+  // The month the next review asks for is already scored (11.1 skips step 1 then): nothing to promise.
+  const asked = ladderDay.slice(0, 7);
+  const alreadyScored = all.ladder.some((l) => l.period === asked && l.now !== null);
+  const askLadder = noLadder && !alreadyScored;
+  const marks: UpcomingMark[] = [];
+  if (askLadder) marks.push({ day: ladderDay, what: firstLadder ? T.upcoming.firstLadderMark : T.upcoming.ladderMark });
+  if (askLadder && areas.length === 0) marks.push({ day: areasDay, what: T.upcoming.areasMark });
+  const ladderLine = (firstLadder ? T.upcoming.firstLadder : T.upcoming.ladder)(reviewDayLabel(ladderDay));
 
   return (
     <>
       <section className="panel curve-panel" aria-label={T.title}>
         {drawn && <CurveChart curve={c} selected={selected?.id ?? null} onSelect={select} />}
         {selected && <MilestonePopover milestone={selected} onClose={close} />}
-        {(noEvents || noLadder) && (
+        {(noEvents || askLadder) && (
           <div className="curve-empty">
             {noEvents && <p className="empty">{T.empty.events}</p>}
-            {noLadder && <p className="empty">{T.empty.ladder}</p>}
+            {askLadder && (
+              <>
+                <Upcoming marks={marks} />
+                <p className="empty">{ladderLine}</p>
+              </>
+            )}
           </div>
         )}
       </section>
       <div className="curve-pair">
-        <AreaRadar areas={wideAreas ?? c.areas} />
-        <Reassurance items={c.reassurance} />
+        <AreaRadar areas={areas} emptyText={T.upcoming.areas(reviewDayLabel(areasDay))} />
+        <Reassurance items={all.reassurance} />
       </div>
     </>
   );
@@ -102,14 +129,14 @@ const WIDE_PATH = curvePath("year", false);
  * Read only.
  */
 export function CurveScreen() {
-  const { ready, conn } = useConnection();
+  const { ready, conn, backOnline } = useConnection();
   const [zoom, setZoomState] = useState<Zoom>(memory.zoom);
   const [sensitive, setSensitiveState] = useState(memory.sensitive);
   const path = curvePath(zoom, sensitive);
   const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
 
   const wideLoad = useCallback(async (): Promise<ApiResult<Curve>> => (conn ? fetchApi(conn, WIDE_PATH, isCurve) : NONE), [conn]);
-  const wide = usePolling(wideLoad, 60_000, auth);
+  const wide = usePolling(wideLoad, 60_000, auth, { wake: backOnline });
   const wideRef = useRef(wide.result);
   wideRef.current = wide.result;
 
@@ -119,7 +146,7 @@ export function CurveScreen() {
     if (path === WIDE_PATH && cached?.kind === "ok") return isLoaded(cached, path);
     return isLoaded(await fetchApi(conn, path, isCurve), path);
   }, [conn, path]);
-  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "");
+  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "", { wake: backOnline });
 
   useEffect(() => {
     memory.zoom = zoom;
@@ -128,7 +155,7 @@ export function CurveScreen() {
 
   // Only the answer to the request the controls show is drawn (not an older zoom or sensitive setting).
   const shown = result?.kind === "ok" && result.data.path !== path ? null : result;
-  const wideAreas = wide.result?.kind === "ok" ? wide.result.data.areas : null;
+  const wideCurve = wide.result?.kind === "ok" ? wide.result.data : null;
 
   return (
     <>
@@ -151,7 +178,7 @@ export function CurveScreen() {
           <span>{T.sensitive}</span>
         </label>
       </div>
-      {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data.curve} wideAreas={wideAreas} /> : <StateNotice result={shown} />}
+      {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data.curve} wide={wideCurve} /> : <StateNotice result={shown} />}
     </>
   );
 }

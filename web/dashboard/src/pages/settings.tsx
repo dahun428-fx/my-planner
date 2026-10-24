@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { useRouter } from "next/router";
 import { type FormEvent, useEffect, useState } from "react";
 import { StateNotice } from "../components/StateNotice";
 import { type ApiResult, getHealth } from "../lib/api";
@@ -11,9 +11,40 @@ type Outcome = { kind: "error"; text: string } | { kind: "result"; result: ApiRe
 // An API token is `secrets.token_urlsafe(32)`: visible ASCII only. A header cannot carry anything else.
 const TOKEN = /^[\x21-\x7e]+$/;
 
-/** BE URL and API token for this browser (spec 13.1). "연결 확인" saves them and calls GET /health. */
+/** DU-04: where the BE address and the token come from. The address is a pattern, never a real name. */
+function Help() {
+  const H = T.help;
+  return (
+    <details className="panel help">
+      <summary>{H.summary}</summary>
+      <div className="help-body">
+        <h2 className="help-title">{H.urlTitle}</h2>
+        <p>{H.urlBody}</p>
+        <pre className="help-code">
+          <code>{H.urlCommand}</code>
+        </pre>
+        <p>
+          <code className="help-shape">{H.urlShape}</code>
+        </p>
+        <p className="meta">{H.urlShapeNote}</p>
+        <h2 className="help-title">{H.tokenTitle}</h2>
+        <p>{H.tokenBody}</p>
+        <pre className="help-code">
+          <code>{H.tokenCommand}</code>
+        </pre>
+        <p className="meta">{H.tokenEnv}</p>
+      </div>
+    </details>
+  );
+}
+
+/**
+ * BE URL and API token for this browser (spec 13.1). "연결 확인" saves them and calls GET /health; a good
+ * answer goes straight to the home screen (DU-04).
+ */
 export default function Settings() {
   const { ready, conn, connect } = useConnection();
+  const router = useRouter();
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,6 +71,7 @@ export default function Settings() {
       const result = await getHealth(next);
       connect(next);
       setOutcome({ kind: "result", result });
+      if (result.kind === "ok") void router.push("/");
     } finally {
       setBusy(false);
     }
@@ -84,20 +116,14 @@ export default function Settings() {
           {outcome.text}
         </p>
       )}
-      {outcome?.kind === "result" &&
-        (outcome.result.kind === "ok" ? (
-          <div className="notice" data-kind="ok" role="status">
-            <p>{T.ok}</p>
-            <p>
-              <Link href="/">{T.home}</Link>
-            </p>
-          </div>
-        ) : (
-          <>
-            <p className="meta">{T.saved}</p>
-            <StateNotice result={outcome.result} settingsLink={false} />
-          </>
-        ))}
+      {/* A good answer goes home at once (the band there says it is on); only a failed check stays. */}
+      {outcome?.kind === "result" && outcome.result.kind !== "ok" && (
+        <>
+          <p className="meta">{T.saved}</p>
+          <StateNotice result={outcome.result} settingsLink={false} />
+        </>
+      )}
+      <Help />
     </>
   );
 }

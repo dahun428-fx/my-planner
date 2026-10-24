@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Health } from "../api/types.gen";
 import { type ApiResult, getHealth } from "./api";
 import { type Conn, type LastHealthOk, loadConnection, loadLastHealthOk, saveConnection, saveLastHealthOk } from "./connection";
@@ -12,9 +12,16 @@ export interface ConnectionState {
   conn: Conn | null;
   health: ApiResult<Health> | null;
   lastOk: LastHealthOk | null;
+  /** Goes up by one each time `/health` turns from offline to ok: every screen's poll loads again (DU-03). */
+  backOnline: number;
+  /** While `/health` is offline, the wait before the next check (10 s, 20 s, 40 s, then 60 s); else null. */
+  retryMs: number | null;
   check(): Promise<void>;
   connect(c: Conn): void;
 }
+
+/** DU-03: how long to wait between `/health` checks while the BE does not answer. */
+export const OFFLINE_RETRY_MS = [10_000, 20_000, 40_000, 60_000] as const;
 
 const NONE: ApiResult<Health> = { kind: "broken", code: "no_connection" };
 
@@ -23,6 +30,8 @@ const Ctx = createContext<ConnectionState>({
   conn: null,
   health: null,
   lastOk: null,
+  backOnline: 0,
+  retryMs: null,
   check: async () => {},
   connect: () => {},
 });
@@ -50,7 +59,19 @@ export function ConnectionProvider({ children, intervalMs = 60_000 }: { children
   }, [conn]);
 
   const key = !ready ? "" : conn ? `${conn.beUrl}\n${conn.token}` : "none";
-  const { result, refresh } = usePolling(load, intervalMs, key);
+  const { result, refresh, retryMs } = usePolling(load, intervalMs, key, { retryDelays: OFFLINE_RETRY_MS });
+
+  // offline -> ok: one shared signal the screens' polls wake on. Another BE or token starts with no history.
+  const [backOnline, setBackOnline] = useState(0);
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    wasOffline.current = false;
+  }, [key]);
+  useEffect(() => {
+    if (result === null) return;
+    if (result.kind === "ok" && wasOffline.current) setBackOnline((n) => n + 1);
+    wasOffline.current = result.kind === "offline";
+  }, [result]);
 
   // The same BE and token again (after a 401 stopped the poll) keep the poll's key: check right away.
   const connect = useCallback(
@@ -63,8 +84,17 @@ export function ConnectionProvider({ children, intervalMs = 60_000 }: { children
   );
 
   const value = useMemo<ConnectionState>(
-    () => ({ ready, conn, health: ready && conn ? result : null, lastOk, check: refresh, connect }),
-    [ready, conn, result, lastOk, refresh, connect],
+    () => ({
+      ready,
+      conn,
+      health: ready && conn ? result : null,
+      lastOk,
+      backOnline,
+      retryMs: ready && conn ? retryMs : null,
+      check: refresh,
+      connect,
+    }),
+    [ready, conn, result, lastOk, backOnline, retryMs, refresh, connect],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

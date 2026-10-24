@@ -1,4 +1,6 @@
 // Every time on screen is Korean time, whatever zone the device is in (spec 13.1). The API sends UTC.
+import { TIME_TEXT } from "./labels";
+
 export type KstStyle = "HH:mm" | "HH:mm:ss" | "M/D" | "M/D HH:mm";
 
 const kst = new Intl.DateTimeFormat("en-US", {
@@ -31,6 +33,18 @@ export function formatKst(iso: string, style: KstStyle): string {
     case "M/D HH:mm":
       return `${p.month}/${p.day} ${hhmm}`;
   }
+}
+
+/** How long ago `iso` was, from `now` (ms): "방금", "N분 전", "N시간 전", "N일 전". Null if unreadable. */
+export function timeAgo(iso: string, now: number = Date.now()): string | null {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const minutes = Math.floor(Math.max(0, now - t) / 60_000);
+  if (minutes < 1) return TIME_TEXT.justNow;
+  if (minutes < 60) return TIME_TEXT.minutesAgo(minutes);
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return TIME_TEXT.hoursAgo(hours);
+  return TIME_TEXT.daysAgo(Math.floor(hours / 24));
 }
 
 /** A logical date `YYYY-MM-DD` (already Korean, spec 6.1) as `M/D`. */

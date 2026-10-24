@@ -13,6 +13,7 @@
   --positive: #247b50; --negative: #c4242a; --neutral: #8e8e93;
   --notice-bg: #fffbeb; --notice-border: #fde68a; --notice-ink: #5c2a07;
   --offline-bg: #e5e5ea;
+  --condition-dot: #76767c; /* B6: 3:1 or more on surface, raised and ground */
   --radius-panel: 16px; --radius-control: 999px; --radius-field: 10px;
   --gutter: 16px; --gap: 12px; --pad: 16px; --row: 44px; --control-h: 44px;
   --fs-title: 1.5rem; --fs-section: 0.9375rem; --fs-body: 0.9375rem; --fs-meta: 0.8125rem; --fs-nav: 1.0625rem;
@@ -29,6 +30,7 @@
     --hue: #5b9bff;     --positive: #3fc07a; --negative: #ff6b6b; --neutral: #8e8e93;
     --notice-bg: #2b2210; --notice-border: #5c4a17; --notice-ink: #f5d27a;
     --offline-bg: #2c2c2e;
+    --condition-dot: #8e8e93;
   }
 }
 :root[data-theme="dark"] {
@@ -40,4 +42,5 @@
   --hue: #5b9bff;     --positive: #3fc07a; --negative: #ff6b6b; --neutral: #8e8e93;
   --notice-bg: #2b2210; --notice-border: #5c4a17; --notice-ink: #f5d27a;
   --offline-bg: #2c2c2e;
+  --condition-dot: #8e8e93;
 }

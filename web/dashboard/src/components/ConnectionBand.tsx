@@ -17,7 +17,7 @@ export function bandOf(health: ApiResult<Health> | null, hasConn: boolean): Band
 export function bandText(health: ApiResult<Health> | null, hasConn: boolean, lastOk: LastHealthOk | null): string {
   switch (bandOf(health, hasConn)) {
     case "none":
-      return "BE 연결 전";
+      return BAND_TEXT.none;
     case "checking":
       return BAND_TEXT.checking;
     case "off":
@@ -29,9 +29,9 @@ export function bandText(health: ApiResult<Health> | null, hasConn: boolean, las
 
 const BAND_STATE_TEXT: Record<BandState, string> = {
   on: BAND_TEXT.onNoTime,
-  off: "BE 꺼짐",
+  off: BAND_TEXT.offShort,
   checking: BAND_TEXT.checking,
-  none: "BE 연결 전",
+  none: BAND_TEXT.none,
 };
 
 /** Top of every screen (spec 13.1, 13.2): BE on with its answer time, or off with this browser's last answer. */

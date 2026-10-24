@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { formatDay, formatKst } from "./time";
+import { formatDay, formatKst, timeAgo } from "./time";
 
 const original = process.env.TZ;
 
@@ -27,6 +27,22 @@ describe("formatKst", () => {
 
   it("returns a dash for an unreadable time", () => {
     expect(formatKst("어제", "HH:mm")).toBe("—");
+  });
+});
+
+describe("timeAgo", () => {
+  const now = Date.parse("2026-10-24T08:00:00Z");
+  it("says how long ago, in the largest whole unit", () => {
+    expect(timeAgo("2026-10-24T07:59:31Z", now)).toBe("방금");
+    expect(timeAgo("2026-10-24T08:00:10Z", now)).toBe("방금"); // a device clock a little behind
+    expect(timeAgo("2026-10-24T07:59:00Z", now)).toBe("1분 전");
+    expect(timeAgo("2026-10-24T07:01:00Z", now)).toBe("59분 전");
+    expect(timeAgo("2026-10-24T05:00:00Z", now)).toBe("3시간 전");
+    expect(timeAgo("2026-10-23T08:00:00Z", now)).toBe("1일 전");
+    expect(timeAgo("2026-10-14T08:00:00Z", now)).toBe("10일 전");
+  });
+  it("returns null for an unreadable time", () => {
+    expect(timeAgo("어제", now)).toBeNull();
   });
 });
 
