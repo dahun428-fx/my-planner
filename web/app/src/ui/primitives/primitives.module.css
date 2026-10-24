@@ -1,0 +1,13 @@
+/* SP6 spec 5: the ten parts and CheckRow. Semantic tokens only (5.1): no hex colours, no colour per
+   area, nothing tied to a palette's name. --hue marks only what the secretary changed. */
+.text {
+  margin: 0;
+  font-size: var(--size-body);
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.text strong {
+  font-weight: 600;
+}
