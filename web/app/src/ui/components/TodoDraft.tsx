@@ -6,8 +6,8 @@ import { CheckRow } from "../primitives/CheckRow";
 import { Part } from "./Part";
 import styles from "./parts.module.css";
 
-// ui_todo_draft: drafts are checked by default (a CheckRow's check here means "chosen", SP6 8장); "N개 확정" confirms the checked ones, "고른 것 빼기"
-// drops them one by one. A card restored after a reload shows its rows only: they may have been
+// ui_todo_draft: drafts are checked by default (a CheckRow's check here means "chosen", SP6 8장);
+// "N개 확정" confirms the checked ones, "고른 것 빼기" drops them one by one. A card restored after a reload shows its rows only: they may have been
 // confirmed since, and a drop would then remove a real to-do.
 export function TodoDraft({ props, data, ctx }: PartProps<{ task_ids: number[] }>) {
   const act = usePartAction();
@@ -46,7 +46,7 @@ export function TodoDraft({ props, data, ctx }: PartProps<{ task_ids: number[] }
   };
 
   return (
-    <Part title={copy.parts.draftHeading} variant="outlined" readOnly={ctx.readOnly}>
+    <Part title={copy.parts.draftHeading} variant="outlined" readOnly={ctx.readOnly} restored={ctx.restored}>
       <p className={styles.hint}>{copy.parts.draftHint}</p>
       {todos ? (
         <ul className={styles.rows}>

@@ -34,7 +34,7 @@ export function TodoRows({
   if (rows.length === 0) return <p className={styles.text}>{copy.parts.noTodos}</p>;
   const off = ctx.readOnly || ctx.restored === true;
   return (
-    <ul className={styles.checkRows}>
+    <ul className={styles.checkRows} data-read-only={off ? "" : undefined}>
       {rows.map((t) => {
         const done = t.status === "done" || completed?.has(t.id) === true;
         const dropped = t.status === "dropped";

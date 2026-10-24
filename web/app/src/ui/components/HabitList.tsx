@@ -128,7 +128,7 @@ export function HabitCheck({ props, data, ctx }: PartProps<{ date: string }>) {
   // A restored card shows rows as they were: they may have changed since, so it writes nothing.
   const readOnly = ctx.readOnly || ctx.restored === true;
   return (
-    <Part title={copy.habits.heading} readOnly={ctx.readOnly}>
+    <Part title={copy.habits.heading} readOnly={ctx.readOnly} restored={ctx.restored}>
       <HabitList habits={habits} date={props.date} readOnly={readOnly} onChanged={ctx.onAfterAction} readsOnUndo />
     </Part>
   );

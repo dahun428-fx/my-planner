@@ -33,7 +33,7 @@ export function TodoList({ props, data, ctx }: PartProps<{ title: string; task_i
     }
   };
   return (
-    <Part title={props.title} readOnly={ctx.readOnly}>
+    <Part title={props.title} readOnly={ctx.readOnly} restored={ctx.restored}>
       <ul className={styles.rows}>
         {shown.map((t) => {
           const isDone = t.status === "done" || done.has(t.id);

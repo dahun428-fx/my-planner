@@ -60,6 +60,11 @@ describe("primitives.module.css", () => {
     expect(row?.body).toMatch(/grid-auto-flow:\s*row/);
   });
 
+  it("a read-only card draws the round mark", () => {
+    const round = rules(css).find((r) => r.selector === "[data-read-only] .circle");
+    expect(round?.body).toMatch(/border-radius:\s*var\(--radius-pill\)/);
+  });
+
   it("has no 700 weight (screen titles only)", () => {
     expect(css).not.toMatch(/font-weight:\s*(700|bold)/);
   });

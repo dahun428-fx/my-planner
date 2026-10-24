@@ -9,17 +9,20 @@ export function Part({
   title,
   variant,
   readOnly = false,
+  restored = false,
   children,
 }: {
   title?: string;
   variant?: "outlined" | "confirm";
   readOnly?: boolean;
+  /** A card restored after a reload (4.6): its marks are drawn read-only, without the offline reason. */
+  restored?: boolean;
   children: ReactNode;
 }) {
   const cls = `${styles.card} ${variant === "outlined" ? styles.outlined : ""} ${variant === "confirm" ? styles.confirm : ""}`;
   // `data-read-only` draws CheckRow's mark round (SP5 5.5.4); CSS module classes do not reach across sheets.
   return (
-    <section className={cls} data-read-only={readOnly ? "" : undefined}>
+    <section className={cls} data-read-only={readOnly || restored ? "" : undefined}>
       {title !== undefined && <h3 className={styles.title}>{title}</h3>}
       {children}
       {readOnly && <p className={styles.reason}>{copy.offline.writeLater}</p>}
