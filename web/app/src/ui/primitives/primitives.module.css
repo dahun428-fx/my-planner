@@ -185,6 +185,30 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-2);
 }
+/* The bar is a <progress> drawn by its pseudo-elements (11.3): track --raised, fill --primary. */
+.bar {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--raised);
+  color: var(--primary);
+  overflow: hidden;
+}
+.bar::-webkit-progress-bar {
+  border-radius: var(--radius-pill);
+  background-color: var(--raised);
+}
+.bar::-webkit-progress-value {
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
+}
+.bar::-moz-progress-bar {
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
+}
 
 /* tags (5.3.6): 24px pills, --text-2 13 on --raised, one look for every area. */
 .tags {
@@ -292,4 +316,11 @@
 .pill:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: 2px;
+}
+/* A card under ~300px inside (5.3.10): one child per line, without container queries. */
+@media (max-width: 340px) {
+  .row {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr;
+  }
 }
