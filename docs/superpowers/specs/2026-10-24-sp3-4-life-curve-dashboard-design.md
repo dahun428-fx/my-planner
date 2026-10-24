@@ -744,7 +744,7 @@ data: [DONE]
 |---|---|---|
 | `add_task` | title, areas, planned_for?, scheduled_at?, parent_id?, note? | low |
 | `update_task` | id, title?, areas?, note?, scheduled_at? | low |
-| `move_task` | id, planned_for | low |
+| `move_task` | id, planned_for | low. 시각이 있는 할 일의 날짜를 바꾸면 `confirm`(앱 통로만, 텔레그램 버튼은 바로. SP6 8장). 열린(`open`) 할 일만 옮긴다(아니면 `rejected` "열린 할 일만 날짜를 옮길 수 있어요.") |
 | `complete_task` | id | low |
 | `reopen_task` | id | low |
 | `drop_task` | id | low. 그 할 일이 지금 기간 우선순위이거나 열린 첫 걸음이 있으면 `confirm` |

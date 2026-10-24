@@ -93,7 +93,8 @@ async def _case_task_updated(env):
 
 
 async def _case_task_moved(env):
-    a = await _add(env, scheduled_at="2026-10-24T18:00")
+    # 앱 통로에서 시각 있는 할 일을 옮기면 확인을 거친다(SP6 8장). 시각 있는 옮김의 되돌리기는 아래 텔레그램 시험
+    a = await _add(env, planned_for="2026-10-24")
     return "move_task", {"id": a, "planned_for": "2026-10-26"}, "운동 옮김"
 
 
@@ -379,11 +380,33 @@ async def test_u2_24h_boundary(tmp_path):
     assert by_id_after[cb["activity_id"]]["undo_id"] is None and still == "done"
 
 
+async def test_undo_scheduled_move_from_telegram(tmp_path):
+    """텔레그램 통로는 시각 있는 할 일도 바로 옮긴다. 그 되돌리기는 날짜와 시각을 함께 되돌린다."""
+    from my_planner.tools.actions import ActionRequest
+
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a = await _add(env, scheduled_at="2026-10-24T18:00")
+        before = _state(env)
+        env.clock.advance(minutes=1)
+        res = env.parts.dispatcher.apply_action(
+            ActionRequest("move_task", {"id": a, "planned_for": "2026-10-26"}, actor="user", channel="telegram")
+        )
+        moved = env.parts.tasks.get(a)
+        env.clock.advance(minutes=1)
+        status, out = await undo(env, res.body["undo_id"])
+        after = _state(env)
+
+    assert res.status == "applied" and moved.planned_for.isoformat() == "2026-10-26"
+    assert status == 200 and out["confirmation"] == "↩ 되돌림: 운동 옮김"
+    assert after == before
+
+
 async def test_u3_superseded_chain(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         a = await _add(env, planned_for="2026-10-24")
         done = await _apply(env, "complete_task", {"id": a})
-        moved = await _apply(env, "move_task", {"id": a, "planned_for": "2026-10-25"})  # 같은 시각, 더 나중 행
+        # 같은 시각, 더 나중 행(끝난 할 일은 옮길 수 없어 메모를 고친다, SP6 8장)
+        moved = await _apply(env, "update_task", {"id": a, "note": "꾸민 메모"})
         s1, b1 = await undo(env, done["undo_id"])
         s2, _ = await undo(env, moved["undo_id"])
         s3, b3 = await undo(env, done["undo_id"])  # 되돌리기 자체도 활동이다

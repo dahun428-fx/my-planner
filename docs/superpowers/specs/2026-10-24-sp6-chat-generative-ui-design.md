@@ -436,7 +436,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 | 동작 | 부르는 것 | 어느 조각에서 | 대상 |
 |---|---|---|---|
 | 체크·완료 (`complete`) | `/actions complete_task {id}` | `ui_todo_list`, `ui_period_list`, `ui_block`의 `todo_rows`와 `complete` 버튼 | `data.todos`(`ui_period_list`는 `data.days[].todos`)에 있고 `status = open`인 id만. `ui_todo_draft`의 체크 표시는 완료가 아니라 "고르기"다(확정·빼기할 것을 고른다, 지금 그대로). `CheckRow`의 `onToggle`이 무엇을 하는지는 카드마다 정한다 |
-| 확정 (`confirm`) | `ui_date_choice`: `/actions move_task {id, planned_for}` · `ui_todo_draft`: `confirm_tasks`, `drop_task`(초안 빼기, 지금 그대로) · `ui_confirm`: 지금 그대로 | 완성 카드에만 | `move_task`의 `id`는 `data.todo.id`, `planned_for`는 props `candidates[].date` 가운데 하나. 범위(오늘~90일)와 "시각 없는 열린 할 일"은 **그릴 때만** BE가 확인한다. 누를 때 `/actions move_task`가 보는 것은 할 일이 있는지, 날짜 형식, 그리고 BE-2가 더하는 확인 규칙(아래) 셋뿐이다 |
+| 확정 (`confirm`) | `ui_date_choice`: `/actions move_task {id, planned_for}` · `ui_todo_draft`: `confirm_tasks`, `drop_task`(초안 빼기, 지금 그대로) · `ui_confirm`: 지금 그대로 | 완성 카드에만 | `move_task`의 `id`는 `data.todo.id`, `planned_for`는 props `candidates[].date` 가운데 하나. 범위(오늘~90일)와 "시각 없는 열린 할 일"은 **그릴 때만** BE가 확인한다. 누를 때 `/actions move_task`가 보는 것은 할 일이 있는지, 할 일이 `status = open`인지(G-BE2: 그린 뒤 끝나거나 빠진 할 일은 `rejected` "열린 할 일만 날짜를 옮길 수 있어요.", 두뇌와 텔레그램도 같다), 날짜 형식, 그리고 BE-2가 더하는 확인 규칙(아래) 넷뿐이다 |
 | 되돌리기 (`undo`) | `POST /activity/{undo_id}/undo` | `ui_result` | BE가 붙인 `data.items[].undo_id`만. 두뇌는 활동 id를 모르고 props에 넣을 수도 없다 |
 | 이어 말하기 (`send`) | 버튼 이름 그대로를 새 사용자 메시지로 `/chat`(`ctx.onChoose`, 지금 `ui_choice`와 같다) | `ui_choice`, `ui_date_choice`의 "다른 날로 할게요", `ui_block`의 `send` 버튼 | 보내는 글 = 보이는 이름(1~16자, 따로 숨은 글이 없다). `/`로 시작하면 BE가 거절한다(명령이 되지 않게) |
 | 앱 화면 열기 (`open`) | 앱 라우터로 이동 후 대화 시트 닫기 | `ui_period_list`, `ui_block`의 `open` 버튼 | `screen` 열거값만(아래) |
@@ -741,3 +741,4 @@ web/app/src/ui/
 | 2026-10-24 | v1 | 첫 초안: Dahun 결정 G1~G7, 기본 부품 10개, 완성 카드 셋 추가, 조립 카드, 버튼 허용 목록, 두뇌 규칙, BE·앱 변경, 티켓 다섯 | 운영 앱 스레드 |
 | 2026-10-24 | v2 | 문서 리뷰 반영: `ui_result`의 `before` 꺼내기 표와 `undo_id` 조건(활동 하나·대상 하나), 앱 통로 `move_task` 확인(SP5 "늘 바로 적용" 바꿈), `todos_day`, 체크 줄 뜻은 카드마다, `activityIds` 읽기와 다시 연 대화의 확인 칸, `period_view` 규칙 하나와 서명, `outside` 이유 셋, `highlight_task_ids` 뜻 검사, 날짜 고르기 답에는 `ui_result` 없음, 날짜 고르기 대상 "시각 없는 열린 할 일", `send` 남는 위험, `registryNames()`, 도구 수는 상대 수로, 묶음 구분 유니언 두 단계, `UI_PARTS_PER_REPLY`, CSP 시험 이름 | 운영 앱 스레드 |
 | 2026-10-24 | v3 | G-BE1이 계획의 빈 곳 3·9·10을 옮김: `todo_rows.checkable` 기본값 `true`(5.3.5), 후보 날짜 범위는 BE-2 뜻 검사·정수 목록 `uniqueItems`·BE 전용 판정(10.1, 7.2) | SP3-4 BE 스레드 |
+| 2026-10-24 | v4 | G-BE2: 누를 때 `move_task`가 `status = open`도 본다(8장 확정 줄) | SP3-4 BE 스레드 |

@@ -47,9 +47,13 @@ TOOL_NAMES: list[str] = [
     "list_habits",
 ]
 
-# 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다.
-# 카탈로그의 두뇌 조각(`BRAIN_COMPONENTS`)을 그대로 쓰지 않는다: SP6의 새 넷은 앱이 그릴 수 있게 된 뒤 G-BE2가 더한다
-APP_ONLY_TOOLS: list[str] = [*PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"]
+# 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 카탈로그의 두뇌 화면 도구(그리기만, 카탈로그 순서), 카드 도구 셋.
+# 텔레그램 대화에는 없다. SP6의 새 넷은 앱(G-A2)이 그릴 수 있게 된 뒤 G-BE2가 더했다
+APP_ONLY_TOOLS: list[str] = [*BRAIN_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]
+
+# 한 답에 두뇌 화면 도구가 쓰는 조각 수 상한(SP6 10.4). 하네스 조각과 `pin_card`는 세지 않는다
+UI_PARTS_PER_REPLY = 2
+UI_CAP_ERROR = "한 답에 화면 조각은 2개까지예요."
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
@@ -58,6 +62,21 @@ _DATETIME = {
     "description": "시각이 있는 일의 날짜와 시각. 한국 시간 기준 ISO 8601, 예: 2026-10-25T14:00",
 }
 _ID = {"type": "integer", "description": "할 일 번호"}
+
+
+def _ui_input_schema(component: str) -> dict[str, Any]:
+    """화면 조각의 카탈로그 스키마를 도구 입력 스키마로(SP6 10.1). OpenAPI 확장 `discriminator`는 뺀다: 카탈로그의
+    바깥 `children` 구분 표는 `group`을 `$ref` 문자열이 아니라 안쪽 스키마(`layout`으로 가르는 유니언)로 가리켜 맞는
+    mapping이 아니고, 판정은 어차피 `oneOf` + `type`·`layout`의 `const`가 한다. 카탈로그(`GET /ui/catalog`)는 그대로다."""
+
+    def strip(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {k: strip(v) for k, v in node.items() if k != "discriminator"}
+        if isinstance(node, list):
+            return [strip(v) for v in node]
+        return node
+
+    return strip(UI_COMPONENTS[component]["schema"])
 
 
 def _schema(props: dict[str, Any], required: list[str]) -> dict[str, Any]:
@@ -376,14 +395,14 @@ _SPECS.update({
     "ui_todo_list": (
         (
             "앱 화면에 할 일 목록 조각을 그립니다(그리기만 합니다). task_ids는 할 일 번호이고 최대 30개입니다. "
-            "제목과 상태는 앱이 지금 값으로 보여 줍니다. 같은 뜻을 답 글에도 씁니다."
+            "제목과 상태는 앱이 지금 값으로 보여 줍니다."
         ),
         UI_COMPONENTS["ui_todo_list"]["schema"],
     ),
     "ui_choice": (
         (
             "앱 화면에 고르기 조각을 그립니다(그리기만 합니다). 보기는 2~4개이고, 사용자가 고르면 그 label이 "
-            "새 메시지로 옵니다. 같은 질문을 답 글에도 씁니다."
+            "새 메시지로 옵니다."
         ),
         UI_COMPONENTS["ui_choice"]["schema"],
     ),
@@ -391,10 +410,42 @@ _SPECS.update({
         "앱 화면에 요약 카드를 그립니다(그리기만 합니다). lines는 최대 8줄, 줄마다 120자까지입니다.",
         UI_COMPONENTS["ui_summary_card"]["schema"],
     ),
+    # SP6 9.3
+    "ui_date_choice": (
+        (
+            "앱 화면에 날짜 고르기 조각을 그립니다(그리기만 합니다). task_id는 시각이 없는 열린 할 일 번호이고(날짜는 "
+            "있어도 됩니다), candidates는 2~4개의 날짜(오늘부터 90일 안)와 짧은 메모입니다. 사용자가 고르면 앱이 그 "
+            "날짜로 옮깁니다. 시각이 잡힌 할 일에는 쓰지 않습니다."
+        ),
+        _ui_input_schema("ui_date_choice"),
+    ),
+    "ui_result": (
+        (
+            "이번 답에서 바꾼 할 일 1~2개의 결과(전과 뒤, 되돌리기)를 앱 화면에 그립니다(그리기만 합니다). 바꾸는 "
+            "도구를 부른 뒤에 부릅니다. 3개 이상이면 ui_period_list를 씁니다."
+        ),
+        _ui_input_schema("ui_result"),
+    ),
+    "ui_period_list": (
+        (
+            "하루(day) 또는 한 주(week, 예: 2026-W44)의 할 일을 날짜별로 앱 화면에 그립니다(그리기만 합니다). "
+            "highlight_task_ids에는 이번 답에서 바꾼 할 일을 넣습니다."
+        ),
+        _ui_input_schema("ui_period_list"),
+    ),
+    "ui_block": (
+        (
+            "기본 부품을 쌓은 카드를 앱 화면에 그립니다(그리기만 합니다). 부품: heading, text(**굵게**·줄바꿈만), "
+            "stat, progress, todo_rows, tags, bullets, buttons(send·open·complete), divider, group(row: "
+            "stat·progress 2~3개, stack: 2~6개). 부품은 모두 12개까지, group은 한 단계, buttons는 하나만 맨 끝에, "
+            "todo_rows는 둘까지입니다."
+        ),
+        _ui_input_schema("ui_block"),
+    ),
     "ui_habit_check": (
         (
             "앱 화면에 오늘 습관 줄 묶음을 그립니다(그리기만 합니다). date는 YYYY-MM-DD입니다. 체크 여부는 앱이 지금 값으로 "
-            "보여 줍니다. 체크는 check_habit로 따로 합니다. 같은 뜻을 답 글에도 씁니다."
+            "보여 줍니다. 체크는 check_habit로 따로 합니다."
         ),
         UI_COMPONENTS["ui_habit_check"]["schema"],
     ),
@@ -421,13 +472,25 @@ def tool_names_for(channel: Channel) -> list[str]:
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if channel == "app" else list(TOOL_NAMES)
 
 
-def _stream_output(tools: Any, name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-    """스트림에 보낼 도구 출력(6.4.1). 할 일을 가리키는 `ui_todo_list`는 `data.todos`(지금 값 `TodoRef`, 초안·
-    소프트 삭제 뺌)를 붙인다. 두뇌가 받는 결과는 `{"ok": true}` 그대로다."""
+def _stream_output(
+    tools: Any, ctx: RunContext, name: str, args: dict[str, Any], result: dict[str, Any]
+) -> dict[str, Any]:
+    """스트림에 보낼 도구 출력(SP3-4 6.4.1, SP6 10.2 표): 화면 조각에 지금 값 `data`를 붙인다(`TodoRef`는 초안·소프트
+    삭제 뺌, `today`는 논리적 날짜). 두뇌가 받는 결과는 `{"ok": true}` 그대로다. 읽기만 한다."""
     if name == "ui_todo_list":
         return {**result, "data": {"todos": tools.ui_todo_refs(args.get("task_ids"), drafts=False)}}
     if name == "ui_habit_check":
         return {**result, "data": {"habits": tools.ui_habit_list(args.get("date"))}}
+    if name == "ui_date_choice":
+        refs = tools.ui_todo_refs([args.get("task_id")], drafts=False)
+        return {**result, "data": {"today": tools.today().isoformat(), "todo": refs[0] if refs else None}}
+    if name == "ui_result":
+        items = tools.ui_result_items(ctx, args.get("task_ids"))
+        return {**result, "data": {"today": tools.today().isoformat(), "items": items}}
+    if name == "ui_period_list":
+        return {**result, "data": tools.ui_period_data(args)}
+    if name == "ui_block":
+        return {**result, "data": tools.ui_block_data(args)}
     return result
 
 
@@ -442,6 +505,8 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
     """
     w = ctx.stream
     ui = name in BRAIN_COMPONENTS
+    if ui and w is not None and ctx.ui_drawn >= UI_PARTS_PER_REPLY:  # 10.4: 부르지 않고 조각도 없다
+        return {"error": UI_CAP_ERROR}
     if name == "ui_habit_check" and args.get("date") is None:  # 날짜를 빼면 오늘: 조각 입력에도 채워 앱이 그릴 수 있게
         args = {**args, "date": tools.today().isoformat()}
     call_id = w.next_tool_call_id() if w is not None and not ui else None  # 화면 도구는 조각을 쓸 때 받는다
@@ -458,7 +523,8 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
             if "error" not in result:
                 call_id = w.next_tool_call_id()
                 w.tool_input(call_id, name, args)
-                w.tool_output(call_id, to_api_times(_stream_output(tools, name, args, result)))
+                w.tool_output(call_id, to_api_times(_stream_output(tools, ctx, name, args, result)))
+                ctx.ui_drawn += 1
         elif "error" in result:
             w.tool_error(call_id, str(result["error"]))
         else:

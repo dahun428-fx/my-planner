@@ -266,11 +266,11 @@ def test_group_layout_errors():
     assert err.endswith(": union_tag_invalid")
 
 
-def test_app_tool_count_unchanged():
-    assert set(tool_names_for("app")) - set(TOOL_NAMES) == {
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
-    }
-    assert not set(NEW) & set(tool_names_for("app"))
+def test_app_tool_count_g_be1_base_plus_new_four():
+    """G-BE1은 앱 대화 도구 수를 바꾸지 않았고(아래 일곱), G-BE2가 새 넷을 두뇌에게 준다(+4, 스펙 9.3)."""
+    g_be1 = {"ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"}
+    assert set(tool_names_for("app")) - set(TOOL_NAMES) == g_be1 | set(NEW)
+    assert len(set(tool_names_for("app")) - set(TOOL_NAMES)) == len(g_be1) + 4
     assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 8
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 

@@ -77,6 +77,7 @@ from my_planner.tools.activity import (
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
     confirm_habit_archive_summary,
+    confirm_move_summary,
     period_label,
     render_confirmations,
     rest_days_summary,
@@ -206,6 +207,29 @@ def drop_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str |
     if tools.tasks.first_steps(t.id)[0] > 0:
         return f"첫 걸음이 남은 할 일을 내려놓아요: {t.title}"
     return None
+
+
+def move_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
+    """시각이 있는 열린 할 일의 날짜를 바꿀 때(SP6 8장, G-BE2): 날짜를 옮기면 시각도 옮겨진다(시각 다시 잡기). 문구는
+    회차 차례(`Tools.move_task`의 `_request_confirm`)와 같다. 날짜가 같거나, 없는·열리지 않은 할 일, 틀린 날짜는
+    묻지 않는다(도구가 그대로 두거나 거절한다)."""
+    i = _int(args.get("id"))
+    t = tools.tasks.get(i) if i is not None else None
+    if t is None or t.status is not TaskStatus.open or t.scheduled_at is None:
+        return None
+    raw = args.get("planned_for")
+    if raw is None:
+        pf = None
+    elif isinstance(raw, str):
+        try:
+            pf = date.fromisoformat(raw)
+        except ValueError:
+            return None
+    else:
+        return None
+    if pf == t.planned_for:
+        return None
+    return confirm_move_summary(t.title, pf, today)
 
 
 def priorities_need_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
@@ -458,7 +482,8 @@ def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
 ACTIONS: dict[str, ActionSpec] = {
     "add_task": ActionSpec("add_task"),
     "update_task": ActionSpec("update_task", target=_task_target),
-    "move_task": ActionSpec("move_task", target=_task_target),
+    # 앱 통로에서 시각 있는 할 일의 날짜를 바꾸면 확인(SP6 8장). 텔레그램 버튼은 지금처럼 바로
+    "move_task": ActionSpec("move_task", needs_confirm=move_needs_confirm, target=_task_target),
     "complete_task": ActionSpec("complete_task", target=_task_target),
     "reopen_task": ActionSpec("reopen_task", target=_task_target),
     "drop_task": ActionSpec("drop_task", needs_confirm=drop_needs_confirm, target=_task_target),
