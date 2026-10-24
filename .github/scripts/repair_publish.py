@@ -4,7 +4,8 @@
   `.github/workflows/`를 바꾼 커밋은 PAT에 Workflows 권한이 없어 푸시가 거부되고, 그 시도는 보통의 실패 길
   (PR 없음 → settle이 `failed-N`)로 간다. 금지 경로 검사는 두지 않는다(Dahun 결정: 금지선 없음).
 - 이 스크립트: 푸시가 됐으면 열린 PR이 없을 때 `main` 대상 PR을 연다. 본문 첫 줄은 `Repairs #<이슈>`, 라벨
-  `auto-repair`. 커밋이 없으면(재현 못 함) Claude가 남긴 진단을 이슈 댓글로 단다.
+  `auto-repair`. 제목·본문의 GitHub 닫기 낱말(`Fixes #N` 등)은 `Refs #N`으로 바꾼다(최종 리뷰 I-1: 머지 때 이슈가
+  닫히면 롤백·재발 뒤 게이트·sweep이 이슈를 못 본다). 커밋이 없으면(재현 못 함) Claude가 남긴 진단을 이슈 댓글로 단다.
 Claude가 쓴 파일(`pr-title.txt`, `pr-body.md`, `issue-comment.md`)은 글로만 쓰고 셸에 넣지 않는다.
 """
 
@@ -20,11 +21,13 @@ import gh
 TITLE_MAX = 200
 BODY_MAX = 60000
 _REPAIRS_LINE = "Repairs #"
+CLOSING_RE = gh.CLOSING_RE
+neutralise = gh.neutralise
 
 
 def pr_body(issue: int, raw: str) -> str:
-    """첫 줄을 `Repairs #<이슈>`로 맞춘다(Claude가 빠뜨리거나 다른 번호를 써도)."""
-    lines = raw.strip().splitlines()
+    """첫 줄을 `Repairs #<이슈>`로 맞춘다(Claude가 빠뜨리거나 다른 번호를 써도). 닫기 낱말은 중화한다(I-1)."""
+    lines = neutralise(raw).strip().splitlines()
     if lines and lines[0].strip().startswith(_REPAIRS_LINE):
         lines = lines[1:]
         while lines and not lines[0].strip():
@@ -46,7 +49,8 @@ def publish(
     for pr in api.pulls("open"):
         if (pr.get("head") or {}).get("ref") == branch:
             return "exists"  # refix 뒤 다시 돈 실행 등
-    title = " ".join(title.split())[:TITLE_MAX] or f"fix: incident #{issue}"
+    # 제목은 squash 커밋 제목이 된다: 닫기 낱말이 있으면 머지 때 이슈가 닫혀 롤백·재발 재시도가 끊긴다(I-1)
+    title = neutralise(" ".join(title.split()))[:TITLE_MAX] or f"fix: incident #{issue}"
     created = api.call("POST", "/pulls", json={
         "title": title, "head": branch, "base": gh.BASE, "body": pr_body(issue, body),
     })

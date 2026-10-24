@@ -126,7 +126,7 @@
 
 | 쓰기 | 신원 |
 |---|---|
-| medic이 이슈 열기·라벨·본문 수정 | 노트북 `.env`의 `MEDIC_GITHUB_TOKEN` (fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기) |
+| medic이 이슈 열기·라벨·본문 수정 | 노트북 `.env`의 `MEDIC_GITHUB_TOKEN` (fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기, Pull requests 읽기(“고쳤어요” 알림의 PR 제목·링크)) |
 | `signal.yml`의 이슈 열기, `repair.yml`의 라벨·머지, `watch.yml`의 sweep(라벨, PR 닫기, `repair.yml` 부르기)·하트비트 라벨 | 저장소 시크릿 `REPAIR_PAT` (fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기·쓰기(sweep의 `workflow_dispatch`)) |
 | 수리 브랜치 푸시·PR 열기 | `REPAIR_PAT`, 단 **Claude 단계 밖의 셸 작업**이 한다(10장 S1의 대안. App 설치가 필요 없고, PAT이 연 PR은 `ci.yml`을 깨운다). Claude는 읽기 전용 `GITHUB_TOKEN`만 받아 커밋만 하고, 그 커밋은 git bundle로 새 러너의 `publish` 작업에 넘어가 거기서 PAT으로 푸시·PR 열기를 한다. 체크아웃은 모두 `persist-credentials: false`라 의존성 설치도 쓰기 토큰을 못 본다. `.github/workflows/`를 바꾼 커밋은 PAT에 Workflows 권한이 없어 푸시가 거부되고 그 시도는 실패로 센다(금지 경로 검사는 두지 않는다, Q4) |
 
@@ -192,7 +192,7 @@ medic 프로세스 안에서 5분마다:
 
 Vercel이 `main` 머지마다 배포한다. Vercel 토큰은 두지 않는다. medic은 `merged` 상태의 웹 장애(`app`, `dashboard`, `vercel` 지문)마다:
 
-1. 그 `Repairs #N` 커밋(또는 더 새 `main` 커밋)의 Vercel 커밋 상태가 `success`가 될 때까지 기다린다(`GET /commits/{sha}/status`, Commit statuses 읽기 권한).
+1. 그 `Repairs #N` 커밋의 Vercel 배포가 `success`가 될 때까지 기다린다(`GET /commits/{sha}/statuses`, Commit statuses 읽기 권한). 컨텍스트는 정확히 하나: `app` → `Vercel – my-planner`, `dashboard` → `Vercel – my-planner-dashboard`(`config.medic.toml`의 `vercel_context_app`·`vercel_context_dashboard`, 저장소 변수 `VERCEL_CONTEXT_APP`·`VERCEL_CONTEXT_DASHBOARD`와 같게), `vercel:<컨텍스트>` → 그 컨텍스트. 만든 계정이 `vercel[bot]`인 상태만 센다. 볼 커밋은 배포 흐름 스펙 6.2 5의 `W`와 같은 생각이다: `Repairs #N` 커밋과 그 뒤 `main` 커밋 중 그 웹 폴더를 바꾼 가장 새 커밋(Vercel은 `ignoreCommand`로 안 바꾼 커밋의 빌드를 건너뛴다). 그런 커밋이 없으면(수리가 웹 폴더를 안 바꿨다) 지금 운영 중인 배포(그 폴더를 바꾼 가장 새 커밋)를 본다. 폴더를 모르는 `vercel:` 컨텍스트는 `Repairs #N` 커밋부터 그 컨텍스트 상태가 처음 있는 커밋을 본다(최종 리뷰 I-3).
 2. 그 뒤 `web_verify_minutes`(60분) 동안 같은 지문의 `client_error`가 없으면 `resolved`: 이슈를 닫고 "고쳤어요" 알림. `vercel:` 지문은 1번의 `success`만으로 `resolved`.
 3. 같은 지문이 다시 나면 `rolled-back` 대신 `failed-N` +1과 `recurred` 라벨 → 다음 시도(재시도 프롬프트는 "직전 수리 PR을 `git revert`하는 것부터 검토").
 4. 3시간 안에 Vercel 상태가 `success`가 되지 않으면 `failed-N` +1.

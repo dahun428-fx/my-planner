@@ -35,8 +35,9 @@ jobs:
             echo "develop already contains main"
             exit 0
           fi
-          code=$(curl -sS -o /tmp/merge.json -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $RELEASE_PAT" -H "Accept: application/vnd.github+json" \
+          # 토큰은 argv에 두지 않는다: 머리는 printf(셸 내장)로 표준 입력에 넣고 curl은 `-H @-`로 읽는다(최종 리뷰 M-6)
+          code=$(printf 'Authorization: Bearer %s\n' "$RELEASE_PAT" | curl -sS -o /tmp/merge.json -w '%{http_code}' -X POST \
+            -H @- -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/$REPO/merges" \
             -d "{\"base\":\"develop\",\"head\":\"main\",\"commit_message\":\"Merge main into develop (hotfix sync)\"}")
           echo "merge: $code"

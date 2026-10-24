@@ -25,6 +25,7 @@ from my_planner_medic.tasks import (
     TASK_ENABLED,
     TASK_STATE,
     TaskControl,
+    be_root,
 )
 from my_planner_medic.updater import Updater
 from my_planner_medic.watcher import Watcher
@@ -280,12 +281,25 @@ def test_ff_only_marks_web_incident_merged(tmp_path: Path) -> None:
     env.server.pulls.append({"title": "fix: todos", "html_url": "https://x/pr/9", "state": "closed",
                              "merged_at": "2026-10-26T00:00:00Z", "body": "Repairs #22"})
     env.tick()
-    assert env.store.get("app:TypeError /today").state == "merged"  # 웹 확인(08)이 맡는다
+    web = env.store.get("app:TypeError /today")
+    assert web.state == "merged"  # 웹 확인(08)이 맡는다
+    # 최종 리뷰 I-3: 웹 확인이 볼 `Repairs #21` 커밋(머리가 아니라)을 적는다. 다른 detail은 그대로
+    assert web.detail["repair_sha"] == f"{NEW}~1" and web.detail["kind"] == "client_error"
     be = env.store.get(FP)
     assert be.state == "resolved"  # BE 장애가 ff만 커밋으로 들어오면 바로 resolved
     assert env.server.issues[22]["state"] == "closed"
     assert env.server.issues[21]["state"] == "open"
     assert env.notifier.fixed_calls == [("fix: todos", "https://x/pr/9")]
+
+
+def test_deploy_records_latest_repairs_commit_for_web_incident(tmp_path: Path) -> None:
+    """같은 이슈의 `Repairs #N`이 범위에 두 번이면 새 것(재시도의 수리)을 적는다."""
+    env = make_env(tmp_path)
+    env.server.compares[(PREV, NEW)] = [("r1", "fix: a\n\nRepairs #21"), ("x", "docs"), ("r2", "fix: b\n\nRepairs #21")]
+    env.incident("app:TypeError /today", issue=21, state="repairing", part="app", kind="client_error")
+    deployed(env)
+    web = env.store.get("app:TypeError /today")
+    assert web.state == "merged" and web.detail["repair_sha"] == "r2"
 
 
 # --- 4단계: 기다리기 -------------------------------------------------------
@@ -390,10 +404,10 @@ def test_staging_branch_and_task_name_are_configurable(tmp_path: Path) -> None:
 
 def test_be_process_filter_matches_root_and_excludes_medic(tmp_path: Path) -> None:
     env = make_env(tmp_path)
-    query = FIND_BE_PIDS.format(root=str(tmp_path), own_pid=4242)
+    query = FIND_BE_PIDS.format(root=be_root(tmp_path), own_pid=4242)
     env.shell.on(*POWERSHELL, query, returns=[(0, "5150\r\n4242\r\n"), (0, "")])  # 죽인 뒤에는 없음
     deployed(env)
-    assert str(tmp_path).lower() in query.lower()
+    assert be_root(tmp_path).lower() in query.lower()
     assert "-ne 4242" in query and "my_planner(\\s|$)" in query
     assert env.has("taskkill /T /F /PID 5150")
     assert not env.has("taskkill /T /F /PID 4242")
@@ -401,7 +415,7 @@ def test_be_process_filter_matches_root_and_excludes_medic(tmp_path: Path) -> No
 
 def test_be_still_running_after_kill_aborts_deploy(tmp_path: Path) -> None:
     env = make_env(tmp_path)
-    query = FIND_BE_PIDS.format(root=str(tmp_path), own_pid=4242)
+    query = FIND_BE_PIDS.format(root=be_root(tmp_path), own_pid=4242)
     env.shell.on(*POWERSHELL, query, returns=(0, "5150\r\n"))
     env.tick()
     assert not env.has("merge --ff-only") and not env.has("pre-deploy")
@@ -526,6 +540,22 @@ def test_second_rollback_relabels_rolled_back(tmp_path: Path, monkeypatch: pytes
     assert len(env.http.calls("DELETE", f"/repos/{REPO}/issues/17/labels/rolled-back")) == 1
     labels = env.server.labels(17)
     assert "rolled-back" in labels and "failed-2" in labels and "merged" not in labels
+
+
+def test_rollback_reopens_incident_closed_by_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """최종 리뷰 I-1: 수리 PR의 닫기 낱말(또는 손)로 닫힌 이슈는 라벨 전에 다시 연다. 닫힌 채면 게이트·sweep이 건너뛴다."""
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17, labels=("incident", "be", "merged"))
+    env.server.issues[17]["state"] = "closed"
+    monkeypatch.setattr(updater_mod.dbfile, "restore", lambda *a: None)
+    deployed(env)
+    env.signal("be:New y.py:g")
+    env.tick(5)
+    assert env.server.issues[17]["state"] == "open"
+    labels = env.server.labels(17)
+    assert "rolled-back" in labels and "failed-1" in labels and "merged" not in labels
+    patches = [c.json for c in env.http.calls("PATCH", f"/repos/{REPO}/issues/17")]
+    assert {"state": "open"} in patches
 
 
 def test_rollback_code_only_when_schema_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

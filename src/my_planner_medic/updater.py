@@ -256,18 +256,18 @@ class Updater:
             return
         changed = self._git.changed_paths(prev, new)
         try:
-            repairs = self._gh.repairs_in_range(prev, new)
+            repair_shas = self._gh.repair_commits(prev, new)  # N → `Repairs #N` 커밋(웹 확인이 그 배포를 본다)
         except GitHubUnavailable as exc:
             log.warning("updater_compare_unavailable %s (%d)", exc.kind, exc.status)
             return
         if not needs_restart(changed):
-            self._fast_forward(prev, new, repairs)
+            self._fast_forward(prev, new, repair_shas)
             return
         if self._defer(now):
             return
-        self._deploy(prev, new, changed, repairs)
+        self._deploy(prev, new, changed, repair_shas)
 
-    def _fast_forward(self, prev: str, new: str, repairs: list[int]) -> None:
+    def _fast_forward(self, prev: str, new: str, repair_shas: dict[int, str]) -> None:
         if not self._git.merge_ff(new):
             self._daily(FF_TEXT, "ff_failed")
             return
@@ -279,11 +279,11 @@ class Updater:
                 self._flush_staging()
             else:
                 self._open_staging_ff(new, now)
-        for inc in self._by_issue(repairs):
+        for inc in self._by_issue(list(repair_shas)):
             if inc.part == "be":
                 self._resolve(inc, now)
             elif inc.state in ("open", "repairing"):
-                self._store.set_state(inc.fingerprint, "merged")
+                self._web_merged(inc, repair_shas)
         log.info("updater_fast_forward")
 
     def _defer(self, now: datetime) -> bool:
@@ -311,7 +311,8 @@ class Updater:
 
     # --- 5단계: 배포 ----------------------------------------------------------
 
-    def _deploy(self, prev: str, new: str, changed: list[str], repairs: list[int]) -> None:
+    def _deploy(self, prev: str, new: str, changed: list[str], repair_shas: dict[int, str]) -> None:
+        repairs = list(repair_shas)
         if self._tasks.is_enabled() is not True:  # Dahun이 손으로 끈 작업(또는 알 수 없음)은 켜지 않는다
             self._daily(TASK_OFF_TEXT, "task_disabled")
             return
@@ -356,7 +357,7 @@ class Updater:
                     self._store.set_state(inc.fingerprint, "deploying")
                     dip["repaired"].append(inc.fingerprint)
                 elif inc.state in ("open", "repairing"):
-                    self._store.set_state(inc.fingerprint, "merged")  # 웹은 08 WebVerifier
+                    self._web_merged(inc, repair_shas)  # 웹은 08 WebVerifier
             # 켜기 전에 verify로: 켠 뒤 medic이 죽어도 시작 시 복구가 롤백하지 않고 확인을 이어 간다
             now = self._clock.now()
             dip.update(phase="verify", window_from=iso_utc(now), last_tick_at=iso_utc(now))
@@ -894,6 +895,12 @@ class Updater:
 
     # --- 장애·이슈 ------------------------------------------------------------
 
+    def _web_merged(self, inc: Incident, repair_shas: dict[int, str]) -> None:
+        """웹 장애를 `merged`로. WebVerifier가 이 수리 커밋의 Vercel 배포를 보게 커밋을 적는다(최종 리뷰 I-3)."""
+        sha = repair_shas.get(inc.issue_number) if inc.issue_number is not None else None
+        detail = {k: v for k, v in inc.detail.items() if k not in ("web", "repair_sha")}
+        self._store.set_state(inc.fingerprint, "merged", detail={**detail, **({"repair_sha": sha} if sha else {})})
+
     def _by_issue(self, numbers: list[int]) -> list[Incident]:
         want = set(numbers)
         return [i for i in self._store.by_state(*STATES) if i.issue_number in want]
@@ -951,6 +958,8 @@ class Updater:
                 op["failed"] = max((int(m[1]) for x in labels if (m := _FAILED_RE.match(x))), default=0) + 1
                 self._store.kv_json_set(ISSUE_OPS, ops)  # 다시 해도 같은 N
             failed = int(op["failed"])
+            # 수리 PR의 닫기 낱말(또는 손)로 닫혔을 수 있다: 닫힌 채면 repair 게이트·sweep이 건너뛴다(최종 리뷰 I-1)
+            self._gh.reopen(n, [])
             self._gh.remove_label(n, "merged")
             # 지난 시도의 `rolled-back`이 남아 있으면 다시 달아도 `labeled`가 안 온다(repair.yml이 sweep까지 기다림)
             if f"failed-{failed}" not in self._gh.issue_labels(n):

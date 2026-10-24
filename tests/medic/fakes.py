@@ -123,7 +123,9 @@ class FakeGitHub:
         self.runs: list[dict[str, Any]] = []
         self.statuses: dict[str, list[dict[str, Any]]] = {}
         self.posted_statuses: list[tuple[str, dict[str, Any]]] = []  # POST /statuses/{sha}로 올라온 것
-        self.compares: dict[tuple[str, str], list[str]] = {}
+        # (base, head) -> 커밋 메시지들(오래된 것부터). `(sha, 메시지)` 짝도 된다(sha가 없으면 `<head>~<뒤에서 몇째>`)
+        self.compares: dict[tuple[str, str], list[Any]] = {}
+        self.path_commits: dict[str, list[str]] = {}  # 경로 -> 그 경로를 바꾼 main 커밋(새 것부터)
         self.pulls: list[dict[str, Any]] = []
         self.branches: dict[str, str] = {}
         self.workflow_runs: dict[str, list[dict[str, Any]]] = defaultdict(list)  # 워크플로 파일 -> 실행
@@ -238,6 +240,11 @@ class FakeGitHub:
                 return 200, {"total_count": len(runs), "workflow_runs": runs}, ok
             case "GET", ["commits", sha, "status"]:
                 return 200, {"sha": sha, "statuses": self.statuses.get(sha, [])}, ok
+            case "GET", ["commits", sha, "statuses"]:  # 목록 API: 새 것부터(나중에 넣은 것이 새 것)
+                return 200, list(reversed(self.statuses.get(sha, [])))[: int(q.get("per_page", 30))], ok
+            case "GET", ["commits"]:
+                shas = self.path_commits.get(q.get("path", ""), [])
+                return 200, [{"sha": x} for x in shas][: int(q.get("per_page", 30))], ok
             case "POST", ["statuses", sha]:
                 self.posted_statuses.append((sha, dict(json)))
                 self.statuses.setdefault(sha, []).append(dict(json))
@@ -247,7 +254,8 @@ class FakeGitHub:
                 msgs = self.compares.get((base, head))
                 if msgs is None:
                     return 404, {"message": "Not Found"}, ok
-                return 200, {"commits": [{"commit": {"message": m}} for m in msgs]}, ok
+                items = [m if isinstance(m, tuple) else (f"{head}~{len(msgs) - 1 - i}", m) for i, m in enumerate(msgs)]
+                return 200, {"commits": [{"sha": c, "commit": {"message": m}} for c, m in items]}, ok
             case "GET", ["issues", num, "events"] if int(num) in self.issues:
                 return 200, self.events[int(num)][: int(q.get("per_page", 30))], ok
             case "POST", ["pulls"]:

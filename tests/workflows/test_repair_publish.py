@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gh
+import pytest
 import repair_publish
 from medic.fakes import FakeGitHub, FakeHttp
 
@@ -64,3 +65,64 @@ def test_publish_rejects_unexpected_branch_name():
     except ValueError:
         pass
     assert server.created_pulls == []
+
+
+# --- 최종 리뷰 I-1: 수리 PR이 장애 이슈를 저절로 닫으면 안 된다 ------------------------
+
+
+@pytest.mark.parametrize(("raw", "want"), [
+    ("Fixes #42", "Refs #42"),
+    ("fixes #42", "Refs #42"),
+    ("CLOSES #42", "Refs #42"),
+    ("close #42", "Refs #42"),
+    ("closed #42", "Refs #42"),
+    ("fix #42", "Refs #42"),
+    ("fixed #42", "Refs #42"),
+    ("resolve #42", "Refs #42"),
+    ("Resolves #42", "Refs #42"),
+    ("resolved #42", "Refs #42"),
+    ("Fixes: #42", "Refs #42"),
+    ("Fixes:#42", "Refs #42"),
+    ("**Fixes** #42", "**Refs #42"),
+    ("Closes o/r#42", "Refs o/r#42"),
+    ("closes dahun428-fx/my-planner#42", "Refs dahun428-fx/my-planner#42"),
+    ("Fixes https://github.com/o/r/issues/42", "Refs https://github.com/o/r/issues/42"),
+    ("Fixes GH-42", "Refs GH-42"),
+    ("원인 고침. Fixes #1, closes #2", "원인 고침. Refs #1, Refs #2"),
+])
+def test_neutralise_closing_keywords(raw, want):
+    assert repair_publish.neutralise(raw) == want
+
+
+@pytest.mark.parametrize("text", [
+    "fix: 날짜 경계 오류",          # 이슈를 가리키지 않는 낱말은 그대로
+    "fixed the bug in #section",    # `#` 뒤가 숫자가 아님
+    "prefix #42",                   # 낱말 경계 밖
+    "Repairs #42",
+    "fixture #42",
+    "See #42",
+])
+def test_neutralise_keeps_non_closing_text(text):
+    assert repair_publish.neutralise(text) == text
+
+
+def test_publish_strips_closing_keywords_from_title_and_body():
+    server, api = _env()
+    n = server.add_issue("[incident] be:A x:f", ["incident", "repairing"])
+    repair_publish.publish(api, n, f"auto-repair/{n}-1", pushed=True, title=f"Fix #{n}: 날짜",
+                           body=f"Fixes #{n}\n\n원인. Closes o/r#{n}. resolved #{n}", comment="")
+    pr = server.created_pulls[0]
+    assert pr["title"] == f"Refs #{n}: 날짜"
+    assert pr["body"].splitlines()[0] == f"Repairs #{n}"
+    assert not repair_publish.CLOSING_RE.search(pr["title"])
+    assert not repair_publish.CLOSING_RE.search(pr["body"])
+    # 첫 줄의 `Fixes #n`도 본문에서 이웃 줄로 남지 않고 중화된다
+    assert f"Refs #{n}" in pr["body"]
+
+
+
+def test_prompt_forbids_closing_keywords():
+    from pathlib import Path
+
+    prompt = (Path(__file__).resolve().parents[2] / ".github" / "repair-prompt.md").read_text(encoding="utf-8")
+    assert "닫기 낱말" in prompt and "`Fixes #N`" in prompt and "`Refs #N`" in prompt

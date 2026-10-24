@@ -2,7 +2,7 @@
 
 - `merge`: PR 머리 커밋의 `ci.yml` 실행(`pull_request` 이벤트, 그 PR 브랜치)이 끝날 때까지 기다려
   `GET /actions/runs?head_sha=`로 결과를 직접 본다(필수 검사 설정에 기대지 않는다, 10장 S6). 성공이면 squash 머지,
-  커밋 본문 `Repairs #<이슈>`. 머지가 되면 **라벨 일보다 먼저** 결과(`merged`)를 남기고, 그다음 이슈에 `merged`,
+  커밋 본문 `Repairs #<이슈>`, 제목은 닫기 낱말을 뺀 PR 제목. 머지가 되면 **라벨 일보다 먼저** 결과(`merged`)를 남기고, 그다음 이슈에 `merged`,
   `repairing` 떼기, 브랜치 지우기 순서로 한다.
 - `settle`: 이번 시도가 머지·시간 초과·취소가 아니면(CI 두 번 실패, PR 없음, 단계 실패) 먼저 이번 시도의 PR이
   이미 머지됐는지 본다(머지 뒤 라벨 일에서 죽은 경우). 머지됐으면 `merged`로 끝내고, 아니면 PR을 닫고 브랜치를
@@ -116,8 +116,12 @@ def merge(
         sleep(poll_s)
     api.add_labels(pr, [gh.AUTO_REPAIR_LABEL])  # 하루 머지 수를 세는 라벨(없으면 단다)
     # sha를 넘겨 확인한 커밋 그대로만 머지한다(그 사이 푸시가 있으면 409)
+    # 커밋 제목을 직접 준다: 기본값(PR 제목)은 사람이 바꿀 수 있고, 닫기 낱말이 main에 닿으면 이슈가 닫힌다(I-1).
+    # 본문은 `Repairs #N`뿐이라 PR 글이 새지 않는다(가지의 커밋 메시지는 squash로 main에 오지 않는다)
+    title = gh.neutralise(" ".join(str(pull.get("title") or "").split()))[:200] or f"fix: incident #{issue}"
     api.call("PUT", f"/pulls/{pr}/merge", json={
-        "merge_method": "squash", "commit_message": f"Repairs #{issue}", "sha": sha,
+        "merge_method": "squash", "commit_title": f"{title} (#{pr})", "commit_message": f"Repairs #{issue}",
+        "sha": sha,
     })
     on_merged()
     mark_merged(api, issue, pull)

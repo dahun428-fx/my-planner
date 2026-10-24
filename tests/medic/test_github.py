@@ -173,6 +173,50 @@ def test_repairs_in_range_reads_commit_messages() -> None:
     assert gh.repairs_in_range("a", "b") == [12, 7]
 
 
+def test_repair_commits_maps_issue_to_latest_repairs_commit() -> None:
+    gh, server, _ = make()
+    server.compares[("a", "b")] = [("c1", "fix\n\nRepairs #12"), ("c2", "docs"), ("c3", "fix again\n\nRepairs #12\nRepairs #7")]
+    assert gh.repair_commits("a", "b") == {12: "c3", 7: "c3"}
+    assert list(gh.repair_commits("a", "b")) == [12, 7]  # 처음 나온 순서
+
+
+def test_compare_reads_every_page_past_250_commits() -> None:
+    """최종 리뷰 M-5: compare는 한 번에 250개까지. 노트북이 오래 꺼져 있던 뒤의 `Repairs #N`도 읽는다."""
+    gh, _, http = make()
+    first = [{"sha": f"c{i}", "commit": {"message": "x"}} for i in range(100)]
+    second = [{"sha": f"c{i}", "commit": {"message": "x"}} for i in range(100, 200)]
+    third = [{"sha": "c200", "commit": {"message": "fix\n\nRepairs #9"}}]
+    path = f"/repos/{REPO}/compare/a...b"
+    http.queue("GET", path, *(FakeResponse(200, {"total_commits": 201, "commits": p}) for p in (first, second, third)))
+    assert gh.repair_commits("a", "b") == {9: "c200"}
+    assert [r.query["page"] for r in http.calls("GET", path)] == ["1", "2", "3"]
+
+
+def test_vercel_state_exact_context_by_vercel_bot_newest_first() -> None:
+    gh, server, http = make()
+    bot = {"login": "vercel[bot]"}
+    server.statuses["s"] = [  # 오래된 것부터 넣는다(목록 API는 새 것부터 준다)
+        {"context": "Vercel – my-planner", "state": "pending", "creator": bot},
+        {"context": "Vercel – my-planner-dashboard", "state": "failure", "creator": bot},
+        {"context": "Vercel – my-planner", "state": "success", "creator": bot},
+        {"context": "Vercel – my-planner", "state": "failure", "creator": {"login": "mallory"}},
+    ]
+    assert gh.vercel_state("s", "Vercel – my-planner") == "success"
+    assert gh.vercel_state("s", "Vercel – my-planner-dashboard") == "failure"
+    assert gh.vercel_state("s", "Vercel") is None  # 접두로는 맞지 않는다
+    assert gh.vercel_state("none", "Vercel – my-planner") is None
+    assert http.requests[-1].path == f"/repos/{REPO}/commits/none/statuses"
+
+
+def test_commits_after_and_path_commits() -> None:
+    gh, server, http = make()
+    server.compares[("r", "h")] = [("c1", "x"), ("h", "y")]
+    assert gh.commits_after("r", "h") == ["c1", "h"]
+    server.path_commits["web/app"] = ["c9", "c1"]
+    assert gh.path_commits("web/app") == ["c9", "c1"]
+    assert http.requests[-1].query == {"sha": "main", "path": "web/app", "per_page": "100"}
+
+
 def test_pr_for_issue_finds_merged_repair_pr() -> None:
     gh, server, _ = make()
     server.pulls += [

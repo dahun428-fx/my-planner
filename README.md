@@ -119,12 +119,12 @@ Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 - 라벨 `auto-repair` 하나를 미리 만들어 둡니다(Issues > Labels). 수리 PR을 열 때 붙이는 라벨이고, 나머지 라벨(`incident`, `repairing`, `failed-N` 등)은 처음 쓸 때 저절로 생깁니다.
 - Settings > Actions > General > Workflow permissions는 기본값(읽기 전용)으로 둡니다. 쓰기는 모두 `REPAIR_PAT`으로 해서 "Allow GitHub Actions to create and approve pull requests"는 켜지 않아도 됩니다.
 - 수리하는 Claude는 `REPAIR_PAT`을 받지 않습니다(읽기 전용 토큰으로 커밋만 하고, 푸시·PR·머지는 그 뒤 셸 단계가 합니다). `REPAIR_PAT`에는 Workflows 권한을 주지 않으므로, 수리가 `.github/workflows/` 파일을 바꾸면 푸시가 거부되어 그 시도는 실패로 세집니다. 그런 장애는 두 번 실패한 뒤 `needs-dahun`으로 넘어옵니다.
-- 노트북 `.env`에 1개: `MEDIC_GITHUB_TOKEN`(fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기). 시크릿은 `.env`와 저장소 시크릿에만 둡니다. 이슈·로그·커밋에는 남지 않습니다.
+- 노트북 `.env`에 1개: `MEDIC_GITHUB_TOKEN`(fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기, Pull requests 읽기(“고쳤어요” 알림의 PR 제목·링크)). 시크릿은 `.env`와 저장소 시크릿에만 둡니다. 이슈·로그·커밋에는 남지 않습니다.
 - 작업 등록: `scripts\register_task.ps1`이 `my-planner`와 함께 `my-planner-medic`도 등록합니다(medic 없이 등록하려면 `-NoMedic`, 점검에도 `-NoMedic`). 이 작업은 로그온할 때와 5분마다 `pythonw scripts\medic_boot.py`를 띄우고, 실행기가 `python -m my_planner_medic`을 자식으로 실행합니다. 점검 출력에 `my-planner-medic` 줄이 `OK`로 나와야 합니다.
 
 **끄기**
 
-- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않고, `watch.yml`도 수리를 다시 부르지 않습니다(죽은 시도 정리만 합니다).
+- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않고, `watch.yml`도 수리를 다시 부르지 않습니다(죽은 시도 정리만 합니다). 이미 돌고 있는 수리 실행(`repair #N`, 길면 약 100분)은 `off`로 멈추지 않으니 Actions에서 그 실행을 손으로 취소합니다.
 - medic 전체 멈추기: `config.medic.toml`에 `enabled = false`를 적고 medic을 다시 띄웁니다(하트비트만 보내고 감시·배포는 하지 않습니다). 작업 자체를 없애려면 `register_task.ps1 -NoMedic`을 다시 실행합니다.
 
 **medic 자신의 갱신**

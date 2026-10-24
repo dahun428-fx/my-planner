@@ -36,6 +36,8 @@ TASK_ENABLED = "$ErrorActionPreference='Stop'; (Get-ScheduledTask -TaskName {nam
 # BE 프로세스: 명령줄에 저장소 루트가 있고 `-m my_planner`로 끝나는 python/pythonw.
 # `my_planner_medic`·`my_planner.wake_times`는 맞지 않는다. medic 자신(PID)은 늘 뺀다.
 # venv의 pythonw.exe는 기본 인터프리터를 자식으로 띄우는 실행기라, 자식은 /T로 함께 죽는다.
+# 루트는 `be_root()`로 끝에 `\` 하나를 붙여 넣는다(register_task.ps1의 Stop-MedicProcesses와 같다):
+# `E:\my-planner`가 `E:\my-planner-dev\...`의 개발용 BE를 맞히지 않게(최종 리뷰 I-2).
 FIND_BE_PIDS = (
     "$ErrorActionPreference='Stop'; $r = '{root}'.ToLowerInvariant(); "
     "Get-CimInstance Win32_Process | Where-Object {{ "
@@ -53,6 +55,11 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
 
 class TaskControlError(Exception):
     pass
+
+
+def be_root(root: Path) -> str:
+    r"""명령줄과 견줄 루트 글: 구분자를 `\`로, 끝의 구분자를 지우고 `\` 하나를 붙인다(`E:\` → `E:\`)."""
+    return str(root).replace("/", "\\").rstrip("\\") + "\\"
 
 
 def _ps(command: str) -> list[str]:
@@ -109,7 +116,7 @@ class TaskControl:
         return out.strip() if rc == 0 else None
 
     def be_pids(self) -> list[int]:
-        root = str(self._root).replace("'", "''")
+        root = be_root(self._root).replace("'", "''")
         rc, out = self._run(FIND_BE_PIDS.format(root=root, own_pid=self._own_pid))
         if rc != 0:
             raise TaskControlError(f"process query failed ({rc})")

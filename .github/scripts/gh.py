@@ -14,7 +14,7 @@ import re
 import urllib.error
 import urllib.request
 from typing import Any, Protocol
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 API = "https://api.github.com"
 
@@ -44,6 +44,18 @@ BRANCH_RE = re.compile(r"^auto-repair/\d+-\d+$")  # 다음 작업에 넘겨도 �
 BASE = "main"  # 수리는 핫픽스: main에서 따서 main으로 (배포 흐름 스펙 7장)
 REPAIR_WORKFLOW = "repair.yml"
 CI_NAME = "ci"
+# GitHub 닫기 낱말(close/fix/resolve 꼴) 뒤에 이슈 참조(`#N`, `owner/repo#N`, `GH-N`, 이슈 URL)가 오면 기본 브랜치
+# 머지 때 그 이슈가 닫힌다(최종 리뷰 I-1). 수리 PR 글·squash 커밋은 이것을 쓰지 않는다: 이슈는 medic만 닫는다
+CLOSING_RE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[*_`]*(?:\s*:)?[*_`]*\s*"
+    r"(?=(?:[\w.-]+/[\w.-]+)?#\d|gh-\d|https?://\S+/issues/\d)",
+    re.IGNORECASE,
+)
+
+
+def neutralise(text: str) -> str:
+    """닫기 낱말 + 이슈 참조를 `Refs <참조>`로 바꾼다(참조는 남겨 PR이 이슈와 이어지게)."""
+    return CLOSING_RE.sub("Refs ", text)
 
 Body = dict[str, Any] | list[Any] | None
 
@@ -64,6 +76,19 @@ def _decode(raw: bytes) -> Body:
     return value if isinstance(value, dict | list) else None
 
 
+class SameHostAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """다른 호스트로 넘기는 리디렉션에는 `Authorization`(토큰)을 싣지 않는다(최종 리뷰 M-9, medic http.py와 같다)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urlsplit(newurl).hostname != urlsplit(req.full_url).hostname:
+            new.remove_header("Authorization")
+        return new
+
+
+_OPENER = urllib.request.build_opener(SameHostAuthRedirect)
+
+
 class UrllibHttp:
     """URL(텔레그램은 경로에 봇 토큰)과 예외 글은 어디에도 남기지 않는다."""
 
@@ -77,7 +102,7 @@ class UrllibHttp:
             hdrs.setdefault("Content-Type", "application/json")
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method.upper())
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with _OPENER.open(req, timeout=timeout) as resp:
                 return resp.status, _decode(resp.read()), {k.lower(): v for k, v in resp.headers.items()}
         except urllib.error.HTTPError as exc:
             try:

@@ -51,7 +51,9 @@ def test_merge_waits_for_ci_then_squashes_with_repairs_body():
     tick = Ticker(finish)
     assert repair_merge.merge(api, pr, n, wait_s=1800, poll_s=30, sleep=tick.sleep, clock=tick.now) == "merged"
     assert tick.sleeps == 2
-    assert server.merges == [(pr, {"merge_method": "squash", "commit_message": f"Repairs #{n}", "sha": "abc"})]
+    assert server.merges == [(pr, {
+        "merge_method": "squash", "commit_title": f"fix (#{pr})", "commit_message": f"Repairs #{n}", "sha": "abc",
+    })]
     assert "merged" in server.labels(n) and "repairing" not in server.labels(n)
     assert "auto-repair" in [x["name"] for x in server.pull(pr)["labels"]]  # 하루 머지 수를 세는 라벨
 
@@ -254,3 +256,15 @@ def test_mark_merged_deletes_branch():
     tick = Ticker()
     assert repair_merge.merge(api, pr, n, sleep=tick.sleep, clock=tick.now) == "merged"
     assert server.deleted_refs == [f"auto-repair/{n}-1"]  # 다음 시도가 같은 이름을 다시 쓸 수 있게
+
+
+def test_merge_commit_carries_no_closing_keyword_even_if_pr_title_was_edited():
+    """최종 리뷰 I-1: squash 커밋 제목은 PR 제목에서 온다. 누가 PR 제목을 `Fixes #n`으로 바꿔도 main 커밋이 이슈를 닫지 않게."""
+    server, _http, api = _env()
+    n = server.add_issue("[incident] be:KeyError src/x.py:f", ["incident", "be", "repairing"])
+    pr = server.add_pull(f"auto-repair/{n}-1", head_sha="abc", title=f"Fixes #{n} and closes o/r#{n}")
+    server.runs.append(_run("abc", "completed", "success"))
+    assert repair_merge.merge(api, pr, n, sleep=lambda s: None, clock=lambda: 0.0) == "merged"
+    got = server.merges[0][1]
+    assert got["commit_title"] == f"Refs #{n} and Refs o/r#{n} (#{pr})"
+    assert got["commit_message"] == f"Repairs #{n}"
