@@ -1,6 +1,7 @@
 /* Spec 5.2 tokens, verbatim. Then the two explicit theme sets for the settings toggle (spec 5.5.7,
    gap 9): :root[data-theme] has higher specificity than the media-query :root, so it wins either way.
-   Keep the three colour sets in sync; contrast.test.ts checks they match. */
+   Keep the three colour sets in sync; contrast.test.ts checks they match.
+   These are also the ink palette. The other palettes follow at the end. */
 :root {
   --ground: #f2f2f5;   --surface: #ffffff;  --raised: #e9e9ee;  --bar: #f7f7f9;
   --rule: #ececf0;     --border: #e3e3e8;   --control: #d4d4da;
@@ -15,7 +16,8 @@
   --font: -apple-system, "SF Pro Text", "Apple SD Gothic Neo", system-ui, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root,
+  :root:not([data-theme="light"]) [data-palette="ink"] {
     --ground: #000000; --surface: #1c1c1e; --raised: #2c2c2e; --bar: #121214;
     --rule: #2c2c2e;   --border: #3a3a3c;  --control: #48484a;
     --text: #ffffff;   --muted: #a1a1a6;   --text-2: #d1d1d6;
@@ -34,6 +36,13 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+/* [data-palette="ink"] on an element (a swatch in Settings) gives it the ink set in any palette. */
+:root[data-theme="light"],
+[data-palette="ink"] {
   --ground: #f2f2f5;   --surface: #ffffff;  --raised: #e9e9ee;  --bar: #f7f7f9;
   --rule: #ececf0;     --border: #e3e3e8;   --control: #d4d4da;
   --text: #111113;     --muted: #6a6a70;    --text-2: #3d3d42;
@@ -42,12 +51,173 @@
   --positive: #247b50; --negative: #c4242a;
   --notice-bg: #fffbeb; --notice-border: #fde68a; --notice-ink: #5c2a07;
 }
-:root[data-theme="dark"] {
-  color-scheme: dark;
+:root[data-theme="dark"],
+:root[data-theme="dark"] [data-palette="ink"] {
   --ground: #000000; --surface: #1c1c1e; --raised: #2c2c2e; --bar: #121214;
   --rule: #2c2c2e;   --border: #3a3a3c;  --control: #48484a;
   --text: #ffffff;   --muted: #a1a1a6;   --text-2: #d1d1d6;
   --primary: #ffffff; --on-primary: #000000;
   --hue: #5b9bff;    --positive: #3fc07a; --negative: #ff6b6b;
   --notice-bg: #2b2210; --notice-border: #5c4a17; --notice-ink: #f5d27a;
+}
+
+/* Colour presets (Settings › 이 기기 › 색감, `mp.palette`). Each one: its light set; its dark set
+   under the media query unless the theme says light; the same dark set for data-theme="dark".
+   :root[data-palette] (0,2,0) comes after :root[data-theme] (0,2,0), and the two dark forms are
+   (0,3,0), so the palette wins in every theme. The second selector of each puts the palette on an
+   element that carries data-palette itself (a swatch), in the current theme. The notice colours,
+   --positive and --negative stay semantic. Keep each palette's two dark sets in sync. */
+/* 종이, warm paper */
+:root[data-palette="paper"],
+[data-palette="paper"] {
+  --ground: #f4f1ea;   --surface: #fffdf8;  --raised: #ebe6dc;  --bar: #f8f6f0;
+  --rule: #ebe6dc;     --border: #e2dccf;   --control: #d3ccbe;
+  --text: #1c1915;     --muted: #6b6357;    --text-2: #3f392f;
+  --primary: #1c1915;  --on-primary: #fffdf8;
+  --hue: #2d5a9e;
+  --positive: #247b50; --negative: #c4242a;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="paper"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-palette="paper"] {
+    --ground: #12100d;   --surface: #1f1c18;  --raised: #2c2823;  --bar: #181613;
+    --rule: #2c2823;     --border: #3b362f;   --control: #4c463d;
+    --text: #f6f1e7;     --muted: #a9a194;    --text-2: #d9d2c5;
+    --primary: #f6f1e7;  --on-primary: #12100d;
+    --hue: #8fb0e6;
+    --positive: #3fc07a; --negative: #ff6b6b;
+  }
+}
+:root[data-palette="paper"][data-theme="dark"],
+:root[data-theme="dark"] [data-palette="paper"] {
+  --ground: #12100d;   --surface: #1f1c18;  --raised: #2c2823;  --bar: #181613;
+  --rule: #2c2823;     --border: #3b362f;   --control: #4c463d;
+  --text: #f6f1e7;     --muted: #a9a194;    --text-2: #d9d2c5;
+  --primary: #f6f1e7;  --on-primary: #12100d;
+  --hue: #8fb0e6;
+  --positive: #3fc07a; --negative: #ff6b6b;
+}
+
+/* 숲, forest */
+:root[data-palette="forest"],
+[data-palette="forest"] {
+  --ground: #eff3f0;   --surface: #ffffff;  --raised: #e4ebe6;  --bar: #f6f8f6;
+  --rule: #e7ede9;     --border: #dce4de;   --control: #cad5cd;
+  --text: #101511;     --muted: #5d6a61;    --text-2: #364039;
+  --primary: #101511;  --on-primary: #ffffff;
+  --hue: #1d6b50;
+  --positive: #247b50; --negative: #c4242a;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="forest"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-palette="forest"] {
+    --ground: #040806;   --surface: #18201b;  --raised: #243029;  --bar: #0d1410;
+    --rule: #243029;     --border: #334139;   --control: #435249;
+    --text: #f2f7f3;     --muted: #9caba1;    --text-2: #cfdad2;
+    --primary: #f2f7f3;  --on-primary: #040806;
+    --hue: #5cc49b;
+    --positive: #3fc07a; --negative: #ff6b6b;
+  }
+}
+:root[data-palette="forest"][data-theme="dark"],
+:root[data-theme="dark"] [data-palette="forest"] {
+  --ground: #040806;   --surface: #18201b;  --raised: #243029;  --bar: #0d1410;
+  --rule: #243029;     --border: #334139;   --control: #435249;
+  --text: #f2f7f3;     --muted: #9caba1;    --text-2: #cfdad2;
+  --primary: #f2f7f3;  --on-primary: #040806;
+  --hue: #5cc49b;
+  --positive: #3fc07a; --negative: #ff6b6b;
+}
+
+/* 바다, sea */
+:root[data-palette="sea"],
+[data-palette="sea"] {
+  --ground: #eef2f6;   --surface: #ffffff;  --raised: #e3e9f0;  --bar: #f5f7fa;
+  --rule: #e6ebf1;     --border: #dbe2ea;   --control: #c9d3de;
+  --text: #0f141a;     --muted: #5c6774;    --text-2: #343e4a;
+  --primary: #0f141a;  --on-primary: #ffffff;
+  --hue: #0a6587;
+  --positive: #247b50; --negative: #c4242a;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="sea"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-palette="sea"] {
+    --ground: #03070b;   --surface: #151c24;  --raised: #212a35;  --bar: #0b1117;
+    --rule: #212a35;     --border: #2f3a47;   --control: #3f4b59;
+    --text: #f1f6fb;     --muted: #9aa7b5;    --text-2: #ccd6e0;
+    --primary: #f1f6fb;  --on-primary: #03070b;
+    --hue: #52b8e0;
+    --positive: #3fc07a; --negative: #ff6b6b;
+  }
+}
+:root[data-palette="sea"][data-theme="dark"],
+:root[data-theme="dark"] [data-palette="sea"] {
+  --ground: #03070b;   --surface: #151c24;  --raised: #212a35;  --bar: #0b1117;
+  --rule: #212a35;     --border: #2f3a47;   --control: #3f4b59;
+  --text: #f1f6fb;     --muted: #9aa7b5;    --text-2: #ccd6e0;
+  --primary: #f1f6fb;  --on-primary: #03070b;
+  --hue: #52b8e0;
+  --positive: #3fc07a; --negative: #ff6b6b;
+}
+
+/* 노을, sunset */
+:root[data-palette="sunset"],
+[data-palette="sunset"] {
+  --ground: #f7f1ee;   --surface: #fffcfa;  --raised: #eee4e0;  --bar: #faf6f4;
+  --rule: #efe6e2;     --border: #e6dad5;   --control: #d8c8c2;
+  --text: #1d1413;     --muted: #72605b;    --text-2: #463834;
+  --primary: #1d1413;  --on-primary: #fffcfa;
+  --hue: #b0461d;
+  --positive: #247b50; --negative: #c4242a;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="sunset"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-palette="sunset"] {
+    --ground: #0b0605;   --surface: #221a18;  --raised: #302624;  --bar: #150f0e;
+    --rule: #302624;     --border: #403432;   --control: #524442;
+    --text: #fbf3f0;     --muted: #b2a19c;    --text-2: #e2d3ce;
+    --primary: #fbf3f0;  --on-primary: #0b0605;
+    --hue: #ff9b6e;
+    --positive: #3fc07a; --negative: #ff6b6b;
+  }
+}
+:root[data-palette="sunset"][data-theme="dark"],
+:root[data-theme="dark"] [data-palette="sunset"] {
+  --ground: #0b0605;   --surface: #221a18;  --raised: #302624;  --bar: #150f0e;
+  --rule: #302624;     --border: #403432;   --control: #524442;
+  --text: #fbf3f0;     --muted: #b2a19c;    --text-2: #e2d3ce;
+  --primary: #fbf3f0;  --on-primary: #0b0605;
+  --hue: #ff9b6e;
+  --positive: #3fc07a; --negative: #ff6b6b;
+}
+
+/* 라벤더, lavender */
+:root[data-palette="lavender"],
+[data-palette="lavender"] {
+  --ground: #f2f1f7;   --surface: #ffffff;  --raised: #e8e6f0;  --bar: #f7f6fa;
+  --rule: #ebe9f2;     --border: #e1dfeb;   --control: #d0cde0;
+  --text: #131219;     --muted: #65627a;    --text-2: #3b394d;
+  --primary: #131219;  --on-primary: #ffffff;
+  --hue: #5f3fae;
+  --positive: #247b50; --negative: #c4242a;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="lavender"]:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-palette="lavender"] {
+    --ground: #06050a;   --surface: #1d1b24;  --raised: #2b2834;  --bar: #110f16;
+    --rule: #2b2834;     --border: #3a3745;   --control: #4a4657;
+    --text: #f6f4fb;     --muted: #a8a4b9;    --text-2: #d5d2e2;
+    --primary: #f6f4fb;  --on-primary: #06050a;
+    --hue: #a993ff;
+    --positive: #3fc07a; --negative: #ff6b6b;
+  }
+}
+:root[data-palette="lavender"][data-theme="dark"],
+:root[data-theme="dark"] [data-palette="lavender"] {
+  --ground: #06050a;   --surface: #1d1b24;  --raised: #2b2834;  --bar: #110f16;
+  --rule: #2b2834;     --border: #3a3745;   --control: #4a4657;
+  --text: #f6f4fb;     --muted: #a8a4b9;    --text-2: #d5d2e2;
+  --primary: #f6f4fb;  --on-primary: #06050a;
+  --hue: #a993ff;
+  --positive: #3fc07a; --negative: #ff6b6b;
 }
