@@ -108,6 +108,64 @@ Unregister-ScheduledTask -TaskName my-planner -Confirm:$false
 Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 ```
 
+## API 열기
+
+운영 앱이 쓰는 API(`/api/v1/*`)는 BE가 `127.0.0.1:8787`에서만 엽니다. 폰과 다른 기기에서는 Tailscale `serve`로 **내 tailnet 안에만** 엽니다.
+
+**토큰과 푸시 키**
+
+`.env`에 `API_TOKEN`이 없거나 43자보다 짧으면 API를 열지 않습니다(로그 `api_token_missing`). 아래 두 명령은 값을 화면에 출력하므로, 출력을 채팅이나 문서에 붙이지 말고 `.env`에만 넣습니다.
+
+```powershell
+.venv\Scripts\python.exe -m my_planner gen-token
+```
+
+```powershell
+.venv\Scripts\python.exe -m my_planner gen-vapid
+```
+
+```
+API_TOKEN=...
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:<받을 수 있는 주소>
+```
+
+`.env`를 바꾼 뒤에는 작업을 다시 켭니다(`Stop-ScheduledTask -TaskName my-planner` 뒤 `Start-ScheduledTask -TaskName my-planner`). 로그에 `api_started`가 나오면 열린 것입니다.
+
+**tailnet에 열기**
+
+1. Tailscale 관리 화면(DNS)에서 MagicDNS와 HTTPS 인증서를 켭니다.
+2. 443에 다른 `serve` 항목이 없으면:
+
+   ```powershell
+   tailscale serve --bg --https=443 http://127.0.0.1:8787
+   ```
+
+   443의 `/`를 이미 다른 서비스가 쓰고 있으면 그 항목은 두고 `/api`만 붙입니다:
+
+   ```powershell
+   tailscale serve --bg --https=443 --set-path=/api http://127.0.0.1:8787/api
+   ```
+
+   파일 경로(`path`) 항목이 이미 있으면 `serve` 설정을 바꿀 때 관리자 PowerShell이 필요합니다(아니면 `must be a Windows local admin to serve a path`).
+3. `tailscale serve status`가 `(tailnet only)`인지, `tailscale funnel status`에 Funnel 항목이 없는지 확인합니다.
+4. tailnet 기기에서 `https://<기계>.<tailnet>.ts.net/api/v1/health`를 `Authorization: Bearer <API_TOKEN>` 헤더로 열면 `"status": "ok"`, 토큰 없이 열면 `401`입니다.
+
+**Funnel은 절대 쓰지 않습니다.** `tailscale funnel`은 API를 인터넷 전체에 엽니다. 토큰 하나만으로 할 일과 대화 기록에 닿을 수 있으니 tailnet 밖으로 열지 않습니다.
+
+허용 출처(CORS)는 `config.toml`의 `[api] cors_origins`에 정확한 주소로만 넣습니다. 운영 앱 주소가 정해지기 전에는 비워 둡니다. `*.vercel.app` 같은 와일드카드나 미리보기 주소 패턴은 넣지 않습니다.
+
+**토큰 바꾸기**
+
+토큰이 새어 나갔거나 기기를 잃어버렸으면:
+
+1. `gen-token`으로 새 토큰을 만들어 `.env`의 `API_TOKEN` 줄을 바꿉니다.
+2. 작업을 다시 켭니다. 옛 토큰은 바로 `401`이 됩니다.
+3. 운영 앱 설정에 새 토큰을 넣습니다.
+
+VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새어 나갔을 때만 바꾸고 바꾼 뒤 앱에서 알림을 다시 켭니다.
+
 ## 데이터는 어디에 남나요
 
 | 위치 | 내용 |
