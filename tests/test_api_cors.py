@@ -90,3 +90,9 @@ async def test_error_responses_carry_cors_headers(env):
 def test_policy_without_regex():
     p = CorsPolicy([DASH], "")
     assert p.allows(DASH) and not p.allows(PREVIEW) and not p.allows(None) and not p.allows("")
+
+
+@pytest.mark.parametrize(("origins", "regex"), [(["https://*.vercel.app"], ""), ([DASH], "([")])
+def test_policy_rejects_wildcard_and_bad_regex(origins, regex):
+    with pytest.raises(ValueError):
+        CorsPolicy(origins, regex)

@@ -819,14 +819,25 @@ def test_api_build_error_keeps_polling(started, monkeypatch):
 
 
 @pytest.mark.parametrize("bad", ['cors_origin_regex = "(["', 'cors_origins = ["https://*.vercel.app"]'])
-def test_bad_cors_config_is_settings_error(started, bad):
+def test_bad_cors_config_keeps_be_running_with_api_closed(started, monkeypatch, bad):
     app, root, calls = started
+    _enable_api(root)
     toml = root / "config.toml"
     key = bad.split(" =")[0]
     lines = [bad if line.startswith(key + " ") else line for line in toml.read_text(encoding="utf-8").splitlines()]
     toml.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    assert app.main() == app.EXIT_BAD_SETTINGS
-    assert calls == []
+    started_api = []
+
+    async def fake_start(web_app, host, port):
+        started_api.append(port)
+
+    monkeypatch.setattr(app, "start_api", fake_start)
+    assert app.main() == 0  # 설정 오류로 끝나지 않는다
+    names = [c[0] for c in calls]
+    assert names[:4] == ["app.initialize", "app.start", "start_polling", "serving"]  # 텔레그램과 루프는 돈다
+    assert started_api == []  # API만 열지 않았다
+    errs = [e for e in _log_entries(root) if e["msg"] == "api_start_error"]
+    assert [e["exc_type"] for e in errs] == ["ValueError"]
 
 
 async def test_be_env_telegram_and_press(tmp_path):

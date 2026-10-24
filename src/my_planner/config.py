@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import os
-import re
 import tomllib
 from datetime import time
 from pathlib import Path
@@ -125,24 +124,8 @@ class ApiConfig(_Model):
     port: int = 8787
     cors_origins: list[str] = []  # 정확한 문자열 목록. `*.vercel.app` 같은 와일드카드는 받지 않는다
     cors_origin_regex: str = ""  # 비우면 쓰지 않는다(팀 범위 미리보기 주소용). 전체 일치로 본다
+    # 출처 값의 검사는 CorsPolicy가 한다: 틀려도 API만 열지 않고 BE는 돈다(스펙 15)
     max_body_kb: int = 64
-
-    @field_validator("cors_origin_regex")
-    @classmethod
-    def _valid_regex(cls, v: str) -> str:
-        if v:
-            try:
-                re.compile(v)
-            except re.error as e:
-                raise ValueError("api.cors_origin_regex가 정규식이 아니다") from e
-        return v
-
-    @field_validator("cors_origins")
-    @classmethod
-    def _exact_origins(cls, v: list[str]) -> list[str]:
-        if any("*" in o for o in v):  # 정확한 문자열만(스펙 14). 미리보기 주소는 cors_origin_regex로
-            raise ValueError("api.cors_origins에는 와일드카드를 쓰지 않는다")
-        return v
 
 
 class NotifyConfig(_Model):

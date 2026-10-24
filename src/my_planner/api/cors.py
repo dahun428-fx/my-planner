@@ -23,8 +23,15 @@ Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 
 class CorsPolicy:
     def __init__(self, origins: Iterable[str], origin_regex: str = "") -> None:
+        """틀린 설정은 `ValueError`: `build_app`에서 나므로 `_open_api`가 받아 API만 열지 않는다."""
+        origins = list(origins)
+        if any("*" in o for o in origins):  # 정확한 문자열만(스펙 14). 미리보기 주소는 cors_origin_regex로
+            raise ValueError("api.cors_origins에는 와일드카드를 쓰지 않는다")
+        try:
+            self._regex = re.compile(origin_regex) if origin_regex else None
+        except re.error as e:
+            raise ValueError("api.cors_origin_regex가 정규식이 아니다") from e
         self.origins = frozenset(origins)
-        self._regex = re.compile(origin_regex) if origin_regex else None
 
     def allows(self, origin: str | None) -> bool:
         if not origin:
