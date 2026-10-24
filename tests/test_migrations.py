@@ -295,9 +295,9 @@ def test_curve_valid_rows_and_cascade(tmp_path):
         _ins(conn, "run_deliveries", run_id=rid, **_DELIVERY)
 
 
-def test_latest_version_is_011_no_chat_migration():
+def test_latest_version_is_012_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 11 == _migration_count()
+    assert dbmod.LATEST_VERSION == 12 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -329,3 +329,82 @@ async def test_resubmitted_app_row_keeps_conversation(tmp_path):
     assert kept == m.conversation_id
     assert moved != closed.conversation_id
     assert moved_conv.channel == "app" and moved_conv.kind.value == "chat" and moved_conv.closed_at is None
+
+
+# --- 012: 습관과 체크, 원장 CHECK 넓히기 (SP7 스펙 5.1) ---
+
+_LEDGER_ROWS = [
+    (7, "2026-10-20T01:00:00+00:00", "2026-10-20", "task_done", "task:1", 5, "health", "할 일 완료"),
+    (9, "2026-10-21T01:00:00+00:00", "2026-10-21", "condition", "date:2026-10-21", 2, None, "컨디션"),
+    (12, "2026-10-22T01:00:00+00:00", "2026-10-22", "rest_day", "date:2026-10-22", 4, None, "쉬는 날"),
+]
+_LEDGER_INS = (
+    "INSERT INTO status_xp_ledger (id, at, logical_date, source_kind, source_ref, amount, area, label) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+
+def _at_011(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=11) == 11
+    return conn
+
+
+def test_012_keeps_ledger_rows_and_ids(tmp_path):
+    conn = _at_011(tmp_path)
+    for row in _LEDGER_ROWS:
+        conn.execute(_LEDGER_INS, row)
+    conn.commit()
+    assert migrate(conn) == 12
+    got = conn.execute(
+        "SELECT id, at, logical_date, source_kind, source_ref, amount, area, label "
+        "FROM status_xp_ledger ORDER BY id"
+    ).fetchall()
+    assert [tuple(r) for r in got] == _LEDGER_ROWS
+
+
+def test_012_ledger_accepts_habit_check_only_new_kind(tmp_path):
+    conn = _at_011(tmp_path)
+    migrate(conn)
+    row = (1, "2026-10-24T01:00:00+00:00", "2026-10-24", "habit_check", "habit:1:2026-10-24", 3, "health", "습관 체크")
+    conn.execute(_LEDGER_INS, row)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(_LEDGER_INS, (2, *row[1:3], "habit_week", "habit:1:2026-W43", 3, "health", "x"))
+    with pytest.raises(sqlite3.IntegrityError):  # amount > 0, UNIQUE는 그대로
+        conn.execute(_LEDGER_INS, (3, *row[1:5], 0, "health", "x"))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(_LEDGER_INS, (4, *row[1:]))
+
+
+def test_012_foreign_key_check_and_index(tmp_path):
+    conn = _at_011(tmp_path)
+    migrate(conn)
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    idx = {r["name"]: r["tbl_name"] for r in conn.execute("SELECT name, tbl_name FROM sqlite_master WHERE type='index'")}
+    assert idx["idx_xp_date"] == "status_xp_ledger"
+    assert idx["idx_habit_checks_date"] == "habit_checks"
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "status_xp_ledger_new" not in tables and {"habits", "habit_checks"} <= tables
+
+
+def test_habits_daily_target_check(tmp_path):
+    conn = _at_011(tmp_path)
+    migrate(conn)
+    ins = (
+        "INSERT INTO habits (title, area, kind, target_per_week, sort_order, created_at, updated_at) "
+        "VALUES ('운동', 'health', ?, ?, 1, 'a', 'a')"
+    )
+    with pytest.raises(sqlite3.IntegrityError):  # daily인데 목표
+        conn.execute(ins, ("daily", 3))
+    with pytest.raises(sqlite3.IntegrityError):  # weekly인데 목표 없음
+        conn.execute(ins, ("weekly", None))
+    with pytest.raises(sqlite3.IntegrityError):  # 7회는 매일 습관으로
+        conn.execute(ins, ("weekly", 7))
+    conn.execute(ins, ("daily", None))
+    conn.execute(ins, ("weekly", 3))
+
+
+def test_schema_version_12(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn) == 12 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 12

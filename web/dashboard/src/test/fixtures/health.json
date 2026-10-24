@@ -3,7 +3,7 @@
   "version": {
     "app": "0.2.0",
     "api": "v1",
-    "schema": 11,
+    "schema": 12,
     "ui_catalog": "2026-10-24.3"
   },
   "now": "2026-10-24T08:00:05Z",

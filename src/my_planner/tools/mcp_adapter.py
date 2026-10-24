@@ -38,6 +38,13 @@ TOOL_NAMES: list[str] = [
     "get_curve",
     "get_status",
     "grant_xp",
+    # 습관(SP7 5.4 표 순서)
+    "add_habit",
+    "update_habit",
+    "set_habit_status",
+    "check_habit",
+    "uncheck_habit",
+    "list_habits",
 ]
 
 # 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다.
@@ -304,6 +311,63 @@ _SPECS.update({
             {"amount": {"enum": [5, 10]}, "reason": {"type": "string", "description": "1~60자"}},
             ["amount", "reason"],
         ),
+    ),
+})
+
+_HABIT_ID = {"type": "integer", "description": "습관 번호"}
+_HABIT_TARGET = {"type": ["integer", "null"], "minimum": 1, "maximum": 6, "description": "주 몇 번(weekly일 때 1~6)"}
+_HABIT_DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD. 안 주면 오늘. 오늘 포함 7일 안만"}
+_SPECS.update({
+    "add_habit": (
+        (
+            "사용자가 직접 추가해 달라고 한 습관만 추가합니다. 비서가 먼저 떠올린 습관은 말로 제안하고 사용자가 원할 때 "
+            "부릅니다. kind는 daily(매일) 또는 weekly(주 N회)이고, weekly면 target_per_week에 1~6을 넣습니다. "
+            "주 7회는 daily로 만듭니다. 제목은 40자까지, 활성 습관은 10개까지입니다."
+        ),
+        _schema(
+            {
+                "title": {"type": "string", "description": "1~40자"},
+                "area": {"enum": _AREAS},
+                "kind": {"enum": ["daily", "weekly"]},
+                "target_per_week": _HABIT_TARGET,
+            },
+            ["title", "area", "kind"],
+        ),
+    ),
+    "update_habit": (
+        "습관의 제목, 영역, 주기(kind), 주 목표(target_per_week)를 고칩니다. 바꿀 것만 넣습니다.",
+        _schema(
+            {
+                "id": _HABIT_ID,
+                "title": {"type": "string", "description": "1~40자"},
+                "area": {"enum": _AREAS},
+                "kind": {"enum": ["daily", "weekly"]},
+                "target_per_week": _HABIT_TARGET,
+            },
+            ["id"],
+        ),
+    ),
+    "set_habit_status": (
+        (
+            "습관을 쉬어 가기(paused), 다시 시작(active), 그만두기(archived)로 바꿉니다. 기록은 남습니다. "
+            "사용자가 원할 때만 부릅니다."
+        ),
+        _schema({"id": _HABIT_ID, "status": {"enum": ["active", "paused", "archived"]}}, ["id", "status"]),
+    ),
+    "check_habit": (
+        (
+            "사용자가 했다고 말한 습관을 그날(date, 기본 오늘)로 체크합니다. 추측해서 체크하지 않습니다. "
+            "이미 체크했으면 바꾸지 않고 already: true를 돌려줍니다."
+        ),
+        _schema({"id": _HABIT_ID, "date": _HABIT_DATE}, ["id"]),
+    ),
+    "uncheck_habit": (
+        "사용자가 취소해 달라고 한 습관 체크를 지웁니다. 체크가 없으면 바꾸지 않고 already: true를 돌려줍니다.",
+        _schema({"id": _HABIT_ID, "date": _HABIT_DATE}, ["id"]),
+    ),
+    "list_habits": (
+        "습관 목록과 그날(date, 기본 오늘) 체크 여부, 그 주 체크 수를 읽습니다. status 기본은 active입니다.",
+        _schema({"status": {"enum": ["active", "paused", "archived", "all"]}, "date": _DATE}, []),
     ),
 })
 
