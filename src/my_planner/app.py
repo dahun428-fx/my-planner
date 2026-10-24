@@ -45,6 +45,7 @@ from my_planner.loop.runner import (
     cleanup_logs_daily,
     expire_curve_drafts,
     expire_drafts,
+    grant_rest_days_daily,
     prune_api_state_daily,
     prune_updates_daily,
     recover_on_start,
@@ -291,6 +292,7 @@ def build_be(
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
     # 사건·챕터 초안은 draft_since에서 같은 일수가 지나면 행을 지운다(SP3-4 5.4)
     runner.register_daily(expire_curve_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
+    runner.register_daily(grant_rest_days_daily(dispatcher))  # X9 쉬는 날(어제까지, 최대 14일)
     runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
     runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다

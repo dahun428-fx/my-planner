@@ -148,6 +148,7 @@ async def test_actor_channel_mapping(tmp_path):
         ("condition_recorded", "user", "app"),
         ("tasks_proposed", "secretary", "telegram"),
         ("drafts_expired", "secretary", "scheduler"),
+        ("rest_days_granted", "secretary", "scheduler"),  # X9: 10/24~27에는 완료한 할 일이 없다
     ]
 
 

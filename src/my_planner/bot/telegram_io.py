@@ -183,7 +183,7 @@ async def _answer_command(
     now = clock.now()
     deps = CommandDeps(
         tasks=tools.tasks, conditions=tools.conditions, state=state, router=router, clock=clock,
-        settings=LocalTime(tools.tz, tools.boundary), apply=apply,
+        settings=LocalTime(tools.tz, tools.boundary), apply=apply, status=tools.status, curve=tools.curve,
     )
     reply = run_command(cmd, text, deps, channel="telegram")
     for part in split_message(reply):

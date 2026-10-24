@@ -43,6 +43,8 @@ from my_planner.bot.telegram_io import handle_update
 from my_planner.clock import FakeClock, to_iso
 from my_planner.store.db import migrate, open_db, open_ro
 
+# 쓰기 경로 감시(SP3-4 16장, `tests/test_write_paths.py`): 주면 쓰기 연결의 데이터 쓰기마다 그 SQL로 부른다
+ON_WRITE: Any = None
 TEST_TOKEN = "test-token-" + "x" * 40  # 꾸며 낸 값(51자). 로그 검사 시험이 이 문자열을 찾는다
 OWNER = 42
 DRAIN_STEPS = 10_000
@@ -109,7 +111,7 @@ class BeEnv:
             base["vapid"] = FAKE_VAPID
         settings = make_settings(tmp_path, **{**base, **(overrides or {})})
         db_path = settings.paths.state_dir / "planner.db"
-        conn = open_db(db_path)
+        conn = open_db(db_path, on_write=ON_WRITE)
         migrate(conn)
         clock = FakeClock(start)
         brains: list[FakeBrain] = []

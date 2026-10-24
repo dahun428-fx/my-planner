@@ -28,7 +28,8 @@ from typing import TYPE_CHECKING, Any, Literal
 from telegram import CallbackQuery
 
 from my_planner.clock import Clock
-from my_planner.domain import Channel, RunContext, TaskStatus
+from my_planner.domain import RunContext, TaskStatus
+from my_planner.status.xp import XpGain
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.actions import (
     CHAPTER_GONE,
@@ -40,6 +41,7 @@ from my_planner.tools.actions import (
 from my_planner.tools.confirmations import (
     condition_summary,
     draft_dropped_reply,
+    level_line,
     render_confirmations,
 )
 from my_planner.tools.core import Tools
@@ -56,7 +58,7 @@ CallbackResult = Literal[
     "confirmed", "dropped", "declined", "recorded", "skipped", "stale", "ignored", "unknown"
 ]
 Apply = Callable[[ActionRequest], ActionResult]
-MarkAnswered = Callable[[int, Channel], object]  # `Dispatcher.mark_answered(run_id, channel)`
+MarkAnswered = Callable[..., object]  # `Dispatcher.mark_answered(run_id, channel, *, gain=None)`
 
 STALE_REPLY = "이미 정리된 할 일이에요."
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -139,6 +141,11 @@ async def handle_callback(
        "이미 정리된 제안이에요."(10.1 A6).
     """
     reply: str | None = None  # finally에서 꼭 한 번 보낸다
+    # 이 누름이 스스로 적은 경험치만 센다(즉시 갈래 응답의 `xp.level_up`, 회차 답 기록). 그 사이 다른 갈래가 적은
+    # 경험치로 레벨이 올라도 이 답에는 붙이지 않는다(9.2)
+    gain = XpGain()
+    apply = _noting(apply, gain)
+    mark_answered = _marking(mark_answered, gain)
     try:
         if query.from_user is None or query.from_user.id != owner_id:
             # 사용자가 아니면 아무것도 바꾸지 않는다. 발신자 ID만 남긴다(본문, 이름 없이).
@@ -209,6 +216,11 @@ async def handle_callback(
             _transcript(transcripts, clock, "\n".join(lines))
         return result
     finally:
+        if reply is not None:
+            # 레벨이 오르면 답 끝에 한 줄(SP3-4 9.2). 즉시 갈래의 확인 문구가 이미 붙였으면 다시 붙이지 않는다
+            line = level_line(gain.level_up)
+            if line and line not in reply:
+                reply = f"{reply}\n{line}"
         await _answer(query, reply)
 
 
@@ -333,6 +345,30 @@ def _confirm(
     if res.status == "rejected":  # 도구가 거절했다(토큰은 열린 채다): 도구의 오류 문구
         return "stale", res.body.get("error", {}).get("message") or STALE_TOKEN
     return "stale", STALE_TOKEN
+
+
+def _noting(apply: Apply | None, gain: XpGain) -> Apply | None:
+    """즉시 갈래 응답의 `xp.level_up`(그 요청의 트랜잭션이 넘긴 레벨)을 `gain`에 모은다."""
+    if apply is None:
+        return None
+    inner = apply
+
+    def noted(req: ActionRequest) -> ActionResult:
+        res = inner(req)
+        xp = res.body.get("xp") if isinstance(res.body, dict) else None
+        if isinstance(xp, dict):
+            gain.note(xp.get("level_up"))
+        return res
+
+    return noted
+
+
+def _marking(mark: MarkAnswered | None, gain: XpGain) -> MarkAnswered | None:
+    """회차 답 기록이 적은 경험치(X3/X5/X8)를 `gain`에 모은다."""
+    if mark is None:
+        return None
+    inner = mark
+    return lambda run_id, channel: inner(run_id, channel, gain=gain)
 
 
 def _answer_run(query: CallbackQuery, deliveries: DeliveriesRepo | None, mark: MarkAnswered | None) -> None:

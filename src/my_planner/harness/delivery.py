@@ -35,6 +35,7 @@ from my_planner.store.repos.state import NOTIFY_PRIMARY_KEY
 if TYPE_CHECKING:
     from my_planner.clock import Clock
     from my_planner.config import Settings, VapidConfig
+    from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.push import PushRepo, PushSubscription
     from my_planner.store.repos.runs import Run
     from my_planner.store.repos.state import StateRepo
@@ -142,6 +143,17 @@ class DeliveryOutcome:
     @property
     def tried_push(self) -> bool:
         return self.push_ok + self.push_failed > 0
+
+
+def record_deliveries(deliveries: DeliveriesRepo, run_id: int, outcome: DeliveryOutcome) -> None:
+    """`run_deliveries`(4.3: 이 모듈이 쓴다): 푸시를 해 봤으면 앱 줄(받았으면 sent), 텔레그램으로 보냈으면(대체 포함)
+    텔레그램 줄. 디스패처가 회차 작업(두뇌 갈래) 안에서, 회차 상태와 같은 트랜잭션으로 부른다."""
+    status = "sent" if outcome.sent else "not_sent"
+    if outcome.tried_push:
+        app_status = "sent" if outcome.push_ok > 0 else "not_sent"
+        deliveries.record(run_id, "app", "full", app_status, push_ok=outcome.push_ok, push_failed=outcome.push_failed)
+    if outcome.channel == "telegram":
+        deliveries.record(run_id, "telegram", outcome.mode, status, telegram_message_id=outcome.telegram_message_id)
 
 
 ToThread = Callable[..., Awaitable[Any]]

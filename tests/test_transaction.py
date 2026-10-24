@@ -116,3 +116,57 @@ def test_sp1_tasks_transaction_unchanged():
         check=False, cwd=SRC.parents[1], capture_output=True, text=True, timeout=300,
     )
     assert out.returncode == 0 and "failed" not in out.stdout, out.stdout[-2000:]
+
+
+def test_after_commit_runs_after_outermost_commit_only(conn):
+    from my_planner.store.db import after_commit
+
+    calls: list[str] = []
+    after_commit(conn, lambda: calls.append("outside"))  # 트랜잭션 밖: 바로
+    with transaction(conn):
+        with transaction(conn):
+            after_commit(conn, lambda: calls.append("inner"))
+        assert calls == ["outside"]  # 안쪽이 끝나도 아직 커밋 전이다
+    assert calls == ["outside", "inner"]
+    with pytest.raises(RuntimeError), transaction(conn):
+        after_commit(conn, lambda: calls.append("rolled back"))
+        raise RuntimeError("꾸민 오류")
+    with transaction(conn):
+        pass
+    assert calls == ["outside", "inner"]  # 롤백된 트랜잭션의 일은 버렸다
+
+
+def test_after_commit_dropped_with_rolled_back_savepoint(conn):
+    """안쪽 SAVEPOINT에서 건 일은 그 SAVEPOINT가 롤백되면 바깥이 예외를 잡고 커밋해도 부르지 않는다.
+    풀린(RELEASE) SAVEPOINT의 일과 바깥의 일은 커밋 뒤에 건 순서대로 부른다."""
+    from my_planner.store.db import after_commit
+
+    calls: list[str] = []
+    with transaction(conn):
+        after_commit(conn, lambda: calls.append("outer"))
+        with transaction(conn):
+            after_commit(conn, lambda: calls.append("released"))
+            with pytest.raises(RuntimeError), transaction(conn):
+                after_commit(conn, lambda: calls.append("rolled-back savepoint"))
+                raise RuntimeError("꾸민 오류")
+        assert calls == []
+    assert calls == ["outer", "released"]
+
+
+def test_after_commit_error_does_not_undo_commit_or_skip_others(conn, caplog):
+    from my_planner.store.db import after_commit
+
+    calls: list[str] = []
+
+    def boom() -> None:
+        raise ValueError("꾸민 오류")
+
+    with transaction(conn):
+        conn.execute("CREATE TABLE IF NOT EXISTS t_after (x INTEGER)")
+        conn.execute("INSERT INTO t_after (x) VALUES (1)")
+        after_commit(conn, boom)
+        after_commit(conn, lambda: calls.append("next"))
+    assert calls == ["next"]
+    assert conn.execute("SELECT count(*) FROM t_after").fetchone()[0] == 1
+    rec = [r for r in caplog.records if r.getMessage() == "after_commit_error"]
+    assert len(rec) == 1 and rec[0].error_type == "ValueError"

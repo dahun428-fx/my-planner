@@ -550,8 +550,10 @@ class ChatRequestBody(_Model):
 
 
 class ActionXp(_Model):
+    """이 요청에서 쌓인 경험치(9.1)와, 레벨이 올랐으면 새 레벨(9.2). 오르지 않았으면 `level_up`은 null."""
+
     gained: int
-    level_up: None  # 티켓 15 전까지 늘 null
+    level_up: int | None
 
 
 class ActionApplied(_Model):

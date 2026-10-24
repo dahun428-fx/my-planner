@@ -146,12 +146,12 @@ async def test_undo_each_kind(tmp_path, kind):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         action, args, gist = await CASES[kind](env)
         before = _state(env)
-        ledger_before = _ledger(env)
         env.clock.advance(minutes=1)
         body = await _apply(env, action, args)
         assert body["undo_id"] == body["activity_id"]
         assert _row(env, body["activity_id"])["kind"] == kind
         changed = _state(env)
+        ledger_before = _ledger(env)  # 적용이 쌓은 경험치(완료, 컨디션 등)까지
         env.clock.advance(minutes=1)
         status, out = await undo(env, body["undo_id"])
         after = _state(env)
@@ -173,7 +173,7 @@ async def test_undo_each_kind(tmp_path, kind):
     assert new["summary"] == out["confirmation"] and new["target"] == original["target"]
     # 되돌리기 행은 원래 행의 대상을 모두 적는다(목록 변경의 할 일 대상은 지켜보는 대상으로)
     assert new_targets == old_targets
-    assert ledger_after == ledger_before  # U6
+    assert ledger_after == ledger_before  # U6: 되돌리기는 원장을 건드리지 않는다
 
 
 async def test_undo_task_added_soft_deletes(tmp_path):
@@ -595,13 +595,7 @@ async def test_u6_undo_leaves_xp_ledger(tmp_path):
     """경험치는 그대로다: 완료로 쌓인 원장 행은 완료를 되돌려도 남고, 다시 완료해도 늘지 않는다(UNIQUE)."""
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         a = await _add(env)
-        done = await _apply(env, "complete_task", {"id": a})
-        env.conn.execute(  # 티켓 15가 쌓을 행을 꾸며 넣는다
-            "INSERT INTO status_xp_ledger (at, logical_date, source_kind, source_ref, amount, area, label) "
-            "VALUES ('2026-10-24T04:00:00.000000+00:00', '2026-10-24', 'task_done', ?, 10, 'health', '할 일 완료')",
-            (f"task:{a}",),
-        )
-        env.conn.commit()
+        done = await _apply(env, "complete_task", {"id": a})  # X1이 같은 트랜잭션에 쌓인다
         before = _ledger(env)
         status, _ = await undo(env, done["undo_id"])
         after_undo = _ledger(env)

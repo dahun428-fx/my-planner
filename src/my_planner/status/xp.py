@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Final
 
 # 9.1 경험치
@@ -21,6 +22,18 @@ XP_YEAR_REVIEW: Final = 50  # X8
 XP_REST_DAY: Final = 5  # X9
 XP_SECRETARY: Final = (5, 10)  # X10 비서가 주는 값
 SECRETARY_DAILY_MAX: Final = 3  # X10 하루 3회까지
+SECRETARY_REASON_MAX: Final = 60  # X10 `reason` 글자 수(10장)
+REST_DAY_MAX_DAYS: Final = 14  # X9 한 번에 보는 날 수(9.1)
+
+# 원장 `label`(상태창 "최근 경험치" 줄, 5.5). 제목은 넣지 않는다. X10은 비서가 준 사유(`reason`)를 쓴다
+LABEL_TASK: Final = "할 일 완료"  # X1, X2
+LABEL_CHECKIN_REPLY: Final = "회차 답"  # X3
+LABEL_CONDITION: Final = "컨디션 기록"  # X4
+LABEL_REVIEW_WEEK: Final = "주간 회고"  # X5
+LABEL_LADDER: Final = "사다리 점수"  # X6
+LABEL_WHEEL: Final = "영역 점수"  # X7
+LABEL_YEAR_REVIEW: Final = "연말 회고"  # X8
+LABEL_REST_DAY: Final = "쉬는 날"  # X9
 
 # 영역 이름(스펙 영역 6개, 표시 순서)
 AREA_LABELS: Final = {
@@ -58,6 +71,42 @@ def level_for(xp_total: int) -> int:
     while xp_threshold(level + 1) <= xp:
         level += 1
     return level
+
+
+def task_xp(biggest_cadence: str | None) -> int:
+    """X1/X2: 완료 순간 그 할 일이 든 우선순위 가운데 가장 큰 주기(없으면 X1)."""
+    return XP_TASK_PRIORITY[biggest_cadence] if biggest_cadence is not None else XP_TASK
+
+
+def level_up_to(before: int, after: int) -> int | None:
+    """경험치 합계가 `before`에서 `after`로 바뀌어 레벨이 올랐으면 새 레벨, 아니면 None."""
+    new = level_for(after)
+    return new if new > level_for(before) else None
+
+
+@dataclass
+class XpGain:
+    """한 차례(두뇌 답 하나, 즉시 갈래 요청 하나, 버튼 하나)가 **스스로** 쌓은 경험치와 그 쌓기가 넘긴 레벨(9.2).
+
+    원장에 한 줄을 쌓는 그 자리(`StatusRepo.grant`)에서 쌓기 직전·직후 합계로 동기적으로 적는다. 그래서 같은 두뇌
+    호출 사이에 끼어든 다른 갈래(4.3)의 경험치는 이 차례의 레벨 오름으로 세지 않는다.
+    """
+
+    gained: int = 0
+    level_up: int | None = None
+
+    def add(self, before: int, after: int) -> None:
+        self.gained += after - before
+        self.note(level_up_to(before, after))
+
+    def note(self, level: int | None) -> None:
+        """다른 차례가 알려 준 레벨 오름(예: 버튼이 부른 즉시 갈래 응답의 `xp.level_up`)을 합친다."""
+        if level is not None and (self.level_up is None or level > self.level_up):
+            self.level_up = level
+
+    def merge(self, other: XpGain) -> None:
+        self.gained += other.gained
+        self.note(other.level_up)
 
 
 def progress(xp_total: int) -> tuple[int, int, int]:

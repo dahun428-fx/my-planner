@@ -433,3 +433,53 @@ async def test_month_end_review_ladder(tmp_path):
     assert done.text == "기록했어요: 지금 6, 5년 뒤 8"
     assert {"period": "2026-11", "now": 6, "future": 8}.items() <= curve["ladder"][0].items()
     assert detail["state"] == "answered"
+
+
+async def test_week_of_xp(tmp_path):
+    """상태창 경험치 한 주(SP3-4 티켓 15, 9.1): 날마다 할 일 3개(X1), 저녁 체크인 답(X3, 일요일은 회고 묶음 X5),
+    컨디션 버튼(X4). 11/2는 쉬고 11/3 tick 뒤 쉬는 날(X9)."""
+    from datetime import date
+
+    from my_planner.bot.commands import status_text
+    from my_planner.clock import to_iso
+
+    async def tick_at(env, at):
+        env.clock.set(at)
+        env.parts.state.set("last_seen_at", to_iso(at - timedelta(minutes=1)))
+        await env.tick()
+
+    script = [FakeTurn([], "꾸민 답") for _ in range(40)]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 8, 0), script=script) as env:
+        for day in range(7):  # 10/26(월) ~ 11/1(일)
+            d = date(2026, 10, 26) + timedelta(days=day)
+            y, m, dd = d.year, d.month, d.day
+            weekend = day >= 5
+            await tick_at(env, kst(y, m, dd, 10 if weekend else 9, 0) + timedelta(seconds=30))
+            env.clock.set(kst(y, m, dd, 13, 0))
+            for n in range(3):
+                _, added = await env.action("add_task", {"title": f"꾸민 일 {day}-{n}", "areas": ["health"]})
+                status, body = await env.action("complete_task", {"id": added["result"]["id"]})
+                assert status == 200 and body["xp"]["gained"] == 10
+            await tick_at(env, kst(y, m, dd, 18 if weekend else 17, 0 if weekend else 30) + timedelta(seconds=30))
+            env.clock.set(kst(y, m, dd, 18, 30))
+            await env.telegram("오늘 괜찮았어")
+            await env.press(f"c:{d.isoformat()}:4")
+        status = await (await env.get("/status")).json()
+        ledger_sum = env.conn.execute("SELECT SUM(amount) FROM status_xp_ledger").fetchone()[0]
+        await env.telegram("/status")
+        telegram = env.bot.sent[-1][1]
+        kinds = dict(env.conn.execute(
+            "SELECT source_kind, COUNT(*) FROM status_xp_ledger GROUP BY source_kind"
+        ).fetchall())
+        # 11/2(월)는 아무것도 하지 않는다. 11/3 아침 tick의 하루 한 번 작업이 11/2를 쉬는 날로 본다
+        await tick_at(env, kst(2026, 11, 2, 9, 0) + timedelta(seconds=30))
+        await tick_at(env, kst(2026, 11, 3, 9, 0) + timedelta(seconds=30))
+        after = await (await env.get("/status")).json()
+
+    assert status["xp_total"] == 305 == 6 * (30 + 5 + 5) + (30 + 30 + 5)
+    assert status["level"] == 2 and ledger_sum == status["xp_total"]
+    assert kinds == {"task_done": 21, "checkin_reply": 6, "review_week": 1, "condition": 7}
+    assert telegram == status_text(status)
+    assert telegram.startswith("상태창\n레벨 2 · 경험치 155/200")
+    assert after["xp_total"] == 310
+    assert (after["recent_xp"][0]["label"], after["recent_xp"][0]["amount"]) == ("쉬는 날", 5)
