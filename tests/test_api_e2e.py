@@ -61,3 +61,38 @@ async def test_today_after_chat_and_checkin(tmp_path):
     assert dentist["group"] == "scheduled" and dentist["todo"]["scheduled_at"] == "2026-10-27T05:00:00Z"
     assert after["state"] == "missed"
     assert "물 마시기" not in str(today["todos"])  # 초안은 오늘 목록에 없다
+
+
+async def test_curve_and_status_read_model(tmp_path):
+    from curve_sql import area_scores, ladder
+
+    # 토요일 낮에 텔레그램으로 할 일을 만들고 이번 분기 우선순위로 올린다(가짜 두뇌)
+    add = ("add_task", {"title": "수채화 전시 준비", "areas": ["learning"]})
+    prio = ("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [1]})
+    script = [FakeTurn([add, prio], "분기 목표로 올렸어요")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=script) as env:
+        await env.telegram("수채화 전시 준비를 이번 분기 목표로")
+        c = env.conn
+        ladder(c, "2026-10", now=6, future=8)
+        for d in range(1, 11):  # 평균 3.4, 10일
+            c.execute(
+                "INSERT INTO conditions (date, score, note, recorded_at) VALUES (?, ?, NULL, ?)",
+                (f"2026-10-{d:02d}", (3, 3, 4, 4, 3, 4, 3, 4, 3, 3)[d - 1], "2026-10-11T00:00:00.000000+00:00"),
+            )
+        area_scores(c, "2026-Q3", health=6, career=5)
+        area_scores(c, "2026-Q4", health=4, career=5)
+        c.commit()
+        curve = await (await env.get("/curve?zoom=quarter")).json()
+        status = await (await env.get("/status")).json()
+
+    assert curve["areas"] == [
+        {"period": "2026-Q3", "scores": {"health": 6, "career": 5}},
+        {"period": "2026-Q4", "scores": {"health": 4, "career": 5}},
+    ]
+    assert curve["reassurance"] == [
+        {"period": "2026-10", "ladder_now": 6, "condition_average": 3.4, "condition_scaled": 6.0,
+         "days_logged": 10, "gap": 0.0}
+    ]
+    assert status["main_quests"][0]["title"] == "수채화 전시 준비"
+    assert (status["level"], status["xp_total"]) == (1, 0)
+    assert next(s for s in status["stats"] if s["area"] == "health")["debuff"] is True

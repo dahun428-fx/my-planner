@@ -19,10 +19,12 @@ from my_planner.api.models import (
     CheckinList,
     Conditions,
     Conversations,
+    Curve,
     Drafts,
     Messages,
     Priorities,
     SchemaBundle,
+    Status,
     Today,
     UiCatalog,
     Week,
@@ -30,12 +32,16 @@ from my_planner.api.models import (
     schema_bundle,
 )
 from my_planner.clock import logical_date, period_of, to_iso
+from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
+from my_planner.status.snapshot import status_snapshot
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
+from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.runs import RunsRepo
+from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.views import (
     condition_dict,
@@ -218,6 +224,56 @@ def get_conditions(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request
     if (to - from_).days + 1 > MAX_CONDITION_DAYS:
         raise _bad(f"기간은 {MAX_CONDITION_DAYS}일 이하여야 해요.")
     return dump(Conditions, conditions_view(ConditionsRepo(conn, deps.clock), from_, to))
+
+
+# --- 인생 곡선, 상태창 ---
+
+
+def _include_sensitive(request: web.Request) -> bool:
+    raw = request.query.get("include_sensitive")
+    if raw is None or raw == "false":
+        return False
+    if raw == "true":
+        return True
+    raise _bad("include_sensitive는 true 또는 false여야 해요.")
+
+
+def get_curve(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    zoom = request.query.get("zoom", "month")
+    if zoom not in ZOOMS:
+        raise _bad("zoom은 day, week, month, quarter, year 중 하나여야 해요.")
+    include_sensitive = _include_sensitive(request)
+    today = _today(deps)
+    curve = CurveRepo(conn, deps.clock)
+    earliest = curve.earliest_chapter_start()
+    from_, to = _query_date(request, "from"), _query_date(request, "to")
+    if from_ is None or to is None:
+        # 하나만 주면 다른 쪽은 그 기준일의 기본 범위에서 가져온다
+        base = to if from_ is None and to is not None else today
+        dfrom, dto = default_range(zoom, base, earliest)
+        from_, to = from_ or dfrom, to or dto
+    if from_ > to:
+        raise _bad("from은 to보다 늦을 수 없어요.")
+    try:
+        body = curve_view(
+            curve, ConditionsRepo(conn, deps.clock), zoom=zoom, from_=from_, to=to,
+            include_sensitive=include_sensitive, today=today,
+        )
+    except TooManyBuckets:
+        raise _bad("범위를 줄이거나 확대 단위를 키워 주세요") from None
+    except OverflowError:
+        raise _bad("범위가 맞지 않아요.") from None
+    return dump(Curve, body)
+
+
+def get_status(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    s = deps.settings
+    body = status_snapshot(
+        now=deps.clock.now(), tz=s.timezone, boundary=s.day_boundary, status=StatusRepo(conn, deps.clock),
+        curve=CurveRepo(conn, deps.clock), tasks=_tasks(conn, deps), conditions=ConditionsRepo(conn, deps.clock),
+        include_sensitive=_include_sensitive(request),
+    )
+    return dump(Status, body)
 
 
 # --- 답할 회차 ---
