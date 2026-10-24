@@ -211,7 +211,7 @@ D1이 없으면 승격이 돌지 않는다(첫 승격부터 워크플로 파일�
 ## 9. 전환 순서
 
 1. 이 스펙 머지(`main`).
-2. 전환 PR(base `main`, 마지막 `main` 대상 기능 PR): `vercel.json` 두 개(5.1), `ci.yml`(5.5), `promote.yml`(임시 트리거 포함), `sync-develop.yml`, 대시보드 `next.config.mjs` 포트 허용, `config.local.toml` 병합·`runtime.role`(5.2), `scripts/promote_check.py`와 테스트, `scripts/setup_dev.ps1`, `.gitignore`. 워크플로가 기본 브랜치의 파일로 돌기 때문에 처음 한 번은 `main`에 바로 넣는다.
+2. 전환 PR(base `main`, 마지막 `main` 대상 기능 PR): `vercel.json` 두 개(5.1), `ci.yml`(5.5), `promote.yml`(임시 트리거 포함), `sync-develop.yml`, 대시보드 `next.config.mjs` 포트 허용, `scripts/promote_check.py`와 테스트. 워크플로가 기본 브랜치의 파일로 돌기 때문에 처음 한 번은 `main`에 바로 넣는다. 개발용 BE 코드(`config.local.toml` 병합·`runtime.role`(5.2), `scripts/setup_dev.ps1`, `.gitignore`)는 그 뒤 따로 PR(base `develop`)로 넣는다(D5 전까지만 있으면 된다).
 3. `develop`을 그 `main`에서 만든다. 저장소 변수 `REQUIRE_STAGING_BE=false`.
 4. 코디네이터가 모든 스레드에 공지: 기능 PR은 `base: develop`을 명시, 브랜치는 `origin/develop`에서 딴다, 열려 있는 `main` 대상 기능 PR은 대상을 `develop`으로 바꾸고 `develop`에 다시 얹는다.
 5. D1 뒤 첫 develop 머지로 승격이 한 번 도는지 확인.
