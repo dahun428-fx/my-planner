@@ -1160,3 +1160,67 @@ def test_negative_tick_gap_is_clamped(tmp_path: Path) -> None:
     assert env.dip()["verify_elapsed_s"] == 300
     env.tick(-3)  # 시계가 뒤로 감
     assert env.dip()["verify_elapsed_s"] == 300
+
+
+# --- 고침 3회차 ------------------------------------------------------------------
+
+
+def test_db_put_back_after_failed_restore_reports_not_rolled_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    _schema_changed_db_and_backup(env)
+
+    def boom(src: Path, db: Path) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(updater_mod.dbfile, "restore", boom)
+    env.signal(FP)
+    env.tick(4)
+    assert env.notifier.gave_up_calls == [(FP, False, f"https://github.com/{REPO}/issues/17", True)]
+    assert any("DB" in c for c in env.server.comments[17])
+
+
+def test_install_failure_transient_wait_marks_ran_new_before_enabling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    py = str(updater_mod.venv_python(tmp_path))
+    env.shell.on(py, "-m", "pip", "install", "-e", returns=[(1, "error"), (0, "")])
+    seen: list[Any] = []
+    real_run = env.shell.run
+
+    def run(args: list[str], **kw: Any) -> tuple[int, str]:
+        if "Enable-ScheduledTask" in " ".join(args):
+            seen.append((env.dip() or {}).get("ran_new"))
+        return real_run(args, **kw)
+
+    env.shell.run = run  # type: ignore[method-assign]
+
+    def unreadable(db: Path) -> int:
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(updater_mod.dbfile, "schema_version", unreadable)
+    monkeypatch.setattr(updater_mod.Updater, "_schema", lambda self: 1)
+    env.tick()  # 머지 뒤 설치 실패 → 롤백 판단에서 DB를 못 읽음 → 기다리며 작업을 다시 켠다
+    dip = env.dip()
+    assert dip["phase"] == "rollback" and dip["refusals"] == 1
+    assert dip["ran_new"] is True
+    assert seen == [True]  # 켜기 전에 이미 적혀 있었다
+
+
+def test_keep_enabled_starts_when_task_state_unknown(tmp_path: Path) -> None:
+    env = make_env(tmp_path, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    env.signal(FP)
+    env.tick(4)
+    assert env.dip()["phase"] == "rollback_verify"
+    env.shell.on(*POWERSHELL, TASK_STATE.format(name="my-planner"), returns=(1, "error"))
+    env.signal("no_reply", kind="no_reply")
+    env.tick(5)  # 포기: 작업은 켜져 있지만 돌고 있는지 모름 → Enable+Start
+    assert env.dip() is None
+    assert "Enable-ScheduledTask" in env.cmds[-1] and "Start-ScheduledTask" in env.cmds[-1]

@@ -515,12 +515,15 @@ class Updater:
             if new not in bad:
                 self._store.kv_json_set("bad_shas", [*bad, new])
         rolled = ok = bool(dip.get("actions_done"))
+        put_back = False
         decision = dip.get("rollback_decision")
         if not ok and decision is None:
             refusal = self._rollback_refusal(dip)
             if refusal in TRANSIENT_REFUSALS:
                 dip["refusals"] = int(dip.get("refusals") or 0) + 1
                 if dip["refusals"] < MAX_TRANSIENT_REFUSALS:  # 아직 아무것도 안 건드렸다: 다음 tick에 다시
+                    if self._store.kv_json_get(TASK_FLAG) is True:
+                        dip["ran_new"] = True  # 켜면 새 코드가 쓴다: 나이 규칙이 그 기록을 진짜로 본다
                     self._store.kv_json_set(DIP, dip)
                     self._enable_if_medic_disabled()
                     log.warning("rollback_deferred %s (%d)", refusal, dip["refusals"])
@@ -553,11 +556,14 @@ class Updater:
                 ok = True
         except Exception as exc:  # noqa: BLE001 - 상태 기계가 끝까지 가야 한다
             log.warning("rollback_failed %s", type(exc).__name__)
-            self._undo_db_move(dip)  # 켜기 전에: DB 없이 BE를 띄우면 빈 DB를 새로 만든다
+            put_back = self._undo_db_move(dip)  # 켜기 전에: DB 없이 BE를 띄우면 빈 DB를 새로 만든다
         finally:
             self._enable_if_medic_disabled()
         if not ok:
-            self._give_up(dip, rolled_back=rolled)
+            if put_back:  # 옛 코드가 새 스키마 DB 위에서 돈다: "되돌려 둠"이라고 알리지 않는다
+                self._give_up(dip, rolled_back=False, note=DB_KEPT_TEXT)
+            else:
+                self._give_up(dip, rolled_back=rolled)
             return
         self._mark_rolled_back(dip)
         now = self._clock.now()
@@ -591,11 +597,11 @@ class Updater:
             return "db_too_old"  # 확인이 실패한 때의 나이: 그 사이 새 코드가 쓴 기록을 지우지 않는다
         return None
 
-    def _undo_db_move(self, dip: dict[str, Any]) -> None:
-        """복사 전에 실패했으면 `failed-<new>/`로 옮긴 DB를 제자리로(덮지 않는다). 최선만 한다."""
+    def _undo_db_move(self, dip: dict[str, Any]) -> bool:
+        """복사 전에 실패했으면 `failed-<new>/`로 옮긴 DB를 제자리로(덮지 않는다). 최선만 한다. 되돌렸으면 True."""
         failed = self._backups / f"failed-{dip['new_sha']}"
         if self._db.exists() or not (failed / self._db.name).exists():
-            return
+            return False
         for name in (self._db.name, *(self._db.name + s for s in dbfile.SIDE_SUFFIXES)):
             src, dest = failed / name, self._db.with_name(name)
             if src.exists() and not dest.exists():
@@ -604,6 +610,7 @@ class Updater:
                 except OSError as exc:
                     log.warning("undo_db_move_failed %s", type(exc).__name__)
         log.warning("rollback_db_put_back")
+        return self._db.exists()
 
     def _schema_changed(self, dip: dict[str, Any]) -> bool:
         before = dip.get("schema_before")
