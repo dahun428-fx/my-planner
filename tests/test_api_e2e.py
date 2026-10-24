@@ -346,3 +346,34 @@ async def test_curve_write_path(tmp_path):
     assert still_draft is not None and still_draft.status == "draft"
     assert after is None
     assert expired == ["milestone_drafts_expired"]
+
+
+async def test_seed_then_curve(tmp_path):
+    """시드 가져오기(12장) → 같은 루트로 BE → `/curve`, `/status`. 고정 자료는 꾸며 낸 내용."""
+    import io
+    import json
+    from pathlib import Path
+
+    from my_planner.clock import FakeClock
+    from my_planner.curve.seed import EXIT_OK, run_seed_life
+
+    fixture = Path(__file__).parent / "fixtures" / "life_seed_example.json"
+    seed = json.loads(fixture.read_text(encoding="utf-8"))
+    start = kst(2026, 10, 24, 13, 0)
+    out = io.StringIO()
+    assert run_seed_life(tmp_path, fixture, dry_run=False, out=out, clock=FakeClock(start)) == EXIT_OK
+    async with BeEnv.start(tmp_path, start=start) as env:
+        curve = await (await env.get("/curve?zoom=year")).json()
+        with_sensitive = await (await env.get("/curve?zoom=year&include_sensitive=true")).json()
+        status = await (await env.get("/status")).json()
+
+    assert [c["title"] for c in curve["chapters"]] == [c["title"] for c in seed["chapters"]]
+    shown = [m["title"] for m in curve["milestones"]]
+    assert shown == [seed["events"][i]["title"] for i in (0, 1, 2)]  # 민감·미확인·틀린 것은 없다
+    (sensitive,) = [m for m in with_sensitive["milestones"] if m["sensitive"]]
+    assert sensitive["title"] == seed["events"][3]["title"]
+    assert len(with_sensitive["milestones"]) == 4
+    assert len(status["titles"]) == 2  # 고점 1 + 전환점 1
+    assert {t["kind"] for t in status["titles"]} == {"high", "turning_point"}
+    assert status["xp_total"] == 0
+    assert curve["ladder"] == []
