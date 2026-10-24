@@ -70,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pushed", choices=["true", "false"], required=True)
     p.add_argument("--out", required=True)
     args = p.parse_args(argv)
+    if gh.no_token():
+        return 0
     out = Path(args.out)
     got = publish(
         gh.from_env(), args.issue, args.branch, pushed=args.pushed == "true",

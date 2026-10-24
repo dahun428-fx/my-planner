@@ -95,6 +95,9 @@ def _int_env(name: str, default: int) -> int:
 
 
 def main() -> int:
+    if gh.no_token():  # 시크릿 전: 뒤 작업이 모두 건너뛰게 'go'가 아닌 결정을 낸다
+        gh.set_output(decision="stop_no_token", issue=os.environ.get("ISSUE", ""))
+        return 0
     issue = int(os.environ["ISSUE"])  # 숫자가 아니면 여기서 멈춘다
     mode: Mode = "merge_only" if os.environ.get("MODE") == "merge_only" else "full"
     api = gh.from_env()

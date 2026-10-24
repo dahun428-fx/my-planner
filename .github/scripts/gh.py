@@ -179,6 +179,17 @@ class Api:
         return [r for r in runs or [] if isinstance(r, dict) and r.get("name") == CI_NAME]
 
 
+NO_TOKEN_TEXT = "REPAIR_PAT not set; auto-repair not set up yet"
+
+
+def no_token() -> bool:
+    """`REPAIR_PAT`이 비었으면(시크릿을 넣기 전) 한 줄을 찍고 True. 진입점은 아무것도 안 하고 0으로 끝난다."""
+    if os.environ.get("REPAIR_PAT", ""):
+        return False
+    print(NO_TOKEN_TEXT)
+    return True
+
+
 def from_env() -> Api:
     """워크플로 단계에서: `REPAIR_PAT`(쓰기 신원, 스펙 4.2)와 `GITHUB_REPOSITORY`."""
     token = os.environ.get("REPAIR_PAT", "")

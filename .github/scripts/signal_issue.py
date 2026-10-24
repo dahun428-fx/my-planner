@@ -75,6 +75,8 @@ def ensure_issue(
 
 
 def main() -> int:
+    if gh.no_token():
+        return 0
     name = os.environ.get("GITHUB_EVENT_NAME", "")
     with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as f:
         event = json.load(f)

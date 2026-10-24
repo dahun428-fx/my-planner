@@ -120,10 +120,13 @@ class Watcher:
             self._record(sig, records, rows, now)
         self._sync(now, health)
         self._notifier.flush_spill()  # 쌓인 알림은 다음 아침 회차 뒤 첫 tick에(스펙 6장)
-        self._web.tick()  # 5.1: 웹 장애의 해결 확인
+        if self._cfg.watch_incidents:  # 웹 확인은 GitHub 이슈·상태를 부른다(medic-dev는 끔)
+            self._web.tick()  # 5.1: 웹 장애의 해결 확인
 
     def heartbeat(self) -> None:
         """`enabled = false`일 때: 감시 없이 하트비트만(죽은 것으로 보이지 않게)."""
+        if not self._cfg.heartbeat:
+            return
         try:
             self._heartbeat(self._clock.now(), self._store.kv_get("deployed_sha") or "unknown")
         except GitHubUnavailable as exc:
@@ -243,10 +246,13 @@ class Watcher:
     # --- GitHub ----------------------------------------------------------
 
     def _sync(self, now: datetime, health: dict[str, Any] | None) -> None:
+        if not self._cfg.watch_incidents:  # medic-dev: 개발용 PAT에는 Issues 권한이 없다. 하트비트도 이슈다
+            return
         sha = self._store.kv_get("deployed_sha") or "unknown"
         try:
             try:
-                self._heartbeat(now, sha)
+                if self._cfg.heartbeat:
+                    self._heartbeat(now, sha)
             except GitHubUnavailable as exc:
                 if not exc.rejected:
                     raise  # 연결·인증·한도·5xx: 이번 회차의 GitHub 일을 멈춘다

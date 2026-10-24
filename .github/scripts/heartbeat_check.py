@@ -116,6 +116,8 @@ def _pat_notices(
 
 
 def main() -> int:
+    if gh.no_token():
+        return 0
     api = gh.from_env()
     msgs = check(
         api, now=datetime.now(UTC), pat_expires=os.environ.get("PAT_EXPIRES"),

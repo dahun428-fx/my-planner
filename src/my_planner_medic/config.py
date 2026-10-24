@@ -46,6 +46,10 @@ class MedicConfig:
     branch: str = "main"  # 업데이터가 따라가는 브랜치(스테이징 인스턴스는 develop)
     be_task_name: str = "my-planner"  # 업데이터가 끄고 켜는 BE 작업 스케줄러 작업
     db_restore_max_age_minutes: int = 60  # 배포 뒤 이보다 늦은 확인 실패에는 바뀐 DB를 되돌리지 않는다
+    # medic-dev(릴리스 흐름 스펙 5.3): config.medic.local.toml에서만 바꾼다. 기본값이 운영 값이다
+    watch_incidents: bool = True  # 끄면 이슈 동기화·Actions 이슈 가져오기·ci:main 닫기·결과 알림을 모두 하지 않는다
+    heartbeat: bool = True  # 끄면 하트비트 이슈를 쓰지 않는다
+    post_commit_status: bool = False  # 켜면 확인이 끝난 머리 SHA에 `staging/be` 커밋 상태를 올린다
 
     def __repr__(self) -> str:
         parts = []
@@ -98,6 +102,8 @@ def load_config(root: Path, environ: Mapping[str, str] | None = None) -> MedicCo
     api_enabled = bool(api.get("enabled", True)) and token is not None and (
         len(token) >= API_TOKEN_MIN_CHARS
     )
+    # [runtime] role = "dev"(개발용 체크아웃): 개발용 .env에 운영 텔레그램 값이 잘못 들어가도 알리지 않는다
+    dev = base.get("runtime", {}).get("role") == "dev"
     known = {f.name for f in fields(MedicConfig)}
     overrides = {k: v for k, v in medic.items() if k in known and k not in _RESERVED}
     return MedicConfig(
@@ -107,8 +113,8 @@ def load_config(root: Path, environ: Mapping[str, str] | None = None) -> MedicCo
         api_enabled=api_enabled,
         api_token=token,
         github_token=secret("MEDIC_GITHUB_TOKEN"),
-        telegram_token=secret("TELEGRAM_BOT_TOKEN"),
-        owner_telegram_id=secret("OWNER_TELEGRAM_ID"),
+        telegram_token=None if dev else secret("TELEGRAM_BOT_TOKEN"),
+        owner_telegram_id=None if dev else secret("OWNER_TELEGRAM_ID"),
         timezone=base.get("timezone", "Asia/Seoul"),
         day_boundary=_parse_time(base.get("day_boundary", "04:00")),
         schedule=base.get("schedule", {}),

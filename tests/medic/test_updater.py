@@ -1319,3 +1319,139 @@ def test_pinned_deploy_rollback_restores_pinned_medic_and_keeps_revert_armed(tmp
     assert json.loads((tmp_path / "state" / "medic-last-good.json").read_text()) == {"sha": pinned, "new_sha": NEW}
     assert env.has(f"checkout {pinned} -- src/my_planner_medic")  # 롤백이 되돌린 medic을 다시 디스크에
     assert env.store.kv_get("medic_pinned") == pinned
+
+
+# --- medic-dev: `staging/be` 커밋 상태 (릴리스 흐름 스펙 6.3) ---------------------
+
+
+def _statuses(env: Env) -> list[tuple[str, str]]:
+    return [(sha, body["state"]) for sha, body in env.server.posted_statuses]
+
+
+def _verify_through(env: Env, ticks: int = 3) -> None:
+    for _ in range(ticks):  # 15분 동안 깨끗
+        env.tick(5)
+
+
+def test_staging_be_success_after_verify(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    deployed(env)
+    assert _statuses(env) == []  # 확인이 끝나기 전에는 올리지 않는다
+    _verify_through(env)
+    assert env.dip() is None
+    assert _statuses(env) == [(NEW, "success")]
+    body = env.server.posted_statuses[0][1]
+    assert body["context"] == "staging/be"
+    assert body["description"]
+    assert TOKEN not in json.dumps(body)
+
+
+def test_staging_be_not_posted_unless_enabled(tmp_path: Path) -> None:
+    env = make_env(tmp_path)  # post_commit_status 기본값 False
+    deployed(env)
+    _verify_through(env)
+    assert env.dip() is None
+    assert env.http.calls("POST", f"/repos/{REPO}/statuses/{NEW}") == []
+
+
+def test_staging_be_failure_on_rollback(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.health(503)
+    env.tick()
+    assert env.has(f"reset --hard --quiet {PREV}")
+    env.tick(5)
+    assert _statuses(env) == [(NEW, "failure")]
+    assert env.server.posted_statuses[0][1]["context"] == "staging/be"
+    for _ in range(3):  # 롤백 확인이 끝나도 PREV에는 아무것도 올리지 않는다
+        env.tick(5)
+    assert _statuses(env) == [(NEW, "failure")]
+
+
+def test_staging_be_posted_once_per_sha_across_restart(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    deployed(env)
+    _verify_through(env)
+    assert _statuses(env) == [(NEW, "success")]
+    gh = GitHub(env.http, TOKEN, REPO)
+    again = Updater(env.cfg, env.store, gh, env.http, env.updater._tasks, env.updater._git, env.shell,
+                    env.watcher, env.notifier, env.clock, sleep=lambda s: env.clock.advance(seconds=s))
+    again.recover_on_start()  # medic 재시작
+    for _ in range(3):
+        env.clock.advance(minutes=5)
+        again.tick()
+    assert _statuses(env) == [(NEW, "success")]
+
+
+def test_staging_be_for_fast_forward_without_be_changes(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.changed("docs/notes.md", "web/app/src/x.ts")
+    env.tick()
+    assert env.has(f"merge --ff-only --quiet {NEW}")
+    assert not env.has("Disable-ScheduledTask")  # 재시작 없음
+    assert _statuses(env) == []  # 확인 창이 지나기 전에는 올리지 않는다
+    env.tick(5)
+    assert _statuses(env) == []
+    env.tick(5)
+    env.tick(1)
+    assert _statuses(env) == [(NEW, "success")]
+    _verify_through(env)
+    assert _statuses(env) == [(NEW, "success")]
+
+
+def test_staging_be_for_fast_forward_fails_on_unhealthy_or_new_fingerprint(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.changed("docs/notes.md")
+    env.tick()
+    env.signal(FP)  # 확인 창 안에 새 오류 지문
+    env.tick(5)
+    assert _statuses(env) == [(NEW, "failure")]
+    assert not env.has("reset --hard")  # 재시작한 배포가 아니므로 롤백할 것이 없다
+
+
+def test_staging_be_for_fast_forward_unhealthy(tmp_path: Path) -> None:
+    env = make_env(tmp_path, post_commit_status=True)
+    env.changed("docs/notes.md")
+    env.tick()
+    env.health(503)
+    env.tick(5)
+    assert _statuses(env) == [(NEW, "failure")]
+
+
+def test_staging_be_403_does_not_stop_tick(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    env = make_env(tmp_path, post_commit_status=True)
+    env.http.queue("POST", f"/repos/{REPO}/statuses/{NEW}", FakeResponse(403, {"message": "Resource not accessible"}))
+    deployed(env)
+    _verify_through(env)  # 예외 없이 끝나고 배포 상태는 정리된다
+    assert env.dip() is None
+    assert env.store.kv_get("deployed_sha") == NEW
+    assert _statuses(env) == []
+    assert any("staging_be_post_failed" in r.message and "auth" in r.message for r in caplog.records)
+    assert TOKEN not in caplog.text
+    env.http.clear("POST", f"/repos/{REPO}/statuses/{NEW}")
+    env.tick(5)  # 다음 tick에 다시 해 본다
+    assert _statuses(env) == [(NEW, "success")]
+    env.tick(5)
+    assert _statuses(env) == [(NEW, "success")]
+
+
+def _issue_requests(env: Env) -> list[Any]:
+    return [r for r in env.http.requests if "/issues" in r.path or "/pulls" in r.path]
+
+
+def test_watch_incidents_false_updater_makes_no_issue_calls(tmp_path: Path) -> None:
+    env = make_env(tmp_path, watch_incidents=False, repairs=[17])
+    env.incident(FP, issue=17)
+    deployed(env)
+    _verify_through(env)  # 확인 통과: 이슈 닫기·결과 알림 없음
+    assert env.store.get(FP).state == "resolved"
+    assert _issue_requests(env) == []
+    assert env.notifier.fixed_calls == []
+
+
+def test_watch_incidents_false_rollback_makes_no_issue_calls(tmp_path: Path) -> None:
+    env = make_env(tmp_path, watch_incidents=False)
+    env.health(503)
+    env.tick()  # 사람 커밋 롤백: 범위를 적은 이슈를 열지 않는다
+    assert env.has(f"reset --hard --quiet {PREV}")
+    assert _issue_requests(env) == []

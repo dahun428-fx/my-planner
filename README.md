@@ -150,6 +150,23 @@ Get-CimInstance Win32_Process | Where-Object {
 
 실행기(`scripts\medic_boot.py`) 자체가 배포로 바뀌어도 이미 떠 있는 실행기는 그대로입니다. 다음 로그온이나 위 절차로 작업을 다시 시작하면 새 실행기가 뜹니다. medic을 `enabled = false`로 꺼 두어도 시작할 때 끊긴 배포의 되돌림은 끝까지 하고(`my-planner` 작업이 꺼진 채 남지 않게), 그 뒤로는 하트비트만 보냅니다.
 
+### 개발용 medic (medic-dev)
+
+개발용 체크아웃(`E:\my-planner-dev`, `develop`)에서 `scripts\setup_dev.ps1`을 실행하면 `my-planner-dev`와 함께 `my-planner-medic-dev` 작업이 등록됩니다(운영 `my-planner-medic`과 같은 템플릿, 이름·경로만 다름). medic-dev는 `develop` 머리를 배포하고, 확인 창(`verify_minutes`, 30분) 동안 `/health`가 정상이고 새 오류 지문이 없으면 그 커밋에 `staging/be` 커밋 상태 `success`를 올립니다. 확인 실패나 롤백이면 `failure`입니다. BE 파일이 안 바뀐 커밋(웹·문서만)도 재시작 없이 같은 창을 거쳐 올립니다. `promote.yml`이 이 상태를 기다립니다.
+
+설정은 Git에 넣지 않는 `config.medic.local.toml`(스크립트가 없을 때만 만듭니다)이 `config.medic.toml` 위에 겹쳐 읽습니다.
+
+```toml
+branch = "develop"
+be_task_name = "my-planner-dev"
+verify_minutes = 30
+watch_incidents = false     # 이슈 동기화·Actions 이슈 가져오기·ci:main 닫기·결과 알림 없음(개발용 PAT에 Issues 권한이 없음)
+heartbeat = false           # 하트비트 이슈 없음
+post_commit_status = true   # staging/be 올림
+```
+
+개발용 `.env`에는 개발용 PAT(`MEDIC_GITHUB_TOKEN`: Contents 읽기, Actions 읽기, Commit statuses 쓰기)를 손으로 넣습니다. `config.local.toml`이 `[runtime] role = "dev"`이면 medic은 텔레그램 값을 읽어도 쓰지 않습니다.
+
 ## API 열기
 
 운영 앱이 쓰는 API(`/api/v1/*`)는 BE가 `127.0.0.1:8787`에서만 엽니다. 폰과 다른 기기에서는 Tailscale `serve`로 **내 tailnet 안에만** 엽니다.

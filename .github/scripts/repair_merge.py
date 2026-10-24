@@ -165,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--attempt", default="")
     p.add_argument("--result", default="")
     args = p.parse_args(argv)
+    if gh.no_token():
+        return 0
     api = gh.from_env()
     if args.action == "settle":
         attempt = int(args.attempt) if args.attempt.isdigit() else None

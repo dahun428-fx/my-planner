@@ -24,6 +24,9 @@ kv 키:
 - `deployed_sha`(성공 → new, 롤백 → prev), `bad_shas`(list), `deploy_deferred` `{since}`, `suppress_until`(ISO),
   `deploy_retry` `{sha, until}`(머지 전에 멈춘 배포는 같은 커밋을 한 시간 뒤에),
   `be_task_disabled_by_medic`(bool), `issue_ops`(못 한 GitHub 라벨·닫기 일), `medic_pinned`(09가 씀).
+- medic-dev `staging/be`(릴리스 흐름 스펙 6.3, `post_commit_status`가 켜졌을 때만): `staging_be_pending`(아직 못 올린
+  `[{sha, state}]`), `staging_be_posted`(올린 `{sha: state}`, 최근 20개. 같은 SHA·상태는 다시 올리지 않는다),
+  `staging_ff`(재시작 없이 빨리감기만 한 머리의 확인 창 `{sha, window_from, elapsed_s, last_tick_at}`).
 """
 
 from __future__ import annotations
@@ -75,6 +78,15 @@ TASK_FLAG = "be_task_disabled_by_medic"
 RETRY = "deploy_retry"  # 머지 전에 멈춘 배포: 같은 커밋은 한 시간 뒤에 다시(BE를 5분마다 껐다 켜지 않게)
 RETRY_AFTER = timedelta(hours=1)
 ISSUE_OPS = "issue_ops"
+STAGING_CONTEXT = "staging/be"  # scripts/promote_check.py의 STAGING_CONTEXT와 같다
+STAGING_PENDING = "staging_be_pending"
+STAGING_POSTED = "staging_be_posted"
+STAGING_FF = "staging_ff"  # BE 파일이 안 바뀌어 재시작 없이 빨리감기한 머리의 확인 창
+STAGING_KEEP = 20
+STAGING_TEXT = {
+    "success": "medic-dev: 배포 뒤 헬스 정상, 새 오류 지문 없음",
+    "failure": "medic-dev: 확인 실패 또는 배포 롤백",
+}
 DIRTY_TEXT = "작업 폴더에 손으로 고친 파일이 있어 새 버전을 배포하지 않았어요. PC에서 정리해 주세요."
 FF_TEXT = "노트북의 커밋이 원격과 갈라져 새 버전을 배포하지 못했어요. PC에서 git 상태를 확인해 주세요."
 BLOCKED_TEXT = "새 버전을 배포하려 했지만 비서를 잠시 멈추지 못해 배포하지 않았어요. 한 시간 뒤 다시 해 볼게요."
@@ -149,6 +161,7 @@ class Updater:
     def tick(self) -> None:
         self._reenable_if_flagged()
         self._flush_issue_ops()
+        self._flush_staging()
         dip = self._store.kv_json_get(DIP)
         try:
             if isinstance(dip, dict):
@@ -158,6 +171,7 @@ class Updater:
                     self.recover_on_start()
                 return
             self._refresh_suppression(self._clock.now())
+            self._staging_ff_tick()
             self._check()
         except GitError as exc:
             log.warning("updater_git_failed %s", exc)
@@ -251,6 +265,10 @@ class Updater:
             return
         self._store.kv_set("deployed_sha", new)
         now = self._clock.now()
+        if self._cfg.post_commit_status:  # 재시작이 없어도 그 머리 SHA의 `staging/be`가 필요하다(승격이 본다)
+            self._store.kv_json_set(STAGING_FF, {
+                "sha": new, "window_from": iso_utc(now), "elapsed_s": 0, "last_tick_at": iso_utc(now),
+            })
         for inc in self._by_issue(repairs):
             if inc.part == "be":
                 self._resolve(inc, now)
@@ -299,6 +317,7 @@ class Updater:
         }
         self._store.kv_json_set(DIP, dip)
         self._store.kv_delete("deploy_deferred")
+        self._store.kv_delete(STAGING_FF)  # 새 머리가 왔다: 앞 머리의 확인 창은 상태를 올리지 않고 버린다(스펙 6.3)
         self._watcher.suppressed = True
         self._store.kv_json_set(TASK_FLAG, True)
         merged = ok = rollback = False
@@ -462,12 +481,14 @@ class Updater:
                 if inc is not None and inc.state != "resolved":
                     self._resolve(inc, now)
             self.self_updated = medic_changed
+            self._queue_staging(new, "success")
             log.info("verify_ok")
         else:
             log.info("rollback_verify_ok")
         dbfile.prune(self._backups, "pre-deploy-*.db", self._cfg.keep_pre_deploy)
         dbfile.prune(self._backups, "failed-*", self._cfg.keep_failed)
         self._store.kv_delete(DIP)
+        self._flush_staging()
 
     def _await_health(self, *, allow_sleep: bool = True) -> str:
         """`/health`가 3분 안에 `ok`(코드 밖 사유만 있는 `degraded` 포함)면 `"ok"`, 아니면 `"fail"`.
@@ -520,6 +541,7 @@ class Updater:
             bad = self._bad_shas()
             if new not in bad:
                 self._store.kv_json_set("bad_shas", [*bad, new])
+            self._queue_staging(new, "failure")  # 올리는 일은 다음 tick 처음에(롤백 도중에 네트워크를 기다리지 않는다)
         rolled = ok = bool(dip.get("actions_done"))
         put_back = False
         decision = dip.get("rollback_decision")
@@ -689,6 +711,8 @@ class Updater:
             if inc is None:
                 continue
             self._store.set_state(fp, "open", detail={**inc.detail, "rollback_range": rng})
+            if not self._cfg.watch_incidents:
+                continue  # medic-dev: GitHub 이슈를 열지 않는다
             inc = self._store.get(fp)
             assert inc is not None
             body = issue_body(inc, inc.detail.get("rows") or [], None, sha)
@@ -721,6 +745,8 @@ class Updater:
                 self._queue_op({"op": "gave_up", "n": n})
                 if note:
                     self._queue_op({"op": "comment", "n": n, "body": note})
+            if not self._cfg.watch_incidents:
+                continue  # medic-dev: 결과 알림 없음(텔레그램 없음)
             try:
                 self._notifier.gave_up(fp, rolled_back, self._gh.issue_url(n) if n is not None else "", direct=True)
             except Exception as exc:  # noqa: BLE001 - 상태 기계가 끝까지 가야 한다
@@ -737,6 +763,88 @@ class Updater:
         self._flush_issue_ops()
         log.warning("updater_gave_up rolled_back=%s", rolled_back)
 
+    # --- medic-dev: `staging/be` (릴리스 흐름 스펙 6.3) ------------------------------
+
+    def _queue_staging(self, sha: str, state: str) -> None:
+        """올릴 상태를 kv에 적는다(`post_commit_status`가 꺼져 있으면 하지 않는다). 같은 SHA·상태는 한 번만."""
+        if not self._cfg.post_commit_status:
+            return
+        posted = self._store.kv_json_get(STAGING_POSTED)
+        if isinstance(posted, dict) and posted.get(sha) == state:
+            return
+        pending = self._store.kv_json_get(STAGING_PENDING)
+        items = [x for x in (pending if isinstance(pending, list) else []) if isinstance(x, dict)]
+        if not any(x.get("sha") == sha and x.get("state") == state for x in items):
+            items.append({"sha": sha, "state": state})
+            self._store.kv_json_set(STAGING_PENDING, items)
+
+    def _flush_staging(self) -> None:
+        """못 올린 상태를 올린다. 실패(403·네트워크)는 종류만 로그에 남기고 다음 tick에 다시 한다. 틱을 멈추지 않는다."""
+        pending = self._store.kv_json_get(STAGING_PENDING)
+        if not self._cfg.post_commit_status or not isinstance(pending, list) or not pending:
+            return
+        posted = self._store.kv_json_get(STAGING_POSTED)
+        done: dict[str, str] = {str(k): str(v) for k, v in posted.items()} if isinstance(posted, dict) else {}
+        left: list[Any] = []
+        for item in pending:
+            sha, state = str(item.get("sha", "")), str(item.get("state", ""))
+            if not sha or state not in STAGING_TEXT:
+                continue
+            if done.get(sha) == state:
+                continue
+            try:
+                self._gh.post_status(sha, state, STAGING_CONTEXT, STAGING_TEXT[state])
+            except GitHubUnavailable as exc:
+                log.warning("staging_be_post_failed %s (%d)", exc.kind, exc.status)
+                left.append(item)
+                continue
+            except Exception as exc:  # noqa: BLE001 - 상태 올리기 때문에 업데이터가 멈추면 안 된다
+                log.warning("staging_be_post_failed %s", type(exc).__name__)
+                left.append(item)
+                continue
+            done.pop(sha, None)  # 가장 최근에 올린 것이 뒤로 가게
+            done[sha] = state
+            log.info("staging_be_posted %s", state)
+        self._store.kv_json_set(STAGING_POSTED, dict(list(done.items())[-STAGING_KEEP:]))
+        if left:
+            self._store.kv_json_set(STAGING_PENDING, left)
+        else:
+            self._store.kv_delete(STAGING_PENDING)
+
+    def _staging_ff_tick(self) -> None:
+        """재시작 없이 빨리감기만 한 머리: `verify_minutes` 동안 헬스 정상·새 오류 지문 없음이면 `success`, 아니면 `failure`.
+
+        배포가 아니므로 롤백할 것이 없다. 잠들었다 깨면 창을 다시 시작한다(6단계와 같은 규칙).
+        """
+        w = self._store.kv_json_get(STAGING_FF)
+        if not isinstance(w, dict) or not self._cfg.post_commit_status:
+            return
+        sha, now = str(w.get("sha", "")), self._clock.now()
+        last = _parse(w.get("last_tick_at")) or now
+        gap = max(0.0, (now - last).total_seconds())
+        w["last_tick_at"] = iso_utc(now)
+        if gap > 2 * self._cfg.deploy_interval_s:
+            log.info("staging_ff_sleep_detected gap=%d", int(gap))
+            w.update(window_from=iso_utc(now), elapsed_s=0)
+            self._store.kv_json_set(STAGING_FF, w)
+            return
+        health = self._await_health(allow_sleep=True)
+        if health == "sleep":
+            w.update(window_from=iso_utc(self._clock.now()), elapsed_s=0)
+            self._store.kv_json_set(STAGING_FF, w)
+            return
+        w["elapsed_s"] = int(w.get("elapsed_s") or 0) + int(gap)
+        if health == "fail" or self._failure({"phase": "ff", "window_from": w.get("window_from")}) is not None:
+            verdict = "failure"
+        elif w["elapsed_s"] >= self._cfg.verify_minutes * 60:
+            verdict = "success"
+        else:
+            self._store.kv_json_set(STAGING_FF, w)
+            return
+        self._queue_staging(sha, verdict)
+        self._store.kv_delete(STAGING_FF)
+        self._flush_staging()
+
     # --- 장애·이슈 ------------------------------------------------------------
 
     def _by_issue(self, numbers: list[int]) -> list[Incident]:
@@ -745,7 +853,7 @@ class Updater:
 
     def _resolve(self, inc: Incident, now: datetime) -> None:
         self._store.set_state(inc.fingerprint, "resolved", resolved_at=iso_utc(now))
-        if inc.issue_number is None:
+        if inc.issue_number is None or not self._cfg.watch_incidents:  # medic-dev: 이슈도 결과 알림도 없다
             return
         self._queue_op({"op": "close", "n": inc.issue_number})
         try:
@@ -760,6 +868,8 @@ class Updater:
         self._flush_issue_ops()
 
     def _queue_op(self, op: dict[str, Any]) -> None:
+        if not self._cfg.watch_incidents:
+            return
         ops = self._store.kv_json_get(ISSUE_OPS)
         self._store.kv_json_set(ISSUE_OPS, [*(ops if isinstance(ops, list) else []), op])
 
