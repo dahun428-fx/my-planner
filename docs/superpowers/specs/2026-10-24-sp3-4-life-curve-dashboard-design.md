@@ -1,6 +1,6 @@
 # SP3-4 HTTP API · 인생 곡선 · 상태창 · 웹 대시보드 상세 설계
 
-- 상태: 초안 v2 (문서 리뷰 반영), Dahun 검토 대기
+- 상태: 초안 v3 (문서 리뷰, 운영 앱 스레드 승인 반영), Dahun 검토 대기
 - 작성일: 2026-10-24
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP1 비서 코어](2026-10-23-sp1-secretary-core-design.md) (v4)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md), 결정 기록: [`docs/adr/`](../../adr/) (이번에 [0007](../../adr/0007-http-api-inside-be-single-writer.md), [0008](../../adr/0008-dashboard-on-vercel-browser-to-be-over-tailscale.md) 추가)
@@ -45,7 +45,7 @@
 | 인생 곡선: 챕터, 사건, 사다리 점수, 영역 점수, 안심 보기 | 과거 그래프 인터뷰 (시드 가져오기로 대신, 12장) |
 | 상태창: 레벨, 경험치, 스탯, 디버프, 퀘스트, 칭호, 텔레그램 `/status` | 텔레그램 차트 이미지 (대시보드로 대신, 17장 미결 8) |
 | 월·분기·연 회고 단계 (주간 회고 위에 얹는다, 새 회차 종류 없음) | 별도 월간·분기·연간 회고 회차 |
-| 두뇌 도구 10개 + 앱 전용 화면 도구 3개 | 반복 할 일 (SP1과 같이 나중) |
+| 두뇌 도구 10개 + 앱 전용 도구 6개(화면 3, 카드 3) | 반복 할 일 (SP1과 같이 나중) |
 | 시드 가져오기 CLI `seed-life` | 시드 파일 내용 (개인 정보, 저장소에 넣지 않음) |
 | 웹 대시보드 화면 4개 (Vercel, 읽기 전용) | 대시보드에서 쓰기 |
 
@@ -60,7 +60,7 @@ SP1의 S0~S6에 이어 번호를 붙인다. 구현 계획의 첫 작업이고, �
 | S9 | Vercel 출처(`https://*.vercel.app`)의 페이지가 Tailscale 주소(`*.ts.net`, 100.64.0.0/10)로 `fetch`할 때: Chrome의 Private/Local Network Access 사전 요청(`Access-Control-Request-Private-Network`)과 권한 창, iOS Safari 동작 | BE가 사전 요청에 `Access-Control-Allow-Private-Network: true`로 답한다(기본 구현에 포함). 권한 창은 사용자 안내 문서에 적는다 |
 | S10 | 웹 푸시: `pywebpush`로 VAPID 서명 푸시를 보내 Android Chrome과 iOS(홈 화면에 추가한 PWA, iOS 16.4 이상)에서 받는다. Windows에서 `pywebpush`가 설치되고 돈다 | iOS 구독이 안 되면 그 구독은 D4가 처리한다(404/410이면 끄고, 받는 구독이 하나도 없으면 텔레그램으로 대체). 주 통로는 기기별 설정이 아니므로(6.4.9) 기기마다 바꾸지 않는다 |
 | S11 | Agent SDK `include_partial_messages=True`로 글 조각(`StreamEvent`)을 받고, `resume=<session>` + `fork_session=True`로 회차 세션을 다른 통로에서 갈라 이어 간다 | 글 조각이 안 되면 두뇌 답 전체를 `text-delta` 하나로 보낸다. 가르기가 안 되면 SP1의 resume 실패 대체 경로(새 세션 + 회차 본문 + 원문 기록 20개)를 쓴다 |
-| S12 | S2 재확인: 도구가 12개에서 22개(앱 대화는 25개)로 늘어도 기본 도구가 하나도 보이지 않고 `mcp__planner__*`만 호출된다 | SP1 S2의 대안(PreToolUse 훅) |
+| S12 | S2 재확인: 도구가 12개에서 22개(앱 대화는 28개)로 늘어도 기본 도구가 하나도 보이지 않고 `mcp__planner__*`만 호출된다 | SP1 S2의 대안(PreToolUse 훅) |
 
 ## 4. 구조
 
@@ -136,6 +136,7 @@ flowchart LR
 |---|---|---|
 | `tasks`, `task_areas`, `task_events`, `priorities`, `conditions`, `curve_*`, `app_cards`, `tool_events_log` | 도구 함수 | 두뇌 갈래(두뇌가 부름) 또는 즉시 갈래(`apply_action`) |
 | `activity` | 위 변경과 같은 트랜잭션(`tools/activity.py`) | 변경을 일으킨 갈래 |
+| `pending_confirms` | 만들기: 도구 함수(10.1) 또는 `/actions`. 확인·거절: `apply_action`(앱 `/actions`의 `confirm_token`, 텔레그램 확인 버튼). 만료: 하루 한 번 작업 | 만든 갈래 / 즉시 갈래 |
 | `status_xp_ledger` X1, X2, X4, X6, X7, X10 | 그 변경을 쓰는 도구 함수, 같은 트랜잭션 | 변경을 일으킨 갈래 |
 | `status_xp_ledger` X3, X5, X8, `runs.answered_at`·`answered_via` | 디스패처의 답 판정 `mark_answered(run, channel)`(7.5 M3, 6.4.5), 한 트랜잭션 | 메시지면 두뇌 갈래, 버튼·`/actions`면 즉시 갈래 |
 | `status_xp_ledger` X9, 할 일·사건·챕터 초안 만료, `api_idempotency` 정리 | 하루 한 번 작업이 `apply_action`을 부른다(`actor = secretary`, `channel = scheduler`) | 즉시 갈래 |
@@ -249,10 +250,25 @@ CREATE TABLE api_idempotency (
     conversation_id INTEGER NULL,
     at              TEXT NOT NULL
 );
+
+CREATE TABLE pending_confirms (            -- 확인을 기다리는 변경(6.4.2 needs_confirm, 10.1 회차 차례의 확인)
+    token           TEXT PRIMARY KEY,      -- 'ct_' + secrets.token_urlsafe(16)
+    action          TEXT NOT NULL,         -- 6.4.2 표의 action 이름
+    args_json       TEXT NOT NULL,
+    summary         TEXT NOT NULL,         -- 확인 문구 한 줄
+    origin          TEXT NOT NULL CHECK (origin IN ('actions', 'run_turn')),
+    run_id          INTEGER NULL,
+    conversation_id INTEGER NULL,
+    created_at      TEXT NOT NULL,
+    expires_at      TEXT NOT NULL,         -- actions: +10분, run_turn: 그 회차 답장 창 끝
+    resolved_at     TEXT NULL,
+    resolution      TEXT NULL CHECK (resolution IS NULL OR resolution IN ('applied', 'declined', 'expired', 'stale'))
+);
 ```
 
 - 변경 도구는 데이터 변경, `tool_events_log`(SP1), `activity`를 **같은 트랜잭션**에서 쓴다(`tools/activity.py`). `tool_events_log`는 SP1의 재실행 판정용으로 그대로 두고, `activity`는 사람(운영 앱)에게 보여 주고 되돌리는 용도다.
 - `api_idempotency`는 하루 한 번 작업이 2일 지난 행을 지운다(텔레그램 `telegram_updates`와 같은 보관 기간).
+- `pending_confirms`: 확인 토큰을 DB에 둔다(재시작해도 남는다). 쓰고 나면(`resolved_at`) 다시 쓰지 않는다. 확인 시점에 대상이 이미 바뀌었으면(그 대상의 `activity`가 토큰 뒤에 있으면) 적용하지 않고 `stale`로 닫는다. 하루 한 번 작업이 7일 지난 행을 지운다.
 
 ### 5.3 `008_push_cards.sql`: 푸시 구독, 고정 카드
 
@@ -649,7 +665,7 @@ data: [DONE]
 | `data-status` | `transient`(기록에 남지 않음). 두뇌 큐에서 기다리면 `queued`, 두뇌가 시작하면 `thinking`. 기다리는 동안 15초마다 SSE 주석 줄 `: ping`을 보낸다 |
 | 글 | 두뇌의 글 블록마다 `text-start`/`text-delta`/`text-end` 한 벌. 글 조각은 SDK `StreamEvent`에서 온다(S11). 확인 문구(SP1 5.5)는 하네스가 만든 마지막 글 조각(`id: "h-confirm"`)이다. 텔레그램에서 두뇌 답 아래 붙는 것과 같은 글이다 |
 | 도구 | 두뇌가 부른 `mcp__planner__*` 도구마다 `tool-input-available`(이름은 `mcp__planner__` 앞머리를 뺀다) + `tool-output-available`(도구 결과 dict) 또는 `tool-output-error`. MCP 처리기(`tools/mcp_adapter.py _handler`)가 입력을 검증한 뒤에 보낸다 |
-| 화면 도구 | `ui_*`도 도구 조각이다. `input`이 그 컴포넌트의 props다(6.4.7). 하네스가 만든 화면 조각은 `toolCallId`가 `h_`로 시작한다(초안 카드, 컨디션 고르기, 사다리 고르기) |
+| 화면 도구 | `ui_*`도 도구 조각이다. `input`이 그 컴포넌트의 props다(6.4.7). 하네스가 만든 화면 조각은 `toolCallId`가 `h_`로 시작한다(초안 카드, 컨디션 고르기, 사다리 고르기, 확인 카드 `ui_confirm`) |
 | `data-activity` | 이 답에서 생긴 활동 id와 되돌릴 수 있는 id(6.4.3) |
 | `finish` | 마지막 조각. 그 뒤 `[DONE]` |
 | `error` | 프로토콜 수준 문제(요청이 잘못돼 스트림 도중 끊을 때)만. 두뇌 오류, 하루 상한, 사용 한도, 로그인 문제는 SP1과 같은 고정 문구를 **글 조각**으로 보내고 정상 `finish`로 끝낸다 |
@@ -680,9 +696,10 @@ data: [DONE]
 | `record_area_scores` | period?, scores, notes? | low |
 | `confirm_milestones`, `confirm_chapters` | ids | low |
 | `drop_milestone`, `drop_chapter` | id (초안만) | low, 되돌릴 수 없음(행을 지운다) |
-| `pin_card` | component, props | low |
+| `pin_card` | component, props(그 컴포넌트의 카탈로그 스키마로 검증) | low |
 | `unpin_card` | id | low |
 | `reorder_cards` | ids (새 순서) | low |
+| `decline_confirm` | confirm_token | low, 되돌릴 수 없음. 확인 카드의 "그대로 두기". 아무것도 바꾸지 않고 토큰을 `declined`로 닫는다 |
 
 `propose_tasks`, `add_milestone`, `propose_chapter`, `grant_xp`는 없다. 제안과 경험치 부여는 비서(두뇌)의 일이다.
 
@@ -691,7 +708,7 @@ data: [DONE]
 | 결과 | HTTP | 본문 |
 |---|---|---|
 | 적용 | 200 | `{"status": "applied", "activity_id": 913, "undo_id": 913, "result": {…도구 결과}, "confirmation": "✓ 완료: 운동", "xp": {"gained": 10, "level_up": null}}` |
-| 확인 필요 | 200 | `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "이번 분기 우선순위 3개를 바꿔요", "expires_at": "…"}`. 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다. 토큰은 메모리에만 10분 유효하다(재시작하면 다시 묻는다) |
+| 확인 필요 | 200 | `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "이번 분기 우선순위 3개를 바꿔요", "expires_at": "…"}`. 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다. 토큰은 `pending_confirms`에 두고 10분 유효하다. 회차 차례에서 생긴 토큰(10.1)도 같은 길로 확인한다: `{"action": <토큰의 action>, "args": <토큰의 args>, "confirm_token": …}`. 이미 쓰였거나 만료된 토큰은 `409 conflict` |
 | 거절 | 422 | `{"status": "rejected", "activity_id": null, "error": {"code": "rejected", "message": "<도구 오류 문구>"}}` |
 
 - `undo_id`는 되돌릴 수 있을 때만 있고, 값은 `activity_id`와 같다(따로 만들지 않는다). `risk = confirm`으로 적용한 변경은 `undo_id`가 없다.
@@ -743,7 +760,7 @@ data: [DONE]
 - `since`보다 나중 행, 오래된 것부터, `limit` 최대 200. 메시지 본문은 없다. `summary`는 확인 문구 한 줄이다(할 일 제목은 들어간다).
 - `undo_id`는 지금 되돌릴 수 있을 때만(U1~U3을 지금 시각으로 판정).
 - `actor`/`channel`: 두뇌가 바꾸면 `secretary` + 그 대화의 통로(회차 첫 호출은 `scheduler`). 버튼은 `user` + `telegram`. `/actions`는 `user` + `app`. 하루 한 번 작업(초안 만료)은 `secretary` + `scheduler`.
-- `kind` 값: `task_added`, `tasks_proposed`, `tasks_confirmed`, `task_updated`, `task_moved`, `task_completed`, `task_reopened`, `task_dropped`, `drafts_expired`, `milestone_drafts_expired`, `chapter_drafts_expired`, `priorities_set`, `condition_recorded`, `ladder_recorded`, `area_scores_recorded`, `milestone_proposed`, `milestones_confirmed`, `milestone_dropped`, `chapter_proposed`, `chapters_confirmed`, `chapter_dropped`, `xp_granted_by_secretary`, `rest_days_granted`(X9, `scheduler`), `card_pinned`, `card_unpinned`, `cards_reordered`, `notify_changed`, `push_subscribed`, `push_unsubscribed`, `undo`.
+- `kind` 값: `task_added`, `tasks_proposed`, `tasks_confirmed`, `task_updated`, `task_moved`, `task_completed`, `task_reopened`, `task_dropped`, `drafts_expired`, `milestone_drafts_expired`, `chapter_drafts_expired`, `priorities_set`, `condition_recorded`, `ladder_recorded`, `area_scores_recorded`, `milestone_proposed`, `milestones_confirmed`, `milestone_dropped`, `chapter_proposed`, `chapters_confirmed`, `chapter_dropped`, `xp_granted_by_secretary`, `rest_days_granted`(X9, `scheduler`), `card_pinned`, `card_unpinned`, `cards_reordered`, `notify_changed`, `push_subscribed`, `push_unsubscribed`, `confirm_requested`(10.1, 바뀐 것 없음), `confirm_declined`, `undo`.
 
 #### 6.4.5 답할 회차 `GET /checkins?date=…`, `GET /checkins/{id}` (운영 앱용)
 
@@ -787,7 +804,8 @@ data: [DONE]
     "ui_todo_draft":       {"origin": "harness", "schema": {…}},
     "ui_condition_picker": {"origin": "harness", "schema": {…}},
     "ui_ladder_picker":    {"origin": "harness", "schema": {…}},
-    "ui_area_scores":      {"origin": "harness", "schema": {…}} } }
+    "ui_area_scores":      {"origin": "harness", "schema": {…}},
+    "ui_confirm":          {"origin": "harness", "schema": {…}} } }
 ```
 
 | 컴포넌트 | props (요지) | 누르면 FE가 하는 일 |
@@ -799,10 +817,11 @@ data: [DONE]
 | `ui_condition_picker` | `date` | `/actions record_condition` |
 | `ui_ladder_picker` | `period`, `field`(`now` \| `future`) | `/actions record_ladder_score` |
 | `ui_area_scores` | `period`, `previous{area: score}` | `/actions record_area_scores` |
+| `ui_confirm` | `summary`, `confirm_token`, `action`, `args` | 확인: `/actions`에 `action`, `args`, `confirm_token`. 그대로 두기: `/actions decline_confirm` |
 
 - **ADR 0005 안에서**: 두뇌가 부르는 화면 도구는 `ui_todo_list`, `ui_choice`, `ui_summary_card` 셋이고, 같은 MCP 서버 `planner`에 있다(`mcp__planner__ui_*`). 그리기만 한다: props를 카탈로그 스키마로 검증하고 `{"ok": true}`를 돌려줄 뿐, DB와 파일을 건드리지 않는다(테스트로 확인, 16장). 스키마에 맞지 않으면 도구 오류로 돌려주고 조각을 보내지 않는다.
 - **하네스가 만드는 조각**: 초안 카드, 컨디션·사다리 고르기, 영역 점수는 SP1처럼 하네스가 도구 이벤트와 회차에서 만든다. 두뇌는 부르지 않는다. 운영 앱 스레드는 `ui_todo_draft`를 두뇌 도구로 상정했지만, SP1의 "초안 버튼은 하네스가 `ToolEvent`에서 만든다"(5.7) 규칙에 맞춰 바꿨고, 운영 앱 스레드가 동의했다.
-- **텔레그램 대화에는 `ui_*` 도구를 주지 않는다.** 앱 대화의 두뇌 설정만 `channel_app.md` 지시문과 함께 이 셋을 허용한다.
+- **텔레그램 대화에는 `ui_*` 도구와 카드 도구(`pin_card`, `unpin_card`, `reorder_cards`, 10장)를 주지 않는다.** 앱 대화의 두뇌 설정만 `channel_app.md` 지시문과 함께 이 여섯을 허용한다.
 - 모르는 컴포넌트(새 판)는 FE가 글로 대신 보여 준다. `version`이 바뀌면 FE가 카탈로그를 다시 받는다.
 
 #### 6.4.8 웹 푸시 (운영 앱용)
@@ -968,7 +987,7 @@ SP1 5.8 머리글 끝에 통로를 붙인다: `### 21:05 사용자 [44] (evening
 
 ## 10. 두뇌 도구
 
-마스터 5.3의 이름을 지키고, 초안 확정·빼기와 챕터 때문에 곡선 도구 넷(`confirm_milestones`, `drop_curve_drafts`, `propose_chapter`, `confirm_chapters`)과 앱 전용 화면 도구 셋을 더한다. 모두 `mcp__planner__*`이고 파일·셸·웹은 여전히 없다(ADR 0005). 입력 검증과 오류 문구는 SP1 도구와 같은 방식(`{"error": "…"}`)이다.
+마스터 5.3의 이름을 지키고, 초안 확정·빼기와 챕터 때문에 곡선 도구 넷(`confirm_milestones`, `drop_curve_drafts`, `propose_chapter`, `confirm_chapters`)과 앱 전용 도구 여섯(화면 도구 셋, 카드 도구 셋)을 더한다. 모두 `mcp__planner__*`이고 파일·셸·웹은 여전히 없다(ADR 0005). 입력 검증과 오류 문구는 SP1 도구와 같은 방식(`{"error": "…"}`)이다.
 
 | 도구 | 입력 | 하는 일 | ToolEvent / 활동 | 비고 |
 |---|---|---|---|---|
@@ -983,12 +1002,31 @@ SP1 5.8 머리글 끝에 통로를 붙인다: `### 21:05 사용자 [44] (evening
 | `get_status` | 없음 | 6.3.6과 같은 데이터 | 없음 | 마스터 |
 | `grant_xp` | amount(5 \| 10), reason(≤60자) | 하네스 규칙(9.1)에 없는 일을 사용자가 했다고 말했을 때 주는 경험치. 하루 3회, 넘으면 거절 | `xp_granted_by_secretary` | 마스터(상한을 둠) |
 | `ui_todo_list`, `ui_choice`, `ui_summary_card` | 6.4.7 스키마 | 앱 화면 조각을 그린다. 부작용 없음 | 없음 | **추가**: 운영 앱 대화에만 |
+| `pin_card` | component, props | 화면 조각을 고정 카드로(`app_cards`). props는 **고정하는 그 컴포넌트**의 카탈로그 스키마로 검증하고, 맞지 않으면 도구 오류 | `card_pinned` (`actor = secretary`, low, 되돌릴 수 있음) | **추가**: 운영 앱 대화에만 |
+| `unpin_card` | id | 고정 해제 | `card_unpinned` (같음) | **추가**: 운영 앱 대화에만 |
+| `reorder_cards` | ids(새 순서, 고정된 카드 전부) | 순서 바꾸기 | `cards_reordered` (같음) | **추가**: 운영 앱 대화에만 |
 
 - **기간 기본값**: `period`가 없으면, 지금 대화가 회고 회차의 대화(`kind = run`, 회차 `review`)이면 그 회차 `scheduled_for`의 논리적 날짜가 든 달(사다리)·분기(영역)이고, 아니면 오늘이 든 달·분기다. 그래서 R1로 넘겨 받은 회고(+3일)나 답장 창 24시간 안의 늦은 답도 회고한 달·분기에 기록된다(예: 11/29 회고에 12/1에 답해도 `2026-11`).
-- 도구 수: 텔레그램 대화 22개(SP1 12 + 10), 앱 대화 25개. S12로 다시 확인한다. `max_turns=10`은 그대로 둔다.
+- 도구 수: 텔레그램 대화 22개(SP1 12 + 10), 앱 대화 28개(+ 화면 3, 카드 3). S12로 다시 확인한다. `max_turns=10`은 그대로 둔다.
 - **사건 초안 버튼**(SP1 5.7과 같은 모양): 초안마다 `✓ 저장: {제목 16자}` `✗ 빼기`, 맨 아래 `전부 저장`. 콜백 데이터는 `m:c:<id>`, `m:x:<id>`, `m:all:<대화 id>`, 챕터는 `h:c:<id>`, `h:x:<id>`. 버튼은 하네스가 즉시 갈래로 처리한다. 이미 정리된 초안이면 "이미 정리된 사건이에요."
 - 비서는 사건을 **추측해서** 만들지 않는다. 사용자가 과거의 일을 이야기했을 때 "곡선에 남길까요?"와 함께 초안을 낸다(`system.md`에 추가할 원칙 9).
 - 프롬프트(`system.md`)에 더할 원칙: 9. 사건과 챕터는 초안으로만 낸다. 10. 점수(사다리, 영역)는 사용자가 말한 숫자만 기록하고 비서가 매기지 않는다. 11. 점수가 내려가도 걱정하는 말 대신 회복 퀘스트 하나를 제안한다.
+
+### 10.1 회차 차례의 확인 (자율 범위)
+
+비서가 스스로 꺼낸 큰 변경은 사용자가 확인한 뒤에만 적용한다. "스스로 꺼냈는가"는 두뇌가 판단하지 않고 하네스가 **정해진 규칙**으로 정한다.
+
+| # | 규칙 |
+|---|---|
+| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다 |
+| A2 | 회차 차례에서 아래 도구는 **아무것도 바꾸지 않고** `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "<확인 문구 한 줄>"}`을 돌려준다. `pending_confirms`(`origin = run_turn`, 만료 = 그 회차 답장 창 끝)에 남기고 ToolEvent `confirm_requested`를 쌓는다: `drop_task`, `set_priorities`(모든 주기), `scheduled_at`을 바꾸는 `update_task`, `scheduled_at`이 있는 할 일의 `move_task`(날짜를 옮기면 `scheduled_at`도 바뀐다, SP1 5.5) |
+| A3 | **사용자 메시지에 답하는 차례**(`inbound_id`가 있음)에서는 위 도구가 SP1 그대로 바로 적용된다. 사용자의 요청이 곧 승인이다. 회차 대화에 사용자가 답한 차례도 여기다 |
+| A4 | `add_task`는 어느 차례에서든 바로 적용한다(SP1: 사용자가 직접 말한 할 일에만 쓴다). 비서의 제안은 SP1처럼 `propose_tasks` 초안이다 |
+| A5 | **확인 카드**: 하네스가 `confirm_requested` 이벤트마다 `ui_confirm {summary, confirm_token, action, args}`(앱, `toolCallId = h_confirm_<n>`, 체크인 상세 `cards`에도)를 붙이고, 텔레그램에는 회차 메시지 아래 인라인 버튼 한 줄 `✓ 확인: {summary 16자}` `✗ 그대로 두기`를 붙인다(콜백 `k:a:<token>`, `k:x:<token>`. 초안 줄 다음, 컨디션 줄 앞) |
+| A6 | 확인은 `apply_action`이 토큰의 `action`, `args`를 그대로 적용한다(`actor = user`, 누른 통로). 활동과 되돌리기는 그 동작의 규칙(6.4.3)을 따른다. 그대로 두기는 아무것도 바꾸지 않는다. 쓰인 토큰, 만료된 토큰, 대상이 그 뒤 바뀐 토큰(`stale`)은 적용하지 않고 "이미 정리된 제안이에요."로 답한다 |
+| A7 | 두뇌에게는 도구 결과 `needs_confirm`이 오류가 아니다. 회차 지시문(`system.md` 원칙 12)에 "확인이 필요한 변경은 제안으로 말하고, 적용했다고 말하지 않는다"를 더한다 |
+
+이 규칙은 **SP1의 사용자 메시지 동작을 바꾸지 않는다**(A3). 바뀌는 것은 회차 차례에서 위 도구를 부를 때뿐이다. 지금은 SP1 회차가 이 도구들을 바로 적용할 수 있다. 위 도구 목록과 규칙은 17장 미결 13에서 Dahun이 확인한다.
 
 ## 11. 텔레그램 흐름
 
@@ -1289,6 +1327,8 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 되돌리기 | U1~U6 전부, 종류별 되돌리기 표, 24시간 경계, `superseded`, 두 번 되돌리기, 경험치 그대로 |
 | 활동 | 변경과 같은 트랜잭션(도구 예외 시 둘 다 없음), `actor`/`channel` 매핑, 본문 없음 |
 | 화면 도구 | `ui_*`가 DB 파일과 데이터 폴더를 바꾸지 않음(호출 전후 비교), 스키마 오류 → 도구 오류 + 조각 없음, 텔레그램 대화의 허용 도구에 없음 |
+| 카드 도구 | `pin_card`·`unpin_card`·`reorder_cards`가 앱 대화의 허용 도구에만 있음, `pin_card` props를 고정하는 컴포넌트의 스키마로 검증(다른 컴포넌트 스키마로는 거절), 활동 `actor = secretary`, 되돌리기 |
+| 회차 차례의 확인(10.1) | A1 판정: 회차 차례(`run_id` 있고 `inbound_id` 없음)와 사용자 차례(회차 대화의 답 포함)를 두 통로에서. 회차 차례의 `drop_task`·`set_priorities`(주기 다섯)·`scheduled_at` 바꾸는 `update_task`·시각 있는 할 일의 `move_task` → 데이터 그대로, `pending_confirms` 행, `ui_confirm` 조각과 텔레그램 `k:` 버튼. 사용자 차례에는 SP1 그대로 바로 적용(SP1 시험 그대로 통과). `add_task`는 회차 차례에서도 바로. 확인 → 적용과 활동, 그대로 두기 → 변화 없음, 두 번 누름·만료·`stale` → 적용 안 함. 재시작 뒤에도 토큰 유효 |
 | 곡선 | 마이그레이션 CHECK(사다리 0~10, 영역 1~10, 분기 형식, 사다리 `now`·`future` 둘 다 NULL 거절), 5년 뒤만 먼저 기록, 초안 3일 뒤 삭제(`draft_since` 기준), 확정 되돌린 사건이 다음 날 사라지지 않음, 사건이 가리키는 챕터 초안 삭제 → `chapter_id` NULL(FK 오류 없음), 빼기 = 삭제, `drop_curve_drafts`는 확정 거절, 기간 기본값(늦게 받은 회고 답이 회고한 달·분기로), 묶음 400개 초과 → 400, 확정 전에는 `/curve`에 없음, 민감 사건 기본 제외, 묶기(ISO 주, 분기 경계), 안심 보기 7일 기준 |
 | 상태창 | X1~X10 표, X2의 가장 큰 주기, 원장 UNIQUE, X9 쉬는 날(멈춤, 꺼진 날, 14일 상한), 레벨 표, 디버프 조건, 회복 퀘스트 우선순위, 칭호 생성·삭제 |
 | 속성 | 무작위 순서의 도구·되돌리기·회차 뒤에도 `xp_total`과 `level`이 줄지 않음(완료 조건 8) |
@@ -1340,6 +1380,7 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 10. 사건·챕터 초안은 빼거나 만료되면 행을 지운다(할 일 초안은 남김).
 11. 주 통로 기본값은 `app`(결정됨). 남은 확인: 푸시가 간 회차는 텔레그램에 아무것도 보내지 않고, 텔레그램은 푸시가 안 되거나 구독이 없을 때만 쓴다(7.3 D1a~D4).
 12. 대시보드 코드를 이 저장소 `web/dashboard/`에 둔다.
+13. 회차 차례의 확인 규칙(10.1): 비서가 회차(아침 브리핑, 저녁 체크인, 회고)에서 스스로 꺼낸 `drop_task`, `set_priorities`(모든 주기), 일정 시각 바꾸기는 확인 버튼을 누른 뒤에만 적용한다. 사용자가 보낸 메시지에 답할 때는 SP1처럼 바로 적용하고(사용자 메시지 동작은 바뀌지 않음), `add_task`는 늘 바로다.
 
 운영 앱 스레드와 맞춘 것(Dahun 확인 불필요): `ui_todo_draft`는 하네스가 만든다(6.4.7), 앱 대화도 30분 규칙으로 새 대화가 된다(7.1).
 
@@ -1372,6 +1413,7 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 2026-10-24 | v1 | 첫 초안. 마스터 SP3과 SP4를 합침, SP2는 미룸 | Dahun 결정 1~8 |
 | 2026-10-24 | v1 | 운영 앱 계약 추가: 웹 푸시와 주 통로, 통로별 대화와 공유 상태, 원문 기록 통로 표시 | 운영 앱 스레드 요청 1차 |
 | 2026-10-24 | v1 | 운영 앱 계약 추가: 생성형 UI 카탈로그, `/actions`·되돌리기·활동, `/today` 카드, 답할 회차 상태, 푸시 페이로드, `/settings/notify`, `/chat` SSE | 운영 앱 스레드 요청 2차. `ui_todo_draft`는 SP1 규칙에 맞춰 하네스 생성으로 바꿈 |
+| 2026-10-24 | v3 | 운영 앱 스레드 승인(6~7장, 14장)의 두 차이: 앱 대화 전용 두뇌 도구 `pin_card`, `unpin_card`, `reorder_cards`(앱 대화 28개). 회차 차례의 확인 규칙 10.1, `pending_confirms` 표, 하네스 확인 카드 `ui_confirm`과 텔레그램 확인 버튼, `decline_confirm` 동작, 미결 13 | 운영 앱 스레드 |
 | 2026-10-24 | v2 | 문서 리뷰 반영(BLOCKER 1, SHOULD 13, NIT 12): 두뇌 갈래의 통로 처리 7.5(통로별 묶음, 통로별 보낼 곳, 다시 넣은 앱 행, 처리 완료 기록), 4.3 표별 작성자, 사다리 콜백과 기간 기본값, 컨디션 다음 사다리, `now` NULL 허용, 챕터 FK `ON DELETE SET NULL`, 초안 `draft_since`, API 경계 UTC, CSP, 시드 위치, `drop_curve_drafts`, 쉬는 날 용어, 시험 명령. 주 통로 기본값 `app`(텔레그램은 대체), 운영 앱 스레드가 동의한 두 항목을 미결에서 뺌 | 리뷰, 운영 앱 스레드 정정 |
 
 **마스터 설계와 ADR에 반영할 것** (이 스펙이 승인되면 고친다)
@@ -1383,7 +1425,7 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 마스터 2 | 인생 곡선 줄의 "영역 점수 초안" → 영역 점수는 분기마다 사용자가 매긴다 |
 | 마스터 4 | SP3·SP4를 SP3-4로 합침, SP2 의존 제거. SP3 완료 조건 "첫 월간 회고에서 점수 초안과 레이더 차트" → 이 스펙 1장 완료 조건 5(월말 사다리, 분기 영역 점수와 레이더). SP4의 "기간별 확대·축소"는 1장 완료 조건 1에 넣었다 |
 | 마스터 5.1 | `src/my_planner/dashboard/` 대신 `src/my_planner/api/`, `web/dashboard/`. `data/reviews/month/`, `quarter/` 없음 |
-| 마스터 5.3 | curve 도구에 `confirm_milestones`, `propose_chapter`, `confirm_chapters`, 앱 전용 `ui_*` 셋 |
+| 마스터 5.3 | curve 도구에 `confirm_milestones`, `drop_curve_drafts`, `propose_chapter`, `confirm_chapters`, 앱 전용 `ui_*` 셋과 카드 도구 셋 |
 | 마스터 5.5 | 텔레그램 명령을 앱 대화에서도 같은 함수로 처리 |
 | 마스터 6 | "대시보드는 127.0.0.1에만 바인딩" → "BE API는 127.0.0.1, 밖은 tailscale serve만" |
 | 마스터 7 | 미결 5(경험치 규칙)와 6(UI 도구)은 이 스펙 9장과 13.1로 닫힘(숫자는 Dahun 확인 대기) |
