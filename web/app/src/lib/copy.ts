@@ -179,6 +179,7 @@ export const copy = {
     device: "이 기기",
     about: "정보",
     disconnect: "이 기기 연결 해제",
+    probeThrow: "에러 던지기",
     themeSystem: "시스템 따라",
     themeLight: "밝게",
     themeDark: "어둡게",

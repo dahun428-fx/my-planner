@@ -1262,7 +1262,7 @@ class Dispatcher:
         today = self._today().isoformat()
         if self.state.get(LAST_AUTH_NOTICE_KEY) == today:
             return
-        if await self._send_notice(_auth_copy(error)):
+        if await self.send_notice(_auth_copy(error)) is not None:
             self.state.set(LAST_AUTH_NOTICE_KEY, today)
 
     def _set_limited(self, retry_at: datetime | None) -> datetime:
@@ -1278,7 +1278,7 @@ class Dispatcher:
         key = to_iso(until)
         if self.state.get(LAST_RATE_LIMIT_NOTICE_KEY) == key:
             return
-        if await self._send_notice(rate_limit_notice(self._resume_text(until))):
+        if await self.send_notice(rate_limit_notice(self._resume_text(until))) is not None:
             self.state.set(LAST_RATE_LIMIT_NOTICE_KEY, key)
 
     def _resume_text(self, until: datetime) -> str:
@@ -1289,25 +1289,28 @@ class Dispatcher:
             return f"{lt:%H:%M}"
         return f"{lt.month}월 {lt.day}일 {lt:%H:%M}"
 
-    async def _send_notice(self, text: str) -> bool:
-        """고정 안내 전송(7.3 D8: 실제 통로로). 원문 기록은 대화 밖(`[-]`). 먼저 보낸 메시지 수에는 세지 않는다."""
+    async def send_notice(self, text: str) -> Channel | None:
+        """고정 안내 전송(7.3 D8: 실제 통로로). 받은 통로를 돌려준다(못 보냈으면 None).
+
+        원문 기록은 대화 밖(`[-]`). 먼저 보낸 메시지 수에는 세지 않는다. 자동 복구 알림(`/internal/notify`)도 이 길을 쓴다.
+        """
         channel: Channel = "telegram"
         if self.delivery is not None:
             got = await self.delivery.deliver_notice(text)
             if got is None:
-                return False
+                return None
             channel = got
         else:
             try:
                 await self.sender.send(Outbound(text=text))
             except Exception as e:  # noqa: BLE001 - 안내가 안 가도 다음 기회에 다시 보낸다
                 log.warning("notice_send_error", extra={"error_type": type(e).__name__})
-                return False
+                return None
         try:
             self.transcripts.append(self.clock.now(), "비서", None, None, text, channel=channel)
         except Exception:
             log.exception("notice_transcript_error")
-        return True
+        return channel
 
     # --- 회차 실행 (스펙 5.4: 두 단계) ---
 
