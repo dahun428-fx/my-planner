@@ -359,8 +359,10 @@ _HINTS = {
     "slash": "/로 시작하는 글은 쓸 수 없어요",
 }
 # `model_validator`가 내는 code: 위치는 늘 `props`다
-_PROPS_LEVEL = frozenset({*(c for c in _HINTS if c not in ("bad_char", "banned_word", "slash", "too_large")),
-                          "period_one", "value_over_max", "not_unique"})
+_PROPS_LEVEL = frozenset({
+    "block_too_many", "buttons_place", "todo_rows_too_many", "divider_place", "block_no_content",
+    "complete_not_in_rows", "period_one", "value_over_max", "not_unique",
+})
 
 _BANNED_BLOCK = re.compile(r"<!-- banned-words:start -->(.*?)<!-- banned-words:end -->", re.DOTALL)
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
