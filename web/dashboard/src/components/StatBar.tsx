@@ -9,7 +9,7 @@ export function StatBar({ label, score, max = 10 }: { label: string; score: numb
   return (
     <svg className="stat-bar" viewBox="0 0 100 8" preserveAspectRatio="none" role="img" aria-label={T.statBar(label, score)}>
       <rect className="bar-track" x="0" y="0" width="100" height="8" rx="1.2" ry="4" />
-      {ratio > 0 && <rect className="stat-fill" data-step={rampStep(score!, max)} x="0" y="0" width={ratio * 100} height="8" rx="1.2" ry="4" />}
+      {ratio > 0 && <rect className="stat-fill" x="0" y="0" width={ratio * 100} height="8" rx="1.2" ry="4" />}
     </svg>
   );
 }

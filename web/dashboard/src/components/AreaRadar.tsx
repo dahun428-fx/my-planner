@@ -20,7 +20,7 @@ interface DotProps {
 
 /** A vertex of this quarter: an area dot (DESIGN.md: area colours are dots and lines, never fills). */
 function AreaDot({ cx, cy, payload }: DotProps) {
-  if (cx === undefined || cy === undefined || payload?.now === null || payload?.now === undefined) return <g />;
+  if (cx === undefined || cy === undefined || payload?.now == null) return <g />;
   return <circle className="radar-dot" data-area={payload.area} cx={cx} cy={cy} r={4} />;
 }
 
@@ -31,7 +31,7 @@ function AreaDot({ cx, cy, payload }: DotProps) {
  */
 export function AreaRadar({ areas, emptyText }: { areas: CurveAreas[]; emptyText: string }) {
   const headingId = useId();
-  const { ref: box, width } = useWidth<HTMLDivElement>(296);
+  const { ref: box, width } = useWidth<HTMLDivElement>(272);
   const { latest, previous, rows } = radarRows(areas);
   const byLabel = new Map<string, RadarRow>(rows.map((r) => [r.label, r]));
   const size = Math.min(width, 320);

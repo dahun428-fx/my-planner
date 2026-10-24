@@ -154,10 +154,23 @@ describe("dashboard tokens", () => {
   });
 });
 
+// A chart is drawn at a guessed width before it measures its box; an `auto` or `1fr` track would let that first
+// drawing widen the column past the gutter at 360px (and ResizeObserver then keeps it). Columns are minmax(0, 1fr).
+describe("panel grids", () => {
+  it.each([".panels", ".curve-pair"])("%s columns never grow to fit their content", (cls) => {
+    const tracks = [...globals.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((m) => m[1].split(",").some((s) => s.trim() === cls))
+      .map((m) => /grid-template-columns:\s*([^;]+);/.exec(m[2])?.[1])
+      .filter((t): t is string => t !== undefined);
+    expect(tracks.length).toBeGreaterThanOrEqual(2); // one column, then two from 720px
+    for (const t of tracks) expect(t.trim()).toMatch(/^minmax\(0, 1fr\)( minmax\(0, 1fr\))?$/);
+  });
+});
+
 // DESIGN.md Colors: the six area colours mark (dots, tag letters, chart lines), never fill a surface; the ramp
 // fills ordinal steps and is never a letter colour.
 describe("area colours and the ramp", () => {
-  const decls = [...globals.matchAll(/([^{}]+)\{([^}]*)\}/g)].flatMap((m) =>
+  const decls = [...globals.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) =>
     [...m[2].matchAll(/([\w-]+)\s*:\s*([^;]+);?/g)].map((d) => ({ selector: m[1].trim(), prop: d[1], value: d[2] })),
   );
 

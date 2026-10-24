@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useId } from "react";
 import type { Status, StatusStat } from "../api/types.gen";
-import { StatBar } from "../components/StatBar";
+import { StatBar, rampStep } from "../components/StatBar";
 import { StateNotice } from "../components/StateNotice";
 import { HpCells } from "../components/HpCells";
 import { XpBar } from "../components/XpBar";
@@ -26,6 +26,7 @@ function StatRow({ stat: s, latest }: { stat: StatusStat; latest: string | null 
       </span>
       <StatBar label={s.label} score={s.score} />
       <span className="stat-value num">
+        {s.score !== null && <span className="stat-step" data-step={rampStep(s.score)} aria-hidden="true" />}
         {s.score === null ? <span className="meta">{T.noScore}</span> : s.score}
         {older && <span className="meta"> {T.olderPeriod(s.period!)}</span>}
       </span>

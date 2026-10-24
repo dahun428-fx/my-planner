@@ -116,7 +116,7 @@ body {
   font-weight: 600;
   text-decoration: underline;
   text-decoration-color: var(--border);
-  text-underline-offset: 3px;
+  text-underline-offset: 3px; /* a type offset, not space */
   cursor: pointer;
 }
 .text-button:disabled {
@@ -130,7 +130,7 @@ body {
   flex: none;
   width: 8px;
   height: 8px;
-  margin: 0 6px 1px 0;
+  margin: 0 var(--space-2) 1px 0; /* 1px: onto the text baseline */
   border-radius: 50%;
   background: var(--neutral);
   vertical-align: middle;
@@ -222,9 +222,14 @@ h2 {
 .panels > [role="tabpanel"] > .panel {
   margin: 0;
 }
+/* minmax(0, 1fr): a chart drawn at its first guessed width must not push a column past the gutter. */
+.panels,
+.curve-pair {
+  grid-template-columns: minmax(0, 1fr);
+}
 @media (min-width: 720px) {
   .panels {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
   }
   .panels > .panel-wide {
@@ -522,6 +527,12 @@ h2 {
   .nav ul a {
     white-space: nowrap;
   }
+  /* Room after the last link, so the row reads as one that scrolls rather than one cut off. */
+  .nav ul::after {
+    content: "";
+    flex: none;
+    width: var(--gutter);
+  }
 }
 
 /* ---- shared bits of the data screens ---- */
@@ -712,12 +723,12 @@ h2 {
 .cdots {
   display: grid;
   grid-template-columns: 1rem 1fr;
-  column-gap: 10px;
+  column-gap: var(--space-3);
 }
 .cdots-y,
 .cdots-frame {
   height: 152px;
-  padding: 6px 0;
+  padding: var(--space-2) 0;
 }
 .cdots-y {
   display: flex;
@@ -776,7 +787,7 @@ h2 {
 .cdots-x {
   grid-column: 2;
   display: flex;
-  margin-top: 6px;
+  margin-top: var(--space-2);
   color: var(--chart-axis);
   font-size: var(--fs-caption);
 }
@@ -791,7 +802,7 @@ h2 {
   justify-content: flex-end;
 }
 
-/* ---- status window: the level in display, a 6px XP bar, area scores as a number and a ramp step ---- */
+/* ---- status window: the level in display, a 6px XP bar, area scores as an ink bar, the number and a ramp dot ---- */
 .hero {
   display: grid;
   gap: var(--space-5);
@@ -822,8 +833,8 @@ h2 {
 .xp-fill {
   fill: var(--bar-fill);
 }
-/* HP is today's condition (1-5): the cells it reached are filled with that step of the ramp; the rest are
-   empty outlines, so on and off differ in shape as well as colour. */
+/* HP is today's condition (1-5): the cells it reached are filled with that step of the ramp inside an ink
+   ring; the rest are empty --control outlines, so on and off differ in shape as well as colour. */
 .hp-bar {
   display: block;
   width: 100%;
@@ -836,8 +847,9 @@ h2 {
   stroke: var(--control);
   stroke-width: 1px;
 }
+/* A 1px ink ring, as on the condition dots: a light step still reads 3:1 on the panel. */
 .hp-cell[data-on="true"] {
-  stroke: none;
+  stroke: var(--chart-ink);
 }
 .hp-bar[data-score="1"] .hp-cell[data-on="true"] {
   fill: var(--ramp-1);
@@ -891,20 +903,30 @@ h2 {
 .stat-fill {
   fill: var(--bar-fill);
 }
-.stat-fill[data-step="1"] {
-  fill: var(--ramp-1);
+/* The area score's ramp step: an 8px dot beside the number, ringed in ink so a light step still reads 3:1. */
+.stat-step {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 var(--space-2) 1px 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--chart-ink);
+  vertical-align: middle;
 }
-.stat-fill[data-step="2"] {
-  fill: var(--ramp-2);
+.stat-step[data-step="1"] {
+  background: var(--ramp-1);
 }
-.stat-fill[data-step="3"] {
-  fill: var(--ramp-3);
+.stat-step[data-step="2"] {
+  background: var(--ramp-2);
 }
-.stat-fill[data-step="4"] {
-  fill: var(--ramp-4);
+.stat-step[data-step="3"] {
+  background: var(--ramp-3);
 }
-.stat-fill[data-step="5"] {
-  fill: var(--ramp-5);
+.stat-step[data-step="4"] {
+  background: var(--ramp-4);
+}
+.stat-step[data-step="5"] {
+  background: var(--ramp-5);
 }
 .stat-value {
   text-align: right;
@@ -967,7 +989,7 @@ h2 {
   align-self: center;
   width: 6px;
   height: 6px;
-  margin: 0 7px;
+  margin: 0 var(--space-2);
   border-radius: 50%;
   background: var(--neutral);
 }
@@ -1044,7 +1066,7 @@ h2 {
 .curve-key {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   white-space: nowrap;
 }
 .curve-swatch {
@@ -1184,7 +1206,7 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-5);
-  margin: var(--space-1) 0 2px;
+  margin: var(--space-1) 0 0;
   padding: var(--space-3) 0 0;
   list-style: none;
   border-top: 1px dashed var(--chart-edge);
@@ -1192,7 +1214,7 @@ h2 {
 .upcoming-mark {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .upcoming-mark::before {
   content: "";
@@ -1231,14 +1253,14 @@ h2 {
   margin: 0;
 }
 .milestone-title {
-  margin: 2px 0 0;
+  margin: var(--space-1) 0 0;
   font-size: var(--fs-headline);
   font-weight: 600;
   line-height: var(--lh-headline);
   overflow-wrap: anywhere;
 }
 .milestone-note {
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   overflow-wrap: anywhere;
 }
 .skeleton.tall {
@@ -1250,7 +1272,7 @@ h2 {
 }
 @media (min-width: 720px) {
   .curve-pair {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
   }
 }
@@ -1259,6 +1281,9 @@ h2 {
 .radar {
   display: flex;
   justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .radar-grid {
   stroke: var(--chart-grid);
@@ -1311,7 +1336,7 @@ h2 {
   font-weight: 600;
 }
 .reassure-copy {
-  margin: 2px 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--muted);
   font-size: var(--fs-callout);
   line-height: var(--lh-callout);
