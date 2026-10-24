@@ -49,6 +49,10 @@ async def test_client_error_logged_without_message(tmp_path, caplog):
     ("frames", ["x" * 161]),
     ("app", "other"),
     ("version", "v" * 41),
+    ("version", "a b"),
+    ("frames", ["https://x.example/a.js:1:1"]),
+    ("frames", ["/abs/path/a.js:1:1"]),
+    ("frames", ["할 일 제목"]),
 ])
 async def test_client_error_rejects_bad_route_and_long_frames(tmp_path, field, value):
     async with BeEnv.start(tmp_path, start=MON_0900) as env:

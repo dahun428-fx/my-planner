@@ -752,10 +752,13 @@ class ClientErrorBody(_Model):
     """`POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부)."""
 
     app: Literal["app", "dashboard"]
-    version: str = Field(max_length=40)
+    version: str = Field(max_length=40, pattern=r"^[A-Za-z0-9._+\-]+$")
     route: str = Field(max_length=120, pattern=r"^/[A-Za-z0-9_\-/\[\]]*$")
     name: str = Field(max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_.]*$")
-    frames: list[Annotated[str, Field(max_length=160)]] = Field(max_length=10)
+    # 청크 이름 + 줄:열만 (스펙 3.3). URL·절대 경로·글은 틀에서 걸러 이슈까지 가지 않게 한다.
+    frames: list[
+        Annotated[str, Field(max_length=160, pattern=r"^[A-Za-z0-9_\-][A-Za-z0-9_.\-/\[\]]*\.js:\d+:\d+$")]
+    ] = Field(max_length=10)
     at: datetime
 
 

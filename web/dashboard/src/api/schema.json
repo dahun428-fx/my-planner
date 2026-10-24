@@ -967,6 +967,7 @@
         "frames": {
           "items": {
             "maxLength": 160,
+            "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_.\\-/\\[\\]]*\\.js:\\d+:\\d+$",
             "type": "string"
           },
           "maxItems": 10,
@@ -987,6 +988,7 @@
         },
         "version": {
           "maxLength": 40,
+          "pattern": "^[A-Za-z0-9._+\\-]+$",
           "title": "Version",
           "type": "string"
         }
