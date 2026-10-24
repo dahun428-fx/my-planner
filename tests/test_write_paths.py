@@ -49,6 +49,8 @@ ALLOWED: dict[str, set[str]] = {
     "conditions": set(TOOLS),
     "app_cards": set(TOOLS),
     "tool_events_log": set(TOOLS),
+    "habits": set(TOOLS),
+    "habit_checks": set(TOOLS),
     "curve_chapters": {*TOOLS, SEED},
     "curve_milestones": {*TOOLS, SEED},
     "curve_ladder_scores": {*TOOLS, SEED},
@@ -119,6 +121,8 @@ class Recorder:
         f = sys._getframe(1)
         while f is not None:
             name = f.f_globals.get("__name__", "")
+            if name == "my_planner.store.db" and f.f_code.co_name == "migrate":
+                return  # 마이그레이션 스크립트 안의 INSERT(012의 원장 옮기기)는 앱의 쓰기 경로가 아니다
             if name.startswith("my_planner"):
                 if inner is None and not name.startswith("my_planner.store"):
                     inner = name
