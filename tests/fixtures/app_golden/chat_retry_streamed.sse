@@ -1,0 +1,32 @@
+data: {"type":"start","messageId":"<id>","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat","checkin_id":null}}
+
+data: {"type":"data-status","data":{"state":"queued"},"transient":true}
+
+data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"t1"}
+
+data: {"type":"text-delta","id":"t1","delta":"내일 치과를 "}
+
+data: {"type":"text-end","id":"t1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"t2"}
+
+data: {"type":"text-delta","id":"t2","delta":"내일 치과를 "}
+
+data: {"type":"text-delta","id":"t2","delta":"추가할게요."}
+
+data: {"type":"text-end","id":"t2"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat"}}
+
+data: [DONE]
+

@@ -141,6 +141,9 @@ class UiMessageWriter:
         self._tool_seq = 0
         self._text_seq = 0
         self._streamed: list[str] = []
+        self._blocks: dict[str, list[str]] = {}  # 글 id별 조각(보낸 순서). 재생용 글을 만든다(6.4.1)
+        self._attempts = 0
+        self.attempt_streamed = False  # 지금 두뇌 시도가 `text-delta`를 보냈는가
 
     def _emit(self, chunk: dict[str, Any]) -> None:
         if self.sink is None or self.finished:
@@ -187,8 +190,23 @@ class UiMessageWriter:
     def text_start(self, id: str) -> None:
         self._emit({"type": "text-start", "id": id})
 
+    def begin_attempt(self) -> None:
+        """두뇌 시도 하나가 시작한다(첫 시도, resume 실패 대체, 오류 재시도 모두).
+
+        앞 시도가 글 조각을 이미 보냈으면 되돌릴 수 없다: 그 글은 그대로 두고 `finish-step`, `start-step`으로 이
+        시도를 새 단계로 나눈다(글 id는 `next_text_id`가 새로 준다, 열린 글 블록은 두뇌가 이미 닫았다).
+        그래야 재시도의 글이 정상 스트림으로 가고, 끝난 뒤 글 블록을 다시 보내지도 않는다(06b).
+        """
+        if self._attempts and self.attempt_streamed:
+            self.finish_step()
+            self.start_step()
+        self._attempts += 1
+        self.attempt_streamed = False
+
     def text_delta(self, id: str, delta: str) -> None:
         self._streamed.append(delta)
+        self._blocks.setdefault(id, []).append(delta)
+        self.attempt_streamed = True
         self._emit({"type": "text-delta", "id": id, "delta": delta})
 
     def text_end(self, id: str) -> None:
@@ -231,6 +249,12 @@ class UiMessageWriter:
                 log.warning("chat_stream_close_error", extra={"error_type": type(e).__name__})
 
     @property
+    def streamed_reply(self) -> str:
+        """보낸 글 블록 전부를 스트림에서 보인 대로(블록 사이 빈 줄) 이은 글. 저장·재생의 글(6.4.1)."""
+        parts = ("".join(b).strip() for b in self._blocks.values())
+        return "\n\n".join(p for p in parts if p)
+
+    @property
     def streamed_text(self) -> str:
         """지금까지 `text-delta`로 보낸 글(06b가 조각 스트리밍 뒤 남은 글을 가릴 때 쓴다)."""
         return "".join(self._streamed)
@@ -238,14 +262,14 @@ class UiMessageWriter:
 
 def write_reply(
     writer: UiMessageWriter, text: str, *, activity_ids: list[int] | None = None, undo_ids: list[int] | None = None,
-    confirmation: str | None = None, metadata: dict[str, Any] | None = None,
+    confirmation: str | None = None, metadata: dict[str, Any] | None = None, streamed: bool = False,
 ) -> None:
-    """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생). 순서: start-step → 글 → finish-step → data-activity → finish.
+    """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생, 조각이 오지 않은 두뇌 답: S11 대체 경로). 순서: start-step → 글 → finish-step → data-activity → finish.
 
     활동도 확인 문구도 없으면 `data-activity`를 보내지 않는다(6.4.1).
     """
     writer.start_step()
-    if text:
+    if text and not streamed:  # streamed: 두뇌 글이 이미 조각으로 나갔다(상태가 ok일 때만, 고정 안내는 늘 보낸다)
         writer.text(writer.next_text_id(), text)
     writer.finish_step()
     if activity_ids or confirmation:
@@ -263,6 +287,7 @@ class AppReplySender:
         try:
             write_reply(
                 w, out.text, activity_ids=out.activity_ids, undo_ids=out.undo_ids, confirmation=out.confirmation,
+                streamed=out.streamed,
             )
         except Exception as e:  # noqa: BLE001 - 앱 답은 오류를 올리지 않는다(M7)
             log.warning("app_reply_error", extra={"error_type": type(e).__name__})

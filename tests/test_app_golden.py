@@ -18,7 +18,7 @@ from ui_stream import normalize_sse, parse_sse, types
 
 GOLDEN = Path(__file__).parent / "fixtures" / "app_golden"
 START = kst(2026, 10, 24, 13, 0)
-CASES = ("chat_add_task", "chat_daily_cap", "chat_replay")
+CASES = ("chat_add_task", "chat_daily_cap", "chat_replay", "chat_add_task_streamed", "chat_retry_streamed")
 HEADER_NAMES = (
     "content-type", "cache-control", "x-accel-buffering", "x-vercel-ai-ui-message-stream", "x-conversation-id",
 )
@@ -47,7 +47,16 @@ DENTIST = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "
 
 
 async def _record(tmp_path: Path, name: str) -> tuple[bytes, dict[str, str]]:
-    script = [] if name == "chat_daily_cap" else [FakeTurn([DENTIST], "내일 치과를 추가할게요.")]
+    script = [FakeTurn([DENTIST], "내일 치과를 추가할게요.")]
+    if name == "chat_daily_cap":
+        script = []
+    elif name == "chat_add_task_streamed":  # 06b: 글이 도구 조각보다 먼저 조각으로 간다
+        script = [FakeTurn([DENTIST], "내일 치과를 추가할게요.", deltas=["내일 치과를 ", "추가할게요."])]
+    elif name == "chat_retry_streamed":  # 06b: 첫 시도가 글 일부를 보낸 뒤 오류, 재시도는 새 단계와 새 글 id
+        script = [
+            FakeTurn([], "", status="error", error="boom", deltas=["내일 치과를 "]),
+            FakeTurn([], "내일 치과를 추가할게요.", deltas=["내일 치과를 ", "추가할게요."]),
+        ]
     async with BeEnv.start(tmp_path, start=START, script=script) as env:
         if name == "chat_daily_cap":
             env.conn.execute("INSERT INTO usage_state (date, brain_calls) VALUES ('2026-10-24', 60)")

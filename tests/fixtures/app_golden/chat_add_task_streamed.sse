@@ -1,0 +1,28 @@
+data: {"type":"start","messageId":"<id>","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat","checkin_id":null}}
+
+data: {"type":"data-status","data":{"state":"queued"},"transient":true}
+
+data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"t1"}
+
+data: {"type":"text-delta","id":"t1","delta":"내일 치과를 "}
+
+data: {"type":"text-delta","id":"t1","delta":"추가할게요."}
+
+data: {"type":"text-end","id":"t1"}
+
+data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"add_task","input":{"title":"치과","areas":["health"],"planned_for":"2026-10-25"}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"id":1,"title":"치과","status":"open","areas":["health"],"planned_for":"2026-10-25","scheduled_at":null,"parent_id":null,"note":"","completed_at":null}}
+
+data: {"type":"finish-step"}
+
+data: {"type":"data-activity","data":{"activity_ids":[1],"undo_ids":[1],"confirmation":"✓ 추가: 치과 → 내일"}}
+
+data: {"type":"finish","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat"}}
+
+data: [DONE]
+

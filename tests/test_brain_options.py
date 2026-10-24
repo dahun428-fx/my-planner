@@ -67,7 +67,7 @@ def _assistant(error=None, text="답"):
     return AssistantMessage(content=[TextBlock(text=text)], model="claude", error=error)
 
 
-def _result(subtype="success", is_error=False, terminal_reason=None):
+def _result(subtype="success", is_error=False, terminal_reason=None, result=None):
     return ResultMessage(
         subtype=subtype,
         duration_ms=10,
@@ -76,6 +76,7 @@ def _result(subtype="success", is_error=False, terminal_reason=None):
         num_turns=1,
         session_id="s1",
         terminal_reason=terminal_reason,
+        result=result,
     )
 
 
@@ -210,7 +211,7 @@ def test_brain_result_carries_no_tool_events():
 
 
 def test_build_options_partial_messages_and_fork_off_by_default(tmp_path):
-    """이 티켓의 두뇌는 부분 메시지를 켜지 않는다(SP3-4 06: 글 블록 하나, 조각 스트리밍은 06b)."""
+    """`build_options`의 기본은 부분 메시지 끄기(켜는 쪽은 `ClaudeBrain.run`이 스트림이 있을 때만, 06b)."""
     opts, _, _ = _options(tmp_path)
     assert opts.include_partial_messages is False
     assert opts.fork_session is False
@@ -225,3 +226,165 @@ def test_app_system_prompt_appends_channel_app(tmp_path):
     app = brain.system_prompt_for("app")
     assert app.startswith(prompts.load("system.md"))
     assert app.endswith(prompts.load("channel_app.md"))  # 지금은 빈 자리(티켓 09가 채운다)
+
+
+# --- 티켓 06b: 글 조각 스트리밍 (SP3-4 S11. 필드 경로는 SDK 소스 기준, 노트북 S11 시험으로 확인할 것) ---
+
+
+def _stream_event(event: dict, parent_tool_use_id=None):
+    from claude_agent_sdk import StreamEvent
+
+    return StreamEvent(uuid="u", session_id="s1", event=event, parent_tool_use_id=parent_tool_use_id)
+
+
+def _text_events(*pieces: str, index: int = 0) -> list:
+    return [
+        _stream_event({"type": "content_block_start", "index": index, "content_block": {"type": "text", "text": ""}}),
+        *[
+            _stream_event({"type": "content_block_delta", "index": index, "delta": {"type": "text_delta", "text": p}})
+            for p in pieces
+        ],
+        _stream_event({"type": "content_block_stop", "index": index}),
+    ]
+
+
+def _patch_query(monkeypatch, tmp_path, messages, seen_options=None):
+    from my_planner.harness import brain as brain_mod
+
+    real_build = brain_mod.build_options
+
+    async def fake_query(*, prompt, options):
+        if seen_options is not None:
+            seen_options.append(options)
+        for m in messages:
+            yield m
+
+    monkeypatch.setattr(brain_mod, "query", fake_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk", "name": "planner"})
+    monkeypatch.setattr(brain_mod, "build_options", real_build)
+    return brain_mod.ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+
+
+async def test_stream_events_become_text_deltas(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    msgs = [*_text_events("내일 ", "치과를 ", "추가할게요."), _result(result="내일 치과를 추가할게요.")]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    sink = ListSink()
+    writer = UiMessageWriter(sink, None)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=writer)
+    result = await brain.run("hi", session_id=None, run_ctx=ctx)
+
+    assert sink.types == ["text-start", "text-delta", "text-delta", "text-delta", "text-end"]
+    assert sink.text == "내일 치과를 추가할게요."
+    assert len({c["id"] for c in sink.chunks}) == 1
+    assert writer.streamed_text == "내일 치과를 추가할게요."
+    assert result.status == "ok" and result.text == "내일 치과를 추가할게요."
+
+
+async def test_stream_events_ignore_non_text_and_subagent_and_close_open_block(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    tool_block = [
+        _stream_event({"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "x"}}),
+        _stream_event({"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "{"}}),
+        _stream_event({"type": "content_block_stop", "index": 1}),
+    ]
+    sub = [_stream_event(e.event, parent_tool_use_id="toolu_1") for e in _text_events("하위")]
+    open_block = _text_events("끊김")[:-1]  # content_block_stop이 오지 않았다
+    msgs = [*tool_block, *sub, *open_block, _result(result="끊김")]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    sink = ListSink()
+    ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=UiMessageWriter(sink, None))
+    await brain.run("hi", session_id=None, run_ctx=ctx)
+
+    assert sink.types == ["text-start", "text-delta", "text-end"]  # 도구·하위 에이전트 조각은 없고, 열린 블록은 닫는다
+    assert sink.text == "끊김"
+
+
+def test_text_stream_field_path():
+    from my_planner.harness.brain import text_block_event
+
+    assert text_block_event({"type": "content_block_start", "index": 2, "content_block": {"type": "text"}}) == ("start", 2, "")
+    assert text_block_event({"type": "content_block_start", "index": 2, "content_block": {"type": "tool_use"}}) is None
+    assert text_block_event(
+        {"type": "content_block_delta", "index": 2, "delta": {"type": "text_delta", "text": "가"}}
+    ) == ("delta", 2, "가")
+    assert text_block_event({"type": "content_block_delta", "index": 2, "delta": {"type": "input_json_delta"}}) is None
+    assert text_block_event({"type": "content_block_stop", "index": 2}) == ("stop", 2, "")
+    assert text_block_event({"type": "message_start"}) is None
+    assert text_block_event({}) is None
+
+
+async def test_partial_messages_only_when_streaming(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    seen: list = []
+    brain = _patch_query(monkeypatch, tmp_path, [_result(result="ok")], seen)
+    plain = RunContext(conversation_id=1, run_id=None, events=[])
+    await brain.run("hi", session_id=None, run_ctx=plain)
+    streaming = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=UiMessageWriter(ListSink(), None))
+    await brain.run("hi", session_id=None, run_ctx=streaming)
+
+    assert [o.include_partial_messages for o in seen] == [False, True]
+
+
+async def test_two_text_blocks_around_tool_call_get_separate_ids(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    tool = [
+        _stream_event({"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "x"}}),
+        _stream_event({"type": "content_block_stop", "index": 1}),
+    ]
+    msgs = [
+        _stream_event({"type": "message_start"}),
+        *_text_events("먼저 ", "할게요.", index=0),
+        *tool,
+        _stream_event({"type": "message_stop"}),
+        _stream_event({"type": "message_start"}),
+        *_text_events("끝났어요.", index=0),  # 새 메시지의 번호는 다시 0
+        _stream_event({"type": "message_stop"}),
+        _result(result="끝났어요."),
+    ]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    sink = ListSink()
+    writer = UiMessageWriter(sink, None)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=writer)
+    await brain.run("hi", session_id=None, run_ctx=ctx)
+
+    assert sink.types == [
+        "text-start", "text-delta", "text-delta", "text-end", "text-start", "text-delta", "text-end",
+    ]
+    ids = [c["id"] for c in sink.chunks if c["type"] == "text-start"]
+    assert len(set(ids)) == 2
+    assert [c["id"] for c in sink.chunks if c["type"] == "text-end"] == ids
+    assert writer.streamed_reply == "먼저 할게요.\n\n끝났어요."
+
+
+async def test_text_streamer_resets_on_message_start_even_if_stop_missing(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    msgs = [
+        _stream_event({"type": "message_start"}),
+        *_text_events("하나")[:-1],  # stop이 빠졌다
+        _stream_event({"type": "message_start"}),
+        *_text_events("둘"),
+        _result(result="둘"),
+    ]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    sink = ListSink()
+    ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=UiMessageWriter(sink, None))
+    await brain.run("hi", session_id=None, run_ctx=ctx)
+
+    ids = [c["id"] for c in sink.chunks if c["type"] == "text-start"]
+    assert len(set(ids)) == 2 and sink.types.count("text-end") == 2
