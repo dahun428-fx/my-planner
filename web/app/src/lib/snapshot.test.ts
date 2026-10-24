@@ -1,8 +1,8 @@
 import "fake-indexeddb/auto";
-import { clear, get, set } from "idb-keyval";
+import { clear, get, keys, set } from "idb-keyval";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveConn } from "./connection";
-import { clearDeviceData, loadSnap, saveSnap } from "./snapshot";
+import { clearDeviceData, loadSnap, pruneDeviceData, saveSnap } from "./snapshot";
 
 const A = "https://gp76.example.ts.net";
 const B = "https://other.example.ts.net";
@@ -84,6 +84,16 @@ describe("snapshot", () => {
     expect(seen).toEqual([null]);
   });
 
+  it("the 7-day sweep drops old snapshots and chat parts without reading them", async () => {
+    await saveSnap("today", { x: 1 }, A, NOW - 8 * DAY);
+    await saveSnap("week", { x: 1 }, A, NOW - DAY);
+    await set("parts:old", { savedAt: NOW - 8 * DAY, parts: [] });
+    await set("parts:new", { savedAt: NOW - DAY, parts: [] });
+    await set("catalog", { v: 1 });
+    await pruneDeviceData(NOW);
+    expect(((await keys()) as string[]).sort()).toEqual(["catalog", "parts:new", "snap:week"]);
+  });
+
   it("blocked indexeddb returns null", async () => {
     const blocked = () => Promise.reject(new DOMException("blocked", "SecurityError"));
     vi.doMock("idb-keyval", () => ({ get: blocked, set: blocked, del: blocked, keys: blocked }));
@@ -92,5 +102,6 @@ describe("snapshot", () => {
     await expect(fresh.saveSnap("today", { x: 1 }, A, NOW)).resolves.toBeUndefined();
     await expect(fresh.loadSnap("today", A, NOW)).resolves.toBeNull();
     await expect(fresh.clearDeviceData()).resolves.toBeUndefined();
+    await expect(fresh.pruneDeviceData(NOW)).resolves.toBeUndefined();
   });
 });

@@ -53,7 +53,23 @@ export async function loadSnap<T>(key: SnapKey, beUrl: string, now = Date.now())
   }
 }
 
-// "이 기기 연결 해제" and the 7-day sweep (spec 4.7): snapshots, chat parts, catalog and every mp.* key.
+// The 7-day sweep (spec 4.7), once at app start: snapshots and chat parts past that age go even if
+// nothing reads them again (a read also drops its own stale copy). `savedAt` is ISO in a snapshot,
+// epoch ms in chat parts.
+export async function pruneDeviceData(now = Date.now()): Promise<void> {
+  try {
+    for (const k of await keys()) {
+      if (typeof k !== "string" || !(k.startsWith("snap:") || k.startsWith("parts:"))) continue;
+      const at = ((await get(k)) as { savedAt?: unknown } | undefined)?.savedAt;
+      const ms = typeof at === "number" ? at : typeof at === "string" ? Date.parse(at) : NaN;
+      if (!(now - ms <= MAX_AGE_MS)) await del(k);
+    }
+  } catch {
+    // blocked IndexedDB: nothing stored there
+  }
+}
+
+// "이 기기 연결 해제" (spec 4.7): snapshots, chat parts, catalog and every mp.* key.
 // The mp.* keys go first: from then on no connection is saved, so an answer still coming for the
 // old BE is not written (setForBe) after IndexedDB was cleared.
 export async function clearDeviceData(): Promise<void> {

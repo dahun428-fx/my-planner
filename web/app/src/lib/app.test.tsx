@@ -1,4 +1,6 @@
+import "fake-indexeddb/auto";
 import { render, waitFor } from "@testing-library/react";
+import { get, set } from "idb-keyval";
 import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
 import type { AppProps } from "next/app";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,6 +37,12 @@ describe("_app", () => {
     const router = mount("/todos/");
     await new Promise((r) => setTimeout(r, 20));
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("sweeps device data older than 7 days at start", async () => {
+    await set("snap:today", { data: {}, savedAt: new Date(Date.now() - 8 * 86_400_000).toISOString(), beUrl: "https://gp76.example.ts.net" });
+    mount("/connect/");
+    await waitFor(async () => expect(await get("snap:today")).toBeUndefined());
   });
 
   it("applies the saved theme and follows a notification tap", async () => {
