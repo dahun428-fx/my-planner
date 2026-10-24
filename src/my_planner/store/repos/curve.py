@@ -405,7 +405,8 @@ class CurveRepo:
         self, period: str, scores: dict[str, int], *, notes: dict[str, str] | None = None,
         quests: dict[str, str] | None = None,
     ) -> list[AreaScore]:
-        """그 분기의 영역 점수(준 영역만). 메모·회복 퀘스트는 준 것만 바꾸고, 없으면 기존 값을 둔다."""
+        """그 분기의 영역 점수(준 영역만). 메모는 준 것만 바꾸고 없으면 기존 값을 둔다. 회복 퀘스트는 이번 호출에서
+        준 값으로 덮어쓴다: 주지 않은 영역은 예전 퀘스트를 지운다(고친 점수에 낡은 퀘스트가 남지 않게)."""
         notes, quests = notes or {}, quests or {}
         now = self._now()
         with transaction(self.conn):
@@ -414,7 +415,7 @@ class CurveRepo:
                     "INSERT INTO curve_area_scores (period, area, score, note, recovery_quest, recorded_at) "
                     "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (period, area) DO UPDATE SET score = excluded.score, "
                     "note = COALESCE(excluded.note, curve_area_scores.note), "
-                    "recovery_quest = COALESCE(excluded.recovery_quest, curve_area_scores.recovery_quest), "
+                    "recovery_quest = excluded.recovery_quest, "
                     "recorded_at = excluded.recorded_at",
                     (period, area, score, notes.get(area), quests.get(area), now),
                 )

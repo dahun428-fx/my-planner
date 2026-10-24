@@ -23,7 +23,7 @@ from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.status.xp import title_name
 from my_planner.store.db import transaction
-from my_planner.store.exports import export_curve, export_tasks
+from my_planner.store.exports import SENSITIVE_MASK, export_curve, export_tasks
 from my_planner.store.repos.cards import Card, CardsRepo
 from my_planner.store.repos.conditions import Condition
 from my_planner.store.repos.curve import AreaScore, CurveRepo, Ladder
@@ -829,7 +829,9 @@ class Tools:
                     events.append(self._curve_event(ctx, "title_granted", {"milestone_id": m.id, "title": name}))
             if done:
                 target, targets = many_target([milestone_target(m.id) for m in done])
-                lines = [milestone_confirmed_line(m.title, m.date_text, m.kind) for m in done]
+                # 활동 요약(`GET /activity`)에서는 민감 사건 제목을 가린다(`chapters.md`와 같은 "(민감)")
+                lines = [milestone_confirmed_line(SENSITIVE_MASK if m.sensitive else m.title, m.date_text, m.kind)
+                         for m in done]
                 summary = lines[0] if len(lines) == 1 else "✓ 저장: " + ", ".join(ln.removeprefix("✓ 저장: ") for ln in lines)
                 self._record(ctx, "milestones_confirmed", target, summary, {"milestone_ids": [m.id for m in done]},
                              targets=targets)

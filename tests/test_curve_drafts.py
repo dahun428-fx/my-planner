@@ -120,12 +120,12 @@ async def test_curve_drafts_deleted_after_3_days_by_draft_since(tmp_path):
         linked = _draft(env, "꾸민 챕터 사건")
         env.conn.execute("UPDATE curve_milestones SET chapter_id = ? WHERE id = ?", (ch, linked))
         env.conn.commit()
-        # 오래전에 만들었지만 확정을 되돌린 사건: 만료 시계는 created_at이 아니라 draft_since(되돌린 시각)부터
+        reverted = _draft(env, "꾸민 되돌린 사건")  # 처음 초안들과 같은 때 만든다
+        # 2일 뒤 확정하고 곧바로 되돌린다: 만료 시계는 created_at이 아니라 draft_since(되돌린 시각)부터 다시 센다
         env.clock.advance(days=2)
-        reverted = _draft(env, "꾸민 되돌린 사건")
-        env.conn.execute(
-            "UPDATE curve_milestones SET created_at = '2026-01-01T00:00:00.000000+00:00' WHERE id = ?", (reverted,))
-        env.conn.commit()
+        _, saved = await env.action("confirm_milestones", {"ids": [reverted]})
+        undo = await env.post(f"/activity/{saved['undo_id']}/undo", json={"client_msg_id": "drafts-undo"})
+        assert undo.status == 200
         confirmed = _draft(env, "꾸민 확정 사건")
         await env.action("confirm_milestones", {"ids": [confirmed]})
 

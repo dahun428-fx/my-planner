@@ -333,3 +333,40 @@ def test_repo_questions_defaults_and_date_precision(conn):
     for bad in ("2023-5", "2019-13", "2019-02-30", "19", "2019-05-02-01", "abcd"):
         with pytest.raises(ValueError):
             date_precision(bad)
+
+
+async def test_rerecording_area_without_quest_clears_old_quest(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        area_scores(env.conn, "2026-Q3", health=6)
+        env.conn.commit()
+        t = env.parts.tools
+        t.record_area_scores(_ctx(), scores={"health": 4}, recovery_quests={"health": "꾸민 산책"},
+                             notes={"health": "꾸민 메모"})
+        first = _areas(env, "2026-Q4")
+        t.record_area_scores(_ctx(), scores={"health": 7})
+        raised = _areas(env, "2026-Q4")
+        t.record_area_scores(_ctx(), scores={"health": 5})
+        lowered = _areas(env, "2026-Q4")
+        status = await (await env.get("/status")).json()
+
+    assert first == {"health": (4, "꾸민 메모", "꾸민 산책")}
+    assert raised == {"health": (7, "꾸민 메모", None)}  # 이번 호출에 퀘스트가 없으면 예전 퀘스트를 지운다
+    assert lowered == {"health": (5, "꾸민 메모", None)}
+    health = next(s for s in status["stats"] if s["area"] == "health")
+    assert health["debuff"] is True and health["recovery_quest"] != "꾸민 산책"
+
+
+async def test_sensitive_milestone_title_masked_in_activity_summary(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        secret = _draft(env, "꾸민 비밀", kind="low", date_text="2020-03", sensitive=True)
+        plain = _draft(env, "꾸민 여행")
+        _, one = await env.action("confirm_milestones", {"ids": [secret]})
+        await env.action("confirm_milestones", {"ids": [plain]})
+        listing = await (await env.get("/activity?order=desc")).json()
+        status, undone = await _undo(env, one["undo_id"])
+        summaries = [r["summary"] for r in env.activity()]
+
+    assert [i["summary"] for i in listing["items"]][::-1] == [
+        "✓ 저장: (민감) (2020-03, 저점)", "✓ 저장: 꾸민 여행 (2019, 고점)"]
+    assert status == 200 and undone["confirmation"] == "↩ 되돌림: (민감) 저장"
+    assert not any("꾸민 비밀" in s for s in summaries)
