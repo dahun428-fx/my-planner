@@ -30,3 +30,10 @@ web/app/tsconfig.tsbuildinfo
 web/app/e2e/__screens__/
 web/app/e2e/.results/
 web/app/playwright-report/
+
+# SP3-4 dashboard (web/dashboard)
+web/dashboard/node_modules/
+web/dashboard/.next/
+web/dashboard/out/
+web/dashboard/next-env.d.ts
+web/dashboard/tsconfig.tsbuildinfo

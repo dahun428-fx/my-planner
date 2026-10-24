@@ -1,0 +1,91 @@
+import { http, HttpResponse } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import health from "../test/fixtures/health.json";
+import degraded from "../test/fixtures/health-degraded.json";
+import quiet from "../test/fixtures/health-quiet.json";
+import safeMode from "../test/fixtures/health-safe-mode.json";
+import { BASE, ORIGIN } from "../test/handlers";
+import { healthAnswers } from "../test/handlers";
+import { server } from "../test/server";
+import { fetchApi, getHealth, isHealth, isSafeModeHealth } from "./api";
+
+const conn = { beUrl: ORIGIN, token: "fake-token-abc" };
+
+describe("api", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("sends the token as a bearer header to /api/v1", async () => {
+    let auth: string | null = null;
+    server.use(
+      http.get(`${BASE}/health`, ({ request }) => {
+        auth = request.headers.get("authorization");
+        return HttpResponse.json(health);
+      }),
+    );
+    const r = await getHealth(conn);
+    expect(r).toEqual({ kind: "ok", data: health });
+    expect(auth).toBe("Bearer fake-token-abc");
+  });
+
+  it("maps 401, 429 and 503 safe_mode", async () => {
+    server.use(healthAnswers.unauthorized());
+    expect(await getHealth(conn)).toEqual({ kind: "unauthorized" });
+    server.use(healthAnswers.tooMany());
+    expect(await getHealth(conn)).toEqual({ kind: "rate_limited" });
+    server.use(http.get(`${BASE}/today`, () => HttpResponse.json({ error: { code: "safe_mode", message: "x" } }, { status: 503 })));
+    expect(await fetchApi(conn, "/today", (v): v is unknown => true)).toEqual({ kind: "safe_mode" });
+  });
+
+  it("reads the safe mode /health body as safe_mode", async () => {
+    server.use(healthAnswers.safeMode());
+    expect(await getHealth(conn)).toEqual({ kind: "safe_mode" });
+  });
+
+  it("maps 500 to broken(internal) and other errors to their code", async () => {
+    server.use(healthAnswers.internal());
+    expect(await getHealth(conn)).toEqual({ kind: "broken", code: "internal" });
+    server.use(http.get(`${BASE}/health`, () => new HttpResponse("bad gateway", { status: 502 })));
+    expect(await getHealth(conn)).toEqual({ kind: "broken", code: "http_502" });
+  });
+
+  it("maps a 200 with a missing field to broken(shape)", async () => {
+    const { brain: _brain, ...missing } = health;
+    server.use(healthAnswers.ok(missing));
+    expect(await getHealth(conn)).toEqual({ kind: "broken", code: "shape" });
+    server.use(http.get(`${BASE}/health`, () => new HttpResponse("not json", { status: 200 })));
+    expect(await getHealth(conn)).toEqual({ kind: "broken", code: "shape" });
+  });
+
+  it("maps a network error to offline", async () => {
+    server.use(healthAnswers.unreachable());
+    expect(await getHealth(conn)).toEqual({ kind: "offline" });
+  });
+
+  it("maps 10 seconds without an answer to offline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    server.use(healthAnswers.silent());
+    const pending = getHealth(conn);
+    await vi.advanceTimersByTimeAsync(9_999);
+    let settled = false;
+    void pending.then(() => (settled = true));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await pending).toEqual({ kind: "offline" });
+  });
+
+  it("checks fixtures by hand, ignoring fields added later", () => {
+    for (const f of [health, degraded, quiet]) expect(isHealth(f)).toBe(true);
+    expect(isHealth({ ...health, added_later: { x: 1 } })).toBe(true);
+    expect(isHealth({ ...health, runs_today: [{ ...health.runs_today[0], added_later: 1 }] })).toBe(true);
+    expect(isHealth(safeMode)).toBe(false);
+    expect(isSafeModeHealth(safeMode)).toBe(true);
+    expect(isSafeModeHealth(health)).toBe(false);
+    expect(isHealth({ ...health, brain: { ...health.brain, calls_today: "23" } })).toBe(false);
+    expect(isHealth({ ...health, errors: { ...health.errors, by_event: { x: "1" } } })).toBe(false);
+    expect(isHealth({ ...health, runs_today: [{ ...health.runs_today[0], delivered_via: "app" }] })).toBe(false);
+    expect(isHealth(null)).toBe(false);
+  });
+});
