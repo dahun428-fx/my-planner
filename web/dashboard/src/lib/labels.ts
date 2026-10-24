@@ -146,6 +146,8 @@ export const CONDITION_TEXT = {
   head: (average: string, days: number) => `평균 ${average} · ${days}일 기록`,
   chart: (days: number, logged: number, average: string) => `컨디션 지난 ${days}일: ${logged}일 기록, 평균 ${average}`,
   empty: "저녁 체크인에서 컨디션을 기록하면 여기에 그려져요.",
+  listLabel: "기록한 날",
+  dayScore: (md: string, score: number) => `${md} 컨디션 ${score}`,
 } as const;
 
 // (d) 게임형 상태창, spec 13.5 and appendix A. XP and level only rise; a debuff is a signal with a quest.

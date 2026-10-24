@@ -14,23 +14,31 @@ const dayIndex = (ymd: string): number => {
 
 const ymdOf = (index: number): string => new Date(index * DAY_MS).toISOString().slice(0, 10);
 
-/** Average of the logged days only, one decimal (the BE's `/conditions` rule). */
-export function averageOf(items: ConditionItem[]): string | null {
-  if (items.length === 0) return null;
-  const avg = items.reduce((sum, c) => sum + c.score, 0) / items.length;
-  return (Math.round(avg * 10) / 10).toFixed(1);
-}
 
 /**
  * 30-day condition dots (spec 13.3). One column per day from `from` to `to`; a logged day is one dot at
  * its score, an empty day is nothing at all (no dot, no line, not a zero: 6.3.4). The plot stretches to the
  * panel's width; dots are zero-length round-capped lines with a non-scaling stroke, so they stay round.
+ * The head shows the API's own `average` and `days_logged` (6.3.4), never a number worked out here, so it
+ * reads the same as `/conditions` and Telegram.
  */
-export function ConditionDots({ items, from, to }: { items: ConditionItem[]; from: string; to: string }) {
+export function ConditionDots({
+  items,
+  from,
+  to,
+  average: apiAverage,
+  daysLogged,
+}: {
+  items: ConditionItem[];
+  from: string;
+  to: string;
+  average: number | null;
+  daysLogged: number;
+}) {
   const headingId = useId();
   const start = dayIndex(from);
   const days = Math.max(1, dayIndex(to) - start + 1);
-  const average = averageOf(items);
+  const average = apiAverage === null || daysLogged === 0 ? null : apiAverage.toFixed(1);
   const shown = items.filter((c) => {
     const i = dayIndex(c.date) - start;
     return i >= 0 && i < days && c.score >= 1 && c.score <= 5;
@@ -40,7 +48,7 @@ export function ConditionDots({ items, from, to }: { items: ConditionItem[]; fro
     <section className="panel" aria-labelledby={headingId}>
       <div className="panel-head">
         <h2 id={headingId}>{T.title(days)}</h2>
-        {average !== null && <span className="meta num">{T.head(average, items.length)}</span>}
+        {average !== null && <span className="meta num">{T.head(average, daysLogged)}</span>}
       </div>
       {average === null ? (
         <p className="empty">{T.empty}</p>
@@ -59,7 +67,7 @@ export function ConditionDots({ items, from, to }: { items: ConditionItem[]; fro
               viewBox={`0 0 ${days} 4`}
               preserveAspectRatio="none"
               role="img"
-              aria-label={T.chart(days, items.length, average)}
+              aria-label={T.chart(days, daysLogged, average)}
             >
               {SCORES.map((s) => (
                 <line
@@ -91,6 +99,11 @@ export function ConditionDots({ items, from, to }: { items: ConditionItem[]; fro
               })}
             </svg>
           </div>
+          <ul className="visually-hidden" aria-label={T.listLabel}>
+            {shown.map((c) => (
+              <li key={c.date}>{T.dayScore(formatDay(c.date), c.score)}</li>
+            ))}
+          </ul>
           <div className="cdots-x" aria-hidden="true">
             {Array.from({ length: days }, (_, i) => (
               <span key={i} className={i === days - 1 ? "num end" : "num"}>

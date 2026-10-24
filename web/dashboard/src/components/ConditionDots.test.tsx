@@ -11,6 +11,8 @@ describe("ConditionDots", () => {
       <ConditionDots
         from="2026-10-18"
         to="2026-10-24"
+        average={3}
+        daysLogged={3}
         items={[
           { date: "2026-10-18", score: 3, note: null },
           { date: "2026-10-20", score: 5, note: null },
@@ -37,7 +39,7 @@ describe("ConditionDots", () => {
   });
 
   it("puts the average and the logged days in the head", () => {
-    render(<ConditionDots from={conditions.from} to={conditions.to} items={conditions.items} />);
+    render(<ConditionDots from={conditions.from} to={conditions.to} items={conditions.items} average={conditions.average} daysLogged={conditions.days_logged} />);
     expect(screen.getByText("평균 3.7 · 21일 기록")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "컨디션 지난 30일: 21일 기록, 평균 3.7" })).toBeInTheDocument();
     expect(dots()).toHaveLength(21);
@@ -46,15 +48,46 @@ describe("ConditionDots", () => {
   });
 
   it("labels days on one step that lands on today", () => {
-    render(<ConditionDots from={conditions.from} to={conditions.to} items={conditions.items} />);
+    render(<ConditionDots from={conditions.from} to={conditions.to} items={conditions.items} average={conditions.average} daysLogged={conditions.days_logged} />);
     const ticks = Array.from(document.querySelectorAll(".cdots-x span")).map((s) => s.textContent).filter(Boolean);
     expect(ticks).toEqual(["9/26", "10/3", "10/10", "10/17", "10/24"]);
   });
 
   it("shows one sentence when nothing is logged", () => {
-    render(<ConditionDots from="2026-09-25" to="2026-10-24" items={[]} />);
+    render(<ConditionDots from="2026-09-25" to="2026-10-24" items={[]} average={null} daysLogged={0} />);
     expect(screen.getByText("저녁 체크인에서 컨디션을 기록하면 여기에 그려져요.")).toBeInTheDocument();
     expect(screen.queryByText(/평균/)).toBeNull();
     expect(dots()).toHaveLength(0);
+  });
+
+  it("shows the API's average, not one worked out again", () => {
+    // 3, 3, 3, 4 is 3.25: the BE rounds half to even (3.2); rounding here would say 3.3
+    const items = [3, 3, 3, 4].map((score, i) => ({ date: `2026-10-2${i + 1}`, score, note: null }));
+    render(<ConditionDots from="2026-10-18" to="2026-10-24" items={items} average={3.2} daysLogged={4} />);
+    expect(screen.getByText("평균 3.2 · 4일 기록")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "컨디션 지난 7일: 4일 기록, 평균 3.2" })).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("3.3");
+  });
+
+  it("shows a whole-number average with one decimal", () => {
+    const items = [{ date: "2026-10-24", score: 4, note: null }];
+    render(<ConditionDots from="2026-10-18" to="2026-10-24" items={items} average={4} daysLogged={1} />);
+    expect(screen.getByText("평균 4.0 · 1일 기록")).toBeInTheDocument();
+  });
+
+  it("lists every logged day's score for screen readers", () => {
+    render(
+      <ConditionDots
+        from={conditions.from}
+        to={conditions.to}
+        items={conditions.items}
+        average={conditions.average}
+        daysLogged={conditions.days_logged}
+      />,
+    );
+    const list = screen.getByRole("list", { name: "기록한 날" });
+    const rows = Array.from(list.querySelectorAll("li")).map((li) => li.textContent);
+    expect(rows).toHaveLength(21);
+    expect(rows.at(-1)).toBe("10/24 컨디션 4");
   });
 });

@@ -433,9 +433,6 @@ h2 {
 .bar-track {
   fill: var(--raised);
 }
-.part {
-  white-space: nowrap;
-}
 
 /* ---- tabs: one segmented track, as wide as its options ---- */
 .tabs {

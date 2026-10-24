@@ -100,6 +100,20 @@ export function WeekPanel({ week }: { week: Week }) {
   );
 }
 
+const tabId = (panelId: string, t: Tab) => `${panelId}-tab-${t}`;
+
+/**
+ * The first render after a tab switch still holds the other tab's answer (usePolling clears it in an
+ * effect): a panel is drawn only when the data is the shape of the open tab.
+ */
+export function dataForTab(tab: Tab, r: ApiResult<Today | Week> | null): { today: Today | null; week: Week | null } {
+  if (r?.kind !== "ok") return { today: null, week: null };
+  return {
+    today: tab === "today" && "todos" in r.data ? r.data : null,
+    week: tab === "week" && "days" in r.data ? r.data : null,
+  };
+}
+
 function Tabs({ tab, onChange, panelId }: { tab: Tab; onChange(t: Tab): void; panelId: string }) {
   const refs = useRef<Record<Tab, HTMLButtonElement | null>>({ today: null, week: null });
   const onKey = (e: KeyboardEvent) => {
@@ -118,6 +132,7 @@ function Tabs({ tab, onChange, panelId }: { tab: Tab; onChange(t: Tab): void; pa
             refs.current[t] = el;
           }}
           type="button"
+          id={tabId(panelId, t)}
           role="tab"
           className="tab"
           aria-selected={tab === t}
@@ -154,8 +169,14 @@ export function TasksScreen() {
   const todos = usePolling(loadTodos, 60_000, `${key}\n${tab}`).result;
   const conditions = usePolling(loadConditions, 60_000, key).result;
 
-  const whole =
-    todos !== null && todos.kind !== "ok" && (WHOLE_SCREEN.has(todos.kind) || (conditions !== null && sameState(todos, conditions)));
+  // One notice for the screen when the BE as a whole is unusable (either GET says so), or both GETs failed alike.
+  const wholeNotice =
+    todos !== null && todos.kind !== "ok" && (WHOLE_SCREEN.has(todos.kind) || (conditions !== null && sameState(todos, conditions)))
+      ? todos
+      : conditions !== null && WHOLE_SCREEN.has(conditions.kind)
+        ? conditions
+        : null;
+  const { today: todayData, week: weekData } = dataForTab(tab, todos);
 
   return (
     <>
@@ -166,27 +187,33 @@ export function TasksScreen() {
           <Skeleton tall />
           <Skeleton />
         </>
-      ) : whole ? (
-        <StateNotice result={todos} />
+      ) : wholeNotice ? (
+        <StateNotice result={wholeNotice} />
       ) : (
         <>
-          <div id={panelId} role="tabpanel" aria-label={T.tabs[tab]}>
-            {todos === null ? (
-              <Skeleton tall />
-            ) : todos.kind !== "ok" ? (
+          <div id={panelId} role="tabpanel" aria-labelledby={tabId(panelId, tab)}>
+            {todos !== null && todos.kind !== "ok" ? (
               <section className="panel" aria-label={T.tabs[tab]}>
                 <StateNotice result={todos} />
               </section>
-            ) : "todos" in todos.data ? (
-              <TodayPanel today={todos.data} />
+            ) : todayData ? (
+              <TodayPanel today={todayData} />
+            ) : weekData ? (
+              <WeekPanel week={weekData} />
             ) : (
-              <WeekPanel week={todos.data} />
+              <Skeleton tall />
             )}
           </div>
           {conditions === null ? (
             <Skeleton />
           ) : conditions.kind === "ok" ? (
-            <ConditionDots items={conditions.data.items} from={conditions.data.from} to={conditions.data.to} />
+            <ConditionDots
+              items={conditions.data.items}
+              from={conditions.data.from}
+              to={conditions.data.to}
+              average={conditions.data.average}
+              daysLogged={conditions.data.days_logged}
+            />
           ) : (
             <section className="panel" aria-label={CONDITION_TEXT.title(30)}>
               <h2>{CONDITION_TEXT.title(30)}</h2>

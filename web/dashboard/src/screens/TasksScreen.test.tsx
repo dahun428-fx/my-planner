@@ -2,15 +2,17 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import type { Today, Week } from "../api/types.gen";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import conditionsEmpty from "../test/fixtures/conditions-empty.json";
+import conditions from "../test/fixtures/conditions.json";
 import todayEmpty from "../test/fixtures/today-empty.json";
 import today from "../test/fixtures/today.json";
 import weekEmpty from "../test/fixtures/week-empty.json";
 import week from "../test/fixtures/week.json";
 import { BASE, ORIGIN, conditionsAnswers, todayAnswers, weekAnswers } from "../test/handlers";
 import { server } from "../test/server";
-import { TasksScreen } from "./TasksScreen";
+import { TasksScreen, dataForTab } from "./TasksScreen";
 
 function renderScreen() {
   localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
@@ -128,5 +130,48 @@ describe("TasksScreen", () => {
     renderScreen();
     expect(await screen.findByText("BE가 응답했지만 이 화면을 그리지 못했어요 (shape).")).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "오늘 (10/24 토)" })).toBeInTheDocument();
+  });
+
+  it("never draws the other tab's answer while the new tab loads", async () => {
+    let releaseWeek: () => void = () => {};
+    server.use(
+      http.get(`${BASE}/week`, async () => {
+        await new Promise<void>((r) => {
+          releaseWeek = r;
+        });
+        return HttpResponse.json(week);
+      }),
+    );
+    renderScreen();
+    await screen.findByRole("region", { name: "오늘 (10/24 토)" });
+    await userEvent.click(screen.getByRole("tab", { name: "이번 주" }));
+    expect(screen.queryByRole("region", { name: "오늘 (10/24 토)" })).toBeNull();
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveAccessibleName("이번 주");
+    releaseWeek();
+    expect(await screen.findByRole("region", { name: "이번 주 (10/19~10/25)" })).toBeInTheDocument();
+  });
+
+  it("shows one notice when only the conditions call meets a BE-wide state", async () => {
+    server.use(conditionsAnswers.unauthorized());
+    renderScreen();
+    expect(await screen.findByText("토큰이 맞지 않아요. 설정에서 다시 넣어 주세요.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "오늘 (10/24 토)" })).toBeNull();
+  });
+
+  it("shows the API's average in the head", async () => {
+    server.use(conditionsAnswers.ok({ ...conditions, average: 3.2 }));
+    renderScreen();
+    expect(await screen.findByText("평균 3.2 · 21일 기록")).toBeInTheDocument();
+  });
+
+  it("draws a tab's panel only from that tab's answer", () => {
+    const t = { kind: "ok", data: today as unknown as Today } as const;
+    const w = { kind: "ok", data: week as unknown as Week } as const;
+    expect(dataForTab("week", t)).toEqual({ today: null, week: null }); // stale /today after switching
+    expect(dataForTab("today", w)).toEqual({ today: null, week: null });
+    expect(dataForTab("today", t).today).toBe(today);
+    expect(dataForTab("week", w).week).toBe(week);
+    expect(dataForTab("today", null)).toEqual({ today: null, week: null });
   });
 });
