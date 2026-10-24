@@ -24,7 +24,7 @@ from typing import Any
 
 from aiohttp import ClientResponse
 from aiohttp.test_utils import TestClient, TestServer
-from fakes import FakeBrain, FakeSender, FakeTurn, fake_sleep, make_settings
+from fakes import FAKE_VAPID, FakeBrain, FakeSender, FakeTurn, fake_sleep, make_settings
 from telegram import Update
 
 from my_planner.api.health import ErrorCounter
@@ -54,6 +54,11 @@ class RecordingBot:
         return True
 
 
+async def inline_to_thread(fn: Any, /, *args: Any, **kw: Any) -> Any:
+    """`asyncio.to_thread` 대신: 같은 스레드에서 바로 부른다(가짜 푸시 전송용)."""
+    return fn(*args, **kw)
+
+
 def _unix(dt: datetime) -> int:
     return int(dt.timestamp())
 
@@ -71,6 +76,8 @@ class BeEnv:
         self.conn = conn
         self.db_path = db_path
         self.deps = deps
+        self.push = parts.delivery.push
+        parts.delivery.to_thread = inline_to_thread  # 가짜 전송은 바로 돈다(drain이 실제 스레드를 기다리지 않게)
         self.settings = deps.settings
         self.bot = RecordingBot()
         self._ids = itertools.count(1000)
@@ -85,8 +92,13 @@ class BeEnv:
         start: datetime,
         overrides: dict[str, Any] | None = None,
         api_sleep: Any = None,
+        push: Any = None,
     ) -> AsyncIterator[BeEnv]:
-        settings = make_settings(tmp_path, **{"api_token": TEST_TOKEN, **(overrides or {})})
+        """`push`: 가짜 푸시 전송(`FakePushSender`). 주면 꾸며 낸 VAPID 값으로 푸시를 켠다."""
+        base: dict[str, Any] = {"api_token": TEST_TOKEN}
+        if push is not None:
+            base["vapid"] = FAKE_VAPID
+        settings = make_settings(tmp_path, **{**base, **(overrides or {})})
         db_path = settings.paths.state_dir / "planner.db"
         conn = open_db(db_path)
         migrate(conn)
@@ -103,7 +115,7 @@ class BeEnv:
             return senders[0]
 
         parts = build_be(settings, conn, clock, brain_factory=brain_factory, sender_factory=sender_factory,
-                         sleep=fake_sleep(clock))
+                         sleep=fake_sleep(clock), push_sender=push)
         before = to_iso(start - timedelta(minutes=1))
         parts.state.set("installed_at", before)
         parts.state.set("last_seen_at", before)
@@ -180,6 +192,14 @@ class BeEnv:
         raw = await resp.read()
         await self.drain()
         return resp, raw
+
+    async def subscribe(self, endpoint: str, *, label: str | None = "폰") -> int:
+        """`POST /push/subscriptions`(꾸며 낸 키). 구독 id."""
+        body = {"endpoint": endpoint, "expirationTime": None, "keys": {"p256dh": "fake-p256dh", "auth": "fake-auth"},
+                "label": label}
+        resp = await self.post("/push/subscriptions", json=body)
+        assert resp.status == 201, resp.status
+        return (await resp.json())["id"]
 
     def activity(self) -> list[sqlite3.Row]:
         return self.conn.execute("SELECT * FROM activity ORDER BY id").fetchall()

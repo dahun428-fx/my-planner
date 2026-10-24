@@ -616,6 +616,55 @@ class ActivityResponse(_Model):
     next_before: str | None
 
 
+class VapidPublicKey(_Model):
+    """`GET /push/vapid-public-key` (6.4.8)."""
+
+    public_key: str
+
+
+class PushKeys(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    p256dh: str = Field(min_length=1, max_length=512)
+    auth: str = Field(min_length=1, max_length=512)
+
+
+class PushSubscribeBody(BaseModel):
+    """`POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    endpoint: str = Field(min_length=1, max_length=2048, pattern=r"^https://")
+    expirationTime: int | float | None = None
+    keys: PushKeys
+    label: str | None = Field(default=None, max_length=100)
+
+
+class PushSubscribed(_Model):
+    """`201` 구독 id. 같은 `endpoint`면 같은 id."""
+
+    id: int
+
+
+class PushTestResult(_Model):
+    """`POST /push/test`: 받은 구독 수, 못 받은 구독 수."""
+
+    ok: int
+    failed: int
+
+
+class NotifySettings(_Model):
+    """`GET`/`PUT /settings/notify` (6.4.9). `effective`는 7.3 D1a."""
+
+    primary: Literal["telegram", "app"]
+    effective: Literal["telegram", "app"]
+    push_subscriptions: int
+
+
+class NotifyPutBody(_Model):
+    primary: Literal["telegram", "app"]
+
+
 def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -650,6 +699,12 @@ MODELS: dict[str, type[BaseModel]] = {
     "UndoRequestBody": UndoRequestBody,
     "UndoResponse": UndoResponse,
     "ActivityResponse": ActivityResponse,
+    "VapidPublicKey": VapidPublicKey,
+    "PushSubscribeBody": PushSubscribeBody,
+    "PushSubscribed": PushSubscribed,
+    "PushTestResult": PushTestResult,
+    "NotifySettings": NotifySettings,
+    "NotifyPutBody": NotifyPutBody,
 }
 
 

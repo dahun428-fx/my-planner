@@ -132,6 +132,14 @@ class NotifyConfig(_Model):
     default_primary: Literal["telegram", "app"] = "app"  # app_state.notify_primary가 없을 때
 
 
+class VapidConfig(_Model):
+    """웹 푸시 VAPID 키(SP3-4 스펙 14, 15). `.env`에만 둔다. 셋 다 있을 때만 `Settings.vapid`가 생긴다."""
+
+    public_key: str  # base64url(비압축 P-256 공개키 65바이트). `GET /push/vapid-public-key`가 준다
+    private_key: SecretStr  # base64url(원시 32바이트). 로그·응답에 나오지 않는다
+    subject: str  # `mailto:` 주소
+
+
 class Settings(_Model):
     telegram_bot_token: SecretStr
     owner_telegram_id: int
@@ -144,6 +152,7 @@ class Settings(_Model):
     api: ApiConfig = ApiConfig()
     notify: NotifyConfig = NotifyConfig()
     api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
+    vapid: VapidConfig | None = None  # .env의 VAPID_*. 없으면 푸시만 꺼진다(`/push/*`는 404, 실제 통로는 telegram)
 
 
 class _Secrets(BaseSettings):
@@ -154,6 +163,18 @@ class _Secrets(BaseSettings):
     telegram_bot_token: SecretStr = Field(validation_alias="TELEGRAM_BOT_TOKEN")
     owner_telegram_id: int = Field(validation_alias="OWNER_TELEGRAM_ID")
     api_token: SecretStr | None = Field(default=None, validation_alias="API_TOKEN")
+    vapid_public_key: str | None = Field(default=None, validation_alias="VAPID_PUBLIC_KEY")
+    vapid_private_key: SecretStr | None = Field(default=None, validation_alias="VAPID_PRIVATE_KEY")
+    vapid_subject: str | None = Field(default=None, validation_alias="VAPID_SUBJECT")
+
+    def vapid(self) -> VapidConfig | None:
+        """셋 다 비어 있지 않을 때만. 하나라도 없으면 푸시를 끈다(값은 남기지 않는다)."""
+        private = self.vapid_private_key.get_secret_value().strip() if self.vapid_private_key is not None else ""
+        public = (self.vapid_public_key or "").strip()
+        subject = (self.vapid_subject or "").strip()
+        if not (private and public and subject):
+            return None
+        return VapidConfig(public_key=public, private_key=SecretStr(private), subject=subject)
 
 
 def resolve_root() -> Path:
@@ -171,7 +192,7 @@ def load_settings(root: Path) -> Settings:
     if toml_path.exists():
         with toml_path.open("rb") as f:
             data = tomllib.load(f)
-    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "paths"):
+    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "vapid", "paths"):
         if key in data:
             raise ValueError(f"config.toml에 {key}를 두지 않는다")
     secrets = _Secrets(_env_file=root / ".env")  # type: ignore[call-arg]
@@ -179,6 +200,7 @@ def load_settings(root: Path) -> Settings:
         telegram_bot_token=secrets.telegram_bot_token,
         owner_telegram_id=secrets.owner_telegram_id,
         api_token=secrets.api_token,
+        vapid=secrets.vapid(),
         paths=PathsConfig.for_root(root),
         **data,
     )

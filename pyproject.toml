@@ -15,6 +15,7 @@ dependencies = [
     "anyio>=4,<5",  # 두뇌 호출 시간 상한(fail_after). SDK도 쓴다
     "tzdata>=2024.1",  # Windows에는 IANA 시간대 DB가 없어 ZoneInfo("Asia/Seoul")가 실패한다
     "aiohttp>=3.14,<4",  # HTTP API (SP3-4). 같은 asyncio 루프에 AppRunner로 끼운다(S7)
+    "pywebpush>=2.5,<3",  # 웹 푸시(SP3-4 7.3). 동기 함수라 asyncio.to_thread로 부른다. py-vapid, cryptography를 끌어온다
 ]
 
 [project.optional-dependencies]

@@ -9,8 +9,10 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from pydantic import SecretStr
+
 from my_planner.clock import FakeClock
-from my_planner.config import PathsConfig, Settings
+from my_planner.config import PathsConfig, Settings, VapidConfig
 from my_planner.domain import RunContext
 from my_planner.harness.brain import BrainResult
 from my_planner.harness.dispatcher import Outbound
@@ -97,6 +99,45 @@ class FakeBrain:
             resume_failed=turn.resume_failed,
             retry_at=turn.retry_at,
         )
+
+
+# 꾸며 낸 VAPID 값(실제 키가 아니다). 시험은 `make_settings(tmp_path, vapid=FAKE_VAPID)`로 푸시를 켠다
+FAKE_VAPID = VapidConfig(
+    public_key="BFakePublicKeyForTestsOnly000000000000000000000000000000000000000000000000000000000000",
+    private_key=SecretStr("fake-private-key-for-tests-only"),
+    subject="mailto:test@example.invalid",
+)
+
+
+@dataclass
+class PushCall:
+    endpoint: str
+    payload: dict[str, Any]
+    ttl: int
+    topic: str | None
+
+
+class FakePushSender:
+    """`PushSender`의 가짜(동기). `results[endpoint]`에서 차례로 꺼내 상태 코드를 돌려주거나 예외를 올린다.
+
+    목록이 비었거나 없으면 201. `.sent`에는 보낸 시도 하나마다 `PushCall`(받지 못한 시도도 적는다).
+    """
+
+    def __init__(self, results: dict[str, list[int | Exception]] | None = None) -> None:
+        self.results = {k: list(v) for k, v in (results or {}).items()}
+        self.sent: list[PushCall] = []
+
+    def send(self, sub: Any, payload: dict[str, Any], *, ttl: int, topic: str | None) -> int:
+        self.sent.append(PushCall(sub.endpoint, payload, ttl, topic))
+        queue = self.results.get(sub.endpoint)
+        r = queue.pop(0) if queue else 201
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    def always(self, endpoint: str, status: int, n: int = 100) -> None:
+        """그 구독은 앞으로 `n`번 `status`를 돌려준다."""
+        self.results[endpoint] = [status] * n
 
 
 class FakeSender:

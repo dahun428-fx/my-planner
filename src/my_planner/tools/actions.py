@@ -16,6 +16,10 @@
    - 그 밖에는 도구를 부른다. 도구가 거절하면 `422 rejected`(도구의 오류 문구).
    - 응답을 `api_idempotency`에 쓴다(`client_msg_id`가 있을 때).
 
+푸시와 알림 설정(6.4.8, 6.4.9)은 `api/push.py`만 부르는 내부 동작이다(`endpoint="push"`, 되돌릴 수 없음):
+`push_subscribe`, `push_unsubscribe`, `notify_set`, `push_test_result`. 구독 `endpoint`(주소)와 키는 활동
+`summary`, 결과, 로그에 넣지 않는다(14장). `api_idempotency`에는 쓰지 않는다(이 경로들은 `client_msg_id`가 없다).
+
 되돌리기 `undo`(6.4.3)는 `POST /activity/{id}/undo`만 부르는 내부 동작이다(`endpoint="undo"`). 없는 활동은 `404`,
 이미 되돌린 활동은 아무것도 바꾸지 않고 `200 already_undone`(U4: 같은 `client_msg_id`로 다시 와도 같은 답),
 U1~U3에 걸리면 `422 not_undoable`·`409 undo_expired`·`409 superseded`. 되돌리면 대상 복원, 새 활동(`kind="undo"`,
@@ -72,9 +76,9 @@ if TYPE_CHECKING:
     from my_planner.store.repos.activity import (
         ActivityRepo,
         ConfirmsRepo,
-        Endpoint,
         IdempotencyRepo,
     )
+    from my_planner.store.repos.push import PushRepo
     from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.tools.core import Tools
@@ -98,6 +102,8 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
     "superseded": (409, "그 뒤에 바뀐 내용이 있어서 되돌릴 수 없어요."),
 }
 
+RequestEndpoint = Literal["chat", "actions", "undo", "push"]  # `push`: `api/push.py`(중복 방지 기록 없음)
+
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
     "undone", "already_undone", "not_found", "not_undoable", "undo_expired", "superseded",
@@ -113,7 +119,7 @@ class ActionRequest:
     channel: ActivityChannel
     client_msg_id: str | None = None
     confirm_token: str | None = None
-    endpoint: Endpoint = "actions"
+    endpoint: RequestEndpoint = "actions"
 
 
 @dataclass
@@ -136,6 +142,7 @@ class ActionDeps:
     runs: RunsRepo | None = None
     settings: Settings | None = None
     mark_answered: Callable[[int, Channel], object] | None = None
+    pushes: PushRepo | None = None  # 푸시 구독(`push_*` 동작)
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -159,7 +166,7 @@ class ActionSpec:
     public: bool = True
     target: Callable[[Tools, dict[str, Any]], list[str]] | None = None
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
-    endpoint: Endpoint | None = None
+    endpoint: RequestEndpoint | None = None
     reply: bool = False  # 명령 동작: 결과가 답 글(`reply_text`)이고 응답은 `/chat` 재생 모양(6.4.1)
 
 
@@ -263,6 +270,82 @@ def _cmd_done(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[s
     return {"reply_text": cmd_done(deps.router, ctx.channel)}
 
 
+PUSH_SUBSCRIBED = "푸시 알림을 켰어요"
+PUSH_UNSUBSCRIBED = "푸시 알림을 껐어요"
+NO_SUBSCRIPTION = "없는 구독이에요."
+BAD_PRIMARY = "주 통로는 telegram 또는 app이에요."
+CHANNEL_LABELS = {"telegram": "텔레그램", "app": "앱"}
+PUSH_RESULTS = ("ok", "gone", "failed")
+
+
+def _push_summary(base: str, label: Any) -> str:
+    """활동 한 줄. 기기 이름(사용자가 붙인 것)만 붙인다. 구독 주소와 키는 넣지 않는다."""
+    return f"{base}: {label.strip()}" if isinstance(label, str) and label.strip() else base
+
+
+def _push_subscribe(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    endpoint, p256dh, auth = args.get("endpoint"), args.get("p256dh"), args.get("auth")
+    label = args.get("label")
+    if not all(isinstance(v, str) and v for v in (endpoint, p256dh, auth)) or not (
+        label is None or isinstance(label, str)
+    ):
+        return {"error": BAD_ARGS}
+    assert deps.pushes is not None
+    sid = deps.pushes.upsert(endpoint, p256dh, auth, label or None, at=deps.clock.now())
+    record_activity(
+        deps.activity, ctx, kind="push_subscribed", target=f"push:{sid}", summary=_push_summary(PUSH_SUBSCRIBED, label),
+        risk="low", undo=None,
+    )
+    return {"id": sid}
+
+
+def _push_unsubscribe(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    sid = _int(args.get("id"))
+    assert deps.pushes is not None
+    sub = deps.pushes.get(sid) if sid is not None else None
+    if sub is None or not deps.pushes.delete(sub.id):
+        return {"error": NO_SUBSCRIPTION}
+    record_activity(
+        deps.activity, ctx, kind="push_unsubscribed", target=f"push:{sub.id}",
+        summary=_push_summary(PUSH_UNSUBSCRIBED, sub.label), risk="low", undo=None,
+    )
+    return {"id": sub.id}
+
+
+def _notify_set(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    from my_planner.store.repos.state import NOTIFY_PRIMARY_KEY
+
+    primary = args.get("primary")
+    if primary not in CHANNEL_LABELS:
+        return {"error": BAD_PRIMARY}
+    assert deps.state is not None
+    deps.state.set(NOTIFY_PRIMARY_KEY, primary)
+    record_activity(
+        deps.activity, ctx, kind="notify_changed", target="notify", summary=f"주 통로: {CHANNEL_LABELS[primary]}",
+        risk="low", undo=None,
+    )
+    return {"primary": primary}
+
+
+def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """`POST /push/test`의 결과 기록(구독마다 받음·못 받음). 활동은 남기지 않는다(바뀐 데이터가 없다)."""
+    results = args.get("results")
+    if not isinstance(results, list) or not all(
+        isinstance(r, dict) and _int(r.get("id")) is not None and r.get("result") in PUSH_RESULTS for r in results
+    ):
+        return {"error": BAD_ARGS}
+    assert deps.pushes is not None
+    now = deps.clock.now()
+    disabled = 0
+    for r in results:
+        if r["result"] == "ok":
+            deps.pushes.record_ok(r["id"], now)
+        elif deps.pushes.record_failure(r["id"], gone=r["result"] == "gone", at=now):
+            disabled += 1
+    ok = sum(1 for r in results if r["result"] == "ok")
+    return {"ok": ok, "failed": len(results) - ok, "disabled": disabled}
+
+
 ACTIONS: dict[str, ActionSpec] = {
     "add_task": ActionSpec("add_task"),
     "update_task": ActionSpec("update_task", target=_task_target),
@@ -284,6 +367,13 @@ ACTIONS: dict[str, ActionSpec] = {
     "cmd_pause": ActionSpec(_cmd_pause, public=False, accepts=frozenset({"text"}), endpoint="chat", reply=True),
     "cmd_unpause": ActionSpec(_cmd_unpause, public=False, endpoint="chat", reply=True),
     "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
+    # 내부(`api/push.py`: 6.4.8, 6.4.9). 되돌릴 수 없다
+    "push_subscribe": ActionSpec(
+        _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label"}), endpoint="push"
+    ),
+    "push_unsubscribe": ActionSpec(_push_unsubscribe, public=False, accepts=frozenset({"id"}), endpoint="push"),
+    "notify_set": ActionSpec(_notify_set, public=False, accepts=frozenset({"primary"}), endpoint="push"),
+    "push_test_result": ActionSpec(_push_test_result, public=False, accepts=frozenset({"results"}), endpoint="push"),
 }
 
 
@@ -495,7 +585,8 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     spec = ACTIONS.get(req.action)
     if spec is None or not _callable_from(spec, req):
         return _error("invalid", 400, "invalid_request", UNKNOWN_ACTION)
-    if req.client_msg_id is not None and deps.idempotency is not None:
+    # `push` 경로는 중복 방지 기록이 없다(`api_idempotency.endpoint`에 없는 값)
+    if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
         stored = deps.idempotency.get(req.client_msg_id)
         if stored is not None:
             if stored.endpoint != req.endpoint:
@@ -513,9 +604,11 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     try:
         with transaction(deps.conn):
             res = _decide(deps, spec, req, args)
-            if req.client_msg_id is not None and deps.idempotency is not None:
+            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
-                deps.idempotency.put(req.client_msg_id, req.endpoint, res.http_status, stored_body)
+                deps.idempotency.put(
+                    req.client_msg_id, req.endpoint, res.http_status, stored_body  # type: ignore[arg-type]
+                )
     except Exception:
         # 적용과 응답 기록이 함께 되돌려졌다. `tasks.md`는 트랜잭션 밖 파일이라 지금 값으로 다시 만든다
         deps.tools._export()

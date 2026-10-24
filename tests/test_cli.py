@@ -42,3 +42,30 @@ def test_module_entry_runs_cli():
         env=env,
     )
     assert len(out.stdout.strip()) == 43
+
+
+def test_gen_vapid_prints_key_pair_usable_by_pywebpush(capsys):
+    import base64
+
+    from py_vapid import Vapid
+
+    assert cli.main(["gen-vapid"]) == 0
+    captured = capsys.readouterr()
+    lines = dict(line.split("=", 1) for line in captured.out.strip().splitlines())
+    assert set(lines) == {"VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"}
+    pub, priv = lines["VAPID_PUBLIC_KEY"], lines["VAPID_PRIVATE_KEY"]
+    assert "VAPID_SUBJECT" in captured.err
+
+    def raw(s):
+        return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+    assert len(raw(pub)) == 65 and raw(pub)[0] == 4  # 비압축 P-256 점(applicationServerKey)
+    assert len(raw(priv)) == 32
+    v = Vapid.from_string(private_key=priv)  # pywebpush가 받는 모양
+    from cryptography.hazmat.primitives import serialization
+
+    assert v.public_key.public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    ) == raw(pub)
+    assert cli.main(["gen-vapid"]) == 0
+    assert capsys.readouterr().out != captured.out  # 매번 새 키

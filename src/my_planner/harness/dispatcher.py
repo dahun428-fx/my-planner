@@ -61,6 +61,7 @@ from my_planner.tools.confirmations import render_confirmations
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.harness.delivery import Delivery, DeliveryOutcome
     from my_planner.store.repos.activity import (
         ActivityRepo,
         ConfirmsRepo,
@@ -276,6 +277,7 @@ class Dispatcher:
         idempotency: IdempotencyRepo | None = None,
         confirms: ConfirmsRepo | None = None,
         app_sender: AppReplySender | None = None,
+        delivery: Delivery | None = None,
     ) -> None:
         self.brain = brain
         self.sender = sender
@@ -294,6 +296,8 @@ class Dispatcher:
         self.idempotency = idempotency
         self.confirms = confirms
         self.app_sender = app_sender  # 앱 답을 보낼 곳(M4). None이면 기본 `AppReplySender`(쓰개에 쓴다)
+        # 회차·고정 안내의 통로(7.3 D1~D8). None이면 SP1처럼 텔레그램(`sender`)만
+        self.delivery = delivery
         self._app: dict[str, _AppSlot] = {}
         self._cur: _AppSlot | None = None  # 지금 처리 중인 앱 메시지(작업자는 하나라 한 번에 하나)
         self._sleep = sleep
@@ -356,9 +360,24 @@ class Dispatcher:
         deps = ActionDeps(
             tools=self.tools, clock=self.clock, activity=self.activity, idempotency=self.idempotency,
             confirms=self.confirms, state=self.state, router=self.router, runs=self.runs, settings=self.settings,
-            mark_answered=self.mark_answered,
+            mark_answered=self.mark_answered, pushes=self.delivery.pushes if self.delivery is not None else None,
         )
         return _apply_action(deps, req)
+
+    async def push_test(self) -> tuple[int, int]:
+        """`POST /push/test`(6.4.8): 시험 알림을 보내고(`to_thread`), 결과는 즉시 갈래(`push_test_result`)로 적는다.
+
+        하루 3회 상한에 세지 않는다. 푸시가 꺼져 있으면 (0, 0).
+        """
+        if self.delivery is None:
+            return 0, 0
+
+        def record(results: list[dict[str, Any]]) -> None:
+            self.apply_action(
+                ActionRequest("push_test_result", {"results": results}, actor="user", channel="app", endpoint="push")
+            )
+
+        return await self.delivery.push_test(record=record)
 
     def mark_answered(self, run_id: int, channel: Channel, *, at: datetime | None = None) -> bool:
         """그 회차(합쳐진 회차면 primary)에 처음 답한 통로와 시각을 적는다(6.4.5, 7.5 M3). 처음이면 True.
@@ -1119,14 +1138,21 @@ class Dispatcher:
         return f"{lt.month}월 {lt.day}일 {lt:%H:%M}"
 
     async def _send_notice(self, text: str) -> bool:
-        """고정 안내 전송. 원문 기록은 대화 밖(`[-]`). 먼저 보낸 메시지 수에는 세지 않는다."""
+        """고정 안내 전송(7.3 D8: 실제 통로로). 원문 기록은 대화 밖(`[-]`). 먼저 보낸 메시지 수에는 세지 않는다."""
+        channel: Channel = "telegram"
+        if self.delivery is not None:
+            got = await self.delivery.deliver_notice(text)
+            if got is None:
+                return False
+            channel = got
+        else:
+            try:
+                await self.sender.send(Outbound(text=text))
+            except Exception as e:  # noqa: BLE001 - 안내가 안 가도 다음 기회에 다시 보낸다
+                log.warning("notice_send_error", extra={"error_type": type(e).__name__})
+                return False
         try:
-            await self.sender.send(Outbound(text=text))
-        except Exception as e:  # noqa: BLE001 - 안내가 안 가도 다음 기회에 다시 보낸다
-            log.warning("notice_send_error", extra={"error_type": type(e).__name__})
-            return False
-        try:
-            self.transcripts.append(self.clock.now(), "비서", None, None, text)
+            self.transcripts.append(self.clock.now(), "비서", None, None, text, channel=channel)
         except Exception:
             log.exception("notice_transcript_error")
         return True
@@ -1183,10 +1209,11 @@ class Dispatcher:
                 return
             conv, out, tool_names = prepared
             # (b) 전송: 바로 3회까지. 그래도 안 되면 failed로 두고 5분 뒤 전송만 한 번 더
-            sent, message_id = await self._send_run(out, run.id, attempts=SEND_ATTEMPTS)
-            if sent:
-                self._run_delivered(run, merged, conv, out.text, tool_names, telegram_message_id=message_id)
+            outcome = await self._send_run(out, run, attempts=SEND_ATTEMPTS)
+            if outcome.sent:
+                self._run_delivered(run, merged, conv, out.text, tool_names, outcome=outcome)
                 return
+            self._record_not_sent(run, outcome)
             for r in (run, *merged):
                 runs.mark_failed(r.id, "send")
             self._later(
@@ -1333,18 +1360,49 @@ class Dispatcher:
         due = Due(run.loop, run.scheduled_for, run.cadence)
         return self.clock.now() > limit_for(due, s, s.timezone, s.day_boundary)
 
-    async def _send_run(self, out: Outbound, run_id: int, *, attempts: int) -> tuple[bool, int | None]:
-        """(보냈나, 버튼이 붙은 마지막 조각의 텔레그램 메시지 id). id는 전송이 돌려준 정수일 때만."""
+    async def _send_run(self, out: Outbound, run: Run, *, attempts: int) -> DeliveryOutcome:
+        """회차 전송(7.3 D2~D4). `telegram_message_id`는 텔레그램 전송이 돌려준 정수일 때만."""
+        from my_planner.harness.delivery import DeliveryOutcome
+
+        if self.delivery is not None:
+            s = self.settings
+            until = reply_window_end(Due(run.loop, run.scheduled_for, run.cadence), s.timezone, s.day_boundary, cfg=s)
+            return await self.delivery.deliver_run(run, out, reply_until=until, attempts=attempts)
         got: list[object] = []
 
         async def send() -> None:
             got.append(await self.sender.send(out))
 
         err = await send_with_retry(
-            send, sleep=self._sleep, attempts=attempts, event="run_send_error", extra={"run_id": run_id},
+            send, sleep=self._sleep, attempts=attempts, event="run_send_error", extra={"run_id": run.id},
         )
         mid = got[-1] if got else None
-        return err is None, mid if isinstance(mid, int) and not isinstance(mid, bool) else None
+        mid = mid if isinstance(mid, int) and not isinstance(mid, bool) else None
+        return DeliveryOutcome("telegram", "full", err is None, mid)
+
+    def _record_not_sent(self, run: Run, outcome: DeliveryOutcome) -> None:
+        """끝내 아무 데도 못 보낸 회차의 시도(7.3 D4). 기록이 안 돼도 회차 처리는 그대로 간다."""
+        if self.deliveries is None:
+            return
+        try:
+            with transaction(self.runs.conn if self.runs is not None else self.state.conn):
+                self._record_deliveries(run, outcome)
+        except Exception as e:  # noqa: BLE001 - 종류만 남긴다
+            log.warning("run_delivery_record_error", extra={"run_id": run.id, "error_type": type(e).__name__})
+
+    def _record_deliveries(self, run: Run, outcome: DeliveryOutcome) -> None:
+        """`run_deliveries`: 푸시를 해 봤으면 앱 줄(받았으면 sent), 텔레그램으로 보냈으면(대체 포함) 텔레그램 줄."""
+        assert self.deliveries is not None
+        status = "sent" if outcome.sent else "not_sent"
+        if outcome.tried_push:
+            app_status = "sent" if outcome.push_ok > 0 else "not_sent"
+            self.deliveries.record(
+                run.id, "app", "full", app_status, push_ok=outcome.push_ok, push_failed=outcome.push_failed
+            )
+        if outcome.channel == "telegram":
+            self.deliveries.record(
+                run.id, "telegram", outcome.mode, status, telegram_message_id=outcome.telegram_message_id
+            )
 
     def _later(self, delay: float, job: _ResendJob) -> None:
         if self._stopping:
@@ -1378,11 +1436,12 @@ class Dispatcher:
                 draft_task_ids=list(job.draft_task_ids),
                 ask_condition_for=job.ask_condition_for,
             )
-            sent, message_id = await self._send_run(out, run.id, attempts=1)
-            if sent and conv is not None:
-                self._run_delivered(
-                    run, job.merged, conv, run.outbound_text, job.tool_names, telegram_message_id=message_id
-                )
+            # 전달이 하나도 안 된 회차(failed)만 여기 온다. 같은 D2~D4 순서로 한 번(7.3 D7)
+            outcome = await self._send_run(out, run, attempts=1)
+            if outcome.sent and conv is not None:
+                self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names, outcome=outcome)
+            elif not outcome.sent:
+                self._record_not_sent(run, outcome)
 
     def _release_carry(self, runs: Iterable[Run]) -> None:
         """넘겨 받은 회고가 끝났으면(보냄, 건너뜀) `carry_review_run_id`를 지운다. 러너는 합칠 때 지우지 않는다."""
@@ -1392,9 +1451,10 @@ class Dispatcher:
 
     def _run_delivered(
         self, run: Run, merged: list[Run], conv: Conversation, text: str, tool_names: list[str], *,
-        telegram_message_id: int | None = None,
+        outcome: DeliveryOutcome,
     ) -> None:
-        """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1, 그다음 원문 기록, 대화 갱신, 회고 저장."""
+        """전송이 끝난 회차: primary와 merged 모두 done, 먼저 보낸 메시지 수 +1(통로가 몇이든 회차마다 한 번, 7.3 D6),
+        전달 기록, 회차 대화의 통로(전체 본문을 받은 통로, D5), 그다음 원문 기록, 대화 갱신, 회고 저장."""
         assert self.runs is not None
         # 사용자는 이미 받았다. 상태, 카운터, 전달 기록을 한 트랜잭션에 먼저 적어 다음 시작 때 다시 보내지 않게 한다.
         try:
@@ -1403,10 +1463,10 @@ class Dispatcher:
                     self.runs.mark_done(r.id)
                 self._release_carry([run, *merged])
                 self.state.incr_usage(self._today(), "proactive_messages")
-                if self.deliveries is not None:  # 지금은 텔레그램 전송뿐이다(앱·대체는 티켓 08)
-                    self.deliveries.record(
-                        run.id, "telegram", "full", "sent", telegram_message_id=telegram_message_id
-                    )
+                if self.deliveries is not None:
+                    self._record_deliveries(run, outcome)
+                if conv.channel != outcome.channel:
+                    self.convs.set_channel(conv.id, outcome.channel)
         except Exception:
             # 한 트랜잭션이 안 됐다(디스크, 잠금 등). 회차가 running으로 남으면 다음 시작 때 다시 보낼 수 있으니
             # done만 따로 적는다(중복 전송 방지). 카운터와 전달 기록은 비운 채 둔다. 이것도 안 되면 그대로 올린다
@@ -1416,7 +1476,8 @@ class Dispatcher:
             self._release_carry([run, *merged])
         try:
             self.transcripts.append(
-                self.clock.now(), "비서", conv.id, run.loop.value, redact(text)[0], tools=tool_names
+                self.clock.now(), "비서", conv.id, run.loop.value, redact(text)[0], tools=tool_names,
+                channel=outcome.channel,
             )
         except Exception:
             log.exception("run_transcript_error", extra={"run_id": run.id})
