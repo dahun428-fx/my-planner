@@ -110,18 +110,21 @@ Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 
 ## 자동 복구 (medic)
 
-비서(`my-planner`)와 따로 도는 작은 프로그램 `my-planner-medic`이 비서를 지켜봅니다. 비서 로그에 새 오류가 나거나 `/health`가 나빠지면 GitHub에 `incident` 이슈를 열고, GitHub Actions의 수리 워크플로가 고친 PR이 CI를 통과해 `main`에 머지되면 medic이 노트북에 배포합니다. 배포 뒤 10분 안에 같은 문제가 다시 나면 이전 커밋과 DB로 되돌리고 텔레그램으로 알립니다. medic은 표준 라이브러리만 쓰고 `state\medic.db`만 씁니다(되돌릴 때 `planner.db`를 백업으로 바꾸는 것 하나가 예외입니다). 로그는 `state\logs\medic.log`에 남고 토큰과 메시지 본문은 적지 않습니다.
+비서(`my-planner`)와 따로 도는 작은 프로그램 `my-planner-medic`이 비서를 지켜봅니다. 비서 로그에 새 오류가 나거나 `/health`가 나빠지면 GitHub에 `incident` 이슈를 열고, GitHub Actions의 수리 워크플로(`repair.yml`)가 고친 PR이 CI를 통과해 `main`에 머지되면 medic이 노트북에 배포합니다. 수리는 핫픽스라 `main`에서 따서 `main`으로 가고, `sync-develop.yml`이 `develop`에 합칩니다. `watch.yml`(2시간마다)은 하트비트·토큰 만료를 확인하고 멈춘 수리를 다시 부르며, `signal.yml`은 `main`의 Vercel 빌드 실패와 CI 실패를 이슈로 엽니다. 배포 뒤 10분 안에 같은 문제가 다시 나면 이전 커밋과 DB로 되돌리고 텔레그램으로 알립니다. medic은 표준 라이브러리만 쓰고 `state\medic.db`만 씁니다(되돌릴 때 `planner.db`를 백업으로 바꾸는 것 하나가 예외입니다). 로그는 `state\logs\medic.log`에 남고 토큰과 메시지 본문은 적지 않습니다.
 
 **처음 한 번 넣어 둘 것**
 
-- 저장소 시크릿 4개(Settings > Secrets and variables > Actions): `CLAUDE_CODE_OAUTH_TOKEN`(노트북에서 `claude setup-token`), `REPAIR_PAT`(fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기), `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`(뒤의 둘은 `.env`와 같은 값).
-- 저장소 변수: `AUTO_REPAIR`(`on`/`off`), `PAT_EXPIRES`(PAT 만료일 `YYYY-MM-DD`). `REPAIR_MAX_FAILURES`(기본 2)와 `REPAIR_MAX_MERGES_PER_DAY`(기본 3)는 바꾸고 싶을 때만 넣습니다.
+- 저장소 시크릿 4개(Settings > Secrets and variables > Actions): `CLAUDE_CODE_OAUTH_TOKEN`(노트북에서 `claude setup-token`), `REPAIR_PAT`(fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기·쓰기. Actions 쓰기는 `watch.yml`이 `repair.yml`을 다시 부를 때 씁니다), `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`(뒤의 둘은 `.env`와 같은 값).
+- 저장소 변수: `AUTO_REPAIR`(`on`/`off`, 없으면 켜짐), `PAT_EXPIRES`(PAT 만료일 `YYYY-MM-DD`). `RELEASE_PAT_EXPIRES`·`DEV_PAT_EXPIRES`가 있으면 그 토큰도 함께 알립니다. `REPAIR_MAX_FAILURES`(기본 2)와 `REPAIR_MAX_MERGES_PER_DAY`(기본 3)는 바꾸고 싶을 때만 넣습니다.
+- 라벨 `auto-repair` 하나를 미리 만들어 둡니다(Issues > Labels). 수리 PR을 열 때 붙이는 라벨이고, 나머지 라벨(`incident`, `repairing`, `failed-N` 등)은 처음 쓸 때 저절로 생깁니다.
+- Settings > Actions > General > Workflow permissions는 기본값(읽기 전용)으로 둡니다. 쓰기는 모두 `REPAIR_PAT`으로 해서 "Allow GitHub Actions to create and approve pull requests"는 켜지 않아도 됩니다.
+- 수리하는 Claude는 `REPAIR_PAT`을 받지 않습니다(읽기 전용 토큰으로 커밋만 하고, 푸시·PR·머지는 그 뒤 셸 단계가 합니다). `REPAIR_PAT`에는 Workflows 권한을 주지 않으므로, 수리가 `.github/workflows/` 파일을 바꾸면 푸시가 거부되어 그 시도는 실패로 세집니다. 그런 장애는 두 번 실패한 뒤 `needs-dahun`으로 넘어옵니다.
 - 노트북 `.env`에 1개: `MEDIC_GITHUB_TOKEN`(fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기). 시크릿은 `.env`와 저장소 시크릿에만 둡니다. 이슈·로그·커밋에는 남지 않습니다.
 - 작업 등록: `scripts\register_task.ps1`이 `my-planner`와 함께 `my-planner-medic`도 등록합니다(medic 없이 등록하려면 `-NoMedic`, 점검에도 `-NoMedic`). 이 작업은 로그온할 때와 5분마다 `pythonw scripts\medic_boot.py`를 띄우고, 실행기가 `python -m my_planner_medic`을 자식으로 실행합니다. 점검 출력에 `my-planner-medic` 줄이 `OK`로 나와야 합니다.
 
 **끄기**
 
-- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않습니다.
+- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않고, `watch.yml`도 수리를 다시 부르지 않습니다(죽은 시도 정리만 합니다).
 - medic 전체 멈추기: `config.medic.toml`에 `enabled = false`를 적고 medic을 다시 띄웁니다(하트비트만 보내고 감시·배포는 하지 않습니다). 작업 자체를 없애려면 `register_task.ps1 -NoMedic`을 다시 실행합니다.
 
 **medic 자신의 갱신**

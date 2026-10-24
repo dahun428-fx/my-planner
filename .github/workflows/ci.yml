@@ -76,7 +76,7 @@ jobs:
           pip install -r requirements.lock
           pip install -e ".[dev]" --no-deps
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests .github/scripts
       - name: Test
         run: python -m pytest -q
 
@@ -105,9 +105,22 @@ jobs:
           pip install -r requirements.lock
           pip install -e ".[dev]" --no-deps
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests .github/scripts
       - name: Test
         run: python -m pytest -q
+
+  # 워크플로 문법·표현식·주입 검사(SP6 계획의 결정 6). 러너의 shellcheck로 run: 셸도 본다
+  actionlint:
+    name: actionlint
+    needs: changes
+    if: needs.changes.outputs.already_green != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        run: |
+          bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
 
   web-app:
     name: web-app

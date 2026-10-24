@@ -130,7 +130,7 @@ my-planner/
 │   ├── medic.db                # SP6 감시자 상태: 장애, 로그 읽은 위치, 배포 기록
 │   ├── brain-workdir/          # 두뇌 세션의 빈 작업 폴더
 │   └── my-planner.lock         # 단일 실행 잠금
-├── .github/                    # SP6 워크플로(ci, repair, repair-sweep, heartbeat, vercel-failure), 수리 프롬프트
+├── .github/                    # SP6 워크플로(ci, repair, watch, signal)와 scripts/, 수리 프롬프트
 └── .env                        # 텔레그램 토큰, 사용자 ID (.gitignore)
 ```
 

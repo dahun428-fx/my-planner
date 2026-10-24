@@ -195,6 +195,19 @@ def test_recurrence_within_24h_reopens_with_label(env: Env) -> None:
     assert len(env.http.calls("POST", f"{ISSUES}/{n}/labels")) == 1  # 한 번만 다시 연다
 
 
+def test_recurrence_reopen_clears_merged_and_relabels(env: Env) -> None:
+    """닫힌 수리 이슈에는 `merged`(그리고 지난 `recurred`)가 남아 있다. 남기면 repair 게이트·sweep이 건너뛰고,
+    이미 달린 `recurred`는 `labeled`를 다시 만들지 않는다(티켓 10 계약)."""
+    n = _file_and_resolve(env)
+    env.server.issues[n]["labels"] += [{"name": "merged"}, {"name": "recurred"}]
+    env.clock.advance(hours=1)
+    env.log(env.exc())
+    env.tick()
+    assert "merged" not in env.server.labels(n)
+    assert "recurred" in env.server.labels(n)
+    assert len(env.http.calls("DELETE", f"{ISSUES}/{n}/labels/recurred")) == 1  # 떼고 다시 달아 이벤트를 만든다
+
+
 def test_recurrence_after_24h_opens_new(env: Env) -> None:
     n = _file_and_resolve(env)
     env.clock.advance(hours=25)
