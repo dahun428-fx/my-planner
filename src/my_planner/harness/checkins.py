@@ -22,6 +22,7 @@ from my_planner.store.views import (
     milestone_refs,
     todo_refs,
 )
+from my_planner.tools.habits import HABIT_DAYS
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -293,7 +294,7 @@ def checkin_cards(
       `n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가
       바뀌지 않는다. 회차 차례에서만 생기므로 `/chat` 스트림에는 없다. `props.args`는 `/actions`에 그대로 보낸다.
     - `ui_habit_check`(`h_habit_<run_id>`, SP7 6.3): 저녁 체크인(합친 회차 포함)이고 활성 습관이 하나 이상이면, 그 체크인의
-      날짜(`ask_condition_for`)로. `data.habits`는 그 날짜 기준 지금 값. 다 체크했어도 남는다(취소할 수 있게). 확인 카드
+      날짜(`ask_condition_for`)로. 그 날짜가 오늘 포함 7일 창(오늘..오늘-6) 밖이면 누르는 것이 모두 거절되니 카드가 없다. `data.habits`는 그 날짜 기준 지금 값. 다 체크했어도 남는다(취소할 수 있게). 확인 카드
       뒤, 컨디션 카드 앞(텔레그램 줄 순서). 아침 브리핑에는 없다.
     - `ui_condition_picker`(`h_cond_<run_id>`): `ask_condition_for`가 고른 날짜. 그 날짜의 컨디션이 있으면 카드가 없다.
     - `ui_milestone_draft`(`h_mdraft_<run_id>`), `ui_chapter_draft`(`h_cdraft_<run_id>`): 그 회차가 `add_milestone`·
@@ -357,7 +358,10 @@ def checkin_cards(
                 "props": {"summary": p.summary, "confirm_token": p.token, "action": p.action, "args": p.args},
             })
     ask = ask_condition_for(run, merged, conditions=conditions, runs=runs, settings=settings)
-    if ask is not None and habits is not None and any(r.loop is LoopKey.evening_checkin for r in (run, *merged)):
+    if (
+        ask is not None and habits is not None and ask > today - timedelta(days=HABIT_DAYS)  # 도구와 같은 7일 창(5.3)
+        and any(r.loop is LoopKey.evening_checkin for r in (run, *merged))
+    ):
         items = habits_view(habits, ask, ("active",))["items"]
         if items:
             cards.append({

@@ -273,6 +273,7 @@ def _chunks(ids: list[int], n: int) -> list[list[int]]:
 
 def harness_cards(out: Outbound) -> list[HarnessCard]:
     """하네스 화면 조각(6.4.1, 6.4.7). 텔레그램 버튼 줄과 같은 재료, 같은 순서(할 일 초안 → 사건 → 챕터 → 컨디션).
+    단 SP7 텔레그램의 습관 줄은 일부러 스트림에 없다: 습관 카드는 체크인 상세 `cards`와 두뇌가 그리는 `ui_habit_check`에만 있다.
 
     확인 카드 `ui_confirm`(`out.confirms`)은 여기서 만들지 않는다: 회차 차례에서만 생기고 앱은 체크인 상세 `cards`로
     받는다(10.1 A5, `harness.checkins.checkin_cards`). `/chat`은 늘 사용자 차례라 확인 토큰이 없다.

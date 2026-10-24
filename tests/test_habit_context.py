@@ -10,7 +10,7 @@ from be_env import BeEnv
 from fakes import FakeTurn
 from test_dispatcher_messages import kst
 
-from my_planner.domain import LoopKey
+from my_planner.domain import Cadence, LoopKey
 from my_planner.harness.context import build_preamble, habit_week_block
 from my_planner.harness.dispatcher import _habit_buttons_note
 
@@ -196,3 +196,17 @@ def test_today_habit_block_uses_habit_day(tmp_path):
     now_day, sat_day = asyncio.run(go())
     assert "- 물 마시기 (매일)\n" in now_day + "\n" and "오늘 ✓" not in now_day
     assert "- 물 마시기 (매일): 오늘 ✓" in sat_day
+
+
+async def test_unmerged_review_run_has_week_block_but_no_today_block(tmp_path):
+    """5.7: 오늘 습관 블록은 저녁 체크인 회차용. 저녁 체크인과 합치지 않은 주간 회고는 이번 주 블록만 본다."""
+    async with BeEnv.start(tmp_path, start=SUN_EVENING, script=[FakeTurn([], "한 주 수고했어요")]) as env:
+        habit(env, "운동", kind="weekly", target=3)
+        review = env.parts.runs.ensure(LoopKey.review, kst(2026, 10, 25, 18, 0), Cadence.week)
+        env.parts.runs.mark_queued(review.id)
+        env.parts.dispatcher.submit_run(env.parts.runs.get(review.id), [])
+        await env.drain()
+        prompt = env.brain.prompts[0]
+
+    assert "## 이번 주 습관" in prompt
+    assert "## 오늘 습관" not in prompt
