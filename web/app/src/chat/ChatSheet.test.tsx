@@ -402,16 +402,16 @@ describe("ChatSheet", () => {
     const user = userEvent.setup();
     const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
     await sendText(user, "내일 치과 추가해 줘");
-    const box = await screen.findByText("\u2713 추가: 치과 → 내일");
+    const box = await screen.findByText("✓ 추가: 치과 → 내일"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(box.closest("[data-activity]")).not.toBeNull();
     rerender(<ChatSheet open={false} onClose={() => {}} />);
     history(1, [
       { id: "u-1-1", at: "2026-10-24T01:00:00Z", speaker: "user", text: "내일 치과 추가해 줘" },
-      { id: "<id>", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "내일 치과를 추가할게요.\n\u2713 추가: 치과 → 내일" },
+      { id: "<id>", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "내일 치과를 추가할게요.\n✓ 추가: 치과 → 내일" }, // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     ]);
     rerender(<ChatSheet open onClose={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-activity]")).toBeNull());
-    expect(screen.getAllByText(/\u2713 추가: 치과 → 내일/)).toHaveLength(1);
+    expect(screen.getAllByText(/✓ 추가: 치과 → 내일/)).toHaveLength(1); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(seen.conversations).toBe(1);
   });
 });

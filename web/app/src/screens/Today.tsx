@@ -199,21 +199,28 @@ export function Today() {
         <Group heading={copy.today.condition}>
           <div className={styles.condition}>
             {showPills ? (
-              <div className={styles.pills}>
-                {SCORES.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`${styles.pill} ${score === n ? styles.picked : ""}`}
-                    aria-label={copy.today.conditionScore(n)}
-                    aria-pressed={score === n}
-                    disabled={readOnly}
-                    onClick={() => void record(n)}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className={styles.pills}>
+                  {SCORES.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`${styles.pill} ${score === n ? styles.picked : ""}`}
+                      aria-label={copy.today.conditionScore(n)}
+                      aria-pressed={score === n}
+                      disabled={readOnly}
+                      onClick={() => void record(n)}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {/* What the ends of the scale mean: without them 5 could be good or bad. */}
+                <div className={styles.ends}>
+                  <span>{copy.parts.scoreLow}</span>
+                  <span>{copy.parts.scoreHigh}</span>
+                </div>
+              </>
             ) : (
               <div className={styles.current}>
                 <span className={styles.value}>{copy.today.conditionScore(score)}</span>

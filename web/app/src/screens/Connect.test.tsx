@@ -46,6 +46,18 @@ describe("Connect", () => {
     expect(localStorage.getItem("mp.lastHealthOk")).toMatch(/^\d{4}-\d\d-\d\dT/);
   });
 
+  it("start stays off until both fields hold more than spaces", async () => {
+    renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    const start = await screen.findByRole("button", { name: copy.connect.start });
+    expect(start).toBeDisabled();
+    const user = await fill("   ", "  ");
+    expect(start).toBeDisabled();
+    await user.type(screen.getByLabelText(copy.connect.urlLabel), URL_IN);
+    expect(start).toBeDisabled();
+    await user.type(screen.getByLabelText(copy.connect.tokenLabel), "tok");
+    expect(start).toBeEnabled();
+  });
+
   it("checks when leaving the field and shows the result line", async () => {
     renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
     const user = await fill(URL_IN, "good-token");

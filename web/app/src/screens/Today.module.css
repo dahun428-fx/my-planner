@@ -83,6 +83,13 @@
   display: flex;
   gap: 0.5rem;
 }
+.ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
 .pill {
   flex: 1;
   min-height: var(--control-h);

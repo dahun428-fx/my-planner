@@ -53,8 +53,8 @@ describe("toViewParts", () => {
   });
 
   it("activity with confirmation", () => {
-    const parts = toViewParts(msg([{ type: "data-activity", data: { activity_ids: [1], undo_ids: [1], confirmation: "\u2713 추가: 치과 → 내일" } }] as UIMessage["parts"]));
-    expect(parts).toEqual([{ kind: "activity", confirmation: "\u2713 추가: 치과 → 내일", undoIds: [1] }]);
+    const parts = toViewParts(msg([{ type: "data-activity", data: { activity_ids: [1], undo_ids: [1], confirmation: "✓ 추가: 치과 → 내일" } }] as UIMessage["parts"])); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    expect(parts).toEqual([{ kind: "activity", confirmation: "✓ 추가: 치과 → 내일", undoIds: [1] }]); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
   });
 
   it("activity without confirmation keeps undo", () => {

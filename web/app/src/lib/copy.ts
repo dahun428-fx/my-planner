@@ -186,7 +186,7 @@ export const copy = {
     checkedMinutesAgo: (n: number) => `${n}분 전에 확인했어요`,
     connectedChecked: (when: string) => `연결됨 · ${when}`,
     address: "주소",
-    token: "열쇠",
+    token: "열쇠(토큰)",
     reenter: "다시 입력",
     notifyWhere: "어디로 울릴까요",
     primaryApp: "이 앱",

@@ -60,7 +60,7 @@ function actions(answer: (body: Record<string, unknown>) => Response | Promise<R
   return bodies;
 }
 
-const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "\u2713 처리했어요" });
+const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "✓ 처리했어요" }); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
 const needsConfirm = () =>
   HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-1", summary: "이번 주 우선순위예요. 빼면 순서가 바뀌어요.", expires_at: "2026-10-24T09:00:00Z" });
 
@@ -268,16 +268,19 @@ describe("Todos", () => {
     fireEvent.click(screen.getByRole("button", { name: copy.todos.confirmAll }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     release();
-    await screen.findByText("\u2713 처리했어요");
+    await screen.findByText("✓ 처리했어요"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(bodies).toHaveLength(1);
   });
 
-  it("bulk confirm sits above the drafts group", async () => {
+  it("bulk confirm sits in the drafts heading row, right of the heading and above the rows", async () => {
     serve();
     renderWithProviders(<Todos tab="week" />);
     const bulk = await screen.findByRole("button", { name: copy.todos.confirmAll });
     const heading = screen.getByRole("heading", { name: copy.todos.drafts(2) });
-    expect(Boolean(bulk.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(heading.parentElement).toContainElement(bulk);
+    expect(Boolean(heading.compareDocumentPosition(bulk) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    const firstRow = screen.getByText("치과 예약하기");
+    expect(Boolean(bulk.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
   it("a failing /drafts shows a retryable block error", async () => {

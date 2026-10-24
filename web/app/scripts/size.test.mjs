@@ -29,13 +29,21 @@ function outWith(chunks) {
 const run = (dir) => spawnSync(process.execPath, [script, dir], { encoding: "utf8" });
 
 describe("size", () => {
-  it("counts the chunks the first screen loads, not nomodule polyfills or other assets", () => {
+  it("counts every /_next/static script the first screen loads, not nomodule polyfills or other assets", () => {
     const html =
       '<script defer="" noModule="" src="/_next/static/chunks/polyfills-1.js"></script>' +
       '<script src="/_next/static/chunks/main-1.js" defer=""></script>' +
       '<script src="/_next/static/chunks/pages/index-1.js" defer=""></script>' +
-      '<script src="/_next/static/abc/_buildManifest.js" defer=""></script>';
-    expect(firstScreenChunks(html)).toEqual(["/_next/static/chunks/main-1.js", "/_next/static/chunks/pages/index-1.js"]);
+      '<script src="/_next/static/abc/_buildManifest.js" defer=""></script>' +
+      '<script src="/_next/static/abc/_ssgManifest.js" defer=""></script>' +
+      '<script src="/sw-register.js" defer=""></script>' +
+      '<link rel="stylesheet" href="/_next/static/css/a.css"/>';
+    expect(firstScreenChunks(html)).toEqual([
+      "/_next/static/chunks/main-1.js",
+      "/_next/static/chunks/pages/index-1.js",
+      "/_next/static/abc/_buildManifest.js",
+      "/_next/static/abc/_ssgManifest.js",
+    ]);
   });
 
   it("passes under 180KB gzip and fails over it", () => {

@@ -81,6 +81,13 @@
   border: 1.5px solid var(--control);
   background: transparent;
 }
+/* 5.5.4: square while it can be pressed, the round drawn mark when the part is read-only. */
+.check .circle {
+  border-radius: 0.375rem;
+}
+.readOnly .check .circle {
+  border-radius: var(--radius-pill);
+}
 .check[aria-checked="true"] .circle {
   background: var(--primary);
   border-color: var(--primary);

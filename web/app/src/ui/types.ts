@@ -1,10 +1,13 @@
-import type { Todo } from "../api/types.gen";
+import type { TodoRef } from "../api/types.gen";
 
 export type Milestone = { id: number; title: string; date: string; area?: string; sensitive?: boolean };
 export type Chapter = { id: number; title: string; start_month: string; end_month: string | null };
 
+/** The fields of a BE TodoRef (6.3) the parts read. */
+export type PartTodo = Pick<TodoRef, "id" | "title" | "status">;
+
 /** What the BE attaches next to a part's props: the current rows behind the ids (spec 6, R4c). */
-export type PartData = { todos?: Todo[]; milestones?: Milestone[]; chapters?: Chapter[] };
+export type PartData = { todos?: PartTodo[]; milestones?: Milestone[]; chapters?: Chapter[] };
 
 export type PartContext = {
   where: "chat" | "today" | "checkin" | "activity";

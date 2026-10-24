@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Spec 9장: the JavaScript the first screen (`/`) loads is at most 180KB gzip. Reads the chunks
-// out/index.html asks for (<script src="/_next/static/chunks/…">) and sums their gzip sizes.
+// Spec 9장: the JavaScript the first screen (`/`) loads is at most 180KB gzip. Reads every script
+// out/index.html asks for under /_next/static/ (chunks, _buildManifest, _ssgManifest) and sums
+// their gzip sizes.
 // Chunks loaded later (the chat sheet) and `nomodule` polyfills are not counted. Exit 1 when over.
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -15,7 +16,7 @@ export function firstScreenChunks(html) {
     .map((m) => m[0])
     .filter((tag) => !/\snomodule\b/i.test(tag))
     .map((tag) => tag.match(/\ssrc="([^"]+)"/i)?.[1] ?? "")
-    .filter((src) => src.startsWith("/_next/static/chunks/"));
+    .filter((src) => src.startsWith("/_next/static/") && src.endsWith(".js"));
 }
 
 function main() {
@@ -34,14 +35,14 @@ function main() {
   for (const src of chunks) {
     const bytes = gzipSync(readFileSync(join(out, src)), { level: 9 }).length;
     total += bytes;
-    console.log(`${(bytes / 1024).toFixed(1).padStart(7)} KB  ${src.replace("/_next/static/chunks/", "")}`);
+    console.log(`${(bytes / 1024).toFixed(1).padStart(7)} KB  ${src.replace("/_next/static/", "")}`);
   }
   const kb = (total / 1024).toFixed(1);
   if (total > LIMIT) {
     console.error(`OVER ${kb}KB > 180KB (gzip, / first load)`);
     return 1;
   }
-  console.log(`OK ${kb}KB ≤ 180KB (gzip, / first load, ${chunks.length} chunks)`);
+  console.log(`OK ${kb}KB ≤ 180KB (gzip, / first load, ${chunks.length} files)`);
   return 0;
 }
 

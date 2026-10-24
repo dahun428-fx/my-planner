@@ -63,7 +63,7 @@ function actions(answer: (body: Record<string, unknown>) => Response | Promise<R
   );
   return bodies;
 }
-const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "\u2713 처리했어요" });
+const applied = () => HttpResponse.json({ status: "applied", activity_id: 900, undo_id: 900, result: {}, confirmation: "✓ 처리했어요" }); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
 
 const textAnswer = (conv: number) =>
   sse([

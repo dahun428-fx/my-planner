@@ -11,7 +11,12 @@ test.beforeEach(async ({ page }) => {
 
 test("chat part renders under CSP", async ({ page }) => {
   await mockBe(page, { chat: ["chat_propose_tasks.sse"] });
-  await page.goto("/");
+  const res = await page.goto("/");
+  // The policy really arrives as a response header (serve-csp), not only as the <meta>.
+  const csp = (await res!.headerValue("content-security-policy")) ?? "";
+  expect(csp).toContain("script-src 'self'");
+  expect(csp).toContain("connect-src 'self' https://*.example.ts.net");
+  expect(csp).toContain("frame-ancestors 'none'");
   await page.getByRole("button", { name: copy.chat.launcher }).click();
   const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
   await expect(input).toBeEnabled();

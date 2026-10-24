@@ -74,7 +74,7 @@ describe("chat contract", () => {
       const box = screen.getByText(confirmation);
       expect(box.closest("[data-activity]")).toContainElement(undo);
     } else {
-      expect(screen.queryByText(/\u2713/)).toBeNull();
+      expect(screen.queryByText(/✓/)).toBeNull(); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     }
     expect(screen.queryByText(copy.parts.unknown)).toBeNull();
     expect(bodies[0]).toMatchObject({ conversation_id: null, checkin_id: null });

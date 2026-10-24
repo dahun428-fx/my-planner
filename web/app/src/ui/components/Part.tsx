@@ -15,7 +15,7 @@ export function Part({
   readOnly?: boolean;
   children: ReactNode;
 }) {
-  const cls = `${styles.card} ${variant === "outlined" ? styles.outlined : ""} ${variant === "confirm" ? styles.confirm : ""}`;
+  const cls = `${styles.card} ${variant === "outlined" ? styles.outlined : ""} ${variant === "confirm" ? styles.confirm : ""} ${readOnly ? styles.readOnly : ""}`;
   return (
     <section className={cls}>
       {title !== undefined && <h3 className={styles.title}>{title}</h3>}
