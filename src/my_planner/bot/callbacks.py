@@ -8,7 +8,12 @@
 `c:<YYYY-MM-DD>:<1-5>`(그 날짜의 컨디션. 지난 날짜의 버튼도 그 날짜에 기록한다),
 `k:a:<token>`(회차 차례의 확인: 토큰의 `action`·`args`를 그대로 적용), `k:x:<token>`(그대로 두기, SP3-4 10.1 A5·A6),
 `m:c:<id>`·`m:x:<id>`·`m:all:<conversation_id>`(사건 초안 저장·빼기·전부 저장), `h:c:<id>`·`h:x:<id>`(챕터 초안,
-SP3-4 10장·11.3).
+SP3-4 10장·11.3), `l:<YYYY-MM>:n:<0-10>`·`l:<YYYY-MM>:f:<0-10>`·`l:<YYYY-MM>:f:skip`(회고 단계의 사다리 지금·5년 뒤·
+건너뛰기, SP3-4 11.1. 버튼에 든 달에 기록한다).
+
+회고 단계(`review`, `harness.review_steps.ReviewFlow`): 월말 회고 묶음 메시지의 컨디션 누름은 토스트 대신 새 메시지로
+답하고 사다리 1단계를 붙인다(회차마다 한 번, 계획 빈 곳 12). 사다리 누름은 그 달 월말 회고의 답장 창 안이면 다음
+단계를 새 메시지로 보내고, 창 뒤면 기록만 한다(토스트). 단계 메시지는 하루 3회 상한에 세지 않는다.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -40,12 +46,15 @@ from my_planner.tools.core import Tools
 
 if TYPE_CHECKING:
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.harness.review_steps import NextStep, ReviewFlow
     from my_planner.store.repos.activity import ConfirmsRepo
     from my_planner.store.repos.channels import DeliveriesRepo
 
 log = logging.getLogger(__name__)
 
-CallbackResult = Literal["confirmed", "dropped", "declined", "recorded", "stale", "ignored", "unknown"]
+CallbackResult = Literal[
+    "confirmed", "dropped", "declined", "recorded", "skipped", "stale", "ignored", "unknown"
+]
 Apply = Callable[[ActionRequest], ActionResult]
 MarkAnswered = Callable[[int, Channel], object]  # `Dispatcher.mark_answered(run_id, channel)`
 
@@ -53,6 +62,7 @@ STALE_REPLY = "이미 정리된 할 일이에요."
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 # 토큰은 `ct_` + `secrets.token_urlsafe(16)`(22자): 콜백 데이터 29바이트(64바이트 이하)
 _CONFIRM = re.compile(r"k:(?P<op>[ax]):(?P<token>ct_[A-Za-z0-9_-]{22})")
+_LADDER = re.compile(r"l:(?P<period>\d{4}-(?:0[1-9]|1[0-2])):(?P<field>[nf]):(?P<value>10|[0-9]|skip)")
 
 
 def _parse(data: str | None) -> tuple[str, int] | None:
@@ -92,6 +102,15 @@ def _parse_confirm(data: str | None) -> tuple[str, str] | None:
     return (m["op"], m["token"]) if m is not None else None
 
 
+def _parse_ladder(data: str | None) -> tuple[str, Literal["n", "f"], int | None] | None:
+    """`l:2026-11:n:6` → ("2026-11", "n", 6), `l:2026-11:f:skip` → ("2026-11", "f", None). 모르는 모양이면 None."""
+    m = _LADDER.fullmatch(data or "")
+    if m is None or (m["field"] == "n" and m["value"] == "skip"):
+        return None
+    field: Literal["n", "f"] = "n" if m["field"] == "n" else "f"
+    return m["period"], field, None if m["value"] == "skip" else int(m["value"])
+
+
 def condition_reply(score: int) -> str:
     return condition_summary(score)  # 활동 한 줄과 같은 문구(SP1)
 
@@ -108,6 +127,7 @@ async def handle_callback(
     deliveries: DeliveriesRepo | None = None,
     mark_answered: MarkAnswered | None = None,
     confirms: ConfirmsRepo | None = None,
+    review: ReviewFlow | None = None,
 ) -> CallbackResult:
     """버튼 하나를 처리한다. 무엇을 하든 `query.answer()`를 꼭 한 번 부른다.
 
@@ -133,7 +153,17 @@ async def handle_callback(
             _transcript(transcripts, clock, f"[버튼] 컨디션 {score}")
             reply = condition_reply(score)
             _answer_run(query, deliveries, mark_answered)
+            step = _review_step(query, deliveries, review)
+            # 회고 묶음의 컨디션 누름: 토스트 대신 새 메시지로 답하고 첫 단계를 붙인다(11.1-1, 빈 곳 12)
+            if (
+                step is not None and review is not None
+                and await review.send(replace(step, text=f"{reply}\n\n{step.text}"))
+            ):
+                reply = None
             return "recorded"
+        if (lad := _parse_ladder(query.data)) is not None:
+            result_l, reply = await _ladder(*lad, tools, apply, review, transcripts, clock)
+            return result_l
         if (conf := _parse_confirm(query.data)) is not None:
             result_k, reply = _confirm(conf[0], conf[1], apply, confirms, transcripts, clock)
             if result_k in ("confirmed", "declined"):
@@ -225,6 +255,56 @@ def _curve(
     if not done:
         return "stale", gone, []
     return "confirmed", confirmation, [f"[버튼] 저장: {titles[i]}" for i in done if i in titles]
+
+
+def _review_step(
+    query: CallbackQuery, deliveries: DeliveriesRepo | None, review: ReviewFlow | None
+) -> NextStep | None:
+    """누른 컨디션 버튼이 월말 회고 묶음 메시지에 붙어 있고 아직 첫 단계를 묻지 않았으면 그 단계(표시는 `send`가 한다)."""
+    msg = query.message
+    if review is None or deliveries is None or msg is None:
+        return None
+    try:
+        run_id = deliveries.run_for_message(msg.message_id)
+        return review.after_condition(run_id) if run_id is not None else None
+    except Exception as e:  # noqa: BLE001 - 컨디션은 이미 기록됐다. 단계만 못 붙였다(토스트로 답한다)
+        log.warning("review_step_error", extra={"error_type": type(e).__name__})
+        return None
+
+
+async def _ladder(
+    period: str, field: Literal["n", "f"], value: int | None, tools: Tools, apply: Apply | None,
+    review: ReviewFlow | None, transcripts: TranscriptStore, clock: Clock,
+) -> tuple[CallbackResult, str | None]:
+    """사다리 버튼(11.1-2, 3): 즉시 갈래로 `record_ladder_score(period=버튼의 달)`. (결과, 토스트 문구).
+
+    그 달 월말 회고가 답장 창 안이면 다음 단계(2단계, 또는 "기록했어요: …"와 분기 영역 점수 묻기)를 새 메시지로
+    보낸다(토스트 없음). 창 뒤면 기록만 하고 "기록했어요: …"를 토스트로. 점수는 로그에 남기지 않는다.
+    """
+    from my_planner.harness.review_steps import ladder_recorded
+
+    if value is None:  # 5년 뒤 건너뛰기: 쓰지 않는다
+        line, result = "[버튼] 사다리 5년 뒤 건너뛰기", "skipped"
+        saved: dict[str, Any] = {}
+    else:
+        args = {"period": period, "now": value} if field == "n" else {"period": period, "future": value}
+        saved, _ = _run(tools, apply, "record_ladder_score", args)
+        if "error" in saved:
+            log.info("callback_ladder_error", extra={"field": field})
+            return "stale", saved["error"] or None
+        line, result = f"[버튼] 사다리 {'지금' if field == 'n' else '5년 뒤'} {value}", "recorded"
+    _transcript(transcripts, clock, line)
+    log.info("callback_ladder", extra={"field": field, "skipped": value is None})
+    if review is None:
+        return result, ladder_recorded(saved.get("now"), saved.get("future"))  # type: ignore[return-value]
+    try:
+        step = review.after_now(period) if field == "n" else review.after_future(period)
+    except Exception as e:  # noqa: BLE001 - 기록은 이미 됐다. 다음 단계만 못 보낸다
+        log.warning("review_step_error", extra={"error_type": type(e).__name__})
+        step = None
+    if step is not None and await review.send(step):
+        return result, None  # type: ignore[return-value]
+    return result, review.recorded_copy(period)  # type: ignore[return-value]
 
 
 def _confirm(

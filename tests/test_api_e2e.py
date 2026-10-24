@@ -406,3 +406,30 @@ async def test_story_to_curve(tmp_path):
     assert [(m["title"], m["date"], m["kind"]) for m in curve["milestones"]] == [("제주 여행", "2019", "high")]
     assert [t["title"] for t in status["titles"]] == ["「제주 여행」의 순간"]
     assert left[0] is not None and left[0].status == "confirmed" and left[1] is None
+
+
+async def test_month_end_review_ladder(tmp_path):
+    """월말 회고 사다리(SP3-4 티켓 14, 11.1): 11/29(일) 18:00 회고+저녁 체크인 한 메시지 → 컨디션 → 1단계 → 2단계 →
+    기록 문구 → `/curve.ladder`와 `/checkins/{id}`."""
+    from my_planner.harness.review_steps import LADDER_STEP1, LADDER_STEP2
+
+    start = kst(2026, 11, 29, 18, 0) + timedelta(seconds=30)
+    async with BeEnv.start(tmp_path, start=start, script=[FakeTurn([], "꾸민 월말 회고")]) as env:
+        await env.tick()
+        (review,) = env.sender.sent
+        run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+        await env.press("c:2026-11-29:4", message_id=env.sender.message_ids[0])
+        step1 = env.sender.sent[-1]
+        await env.press("l:2026-11:n:6")
+        step2 = env.sender.sent[-1]
+        await env.press("l:2026-11:f:8")
+        done = env.sender.sent[-1]
+        curve = await (await env.get("/curve?zoom=month&from=2026-11-01&to=2026-11-30")).json()
+        detail = await (await env.get(f"/checkins/{run_id}")).json()
+
+    assert review.ask_condition_for is not None and review.ladder is None  # 컨디션 줄만
+    assert step1.text == f"컨디션 4 기록했어요.\n\n{LADDER_STEP1}" and step1.ladder == ("2026-11", "n")
+    assert step2.text == LADDER_STEP2 and step2.ladder == ("2026-11", "f")
+    assert done.text == "기록했어요: 지금 6, 5년 뒤 8"
+    assert {"period": "2026-11", "now": 6, "future": 8}.items() <= curve["ladder"][0].items()
+    assert detail["state"] == "answered"

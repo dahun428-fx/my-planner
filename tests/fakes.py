@@ -182,7 +182,7 @@ class FakeSender:
         mid = None
         if (
             out.draft_task_ids or out.draft_milestone_ids or out.draft_chapter_ids
-            or out.ask_condition_for is not None or out.confirms
+            or out.ask_condition_for is not None or out.confirms or out.ladder is not None
         ):
             mid, self._next_id = self._next_id, self._next_id + 1
         self.message_ids.append(mid)

@@ -328,6 +328,23 @@ def condition_keyboard(d: date | None) -> list[list[InlineKeyboardButton]]:
     return [[InlineKeyboardButton(str(n), callback_data=f"c:{d.isoformat()}:{n}") for n in range(1, 6)]]
 
 
+LADDER_SKIP_LABEL = "건너뛰기"  # 사다리 2단계(5년 뒤)만
+
+
+def ladder_keyboard(period: str, field: Literal["n", "f"]) -> list[list[InlineKeyboardButton]]:
+    """회고 단계의 사다리 버튼(SP3-4 11.1): `0`~`5`, `6`~`10` 두 줄, `f`(5년 뒤)면 맨 아래 `건너뛰기`.
+
+    콜백 데이터 `l:<YYYY-MM>:n:<0-10>`, `l:<YYYY-MM>:f:<0-10>`, `l:<YYYY-MM>:f:skip`(모두 17바이트 이하).
+    """
+    rows = [
+        [InlineKeyboardButton(str(v), callback_data=f"l:{period}:{field}:{v}") for v in vs]
+        for vs in (range(6), range(6, 11))
+    ]
+    if field == "f":
+        rows.append([InlineKeyboardButton(LADDER_SKIP_LABEL, callback_data=f"l:{period}:f:skip")])
+    return rows
+
+
 def confirm_keyboard(confirms: list[tuple[str, str]]) -> list[list[InlineKeyboardButton]]:
     """(토큰, 버튼 이름)마다 `✓ {버튼 이름 16자}` `✗ 그대로 두기` 한 줄(10.1 A5). 확인 문구 전부는 메시지 글에 있다.
 
@@ -346,7 +363,8 @@ def message_keyboard(
     out: Outbound, titles: dict[int, str], milestone_titles: dict[int, str] | None = None,
     chapter_titles: dict[int, str] | None = None,
 ) -> InlineKeyboardMarkup | None:
-    """메시지 아래 버튼: 할 일 초안 줄 → 사건 초안 줄 → 챕터 초안 줄 → 확인 줄(회차 차례의 확인) → 컨디션 1~5 줄.
+    """메시지 아래 버튼: 할 일 초안 줄 → 사건 초안 줄 → 챕터 초안 줄 → 확인 줄(회차 차례의 확인) → 컨디션 1~5 줄
+    또는 사다리 0~10 줄(SP3-4 11.1: 한 메시지에 숫자 키보드는 한 종류라 사다리가 있으면 컨디션 줄은 없다).
     모두 없으면 None."""
     drafts = draft_keyboard(out.draft_task_ids, out.draft_conversation_id, titles)
     rows = [
@@ -354,7 +372,7 @@ def message_keyboard(
         *milestone_keyboard(out.draft_milestone_ids, out.draft_conversation_id, milestone_titles or {}),
         *chapter_keyboard(out.draft_chapter_ids, chapter_titles or {}),
         *confirm_keyboard(out.confirms),
-        *condition_keyboard(out.ask_condition_for),
+        *(ladder_keyboard(*out.ladder) if out.ladder is not None else condition_keyboard(out.ask_condition_for)),
     ]
     return InlineKeyboardMarkup(rows) if rows else None
 

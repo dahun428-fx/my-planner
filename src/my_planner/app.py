@@ -307,6 +307,7 @@ def build_be(
         deliveries=deliveries,
         mark_answered=dispatcher.mark_answered,
         confirms=confirms,  # 회차 차례의 확인 버튼 `k:`(SP3-4 10.1 A5)
+        review=dispatcher.review_flow,  # 회고 단계의 사다리 버튼 `l:`와 컨디션 다음 1단계(SP3-4 11.1)
     )
     return BeParts(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
