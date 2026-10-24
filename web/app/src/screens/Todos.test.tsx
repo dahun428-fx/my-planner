@@ -6,14 +6,13 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Drafts, Priorities, Today as TodayData, Week } from "../api/types.gen";
 import { copy } from "../lib/copy";
-import { saveSnap } from "../lib/snapshot";
 import draftsJson from "../test/fixtures/drafts.json";
 import monthJson from "../test/fixtures/priorities-month.json";
 import quarterJson from "../test/fixtures/priorities-quarter.json";
 import todayJson from "../test/fixtures/today.json";
 import weekJson from "../test/fixtures/week.json";
 import yearJson from "../test/fixtures/priorities-year.json";
-import { renderWithProviders, TEST_BE_URL } from "../test/render";
+import { renderWithProviders, seedSnap } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Todos } from "./Todos";
 
@@ -67,6 +66,19 @@ const needsConfirm = () =>
 const tabOf = (name: string) => screen.getByRole("radio", { name });
 
 describe("Todos", () => {
+  it("writes and the launcher go off together when the BE stops taking writes", async () => {
+    serve();
+    actions(() => HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 }));
+    renderWithProviders(<Todos tab="week" />);
+    const add = await screen.findByRole("button", { name: copy.todos.add });
+    await waitFor(() => expect(add).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
+    fireEvent.click(screen.getByRole("checkbox", { name: copy.today.checkLabel("장보기") }));
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled());
+    expect(add).toBeDisabled();
+    expect(screen.queryByRole("checkbox", { name: copy.today.checkLabel("장보기") })).toBeNull(); // a read-only row has no check
+  });
+
   it("chat launcher: on when connected, off with the reason when not", async () => {
     serve();
     const { unmount } = renderWithProviders(<Todos tab="week" />);
@@ -236,7 +248,7 @@ describe("Todos", () => {
   });
 
   it("offline week from snapshot, others later", async () => {
-    await saveSnap("week", week, TEST_BE_URL);
+    await seedSnap("week", week);
     const first = renderWithProviders(<Todos tab="week" />, { conn: "offline" });
     expect(await screen.findByText("장보기")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: copy.todos.add })).toBeDisabled();

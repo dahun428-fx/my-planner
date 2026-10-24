@@ -34,6 +34,16 @@ export function useConnection(): ConnectionValue {
   return useContext(ConnectionContext);
 }
 
+/**
+ * Whether a screen takes writes: what it shows is live (`live` false: a snapshot, or a read that was
+ * refused) and the connection is online, or not known yet (before the first /health answer, so live
+ * data does not flicker read-only). `strict` (the chat launcher) waits for "online": the sheet needs it.
+ */
+export function useWritable(live = true, opts: { strict?: boolean } = {}): boolean {
+  const { state } = useConnection();
+  return live && (state?.kind === "online" || (state === null && !opts.strict));
+}
+
 const HEALTH_EVERY_MS = 30_000;
 const HEALTH_ERRORS_TO_OFFLINE = 3;
 const isVisible = () => typeof document === "undefined" || document.visibilityState === "visible";

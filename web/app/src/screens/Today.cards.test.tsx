@@ -37,7 +37,7 @@ describe("Today cards", () => {
   it("collects ui_confirm from pending checkins", async () => {
     const data = { ...todayPlain, checkins: [pending(341), pending(342)] };
     const asked = serve(data, { 341: checkin341 });
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: copy.today.needsConfirm })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: copy.todos.change })).toHaveLength(1);
@@ -52,7 +52,7 @@ describe("Today cards", () => {
 
   it("no confirm block when none", async () => {
     serve(todayPlain);
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     await screen.findByText("운동 30분");
     await waitFor(() => expect(screen.queryByRole("heading", { name: copy.today.needsConfirm })).toBeNull());
   });
@@ -60,7 +60,7 @@ describe("Today cards", () => {
   it("change on a confirm sends the token and reads again", async () => {
     const bodies = serveActions();
     const asked = serve({ ...todayPlain }, { 341: checkin341 });
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     await userEvent.click(await screen.findByRole("button", { name: copy.todos.change }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ action: "drop_task", args: { id: 13 }, confirm_token: "tok-abc-123" });
@@ -69,7 +69,7 @@ describe("Today cards", () => {
 
   it("pinned cards in order with secretary mark", async () => {
     serve(todayCards);
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     const first = await screen.findByText("이번 주에 챙길 것");
     const second = await screen.findByText("이번 주 운동");
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -84,7 +84,7 @@ describe("Today cards", () => {
   it("unpin and reorder send actions", async () => {
     const bodies = serveActions();
     serve(todayCards);
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     await screen.findByText("이번 주에 챙길 것");
 
     await userEvent.click(screen.getByRole("button", { name: copy.today.pinnedMore("이번 주에 챙길 것") }));
@@ -111,7 +111,7 @@ describe("Today cards", () => {
     serveActions(() => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 }));
     let reads = 0;
     server.use(http.get(`${BASE}/today`, () => (reads++, HttpResponse.json(todayCards as TodayData))));
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     await screen.findByText("이번 주에 챙길 것");
     const before = reads;
     await userEvent.click(screen.getByRole("button", { name: copy.today.pinnedMore("이번 주에 챙길 것") }));
@@ -123,7 +123,7 @@ describe("Today cards", () => {
   it("reorder needs_confirm shows a toast", async () => {
     serveActions(() => HttpResponse.json({ status: "needs_confirm", confirm_token: "t", summary: "s", expires_at: "2026-10-24T10:00:00Z" }));
     serve(todayCards);
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     await screen.findByText("이번 주에 챙길 것");
     await userEvent.click(screen.getByRole("button", { name: copy.today.pinnedMore("이번 주에 챙길 것") }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: copy.today.moveDown }));
@@ -134,13 +134,13 @@ describe("Today cards", () => {
     const data = { ...todayPlain, checkins: [pending(341), pending(342)] };
     serve(data, { 341: checkin341 });
     server.use(http.get(`${BASE}/checkins/342`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
   });
 
   it("reads each pending check-in once", async () => {
     const asked = serve({ ...todayPlain }, { 341: checkin341 });
-    renderWithProviders(<Today />, { catalog: true });
+    renderWithProviders(<Today />);
     await screen.findByText("‘장보기’를 할 일에서 뺄까요?");
     await new Promise((r) => setTimeout(r, 100));
     expect(asked).toEqual([341]);

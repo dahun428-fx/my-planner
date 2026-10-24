@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { newClientMsgId } from "../lib/ids";
 import { copy } from "../lib/copy";
-import { useToast } from "../components/Toast";
+import { type ToastContent, useToast } from "../components/Toast";
 import { type ApiResult, apiFetch } from "./client";
 
 // Hand-written from SP3-4 6.4.2 / 6.4.3 until the BE write models are in schema.json.
@@ -166,4 +166,46 @@ export function useAction(): UseAction {
 
   const isPending = useCallback((action: ActionName, args: object) => pending.has(keyOf(action, args)), [pending]);
   return { run, isPending };
+}
+
+export interface UseUndo {
+  /**
+   * Resolves null (and sends nothing) while an undo of the same id is still in flight. Toasts the
+   * confirmation when undone and the failure sentence when it fails; `already_undone` and
+   * `blocked` are the caller's.
+   */
+  undo(id: number): Promise<UndoOutcome | null>;
+  /** The ids whose undo is in flight. */
+  busy: ReadonlySet<number>;
+}
+
+// The one door for "되돌리기" (toast, activity log, chat box). `show` stands in for the app's toast
+// where there is none above (the toast's own button, inside the provider).
+export function useUndo(show?: (t: ToastContent) => void): UseUndo {
+  const toast = useToast();
+  const say = useRef(show ?? toast.show);
+  say.current = show ?? toast.show;
+  const inFlight = useRef(new Set<number>());
+  const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
+
+  const undo = useCallback(async (id: number): Promise<UndoOutcome | null> => {
+    if (inFlight.current.has(id)) return null; // the answer to the first press has not come yet
+    inFlight.current.add(id);
+    setBusy(new Set(inFlight.current));
+    try {
+      const out = await undoActivity(id);
+      if (out.kind === "undone") say.current({ text: out.confirmation });
+      else if (out.kind === "failed") {
+        const k = out.result.kind;
+        const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
+        say.current({ text: known ? failureText(out.result) : copy.actions.undoFailed });
+      }
+      return out;
+    } finally {
+      inFlight.current.delete(id);
+      setBusy(new Set(inFlight.current));
+    }
+  }, []);
+
+  return { undo, busy };
 }

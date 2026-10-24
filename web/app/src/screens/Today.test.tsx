@@ -7,14 +7,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Today as TodayData } from "../api/types.gen";
 import { copy } from "../lib/copy";
 import { registerServiceWorker } from "../lib/push";
-import { loadSnap, saveSnap } from "../lib/snapshot";
+import { loadSnap } from "../lib/snapshot";
 import { installPush } from "../test/push";
 import { formatKst } from "../lib/time";
 import health from "../test/fixtures/health.json";
 import degraded from "../test/fixtures/health-degraded.json";
 import todayJson from "../test/fixtures/today.json";
 import emptyJson from "../test/fixtures/today-empty.json";
-import { renderWithProviders, TEST_BE_URL } from "../test/render";
+import { renderWithProviders, seedSnap, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Today } from "./Today";
 
@@ -131,6 +131,42 @@ describe("Today", () => {
     await userEvent.setup().click(await screen.findByRole("button", { name: copy.today.conditionScore(3) }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ action: "record_condition", args: { date: "2026-10-24", score: 3 } });
+  });
+
+  it("live data before /health answers takes writes (no read-only flicker); the launcher waits", async () => {
+    serve();
+    server.use(http.get(`${BASE}/health`, () => new Promise<Response>(() => {})));
+    renderWithProviders(<Today />);
+    const pill = await screen.findByRole("button", { name: copy.today.conditionScore(3) });
+    expect(pill).toBeEnabled();
+    expect(screen.queryByText(copy.offline.writeLater)).toBeNull();
+    expect(screen.getByRole("checkbox", { name: copy.today.checkLabel("운동 30분") })).toBeEnabled();
+    expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled();
+  });
+
+  it("a conflict on the condition says it failed and reads again", async () => {
+    const hits = serve();
+    actions(() => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 }));
+    renderWithProviders(<Today />);
+    const pill = await screen.findByRole("button", { name: copy.today.conditionScore(3) });
+    await waitFor(() => expect(pill).toBeEnabled());
+    const read = hits.today;
+    await userEvent.setup().click(pill);
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+    await waitFor(() => expect(hits.today).toBe(read + 1));
+  });
+
+  it("writes and the launcher go off together when the BE stops taking writes", async () => {
+    serve();
+    actions(() => HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 }));
+    renderWithProviders(<Today />);
+    const pill = await screen.findByRole("button", { name: copy.today.conditionScore(3) });
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
+    expect(pill).toBeEnabled();
+    await userEvent.setup().click(pill);
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled());
+    expect(screen.getByRole("button", { name: copy.today.conditionScore(3) })).toBeDisabled();
+    expect(screen.queryByRole("checkbox", { name: copy.today.checkLabel("운동 30분") })).toBeNull(); // a read-only row has no check
   });
 
   it("existing condition is filled and can be changed", async () => {
@@ -334,7 +370,7 @@ describe("Today", () => {
 });
 
 async function seed(data: TodayData | null) {
-  if (data) await saveSnap("today", data, TEST_BE_URL);
+  if (data) await seedSnap("today", data);
   server.use(http.get(`${BASE}/today`, () => HttpResponse.error()));
 }
 
@@ -369,7 +405,7 @@ describe("Today offline and refused", () => {
   });
 
   it("does not show a snapshot of another BE", async () => {
-    await saveSnap("today", today, "https://other.example.ts.net");
+    await seedSnap("today", today, "https://other.example.ts.net");
     server.use(http.get(`${BASE}/today`, () => HttpResponse.error()));
     renderWithProviders(<Today />, { conn: "offline" });
     expect(await screen.findByText(copy.offline.noSnapshot)).toBeInTheDocument();

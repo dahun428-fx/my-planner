@@ -4,13 +4,16 @@ import { Part } from "./Part";
 import styles from "./parts.module.css";
 
 // ui_choice: a question and 2-4 pills. The chosen label goes on as the next user message; after
-// that only the chosen pill stays dark and everything is off (the state is this part's own).
+// that only the chosen pill stays dark and everything is off (the state is this part's own). Where
+// there is no chat to send it to (a card pinned to Today), or the card was restored after a reload
+// (the question is over: its answer would land in the current conversation), the pills are off.
 export function Choice({ props, ctx }: PartProps<{ question: string; options: { id: string; label: string }[] }>) {
   const [chosen, setChosen] = useState<string | null>(null);
+  const send = ctx.restored ? undefined : ctx.onChoose;
   const pick = (id: string, label: string) => {
-    if (chosen !== null) return;
+    if (chosen !== null || !send) return;
     setChosen(id);
-    ctx.onChoose?.(label);
+    send(label);
   };
   return (
     <Part readOnly={ctx.readOnly}>
@@ -22,7 +25,7 @@ export function Choice({ props, ctx }: PartProps<{ question: string; options: { 
             type="button"
             className={styles.pill}
             aria-pressed={chosen === o.id}
-            disabled={ctx.readOnly || chosen !== null}
+            disabled={ctx.readOnly || !send || chosen !== null}
             onClick={() => pick(o.id, o.label)}
           >
             {o.label}

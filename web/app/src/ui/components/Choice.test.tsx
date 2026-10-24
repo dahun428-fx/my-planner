@@ -19,4 +19,11 @@ describe("Choice", () => {
     await userEvent.click(screen.getByRole("button", { name: "운동" }));
     expect(onChoose).toHaveBeenCalledTimes(1);
   });
+
+  it("pills are off where a choice cannot be sent (a card pinned to Today)", async () => {
+    renderWithProviders(<Choice props={props} ctx={makeCtx({ where: "today" })} />);
+    for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "독서" }));
+    expect(screen.getByRole("button", { name: "독서" })).toHaveAttribute("aria-pressed", "false");
+  });
 });

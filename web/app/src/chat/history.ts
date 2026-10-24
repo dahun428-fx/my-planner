@@ -73,7 +73,7 @@ export async function loadHistory(given: number | null | undefined): Promise<His
     const mid = l.id ?? `h-${id}-${i}`;
     if (l.id && l.speaker === "secretary") {
       const parts = await loadParts(l.id);
-      if (parts) restored[mid] = parts;
+      if (parts) restored[mid] = parts.map((p) => (p.kind === "ui" ? { ...p, restored: true } : p));
     }
     messages.push({
       id: mid,

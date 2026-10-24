@@ -16,17 +16,21 @@ export interface FetchOpts {
   signal?: AbortSignal;
   /** Try this connection instead of the saved one (first-connect check). Such a call is not reported. */
   conn?: Conn;
+  /**
+   * A longer wait for a call the BE answers slowly because it waits on others (a test push). Running
+   * out of it says nothing about the connection: the answer is `error` "timeout", not offline.
+   */
+  timeoutMs?: number;
 }
 
 const TIMEOUT_MS = 10_000;
 
-async function request<T>(method: string, path: string, opts: FetchOpts, conn: Conn): Promise<ApiResult<T>> {
+async function request<T>(method: string, path: string, opts: FetchOpts, conn: Conn, timing: { timedOut: boolean }): Promise<ApiResult<T>> {
   const ac = new AbortController();
-  let timedOut = false;
   const timer = setTimeout(() => {
-    timedOut = true;
+    timing.timedOut = true;
     ac.abort();
-  }, TIMEOUT_MS);
+  }, opts.timeoutMs ?? TIMEOUT_MS);
   const onCallerAbort = () => ac.abort();
   opts.signal?.addEventListener("abort", onCallerAbort);
   if (opts.signal?.aborted) ac.abort();
@@ -45,7 +49,8 @@ async function request<T>(method: string, path: string, opts: FetchOpts, conn: C
       });
     } catch {
       // Timeout and network failure both mean "the secretary cannot be reached" (spec 5.4).
-      if (opts.signal?.aborted && !timedOut) return { kind: "error", status: 0, code: "aborted" };
+      if (opts.signal?.aborted && !timing.timedOut) return { kind: "error", status: 0, code: "aborted" };
+      if (timing.timedOut && opts.timeoutMs !== undefined) return { kind: "error", status: 0, code: "timeout" };
       return { kind: "offline" };
     }
 
@@ -84,8 +89,8 @@ export async function apiFetch<T>(
 ): Promise<ApiResult<T>> {
   const conn = opts.conn ?? loadConn();
   if (!conn) return { kind: "error", status: 0, code: "no_connection" };
-  const result = await request<T>(method, path, opts, conn);
-  if (!opts.conn && !(result.kind === "error" && result.code === "aborted")) reportResult(result, conn);
+  const result = await request<T>(method, path, opts, conn, { timedOut: false });
+  if (!opts.conn && !(result.kind === "error" && (result.code === "aborted" || result.code === "timeout"))) reportResult(result, conn);
   return result;
 }
 

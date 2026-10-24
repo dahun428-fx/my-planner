@@ -1,12 +1,13 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { copy } from "../lib/copy";
 import { saveConn } from "../lib/connection";
 import { renderWithProviders, TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
-import { runAction, undoActivity, useAction } from "./actions";
+import { runAction, undoActivity, useAction, useUndo } from "./actions";
 
 const UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const applied = { status: "applied", activity_id: 913, undo_id: 913, result: { id: 12 }, confirmation: "✓ 완료: 운동", xp: { gained: 10, level_up: null } }; // taste-skill-ignore: BE confirmation prefix (R4b), not UI
@@ -229,8 +230,60 @@ describe("useAction", () => {
 
   it("shows the offline text when the retry fails too", async () => {
     record(() => HttpResponse.error());
-    renderWithProviders(<Rows />);
+    // No catalog: its good answer would bring the connection back and the "reconnected" toast over this one.
+    renderWithProviders(<Rows />, { catalog: false });
     await userEvent.click(screen.getByText("row1"));
     expect(await screen.findByText(copy.actions.offline)).toBeInTheDocument();
+  });
+});
+
+describe("useUndo", () => {
+  function Probe({ id }: { id: number }) {
+    const { undo, busy } = useUndo();
+    const [out, setOut] = useState<string>("none");
+    return (
+      <>
+        <button type="button" disabled={busy.has(id)} onClick={() => void undo(id).then((o) => setOut(o ? o.kind : "ignored"))}>
+          undo
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void undo(id);
+            void undo(id).then((o) => setOut(o ? o.kind : "ignored"));
+          }}
+        >
+          twice
+        </button>
+        <output>{out}</output>
+      </>
+    );
+  }
+
+  it("one request per press in flight, the confirmation toasted, the outcome given back", async () => {
+    let n = 0;
+    server.use(
+      http.post(`${BASE}/activity/913/undo`, () => {
+        n += 1;
+        return HttpResponse.json({ status: "undone", confirmation: "↩︎ 되돌렸어요: 운동" });
+      }),
+    );
+    renderWithProviders(<Probe id={913} />);
+    await userEvent.click(screen.getByText("twice"));
+    expect(await screen.findByText("↩︎ 되돌렸어요: 운동")).toBeInTheDocument();
+    expect(screen.getByText("ignored")).toBeInTheDocument();
+    expect(n).toBe(1);
+  });
+
+  it("a failure says why; blocked is left to the caller", async () => {
+    let answer = () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) as Response;
+    server.use(http.post(`${BASE}/activity/913/undo`, () => answer()));
+    renderWithProviders(<Probe id={913} />);
+    await userEvent.click(screen.getByText("undo"));
+    expect(await screen.findByText(copy.actions.undoFailed)).toBeInTheDocument();
+    expect(screen.getByText("failed")).toBeInTheDocument();
+    answer = () => HttpResponse.json({ error: { code: "superseded", message: "x" } }, { status: 409 });
+    await userEvent.click(screen.getByText("undo"));
+    expect(await screen.findByText("blocked")).toBeInTheDocument();
   });
 });

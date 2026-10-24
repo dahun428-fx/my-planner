@@ -6,14 +6,15 @@ import { CheckRow, Part } from "./Part";
 import styles from "./parts.module.css";
 
 // ui_todo_draft: drafts are checked by default; "N개 확정" confirms the checked ones, "고른 것 빼기"
-// drops them one by one.
+// drops them one by one. A card restored after a reload shows its rows only: they may have been
+// confirmed since, and a drop would then remove a real to-do.
 export function TodoDraft({ props, data, ctx }: PartProps<{ task_ids: number[] }>) {
   const act = usePartAction();
   const [checked, setChecked] = useState<ReadonlySet<number>>(new Set(props.task_ids));
   const [finished, setFinished] = useState(false);
   const todos = data?.todos;
   const ids = (todos ? todos.map((t) => t.id) : props.task_ids).filter((id) => checked.has(id));
-  const off = ctx.readOnly || finished;
+  const off = ctx.readOnly || finished || ctx.restored === true;
 
   const toggle = (id: number) =>
     setChecked((c) => {
@@ -55,7 +56,7 @@ export function TodoDraft({ props, data, ctx }: PartProps<{ task_ids: number[] }
       ) : (
         <p className={styles.text}>{copy.parts.todoCount(props.task_ids.length)}</p>
       )}
-      {todos && (
+      {todos && !ctx.restored && (
         <div className={styles.buttons}>
           <button type="button" className={styles.button} disabled={off || ids.length === 0} onClick={() => void drop()}>
             {copy.parts.dropChecked}

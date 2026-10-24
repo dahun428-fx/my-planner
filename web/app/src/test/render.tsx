@@ -7,6 +7,7 @@ import { ToastProvider } from "../components/Toast";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import { CatalogProvider } from "../ui/CatalogProvider";
 import { saveConn } from "../lib/connection";
+import { saveSnap, type SnapKey } from "../lib/snapshot";
 import { healthAnswers } from "./handlers";
 import { server } from "./server";
 
@@ -21,8 +22,14 @@ export interface ProviderOptions extends Omit<RenderOptions, "wrapper"> {
   conn?: TestConn;
   /** Current route, e.g. "/todos/?tab=week". */
   route?: string;
-  /** Wrap in CatalogProvider (loads GET /ui/catalog) for tests that draw `ui_*` parts through UiPart. */
+  /** Wrap in CatalogProvider (loads GET /ui/catalog), as the app does. Default true; false for a test that must not see that request. */
   catalog?: boolean;
+}
+
+/** A snapshot kept on the device for `beUrl`, as a good answer from it leaves one (it is saved only while connected there). */
+export async function seedSnap(key: SnapKey, data: unknown, beUrl = TEST_BE_URL): Promise<void> {
+  saveConn({ beUrl, token: TEST_TOKEN });
+  await saveSnap(key, data, beUrl);
 }
 
 export function mockRouter(route = "/"): NextRouter {
@@ -50,7 +57,7 @@ export function mockRouter(route = "/"): NextRouter {
 }
 
 export function renderWithProviders(ui: ReactElement, options: ProviderOptions = {}) {
-  const { conn = "online", route = "/", catalog = false, ...rest } = options;
+  const { conn = "online", route = "/", catalog = true, ...rest } = options;
   const router = mockRouter(route);
   if (conn !== "none") saveConn({ beUrl: TEST_BE_URL, token: TEST_TOKEN });
   if (conn === "offline") server.use(healthAnswers.unreachable());

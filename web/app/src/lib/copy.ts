@@ -205,6 +205,7 @@ export const copy = {
     deviceLabel: "폰",
     testPush: "시험 알림 보내기",
     testNoDevices: "알림을 받을 기기가 없어요. 먼저 이 기기 알림을 허용해 주세요.",
+    testSlow: "응답이 늦어요. 잠시 뒤 확인해 주세요.",
     testResult: (ok: number, failed: number) => (failed === 0 ? `${ok}대에 보냈어요` : `${ok}대에 보냈고 ${failed}대에는 안 갔어요`),
     weekdays: "평일",
     weekend: "주말",

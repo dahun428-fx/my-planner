@@ -30,6 +30,7 @@ import styles from "./Settings.module.css";
 /** SP1 default check-in times (v1 app constants; spec 5.5.7, 12장 request 3 would move them to /health). */
 export const SP1_SCHEDULE = { weekdays: ["09:00", "17:30"], weekend: ["10:00", "18:00"] } as const;
 const PAUSE_DAYS = [1, 3, 7, 14] as const;
+const PUSH_TEST_TIMEOUT_MS = 30_000;
 
 type DeviceState = "loading" | "on" | "off" | "denied" | "needs_home_screen" | "unsupported" | "unavailable";
 
@@ -140,11 +141,14 @@ export function Settings() {
     testLock.current = true;
     setTesting(true);
     try {
-      const r = await apiFetch<PushTestResult>("POST", "/push/test", { model: "PushTestResult" });
+      // The BE waits on the push services before it answers: a longer wait, and running out of it is
+      // "slow", not "offline" (the status dot may well say connected).
+      const r = await apiFetch<PushTestResult>("POST", "/push/test", { model: "PushTestResult", timeoutMs: PUSH_TEST_TIMEOUT_MS });
       if (r.kind === "ok") {
         const none = r.data.ok === 0 && r.data.failed === 0;
         toast.show({ text: none ? copy.settings.testNoDevices : copy.settings.testResult(r.data.ok, r.data.failed) });
       }
+      else if (r.kind === "error" && r.code === "timeout") toast.show({ text: copy.settings.testSlow });
       else if (r.kind === "error" && r.status === 404) {
         setDevice("unavailable");
         toast.show({ text: copy.settings.pushUnavailable });

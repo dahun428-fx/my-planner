@@ -82,7 +82,7 @@ const input = () => screen.findByRole("textbox", { name: copy.chat.inputLabel })
 describe("Checkin", () => {
   it("renders loop name and delivery", async () => {
     serve();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByRole("heading", { level: 1, name: "저녁 체크인" })).toBeInTheDocument();
     expect(screen.getByText("18:00에 보냄 · 앱 알림으로 받음")).toBeInTheDocument();
     expect(screen.getByText(pending.text)).toBeInTheDocument();
@@ -92,7 +92,7 @@ describe("Checkin", () => {
 
   it("no deadline shown", async () => {
     serve();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     await screen.findByRole("heading", { level: 1, name: "저녁 체크인" });
     await screen.findAllByText(copy.todos.tomorrow);
     const text = document.body.textContent ?? "";
@@ -102,7 +102,7 @@ describe("Checkin", () => {
 
   it("cards render as parts", async () => {
     serve();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
   });
 
@@ -110,7 +110,7 @@ describe("Checkin", () => {
     serve();
     const bodies = actions(() => applied());
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     const shop = (await screen.findByText("장보기", { selector: "li *" })).closest("li") as HTMLElement;
     expect(within(shop).getByRole("button", { name: copy.checkin.tomorrowLabel("장보기") })).toBeInTheDocument();
     // A finished one is grey text, not a button.
@@ -137,7 +137,7 @@ describe("Checkin", () => {
       return applied();
     });
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     const btn = await screen.findByRole("button", { name: copy.checkin.completeLabel("장보기") });
     await user.dblClick(btn);
     release();
@@ -155,7 +155,7 @@ describe("Checkin", () => {
         : HttpResponse.json({ status: "needs_confirm", confirm_token: "t", summary: "정말요?", expires_at: "2026-10-24T10:00:00Z" });
     });
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     const btn = await screen.findByRole("button", { name: copy.checkin.completeLabel("장보기") });
     const before = hits.today;
     await user.click(btn);
@@ -170,7 +170,7 @@ describe("Checkin", () => {
 
   it("brief has no todo block", async () => {
     const hits = serve(brief);
-    renderWithProviders(<Checkin id={340} />, { catalog: true });
+    renderWithProviders(<Checkin id={340} />);
     expect(await screen.findByRole("heading", { level: 1, name: "아침 브리핑" })).toBeInTheDocument();
     expect(screen.getByText("텔레그램으로 받음", { exact: false })).toBeInTheDocument();
     expect(await screen.findByText("오늘 일정")).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe("Checkin", () => {
     serveHistory({ messages: { 44: [{ id: "m-44-1", at: "2026-10-24T09:00:05Z", speaker: "secretary", text: pending.text }] } });
     const bodies = serveChat(() => sseResponse(textAnswer(44)));
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     await user.type(await input(), "3점이요");
     const send = screen.getByRole("button", { name: copy.chat.send });
     await waitFor(() => expect(send).toBeEnabled());
@@ -203,7 +203,7 @@ describe("Checkin", () => {
         99: [{ id: "m-99-1", at: "2026-10-24T09:30:00Z", speaker: "secretary", text: "다른 대화예요" }],
       },
     });
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText("이 회차의 대화예요")).toBeInTheDocument();
     expect(screen.queryByText("다른 대화예요")).toBeNull();
     expect(seen.conversations).toBe(0);
@@ -215,7 +215,7 @@ describe("Checkin", () => {
     const seen = serveHistory({ conversations: [{ id: 99, last_message_at: "2026-10-24T09:30:00Z" }], messages: { 99: [{ id: "m-99-1", at: "2026-10-24T09:30:00Z", speaker: "secretary", text: "다른 대화예요" }] } });
     const bodies = serveChat(() => sseResponse(textAnswer(46)));
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     await user.type(await input(), "네");
     await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.send })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: copy.chat.send }));
@@ -228,7 +228,7 @@ describe("Checkin", () => {
   it("answered shows channel and keeps cards", async () => {
     serve(answered);
     serveHistory({ messages: { 44: [] } });
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText(copy.checkin.answeredVia(copy.channels.telegram))).toBeInTheDocument();
     expect(screen.queryByText(copy.checkin.canReply)).toBeNull();
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
@@ -237,7 +237,7 @@ describe("Checkin", () => {
 
   it("missed shows 지나감 and keeps input", async () => {
     serve(missed);
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText(copy.checkin.passed)).toBeInTheDocument();
     const box = await input();
     await waitFor(() => expect(box).toBeEnabled());
@@ -246,7 +246,7 @@ describe("Checkin", () => {
 
   it("turns passed when window ends while open", async () => {
     serve({ ...pending, reply_until: "2026-10-24T09:10:30Z" }); // 30 s from NOW
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText(copy.checkin.canReply)).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(31_000);
@@ -258,7 +258,7 @@ describe("Checkin", () => {
 
   it("bad id redirects", async () => {
     serve();
-    const { router } = renderWithProviders(<Checkin id={Number.NaN} />, { catalog: true });
+    const { router } = renderWithProviders(<Checkin id={Number.NaN} />);
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
   });
 
@@ -271,7 +271,7 @@ describe("Checkin", () => {
         return HttpResponse.error();
       }),
     );
-    renderWithProviders(<Checkin id={341} />, { conn: "offline", catalog: true });
+    renderWithProviders(<Checkin id={341} />, { conn: "offline" });
     expect(await screen.findByText(copy.offline.lead)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: copy.checkin.back })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "저녁 체크인" })).toBeNull();
@@ -285,7 +285,7 @@ describe("Checkin", () => {
     serve();
     const load = vi.spyOn(chatSheetChunk, "load").mockRejectedValueOnce(new Error("chunk"));
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText(copy.checkin.replyFailed)).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: copy.errors.retry }));
@@ -296,7 +296,7 @@ describe("Checkin", () => {
   it("answered without a channel says so without guessing", async () => {
     serve({ ...answered, answered_via: null });
     serveHistory({ messages: { 44: [] } });
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText(copy.checkin.answered)).toBeInTheDocument();
     expect(screen.queryByText(copy.checkin.answeredVia(copy.channels.app))).toBeNull();
   });
@@ -306,7 +306,7 @@ describe("Checkin", () => {
     serveHistory({ messages: { 44: [] } });
     serveChat(() => sseResponse(textAnswer(44)));
     const user = userEvent.setup();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     await user.type(await input(), "네");
     await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.send })).toBeEnabled());
     const before = hits.checkin;
@@ -320,7 +320,7 @@ describe("Checkin", () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"], shouldAdvanceTime: true });
     vi.setSystemTime(NOW);
     serve();
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     await screen.findByRole("button", { name: copy.checkin.completeLabel("장보기") });
     server.use(http.get(`${BASE}/today`, () => HttpResponse.error()), http.get(`${BASE}/checkins/341`, () => HttpResponse.error()));
     await act(async () => {
@@ -332,7 +332,7 @@ describe("Checkin", () => {
 
   it("an unknown check-in is said, with retry", async () => {
     server.use(http.get(`${BASE}/checkins/341`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
-    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText(copy.errors.block("not_found"), { exact: false })).toBeInTheDocument();
   });
 });

@@ -5,7 +5,7 @@ import { Segmented } from "../components/Segmented";
 import { Sheet } from "../components/Sheet";
 import { useToast } from "../components/Toast";
 import { copy } from "../lib/copy";
-import { addDays, kstToUtcIso } from "../lib/time";
+import { addDays, scheduledAtOf } from "../lib/time";
 import styles from "./AddTodoSheet.module.css";
 
 type Area = Todo["areas"][number];
@@ -18,20 +18,22 @@ export interface AddTodoSheetProps {
   onClose(): void;
   /** The BE's logical today (/today.date): "오늘" is this day, "내일" the next. */
   defaultDate: string;
+  /** `/today.day_boundary`: a time before it belongs to the next calendar day of the chosen date. */
+  dayBoundary?: string;
   /** Called after the to-do was added, so the screen can read again. */
   onAdded?(): void;
 }
 
 // Spec 5.5.5 add sheet. Priorities are the secretary's job in v1 (set_priorities), so there is no field for them.
-export function AddTodoSheet({ open, onClose, defaultDate, onAdded }: AddTodoSheetProps) {
+export function AddTodoSheet({ open, onClose, defaultDate, dayBoundary, onAdded }: AddTodoSheetProps) {
   return (
     <Sheet open={open} onClose={onClose} title={copy.todos.addTitle}>
-      <AddForm onClose={onClose} defaultDate={defaultDate} onAdded={onAdded} />
+      <AddForm onClose={onClose} defaultDate={defaultDate} dayBoundary={dayBoundary} onAdded={onAdded} />
     </Sheet>
   );
 }
 
-function AddForm({ onClose, defaultDate, onAdded }: Omit<AddTodoSheetProps, "open">) {
+function AddForm({ onClose, defaultDate, dayBoundary, onAdded }: Omit<AddTodoSheetProps, "open">) {
   const { run } = useAction();
   const toast = useToast();
   const ids = { title: useId(), time: useId(), note: useId(), date: useId() };
@@ -62,7 +64,7 @@ function AddForm({ onClose, defaultDate, onAdded }: Omit<AddTodoSheetProps, "ope
       const args: Record<string, unknown> = { title: trimmed, areas: AREAS.filter((a) => areas.has(a)) };
       if (planned) {
         args.planned_for = planned;
-        if (time) args.scheduled_at = kstToUtcIso(planned, time);
+        if (time) args.scheduled_at = scheduledAtOf(planned, time, dayBoundary);
       }
       if (note.trim()) args.note = note.trim();
       const out = await run("add_task", args);

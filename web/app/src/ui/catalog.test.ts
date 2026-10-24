@@ -74,6 +74,15 @@ describe("catalog", () => {
     expect(((await get("catalog")) as { beUrl: string }).beUrl).toBe(TEST_BE_URL);
   });
 
+  it("a catalog that arrives after a disconnect is not stored", async () => {
+    serve(() => {
+      localStorage.clear(); // "이 기기 연결 해제" while the answer was coming
+      return HttpResponse.json(catalog);
+    });
+    await loadCatalog(catalog.version);
+    expect(await get("catalog")).toBeUndefined();
+  });
+
   it("offline with nothing stored gives null", async () => {
     serve(() => HttpResponse.error());
     expect(await loadCatalog(catalog.version)).toBeNull();

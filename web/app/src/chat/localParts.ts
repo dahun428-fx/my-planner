@@ -1,4 +1,5 @@
-import { del, get, getMany, keys, set } from "idb-keyval";
+import { del, get, getMany, keys } from "idb-keyval";
+import { setForBe } from "../lib/snapshot";
 import type { ViewPart } from "./parts";
 
 // Spec 4.6/4.7: the BE's transcript has no screen parts, so the app keeps the `ui_*` parts it got
@@ -15,11 +16,12 @@ interface Stored {
 const fresh = (v: Stored | undefined, now: number): v is Stored => !!v && typeof v.savedAt === "number" && now - v.savedAt <= MAX_AGE_MS;
 
 // A blocked IndexedDB (private mode, cleared site data) means "nothing kept", never an error.
-export async function saveParts(messageId: string, parts: ViewPart[], now = Date.now()): Promise<void> {
+// `beUrl` is the BE the answer came from.
+export async function saveParts(messageId: string, parts: ViewPart[], beUrl: string, now = Date.now()): Promise<void> {
   const ui = parts.filter((p) => p.kind === "ui");
   if (ui.length === 0) return;
   try {
-    await set(PREFIX + messageId, { savedAt: now, parts: ui } satisfies Stored);
+    await setForBe(PREFIX + messageId, { savedAt: now, parts: ui } satisfies Stored, beUrl);
     await pruneParts(now);
   } catch {
     // nothing to do

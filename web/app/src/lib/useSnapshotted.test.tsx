@@ -27,7 +27,7 @@ describe("useSnapshotted across connections", () => {
       http.get(`${OTHER}/api/v1/health`, () => HttpResponse.json(health)),
       http.get(`${OTHER}/api/v1/today`, () => new Promise<Response>(() => {})), // never answers
     );
-    renderWithProviders(<Probe />);
+    renderWithProviders(<Probe />, { catalog: false }); // only /health and /today are served for the other BE
     await waitFor(() => expect(screen.getByTestId("kind")).toHaveTextContent("live:2026-10-24"));
     await waitFor(async () => expect(await loadSnap("today", TEST_BE_URL)).not.toBeNull());
 

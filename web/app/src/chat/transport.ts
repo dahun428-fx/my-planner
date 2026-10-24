@@ -17,6 +17,20 @@ export class StreamCutError extends Error {
   override name = "StreamCutError";
 }
 
+/** 409: the BE is still answering this very message (it was sent before and could not be joined). The same id may be sent again later. */
+export class InFlightError extends Error {
+  override name = "InFlightError";
+}
+
+// A 409 from POST /chat is the in-flight answer (the other 409, an id used by /actions, cannot
+// happen: every message has a fresh id). It becomes InFlightError instead of a refusal.
+async function chatFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status !== 409) return res;
+  void res.body?.cancel().catch(() => {});
+  throw new InFlightError("answer still in flight");
+}
+
 // Spec 4.6 / F4: only the last user message goes, and its id is the client_msg_id, so a resend of
 // the same message (regenerate) gets the stored answer instead of a second one.
 export function buildChatBody(messages: UIMessage[], ctx: ChatCtx): ChatBody {
@@ -67,6 +81,7 @@ class GuardedTransport extends DefaultChatTransport<UIMessage> {
 // The address and token are read at send time, so a reconnect to another BE needs no new transport.
 export function makeTransport(getConn: () => Conn, getCtx: () => ChatCtx): DefaultChatTransport<UIMessage> {
   return new GuardedTransport({
+    fetch: chatFetch,
     headers: () => ({ Authorization: `Bearer ${getConn().token}` }),
     prepareSendMessagesRequest: ({ messages }) => ({
       api: `${getConn().beUrl}/api/v1/chat`,

@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { failureText, undoActivity } from "../api/actions";
+import { useUndo } from "../api/actions";
 import { copy } from "../lib/copy";
 import { useConnection } from "../lib/ConnectionProvider";
 import styles from "./Toast.module.css";
@@ -32,8 +32,6 @@ interface Current extends ToastContent {
 // write can be undone. Also says "다시 연결됐어요" for 2 s when the connection comes back.
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<Current | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const undoing = useRef(new Set<number>());
   const seq = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undone = useRef(new Set<() => void>());
@@ -65,33 +63,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const undo = useCallback(
-    async (id: number) => {
-      if (undoing.current.has(id)) return;
-      undoing.current.add(id);
-      setBusyId(id);
-      try {
-        const out = await undoActivity(id);
-        if (out.kind === "undone") {
-          show({ text: out.confirmation });
-          undone.current.forEach((cb) => cb());
-        } else if (out.kind === "already_undone") {
-          setCurrent(null);
-          undone.current.forEach((cb) => cb());
-        } else if (out.kind === "blocked") {
-          show({ text: copy.activity.undoBlocked[out.reason] });
-        } else {
-          const k = out.result.kind;
-          const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
-          show({ text: known ? failureText(out.result) : copy.actions.undoFailed });
-        }
-      } finally {
-        undoing.current.delete(id);
-        setBusyId((b) => (b === id ? null : b));
-      }
-    },
-    [show],
-  );
+  const { undo: send, busy } = useUndo(show);
+  const undo = async (id: number) => {
+    const out = await send(id);
+    if (out?.kind === "undone") {
+      undone.current.forEach((cb) => cb());
+    } else if (out?.kind === "already_undone") {
+      setCurrent(null);
+      undone.current.forEach((cb) => cb());
+    } else if (out?.kind === "blocked") {
+      show({ text: copy.activity.undoBlocked[out.reason] });
+    }
+  };
 
   const api = useMemo(() => ({ show, onUndone }), [show, onUndone]);
   const undoId = current?.undoId ?? null;
@@ -103,7 +86,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div className={styles.toast} key={current.seq}>
             <span className={styles.text}>{current.text}</span>
             {undoId !== null && (
-              <button type="button" className={styles.undo} disabled={busyId === undoId} onClick={() => void undo(undoId)}>
+              <button type="button" className={styles.undo} disabled={busy.has(undoId)} onClick={() => void undo(undoId)}>
                 {copy.activity.undo}
               </button>
             )}

@@ -20,7 +20,7 @@ const noop = () => {};
 
 async function openSheet() {
   const user = userEvent.setup();
-  renderWithProviders(<ChatSheet open onClose={noop} conversationId={null} />, { catalog: true });
+  renderWithProviders(<ChatSheet open onClose={noop} conversationId={null} />);
   const input = await screen.findByRole("textbox", { name: copy.chat.inputLabel });
   await waitFor(() => expect(input).toBeEnabled());
   return {
@@ -203,6 +203,20 @@ describe("chat contract", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(bodies).toHaveLength(1);
     expect(screen.queryByRole("button", { name: copy.chat.retry })).toBeNull();
+  });
+
+  it("409 while the same message is still being answered offers 다시 받기 with the same id", async () => {
+    const { HttpResponse } = await import("msw");
+    const inFlight = () => HttpResponse.json({ error: { code: "conflict", message: "같은 메시지를 처리하고 있어요." } }, { status: 409 });
+    const bodies = serveChat(inFlight, () => sseResponse(golden("chat_replay.sse")));
+    const { user, send } = await openSheet();
+    await send("내일 치과 추가해 줘");
+    const retry = await screen.findByRole("button", { name: copy.chat.retry });
+    expect(bodies).toHaveLength(1); // not sent again at once: the answer is still being made
+    await user.click(retry);
+    expect(await screen.findByText(ADD_TASK_TEXT)).toBeInTheDocument();
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].client_msg_id).toBe(bodies[0].client_msg_id);
   });
 
   it("a 4xx answer does not resend", async () => {

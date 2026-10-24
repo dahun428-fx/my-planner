@@ -4,7 +4,7 @@ import type { PartData } from "../ui/types";
 /** What a message shows, in order (spec F4). */
 export type ViewPart =
   | { kind: "text"; text: string }
-  | { kind: "ui"; toolCallId: string; name: string; props: unknown; data?: PartData }
+  | { kind: "ui"; toolCallId: string; name: string; props: unknown; data?: PartData; restored?: boolean }
   | { kind: "activity"; confirmation: string | null; undoIds: number[] };
 
 type AnyPart = UIMessage["parts"][number];

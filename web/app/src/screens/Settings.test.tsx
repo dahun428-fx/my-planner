@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear, get, set } from "idb-keyval";
 import { http, HttpResponse } from "msw";
@@ -215,6 +215,27 @@ describe("Settings", () => {
     expect(calls.tests).toBe(1);
     expect(copy.settings.testResult(2, 0)).toBe("2대에 보냈어요");
     expect(copy.settings.testResult(2, 1)).toBe("2대에 보냈고 1대에는 안 갔어요");
+  });
+
+  it("a test push the BE does not answer in 30 s says it is slow, not that the secretary is unreachable", async () => {
+    env = installPush({ permission: "granted", existing: fakeSub() });
+    storePushId(3);
+    serve();
+    server.use(http.post(`${BASE}/push/test`, () => new Promise<Response>(() => {})));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const button = await screen.findByRole("button", { name: copy.settings.testPush });
+    await waitFor(() => expect(button).toBeEnabled());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(button);
+      await vi.advanceTimersByTimeAsync(10_001);
+      expect(screen.queryByText(copy.settings.testSlow)).toBeNull(); // still waiting past the usual 10 s
+      await vi.advanceTimersByTimeAsync(20_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await screen.findByText(copy.settings.testSlow)).toBeInTheDocument();
+    expect(screen.queryByText(copy.actions.offline)).toBeNull();
   });
 
   it("test push with no devices says so", async () => {

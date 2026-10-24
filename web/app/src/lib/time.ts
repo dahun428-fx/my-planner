@@ -53,13 +53,22 @@ export function kstToUtcIso(date: string, hhmm: string): string {
 
 // An older BE sends no `/today.day_boundary`; its default was 04:00 (config.py), so that stands in.
 const DEFAULT_BOUNDARY = "04:00";
+const boundaryOf = (boundary: string | undefined) => (boundary !== undefined && /^\d{2}:\d{2}$/.test(boundary) ? boundary : DEFAULT_BOUNDARY);
 
 /**
  * The BE's logical date (YYYY-MM-DD) of an instant: Seoul wall time, minutes before `boundary` ("HH:MM",
  * `/today.day_boundary`) count as the day before.
  */
 export function logicalDateOf(iso: string, boundary: string | undefined): string {
-  const b = boundary !== undefined && /^\d{2}:\d{2}$/.test(boundary) ? boundary : DEFAULT_BOUNDARY;
+  const b = boundaryOf(boundary);
   const date = formatKst(iso, "date");
   return formatKst(iso, "HH:mm") < b ? addDays(date, -1) : date;
+}
+
+/**
+ * The instant of "HH:mm" on a logical date (the other way round): from 00:00 up to before `boundary`
+ * that day's wall clock is on the next calendar day ("2026-10-24" + "01:30" -> 10-25 01:30 Seoul).
+ */
+export function scheduledAtOf(date: string, hhmm: string, boundary: string | undefined): string {
+  return kstToUtcIso(hhmm < boundaryOf(boundary) ? addDays(date, 1) : date, hhmm);
 }
