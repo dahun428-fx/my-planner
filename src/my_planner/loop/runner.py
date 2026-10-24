@@ -315,8 +315,12 @@ class Runner:
         loops: frozenset[LoopKey] = ENABLED_LOOPS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         on_resume: Callable[[], Awaitable[None]] | None = None,
+        checkins: bool = True,
     ) -> None:
+        """`checkins=False`(role = "dev", 릴리스 흐름 스펙 5.2): 회차를 만들지도 따라잡지도 않는다. 만료된 대화
+        닫기, 하트비트, 하루 한 번 작업(초안 만료, 백업, 로그 정리 등)은 그대로 돈다."""
         self.clock = clock
+        self.checkins = checkins
         self.router = router
         self.settings = settings
         self.runs = runs
@@ -427,6 +431,12 @@ class Runner:
         self.ensure_installed()
         last_seen = self._get_time("last_seen_at")
         installed = self._get_time("installed_at")
+        if not self.checkins:  # 회차 없이 정리만(2·3단계의 회차 부분을 건너뛴다)
+            if self.router is not None:
+                self.router.close_expired()
+            self.state.set("last_seen_at", to_iso(now))
+            self._run_daily(logical_date(now, tz, boundary))
+            return
         judged_from = self._after_started_return(last_seen, now)
         # 2. 창 안의 예정 회차를 runs에 만든다(이미 있으면 그대로)
         for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops):

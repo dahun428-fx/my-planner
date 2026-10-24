@@ -1,14 +1,18 @@
-"""medic 설정: config.medic.toml + config.toml 일부 + .env. 표준 라이브러리만 쓴다."""
+"""medic 설정: config.medic.toml + config.toml 일부 + .env. 표준 라이브러리만 쓴다.
+
+두 toml은 저마다 `*.local.toml`(있으면)을 깊은 병합으로 겹쳐 읽는다(릴리스 흐름 스펙 5.2, 5.3).
+"""
 
 from __future__ import annotations
 
 import os
-import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from datetime import time
 from pathlib import Path
 from typing import Any
+
+from my_planner_medic.toml_overlay import read_overlaid
 
 API_TOKEN_MIN_CHARS = 43  # BE(my_planner.config)와 같은 기준
 _SECRET_FIELDS = ("api_token", "github_token", "telegram_token")
@@ -66,13 +70,6 @@ def parse_env(text: str) -> dict[str, str]:
     return out
 
 
-def _read_toml(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    with path.open("rb") as fh:
-        return tomllib.load(fh)
-
-
 def _parse_time(value: str) -> time:
     parts = [int(p) for p in value.split(":")]
     if len(parts) not in (2, 3):
@@ -81,8 +78,8 @@ def _parse_time(value: str) -> time:
 
 
 def load_config(root: Path, environ: Mapping[str, str] | None = None) -> MedicConfig:
-    medic = _read_toml(root / "config.medic.toml")
-    base = _read_toml(root / "config.toml")
+    medic = read_overlaid(root / "config.medic.toml", root / "config.medic.local.toml")
+    base = read_overlaid(root / "config.toml", root / "config.local.toml")  # [api] port를 여기서 읽는다(medic-dev → 8788)
     env_path = root / ".env"
     file_env = parse_env(env_path.read_text(encoding="utf-8-sig")) if env_path.exists() else {}
     process_env = os.environ if environ is None else environ
