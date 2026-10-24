@@ -55,7 +55,9 @@ export async function loadSnap<T>(key: SnapKey, beUrl: string, now = Date.now())
 
 // The 7-day sweep (spec 4.7), once at app start: snapshots and chat parts past that age go even if
 // nothing reads them again (a read also drops its own stale copy). `savedAt` is ISO in a snapshot,
-// epoch ms in chat parts.
+// epoch ms in chat parts. The read and the delete of a key are two transactions, so a fresh copy
+// written in between can go with the old one. That is harmless: a snapshot is written again by the
+// next good poll (and only read offline), and a lost chat part only leaves its line as text.
 export async function pruneDeviceData(now = Date.now()): Promise<void> {
   try {
     for (const k of await keys()) {
