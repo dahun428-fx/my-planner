@@ -2,6 +2,7 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import { copy } from "../lib/copy";
 import { saveConn } from "../lib/connection";
 import { renderWithProviders, TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -224,5 +225,12 @@ describe("useAction", () => {
     await userEvent.click(screen.getByText("row1"));
     expect(await screen.findByText("우선순위는 3개까지예요")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "되돌리기" })).toBeNull();
+  });
+
+  it("shows the offline text when the retry fails too", async () => {
+    record(() => HttpResponse.error());
+    renderWithProviders(<Rows />);
+    await userEvent.click(screen.getByText("row1"));
+    expect(await screen.findByText(copy.actions.offline)).toBeInTheDocument();
   });
 });

@@ -130,7 +130,11 @@ export function failureText(result: ApiResult<unknown>): string {
 const keyOf = (action: ActionName, args: object) => `${action}:${JSON.stringify(args)}`;
 
 export interface UseAction {
-  /** Resolves null (and sends nothing) while the same action with the same args is still in flight. */
+  /**
+   * Resolves null (and sends nothing) while the same action with the same args is still in flight.
+   * Shows a toast for applied, rejected and failed only: callers must handle `conflict` and
+   * `needs_confirm` themselves.
+   */
   run(action: ActionName, args: object, opts?: { confirmToken?: string }): Promise<ActionOutcome | null>;
   isPending(action: ActionName, args: object): boolean;
 }

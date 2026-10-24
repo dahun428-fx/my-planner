@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { copy } from "../lib/copy";
 import { saveConn } from "../lib/connection";
 import { TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -70,6 +71,50 @@ describe("Toast", () => {
     await userEvent.click(screen.getByText("first"));
     await userEvent.click(screen.getByRole("button", { name: "되돌리기" }));
     expect(await screen.findByText("뒤에 또 바뀌어서 못 되돌려요")).toBeInTheDocument();
+  });
+
+  it("failed undo uses the 5.4 text for a refused key", async () => {
+    server.use(http.post(`${BASE}/activity/913/undo`, () => HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 })));
+    mount();
+    await userEvent.click(screen.getByText("first"));
+    await userEvent.click(screen.getByRole("button", { name: "되돌리기" }));
+    expect(await screen.findByText(copy.status.unauthorized)).toBeInTheDocument();
+  });
+
+  it("undo in flight does not disable a newer toast's undo and cannot double send", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    server.use(
+      http.post(`${BASE}/activity/913/undo`, async () => {
+        calls += 1;
+        await gate;
+        return HttpResponse.json({ status: "undone", activity_id: 920, undone: 913, confirmation: "c" });
+      }),
+    );
+    function Two() {
+      const toast = useToast();
+      return (
+        <>
+          <button type="button" onClick={() => toast.show({ text: "A", undoId: 913 })}>
+            a
+          </button>
+          <button type="button" onClick={() => toast.show({ text: "B", undoId: 914 })}>
+            b
+          </button>
+        </>
+      );
+    }
+    mount(<Two />);
+    await userEvent.click(screen.getByText("a"));
+    const btn = screen.getByRole("button", { name: "되돌리기" });
+    await userEvent.click(btn);
+    await userEvent.click(btn);
+    expect(btn).toBeDisabled();
+    await userEvent.click(screen.getByText("b"));
+    expect(screen.getByRole("button", { name: "되돌리기" })).toBeEnabled();
+    await act(async () => release());
+    expect(calls).toBe(1);
   });
 
   it("new toast replaces old", async () => {

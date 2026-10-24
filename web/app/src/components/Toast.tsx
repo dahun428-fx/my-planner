@@ -32,7 +32,8 @@ interface Current extends ToastContent {
 // write can be undone. Also says "다시 연결됐어요" for 2 s when the connection comes back.
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<Current | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const undoing = useRef(new Set<number>());
   const seq = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undone = useRef(new Set<() => void>());
@@ -66,7 +67,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const undo = useCallback(
     async (id: number) => {
-      setBusy(true);
+      if (undoing.current.has(id)) return;
+      undoing.current.add(id);
+      setBusyId(id);
       try {
         const out = await undoActivity(id);
         if (out.kind === "undone") {
@@ -78,10 +81,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         } else if (out.kind === "blocked") {
           show({ text: copy.activity.undoBlocked[out.reason] });
         } else {
-          show({ text: out.result.kind === "offline" ? failureText(out.result) : copy.actions.undoFailed });
+          const k = out.result.kind;
+          const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
+          show({ text: known ? failureText(out.result) : copy.actions.undoFailed });
         }
       } finally {
-        setBusy(false);
+        undoing.current.delete(id);
+        setBusyId((b) => (b === id ? null : b));
       }
     },
     [show],
@@ -97,7 +103,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div className={styles.toast} key={current.seq}>
             <span className={styles.text}>{current.text}</span>
             {undoId !== null && (
-              <button type="button" className={styles.undo} disabled={busy} onClick={() => void undo(undoId)}>
+              <button type="button" className={styles.undo} disabled={busyId === undoId} onClick={() => void undo(undoId)}>
                 {copy.activity.undo}
               </button>
             )}
