@@ -1,0 +1,14 @@
+{
+  "title": "꾸민 카드",
+  "children": [
+    {
+      "type": "stat",
+      "label": "가",
+      "value": "1",
+      "delta": {
+        "text": "1",
+        "trend": "left"
+      }
+    }
+  ]
+}

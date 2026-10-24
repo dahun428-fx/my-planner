@@ -39,7 +39,9 @@ async def test_schema_lists_all_models(tmp_path):
     # 필드 이름은 별칭(`from`, `schema`)으로 나간다
     assert "from" in body["models"]["Conditions"]["properties"]
     assert "schema" in json.dumps(body["models"]["UiCatalog"])
-    assert set(body["models"]["TodoRef"]["properties"]) == {"id", "title", "cadence", "area", "status"}
+    todo_ref = body["models"]["TodoRef"]
+    assert set(todo_ref["properties"]) == {"id", "title", "cadence", "area", "status", "planned_for", "scheduled_at"}
+    assert set(todo_ref["required"]) == set(todo_ref["properties"])  # 값이 없으면 null(SP6 10.2)
 
 
 async def test_every_read_response_validates_against_schema(tmp_path):
@@ -98,15 +100,18 @@ async def test_ui_catalog_version_and_components(tmp_path):
     async with BeEnv.start(tmp_path, start=MON_EVENING) as env:
         body = await get_json(env, "/ui/catalog")
         health = await get_json(env, "/health")
-    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.2"
+    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.3"
     assert health["version"]["ui_catalog"] == body["version"]
     assert list(body["components"]) == [
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker",
-        "ui_area_scores", "ui_milestone_draft", "ui_chapter_draft", "ui_confirm",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
+        "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
+        "ui_chapter_draft", "ui_confirm",
     ]
-    assert len(body["components"]) == 10 == len(UI_COMPONENTS)
+    assert len(body["components"]) == 14 == len(UI_COMPONENTS)
     origins = {name: c["origin"] for name, c in body["components"].items()}
-    assert [n for n, o in origins.items() if o == "brain"] == ["ui_todo_list", "ui_choice", "ui_summary_card"]
+    assert [n for n, o in origins.items() if o == "brain"] == [
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
+    ]
     for name, c in body["components"].items():
         jsonschema.Draft202012Validator.check_schema(c["schema"])
         assert c["schema"]["additionalProperties"] is False, name

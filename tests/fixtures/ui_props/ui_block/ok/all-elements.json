@@ -1,0 +1,87 @@
+{
+  "title": "꾸민 이번 주",
+  "children": [
+    {
+      "type": "heading",
+      "text": "꾸민 제목"
+    },
+    {
+      "type": "text",
+      "md": "이번 주는 **화요일**이 가장 비어 있어요.\n수요일은 일정이 둘이에요."
+    },
+    {
+      "type": "group",
+      "layout": "row",
+      "children": [
+        {
+          "type": "stat",
+          "label": "컨디션 평균",
+          "value": "3.6",
+          "delta": {
+            "text": "0.4",
+            "trend": "up"
+          }
+        },
+        {
+          "type": "progress",
+          "label": "산책",
+          "value": 2,
+          "max": 3
+        }
+      ]
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "tags",
+      "items": [
+        {
+          "area": "health"
+        },
+        {
+          "text": "오전"
+        }
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "화요일 오후가 비어 있어요",
+        "목요일은 일정이 셋이에요"
+      ]
+    },
+    {
+      "type": "todo_rows",
+      "task_ids": [
+        61,
+        62
+      ]
+    },
+    {
+      "type": "buttons",
+      "items": [
+        {
+          "label": "산책 끝났어",
+          "do": {
+            "kind": "complete",
+            "task_id": 61
+          }
+        },
+        {
+          "label": "이번 주 할 일 보기",
+          "do": {
+            "kind": "open",
+            "screen": "todos_week"
+          }
+        },
+        {
+          "label": "다음 주도 알려 줘",
+          "do": {
+            "kind": "send"
+          }
+        }
+      ]
+    }
+  ]
+}

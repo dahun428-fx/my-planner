@@ -269,7 +269,8 @@ async def test_pin_card_from_app_chat(tmp_path):
     ui = [c for c in chunks if c.get("toolCallId") == "tc_01"]
     assert ui[0]["type"] == "tool-input-available" and ui[0]["toolName"] == "ui_todo_list"
     assert ui[1]["output"] == {"ok": True, "data": {"todos": [
-        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "open"}]}}
+        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "open",
+         "planned_for": "2026-10-24", "scheduled_at": None}]}}
     (activity,) = [c for c in chunks if c["type"] == "data-activity"]
     assert activity["data"]["undo_ids"] == [pinned["id"]]
     (card,) = today["cards"]

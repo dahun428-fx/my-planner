@@ -191,13 +191,17 @@ class Todo(_Model):
 
 
 class TodoRef(_Model):
-    """화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`."""
+    """화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.
+
+    `planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2)."""
 
     id: int
     title: str
     cadence: CadenceName | None
     area: AreaName | None
     status: TodoStatus
+    planned_for: str | None
+    scheduled_at: str | None
 
 
 class TodoRefs(_Model):

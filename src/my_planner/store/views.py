@@ -155,7 +155,10 @@ def todo_dict(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
 
 
 def todo_ref(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
-    """화면 조각이 붙이는 할 일 요약 `TodoRef` (6.3): `cadence`는 지금 기간 우선순위의 주기, `area`는 첫 영역."""
+    """화면 조각이 붙이는 할 일 요약 `TodoRef` (6.3): `cadence`는 지금 기간 우선순위의 주기, `area`는 첫 영역.
+
+    `planned_for`는 논리적 날짜, `scheduled_at`은 `todo_dict`처럼 오프셋 붙은 ISO이고 API·스트림 경계의 `to_api_times`가
+    UTC `Z`로 바꾼다(SP6 10.2)."""
     p = priority_dict(tasks, t, today)
     areas = _areas(t)
     return {
@@ -164,6 +167,8 @@ def todo_ref(t: Task, tasks: TasksRepo, today: date) -> dict[str, Any]:
         "cadence": p["cadence"] if p else None,
         "area": areas[0] if areas else None,
         "status": t.status.value,
+        "planned_for": t.planned_for.isoformat() if t.planned_for else None,
+        "scheduled_at": t.scheduled_at.isoformat() if t.scheduled_at else None,
     }
 
 

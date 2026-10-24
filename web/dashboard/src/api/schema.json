@@ -3686,7 +3686,7 @@
     },
     "TodoRef": {
       "additionalProperties": false,
-      "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.",
+      "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.\n\n`planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).",
       "properties": {
         "area": {
           "anyOf": [
@@ -3729,6 +3729,28 @@
           "title": "Id",
           "type": "integer"
         },
+        "planned_for": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Planned For"
+        },
+        "scheduled_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scheduled At"
+        },
         "status": {
           "enum": [
             "draft",
@@ -3749,7 +3771,9 @@
         "title",
         "cadence",
         "area",
-        "status"
+        "status",
+        "planned_for",
+        "scheduled_at"
       ],
       "title": "TodoRef",
       "type": "object"
@@ -3758,7 +3782,7 @@
       "$defs": {
         "TodoRef": {
           "additionalProperties": false,
-          "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.",
+          "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.\n\n`planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).",
           "properties": {
             "area": {
               "anyOf": [
@@ -3801,6 +3825,28 @@
               "title": "Id",
               "type": "integer"
             },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At"
+            },
             "status": {
               "enum": [
                 "draft",
@@ -3821,7 +3867,9 @@
             "title",
             "cadence",
             "area",
-            "status"
+            "status",
+            "planned_for",
+            "scheduled_at"
           ],
           "title": "TodoRef",
           "type": "object"
