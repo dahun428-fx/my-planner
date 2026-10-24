@@ -67,6 +67,6 @@ describe("copy", () => {
 
   it("templates fill values", () => {
     expect(copy.errors.block("shape")).toBe("이 부분을 불러오지 못했어요 (shape)");
-    expect(copy.status.limitedUntil("21:30")).toBe("비서가 21:30까지 답을 쉬어요");
+    expect(copy.status.limited("21:30")).toBe("비서가 21:30까지 답을 쉬어요");
   });
 });

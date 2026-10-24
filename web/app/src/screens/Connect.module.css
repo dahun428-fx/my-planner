@@ -1,0 +1,80 @@
+.main {
+  padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
+}
+.intro,
+.guide {
+  margin: 0 var(--pad);
+  color: var(--text-2);
+}
+.guide {
+  margin-top: var(--gap);
+  padding: var(--pad);
+  background: var(--surface);
+  border-radius: var(--radius-group);
+  color: var(--text);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  margin: var(--gap) var(--pad) 0;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.label {
+  font-size: var(--size-section);
+  font-weight: 600;
+}
+.input {
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--size-body);
+}
+.input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 0;
+}
+.help {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.ok,
+.bad {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: var(--size-meta);
+  font-weight: 600;
+}
+.ok {
+  color: var(--text-2);
+}
+.bad {
+  color: var(--negative);
+}
+.start {
+  min-height: 50px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.start:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.start:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

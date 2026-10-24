@@ -1,0 +1,40 @@
+.notice {
+  margin: 0 var(--pad);
+  padding: 0.75rem var(--pad);
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-group);
+  color: var(--notice-ink);
+}
+.text {
+  margin: 0;
+  font-size: var(--size-meta);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.lead {
+  font-weight: 600;
+}
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.action {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  padding: 0 0.5rem;
+  margin-left: -0.5rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--notice-ink);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.action:focus-visible {
+  outline: 2px solid var(--text);
+}

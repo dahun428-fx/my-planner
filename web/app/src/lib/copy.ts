@@ -16,8 +16,9 @@ export const copy = {
   status: {
     connected: "비서 연결됨",
     offline: "비서 오프라인",
-    reLogin: "비서가 노트북에서 다시 로그인해야 해요",
-    limitedUntil: (hhmm: string) => `비서가 ${hhmm}까지 답을 쉬어요`,
+    relogin: "비서가 노트북에서 다시 로그인해야 해요",
+    limited: (hhmm: string) => `비서가 ${hhmm}까지 답을 쉬어요`,
+    reconnected: "다시 연결됐어요",
     telegramDown: "텔레그램 연결 끊김",
     unauthorized: "열쇠가 맞지 않아요. 설정에서 다시 넣어 주세요.",
     tooMany: "잠시 뒤에 다시 해 주세요.",
@@ -100,6 +101,8 @@ export const copy = {
     themeSystem: "시스템 따라",
     themeLight: "밝게",
     themeDark: "어둡게",
+    checkedJustNow: "방금 확인했어요",
+    checkedMinutesAgo: (n: number) => `${n}분 전에 확인했어요`,
   },
 
   connect: {
@@ -108,6 +111,26 @@ export const copy = {
     ok: "연결 확인됨 · 비서가 답했어요",
     badToken: "열쇠가 맞지 않아요",
     unreachable: "주소에 닿지 않아요. 노트북과 폰의 Tailscale을 확인해 주세요.",
+    urlLabel: "비서 주소",
+    urlHelp: "노트북에서 tailscale serve를 켠 뒤 나오는 주소예요. 폰에서도 Tailscale이 켜져 있어야 해요.",
+    tokenLabel: "열쇠",
+    tokenHelp: "노트북에서 python -m my_planner gen-token으로 만든 값이에요.",
+    start: "시작하기",
+    checking: "확인하는 중",
+    notHttps: "https:// 로 시작하는 주소만 쓸 수 있어요.",
+    outOfRange: "이 앱에서 쓸 수 있는 주소가 아니에요. Tailscale 주소(.ts.net)를 넣어 주세요.",
+    invalidUrl: "주소 모양이 맞지 않아요.",
+    homeScreenGuide:
+      "공유 버튼에서 ‘홈 화면에 추가’를 한 뒤, 홈 화면의 ‘비서’를 열어 연결해 주세요. 탭과 홈 화면 앱은 저장 공간이 따로라서, 여기서 넣은 값은 앱으로 넘어가지 않아요.",
+  },
+
+  // Date formats for formatKst (lib/time.ts). The Korean ones live here so time.ts has no Hangul.
+  dateStyle: {
+    monthDay: "M월 D일",
+    monthDayTime: "M월 D일 HH:mm",
+  },
+  dateParts: {
+    monthDay: (m: number, d: number) => `${m}월 ${d}일`,
   },
 
   offline: {

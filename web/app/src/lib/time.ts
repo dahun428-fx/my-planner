@@ -1,0 +1,45 @@
+import { copy } from "./copy";
+
+// Every time the app shows is Asia/Seoul, whatever the device zone is (spec 4.6, Review Focus 1).
+export type KstStyle = "HH:mm" | "date" | typeof copy.dateStyle.monthDay | typeof copy.dateStyle.monthDayTime;
+
+const kst = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  hourCycle: "h23",
+});
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+export function formatKst(iso: string, style: KstStyle): string {
+  const p: Record<string, number> = {};
+  for (const part of kst.formatToParts(new Date(iso))) {
+    if (part.type !== "literal") p[part.type] = Number(part.value);
+  }
+  const hhmm = `${pad(p.hour)}:${pad(p.minute)}`;
+  switch (style) {
+    case "HH:mm":
+      return hhmm;
+    case "date":
+      return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+    case copy.dateStyle.monthDay:
+      return copy.dateParts.monthDay(p.month, p.day);
+    case copy.dateStyle.monthDayTime:
+      return `${copy.dateParts.monthDay(p.month, p.day)} ${hhmm}`;
+  }
+}
+
+// Calendar arithmetic on a logical date (YYYY-MM-DD). No time zone is involved.
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+export function relativeChecked(iso: string, now: number): string {
+  const minutes = Math.floor((now - Date.parse(iso)) / 60_000);
+  return minutes < 1 ? copy.settings.checkedJustNow : copy.settings.checkedMinutesAgo(minutes);
+}
