@@ -4,11 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>용어집</title>
-<meta name="description" content="my-planner에서 쓰는 용어의 한국어 이름, 코드 이름, 정의, 쓰지 않는 말, 관련 용어.">
+<meta name="description" content="my-planner 용어 96개: GLOSSARY.md와 스펙 6개의 용어를 분류 11개로 묶고, 코드 이름, 정의, 쓰지 않는 말, 관련 용어, 도입한 하위 프로젝트를 붙였습니다.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
 <link rel="stylesheet" href="assets/site.css">
+<style>
+/* glossary 전용: 분류 칩과 그림 칸 (토큰만 씀) */
+.gl-cats { display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); margin: 0; }
+.gl-cat { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; padding: 8px 12px; border: 1px solid var(--rule); border-radius: var(--r-box); background: var(--surface); color: var(--ink); text-decoration: none; font-weight: 600; }
+.gl-cat:hover, .gl-cat:focus-visible { border-color: var(--accent); color: var(--accent); }
+.gl-cat .ic { color: var(--accent); flex: none; }
+.gl-cat__n { margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--ink-3); font-weight: 500; }
+.gl-pic { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft, var(--surface-2)); color: var(--accent); }
+.gl-pic .ic { width: 24px; height: 24px; }
+:target > td { background: var(--accent-soft, var(--surface-2)); }
+</style>
 </head>
 <body>
 <script src="assets/icons.js"></script>
@@ -20,7 +31,7 @@
       <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
       my-planner <span class="brand__sub">산출물</span>
     </a>
-    <div class="topbar__doc"><span>용어집</span></div>
+    <div class="topbar__doc"><span>v2 · 전체 시스템 · main 722d0d6</span></div>
     <button class="navtoggle" type="button" aria-controls="docnav" aria-expanded="false">
       <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>문서 목록
     </button>
@@ -31,7 +42,7 @@
 
   <nav class="docnav" id="docnav" aria-label="문서 목록">
     <div class="docnav__group">
-      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>산출물 지도</a></li></ul>
+      <ul><li><a class="docnav__link" data-doc="index" href="index.html"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg>개요</a></li></ul>
     </div>
     <div class="docnav__group">
       <p class="docnav__label">1 요구</p>
@@ -42,25 +53,32 @@
     <div class="docnav__group">
       <p class="docnav__label">2 설계</p>
       <ul>
-        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 정의서</a></li>
-        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도</a></li>
-        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>시퀀스·상태 다이어그램</a></li>
-        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg>화면설계서</a></li>
-        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>ERD · 테이블 정의서</a></li>
-        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서</a></li>
+        <li><a class="docnav__link" data-doc="architecture" href="architecture.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg>아키텍처 설계서</a></li>
+        <li><a class="docnav__link" data-doc="process-flows" href="process-flows.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg>업무 흐름도 (BPMN)</a></li>
+        <li><a class="docnav__link" data-doc="behavior" href="behavior.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg>동작 명세 (상태·순서도)</a></li>
       </ul>
     </div>
     <div class="docnav__group">
-      <p class="docnav__label">3 구현 · 시험</p>
+      <p class="docnav__label">3 화면</p>
       <ul>
-        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>WBS · 일정</a></li>
-        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>테스트 계획·결과서</a></li>
+        <li><a class="docnav__link" data-doc="screens" href="screens.html"><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg>텔레그램 화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="screens-dashboard" href="screens-dashboard.html"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg>대시보드 화면설계서</a></li>
+        <li><a class="docnav__link" data-doc="screens-app" href="screens-app.html"><svg class="ic" aria-hidden="true"><use href="#i-pwa"/></svg>운영 앱 화면설계서</a></li>
       </ul>
     </div>
     <div class="docnav__group">
-      <p class="docnav__label">4 운영</p>
+      <p class="docnav__label">4 데이터 · 연동</p>
       <ul>
-        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영자 매뉴얼</a></li>
+        <li><a class="docnav__link" data-doc="database" href="database.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg>데이터베이스 설계서</a></li>
+        <li><a class="docnav__link" data-doc="interfaces" href="interfaces.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg>인터페이스 정의서 (API·도구)</a></li>
+      </ul>
+    </div>
+    <div class="docnav__group">
+      <p class="docnav__label">5 시험 · 운영</p>
+      <ul>
+        <li><a class="docnav__link" data-doc="test-report" href="test-report.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg>시험 결과서</a></li>
+        <li><a class="docnav__link" data-doc="operations" href="operations.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg>운영 매뉴얼</a></li>
+        <li><a class="docnav__link" data-doc="schedule" href="schedule.html"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>일정·로드맵</a></li>
       </ul>
     </div>
     <div class="docnav__group">
@@ -76,17 +94,17 @@
     <header class="doc-head">
       <span class="doc-head__type"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어집</span>
       <h1>my-planner 용어집</h1>
-      <p class="doc-head__lede">스펙, 코드, 프롬프트, 텔레그램 메시지에서 아래 용어는 이 뜻으로만 씁니다. 코드에서는 코드 이름(영문)을 쓰고, “쓰지 않음”의 말은 쓰지 않습니다.</p>
+      <p class="doc-head__lede">스펙, 코드, 프롬프트, 텔레그램·앱 메시지에서 아래 용어는 이 뜻으로만 씁니다. 코드에서는 코드 이름(영문)을 쓰고, “쓰지 않음”의 말은 쓰지 않습니다. v2는 SP3-4, SP5, SP6, SP7의 용어를 더했습니다.</p>
       <div class="doc-head__meta">
         <span class="std-badge"><span class="std-badge__k">표준</span><span class="std-badge__v">ISO 704 용어 원칙 · 통제 어휘</span></span>
-        <span class="pill doc" data-s="final">확정</span>
+        <span class="pill doc" data-s="review">검토 중</span>
       </div>
       <dl class="docinfo">
-        <div><dt>문서 ID</dt><dd class="mono">MP-SP1-GLO</dd></div>
-        <div><dt>버전</dt><dd class="tnum">1.0</dd></div>
-        <div><dt>작성일</dt><dd class="tnum">2026-10-23</dd></div>
-        <div><dt>상태</dt><dd>확정 (2026-10-23 Dahun 확인)</dd></div>
-        <div><dt>기준 문서</dt><dd><code>GLOSSARY.md</code></dd></div>
+        <div><dt>문서 ID</dt><dd class="mono">MP-GLO</dd></div>
+        <div><dt>버전</dt><dd class="tnum">2.0</dd></div>
+        <div><dt>작성일</dt><dd class="tnum">2026-10-24</dd></div>
+        <div><dt>상태</dt><dd>v1 용어는 확정 (2026-10-23 Dahun 확인) · 새 용어 15개는 초안</dd></div>
+        <div><dt>기준 문서</dt><dd><code>GLOSSARY.md</code> (main 722d0d6) · 스펙 6개</dd></div>
       </dl>
     </header>
 
@@ -95,34 +113,51 @@
     <section class="section" aria-label="요약">
       <aside class="summary">
         <span class="summary__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>한눈에 보기</span>
-        <p class="summary__title">용어 50개를 7개 묶음으로 고정했습니다. 그중 29개가 SP1에서 바로 쓰입니다.</p>
+        <p class="summary__title">용어 96개를 분류 11개로 묶었습니다. 80개는 <code>GLOSSARY.md</code>에 있고, 16개는 스펙에서만 쓰여 이 문서가 “스펙 용어”로 모았습니다.</p>
         <div class="summary__body">
           <ul>
-            <li>비서(<code>secretary</code>)는 역할 전체이고, 봇(<code>bot</code>)은 텔레그램 입출력 부분, 두뇌(<code>brain</code>)는 Claude, 하네스(<code>harness</code>)는 두뇌 바깥의 모든 것입니다.</li>
-            <li>회차(<code>run</code>)는 루프가 한 시점에 한 번 실행되는 것이고, 꺼져 있던 동안의 회차는 따라잡기(<code>catch_up</code>)로 처리합니다.</li>
-            <li>하지 않는 것(체력 피해, 연속 기록, 기간 한정 보상)도 용어로 고정해 두었습니다.</li>
-            <li>바꾸려면 <code>GLOSSARY.md</code>를 먼저 고칩니다. 이 문서에는 뜻만 있고, 저장 방식은 스펙과 ADR에 있습니다.</li>
+            <li>비서(<code>secretary</code>)는 역할 전체, 봇(<code>bot</code>)은 텔레그램 입출력, 두뇌(<code>brain</code>)는 Claude, 하네스(<code>harness</code>)는 두뇌 바깥의 모든 것입니다. BE(<code>backend</code>)는 그 하네스와 HTTP API를 담은 노트북 프로세스 하나입니다.</li>
+            <li>헷갈리기 쉬운 짝이 셋 있습니다: <a href="#tool">도구</a>와 <a href="#api">HTTP API</a>, <a href="#undo">되돌리기</a>와 <a href="#deploy_rollback">배포 롤백</a>, <a href="#missed_run">놓친 회차</a>와 <a href="#late_run">회차 지연</a>.</li>
+            <li>“초안” 칩이 붙은 15개는 <code>GLOSSARY.md</code>에 “초안”으로 적혀 있고 Dahun 확인 전입니다.</li>
+            <li>하지 않는 것(체력 피해, 연속 기록, 기간 한정 보상)도 용어로 고정해 두었습니다. 습관 체크도 연속 일수를 세지 않습니다.</li>
+            <li>바꾸려면 <code>GLOSSARY.md</code>를 먼저 고칩니다. 스펙 용어를 <code>GLOSSARY.md</code>에 올릴지는 <a href="#tbd">미정</a>입니다.</li>
           </ul>
         </div>
       </aside>
       <div class="kpis">
-        <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어</div><div class="kpi__value">50<span class="kpi__unit">개</span></div><div class="kpi__note">묶음 7개</div></div>
-        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>쓰지 않는 말</div><div class="kpi__value">56<span class="kpi__unit">개</span></div><div class="kpi__note">용어 37개에 대체어 금지</div></div>
-        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-harness"/></svg>SP1에서 쓰는 용어</div><div class="kpi__value">29<span class="kpi__unit">개</span></div><div class="kpi__note">나머지는 SP2·SP3에서 도입</div></div>
-        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-health"/></svg>영역</div><div class="kpi__value">6<span class="kpi__unit">개</span></div><div class="kpi__note">카드 종류 5개 · 주기 5개</div></div>
+        <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>용어</div><div class="kpi__value">96<span class="kpi__unit">개</span></div><div class="kpi__note">v1 50개 · 분류 11개</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-file-md"/></svg>스펙 용어</div><div class="kpi__value">16<span class="kpi__unit">개</span></div><div class="kpi__note"><code>GLOSSARY.md</code> 밖</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>쓰지 않는 말</div><div class="kpi__value">85<span class="kpi__unit">개</span></div><div class="kpi__note">용어 55개에 붙음</div></div>
+        <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-question"/></svg>초안</div><div class="kpi__value">15<span class="kpi__unit">개</span></div><div class="kpi__note">Dahun 확인 전</div></div>
       </div>
     </section>
 
     <section class="section">
       <div class="section__head">
-        <h2 id="index"><span class="section__no">0</span>찾아보기</h2>
-        <p class="section__lede">한글 이름의 첫 자음(가나다)이나 코드 이름의 첫 글자(A–Z)로 찾습니다. 각 용어는 <code>glossary.html#코드이름</code>으로 링크할 수 있습니다(예: <a href="#catch_up"><code>#catch_up</code></a>).</p>
+        <h2 id="filter"><span class="section__no">0</span>분류로 찾기</h2>
+        <p class="section__lede">분류를 누르면 그 표로 갑니다. 각 용어는 <code>glossary.html#코드이름</code>으로 링크할 수 있습니다(예: <a href="#catch_up"><code>#catch_up</code></a>, <a href="#habit"><code>#habit</code></a>).</p>
       </div>
+      <nav class="gl-cats" aria-label="분류">
+        <a class="gl-cat" href="#s1"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg><span>사람과 시스템</span><span class="gl-cat__n tnum">12</span></a>
+        <a class="gl-cat" href="#s2"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span>시간 · 루프</span><span class="gl-cat__n tnum">14</span></a>
+        <a class="gl-cat" href="#s3"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg><span>할 일 · 습관</span><span class="gl-cat__n tnum">10</span></a>
+        <a class="gl-cat" href="#s4"><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg><span>기억</span><span class="gl-cat__n tnum">8</span></a>
+        <a class="gl-cat" href="#s5"><svg class="ic" aria-hidden="true"><use href="#i-curve"/></svg><span>인생 곡선</span><span class="gl-cat__n tnum">9</span></a>
+        <a class="gl-cat" href="#s6"><svg class="ic" aria-hidden="true"><use href="#i-level"/></svg><span>상태창</span><span class="gl-cat__n tnum">8</span></a>
+        <a class="gl-cat" href="#c-api"><svg class="ic" aria-hidden="true"><use href="#i-api"/></svg><span>HTTP API · 운영 앱</span><span class="gl-cat__n tnum">12</span></a>
+        <a class="gl-cat" href="#c-genui"><svg class="ic" aria-hidden="true"><use href="#i-genui"/></svg><span>생성형 UI</span><span class="gl-cat__n tnum">7</span></a>
+        <a class="gl-cat" href="#c-recovery"><svg class="ic" aria-hidden="true"><use href="#i-medic"/></svg><span>자동 복구</span><span class="gl-cat__n tnum">10</span></a>
+        <a class="gl-cat" href="#c-process"><svg class="ic" aria-hidden="true"><use href="#i-plan"/></svg><span>만드는 방식</span><span class="gl-cat__n tnum">3</span></a>
+        <a class="gl-cat" href="#s7"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg><span>하지 않는 것</span><span class="gl-cat__n tnum">3</span></a>
+      </nav>
+      <details class="more" id="index">
+        <summary><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg>가나다 · A–Z 색인 <span class="more__meta">한글 첫 자음 · 코드 이름 첫 글자</span><svg class="ic ic--chev" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary>
+        <div class="more__body">
       <nav aria-label="가나다 바로가기" class="chip-row">
-        <a class="pill pill--plain" href="#ko-g">ㄱ</a> <a class="pill pill--plain" href="#ko-n">ㄴ</a> <a class="pill pill--plain" href="#ko-d">ㄷ</a> <a class="pill pill--plain" href="#ko-r">ㄹ</a> <a class="pill pill--plain" href="#ko-m">ㅁ</a> <a class="pill pill--plain" href="#ko-b">ㅂ</a> <a class="pill pill--plain" href="#ko-s">ㅅ</a> <a class="pill pill--plain" href="#ko-o">ㅇ</a> <a class="pill pill--plain" href="#ko-j">ㅈ</a> <a class="pill pill--plain" href="#ko-ch">ㅊ</a> <a class="pill pill--plain" href="#ko-k">ㅋ</a> <span class="pill pill--plain muted" aria-hidden="true">ㅌ</span> <span class="pill pill--plain muted" aria-hidden="true">ㅍ</span> <a class="pill pill--plain" href="#ko-h">ㅎ</a> <a class="pill pill--plain" href="#ko-latin">영문</a>
+        <a class="pill pill--plain" href="#ko-g">ㄱ</a> <a class="pill pill--plain" href="#ko-n">ㄴ</a> <a class="pill pill--plain" href="#ko-d">ㄷ</a> <a class="pill pill--plain" href="#ko-r">ㄹ</a> <a class="pill pill--plain" href="#ko-m">ㅁ</a> <a class="pill pill--plain" href="#ko-b">ㅂ</a> <a class="pill pill--plain" href="#ko-s">ㅅ</a> <a class="pill pill--plain" href="#ko-o">ㅇ</a> <a class="pill pill--plain" href="#ko-j">ㅈ</a> <a class="pill pill--plain" href="#ko-ch">ㅊ</a> <a class="pill pill--plain" href="#ko-k">ㅋ</a> <a class="pill pill--plain" href="#ko-t">ㅌ</a> <a class="pill pill--plain" href="#ko-p">ㅍ</a> <a class="pill pill--plain" href="#ko-h">ㅎ</a> <a class="pill pill--plain" href="#ko-latin">영문</a>
       </nav>
       <nav aria-label="A–Z 바로가기" class="chip-row">
-        <a class="pill pill--plain" href="#en-a">A</a> <a class="pill pill--plain" href="#en-b">B</a> <a class="pill pill--plain" href="#en-c">C</a> <a class="pill pill--plain" href="#en-d">D</a> <a class="pill pill--plain" href="#en-e">E</a> <a class="pill pill--plain" href="#en-f">F</a> <a class="pill pill--plain" href="#en-g">G</a> <a class="pill pill--plain" href="#en-h">H</a> <span class="pill pill--plain muted" aria-hidden="true">I</span> <span class="pill pill--plain muted" aria-hidden="true">J</span> <span class="pill pill--plain muted" aria-hidden="true">K</span> <a class="pill pill--plain" href="#en-l">L</a> <a class="pill pill--plain" href="#en-m">M</a> <span class="pill pill--plain muted" aria-hidden="true">N</span> <a class="pill pill--plain" href="#en-o">O</a> <a class="pill pill--plain" href="#en-p">P</a> <a class="pill pill--plain" href="#en-q">Q</a> <a class="pill pill--plain" href="#en-r">R</a> <a class="pill pill--plain" href="#en-s">S</a> <a class="pill pill--plain" href="#en-t">T</a> <span class="pill pill--plain muted" aria-hidden="true">U</span> <span class="pill pill--plain muted" aria-hidden="true">V</span> <span class="pill pill--plain muted" aria-hidden="true">W</span> <a class="pill pill--plain" href="#en-x">X</a> <span class="pill pill--plain muted" aria-hidden="true">Y</span> <span class="pill pill--plain muted" aria-hidden="true">Z</span>
+        <a class="pill pill--plain" href="#en-a">A</a> <a class="pill pill--plain" href="#en-b">B</a> <a class="pill pill--plain" href="#en-c">C</a> <a class="pill pill--plain" href="#en-d">D</a> <a class="pill pill--plain" href="#en-e">E</a> <a class="pill pill--plain" href="#en-f">F</a> <a class="pill pill--plain" href="#en-g">G</a> <a class="pill pill--plain" href="#en-h">H</a> <a class="pill pill--plain" href="#en-i">I</a> <span class="pill pill--plain muted" aria-hidden="true">J</span> <span class="pill pill--plain muted" aria-hidden="true">K</span> <a class="pill pill--plain" href="#en-l">L</a> <a class="pill pill--plain" href="#en-m">M</a> <a class="pill pill--plain" href="#en-n">N</a> <a class="pill pill--plain" href="#en-o">O</a> <a class="pill pill--plain" href="#en-p">P</a> <a class="pill pill--plain" href="#en-q">Q</a> <a class="pill pill--plain" href="#en-r">R</a> <a class="pill pill--plain" href="#en-s">S</a> <a class="pill pill--plain" href="#en-t">T</a> <a class="pill pill--plain" href="#en-u">U</a> <span class="pill pill--plain muted" aria-hidden="true">V</span> <a class="pill pill--plain" href="#en-w">W</a> <a class="pill pill--plain" href="#en-x">X</a> <span class="pill pill--plain muted" aria-hidden="true">Y</span> <span class="pill pill--plain muted" aria-hidden="true">Z</span>
       </nav>
       <div class="cols">
         <div class="table-wrap">
@@ -130,19 +165,21 @@
             <caption>가나다 색인</caption>
             <thead><tr><th class="w-min">첫 자음</th><th>용어</th></tr></thead>
             <tbody>
-              <tr id="ko-g"><th class="w-min">ㄱ</th><td><a href="#plan_mode">계획 모드</a> · <a href="#past_curve">과거 그래프</a> · <a href="#no-limited-reward">기간 한정 보상</a> · <a href="#recall_by_time">기간 회상</a> · <a href="#memory_card">기억 카드</a></td></tr>
+              <tr id="ko-g"><th class="w-min">ㄱ</th><td><a href="#redact">가리기</a> · <a href="#watcher">감시자</a> · <a href="#plan_mode">계획 모드</a> · <a href="#app_card">고정 카드</a> · <a href="#past_curve">과거 그래프</a> · <a href="#no-limited-reward">기간 한정 보상</a> · <a href="#recall_by_time">기간 회상</a> · <a href="#ui_element">기본 부품</a> · <a href="#memory_card">기억 카드</a> · <a href="#golden_sse">기준 응답</a></td></tr>
               <tr id="ko-n"><th class="w-min">ㄴ</th><td><a href="#logical_date">논리적 날짜</a> · <a href="#missed_run">놓친 회차</a></td></tr>
-              <tr id="ko-d"><th class="w-min">ㄷ</th><td><a href="#conversation">대화</a> · <a href="#tool">도구</a> · <a href="#brain">두뇌</a> · <a href="#debuff">디버프</a> · <a href="#catch_up">따라잡기</a></td></tr>
+              <tr id="ko-d"><th class="w-min">ㄷ</th><td><a href="#checkin">답할 회차</a> · <a href="#dashboard">대시보드</a> · <a href="#conversation">대화</a> · <a href="#tool">도구</a> · <a href="#undo">되돌리기</a> · <a href="#brain">두뇌</a> · <a href="#debuff">디버프</a> · <a href="#catch_up">따라잡기</a></td></tr>
               <tr id="ko-r"><th class="w-min">ㄹ</th><td><a href="#level">레벨 / 경험치</a> · <a href="#loop">루프</a></td></tr>
               <tr id="ko-m"><th class="w-min">ㅁ</th><td><a href="#pause">멈춤</a> · <a href="#goal">목표</a></td></tr>
-              <tr id="ko-b"><th class="w-min">ㅂ</th><td><a href="#return">복귀 인사</a> · <a href="#bot">봇</a> · <a href="#secretary">비서</a></td></tr>
-              <tr id="ko-s"><th class="w-min">ㅅ</th><td><a href="#milestone">사건</a> · <a href="#ladder_score">사다리 점수</a> · <a href="#owner">사용자</a> · <a href="#status_window">상태창</a> · <a href="#stat">스탯</a></td></tr>
-              <tr id="ko-o"><th class="w-min">ㅇ</th><td><a href="#morning_brief">아침 브리핑</a> · <a href="#no-streak">연속 기록(스트릭)</a> · <a href="#area">영역</a> · <a href="#area_score">영역 점수</a> · <a href="#priority">우선순위</a> · <a href="#transcript">원문 기록</a> · <a href="#recall_by_meaning">의미 회상</a> · <a href="#life_curve">인생 곡선</a> · <a href="#scheduled_at">일정</a></td></tr>
-              <tr id="ko-j"><th class="w-min">ㅈ</th><td><a href="#evening_checkin">저녁 체크인</a> · <a href="#consolidation">정리 루프</a> · <a href="#cadence">주기</a></td></tr>
-              <tr id="ko-ch"><th class="w-min">ㅊ</th><td><a href="#chapter">챕터</a> · <a href="#first_step">첫 걸음</a> · <a href="#no-hp-damage">체력 피해</a> · <a href="#draft">초안 할 일</a> · <a href="#title">칭호 / 업적</a></td></tr>
-              <tr id="ko-k"><th class="w-min">ㅋ</th><td><a href="#card_kind">카드 종류</a> · <a href="#condition">컨디션</a> · <a href="#quest">퀘스트</a></td></tr>
-              <tr id="ko-h"><th class="w-min">ㅎ</th><td><a href="#harness">하네스</a> · <a href="#task">할 일</a> · <a href="#confidence">확신도</a> · <a href="#review">회고</a> · <a href="#run">회차</a></td></tr>
-              <tr id="ko-latin"><th class="w-min">영문</th><td><a href="#hp">HP / MP</a></td></tr>
+              <tr id="ko-b"><th class="w-min">ㅂ</th><td><a href="#deploy_rollback">배포 롤백</a> · <a href="#return">복귀 인사</a> · <a href="#bot">봇</a> · <a href="#secretary">비서</a></td></tr>
+              <tr id="ko-s"><th class="w-min">ㅅ</th><td><a href="#milestone">사건</a> · <a href="#ladder_score">사다리 점수</a> · <a href="#owner">사용자</a> · <a href="#status_window">상태창</a> · <a href="#vertical_ticket">세로 티켓</a> · <a href="#repair">수리</a> · <a href="#acceptance">수용 테스트</a> · <a href="#rest_day">쉬는 날</a> · <a href="#stat">스탯</a> · <a href="#habit">습관</a> · <a href="#habit_check">습관 체크</a> · <a href="#life_seed">시드</a> · <a href="#stacking_rules">쌓기 규칙</a></td></tr>
+              <tr id="ko-o"><th class="w-min">ㅇ</th><td><a href="#morning_brief">아침 브리핑</a> · <a href="#reassurance_view">안심 보기</a> · <a href="#safe_mode">안전 모드</a> · <a href="#updater">업데이터</a> · <a href="#health_check">연결 확인</a> · <a href="#no-streak">연속 기록(스트릭)</a> · <a href="#area">영역</a> · <a href="#area_score">영역 점수</a> · <a href="#offline_snapshot">오프라인 스냅샷</a> · <a href="#ui_card">완성 카드</a> · <a href="#priority">우선순위</a> · <a href="#app">운영 앱</a> · <a href="#transcript">원문 기록</a> · <a href="#push">웹 푸시</a> · <a href="#recall_by_meaning">의미 회상</a> · <a href="#life_curve">인생 곡선</a> · <a href="#scheduled_at">일정</a></td></tr>
+              <tr id="ko-j"><th class="w-min">ㅈ</th><td><a href="#incident">장애</a> · <a href="#evening_checkin">저녁 체크인</a> · <a href="#consolidation">정리 루프</a> · <a href="#ui_block">조립 카드</a> · <a href="#notify_primary">주 통로</a> · <a href="#cadence">주기</a> · <a href="#apply_action">즉시 갈래</a> · <a href="#fingerprint">지문</a></td></tr>
+              <tr id="ko-ch"><th class="w-min">ㅊ</th><td><a href="#spike">착수 전 검증</a> · <a href="#chapter">챕터</a> · <a href="#first_connect">처음 연결</a> · <a href="#first_step">첫 걸음</a> · <a href="#no-hp-damage">체력 피해</a> · <a href="#draft">초안 할 일</a> · <a href="#title">칭호 / 업적</a></td></tr>
+              <tr id="ko-k"><th class="w-min">ㅋ</th><td><a href="#card_kind">카드 종류</a> · <a href="#ui_catalog_version">카탈로그 판</a> · <a href="#condition">컨디션</a> · <a href="#quest">퀘스트</a></td></tr>
+              <tr id="ko-t"><th class="w-min">ㅌ</th><td><a href="#channel">통로</a></td></tr>
+              <tr id="ko-p"><th class="w-min">ㅍ</th><td><a href="#push_subscription">푸시 구독</a></td></tr>
+              <tr id="ko-h"><th class="w-min">ㅎ</th><td><a href="#harness">하네스</a> · <a href="#heartbeat">하트비트</a> · <a href="#task">할 일</a> · <a href="#cors_origins">허용 출처</a> · <a href="#ui_component">화면 조각</a> · <a href="#confidence">확신도</a> · <a href="#activity">활동 기록</a> · <a href="#review">회고</a> · <a href="#run">회차</a> · <a href="#late_run">회차 지연</a></td></tr>
+              <tr id="ko-latin"><th class="w-min">영문</th><td><a href="#api_token">API 토큰</a> · <a href="#backend">BE</a> · <a href="#ci">CI</a> · <a href="#hp">HP / MP</a> · <a href="#api">HTTP API</a> · <a href="#medic">medic</a> · <a href="#tailnet">tailnet</a></td></tr>
             </tbody>
           </table>
         </div>
@@ -151,106 +188,124 @@
             <caption>A–Z 색인 (코드 이름)</caption>
             <thead><tr><th class="w-min">글자</th><th>코드 이름</th></tr></thead>
             <tbody>
-              <tr id="en-a"><th class="w-min">A</th><td><a href="#title"><code>achievement</code></a> · <a href="#area"><code>area</code></a> · <a href="#area_score"><code>area_score</code></a></td></tr>
-              <tr id="en-b"><th class="w-min">B</th><td><a href="#bot"><code>bot</code></a> · <a href="#brain"><code>brain</code></a></td></tr>
-              <tr id="en-c"><th class="w-min">C</th><td><a href="#cadence"><code>cadence</code></a> · <a href="#card_kind"><code>card_kind</code></a> · <a href="#catch_up"><code>catch_up</code></a> · <a href="#chapter"><code>chapter</code></a> · <a href="#condition"><code>condition</code></a> · <a href="#confidence"><code>confidence</code></a> · <a href="#consolidation"><code>consolidation</code></a> · <a href="#conversation"><code>conversation</code></a></td></tr>
-              <tr id="en-d"><th class="w-min">D</th><td><a href="#debuff"><code>debuff</code></a> · <a href="#draft"><code>draft</code></a></td></tr>
+              <tr id="en-a"><th class="w-min">A</th><td><a href="#title"><code>achievement</code></a> · <a href="#activity"><code>activity</code></a> · <a href="#api"><code>api</code></a> · <a href="#api_token"><code>api_token</code></a> · <a href="#app"><code>app</code></a> · <a href="#app_card"><code>app_card</code></a> · <a href="#apply_action"><code>apply_action</code></a> · <a href="#area"><code>area</code></a> · <a href="#area_score"><code>area_score</code></a></td></tr>
+              <tr id="en-b"><th class="w-min">B</th><td><a href="#backend"><code>backend</code></a> · <a href="#bot"><code>bot</code></a> · <a href="#brain"><code>brain</code></a></td></tr>
+              <tr id="en-c"><th class="w-min">C</th><td><a href="#cadence"><code>cadence</code></a> · <a href="#card_kind"><code>card_kind</code></a> · <a href="#catch_up"><code>catch_up</code></a> · <a href="#channel"><code>channel</code></a> · <a href="#chapter"><code>chapter</code></a> · <a href="#checkin"><code>checkin</code></a> · <a href="#ci"><code>ci.yml</code></a> · <a href="#condition"><code>condition</code></a> · <a href="#confidence"><code>confidence</code></a> · <a href="#consolidation"><code>consolidation</code></a> · <a href="#conversation"><code>conversation</code></a> · <a href="#cors_origins"><code>cors_origins</code></a></td></tr>
+              <tr id="en-d"><th class="w-min">D</th><td><a href="#dashboard"><code>dashboard</code></a> · <a href="#debuff"><code>debuff</code></a> · <a href="#deploy_rollback"><code>deploy_rollback</code></a> · <a href="#draft"><code>draft</code></a></td></tr>
               <tr id="en-e"><th class="w-min">E</th><td><a href="#evening_checkin"><code>evening_checkin</code></a></td></tr>
-              <tr id="en-f"><th class="w-min">F</th><td><a href="#first_step"><code>first_step</code></a></td></tr>
+              <tr id="en-f"><th class="w-min">F</th><td><a href="#fingerprint"><code>fingerprint</code></a> · <a href="#first_step"><code>first_step</code></a></td></tr>
               <tr id="en-g"><th class="w-min">G</th><td><a href="#goal"><code>goal</code></a></td></tr>
-              <tr id="en-h"><th class="w-min">H</th><td><a href="#harness"><code>harness</code></a> · <a href="#hp"><code>hp</code></a></td></tr>
-              <tr id="en-l"><th class="w-min">L</th><td><a href="#ladder_score"><code>ladder_score</code></a> · <a href="#level"><code>level</code></a> · <a href="#life_curve"><code>life_curve</code></a> · <a href="#logical_date"><code>logical_date</code></a> · <a href="#loop"><code>loop</code></a></td></tr>
-              <tr id="en-m"><th class="w-min">M</th><td><a href="#memory_card"><code>memory_card</code></a> · <a href="#milestone"><code>milestone</code></a> · <a href="#missed_run"><code>missed_run</code></a> · <a href="#morning_brief"><code>morning_brief</code></a> · <a href="#hp"><code>mp</code></a></td></tr>
+              <tr id="en-h"><th class="w-min">H</th><td><a href="#habit"><code>habit</code></a> · <a href="#habit_check"><code>habit_check</code></a> · <a href="#harness"><code>harness</code></a> · <a href="#health_check"><code>health</code></a> · <a href="#heartbeat"><code>heartbeat</code></a> · <a href="#hp"><code>hp</code></a></td></tr>
+              <tr id="en-i"><th class="w-min">I</th><td><a href="#incident"><code>incident</code></a></td></tr>
+              <tr id="en-l"><th class="w-min">L</th><td><a href="#ladder_score"><code>ladder_score</code></a> · <a href="#late_run"><code>late_run</code></a> · <a href="#level"><code>level</code></a> · <a href="#life_curve"><code>life_curve</code></a> · <a href="#life_seed"><code>life_seed</code></a> · <a href="#logical_date"><code>logical_date</code></a> · <a href="#loop"><code>loop</code></a></td></tr>
+              <tr id="en-m"><th class="w-min">M</th><td><a href="#memory_card"><code>memory_card</code></a> · <a href="#milestone"><code>milestone</code></a> · <a href="#missed_run"><code>missed_run</code></a> · <a href="#morning_brief"><code>morning_brief</code></a> · <a href="#hp"><code>mp</code></a> · <a href="#medic"><code>my_planner_medic</code></a></td></tr>
+              <tr id="en-n"><th class="w-min">N</th><td><a href="#notify_primary"><code>notify_primary</code></a></td></tr>
               <tr id="en-o"><th class="w-min">O</th><td><a href="#owner"><code>owner</code></a></td></tr>
-              <tr id="en-p"><th class="w-min">P</th><td><a href="#past_curve"><code>past_curve</code></a> · <a href="#pause"><code>pause</code></a> · <a href="#plan_mode"><code>plan_mode</code></a> · <a href="#priority"><code>priority</code></a></td></tr>
+              <tr id="en-p"><th class="w-min">P</th><td><a href="#past_curve"><code>past_curve</code></a> · <a href="#pause"><code>pause</code></a> · <a href="#plan_mode"><code>plan_mode</code></a> · <a href="#priority"><code>priority</code></a> · <a href="#push"><code>push</code></a> · <a href="#push_subscription"><code>push_subscription</code></a></td></tr>
               <tr id="en-q"><th class="w-min">Q</th><td><a href="#quest"><code>quest</code></a></td></tr>
-              <tr id="en-r"><th class="w-min">R</th><td><a href="#recall_by_meaning"><code>recall_by_meaning</code></a> · <a href="#recall_by_time"><code>recall_by_time</code></a> · <a href="#return"><code>return</code></a> · <a href="#review"><code>review</code></a> · <a href="#run"><code>run</code></a></td></tr>
-              <tr id="en-s"><th class="w-min">S</th><td><a href="#scheduled_at"><code>scheduled_at</code></a> · <a href="#secretary"><code>secretary</code></a> · <a href="#stat"><code>stat</code></a> · <a href="#status_window"><code>status_window</code></a></td></tr>
-              <tr id="en-t"><th class="w-min">T</th><td><a href="#task"><code>task</code></a> · <a href="#title"><code>title</code></a> · <a href="#tool"><code>tool</code></a> · <a href="#transcript"><code>transcript</code></a></td></tr>
+              <tr id="en-r"><th class="w-min">R</th><td><a href="#reassurance_view"><code>reassurance_view</code></a> · <a href="#recall_by_meaning"><code>recall_by_meaning</code></a> · <a href="#recall_by_time"><code>recall_by_time</code></a> · <a href="#redact"><code>redact</code></a> · <a href="#repair"><code>repair</code></a> · <a href="#rest_day"><code>rest_day</code></a> · <a href="#return"><code>return</code></a> · <a href="#review"><code>review</code></a> · <a href="#run"><code>run</code></a></td></tr>
+              <tr id="en-s"><th class="w-min">S</th><td><a href="#spike"><code>S0~S12</code></a> · <a href="#safe_mode"><code>safe_mode</code></a> · <a href="#scheduled_at"><code>scheduled_at</code></a> · <a href="#secretary"><code>secretary</code></a> · <a href="#stat"><code>stat</code></a> · <a href="#status_window"><code>status_window</code></a></td></tr>
+              <tr id="en-t"><th class="w-min">T</th><td><a href="#tailnet"><code>tailscale serve</code></a> · <a href="#task"><code>task</code></a> · <a href="#golden_sse"><code>tests/fixtures/app_golden/</code></a> · <a href="#title"><code>title</code></a> · <a href="#tool"><code>tool</code></a> · <a href="#transcript"><code>transcript</code></a></td></tr>
+              <tr id="en-u"><th class="w-min">U</th><td><a href="#ui_block"><code>ui_block</code></a> · <a href="#ui_catalog_version"><code>UI_CATALOG_VERSION</code></a> · <a href="#ui_component"><code>ui_component</code></a> · <a href="#ui_element"><code>ui_element</code></a> · <a href="#undo"><code>undo</code></a> · <a href="#updater"><code>updater</code></a></td></tr>
+              <tr id="en-w"><th class="w-min">W</th><td><a href="#watcher"><code>watcher</code></a></td></tr>
               <tr id="en-x"><th class="w-min">X</th><td><a href="#level"><code>xp</code></a></td></tr>
             </tbody>
           </table>
         </div>
       </div>
+        </div>
+      </details>
       <div class="legend">
         <div class="legend__title">범례 · 표의 열</div>
         <ul class="legend__list">
+          <li><span class="legend__glyph"><span class="gl-pic" style="width:28px;height:28px"><svg class="ic" aria-hidden="true"><use href="#i-habit"/></svg></span></span><span class="legend__term">그림</span><span class="legend__desc">용어를 떠올리게 하는 아이콘. 맞는 그림이 없으면 점</span></li>
           <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-command"/></svg></span><span class="legend__term">코드 이름</span><span class="legend__desc">코드 식별자와 링크 앵커로 쓰는 영문 이름</span></li>
           <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></span><span class="legend__term">쓰지 않음</span><span class="legend__desc">같은 뜻으로 쓰지 않는 말. 문서·문구에서 피한다</span></li>
           <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-link"/></svg></span><span class="legend__term">관련 용어</span><span class="legend__desc">정의에 이름이 나오거나 스펙에서 함께 쓰이는 용어</span></li>
-          <li><span class="legend__glyph"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span><span class="legend__term">도입</span><span class="legend__desc">처음 쓰는 하위 프로젝트(마스터 §4, SP1 스펙 §2 기준)</span></li>
+          <li><span class="legend__glyph"><span class="pill pill--plain">초안</span></span><span class="legend__term">초안</span><span class="legend__desc"><code>GLOSSARY.md</code>에 초안으로 적힘. Dahun 확인 전</span></li>
+          <li><span class="legend__glyph"><span class="pill pill--plain">스펙 용어</span></span><span class="legend__term">스펙 용어</span><span class="legend__desc"><code>GLOSSARY.md</code>에는 없고 스펙·계획·코드에서 쓰는 말. 이 문서가 모음</span></li>
         </ul>
       </div>
       <aside class="callout callout--info">
         <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
-        <div class="callout__body"><span class="callout__title">내부 용어와 사용자 문구</span><span><a href="#missed_run">놓친 회차</a>는 설계 안에서만 쓰는 이름입니다. 사용자에게 보내는 문구에는 “놓쳤어요”, “밀렸어요”, “늦었지만” 같은 지연 표현을 쓰지 않습니다(SP1 스펙 §5.4, 원칙 P2).</span></div>
+        <div class="callout__body"><span class="callout__title">내부 용어와 사용자 문구</span><span><a href="#missed_run">놓친 회차</a>는 설계 안에서만 쓰는 이름입니다. 사용자에게 보내는 문구에는 “놓쳤어요”, “밀렸어요”, “늦었지만” 같은 지연 표현을 쓰지 않습니다(SP1 스펙 §5.4, 원칙 P2). 화면에는 “지나감”이라고 씁니다(<a href="#checkin">답할 회차</a>).</span></div>
       </aside>
     </section>
 
     <section class="section">
       <div class="section__head">
         <h2 id="s1"><span class="section__no">1</span>사람과 시스템</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg> 용어 8개</p>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg> 용어 12개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
           <caption>사람과 시스템</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="owner"><td class="nowrap"><strong>사용자</strong></td><td class="nowrap"><code>owner</code></td><td>Dahun 한 사람. 봇은 이 텔레그램 계정에만 응답한다.</td><td>유저, 고객</td><td><a href="#bot">봇</a> · <a href="#secretary">비서</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="secretary"><td class="nowrap"><strong>비서</strong></td><td class="nowrap"><code>secretary</code></td><td>사용자에게 먼저 말을 걸고, 정리와 초안을 대신 하는 AI 역할 전체. 결정은 사용자가 한다.</td><td>봇(텔레그램 연결 부분만 "봇"), 에이전트</td><td><a href="#owner">사용자</a> · <a href="#brain">두뇌</a> · <a href="#harness">하네스</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="bot"><td class="nowrap"><strong>봇</strong></td><td class="nowrap"><code>bot</code></td><td>텔레그램 메시지를 주고받는 입출력 부분. 판단하지 않는다.</td><td><span class="muted">—</span></td><td><a href="#owner">사용자</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="brain"><td class="nowrap"><strong>두뇌</strong></td><td class="nowrap"><code>brain</code></td><td>Claude Agent SDK로 실행되는 Claude. 판단, 대화, 초안 작성을 맡는다.</td><td>LLM, 모델</td><td><a href="#conversation">대화</a> · <a href="#tool">도구</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="harness"><td class="nowrap"><strong>하네스</strong></td><td class="nowrap"><code>harness</code></td><td>두뇌 바깥의 모든 것: 봇, 루프, 저장소, 도구, 가드레일. 사용자가 만드는 부분.</td><td>프레임워크</td><td><a href="#owner">사용자</a> · <a href="#brain">두뇌</a> · <a href="#loop">루프</a> · <a href="#tool">도구</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="loop"><td class="nowrap"><strong>루프</strong></td><td class="nowrap"><code>loop</code></td><td>정해진 시각이나 조건에 비서를 깨우는 스케줄러와, 그 실행 기록.</td><td>크론, 배치</td><td><a href="#secretary">비서</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="conversation"><td class="nowrap"><strong>대화</strong></td><td class="nowrap"><code>conversation</code></td><td>사용자와 비서가 주고받는 한 묶음. 회차가 대화를 열 수 있고, 회차에 대한 답은 그 대화에 붙는다.</td><td>채팅, 스레드</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#run">회차</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="tool"><td class="nowrap"><strong>도구</strong></td><td class="nowrap"><code>tool</code></td><td>두뇌가 호출할 수 있는 하네스 기능 (<code>add_task</code>, <code>search_memory</code> 등).</td><td>함수, API</td><td><a href="#brain">두뇌</a> · <a href="#harness">하네스</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="owner"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-user"/></svg></span></td><td class="nowrap"><strong>사용자</strong></td><td class="nowrap"><code>owner</code></td><td>Dahun 한 사람. 봇은 이 텔레그램 계정에만 응답한다.</td><td>유저, 고객</td><td><a href="#bot">봇</a> · <a href="#secretary">비서</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="secretary"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-bot"/></svg></span></td><td class="nowrap"><strong>비서</strong></td><td class="nowrap"><code>secretary</code></td><td>사용자에게 먼저 말을 걸고, 정리와 초안을 대신 하는 AI 역할 전체. 결정은 사용자가 한다.</td><td>봇(텔레그램 연결 부분만 &quot;봇&quot;), 에이전트</td><td><a href="#owner">사용자</a> · <a href="#brain">두뇌</a> · <a href="#harness">하네스</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="bot"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-telegram"/></svg></span></td><td class="nowrap"><strong>봇</strong></td><td class="nowrap"><code>bot</code></td><td>텔레그램 메시지를 주고받는 입출력 부분. 판단하지 않는다.</td><td><span class="muted">—</span></td><td><a href="#owner">사용자</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="brain"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-brain"/></svg></span></td><td class="nowrap"><strong>두뇌</strong></td><td class="nowrap"><code>brain</code></td><td>Claude Agent SDK로 실행되는 Claude. 판단, 대화, 초안 작성을 맡는다.</td><td>LLM, 모델</td><td><a href="#conversation">대화</a> · <a href="#tool">도구</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="harness"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-harness"/></svg></span></td><td class="nowrap"><strong>하네스</strong></td><td class="nowrap"><code>harness</code></td><td>두뇌 바깥의 모든 것: 봇, 루프, 저장소, 도구, 가드레일. 사용자가 만드는 부분.</td><td>프레임워크</td><td><a href="#owner">사용자</a> · <a href="#brain">두뇌</a> · <a href="#loop">루프</a> · <a href="#tool">도구</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="loop"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-scheduler"/></svg></span></td><td class="nowrap"><strong>루프</strong></td><td class="nowrap"><code>loop</code></td><td>정해진 시각이나 조건에 비서를 깨우는 스케줄러와, 그 실행 기록.</td><td>크론, 배치</td><td><a href="#secretary">비서</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="conversation"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-chat"/></svg></span></td><td class="nowrap"><strong>대화</strong></td><td class="nowrap"><code>conversation</code></td><td>사용자와 비서가 주고받는 한 묶음. 회차가 대화를 열 수 있고, 회차에 대한 답은 그 대화에 붙는다. 대화는 한 통로에 속한다.</td><td>채팅, 스레드</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#run">회차</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="tool"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-tool"/></svg></span></td><td class="nowrap"><strong>도구</strong></td><td class="nowrap"><code>tool</code></td><td>두뇌가 호출할 수 있는 하네스 기능 (<code>add_task</code>, <code>search_memory</code> 등).</td><td>함수, API(아래 &quot;HTTP API&quot;와 구분)</td><td><a href="#brain">두뇌</a> · <a href="#harness">하네스</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="backend"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-laptop"/></svg></span></td><td class="nowrap"><strong>BE</strong></td><td class="nowrap"><code>backend</code></td><td>노트북에서 도는 my-planner 프로세스 하나. 하네스 전체와 HTTP API를 담고, 데이터를 바꾸는 유일한 작성자다.</td><td>서버(클라우드 서버로 오해됨)</td><td><a href="#harness">하네스</a> · <a href="#api">HTTP API</a> · <a href="#app">운영 앱</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="channel"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-link"/></svg></span></td><td class="nowrap"><strong>통로</strong></td><td class="nowrap"><code>channel</code></td><td>사용자와 비서가 주고받는 길. 텔레그램 <code>telegram</code>과 운영 앱 <code>app</code> 두 개. 통로마다 대화와 두뇌 세션이 따로이고, 할 일·컨디션·곡선·회차는 함께 쓴다. 활동 기록에는 하네스가 스스로 한 일을 뜻하는 <code>scheduler</code>도 있다.</td><td>채널(코드 식별자만 <code>channel</code>)</td><td><a href="#conversation">대화</a> · <a href="#app">운영 앱</a> · <a href="#notify_primary">주 통로</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="app"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-pwa"/></svg></span></td><td class="nowrap"><strong>운영 앱</strong></td><td class="nowrap"><code>app</code></td><td>사용자가 비서와 대화하고 할 일을 바꾸는 웹 앱(PWA). HTTP API로 BE를 읽고 쓴다.</td><td>클라이언트, 모바일 앱</td><td><a href="#api">HTTP API</a> · <a href="#api_token">API 토큰</a> · <a href="#ui_component">화면 조각</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="dashboard"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-dashboard"/></svg></span></td><td class="nowrap"><strong>대시보드</strong></td><td class="nowrap"><code>dashboard</code></td><td>BE 상태와 인생 곡선, 상태창을 보여 주는 읽기 전용 웹 화면. 바꾸는 일은 하지 않는다.</td><td><span class="muted">—</span></td><td><a href="#status_window">상태창</a> · <a href="#life_curve">인생 곡선</a> · <a href="#api">HTTP API</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
           </tbody>
         </table>
       </div>
     </section>
     <section class="section">
       <div class="section__head">
-        <h2 id="s2"><span class="section__no">2</span>시간 단위와 루프 실행</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> 용어 10개</p>
+        <h2 id="s2"><span class="section__no">2</span>시간 · 루프</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg> 용어 14개 · 그중 스펙 용어 1개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
-          <caption>시간 단위와 루프 실행</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <caption>시간 · 루프</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="cadence"><td class="nowrap"><strong>주기</strong></td><td class="nowrap"><code>cadence</code></td><td>일, 주, 월, 분기, 년 중 하나.</td><td>기간, 스코프</td><td><span class="muted">—</span></td><td class="nowrap">SP1</td></tr>
-            <tr id="run"><td class="nowrap"><strong>회차</strong></td><td class="nowrap"><code>run</code></td><td>특정 루프가 특정 시점에 한 번 실행되는 것. 예: 2026-10-24 아침 브리핑. 실행 기록에 남는다.</td><td>잡, 이벤트</td><td><a href="#loop">루프</a> · <a href="#morning_brief">아침 브리핑</a> · <a href="#catch_up">따라잡기</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="missed_run"><td class="nowrap"><strong>놓친 회차</strong></td><td class="nowrap"><code>missed_run</code></td><td>PC가 꺼져 있어서 예정 시각에 실행되지 못한 회차. 깨어난 뒤 따라잡기 대상.</td><td><span class="muted">—</span></td><td><a href="#run">회차</a> · <a href="#catch_up">따라잡기</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="catch_up"><td class="nowrap"><strong>따라잡기</strong></td><td class="nowrap"><code>catch_up</code></td><td>놓친 회차를 깨어난 뒤 처리하는 것. 오래 꺼져 있었으면 밀린 회차 대신 복귀 인사 하나를 보낸다.</td><td>재시도</td><td><a href="#run">회차</a> · <a href="#missed_run">놓친 회차</a> · <a href="#return">복귀 인사</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="morning_brief"><td class="nowrap"><strong>아침 브리핑</strong></td><td class="nowrap"><code>morning_brief</code></td><td>일 주기. 오늘의 1~3개 우선순위와 첫 걸음을 제안하는 비서의 첫 연락.</td><td>모닝 리포트</td><td><a href="#secretary">비서</a> · <a href="#cadence">주기</a> · <a href="#priority">우선순위</a> · <a href="#first_step">첫 걸음</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="evening_checkin"><td class="nowrap"><strong>저녁 체크인</strong></td><td class="nowrap"><code>evening_checkin</code></td><td>일 주기. 오늘 컨디션과 한 일을 짧게 묻고 기록하는 연락.</td><td>일일 회고</td><td><a href="#cadence">주기</a> · <a href="#condition">컨디션</a> · <a href="#logical_date">논리적 날짜</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="return"><td class="nowrap"><strong>복귀 인사</strong></td><td class="nowrap"><code>return</code></td><td>24시간 이상 꺼져 있다가 깨어났을 때, 밀린 회차를 하나씩 보내는 대신 보내는 메시지 하나.</td><td><span class="muted">—</span></td><td><a href="#run">회차</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="pause"><td class="nowrap"><strong>멈춤</strong></td><td class="nowrap"><code>pause</code></td><td>사용자가 <code>/pause</code>로 정한 기간 동안 비서가 먼저 연락하지 않는 상태. 휴식의 한 형태.</td><td>휴면, 정지</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#catch_up">따라잡기</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="logical_date"><td class="nowrap"><strong>논리적 날짜</strong></td><td class="nowrap"><code>logical_date</code></td><td>하루 경계 04:00 기준의 날짜. 00:00~03:59는 전날이다.</td><td><span class="muted">—</span></td><td><a href="#evening_checkin">저녁 체크인</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="review"><td class="nowrap"><strong>회고</strong></td><td class="nowrap"><code>review</code></td><td>주, 월, 분기, 년 주기의 돌아보기. 주간 회고, 월간 회고처럼 주기를 붙여 부른다.</td><td>리뷰, 리포트</td><td><a href="#cadence">주기</a></td><td class="nowrap">SP1<br><span class="muted">주간 SP1 · 월·분기·연 SP3</span></td></tr>
+            <tr id="cadence"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-calendar-week"/></svg></span></td><td class="nowrap"><strong>주기</strong></td><td class="nowrap"><code>cadence</code></td><td>일, 주, 월, 분기, 년 중 하나.</td><td>기간, 스코프</td><td><span class="muted">—</span></td><td class="nowrap">SP1</td></tr>
+            <tr id="run"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-timer"/></svg></span></td><td class="nowrap"><strong>회차</strong></td><td class="nowrap"><code>run</code></td><td>특정 루프가 특정 시점에 한 번 실행되는 것. 예: 2026-10-24 아침 브리핑. 실행 기록에 남는다.</td><td>잡, 이벤트</td><td><a href="#loop">루프</a> · <a href="#morning_brief">아침 브리핑</a> · <a href="#catch_up">따라잡기</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="missed_run"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-clock"/></svg></span></td><td class="nowrap"><strong>놓친 회차</strong></td><td class="nowrap"><code>missed_run</code></td><td>PC가 꺼져 있어서 예정 시각에 실행되지 못한 회차. 깨어난 뒤 따라잡기 대상.</td><td><span class="muted">—</span></td><td><a href="#run">회차</a> · <a href="#catch_up">따라잡기</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="catch_up"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-refresh"/></svg></span></td><td class="nowrap"><strong>따라잡기</strong></td><td class="nowrap"><code>catch_up</code></td><td>놓친 회차를 깨어난 뒤 처리하는 것. 오래 꺼져 있었으면 밀린 회차 대신 복귀 인사 하나를 보낸다.</td><td>재시도</td><td><a href="#run">회차</a> · <a href="#missed_run">놓친 회차</a> · <a href="#return">복귀 인사</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="morning_brief"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-sun"/></svg></span></td><td class="nowrap"><strong>아침 브리핑</strong></td><td class="nowrap"><code>morning_brief</code></td><td>일 주기. 오늘의 1~3개 우선순위와 첫 걸음을 제안하는 비서의 첫 연락.</td><td>모닝 리포트</td><td><a href="#secretary">비서</a> · <a href="#cadence">주기</a> · <a href="#priority">우선순위</a> · <a href="#first_step">첫 걸음</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="evening_checkin"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-moon"/></svg></span></td><td class="nowrap"><strong>저녁 체크인</strong></td><td class="nowrap"><code>evening_checkin</code></td><td>일 주기. 오늘 컨디션과 한 일을 짧게 묻고 기록하는 연락.</td><td>일일 회고</td><td><a href="#cadence">주기</a> · <a href="#condition">컨디션</a> · <a href="#logical_date">논리적 날짜</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="checkin"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-check"/></svg></span></td><td class="nowrap"><strong>답할 회차</strong></td><td class="nowrap"><code>checkin</code></td><td>사용자에게 보낸 회차. 답을 기다림 <code>pending</code>, 답함 <code>answered</code>, 지나감 <code>missed</code> 중 하나이고, 어느 통로에서 답했는지(<code>answered_via</code>)를 가진다. 한쪽에서 답하면 양쪽에서 닫힌다. API와 운영 앱에서 부르는 이름이며, 저녁 체크인만 뜻하지 않는다. 화면에는 &quot;지나감&quot;이라고 쓰고 &quot;놓쳤어요&quot;라고 쓰지 않는다.</td><td><span class="muted">—</span></td><td><a href="#run">회차</a> · <a href="#evening_checkin">저녁 체크인</a> · <a href="#channel">통로</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="notify_primary"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-push"/></svg></span></td><td class="nowrap"><strong>주 통로</strong></td><td class="nowrap"><code>notify_primary</code></td><td>비서가 먼저 보내는 회차의 전체 메시지를 받는 통로. <code>app</code>(웹 푸시, 기본) 또는 <code>telegram</code>. 텔레그램은 푸시가 안 되거나 구독이 만료됐을 때의 대체이고, 운영 앱에 유효한 푸시 구독이 생기기 전까지는 실제 통로가 텔레그램이다. 그때그때 회차가 실제로 가는 통로를 <strong>실제 통로</strong>(<code>effective</code>)라고 부른다.</td><td><span class="muted">—</span></td><td><a href="#push">웹 푸시</a> · <a href="#channel">통로</a> · <a href="#push_subscription">푸시 구독</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="push"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-push"/></svg></span></td><td class="nowrap"><strong>웹 푸시</strong></td><td class="nowrap"><code>push</code></td><td>BE가 운영 앱을 설치한 기기로 보내는 알림. 푸시 구독(<code>push_subscription</code>)마다 보낸다.</td><td><span class="muted">—</span></td><td><a href="#push_subscription">푸시 구독</a> · <a href="#notify_primary">주 통로</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="push_subscription"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-push"/></svg></span></td><td class="nowrap"><strong>푸시 구독</strong></td><td class="nowrap"><code>push_subscription</code></td><td>웹 푸시를 받을 기기 하나의 등록. 마지막 성공 시각과 실패 횟수를 가지며, 계속 실패하면 끈다. 구독이 없으면 회차는 텔레그램으로 간다.</td><td><span class="muted">—</span></td><td><a href="#push">웹 푸시</a> · <a href="#notify_primary">주 통로</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="return"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-return"/></svg></span></td><td class="nowrap"><strong>복귀 인사</strong></td><td class="nowrap"><code>return</code></td><td>24시간 이상 꺼져 있다가 깨어났을 때, 밀린 회차를 하나씩 보내는 대신 보내는 메시지 하나.</td><td><span class="muted">—</span></td><td><a href="#run">회차</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="pause"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-pause"/></svg></span></td><td class="nowrap"><strong>멈춤</strong></td><td class="nowrap"><code>pause</code></td><td>사용자가 <code>/pause</code>로 정한 기간 동안 비서가 먼저 연락하지 않는 상태. 휴식의 한 형태.</td><td>휴면, 정지</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#catch_up">따라잡기</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="logical_date"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-clock"/></svg></span></td><td class="nowrap"><strong>논리적 날짜</strong></td><td class="nowrap"><code>logical_date</code></td><td>하루 경계 04:00 기준의 날짜. 00:00~03:59는 전날이다.</td><td><span class="muted">—</span></td><td><a href="#evening_checkin">저녁 체크인</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="review"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-review"/></svg></span></td><td class="nowrap"><strong>회고</strong></td><td class="nowrap"><code>review</code></td><td>주, 월, 분기, 년 주기의 돌아보기. 주간 회고, 월간 회고처럼 주기를 붙여 부른다.</td><td>리뷰, 리포트</td><td><a href="#cadence">주기</a></td><td class="nowrap">SP1주간 SP1 · 월·분기·연 SP3</td></tr>
           </tbody>
         </table>
       </div>
     </section>
     <section class="section">
       <div class="section__head">
-        <h2 id="s3"><span class="section__no">3</span>할 일</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg> 용어 8개</p>
+        <h2 id="s3"><span class="section__no">3</span>할 일 · 습관</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-task"/></svg> 용어 10개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
-          <caption>할 일</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <caption>할 일 · 습관</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="task"><td class="nowrap"><strong>할 일</strong></td><td class="nowrap"><code>task</code></td><td>사용자가 하려는 구체적인 일 하나.</td><td>투두, 태스크</td><td><a href="#owner">사용자</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="goal"><td class="nowrap"><strong>목표</strong></td><td class="nowrap"><code>goal</code></td><td>월, 분기, 년 주기의 우선순위로 지정된 할 일. 별도 데이터가 아니라 그 주기의 우선순위에 오른 할 일을 목표라고 부른다.</td><td>목적, OKR</td><td><a href="#cadence">주기</a> · <a href="#task">할 일</a> · <a href="#priority">우선순위</a></td><td class="nowrap">SP1<br><span class="muted">월·분기·년 우선순위 표는 SP1에 있음</span></td></tr>
-            <tr id="draft"><td class="nowrap"><strong>초안 할 일</strong></td><td class="nowrap"><code>draft</code></td><td>비서가 제안했지만 사용자가 아직 확정하지 않은 할 일. 목록과 우선순위에 오르지 않는다.</td><td>후보, 추천</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#task">할 일</a> · <a href="#priority">우선순위</a> · <a href="#plan_mode">계획 모드</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="plan_mode"><td class="nowrap"><strong>계획 모드</strong></td><td class="nowrap"><code>plan_mode</code></td><td>사용자와 비서가 질문을 주고받으며 할 일과 목표를 함께 정하는 대화(<code>/plan</code>). 결과는 초안으로 나오고 사용자가 확정한다.</td><td>플래닝</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#conversation">대화</a> · <a href="#task">할 일</a> · <a href="#goal">목표</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="priority"><td class="nowrap"><strong>우선순위</strong></td><td class="nowrap"><code>priority</code></td><td>한 주기에서 고른 1~3개의 할 일 또는 목표. 개수 상한은 3.</td><td>중요도</td><td><a href="#cadence">주기</a> · <a href="#task">할 일</a> · <a href="#goal">목표</a> · <a href="#first_step">첫 걸음</a> · <a href="#quest">퀘스트</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="scheduled_at"><td class="nowrap"><strong>일정</strong></td><td class="nowrap"><code>scheduled_at</code></td><td>할 일 중 시각이 정해진 것 (예: 치과 14:00). 별도 데이터가 아니라 할 일의 속성이다.</td><td>이벤트, 약속</td><td><a href="#task">할 일</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="first_step"><td class="nowrap"><strong>첫 걸음</strong></td><td class="nowrap"><code>first_step</code></td><td>우선순위를 시작하는 15~30분짜리 행동 하나.</td><td>마이크로 태스크</td><td><a href="#priority">우선순위</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="area"><td class="nowrap"><strong>영역</strong></td><td class="nowrap"><code>area</code></td><td>6개 고정: 커리어 <code id="career">career</code>, 경제 <code id="finance">finance</code>, 건강 <code id="health">health</code>, 관계 <code id="relationships">relationships</code>, 배움 <code id="learning">learning</code>, 삶의 질 <code id="quality_of_life">quality_of_life</code>. 모든 할 일, 기억 카드, 점수는 영역을 하나 이상 갖는다.</td><td>카테고리, 분야</td><td><a href="#task">할 일</a> · <a href="#memory_card">기억 카드</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="task"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-task"/></svg></span></td><td class="nowrap"><strong>할 일</strong></td><td class="nowrap"><code>task</code></td><td>사용자가 하려는 구체적인 일 하나.</td><td>투두, 태스크</td><td><a href="#owner">사용자</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="goal"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-priority"/></svg></span></td><td class="nowrap"><strong>목표</strong></td><td class="nowrap"><code>goal</code></td><td>월, 분기, 년 주기의 우선순위로 지정된 할 일. 별도 데이터가 아니라 그 주기의 우선순위에 오른 할 일을 목표라고 부른다.</td><td>목적, OKR</td><td><a href="#cadence">주기</a> · <a href="#task">할 일</a> · <a href="#priority">우선순위</a></td><td class="nowrap">SP1월·분기·년 우선순위 표는 SP1에 있음</td></tr>
+            <tr id="draft"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-draft"/></svg></span></td><td class="nowrap"><strong>초안 할 일</strong></td><td class="nowrap"><code>draft</code></td><td>비서가 제안했지만 사용자가 아직 확정하지 않은 할 일. 목록과 우선순위에 오르지 않는다.</td><td>후보, 추천</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#task">할 일</a> · <a href="#priority">우선순위</a> · <a href="#plan_mode">계획 모드</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="plan_mode"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-plan"/></svg></span></td><td class="nowrap"><strong>계획 모드</strong></td><td class="nowrap"><code>plan_mode</code></td><td>사용자와 비서가 질문을 주고받으며 할 일과 목표를 함께 정하는 대화(<code>/plan</code>). 결과는 초안으로 나오고 사용자가 확정한다.</td><td>플래닝</td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#conversation">대화</a> · <a href="#task">할 일</a> · <a href="#goal">목표</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="priority"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-priority"/></svg></span></td><td class="nowrap"><strong>우선순위</strong></td><td class="nowrap"><code>priority</code></td><td>한 주기에서 고른 1~3개의 할 일 또는 목표. 개수 상한은 3.</td><td>중요도</td><td><a href="#cadence">주기</a> · <a href="#task">할 일</a> · <a href="#goal">목표</a> · <a href="#first_step">첫 걸음</a> · <a href="#quest">퀘스트</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="scheduled_at"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-calendar-week"/></svg></span></td><td class="nowrap"><strong>일정</strong></td><td class="nowrap"><code>scheduled_at</code></td><td>할 일 중 시각이 정해진 것 (예: 치과 14:00). 별도 데이터가 아니라 할 일의 속성이다.</td><td>이벤트, 약속</td><td><a href="#task">할 일</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="first_step"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-first-step"/></svg></span></td><td class="nowrap"><strong>첫 걸음</strong></td><td class="nowrap"><code>first_step</code></td><td>우선순위를 시작하는 15~30분짜리 행동 하나.</td><td>마이크로 태스크</td><td><a href="#priority">우선순위</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="area"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-radar"/></svg></span></td><td class="nowrap"><strong>영역</strong></td><td class="nowrap"><code>area</code></td><td>6개 고정: 커리어 <code id="career">career</code>, 경제 <code id="finance">finance</code>, 건강 <code id="health">health</code>, 관계 <code id="relationships">relationships</code>, 배움 <code id="learning">learning</code>, 삶의 질 <code id="quality_of_life">quality_of_life</code>. 모든 할 일, 기억 카드, 점수는 영역을 하나 이상 갖는다.</td><td>카테고리, 분야</td><td><a href="#task">할 일</a> · <a href="#memory_card">기억 카드</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="habit"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-habit"/></svg></span></td><td class="nowrap"><strong>습관</strong></td><td class="nowrap"><code>habit</code></td><td>매일 또는 주 N회(요일 자유) 챙기는 행동. 할 일이 아니라서 끝나지 않고, 날짜별 할 일로 만들지 않는다(ADR 0011). 영역은 하나다. 상태는 챙김 <code>active</code>, 쉬어 가기 <code>paused</code>, 그만두기 <code>archived</code>.</td><td>루틴(일반 대화에서는 괜찮음), 반복 할 일</td><td><a href="#habit_check">습관 체크</a> · <a href="#task">할 일</a> · <a href="#area">영역</a></td><td class="nowrap">SP7<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="habit_check"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-check"/></svg></span></td><td class="nowrap"><strong>습관 체크</strong></td><td class="nowrap"><code>habit_check</code></td><td>그날 그 습관을 했다는 기록. 하루에 한 번이다. 안 한 날은 기록이 없을 뿐이고 &quot;놓친 날&quot;로 세지 않는다.</td><td>출석, 연속 기록, 스트릭</td><td><a href="#habit">습관</a> · <a href="#no-streak">연속 기록(스트릭)</a> · <a href="#logical_date">논리적 날짜</a></td><td class="nowrap">SP7<br><span class="pill pill--plain">초안</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -258,20 +313,21 @@
     <section class="section">
       <div class="section__head">
         <h2 id="s4"><span class="section__no">4</span>기억</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg> 용어 7개</p>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-transcript"/></svg> 용어 8개 · 그중 스펙 용어 1개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
           <caption>기억</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="transcript"><td class="nowrap"><strong>원문 기록</strong></td><td class="nowrap"><code>transcript</code></td><td>대화와 체크인을 날짜별로 그대로 보관한 기록. 기간 회상에 쓰고, 의미 회상 대상은 아니다.</td><td>로그(시스템 로그와 구분)</td><td><a href="#conversation">대화</a> · <a href="#recall_by_time">기간 회상</a> · <a href="#recall_by_meaning">의미 회상</a></td><td class="nowrap">SP1</td></tr>
-            <tr id="memory_card"><td class="nowrap"><strong>기억 카드</strong></td><td class="nowrap"><code>memory_card</code></td><td>원문 기록에서 뽑아낸 짧은 기억 하나. 의미 회상의 대상.</td><td>메모, 노트</td><td><a href="#transcript">원문 기록</a> · <a href="#recall_by_meaning">의미 회상</a> · <a href="#card_kind">카드 종류</a> · <a href="#consolidation">정리 루프</a> · <a href="#confidence">확신도</a></td><td class="nowrap">SP2</td></tr>
-            <tr id="card_kind"><td class="nowrap"><strong>카드 종류</strong></td><td class="nowrap"><code>card_kind</code></td><td>5개 고정: 사실 <code>fact</code>, 선호 <code>preference</code>, 교훈 <code>lesson</code>, 신호 <code>signal</code>, 결심 <code>decision</code>.</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td class="nowrap">SP2</td></tr>
-            <tr id="consolidation"><td class="nowrap"><strong>정리 루프</strong></td><td class="nowrap"><code>consolidation</code></td><td>대화가 끝난 뒤 원문 기록을 돌아보며 기준에 맞는 기억 카드를 만들거나 갱신하는 루프.</td><td><span class="muted">—</span></td><td><a href="#loop">루프</a> · <a href="#conversation">대화</a> · <a href="#transcript">원문 기록</a> · <a href="#memory_card">기억 카드</a></td><td class="nowrap">SP2</td></tr>
-            <tr id="confidence"><td class="nowrap"><strong>확신도</strong></td><td class="nowrap"><code>confidence</code></td><td>기억 카드가 지금도 맞을 가능성. 다시 확인되면 오르고, 오래 언급되지 않으면 내려간다.</td><td>가중치</td><td><a href="#memory_card">기억 카드</a></td><td class="nowrap">SP2</td></tr>
-            <tr id="recall_by_time"><td class="nowrap"><strong>기간 회상</strong></td><td class="nowrap"><code>recall_by_time</code></td><td>날짜와 영역으로 거르는 회상.</td><td><span class="muted">—</span></td><td><a href="#area">영역</a></td><td class="nowrap">SP1<br><span class="muted">read_transcript (SP1)</span></td></tr>
-            <tr id="recall_by_meaning"><td class="nowrap"><strong>의미 회상</strong></td><td class="nowrap"><code>recall_by_meaning</code></td><td>낱말이 달라도 뜻이 비슷한 기억을 찾는 회상.</td><td>RAG</td><td><span class="muted">—</span></td><td class="nowrap">SP2</td></tr>
+            <tr id="transcript"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-transcript"/></svg></span></td><td class="nowrap"><strong>원문 기록</strong></td><td class="nowrap"><code>transcript</code></td><td>대화와 체크인을 날짜별로 그대로 보관한 기록. 기간 회상에 쓰고, 의미 회상 대상은 아니다.</td><td>로그(시스템 로그와 구분)</td><td><a href="#conversation">대화</a> · <a href="#recall_by_time">기간 회상</a> · <a href="#recall_by_meaning">의미 회상</a></td><td class="nowrap">SP1</td></tr>
+            <tr id="redact"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-redact"/></svg></span></td><td class="nowrap"><strong>가리기</strong></td><td class="nowrap"><code>redact</code></td><td>원문 기록과 시스템 로그에 남기기 전에 토큰, 인증 정보, 식별 정보를 지우는 것. 부작용 없는 함수다.</td><td><span class="muted">—</span></td><td><a href="#transcript">원문 기록</a> · <a href="#api_token">API 토큰</a></td><td class="nowrap">SP1<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="memory_card"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-card"/></svg></span></td><td class="nowrap"><strong>기억 카드</strong></td><td class="nowrap"><code>memory_card</code></td><td>원문 기록에서 뽑아낸 짧은 기억 하나. 의미 회상의 대상.</td><td>메모, 노트</td><td><a href="#transcript">원문 기록</a> · <a href="#recall_by_meaning">의미 회상</a> · <a href="#card_kind">카드 종류</a> · <a href="#consolidation">정리 루프</a> · <a href="#confidence">확신도</a></td><td class="nowrap">SP2 (미룸)</td></tr>
+            <tr id="card_kind"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-card"/></svg></span></td><td class="nowrap"><strong>카드 종류</strong></td><td class="nowrap"><code>card_kind</code></td><td>5개 고정: 사실 <code>fact</code>, 선호 <code>preference</code>, 교훈 <code>lesson</code>, 신호 <code>signal</code>, 결심 <code>decision</code>.</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td class="nowrap">SP2 (미룸)</td></tr>
+            <tr id="consolidation"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-refresh"/></svg></span></td><td class="nowrap"><strong>정리 루프</strong></td><td class="nowrap"><code>consolidation</code></td><td>대화가 끝난 뒤 원문 기록을 돌아보며 기준에 맞는 기억 카드를 만들거나 갱신하는 루프.</td><td><span class="muted">—</span></td><td><a href="#loop">루프</a> · <a href="#conversation">대화</a> · <a href="#transcript">원문 기록</a> · <a href="#memory_card">기억 카드</a></td><td class="nowrap">SP2 (미룸)</td></tr>
+            <tr id="confidence"><td class="w-min"><span class="muted" aria-hidden="true">·</span></td><td class="nowrap"><strong>확신도</strong></td><td class="nowrap"><code>confidence</code></td><td>기억 카드가 지금도 맞을 가능성. 다시 확인되면 오르고, 오래 언급되지 않으면 내려간다.</td><td>가중치</td><td><a href="#memory_card">기억 카드</a></td><td class="nowrap">SP2 (미룸)</td></tr>
+            <tr id="recall_by_time"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-calendar-week"/></svg></span></td><td class="nowrap"><strong>기간 회상</strong></td><td class="nowrap"><code>recall_by_time</code></td><td>날짜와 영역으로 거르는 회상.</td><td><span class="muted">—</span></td><td><a href="#area">영역</a></td><td class="nowrap">SP1read_transcript (SP1)</td></tr>
+            <tr id="recall_by_meaning"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-brain"/></svg></span></td><td class="nowrap"><strong>의미 회상</strong></td><td class="nowrap"><code>recall_by_meaning</code></td><td>낱말이 달라도 뜻이 비슷한 기억을 찾는 회상.</td><td>RAG</td><td><span class="muted">—</span></td><td class="nowrap">SP2 (미룸)</td></tr>
           </tbody>
         </table>
       </div>
@@ -279,20 +335,22 @@
     <section class="section">
       <div class="section__head">
         <h2 id="s5"><span class="section__no">5</span>인생 곡선</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-quality-of-life"/></svg> 용어 7개</p>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-curve"/></svg> 용어 9개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
           <caption>인생 곡선</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="life_curve"><td class="nowrap"><strong>인생 곡선</strong></td><td class="nowrap"><code>life_curve</code></td><td>사다리 점수가 시간에 따라 그리는 선. 그 위에 사건이, 아래에 영역 점수와 컨디션 기록이 근거로 깔린다.</td><td>라이프 그래프</td><td><a href="#area">영역</a> · <a href="#ladder_score">사다리 점수</a> · <a href="#area_score">영역 점수</a> · <a href="#milestone">사건</a> · <a href="#condition">컨디션</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="ladder_score"><td class="nowrap"><strong>사다리 점수</strong></td><td class="nowrap"><code>ladder_score</code></td><td>Cantril 사다리. "나에게 가능한 최고의 삶 10, 최악 0"에서 지금 몇 칸인지(<code>now</code>)와 5년 뒤 예상(<code>future</code>). 월마다 하나.</td><td>만족도, 행복 점수</td><td><a href="#life_curve">인생 곡선</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="area_score"><td class="nowrap"><strong>영역 점수</strong></td><td class="nowrap"><code>area_score</code></td><td>영역별 현재 상태 1~5점과 한 줄 근거. 월간 회고에서 비서가 초안을 내고 사용자가 확인한다.</td><td><span class="muted">—</span></td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#review">회고</a> · <a href="#area">영역</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="milestone"><td class="nowrap"><strong>사건</strong></td><td class="nowrap"><code>milestone</code></td><td>곡선 위에 찍는 고점 <code>high</code>, 저점 <code>low</code>, 전환점 <code>turning_point</code>.</td><td>이벤트</td><td><span class="muted">—</span></td><td class="nowrap">SP3</td></tr>
-            <tr id="chapter"><td class="nowrap"><strong>챕터</strong></td><td class="nowrap"><code>chapter</code></td><td>여러 해에 걸친 인생의 한 시기. 제목과 주제를 가진다.</td><td>시즌</td><td><span class="muted">—</span></td><td class="nowrap">SP3</td></tr>
-            <tr id="condition"><td class="nowrap"><strong>컨디션</strong></td><td class="nowrap"><code>condition</code></td><td>저녁 체크인에서 기록하는 그날의 몸과 마음 상태. 경험 층.</td><td>기분</td><td><a href="#evening_checkin">저녁 체크인</a></td><td class="nowrap">SP1<br><span class="muted">HP/MP 계산은 SP3</span></td></tr>
-            <tr id="past_curve"><td class="nowrap"><strong>과거 그래프</strong></td><td class="nowrap"><code>past_curve</code></td><td>시작할 때 한 번 인터뷰로 그리는, 태어나서 지금까지의 곡선.</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td class="nowrap">SP3</td></tr>
+            <tr id="life_curve"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-curve"/></svg></span></td><td class="nowrap"><strong>인생 곡선</strong></td><td class="nowrap"><code>life_curve</code></td><td>사다리 점수가 시간에 따라 그리는 선. 그 위에 사건이, 아래에 영역 점수와 컨디션 기록이 근거로 깔린다.</td><td>라이프 그래프</td><td><a href="#area">영역</a> · <a href="#ladder_score">사다리 점수</a> · <a href="#area_score">영역 점수</a> · <a href="#milestone">사건</a> · <a href="#condition">컨디션</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="ladder_score"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-ladder"/></svg></span></td><td class="nowrap"><strong>사다리 점수</strong></td><td class="nowrap"><code>ladder_score</code></td><td>Cantril 사다리. &quot;나에게 가능한 최고의 삶 10, 최악 0&quot;에서 지금 몇 칸인지(<code>now</code>)와 5년 뒤 예상(<code>future</code>). 월마다 하나, 그 달 마지막 일요일 회고에서 사용자가 답한다. 한 달을 돌아보는 &quot;기억하는 나&quot;의 점수다.</td><td>만족도, 행복 점수</td><td><a href="#life_curve">인생 곡선</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="area_score"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-radar"/></svg></span></td><td class="nowrap"><strong>영역 점수</strong></td><td class="nowrap"><code>area_score</code></td><td>영역별 현재 상태 점수와 한 줄 근거(Wheel of Life). <span class="pill pill--plain">SP3-4 초안</span>: 1~10점, 분기마다 하나, 분기 마지막 주 회고에서 <strong>사용자가 매긴다</strong>(비서는 매기지 않는다). (v1 정의는 &quot;1~5점, 월간 회고에서 비서가 초안&quot;이었다.)</td><td><span class="muted">—</span></td><td><a href="#owner">사용자</a> · <a href="#secretary">비서</a> · <a href="#review">회고</a> · <a href="#area">영역</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="milestone"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-milestone"/></svg></span></td><td class="nowrap"><strong>사건</strong></td><td class="nowrap"><code>milestone</code></td><td>곡선 위에 찍는 고점 <code>high</code>, 저점 <code>low</code>, 전환점 <code>turning_point</code>. 비서는 초안으로만 내고, 사용자가 확정해야 곡선에 오른다.</td><td>이벤트</td><td><span class="muted">—</span></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="chapter"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-chapter"/></svg></span></td><td class="nowrap"><strong>챕터</strong></td><td class="nowrap"><code>chapter</code></td><td>여러 해에 걸친 인생의 한 시기. 제목과 주제를 가진다.</td><td>시즌</td><td><span class="muted">—</span></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="condition"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-condition"/></svg></span></td><td class="nowrap"><strong>컨디션</strong></td><td class="nowrap"><code>condition</code></td><td>저녁 체크인에서 기록하는 그날의 몸과 마음 상태. 경험 층.</td><td>기분</td><td><a href="#evening_checkin">저녁 체크인</a></td><td class="nowrap">SP1HP/MP 계산은 SP3</td></tr>
+            <tr id="past_curve"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-curve"/></svg></span></td><td class="nowrap"><strong>과거 그래프</strong></td><td class="nowrap"><code>past_curve</code></td><td>시작할 때 한 번 인터뷰로 그리는, 태어나서 지금까지의 곡선. <span class="pill pill--plain">SP3-4 초안</span>: v1은 인터뷰 대신 시드 가져오기로 챕터와 사건을 채운다.</td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="life_seed"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-seed"/></svg></span></td><td class="nowrap"><strong>시드</strong></td><td class="nowrap"><code>life_seed</code></td><td>사용자가 검토한 뒤 한 번 가져오는 인생 곡선 초기 자료(챕터, 사건, 질문). 개인 정보라 저장소에 넣지 않는다. 점수는 담지 않는다.</td><td><span class="muted">—</span></td><td><a href="#past_curve">과거 그래프</a> · <a href="#chapter">챕터</a> · <a href="#milestone">사건</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="reassurance_view"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-curve"/></svg></span></td><td class="nowrap"><strong>안심 보기</strong></td><td class="nowrap"><code>reassurance_view</code></td><td>달마다 사다리 점수(기억)와 그 달 컨디션 평균(하루하루)을 나란히 놓는 화면. 판단하지 않고 차이만 보여 준다.</td><td>비교 분석</td><td><a href="#ladder_score">사다리 점수</a> · <a href="#condition">컨디션</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -300,40 +358,143 @@
     <section class="section">
       <div class="section__head">
         <h2 id="s6"><span class="section__no">6</span>상태창</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> 용어 7개</p>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-level"/></svg> 용어 8개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
           <caption>상태창</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="status_window"><td class="nowrap"><strong>상태창</strong></td><td class="nowrap"><code>status_window</code></td><td>레벨, HP/MP, 스탯, 디버프, 퀘스트를 보여 주는 화면. 텔레그램 <code>/status</code>, 차트 이미지, 웹 대시보드 세 곳에 같은 데이터로 나온다.</td><td>프로필, 대시보드(웹 화면만 "대시보드")</td><td><a href="#level">레벨 / 경험치</a> · <a href="#hp">HP / MP</a> · <a href="#stat">스탯</a> · <a href="#debuff">디버프</a> · <a href="#quest">퀘스트</a></td><td class="nowrap">SP3<br><span class="muted">웹 화면은 SP4</span></td></tr>
-            <tr id="level"><td class="nowrap"><strong>레벨 / 경험치</strong><span id="xp"></span></td><td class="nowrap"><code>level</code><br><code>xp</code></td><td>누적 성장. <strong>오르기만 한다.</strong> 휴식도 경험치를 준다.</td><td>점수</td><td><a href="#status_window">상태창</a> · <a href="#no-hp-damage">체력 피해</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="hp"><td class="nowrap"><strong>HP / MP</strong><span id="mp"></span></td><td class="nowrap"><code>hp</code><br><code>mp</code></td><td>오늘의 체력과 에너지. 컨디션에서 계산한다. 할 일을 놓쳐도 깎이지 않는다.</td><td><span class="muted">—</span></td><td><a href="#task">할 일</a> · <a href="#condition">컨디션</a> · <a href="#status_window">상태창</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="stat"><td class="nowrap"><strong>스탯</strong></td><td class="nowrap"><code>stat</code></td><td>영역 점수의 게임 표현. 영역 하나에 스탯 하나. 현재 상태라 오르내린다.</td><td>능력치</td><td><a href="#area">영역</a> · <a href="#area_score">영역 점수</a> · <a href="#debuff">디버프</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="debuff"><td class="nowrap"><strong>디버프</strong></td><td class="nowrap"><code>debuff</code></td><td>스탯이 기준 아래로 내려간 상태 표시. 벌이 아니라 신호이며, 회복 퀘스트를 함께 제안한다.</td><td>패널티</td><td><a href="#stat">스탯</a> · <a href="#quest">퀘스트</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="quest"><td class="nowrap"><strong>퀘스트</strong></td><td class="nowrap"><code>quest</code></td><td>게임 화면에서 부르는 우선순위. 메인 퀘스트 = 분기 우선순위, 일일 퀘스트 = 첫 걸음, 회복 퀘스트 = 디버프 해소 제안.</td><td>미션, 챌린지</td><td><a href="#priority">우선순위</a> · <a href="#first_step">첫 걸음</a> · <a href="#debuff">디버프</a></td><td class="nowrap">SP3</td></tr>
-            <tr id="title"><td class="nowrap"><strong>칭호 / 업적</strong><span id="achievement"></span></td><td class="nowrap"><code>title</code><br><code>achievement</code></td><td>사건(고점, 전환점)이나 누적 기록에 주는 표시.</td><td>배지</td><td><a href="#milestone">사건</a></td><td class="nowrap">SP3</td></tr>
+            <tr id="status_window"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-level"/></svg></span></td><td class="nowrap"><strong>상태창</strong></td><td class="nowrap"><code>status_window</code></td><td>레벨, HP/MP, 스탯, 디버프, 퀘스트, 칭호를 보여 주는 화면. 텔레그램 <code>/status</code>, 대시보드, 운영 앱에 같은 데이터로 나온다. (<span class="pill pill--plain">SP3-4 초안</span>: 차트 이미지는 미룬다.)</td><td>프로필, 대시보드(웹 화면만 &quot;대시보드&quot;)</td><td><a href="#level">레벨 / 경험치</a> · <a href="#hp">HP / MP</a> · <a href="#stat">스탯</a> · <a href="#debuff">디버프</a> · <a href="#quest">퀘스트</a></td><td class="nowrap">SP3웹 화면은 SP4</td></tr>
+            <tr id="level"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-xp"/></svg></span></td><td class="nowrap"><strong>레벨 / 경험치</strong></td><td class="nowrap"><code>level</code><br><code id="xp">xp</code></td><td>누적 성장. <strong>오르기만 한다.</strong> 휴식도 경험치를 준다. 경험치는 원장(<code>status_xp_ledger</code>)에 쌓기만 하고 합계로 레벨을 계산한다.</td><td>점수</td><td><a href="#status_window">상태창</a> · <a href="#no-hp-damage">체력 피해</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="rest_day"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-moon"/></svg></span></td><td class="nowrap"><strong>쉬는 날</strong></td><td class="nowrap"><code>rest_day</code></td><td>완료한 할 일이 없는 날(멈춤 기간 포함). 작은 경험치를 준다. 쉬는 것도 정당하다(P3).</td><td>회복(회복 퀘스트와 헷갈린다), 휴무</td><td><a href="#level">레벨 / 경험치</a> · <a href="#pause">멈춤</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="hp"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-condition"/></svg></span></td><td class="nowrap"><strong>HP / MP</strong></td><td class="nowrap"><code>hp</code><br><code id="mp">mp</code></td><td>오늘의 체력과 에너지. 컨디션에서 계산한다. 할 일을 놓쳐도 깎이지 않는다. <span class="pill pill--plain">SP3-4 초안</span>: v1은 HP(오늘 컨디션)만 보이고 MP는 보이지 않는다.</td><td><span class="muted">—</span></td><td><a href="#task">할 일</a> · <a href="#condition">컨디션</a> · <a href="#status_window">상태창</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="stat"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-radar"/></svg></span></td><td class="nowrap"><strong>스탯</strong></td><td class="nowrap"><code>stat</code></td><td>영역 점수의 게임 표현. 영역 하나에 스탯 하나. 현재 상태라 오르내린다.</td><td>능력치</td><td><a href="#area">영역</a> · <a href="#area_score">영역 점수</a> · <a href="#debuff">디버프</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="debuff"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-warning"/></svg></span></td><td class="nowrap"><strong>디버프</strong></td><td class="nowrap"><code>debuff</code></td><td>스탯이 기준 아래로 내려간 상태 표시. 벌이 아니라 신호이며, 회복 퀘스트를 함께 제안한다. <span class="pill pill--plain">SP3-4 초안</span>: 기준은 바로 앞 분기의 영역 점수다.</td><td>패널티</td><td><a href="#stat">스탯</a> · <a href="#quest">퀘스트</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="quest"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-first-step"/></svg></span></td><td class="nowrap"><strong>퀘스트</strong></td><td class="nowrap"><code>quest</code></td><td>게임 화면에서 부르는 우선순위. 메인 퀘스트 = 분기 우선순위, 일일 퀘스트 = 첫 걸음, 회복 퀘스트 = 디버프 해소 제안.</td><td>미션, 챌린지</td><td><a href="#priority">우선순위</a> · <a href="#first_step">첫 걸음</a> · <a href="#debuff">디버프</a></td><td class="nowrap">SP3-4</td></tr>
+            <tr id="title"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-title-badge"/></svg></span></td><td class="nowrap"><strong>칭호 / 업적</strong></td><td class="nowrap"><code>title</code><br><code id="achievement">achievement</code></td><td>사건(고점, 전환점)이나 누적 기록에 주는 표시. <span class="pill pill--plain">SP3-4 초안</span>: v1은 확정한 고점·전환점의 칭호만.</td><td>배지</td><td><a href="#milestone">사건</a></td><td class="nowrap">SP3-4</td></tr>
           </tbody>
         </table>
       </div>
     </section>
     <section class="section">
       <div class="section__head">
-        <h2 id="s7"><span class="section__no">7</span>하지 않는 것 (용어로 고정)</h2>
-        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> 용어 3개</p>
+        <h2 id="c-api"><span class="section__no">7</span>HTTP API · 운영 앱</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-api"/></svg> 용어 12개 · 그중 스펙 용어 7개 · <a href="#filter">분류 목록으로</a></p>
       </div>
       <div class="table-wrap">
         <table class="dt">
-          <caption>하지 않는 것 (용어로 고정)</caption>
-          <thead><tr><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <caption>HTTP API · 운영 앱</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
           <tbody>
-            <tr id="no-hp-damage"><td class="nowrap"><strong>체력 피해</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>할 일을 놓쳐서 HP가 깎이는 장치. 쓰지 않는다.</td><td><span class="muted">—</span></td><td><a href="#task">할 일</a> · <a href="#hp">HP / MP</a></td><td class="nowrap">전체</td></tr>
-            <tr id="no-streak"><td class="nowrap"><strong>연속 기록(스트릭)</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>며칠 연속 했는지 세는 장치. 쓰지 않는다.</td><td><span class="muted">—</span></td><td><a href="#level">레벨 / 경험치</a></td><td class="nowrap">전체</td></tr>
-            <tr id="no-limited-reward"><td class="nowrap"><strong>기간 한정 보상</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>놓치면 사라지는 보상. 쓰지 않는다.</td><td><span class="muted">—</span></td><td><a href="#quest">퀘스트</a></td><td class="nowrap">전체</td></tr>
+            <tr id="api"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-api"/></svg></span></td><td class="nowrap"><strong>HTTP API</strong></td><td class="nowrap"><code>api</code></td><td>BE가 <code>/api/v1</code>로 여는 HTTP 경로 묶음. 운영 앱과 대시보드가 쓴다. 두뇌의 &quot;도구&quot;와 다르다.</td><td><span class="muted">—</span></td><td><a href="#backend">BE</a> · <a href="#tool">도구</a> · <a href="#api_token">API 토큰</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="api_token"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-token"/></svg></span></td><td class="nowrap"><strong>API 토큰</strong></td><td class="nowrap"><code>api_token</code></td><td>HTTP API를 부를 때 내는 비밀값. BE는 <code>.env</code>에서 읽고, 클라이언트는 사용자가 기기마다 넣어 그 기기에만 둔다. 빌드, Vercel, 저장소, 로그에는 없다.</td><td>비밀번호, 키</td><td><a href="#api">HTTP API</a> · <a href="#first_connect">처음 연결</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="health_check"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-plug"/></svg></span></td><td class="nowrap"><strong>연결 확인</strong></td><td class="nowrap"><code>health</code></td><td>BE가 살아 있는지와 폴링, 로그인, 오늘 회차, 호출 수를 한 번에 묻는 것(<code>GET /health</code>).</td><td><span class="muted">—</span></td><td><a href="#backend">BE</a> · <a href="#safe_mode">안전 모드</a> · <a href="#watcher">감시자</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">초안</span></td></tr>
+            <tr id="activity"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-activity"/></svg></span></td><td class="nowrap"><strong>활동 기록</strong></td><td class="nowrap"><code>activity</code></td><td>데이터를 바꾼 일 하나하나의 기록: 누가(<code>secretary</code> 또는 <code>user</code>), 어느 통로에서, 무엇을. 메시지 본문은 담지 않는다.</td><td>로그(시스템 로그와 구분), 히스토리</td><td><a href="#undo">되돌리기</a> · <a href="#channel">통로</a> · <a href="#apply_action">즉시 갈래</a></td><td class="nowrap">—</td></tr>
+            <tr id="undo"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-undo"/></svg></span></td><td class="nowrap"><strong>되돌리기</strong></td><td class="nowrap"><code>undo</code></td><td>낮은 위험의 변경 하나를 24시간 안에, 그 뒤 같은 대상의 변경이 없을 때 이전 상태로 돌리는 것. 경험치는 되돌리지 않는다.</td><td>취소, 롤백 (코드 배포를 되돌리는 것은 <strong>배포 롤백</strong>)</td><td><a href="#activity">활동 기록</a> · <a href="#deploy_rollback">배포 롤백</a></td><td class="nowrap">—</td></tr>
+            <tr id="apply_action"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-command"/></svg></span></td><td class="nowrap"><strong>즉시 갈래</strong></td><td class="nowrap"><code>apply_action</code></td><td>두뇌를 거치지 않고 도구 함수 하나를 바로 부르는 길(<code>POST /actions</code>). 두뇌가 도구를 부르는 길은 두뇌 갈래다. 두 길 모두 같은 도구 함수와 활동 기록을 쓴다.</td><td><span class="muted">—</span></td><td><a href="#tool">도구</a> · <a href="#activity">활동 기록</a> · <a href="#undo">되돌리기</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="app_card"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-pin"/></svg></span></td><td class="nowrap"><strong>고정 카드</strong></td><td class="nowrap"><code>app_card</code></td><td>운영 앱에 고정해 둔 화면 조각. 대화가 끝나도 남는다.</td><td><span class="muted">—</span></td><td><a href="#ui_component">화면 조각</a> · <a href="#app">운영 앱</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="cors_origins"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-cors"/></svg></span></td><td class="nowrap"><strong>허용 출처</strong></td><td class="nowrap"><code>cors_origins</code></td><td>HTTP API를 부를 수 있는 웹 출처의 정확한 문자열 목록(<code>config.toml</code>). 정규식과 와일드카드는 받지 않는다.</td><td><span class="muted">—</span></td><td><a href="#api">HTTP API</a> · <a href="#app">운영 앱</a> · <a href="#dashboard">대시보드</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="tailnet"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-tailscale"/></svg></span></td><td class="nowrap"><strong>tailnet</strong></td><td class="nowrap"><code>tailscale serve</code></td><td>Dahun의 기기만 들어 있는 Tailscale 사설망. BE는 <code>127.0.0.1</code>에만 열고, 밖에서는 <code>tailscale serve</code>로 tailnet 안에서만 닿는다. 주소는 <code>&lt;기계&gt;.&lt;tailnet&gt;.ts.net</code> 꼴이다.</td><td>Tailscale Funnel(공개 인터넷에 여는 것. 쓰지 않는다)</td><td><a href="#backend">BE</a> · <a href="#api">HTTP API</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="first_connect"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-plug"/></svg></span></td><td class="nowrap"><strong>처음 연결</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>운영 앱을 처음 열 때 BE 주소와 API 토큰을 넣고 <code>GET /health</code>로 확인하는 화면. 토큰은 그 기기에만 남는다.</td><td>로그인(사용자 계정이 없다)</td><td><a href="#app">운영 앱</a> · <a href="#api_token">API 토큰</a> · <a href="#health_check">연결 확인</a></td><td class="nowrap">SP5<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="offline_snapshot"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-wifi-off"/></svg></span></td><td class="nowrap"><strong>오프라인 스냅샷</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>오늘·이번 주 할 일과 체크인 요약을 폰에 7일 남겨 두는 것. BE에 닿지 않아도 읽을 수 있다. 쓰기는 하지 않는다. 대시보드는 아무것도 남기지 않는다.</td><td>오프라인 모드(쓰기가 되는 것처럼 들림)</td><td><a href="#app">운영 앱</a> · <a href="#dashboard">대시보드</a></td><td class="nowrap">SP5<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="safe_mode"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-shield"/></svg></span></td><td class="nowrap"><strong>안전 모드</strong></td><td class="nowrap"><code>safe_mode</code></td><td>DB가 손상됐을 때 들어가는 상태. 사용자에게 한 번 알리고, HTTP API는 <code>/health</code>만 503 <code>safe_mode</code>로 답한다. 디스크·잠금 오류는 손상으로 보지 않는다.</td><td><span class="muted">—</span></td><td><a href="#backend">BE</a> · <a href="#health_check">연결 확인</a></td><td class="nowrap">SP1<br><span class="pill pill--plain">스펙 용어</span></td></tr>
           </tbody>
         </table>
       </div>
+    </section>
+    <section class="section">
+      <div class="section__head">
+        <h2 id="c-genui"><span class="section__no">8</span>생성형 UI</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-genui"/></svg> 용어 7개 · 그중 스펙 용어 3개 · <a href="#filter">분류 목록으로</a></p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>생성형 UI</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <tbody>
+            <tr id="ui_component"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-genui"/></svg></span></td><td class="nowrap"><strong>화면 조각</strong></td><td class="nowrap"><code>ui_component</code></td><td>운영 앱 대화 안에 그려지는 작은 화면(할 일 목록, 선택지, 컨디션 고르기 등). 그리기만 하고 데이터를 바꾸지 않는다. 고정한 조각은 고정 카드(<code>app_card</code>)라고 부른다.</td><td>위젯</td><td><a href="#app_card">고정 카드</a> · <a href="#ui_block">조립 카드</a> · <a href="#ui_catalog_version">카탈로그 판</a></td><td class="nowrap">—</td></tr>
+            <tr id="ui_element"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-genui"/></svg></span></td><td class="nowrap"><strong>기본 부품</strong></td><td class="nowrap"><code>ui_element</code></td><td>조립 카드 안에 두뇌가 하나씩 쌓는 가장 작은 화면 조각 10가지(제목, 짧은 글, 숫자, 진행 막대, 할 일 줄, 태그, 글머리 목록, 버튼 줄, 구분선, 묶음). 혼자서는 대화에 나오지 않는다.</td><td>위젯, 원자</td><td><a href="#ui_block">조립 카드</a> · <a href="#ui_card">완성 카드</a></td><td class="nowrap">SP6</td></tr>
+            <tr id="ui_card"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-card"/></svg></span></td><td class="nowrap"><strong>완성 카드</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>자주 쓰는 경우를 기본 부품으로 미리 짜 둔 화면 조각. 두뇌가 이름으로 고른다(<code>ui_todo_list</code>, <code>ui_todo_draft</code>, <code>ui_choice</code>, <code>ui_summary_card</code>, <code>ui_date_choice</code>, <code>ui_result</code>, <code>ui_period_list</code>).</td><td>템플릿</td><td><a href="#ui_element">기본 부품</a> · <a href="#ui_component">화면 조각</a></td><td class="nowrap">SP6</td></tr>
+            <tr id="ui_block"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-genui"/></svg></span></td><td class="nowrap"><strong>조립 카드</strong></td><td class="nowrap"><code>ui_block</code></td><td>두뇌가 기본 부품을 12개까지 세로로 쌓아 만드는 화면 조각. 묶음은 한 단계까지이고 쌓기 규칙(SP6 스펙 7.2)에 맞아야 그려진다.</td><td>자유 카드, 커스텀 카드</td><td><a href="#ui_element">기본 부품</a> · <a href="#stacking_rules">쌓기 규칙</a></td><td class="nowrap">SP6</td></tr>
+            <tr id="ui_catalog_version"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-genui"/></svg></span></td><td class="nowrap"><strong>카탈로그 판</strong></td><td class="nowrap"><code>UI_CATALOG_VERSION</code></td><td>두뇌가 쓸 수 있는 화면 조각 목록의 판 이름(날짜.순번). 조각을 더하면 올린다. 기준 커밋에서는 <code>2026-10-24.4</code>, 조각 15개다.</td><td><span class="muted">—</span></td><td><a href="#ui_component">화면 조각</a> · <a href="#ui_block">조립 카드</a></td><td class="nowrap">SP5<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="stacking_rules"><td class="w-min"><span class="muted" aria-hidden="true">·</span></td><td class="nowrap"><strong>쌓기 규칙</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>조립 카드가 그려지려면 지켜야 하는 규칙: 부품 12개까지, 묶음은 한 단계까지 등. BE가 어긴 조각을 도구 오류로 돌려주고 스트림에 보내지 않는다.</td><td><span class="muted">—</span></td><td><a href="#ui_block">조립 카드</a> · <a href="#ui_element">기본 부품</a></td><td class="nowrap">SP6<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="golden_sse"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-stream"/></svg></span></td><td class="nowrap"><strong>기준 응답</strong></td><td class="nowrap"><code>tests/fixtures/app_golden/</code></td><td><code>/chat</code> 스트림이 이렇게 와야 한다고 저장소에 박아 둔 SSE 파일. BE와 운영 앱이 같은 파일로 계약을 시험한다. 앱에 복사하지 않는다.</td><td><span class="muted">—</span></td><td><a href="#api">HTTP API</a> · <a href="#app">운영 앱</a></td><td class="nowrap">SP3-4<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section__head">
+        <h2 id="c-recovery"><span class="section__no">9</span>자동 복구</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-medic"/></svg> 용어 10개 · 그중 스펙 용어 1개 · <a href="#filter">분류 목록으로</a></p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>자동 복구</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <tbody>
+            <tr id="medic"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-medic"/></svg></span></td><td class="nowrap"><strong>medic</strong></td><td class="nowrap"><code>my_planner_medic</code></td><td>노트북에서 비서(BE)와 따로 도는 작업. 감시자와 업데이터를 합친 것. 표준 라이브러리만 쓰고 Claude를 부르지 않는다.</td><td><span class="muted">—</span></td><td><a href="#watcher">감시자</a> · <a href="#updater">업데이터</a> · <a href="#heartbeat">하트비트</a></td><td class="nowrap">—</td></tr>
+            <tr id="watcher"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-log"/></svg></span></td><td class="nowrap"><strong>감시자</strong></td><td class="nowrap"><code>watcher</code></td><td>medic 중 로그와 <code>/health</code>를 2분마다 읽어 장애를 찾고, GitHub 이슈와 하트비트를 쓰는 부분.</td><td><span class="muted">—</span></td><td><a href="#medic">medic</a> · <a href="#incident">장애</a> · <a href="#heartbeat">하트비트</a></td><td class="nowrap">—</td></tr>
+            <tr id="updater"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-refresh"/></svg></span></td><td class="nowrap"><strong>업데이터</strong></td><td class="nowrap"><code>updater</code></td><td>medic 중 CI가 성공한 <code>main</code> 커밋을 노트북에 배포하고, 배포 뒤 확인하고, 실패하면 배포 롤백하는 부분.</td><td><span class="muted">—</span></td><td><a href="#medic">medic</a> · <a href="#deploy_rollback">배포 롤백</a> · <a href="#ci">CI</a></td><td class="nowrap">—</td></tr>
+            <tr id="incident"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-incident"/></svg></span></td><td class="nowrap"><strong>장애</strong></td><td class="nowrap"><code>incident</code></td><td>같은 지문으로 묶인 문제 하나. GitHub 이슈 하나와 짝이다. 상태: <code>open</code>, <code>repairing</code>, <code>merged</code>, <code>deploying</code>, <code>resolved</code>, <code>gave_up</code>.</td><td>버그(코드 결함만 뜻하지 않는다), 에러</td><td><a href="#fingerprint">지문</a> · <a href="#repair">수리</a></td><td class="nowrap">—</td></tr>
+            <tr id="fingerprint"><td class="w-min"><span class="muted" aria-hidden="true">·</span></td><td class="nowrap"><strong>지문</strong></td><td class="nowrap"><code>fingerprint</code></td><td>같은 문제를 하나로 묶는 열쇠. 예: <code>be:KeyError src/my_planner/tools/todos.py:list_todos</code>, <code>late_run:evening_checkin</code>.</td><td><span class="muted">—</span></td><td><a href="#incident">장애</a> · <a href="#late_run">회차 지연</a></td><td class="nowrap">—</td></tr>
+            <tr id="repair"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-repair"/></svg></span></td><td class="nowrap"><strong>수리</strong></td><td class="nowrap"><code>repair</code></td><td>GitHub Actions의 Claude가 장애 하나를 재현 테스트 → 수정 → PR → 머지까지 하는 한 번의 시도.</td><td><span class="muted">—</span></td><td><a href="#incident">장애</a> · <a href="#ci">CI</a></td><td class="nowrap">—</td></tr>
+            <tr id="deploy_rollback"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-rollback"/></svg></span></td><td class="nowrap"><strong>배포 롤백</strong></td><td class="nowrap"><code>deploy_rollback</code></td><td>배포 뒤 확인이 실패해 노트북의 코드를 직전에 배포된 커밋으로, 스키마가 바뀐 배포면 DB도 배포 직전 백업으로 되돌리는 것. 사용자의 변경 하나를 되돌리는 <strong>되돌리기</strong>(<code>undo</code>)와 다르다.</td><td><span class="muted">—</span></td><td><a href="#updater">업데이터</a> · <a href="#undo">되돌리기</a></td><td class="nowrap">—</td></tr>
+            <tr id="late_run"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-clock"/></svg></span></td><td class="nowrap"><strong>회차 지연</strong></td><td class="nowrap"><code>late_run</code></td><td>노트북이 켜져 있는데 예정 시각 + 15분이 지나도 회차가 <code>pending</code>인 것. PC가 꺼져 놓친 <strong>놓친 회차</strong>(<code>missed_run</code>)와 다르다.</td><td><span class="muted">—</span></td><td><a href="#missed_run">놓친 회차</a> · <a href="#fingerprint">지문</a></td><td class="nowrap">—</td></tr>
+            <tr id="heartbeat"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-heartbeat"/></svg></span></td><td class="nowrap"><strong>하트비트</strong></td><td class="nowrap"><code>heartbeat</code></td><td>감시자가 30분마다 GitHub 고정 이슈 본문에 남기는 &quot;살아 있음&quot; 기록.</td><td><span class="muted">—</span></td><td><a href="#watcher">감시자</a></td><td class="nowrap">—</td></tr>
+            <tr id="ci"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-ci"/></svg></span></td><td class="nowrap"><strong>CI</strong></td><td class="nowrap"><code>ci.yml</code></td><td>PR마다, 그리고 <code>main</code>에 들어올 때마다 시험을 도는 GitHub Actions 워크플로. 업데이터는 CI가 성공한 커밋만 배포한다.</td><td><span class="muted">—</span></td><td><a href="#updater">업데이터</a> · <a href="#repair">수리</a></td><td class="nowrap">SP6<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section__head">
+        <h2 id="c-process"><span class="section__no">10</span>만드는 방식</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-plan"/></svg> 용어 3개 · 그중 스펙 용어 3개 · <a href="#filter">분류 목록으로</a></p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>만드는 방식</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <tbody>
+            <tr id="spike"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-test"/></svg></span></td><td class="nowrap"><strong>착수 전 검증</strong></td><td class="nowrap"><code>S0~S12</code></td><td>구현 계획의 첫 티켓(00). 노트북이나 클라우드에서 가정을 미리 확인하고, 뒤 티켓이 쓸 값을 정한다. 결과는 <code>docs/spikes/</code>에 남긴다.</td><td><span class="muted">—</span></td><td><a href="#vertical_ticket">세로 티켓</a> · <a href="#acceptance">수용 테스트</a></td><td class="nowrap">SP1<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="vertical_ticket"><td class="w-min"><span class="muted" aria-hidden="true">·</span></td><td class="nowrap"><strong>세로 티켓</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>하네스 전 층을 끝에서 끝까지 관통해, 텔레그램이나 가짜 두뇌로 바로 확인할 수 있는 결과 하나를 내는 작업 단위. 구현 계획은 모두 이것으로 나눈다.</td><td><span class="muted">—</span></td><td><a href="#harness">하네스</a> · <a href="#spike">착수 전 검증</a></td><td class="nowrap">SP1<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+            <tr id="acceptance"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-check"/></svg></span></td><td class="nowrap"><strong>수용 테스트</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>자동 시험이 닿지 않는 완료 조건을 Dahun이 노트북·폰에서 직접 확인하는 것. 날마다 체크리스트(<code>docs/acceptance/</code>)에 남기고, 문제는 새 이슈로 연다.</td><td><span class="muted">—</span></td><td><a href="#spike">착수 전 검증</a></td><td class="nowrap">SP1<br><span class="pill pill--plain">스펙 용어</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section__head">
+        <h2 id="s7"><span class="section__no">11</span>하지 않는 것</h2>
+        <p class="section__lede"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> 용어 3개 · <a href="#filter">분류 목록으로</a></p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>하지 않는 것</caption>
+          <thead><tr><th class="w-min">그림</th><th class="w-min">용어</th><th class="w-min">코드 이름</th><th>정의</th><th>쓰지 않음</th><th>관련 용어</th><th class="w-min">도입</th></tr></thead>
+          <tbody>
+            <tr id="no-hp-damage"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-x"/></svg></span></td><td class="nowrap"><strong>체력 피해</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>할 일을 놓쳐서 HP가 깎이는 장치. 쓰지 않는다.</td><td><span class="muted">—</span></td><td><a href="#task">할 일</a> · <a href="#hp">HP / MP</a></td><td class="nowrap">전체</td></tr>
+            <tr id="no-streak"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-x"/></svg></span></td><td class="nowrap"><strong>연속 기록(스트릭)</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>며칠 연속 했는지 세는 장치. 쓰지 않는다. 습관 체크도 연속 일수를 세지 않는다.</td><td><span class="muted">—</span></td><td><a href="#level">레벨 / 경험치</a></td><td class="nowrap">전체</td></tr>
+            <tr id="no-limited-reward"><td class="w-min"><span class="gl-pic"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-x"/></svg></span></td><td class="nowrap"><strong>기간 한정 보상</strong></td><td class="nowrap"><span class="muted">코드 이름 없음</span></td><td>놓치면 사라지는 보상. 쓰지 않는다.</td><td><span class="muted">—</span></td><td><a href="#quest">퀘스트</a></td><td class="nowrap">전체</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section__head">
+        <h2 id="tbd"><span class="section__no">12</span>미정 · 확인 필요</h2>
+        <p class="section__lede">이 문서에서 확정하지 못한 것입니다.</p>
+      </div>
+      <ul class="rid-list">
+        <li><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>확인 필요</span> “초안” 15개(SP3-4, SP6, SP7)는 Dahun 확인 전이다. 확인되면 <code>GLOSSARY.md</code>의 표시를 지우고 이 문서의 칩도 지운다.</li>
+        <li><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미정</span> 스펙 용어 16개를 <code>GLOSSARY.md</code>에 올릴지. 올리기 전까지 정의는 스펙 문장을 줄인 것이다.</li>
+        <li><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>확인 필요</span> <code>GLOSSARY.md</code>의 <a href="#ui_block">조립 카드</a>는 쌓기 규칙을 “SP6 스펙 7.2”로 적었지만, 스펙 본문은 7.3을 가리킨다.</li>
+        <li><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>확인 필요</span> 자동 복구 절은 <code>GLOSSARY.md</code>에서 번호 없는 장(“자동 복구 (SP6)”)으로 들어가 있다. 이 문서는 분류 9로 두었다.</li>
+        <li><span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미정</span> SP2 기억 계층이 미뤄져 기억 카드, 정리 루프, 확신도, 의미 회상은 아직 코드가 없다.</li>
+      </ul>
     </section>
 
   </main>
@@ -346,20 +507,27 @@
     <div>
       <h2>원천 자료</h2>
       <ul class="sources">
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>용어집 1~7장 (상태: 확정, 2026-10-23) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/GLOSSARY.md" target="_blank" rel="noopener"><code>GLOSSARY.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>용어집 1~8장과 자동 복구 절 (v1 확정 2026-10-23, 초안 표시 포함) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/GLOSSARY.md" target="_blank" rel="noopener"><code>GLOSSARY.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
         <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>마스터 설계 §4 하위 프로젝트 (도입 열) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-my-planner-master-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-my-planner-master-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 §2 범위 (도입 열) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 §3 · §5.1 (가리기, 안전 모드) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP3-4 스펙 §4.3 · §5.3 · §9 · §16 (즉시 갈래, 고정 카드, 푸시 구독, 허용 출처, tailnet, 기준 응답) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP5 스펙 §4.7 · §8 (처음 연결, 오프라인 스냅샷) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-24-sp5-ops-app-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-24-sp5-ops-app-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP6 생성형 UI 스펙 §7.3 · §10.5 (쌓기 규칙, 카탈로그 판) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-24-sp6-chat-generative-ui-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-24-sp6-chat-generative-ui-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP6 자동 복구 스펙 §4.5 (CI) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-24-sp6-auto-recovery-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-24-sp6-auto-recovery-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP7 스펙 (습관, 습관 체크) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-24-sp7-habits-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-24-sp7-habits-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 구현 계획 머리말 (세로 티켓, 착수 전 검증) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/plans/2026-10-23-sp1-secretary-core.md" target="_blank" rel="noopener"><code>docs/superpowers/plans/2026-10-23-sp1-secretary-core.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tool"/></svg><span>코드: <code>src/my_planner/tools/ui.py</code>(<code>UI_CATALOG_VERSION = "2026-10-24.4"</code>), <code>tests/fixtures/app_golden/</code></span></li>
       </ul>
     </div>
     <div>
       <h2>관련 문서</h2>
       <ul class="sources">
         <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-requirements"/></svg><a href="requirements.html">요구사항 정의서</a></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-schedule"/></svg><a href="schedule.html">WBS · 일정</a></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-schedule"/></svg><a href="schedule.html">일정 · 로드맵</a></li>
         <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg><a href="index.html">산출물 지도</a></li>
       </ul>
     </div>
-    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23</span><a href="index.html">산출물 지도로</a></div>
+    <div class="site-foot__fine"><span>my-planner · 산출물 v2</span><span class="tnum">작성 2026-10-24</span><a href="index.html">산출물 지도로</a></div>
   </div>
 </footer>
 <script src="assets/site.js" defer></script>

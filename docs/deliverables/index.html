@@ -1,263 +1,440 @@
 <!doctype html>
+<html lang="ko">
+<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>my-planner 산출물</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="개인 AI 비서 my-planner SP1 비서 코어의 PM용 산출물 모음: 요구사항, 아키텍처, 흐름, 화면, 데이터, 인터페이스, 시험, 운영, 일정.">
+<meta name="description" content="개인 AI 비서 my-planner 전체 시스템(텔레그램, 운영 앱, 대시보드, 노트북 BE)의 PM용 산출물 v2: 요구사항, 아키텍처, 흐름, 동작, 화면, 데이터, 인터페이스, 시험, 운영, 일정.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Sans+KR:wght@400;500;700&amp;display=swap">
 <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
 <script src="assets/icons.js"></script>
-
 <a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
 <header class="topbar">
   <div class="topbar__inner">
     <a class="brand" href="index.html">
       <span class="brand__mark"><svg class="ic" aria-hidden="true"><use href="#i-calendar-week"/></svg></span>
       my-planner <span class="brand__sub">산출물</span>
     </a>
-    <div class="topbar__doc"><span>SP1 비서 코어 · main 0336f4d</span></div>
+    <div class="topbar__doc"><span>v2 · 전체 시스템 · main 722d0d6</span></div>
   </div>
 </header>
 
 <div class="shell shell--portal" data-doc="index">
   <main id="main" class="doc">
 
+    <!-- ===== 머리: 시스템 전체 ===== -->
     <section class="hero" aria-labelledby="hero-title">
-      <span class="hero__eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>PM 산출물 · SP1 비서 코어</span>
-      <h1 id="hero-title">텔레그램으로 먼저 말을 거는 개인 AI 비서, my-planner</h1>
-      <p class="hero__lede">인생 곡선을 점검하고 일·주·월·분기·년 주기의 할 일과 회고를 이어 가도록 돕는 개인 AI 비서입니다. 비서는 텔레그램으로 먼저 말을 걸고 정리와 초안을 대신 하며, 결정은 사용자가 합니다. 이 사이트는 첫 하위 프로젝트 SP1(비서 코어)의 산출물을 산업 표준 양식으로 정리합니다.</p>
+      <span class="hero__eyebrow"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg>PM 산출물 v2 · 전체 시스템</span>
+      <h1 id="hero-title">텔레그램, 아이폰 앱, 대시보드로 함께 쓰는 개인 AI 비서</h1>
+      <p class="hero__lede">my-planner는 Dahun 한 사람을 위한 AI 비서입니다. 비서가 먼저 말을 걸고, 할 일과 회고, 인생 곡선과 습관을 정리합니다. 결정은 사용자가 합니다. 모든 데이터와 비서 프로그램(BE)은 노트북 한 대에 있고, 아이폰의 운영 앱과 웹 대시보드는 사설망(tailnet)으로 그 BE를 직접 부릅니다.</p>
       <div class="hero__meta">
-        <span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-clock"/></svg> 작성일 <span class="tnum">2026-10-23</span></span>
-        <span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-laptop"/></svg> 실행 환경: 사용자 노트북(Windows 11) 한 대</span>
+        <span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-clock"/></svg> 작성일 <span class="tnum">2026-10-24</span></span>
+        <span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-github"/></svg> 기준 main <code>722d0d6</code></span>
+        <span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-laptop"/></svg> BE: 노트북(Windows 11) 한 대</span>
         <span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-lock"/></svg> 단일 사용자 전용</span>
       </div>
     </section>
 
+    <figure class="fig sysmap" aria-labelledby="sysmap-title">
+      <figcaption class="fig__head"><span class="fig__no"></span><span class="fig__title" id="sysmap-title">시스템 지도: 세 개의 화면, 노트북 하나</span><span class="fig__std">C4 Context + Container 요약</span></figcaption>
+      <div class="fig__body fig__body--wide" style="--fig-min:760px">
+    <svg viewBox="0 0 1000 540" width="1000" role="img" aria-label="Dahun은 텔레그램, 아이폰의 운영 앱, 브라우저의 대시보드로 비서를 씁니다. 앱과 대시보드는 Vercel에서 받은 정적 화면이고, tailnet을 거쳐 노트북의 BE API를 직접 부릅니다. BE는 봇, 루프, 웹 푸시, API, 하네스와 두뇌, 도구, SQLite를 한 프로세스에 담고, 두뇌는 Claude 구독 로그인을 씁니다.">
+      <defs><marker id="ah-sys" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="d-head"/></marker></defs>
+      <g class="c4-on-dark"><circle cx="76" cy="200" r="19" class="c4-person"/><rect x="16" y="222" width="120" height="96" rx="16" class="c4-person"/><use href="#i-phone" x="65" y="232" width="22" height="22" class="d-ic--on"/><text x="76" y="272" class="c4-name">Dahun</text><text x="76" y="289" class="c4-tech">[사용자 1명]</text><text x="76" y="305" class="c4-desc">아이폰 · PC</text></g>
+      <rect x="190" y="24" width="188" height="96" rx="6" class="c4-ext"/>
+      <use href="#i-telegram" x="273" y="33" width="22" height="22" class="d-ic"/>
+      <text x="284" y="72" class="c4-name">텔레그램</text>
+      <text x="284" y="88" class="c4-tech">[외부 · Bot API]</text>
+      <text x="284" y="104" class="c4-desc">채팅 · 버튼 · 명령</text>
+      <rect x="176" y="148" width="216" height="284" rx="10" class="c4-boundary"/><use href="#i-vercel-cloud" x="186" y="154" width="20" height="20" class="d-ic"/><text x="211" y="169" class="c4-boundary__label">Vercel · 정적 파일만</text>
+      <rect x="190" y="184" width="188" height="100" rx="6" class="c4-container"/>
+      <use href="#i-pwa" x="273" y="193" width="22" height="22" class="d-ic--accent"/>
+      <text x="284" y="232" class="c4-name">운영 앱 (PWA)</text>
+      <text x="284" y="248" class="c4-tech">[Next.js 정적 · 아이폰]</text>
+      <text x="284" y="264" class="c4-desc">오늘 · 대화 · 할 일 · 기록</text>
+      <rect x="190" y="304" width="188" height="100" rx="6" class="c4-container"/>
+      <use href="#i-dashboard" x="273" y="313" width="22" height="22" class="d-ic--accent"/>
+      <text x="284" y="352" class="c4-name">대시보드</text>
+      <text x="284" y="368" class="c4-tech">[Next.js 정적 · 브라우저]</text>
+      <text x="284" y="384" class="c4-desc">읽기 전용 · 곡선 · 상태창</text>
+      <rect x="402" y="148" width="112" height="284" rx="10" class="c4-boundary"/><use href="#i-tailscale" x="446" y="158" width="24" height="24" class="d-ic--accent"/><text x="458" y="198" class="c4-name">tailnet</text><text x="458" y="213" class="c4-tech">Tailscale 사설망</text><text x="458" y="413" class="c4-tech">tailscale serve</text><text x="458" y="426" class="c4-tech">HTTPS :443</text>
+      <rect x="524" y="10" width="326" height="520" rx="10" class="c4-boundary"/><use href="#i-laptop" x="534" y="14" width="20" height="20" class="d-ic"/><text x="559" y="29" class="c4-boundary__label">노트북 · Windows 11 · BE</text>
+      <rect x="540" y="44" width="130" height="84" rx="6" class="c4-container"/>
+      <use href="#i-bot" x="594" y="53" width="22" height="22" class="d-ic--accent"/>
+      <text x="605" y="92" class="c4-name">봇</text>
+      <text x="605" y="108" class="c4-tech">[롱 폴링]</text>
+      <rect x="540" y="140" width="130" height="84" rx="6" class="c4-container"/>
+      <use href="#i-timer" x="594" y="149" width="22" height="22" class="d-ic--accent"/>
+      <text x="605" y="188" class="c4-name">루프 · 회차</text>
+      <text x="605" y="204" class="c4-tech">[아침·저녁·회고]</text>
+      <rect x="540" y="236" width="130" height="84" rx="6" class="c4-container"/>
+      <use href="#i-push" x="594" y="245" width="22" height="22" class="d-ic--accent"/>
+      <text x="605" y="284" class="c4-name">웹 푸시</text>
+      <text x="605" y="300" class="c4-tech">[실패 시 텔레그램]</text>
+      <rect x="540" y="332" width="130" height="84" rx="6" class="c4-container"/>
+      <use href="#i-api" x="594" y="341" width="22" height="22" class="d-ic--accent"/>
+      <text x="605" y="380" class="c4-name">HTTP API</text>
+      <text x="605" y="396" class="c4-tech">[aiohttp · /api/v1]</text>
+      <rect x="540" y="436" width="130" height="84" rx="6" class="c4-component"/>
+      <use href="#i-scheduler" x="594" y="445" width="22" height="22" class="d-ic--accent"/>
+      <text x="605" y="484" class="c4-name">작업 스케줄러</text>
+      <text x="605" y="500" class="c4-tech">[시작 · 깨우기]</text>
+      <rect x="700" y="44" width="136" height="84" rx="6" class="c4-container"/>
+      <use href="#i-harness" x="757" y="53" width="22" height="22" class="d-ic--accent"/>
+      <text x="768" y="92" class="c4-name">하네스 · 두뇌</text>
+      <text x="768" y="108" class="c4-tech">[Agent SDK]</text>
+      <rect x="700" y="140" width="136" height="84" rx="6" class="c4-container"/>
+      <use href="#i-tool" x="757" y="149" width="22" height="22" class="d-ic--accent"/>
+      <text x="768" y="188" class="c4-name">도구</text>
+      <text x="768" y="204" class="c4-tech">[텔레그램 28·앱 35]</text>
+      <path d="M700 250v76c0 8 30 14 68 14s68-6 68-14V250" class="c4-db"/><ellipse cx="768" cy="250" rx="68" ry="12" class="c4-db"/><use href="#i-database" x="757" y="266" width="22" height="22" class="d-ic--accent"/><text x="768" y="306" class="c4-name">planner.db</text><text x="768" y="322" class="c4-tech">[SQLite · 001~012]</text>
+      <rect x="700" y="356" width="136" height="72" rx="6" class="c4-component"/>
+      <use href="#i-file-md" x="757" y="365" width="22" height="22" class="d-ic--accent"/>
+      <text x="768" y="404" class="c4-name">md 내보내기</text>
+      <text x="768" y="420" class="c4-tech">[사람이 읽는 사본]</text>
+      <rect x="700" y="436" width="136" height="84" rx="6" class="c4-ext"/>
+      <use href="#i-medic" x="757" y="445" width="22" height="22" class="d-ic"/>
+      <text x="768" y="484" class="c4-name">감시자 medic</text>
+      <text x="768" y="500" class="c4-tech">[SP6 · 계획]</text>
+      <rect x="870" y="44" width="122" height="84" rx="6" class="c4-ext"/>
+      <use href="#i-brain" x="920" y="53" width="22" height="22" class="d-ic"/>
+      <text x="931" y="92" class="c4-name">Claude</text>
+      <text x="931" y="108" class="c4-tech">[구독 로그인]</text>
+      <rect x="870" y="436" width="122" height="84" rx="6" class="c4-ext"/>
+      <use href="#i-github" x="920" y="445" width="22" height="22" class="d-ic"/>
+      <text x="931" y="484" class="c4-name">GitHub</text>
+      <text x="931" y="500" class="c4-tech">[코드 · CI · 수리]</text>
+      <path d="M136 232C162 232 164 72 188 72" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M136 262H188" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M136 298C162 298 164 354 188 354" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M380 72H538" class="c4-rel" marker-start="url(#ah-sys)" marker-end="url(#ah-sys)"/>
+      <text x="458" y="64" class="c4-rel__label">롱 폴링 · 보내기</text>
+      <path d="M378 262C452 262 470 362 538 362" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <text x="458" y="300" class="c4-rel__label">읽기·쓰기</text>
+      <path d="M378 378C452 378 470 392 538 392" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <text x="458" y="374" class="c4-rel__label">읽기만</text>
+      <path d="M540 278C470 278 452 226 380 226" class="c4-rel c4-rel--async" marker-end="url(#ah-sys)"/>
+      <text x="458" y="240" class="c4-rel__label">웹 푸시</text>
+      <path d="M670 86H698" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M670 182C686 182 686 118 698 114" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M670 374C688 374 688 200 698 196" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M768 128V138" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M768 224V236" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M768 340V354" class="c4-rel c4-rel--async" marker-end="url(#ah-sys)"/>
+      <path d="M836 86H868" class="c4-rel" marker-end="url(#ah-sys)"/>
+      <path d="M836 478H868" class="c4-rel c4-rel--async" marker-end="url(#ah-sys)"/>
+    </svg>
+      </div>
+      <div class="sysmap__legend">
+        <div class="chip-row">
+          <span class="c4-key" data-c4="person">사람</span>
+          <span class="c4-key" data-c4="container">우리가 만든 것(컨테이너)</span>
+          <span class="c4-key" data-c4="component">보조 부품</span>
+          <span class="c4-key" data-c4="ext">외부 서비스 · 계획(점선)</span>
+          <span class="c4-key" data-c4="boundary">경계(Vercel, tailnet, 노트북)</span>
+          <span class="legend-inline"><svg width="34" height="10" aria-hidden="true"><path d="M1 5H31" class="c4-rel"/><path d="M26 1l6 4-6 4z" class="d-head"/></svg> 호출</span>
+          <span class="legend-inline"><svg width="34" height="10" aria-hidden="true"><path d="M1 5H31" class="c4-rel c4-rel--async"/><path d="M26 1l6 4-6 4z" class="d-head"/></svg> 비동기 · 사본</span>
+          <span class="fig__scrollhint">← 그림을 옆으로 밀어 보세요 →</span>
+        </div>
+      </div>
+      <p class="fig__cap"><b>결론:</b> 데이터와 판단은 노트북의 BE 한 곳에만 있고, 텔레그램·운영 앱·대시보드는 같은 BE를 보는 세 개의 창입니다. Vercel은 화면 파일만 내려 주고 데이터는 거치지 않습니다.</p>
+    </figure>
+
+    <!-- ===== 핵심 수치 ===== -->
     <section class="section" aria-labelledby="facts">
-      <h2 id="facts" class="visually-hidden">핵심 수치</h2>
-      <div class="kpis">
+      <div class="section__head">
+        <h2 id="facts">한눈에 보기</h2>
+        <p class="section__lede">2026-10-24 main <code>722d0d6</code>에서 직접 세고 돌린 값입니다.</p>
+      </div>
+      <div class="kpis kpis--3">
         <div class="kpi kpi--accent">
-          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-health"/></svg>삶의 영역</div>
-          <div class="kpi__value">6<span class="kpi__unit">개</span></div>
-          <div class="kpi__note">커리어·경제·건강·관계·배움·삶의 질. 모든 할 일은 영역을 하나 이상 갖는다.</div>
+          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>하위 프로젝트</div>
+          <div class="kpi__value">7<span class="kpi__unit">개</span></div>
+          <div class="kpi__note">구현됨 3 · 진행 중 2 · 계획 1 · 미룸 1. SP3과 SP4는 하나(SP3-4), SP6은 스펙 둘.</div>
         </div>
-        <div class="kpi kpi--dawn">
-          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>아침 · 저녁 시각 (평일)</div>
-          <div class="kpi__value">09:00<span class="kpi__sep">·</span>17:30</div>
-          <div class="kpi__note">주말(토·일)은 10:00 · 18:00. 주간 회고는 일요일 18:00 저녁 체크인과 한 메시지로.</div>
-        </div>
-        <div class="kpi kpi--dusk">
-          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>하루 상한</div>
-          <div class="kpi__value">3<span class="kpi__unit">회</span><span class="kpi__sep">·</span>60<span class="kpi__unit">회</span></div>
-          <div class="kpi__note">비서가 먼저 보내는 메시지 최대 3회 · 두뇌 호출 상한 60회(설정 가능).</div>
+        <div class="kpi kpi--accent">
+          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg>BE 자동 시험</div>
+          <div class="kpi__value">1,393<span class="kpi__unit">통과</span></div>
+          <div class="kpi__note">실패 0 · 건너뜀 2 · <code>pytest -q</code> 75초</div>
         </div>
         <div class="kpi">
-          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg>구현 티켓</div>
-          <div class="kpi__value">15<span class="kpi__unit">개</span></div>
-          <div class="kpi__note">SP1-00 ~ SP1-14 코드가 모두 main에 합쳐짐. 남은 것: 노트북 점검(#16), 7일 수용 테스트(#17).</div>
+          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg>대시보드 시험</div>
+          <div class="kpi__value">138<span class="kpi__unit">통과</span></div>
+          <div class="kpi__note">파일 16개 · <code>vitest run</code>. 운영 앱 vitest 541 · Playwright 19 (시험 결과서)</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-tool"/></svg>두뇌 도구</div>
+          <div class="kpi__value">28<span class="kpi__sep">·</span>35</div>
+          <div class="kpi__note">텔레그램 28개 · 운영 앱 35개(화면 조각·고정 카드 7개 더함). G-BE2(PR #139, 열림)가 병합되면 앱 39개(조각 4개 더함)</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-api"/></svg>HTTP API</div>
+          <div class="kpi__value">26<span class="kpi__unit">개</span></div>
+          <div class="kpi__note">GET 19 · POST 5 · PUT 1 · DELETE 1. 모두 <code>/api/v1</code> 아래</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-database"/></svg>DB 마이그레이션</div>
+          <div class="kpi__value">12<span class="kpi__unit">개</span></div>
+          <div class="kpi__note"><code>001_core</code> ~ <code>012_habits</code>. 표 29개. SQLite가 원본</div>
         </div>
       </div>
     </section>
 
-
-    <section class="section" aria-labelledby="impl">
+    <!-- ===== 하위 프로젝트 현황 ===== -->
+    <section class="section" aria-labelledby="sp">
       <div class="section__head">
-        <h2 id="impl">구현 현황</h2>
-        <p class="section__lede">2026-10-23 main <code>0336f4d</code> 기준. 코드와 문서는 끝났고, 노트북에서 직접 확인할 일 두 가지가 남았습니다.</p>
+        <h2 id="sp">하위 프로젝트 현황</h2>
+        <p class="section__lede">하위 프로젝트마다 스펙 → 구현 계획 → 티켓 순서로 만듭니다. 코드가 main에 합쳐졌어도 노트북이나 실기기에서 직접 확인할 일이 남으면 따로 표시했습니다.</p>
       </div>
-      <div class="cols">
-        <div class="chart">
-          <div><div class="chart__title">SP1 티켓 15개</div><div class="chart__sub">GitHub 이슈 #3~#17 상태와 main 병합 여부</div></div>
-          <div class="stack" role="img" aria-label="완료 13개, 병합 후 노트북 점검 대기 1개, 병합 후 7일 수용 테스트 대기 1개">
-            <span class="stack__seg" data-tone="ok" style="--v:.8667">13</span>
-            <span class="stack__seg" data-tone="accent" style="--v:.0667">1</span>
-            <span class="stack__seg" data-tone="warn" style="--v:.0667">1</span>
-          </div>
-          <ul class="chart__legend">
-            <li><span class="swatch" data-tone="ok"></span>완료 <b>13</b> · SP1-00~12</li>
-            <li><span class="swatch" data-tone="accent"></span>병합 · 노트북 점검 대기 <b>1</b> · SP1-13 (#16)</li>
-            <li><span class="swatch" data-tone="warn"></span>병합 · 7일 수용 테스트 대기 <b>1</b> · SP1-14 (#17)</li>
-          </ul>
+      <div class="chart">
+        <div><div class="chart__title">하위 프로젝트 7개의 상태</div><div class="chart__sub">구현 상태 칩과 같은 모양 · 2026-10-24 기준</div></div>
+        <div class="stack" role="img" aria-label="구현됨 3개, 진행 중 2개, 계획 1개, 미룸 1개">
+          <span class="stack__seg" data-tone="ok" style="--v:.4286">3</span>
+          <span class="stack__seg" data-tone="info" style="--v:.2857">2</span>
+          <span class="stack__seg" data-tone="muted" style="--v:.1429">1</span>
+          <span class="stack__seg" data-tone="empty" style="--v:.1429">1</span>
         </div>
-        <div class="kpis">
-          <div class="kpi kpi--accent"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-test"/></svg>자동 테스트</div><div class="kpi__value">352<span class="kpi__unit">통과</span></div><div class="kpi__note">실패 0 · 건너뜀 1(Windows 전용) · <code>pytest -q</code>, main 0336f4d · ruff 깨끗</div></div>
-          <div class="kpi"><div class="kpi__label"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>병합된 PR</div><div class="kpi__value">#18~#36</div><div class="kpi__note">스파이크 #18·#19, 티켓 #20~#34, 최종 리뷰 수정 <a class="ext" href="https://github.com/dahun428-fx/my-planner/pull/35" target="_blank" rel="noopener">#35<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>, 문서 동기화 <a class="ext" href="https://github.com/dahun428-fx/my-planner/pull/36" target="_blank" rel="noopener">#36<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></div></div>
-        </div>
+        <ul class="chart__legend">
+          <li><span class="swatch" data-tone="ok"></span><span class="pill st" data-s="done">구현됨</span><b>3</b> SP1 · SP3-4 · SP5</li>
+          <li><span class="swatch" data-tone="info"></span><span class="pill st" data-s="partial">진행 중</span><b>2</b> SP6 생성형 UI · SP7</li>
+          <li><span class="swatch" data-tone="muted"></span><span class="pill st" data-s="planned">계획</span><b>1</b> SP6 자동 복구</li>
+          <li><span class="swatch" data-tone="empty"></span><span class="pill st" data-s="deferred">미룸</span><b>1</b> SP2</li>
+        </ul>
       </div>
       <div class="table-wrap">
         <table class="dt">
-          <caption>남은 확인 (노트북에서)</caption>
-          <thead><tr><th class="w-min">이슈</th><th class="minw-text">내용</th><th class="w-min">상태</th><th class="w-min">문서</th></tr></thead>
+          <caption>하위 프로젝트별 상태</caption>
+          <thead><tr><th class="w-min">ID</th><th>이름과 범위</th><th class="w-min">상태</th><th class="minw-text">main에 있는 것</th><th class="minw-text">남은 일</th></tr></thead>
           <tbody>
-            <tr><td class="id"><a class="ext" href="https://github.com/dahun428-fx/my-planner/issues/16" target="_blank" rel="noopener">#16<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></td><td>SP1-13 로그온·절전·전원과 상관없이 늘 돈다: 작업 스케줄러 등록과 점검 스크립트를 노트북에서 실행</td><td><span class="pill ticket" data-s="review">병합 · 노트북 점검 대기</span></td><td class="nowrap"><a href="operations.html">운영자 매뉴얼</a></td></tr>
-            <tr><td class="id"><a class="ext" href="https://github.com/dahun428-fx/my-planner/issues/17" target="_blank" rel="noopener">#17<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></td><td>SP1-14 7일 수용 테스트: 체크리스트(<code>docs/acceptance/sp1-checklist.md</code>, <a class="ext" href="https://github.com/dahun428-fx/my-planner/pull/34" target="_blank" rel="noopener">#34<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a>)는 병합됨. 완료 조건 1~5를 7일 동안 확인</td><td><span class="pill ticket" data-s="review">병합 · 7일 수용 테스트 대기</span></td><td class="nowrap"><a href="test-report.html">테스트 결과서</a></td></tr>
+            <tr>
+              <td class="id">SP1</td>
+              <td><b>비서 코어</b><br><span class="muted">텔레그램 봇, 하네스, 두뇌, 아침 브리핑·저녁 체크인·주간 회고, 따라잡기, 할 일, 작업 스케줄러</span></td>
+              <td><span class="pill st" data-s="done">구현됨</span><br><span class="pill st" data-s="laptop">노트북 확인 대기</span></td>
+              <td>티켓 SP1-00~14 코드 전부</td>
+              <td>SP1-14 7일 수용 테스트(노트북에서 7일 동안 회차 기록 확인)</td>
+            </tr>
+            <tr>
+              <td class="id">SP2</td>
+              <td><b>기억 계층</b><br><span class="muted">기억 카드, 로컬 임베딩, 의미 회상, <code>/memory</code></span></td>
+              <td><span class="pill st" data-s="deferred">미룸</span></td>
+              <td>없음</td>
+              <td>스펙 없음. SP3-4 스펙이 뒤로 미룸</td>
+            </tr>
+            <tr>
+              <td class="id">SP3-4</td>
+              <td><b>BE HTTP API · 인생 곡선 · 상태창 · 대시보드</b><br><span class="muted">API 계약의 정본. 사다리·영역 점수, 사건·챕터, 경험치·레벨, 읽기 전용 대시보드</span></td>
+              <td><span class="pill st" data-s="done">구현됨</span><br><span class="pill st" data-s="laptop">노트북 확인 대기</span></td>
+              <td>티켓 00~19b, 21a·21b. 대시보드 Vercel 배포</td>
+              <td>SP34-20 노트북 수용 테스트</td>
+            </tr>
+            <tr>
+              <td class="id">SP5</td>
+              <td><b>운영 앱</b><br><span class="muted">아이폰 홈 화면 PWA: 오늘, 대화 시트, 체크인, 할 일, 기록, 설정, 웹 푸시, 되돌리기</span></td>
+              <td><span class="pill st" data-s="done">구현됨</span></td>
+              <td>티켓 A00~A11, A13(스펙 갱신). Vercel 배포</td>
+              <td>A12 실기기 수용 테스트 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>상태 확인 필요</span></td>
+            </tr>
+            <tr>
+              <td class="id">SP6</td>
+              <td><b>대화 생성형 UI 넓히기</b><br><span class="muted">비서가 미리 만든 부품 조각을 골라 대화 시트에 띄운다</span></td>
+              <td><span class="pill st" data-s="partial">진행 중</span></td>
+              <td>G-A0, G-BE1(카탈로그: 블록·날짜 선택·결과·기간 목록)</td>
+              <td>G-A1, G-A2(앱 부품), G-BE2(두뇌 연결, PR #139 열림), G-A3(실기기)</td>
+            </tr>
+            <tr>
+              <td class="id">SP6</td>
+              <td><b>자동 복구</b><br><span class="muted">노트북 감시자·업데이터(medic), GitHub Actions 수리, CI, 하트비트, 배포 롤백</span></td>
+              <td><span class="pill st" data-s="planned">계획</span></td>
+              <td>스펙 v3, 구현 계획(티켓 00~11), ADR 0010</td>
+              <td>티켓 00~11(이슈 #122~#133). <span class="muted">SP6-01~05(#136 · #137 · #138 · #140 · #143)는 기준 뒤 병합</span></td>
+            </tr>
+            <tr>
+              <td class="id">SP7</td>
+              <td><b>습관 체크</b><br><span class="muted">할 일과 따로 두는 습관, 이번 주 횟수와 4주 모양. 놓친 날은 세지 않음</span></td>
+              <td><span class="pill st" data-s="partial">진행 중</span></td>
+              <td>SP7-01~06: 표·도구·API·텔레그램 버튼·두뇌 문맥·습관 카드</td>
+              <td>SP7-07·08 앱 화면, SP7-10 Dahun 문구 확인</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="dt dt--narrow">
+          <caption>어디서 도는가</caption>
+          <thead><tr><th>조각</th><th>위치</th><th class="w-min">누가 여나</th></tr></thead>
+          <tbody>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-pwa"/></svg> 운영 앱</td><td><a class="ext" href="https://my-planner-beige-eight.vercel.app" target="_blank" rel="noopener">my-planner-beige-eight.vercel.app<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></td><td>아이폰 홈 화면</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg> 대시보드</td><td><a class="ext" href="https://my-planner-dashboard-seven.vercel.app" target="_blank" rel="noopener">my-planner-dashboard-seven.vercel.app<svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></td><td>폰·PC 브라우저</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-laptop"/></svg> BE API</td><td><code>https://&lt;기계&gt;.&lt;tailnet&gt;.ts.net/api/v1</code> (tailnet 안에서만)</td><td>앱·대시보드</td></tr>
+            <tr><td><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg> 텔레그램 봇</td><td>BE가 텔레그램에서 메시지를 가져감(롱 폴링)</td><td>텔레그램 앱</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
-    <section class="section" aria-labelledby="rhythm">
-      <div class="dayrail">
-        <div class="dayrail__head">
-          <h2 id="rhythm" class="dayrail__title" style="font-size:var(--fs-md)">비서의 하루 리듬</h2>
-          <span class="dayrail__note">논리적 하루: 04:00 → 다음 날 04:00 (Asia/Seoul). 00:00~03:59 활동은 전날로 기록</span>
-        </div>
-        <div class="dayrail__scroll">
-          <div class="dayrail__grid" role="img" aria-label="평일은 아침 브리핑 09:00, 답장 창 12:00까지, 저녁 체크인 17:30, 답장 창 다음 날 04:00까지. 주말은 10:00과 18:00.">
-            <span class="dayrail__rowlabel">평일</span>
-            <div class="dayrail__track">
-              <span class="dayrail__win dayrail__win--morning" style="--from:.2083;--to:.3333"></span>
-              <span class="dayrail__win dayrail__win--evening" style="--from:.5625;--to:1"></span>
-              <span class="dayrail__pin dayrail__pin--morning" style="--at:.2083"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><b>09:00</b></span>
-              <span class="dayrail__pin dayrail__pin--evening" style="--at:.5625"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg><b>17:30</b></span>
-            </div>
-            <span class="dayrail__rowlabel">주말</span>
-            <div class="dayrail__track">
-              <span class="dayrail__win dayrail__win--morning" style="--from:.25;--to:.3333"></span>
-              <span class="dayrail__win dayrail__win--evening" style="--from:.5833;--to:1"></span>
-              <span class="dayrail__pin dayrail__pin--morning" style="--at:.25"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg><b>10:00</b></span>
-              <span class="dayrail__pin dayrail__pin--evening" style="--at:.5833"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg><b>18:00</b></span>
-            </div>
-            <div class="dayrail__axis" aria-hidden="true">
-              <span style="--at:0">04:00</span><span style="--at:.1667">08:00</span><span style="--at:.3333">12:00</span><span style="--at:.5">16:00</span><span style="--at:.6667">20:00</span><span style="--at:.8333">00:00</span><span style="--at:1">04:00</span>
-            </div>
-          </div>
-        </div>
-        <div class="dayrail__legend">
-          <span><span class="loop loop--morning"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-sun"/></svg>아침 브리핑</span> 오늘 우선순위 1~3개와 첫 걸음</span>
-          <span><span class="loop loop--evening"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-moon"/></svg>저녁 체크인</span> 컨디션 1~5 버튼, 한 줄 메모</span>
-          <span><span class="loop loop--week"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-calendar-week"/></svg>주간 회고</span> 일요일 저녁 체크인과 합쳐 보냄</span>
-          <span><i style="background:color-mix(in srgb, var(--dawn) 28%, transparent)"></i><i style="background:color-mix(in srgb, var(--dusk) 26%, transparent)"></i>답장 창(회차 대화를 잇는 시간)</span>
-        </div>
+    <!-- ===== 읽는 순서 ===== -->
+    <section class="section" aria-labelledby="readpath">
+      <div class="section__head">
+        <h2 id="readpath">PM이 읽는 순서</h2>
+        <p class="section__lede">처음이라면 아래 순서로 읽습니다. 모르는 말은 그때그때 <a href="glossary.html">용어집</a>에서 찾습니다. 각 문서는 요약 → 그림 → 상세 표 순서라, 머리의 “한눈에 보기”만 읽어도 흐름을 잡을 수 있습니다.</p>
       </div>
+      <ol class="readpath">
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg><a href="requirements.html">요구사항 정의서</a></span><span class="readpath__why">무엇을, 왜 만드는지. 요구 ID와 우선순위, 하위 프로젝트별 범위.</span><span class="readpath__time">약 15분</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg><a href="architecture.html">아키텍처 설계서</a></span><span class="readpath__why">위 시스템 지도를 C4 단계로 자세히. 어디에 무엇이 있고 누가 누구를 부르는지.</span><span class="readpath__time">약 15분</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg><a href="process-flows.html">업무 흐름도</a></span><span class="readpath__why">하루와 한 주가 어떻게 흘러가는지. 사람·비서·앱이 맡는 칸을 나눈 BPMN.</span><span class="readpath__time">약 10분</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-pwa"/></svg><a href="screens-app.html">화면설계서 3종</a></span><span class="readpath__why">운영 앱 → 텔레그램 → 대시보드 순서로. 화면 ID, 와이어프레임, 번호별 설명.</span><span class="readpath__time">약 30분</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg><a href="schedule.html">일정·로드맵</a></span><span class="readpath__why">끝난 것, 남은 것, 다음 순서. 노트북에서 확인할 일.</span><span class="readpath__time">약 10분</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg><a href="test-report.html">시험 결과서</a></span><span class="readpath__why">무엇을 어떻게 확인했는지, 요구사항별 시험 추적.</span><span class="readpath__time">약 10분</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg><a href="operations.html">운영 매뉴얼</a></span><span class="readpath__why">설치·배포·점검·장애 대응. 직접 운영할 때만.</span><span class="readpath__time">필요할 때</span></li>
+        <li><span class="readpath__doc"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg><a href="behavior.html">동작·데이터·연동</a></span><span class="readpath__why">개발자와 이야기할 때. 상태·순서도, DB 표, API·도구 계약.</span><span class="readpath__time">필요할 때</span></li>
+      </ol>
     </section>
 
+    <!-- ===== 산출물 지도 ===== -->
     <section class="section" aria-labelledby="map">
       <div class="section__head">
         <h2 id="map">산출물 지도</h2>
-        <p class="section__lede">요구에서 운영까지 생애주기 순서로 놓았습니다. 각 문서 머리에 따른 표준을 적고, 요약 → 그림 → 상세 표 순서로 읽히게 썼습니다.</p>
+        <p class="section__lede">이 개요를 더해 문서 14개입니다. 각 문서 왼쪽의 문서 목록과 같은 순서이고, 문서마다 따르는 표준을 적었습니다.</p>
       </div>
-
-      <div class="lifecycle">
+      <div class="stages">
         <div class="stage">
           <div class="stage__head"><span class="stage__name">요구</span><span class="stage__hint">무엇을</span></div>
-          <div class="stage__cards">
+          <div class="stage__cards stage__cards--grid">
             <a class="doccard" href="requirements.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-requirements"/></svg></span>
               <span class="doccard__name">요구사항 정의서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
               <span class="doccard__std">ISO/IEC/IEEE 29148 · RTM</span>
-              <span class="doccard__desc">기능·비기능 요구, MoSCoW 우선순위, 인수 기준, 요구사항 추적 매트릭스.</span>
+              <span class="doccard__desc">하위 프로젝트 전체의 기능·비기능 요구, MoSCoW, 인수 기준, 요구사항 추적.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">requirements.html</span></span>
             </a>
           </div>
         </div>
-
-        <div class="stage stage--design">
+        <div class="stage">
           <div class="stage__head"><span class="stage__name">설계</span><span class="stage__hint">어떻게</span></div>
-          <div class="stage__cards">
+          <div class="stage__cards stage__cards--grid">
             <a class="doccard" href="architecture.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-architecture"/></svg></span>
-              <span class="doccard__name">아키텍처 정의서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">C4 모델 (Context · Container · Component)</span>
-              <span class="doccard__desc">텔레그램, 하네스, 두뇌, 도구, 저장소의 경계와 관계.</span>
+              <span class="doccard__name">아키텍처 설계서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">C4 (Context · Container · Component) · ADR</span>
+              <span class="doccard__desc">노트북 BE, 운영 앱, 대시보드, Tailscale, Vercel의 경계와 관계, 결정 기록 11개.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">architecture.html</span></span>
             </a>
             <a class="doccard" href="process-flows.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-flow"/></svg></span>
               <span class="doccard__name">업무 흐름도<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">BPMN 2.0</span>
-              <span class="doccard__desc">아침 브리핑·저녁 체크인·주간 회고, 따라잡기, 초안 확정 흐름.</span>
+              <span class="doccard__std">BPMN 2.0 · 풀/레인</span>
+              <span class="doccard__desc">하루 회차, 대화, 체크인, 되돌리기, 습관, 배포와 복구의 흐름.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">process-flows.html</span></span>
             </a>
             <a class="doccard" href="behavior.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-behavior"/></svg></span>
-              <span class="doccard__name">시퀀스·상태 다이어그램<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">UML 2.5</span>
-              <span class="doccard__desc">메시지 처리 순서, 회차와 할 일의 상태 전이.</span>
+              <span class="doccard__name">동작 명세<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">UML 2.5 상태 기계 · 시퀀스</span>
+              <span class="doccard__desc">할 일·회차·습관의 상태 전이, /chat 스트리밍과 쓰기 경로의 순서.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">behavior.html</span></span>
             </a>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="stage__head"><span class="stage__name">화면</span><span class="stage__hint">무엇이 보이나</span></div>
+          <div class="stage__cards stage__cards--grid">
             <a class="doccard" href="screens.html">
-              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-screen"/></svg></span>
-              <span class="doccard__name">화면설계서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">스토리보드 · 번호 콜아웃</span>
-              <span class="doccard__desc">텔레그램 대화 화면, 인라인 버튼, 명령 응답, 고정 안내 문구 원문.</span>
+              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-telegram"/></svg></span>
+              <span class="doccard__name">텔레그램 화면설계서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">화면 ID · 스토리보드 · 번호 콜아웃</span>
+              <span class="doccard__desc">대화 화면, 인라인 버튼, 명령 응답, 고정 안내 문구 원문.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">screens.html</span></span>
             </a>
+            <a class="doccard" href="screens-dashboard.html">
+              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-dashboard"/></svg></span>
+              <span class="doccard__name">대시보드 화면설계서<span class="doccard__new">NEW</span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">화면 ID · 데스크톱 와이어프레임</span>
+              <span class="doccard__desc">비서 상태, 할 일·컨디션, 상태창, 인생 곡선 화면.</span>
+              <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">screens-dashboard.html</span></span>
+            </a>
+            <a class="doccard" href="screens-app.html">
+              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-pwa"/></svg></span>
+              <span class="doccard__name">운영 앱 화면설계서<span class="doccard__new">NEW</span><svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">화면 ID · 폰 와이어프레임(360)</span>
+              <span class="doccard__desc">오늘, 대화 시트, 체크인, 할 일, 기록, 습관, 설정 화면.</span>
+              <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">screens-app.html</span></span>
+            </a>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="stage__head"><span class="stage__name">데이터 · 연동</span><span class="stage__hint">무엇을 저장하고 주고받나</span></div>
+          <div class="stage__cards stage__cards--grid">
             <a class="doccard" href="database.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-schema"/></svg></span>
-              <span class="doccard__name">ERD · 테이블 정의서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">IE(까마귀발) 표기</span>
-              <span class="doccard__desc">SQLite 원본 표의 컬럼, 타입, 키, 제약, 기본값.</span>
+              <span class="doccard__name">데이터베이스 설계서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">IE(까마귀발) ERD · 테이블 정의</span>
+              <span class="doccard__desc">SQLite 표 29개와 마이그레이션 12개(001~012)의 컬럼, 키, 제약.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">database.html</span></span>
             </a>
             <a class="doccard" href="interfaces.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-interface"/></svg></span>
               <span class="doccard__name">인터페이스 정의서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">호출자 → 제공자 · 입출력 · 오류</span>
-              <span class="doccard__desc">도구 12개, 텔레그램 Bot API, Agent SDK 호출 계약.</span>
+              <span class="doccard__std">OpenAPI 형식 표 · 도구 계약</span>
+              <span class="doccard__desc">HTTP API 26개, 두뇌 도구 28·35개, 텔레그램 Bot API, 웹 푸시.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">interfaces.html</span></span>
             </a>
           </div>
         </div>
-
         <div class="stage">
-          <div class="stage__head"><span class="stage__name">구현 · 시험</span><span class="stage__hint">언제 · 확인</span></div>
-          <div class="stage__cards">
-            <a class="doccard" href="schedule.html">
-              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg></span>
-              <span class="doccard__name">WBS · 일정<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">WBS · 티켓 의존 그래프</span>
-              <span class="doccard__desc">티켓 00~14의 작업 분해, 선후 관계, 상태 보드.</span>
-              <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">schedule.html</span></span>
-            </a>
+          <div class="stage__head"><span class="stage__name">시험 · 운영</span><span class="stage__hint">확인하고 돌리기</span></div>
+          <div class="stage__cards stage__cards--grid">
             <a class="doccard" href="test-report.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-test"/></svg></span>
-              <span class="doccard__name">테스트 계획·결과서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__name">시험 결과서<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
               <span class="doccard__std">IEEE 829 · ISO/IEC/IEEE 29119</span>
-              <span class="doccard__desc">단위·통합·수동 수용 테스트의 범위, 사례, 판정. 요구사항별 시험 추적.</span>
+              <span class="doccard__desc">자동 시험 2,093건(pytest 1,393 · 대시보드 138 · 운영 앱 541 · Playwright 19), 수용 시험, 요구사항별 시험 추적.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">test-report.html</span></span>
             </a>
-          </div>
-        </div>
-
-        <div class="stage">
-          <div class="stage__head"><span class="stage__name">운영</span><span class="stage__hint">돌리기</span></div>
-          <div class="stage__cards">
             <a class="doccard" href="operations.html">
               <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-manual"/></svg></span>
-              <span class="doccard__name">운영자 매뉴얼<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-              <span class="doccard__std">설치 · 기동 · 점검 · 런북</span>
-              <span class="doccard__desc">설치와 기동, 작업 스케줄러 등록·점검, 백업과 복구, 장애 대응 런북.</span>
+              <span class="doccard__name">운영 매뉴얼<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">설치 · 배포 · 점검 · 런북</span>
+              <span class="doccard__desc">노트북 설치와 기동, Tailscale·Vercel 배포, 백업, 장애 대응.</span>
               <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">operations.html</span></span>
+            </a>
+            <a class="doccard" href="schedule.html">
+              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-schedule"/></svg></span>
+              <span class="doccard__name">일정·로드맵<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">WBS · 티켓 의존 · 로드맵</span>
+              <span class="doccard__desc">하위 프로젝트별 티켓 진행, 남은 확인, 다음 순서.</span>
+              <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">schedule.html</span></span>
             </a>
           </div>
         </div>
       </div>
-
       <div class="common-row">
         <a class="doccard" href="glossary.html">
-          <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg></span>
-          <span class="doccard__name">용어집<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
-          <span class="doccard__std">공통 · GLOSSARY.md 기준</span>
-          <span class="doccard__desc">회차, 답장 창, 따라잡기, 논리적 날짜 등 모든 문서가 같은 뜻으로 쓰는 말.</span>
-          <span class="doccard__foot"><span class="pill doc" data-s="final">확정</span><span class="doccard__file">glossary.html</span></span>
-        </a>
+              <span class="doccard__icon"><svg class="ic" aria-hidden="true"><use href="#i-doc-glossary"/></svg></span>
+              <span class="doccard__name">용어집<svg class="ic ic--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></span>
+              <span class="doccard__std">공통 · GLOSSARY.md 기준</span>
+              <span class="doccard__desc">회차, 답장 창, 화면 조각, 습관 체크 등 모든 문서가 같은 뜻으로 쓰는 말.</span>
+              <span class="doccard__foot"><span class="pill doc" data-s="review">검토 중</span><span class="doccard__file">glossary.html</span></span>
+            </a>
         <aside class="callout callout--info" aria-label="읽는 법">
           <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
           <div class="callout__body">
             <span class="callout__title">읽는 법</span>
-            <span>상태는 색과 함께 모양으로도 표시합니다. 예: <span class="pill run" data-s="done">done</span> <span class="pill run" data-s="skipped">skipped</span> <span class="pill task" data-s="draft">draft</span>. 문서 상태: <span class="pill doc" data-s="wip">작성 중</span> <span class="pill doc" data-s="review">검토 중</span> <span class="pill doc" data-s="final">확정</span>. 스펙에 없는 내용은 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미정</span>으로 적습니다.</span>
+            <span>상태는 색과 함께 앞 기호의 모양으로도 표시합니다. 구현 상태: <span class="pill st" data-s="done">구현됨</span> <span class="pill st" data-s="partial">진행 중</span> <span class="pill st" data-s="laptop">노트북 확인 대기</span> <span class="pill st" data-s="planned">계획</span> <span class="pill st" data-s="deferred">미룸</span>. 문서 상태: <span class="pill doc" data-s="wip">작성 중</span> <span class="pill doc" data-s="review">검토 중</span> <span class="pill doc" data-s="final">확정</span>. 스펙과 코드가 다르면 코드를 따르고, 확인하지 못한 것은 <span class="tbd"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-question"/></svg>미정</span>으로 적습니다.</span>
           </div>
         </aside>
       </div>
     </section>
 
+    <!-- ===== 6개 영역 ===== -->
     <section class="section" aria-labelledby="areas-h">
       <div class="section__head">
         <h2 id="areas-h">6개 영역</h2>
-        <p class="section__lede">할 일, 기억 카드, 점수는 모두 아래 영역을 하나 이상 갖습니다. 문서 전체에서 같은 기호와 색으로 표시합니다.</p>
+        <p class="section__lede">할 일, 습관, 영역 점수는 모두 아래 영역을 씁니다. 문서 전체에서 같은 기호와 색으로 표시합니다.</p>
       </div>
       <div class="areas">
         <div class="areas__item" data-area="career"><svg class="ic" aria-hidden="true"><use href="#i-career"/></svg><span><span class="areas__ko">커리어</span><span class="areas__key">career</span></span></div>
@@ -268,6 +445,26 @@
         <div class="areas__item" data-area="quality_of_life"><svg class="ic" aria-hidden="true"><use href="#i-quality-of-life"/></svg><span><span class="areas__ko">삶의 질</span><span class="areas__key">quality_of_life</span></span></div>
       </div>
     </section>
+
+    <!-- ===== 미정/확인 필요 ===== -->
+    <section class="section" aria-labelledby="tbd">
+      <div class="section__head">
+        <h2 id="tbd">미정/확인 필요</h2>
+        <p class="section__lede">이 개요를 쓰며 확인하지 못했거나, 자료끼리 다른 것입니다.</p>
+      </div>
+      <div class="table-wrap">
+        <table class="dt">
+          <caption>확인할 것</caption>
+          <thead><tr><th class="num w-min">#</th><th class="minw-text">내용</th><th class="minw-text">지금 쓴 값과 근거</th></tr></thead>
+          <tbody>
+            <tr><td class="num">1</td><td>운영 앱(<code>web/app</code>) 자동 시험 수</td><td>해결: 시험 결과서가 직접 돌린 값을 씁니다. vitest 541 통과(파일 63개), Playwright 19 통과. <a href="test-report.html">시험 결과서</a> 참고.</td></tr>
+            <tr><td class="num">2</td><td>두뇌 도구 수</td><td>SP7 이전 메모에는 텔레그램 22개 · 앱 28개로 적힌 곳이 있으나, main <code>722d0d6</code>의 <code>tool_names_for()</code>는 28 · 35개를 돌려줍니다(SP7 습관 도구 6개와 <code>ui_habit_check</code>가 더해짐). 코드 값을 씁니다. G-BE2(PR #139, 열림)가 병합되면 앱 39개(조각 4개 더함).</td></tr>
+            <tr><td class="num">3</td><td>SP5 A12 실기기 수용 테스트의 상태</td><td>병합 목록(A00~A11)에 없습니다. 끝났는지, 남았는지 확인이 필요합니다.</td></tr>
+            <tr><td class="num">4</td><td>SP1-13(노트북 작업 스케줄러 점검, 이슈 #16)의 상태</td><td>v1 산출물에서는 “노트북 점검 대기”였습니다. 이슈 #16은 닫혔고 <a href="schedule.html#SP1-13">일정</a>은 구현됨으로 둡니다. <a href="test-report.html">시험 결과서</a>는 노트북 수동 확인을 “노트북 확인 대기”로 둡니다. 노트북에서 끝났는지 확인이 필요합니다.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -276,20 +473,27 @@
     <div>
       <h2>원천 자료</h2>
       <ul class="sources">
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP1 스펙 v4 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-sp1-secretary-core-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>마스터 설계 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-my-planner-master-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-my-planner-master-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>구현 계획 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/plans/2026-10-23-sp1-secretary-core.md" target="_blank" rel="noopener"><code>docs/superpowers/plans/2026-10-23-sp1-secretary-core.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>마스터 설계 §1~§4 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-23-my-planner-master-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-23-my-planner-master-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP3-4 스펙 §1, §6(API 계약 정본) <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md" target="_blank" rel="noopener"><code>docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>SP5 · SP6 · SP7 스펙 머리와 §1 <a class="ext" href="https://github.com/dahun428-fx/my-planner/tree/main/docs/superpowers/specs" target="_blank" rel="noopener"><code>docs/superpowers/specs/</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-file-md"/></svg><span>구현 계획의 티켓 지도 <a class="ext" href="https://github.com/dahun428-fx/my-planner/tree/main/docs/superpowers/plans" target="_blank" rel="noopener"><code>docs/superpowers/plans/</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-decision"/></svg><span>결정 기록 ADR 0001~0011 (특히 0008, 0009) <a class="ext" href="https://github.com/dahun428-fx/my-planner/tree/main/docs/adr" target="_blank" rel="noopener"><code>docs/adr/</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-github"/></svg><span>main 커밋 기록(병합된 티켓) <a class="ext" href="https://github.com/dahun428-fx/my-planner/commits/main" target="_blank" rel="noopener"><code>git log 722d0d6</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
       </ul>
     </div>
     <div>
-      <h2>함께 보는 기록</h2>
+      <h2>직접 센 값</h2>
       <ul class="sources">
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-doc-glossary"/></svg><span>용어집 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/GLOSSARY.md" target="_blank" rel="noopener"><code>GLOSSARY.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-decision"/></svg><span>결정 기록 <a class="ext" href="https://github.com/dahun428-fx/my-planner/tree/main/docs/adr" target="_blank" rel="noopener"><code>docs/adr/0001~0006</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
-        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-test"/></svg><span>스파이크 결과 <a class="ext" href="https://github.com/dahun428-fx/my-planner/blob/main/docs/spikes/2026-10-sp1.md" target="_blank" rel="noopener"><code>docs/spikes/2026-10-sp1.md</code><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></a></span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-test"/></svg><span><code>.venv/bin/python -m pytest -q</code> → 1393 passed, 2 skipped</span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-test"/></svg><span><code>web/dashboard: npx vitest run</code> → 16 files, 138 passed</span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-tool"/></svg><span><code>src/my_planner/tools/mcp_adapter.py</code> <code>tool_names_for("telegram" | "app")</code> → 28 · 35</span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-api"/></svg><span><code>src/my_planner/api/server.py</code> <code>build_app()</code> 경로 → 26</span></li>
+        <li><svg class="ic ic--sm" aria-hidden="true"><use href="#i-database"/></svg><span><code>src/my_planner/store/migrations/001~012.sql</code></span></li>
       </ul>
     </div>
-    <div class="site-foot__fine"><span>my-planner · SP1 비서 코어 산출물</span><span class="tnum">작성 2026-10-23</span><span>독자: 프로젝트 매니저</span></div>
+    <div class="site-foot__fine"><span>my-planner · v2 전체 시스템 산출물</span><span class="tnum">작성 2026-10-24 · main 722d0d6</span><span>독자: 프로젝트 매니저</span></div>
   </div>
 </footer>
 <script src="assets/site.js" defer></script>
+</body>
+</html>

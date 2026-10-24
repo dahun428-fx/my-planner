@@ -15,8 +15,9 @@ interface TickProps {
 /**
  * Area radar (13.4): the latest quarter solid, the quarter right before it dashed, ↓ beside an area that went
  * down. A missing area has no vertex (the polygon skips it, it is not 0). Values are also a list for readers.
+ * With no scored quarter yet, `emptyText` says on which day the scores come (DU-05).
  */
-export function AreaRadar({ areas }: { areas: CurveAreas[] }) {
+export function AreaRadar({ areas, emptyText }: { areas: CurveAreas[]; emptyText: string }) {
   const headingId = useId();
   const { ref: box, width } = useWidth<HTMLDivElement>(296);
   const { latest, previous, rows } = radarRows(areas);
@@ -39,7 +40,7 @@ export function AreaRadar({ areas }: { areas: CurveAreas[] }) {
     <section className="panel radar-panel" aria-labelledby={headingId}>
       <h2 id={headingId}>{latest ? T.areas(latest, previous) : T.areasTitle}</h2>
       {latest === null ? (
-        <p className="empty">{T.empty.areas}</p>
+        <p className="empty">{emptyText}</p>
       ) : (
         <div className="radar" ref={box}>
           <div aria-hidden="true" className="radar-figure">

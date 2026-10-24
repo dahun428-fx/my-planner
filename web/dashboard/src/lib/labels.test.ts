@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import schema from "../api/schema.json";
-import { LOOP_LABELS, SKIP_REASON_LABELS, checkinLabel, loopLabel, runStatusLabel, skipLabel } from "./labels";
+import {
+  BAND_TEXT,
+  CURVE_TEXT,
+  LOOP_LABELS,
+  OFFLINE_TEXT,
+  REVIEW_TEXT,
+  SETTINGS_TEXT,
+  SKIP_REASON_LABELS,
+  TIME_TEXT,
+  checkinLabel,
+  loopLabel,
+  runStatusLabel,
+  skipLabel,
+} from "./labels";
 
 const enumOf = (name: string): string[] => {
   const health = schema.models.Health as unknown as { $defs: Record<string, { enum?: string[] }> };
@@ -41,5 +54,38 @@ describe("labels", () => {
     expect(checkinLabel("pending")).toBe("답 기다림");
     expect(checkinLabel("missed")).toBe("지나감");
     expect(checkinLabel(null)).toBeNull();
+  });
+});
+
+/** Every string a label group can give: plain values, list items, and functions called with sample values. */
+function strings(v: unknown): string[] {
+  if (typeof v === "string") return [v];
+  if (typeof v === "function") return strings((v as (...a: unknown[]) => unknown)("10월 25일(일)", "3시간 전", 3));
+  if (typeof v === "number") return [];
+  if (Array.isArray(v)) return v.flatMap(strings);
+  if (typeof v === "object" && v !== null) return Object.values(v).flatMap(strings);
+  return [];
+}
+
+describe("v1.1 words", () => {
+  it("the band words live here (B3)", () => {
+    expect(BAND_TEXT.none).toBe("BE 연결 전");
+    expect(BAND_TEXT.offShort).toBe("BE 꺼짐");
+  });
+
+  const fresh = strings([OFFLINE_TEXT, TIME_TEXT, SETTINGS_TEXT.help, CURVE_TEXT.upcoming, REVIEW_TEXT, BAND_TEXT.none, BAND_TEXT.offShort]);
+
+  it("are many", () => {
+    expect(fresh.length).toBeGreaterThan(25);
+  });
+
+  it.each([
+    ["an em dash", /\u2014/],
+    ["an emoji", /\p{Extended_Pictographic}/u],
+    ["a D-day count", /D-\d/],
+    ["a count of days left", /\ub0a8\uc740|\ub0a8\uc558|\uc77c \ub0a8/],
+    ["a percentage", /%|\ud37c\uc13c\ud2b8/],
+  ])("have no %s", (_what, pattern) => {
+    expect(fresh.filter((t) => pattern.test(t))).toEqual([]);
   });
 });

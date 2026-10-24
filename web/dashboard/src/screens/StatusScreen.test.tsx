@@ -69,6 +69,25 @@ describe("StatusScreen", () => {
     expect(document.querySelector("[style]")).toBeNull();
   });
 
+  it("marks a daily quest with a dot, not a box that looks tickable (DU-27)", async () => {
+    renderScreen();
+    await screen.findByText("첫 장면 색칠하기 (15~30분)");
+    const daily = document.querySelectorAll(".quests.daily .quest");
+    expect(daily).toHaveLength(status.daily_quests.length);
+    for (const q of daily) {
+      expect(q.querySelector(".quest-dot")).not.toBeNull();
+      expect(q.querySelector(".quest-dot")).toHaveAttribute("aria-hidden", "true");
+    }
+    expect(document.querySelector(".quest-mark, input, [role='checkbox']")).toBeNull();
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const css = readFileSync(join(__dirname, "../styles/globals.css"), "utf8");
+    expect(css).not.toContain(".quest-mark");
+    const rule = /\.quest-dot\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(rule).toMatch(/border-radius:\s*50%/); // round
+    expect(rule).not.toMatch(/inset|border:/); // filled, no outline like an empty box
+  });
+
   it("shows an older quarter next to its score and a dash for no score", async () => {
     const stats = status.stats.map((s) =>
       s.area === "career"

@@ -95,7 +95,7 @@ export function StatusView({ status: s }: { status: Status }) {
           <ul className="quests daily">
             {s.daily_quests.map((q) => (
               <li key={q.task_id} className="quest">
-                <span className="quest-mark" aria-hidden="true" />
+                <span className="quest-dot" aria-hidden="true" />
                 <span className="quest-title">
                   {T.daily(q.title)}
                   {q.parent_title && <span className="quest-parent meta">{q.parent_title}</span>}
@@ -139,10 +139,10 @@ function Loading() {
 
 /** (d) 게임형 상태창, spec 13.5: `GET /status` (the same snapshot as Telegram `/status`). Read only. */
 export function StatusScreen() {
-  const { ready, conn } = useConnection();
+  const { ready, conn, backOnline } = useConnection();
   const key = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
   const load = useCallback(async (): Promise<ApiResult<Status>> => (conn ? fetchApi(conn, "/status", isStatus) : NONE), [conn]);
-  const { result } = usePolling(load, 60_000, key);
+  const { result } = usePolling(load, 60_000, key, { wake: backOnline });
   return (
     <>
       <h1>{T.title}</h1>

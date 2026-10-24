@@ -334,6 +334,74 @@ h2 {
 .notice p + p {
   margin-top: 6px;
 }
+/* DU-02: what to check while the BE does not answer */
+.offline-card .offline-title {
+  font-weight: 600;
+}
+.offline-checks {
+  margin: 8px 0 4px;
+  padding-left: 1.4em;
+}
+.offline-checks li + li {
+  margin-top: 4px;
+}
+.offline-card a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--row);
+  color: var(--text);
+}
+
+/* DU-04: where the address and token come from */
+.help {
+  margin-top: var(--gap);
+}
+.help summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row);
+  margin: calc(-1 * var(--pad)) 0;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.help[open] summary {
+  margin-bottom: 0;
+}
+.help summary::-webkit-details-marker {
+  display: none;
+}
+.help summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 1.6px solid var(--muted);
+  border-bottom: 1.6px solid var(--muted);
+  transform: rotate(45deg);
+}
+.help[open] summary::after {
+  transform: rotate(-135deg);
+}
+.help-body p {
+  margin: 0 0 6px;
+}
+.help-title {
+  margin: 14px 0 4px;
+  font-size: var(--fs-section);
+}
+.help-code {
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  overflow-x: auto;
+  font-size: var(--fs-meta);
+}
+.help-shape {
+  overflow-wrap: anywhere;
+}
 .skeleton {
   height: 132px;
   background: var(--surface);
@@ -778,13 +846,15 @@ h2 {
   flex: none;
   white-space: nowrap;
 }
-.quest-mark {
+/* DU-27: a plain dot, not a box: the screen is read only. */
+.quest-dot {
   flex: none;
   align-self: center;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  box-shadow: inset 0 0 0 1.5px var(--neutral);
+  width: 6px;
+  height: 6px;
+  margin: 0 3px;
+  border-radius: 50%;
+  background: var(--neutral);
 }
 .quest-parent {
   display: block;
@@ -927,8 +997,7 @@ h2 {
   stroke-dasharray: 2 3;
 }
 .curve-cond-dot {
-  fill: var(--muted);
-  opacity: 0.4;
+  fill: var(--condition-dot);
 }
 .curve-now .recharts-curve {
   stroke: var(--text);
@@ -992,6 +1061,37 @@ h2 {
   display: grid;
   gap: 6px;
   padding: 4px;
+}
+/* DU-05: the next review days on a faint line, dates only */
+.upcoming {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 4px 0 2px;
+  padding: 10px 0 0;
+  list-style: none;
+  border-top: 1px dashed var(--control);
+}
+.upcoming-mark {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.upcoming-mark::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--hue);
+}
+.upcoming-day {
+  font-weight: 600;
+}
+.upcoming-what {
+  color: var(--muted);
+  font-size: var(--fs-meta);
 }
 .curve-figure + .curve-empty,
 .curve + .curve-empty,
