@@ -375,6 +375,19 @@ export function Settings() {
       </Group>
 
       <Group heading={copy.settings.about}>
+        {process.env.NEXT_PUBLIC_MEDIC_PROBE === "1" && (
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() =>
+              setTimeout(() => {
+                throw new Error("medic probe");
+              }, 0)
+            }
+          >
+            {copy.settings.probeThrow}
+          </button>
+        )}
         <Row title={copy.settings.appVersion} trailing={<span className={styles.value}>{pkg.version}</span>} />
         <Row title={copy.settings.beVersion} trailing={<span className={styles.value}>{health?.version.app ?? copy.settings.unknown}</span>} />
         <Row
