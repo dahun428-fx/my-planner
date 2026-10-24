@@ -8,8 +8,8 @@
 }
 .dot {
   display: block;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: var(--radius-pill);
   background: var(--hue);
 }
@@ -34,16 +34,23 @@
   font-variant-numeric: tabular-nums;
 }
 .undo {
-  min-height: var(--control-h);
-  min-width: var(--control-h);
-  padding: 0 0.5rem;
-  border: 0;
+  position: relative;
+  min-height: var(--small-control-h);
+  padding: 0 0.875rem;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
   font-size: var(--size-meta);
   font-weight: 600;
-  color: var(--hue);
+  color: var(--text-2);
   cursor: pointer;
+}
+/* 9장: the pill looks 32px tall but its hit area is the 44px control height. */
+.undo::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) -0.25rem;
 }
 .undo:disabled {
   opacity: 0.4;
@@ -68,7 +75,7 @@
   font: inherit;
   font-size: var(--size-body);
   font-weight: 600;
-  color: var(--hue);
+  color: var(--text);
   cursor: pointer;
 }
 .more:disabled {

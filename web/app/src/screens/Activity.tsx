@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { failureText, undoActivity, type UndoBlockReason } from "../api/actions";
-import { type ApiResult, apiGet } from "../api/client";
-import type { ActivityItem, ActivityResponse, CheckinList } from "../api/types.gen";
+import { type ApiResult, apiFetch, apiGet } from "../api/client";
+import type { ActivityItem, ActivityResponse, CheckinList, Today } from "../api/types.gen";
+import { validateModel } from "../api/validate";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
@@ -13,7 +14,7 @@ import { useToast } from "../components/Toast";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
-import { addDays, formatKst } from "../lib/time";
+import { addDays, formatKst, logicalDateOf } from "../lib/time";
 import page from "../styles/page.module.css";
 import { UiPart } from "../ui/registry";
 import styles from "./Activity.module.css";
@@ -32,6 +33,16 @@ interface FirstPage {
 const newestFirst = (a: ActivityItem, b: ActivityItem) => (a.at === b.at ? b.id - a.id : a.at < b.at ? 1 : -1);
 const isoSeconds = (ms: number) => new Date(ms).toISOString().replace(".000Z", "Z");
 
+// The BE before R4a leaves `next_before` (and maybe `next_since`) out; read that as null instead of a shape error.
+async function readPage(path: string): Promise<ApiResult<ActivityResponse>> {
+  const r = await apiFetch<unknown>("GET", path);
+  if (r.kind !== "ok") return r;
+  const raw = r.data;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { kind: "error", status: 200, code: "shape" };
+  const body = { next_before: null, next_since: null, ...raw };
+  return validateModel("ActivityResponse", body) ? { kind: "ok", data: body as ActivityResponse } : { kind: "error", status: 200, code: "shape" };
+}
+
 // Before R4a the BE has no order/before: it answers 400, or 200 with the oldest first and no next_before.
 function looksOldestFirst(r: ActivityResponse): boolean {
   if (r.next_before !== null || r.items.length < 2) return false;
@@ -43,7 +54,7 @@ async function loadBySince(): Promise<ApiResult<FirstPage>> {
   const all = new Map<number, ActivityItem>();
   let since: string | null = isoSeconds(Date.now() - WEEK_MS);
   for (let i = 0; i < SINCE_PAGES_MAX && since !== null; i++) {
-    const r: ApiResult<ActivityResponse> = await apiGet<ActivityResponse>(`/activity?since=${encodeURIComponent(since)}&limit=${SINCE_PAGE}`, "ActivityResponse");
+    const r: ApiResult<ActivityResponse> = await readPage(`/activity?since=${encodeURIComponent(since)}&limit=${SINCE_PAGE}`);
     if (r.kind !== "ok") return r;
     r.data.items.forEach((a) => all.set(a.id, a));
     const next: string | null = r.data.items.length === 0 || r.data.next_since === since ? null : r.data.next_since;
@@ -53,11 +64,16 @@ async function loadBySince(): Promise<ApiResult<FirstPage>> {
 }
 
 async function loadFirst(): Promise<ApiResult<FirstPage>> {
-  const r = await apiGet<ActivityResponse>(`/activity?order=desc&limit=${PAGE}`, "ActivityResponse");
+  const r = await readPage(`/activity?order=desc&limit=${PAGE}`);
   if (r.kind === "error" && r.status === 400 && r.code === "invalid_request") return loadBySince();
   if (r.kind !== "ok") return r;
   if (looksOldestFirst(r.data)) return loadBySince();
   return { kind: "ok", data: { items: [...r.data.items].sort(newestFirst), nextBefore: r.data.next_before } };
+}
+
+/** A line undone in this session shows as undone at once (older pages are not read again). */
+function applyUndone(items: ActivityItem[], undone: Readonly<Record<number, string>>): ActivityItem[] {
+  return items.map((a) => (undone[a.id] !== undefined && a.undone_at === null ? { ...a, undone_at: undone[a.id], undo_id: null } : a));
 }
 
 function mergeById(first: ActivityItem[], older: ActivityItem[]): ActivityItem[] {
@@ -71,6 +87,7 @@ export function Activity() {
   const toast = useToast();
   const { result, refresh } = usePolling<FirstPage>(loadFirst);
   const checkins = usePolling<CheckinList>(() => apiGet<CheckinList>("/checkins", "CheckinList"));
+  const todayPoll = usePolling<Today>(() => apiGet<Today>("/today", "Today"));
 
   const [older, setOlder] = useState<ActivityItem[]>([]);
   // undefined: no older page read yet (the cursor is the first page's); null: no more.
@@ -79,18 +96,16 @@ export function Activity() {
   const moreLock = useRef(false);
 
   const [notes, setNotes] = useState<Readonly<Record<number, UndoBlockReason>>>({});
+  const [undone, setUndone] = useState<Readonly<Record<number, string>>>({});
   const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
   const undoing = useRef(new Set<number>());
 
-  const readAgain = useCallback(() => {
-    setOlder([]);
-    setOlderCursor(undefined);
-    setNotes({});
-    return refresh();
-  }, [refresh]);
+  // Only the first page is read again; the older pages stay as they are.
+  const readAgain = useCallback(() => refresh(), [refresh]);
   useEffect(() => toast.onUndone(() => void readAgain()), [toast, readAgain]);
 
-  const live = result?.kind === "ok";
+  const offline = state?.kind === "offline" || result?.kind === "offline";
+  const live = result?.kind === "ok" && !offline;
   const pendingKey = checkins.result?.kind === "ok" ? checkins.result.data.items.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
   const { confirms, reread } = useConfirms(live ? pendingKey : "");
   const afterPartAction = useCallback(() => {
@@ -100,7 +115,7 @@ export function Activity() {
   }, [readAgain, checkins, reread]);
 
   const first = result?.kind === "ok" ? result.data : null;
-  const items = useMemo(() => (first ? mergeById(first.items, older) : []), [first, older]);
+  const items = useMemo(() => (first ? applyUndone(mergeById(first.items, older), undone) : []), [first, older, undone]);
   const cursor = olderCursor === undefined ? (first?.nextBefore ?? null) : olderCursor;
 
   const loadMore = async () => {
@@ -108,7 +123,7 @@ export function Activity() {
     moreLock.current = true;
     setLoadingMore(true);
     try {
-      const r = await apiGet<ActivityResponse>(`/activity?order=desc&limit=${PAGE}&before=${encodeURIComponent(cursor)}`, "ActivityResponse");
+      const r = await readPage(`/activity?order=desc&limit=${PAGE}&before=${encodeURIComponent(cursor)}`);
       if (r.kind !== "ok") {
         toast.show({ text: failureText(r) });
         return;
@@ -121,39 +136,41 @@ export function Activity() {
     }
   };
 
-  const undo = async (id: number) => {
-    if (undoing.current.has(id)) return; // the answer to the first press has not come yet
-    undoing.current.add(id);
+  const undo = async (rowId: number, undoId: number) => {
+    if (undoing.current.has(rowId)) return; // the answer to the first press has not come yet
+    undoing.current.add(rowId);
     setBusy(new Set(undoing.current));
     try {
-      const out = await undoActivity(id);
+      const out = await undoActivity(undoId);
       if (out.kind === "undone") {
+        setUndone((u) => ({ ...u, [rowId]: new Date().toISOString() }));
         toast.show({ text: out.confirmation });
         await readAgain();
       } else if (out.kind === "already_undone") {
+        setUndone((u) => ({ ...u, [rowId]: new Date().toISOString() }));
         await readAgain();
       } else if (out.kind === "blocked") {
-        setNotes((n) => ({ ...n, [id]: out.reason }));
+        setNotes((n) => ({ ...n, [rowId]: out.reason }));
       } else {
         const k = out.result.kind;
         const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
         toast.show({ text: known ? failureText(out.result) : copy.actions.undoFailed });
       }
     } finally {
-      undoing.current.delete(id);
+      undoing.current.delete(rowId);
       setBusy(new Set(undoing.current));
     }
   };
 
-  // Day groups by the Seoul calendar day of each line.
-  const today = formatKst(new Date().toISOString(), "date");
+  // Day groups by the BE's logical day (hours before 04:00 Seoul belong to the day before); "today" is /today.date.
+  const today = todayPoll.result?.kind === "ok" ? todayPoll.result.data.date : logicalDateOf(new Date().toISOString());
   const yesterday = addDays(today, -1);
   const groups: { day: string; head: string; rows: ActivityItem[] }[] = [];
   for (const a of items) {
-    const day = formatKst(a.at, "date");
+    const day = logicalDateOf(a.at);
     let g = groups[groups.length - 1];
     if (!g || g.day !== day) {
-      g = { day, head: day === today ? copy.activity.today : day === yesterday ? copy.activity.yesterday : formatKst(a.at, copy.dateStyle.monthDay), rows: [] };
+      g = { day, head: day === today ? copy.activity.today : day === yesterday ? copy.activity.yesterday : copy.dateParts.monthDay(Number(day.slice(5, 7)), Number(day.slice(8, 10))), rows: [] };
       groups.push(g);
     }
     g.rows.push(a);
@@ -163,13 +180,13 @@ export function Activity() {
     const hhmm = formatKst(a.at, "HH:mm");
     const meta = copy.activity.meta(hhmm, copy.actors[a.actor], copy.channels[a.channel]);
     const note = notes[a.id];
+    const undoId = a.undo_id;
     let trailing: React.ReactNode;
     if (a.undone_at !== null) trailing = <span className={styles.note}>{copy.activity.undoneAt(formatKst(a.undone_at, "HH:mm"))}</span>;
     else if (note) trailing = <span className={styles.note}>{copy.activity.undoBlocked[note]}</span>;
-    else if (a.undo_id !== null) {
-      const id = a.undo_id;
+    else if (undoId !== null) {
       trailing = (
-        <button type="button" className={styles.undo} disabled={busy.has(id)} onClick={() => void undo(id)}>
+        <button type="button" className={styles.undo} disabled={busy.has(a.id)} onClick={() => void undo(a.id, undoId)}>
           {copy.activity.undo}
         </button>
       );
@@ -193,15 +210,7 @@ export function Activity() {
   };
 
   let body: React.ReactNode;
-  if (result === null) {
-    body = (
-      <Group>
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} size="row" />
-        ))}
-      </Group>
-    );
-  } else if (result.kind === "offline") {
+  if (offline) {
     body = (
       <section className={styles.notice} role="status">
         <p className={styles.noticeText}>
@@ -216,6 +225,14 @@ export function Activity() {
           </Link>
         </div>
       </section>
+    );
+  } else if (result === null) {
+    body = (
+      <Group>
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} size="row" />
+        ))}
+      </Group>
     );
   } else if (result.kind === "unauthorized") {
     body = (
@@ -244,7 +261,7 @@ export function Activity() {
             <h2 className={styles.blockHeading}>{copy.activity.needsConfirm}</h2>
             {confirms.map((c) => (
               <div key={c.key} className={styles.blockItem}>
-                <UiPart name="ui_confirm" props={c.props} ctx={{ where: "today", readOnly: false, onAfterAction: afterPartAction }} />
+                <UiPart name="ui_confirm" props={c.props} ctx={{ where: "activity", readOnly: false, onAfterAction: afterPartAction }} />
               </div>
             ))}
           </section>

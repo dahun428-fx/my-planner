@@ -8,6 +8,7 @@ import type { ActivityResponse } from "../api/types.gen";
 import { copy } from "../lib/copy";
 import asc from "../test/fixtures/activity-asc.json";
 import desc1 from "../test/fixtures/activity-desc-1.json";
+import todayJson from "../test/fixtures/today.json";
 import desc2 from "../test/fixtures/activity-desc-2.json";
 import checkin341 from "../test/fixtures/checkin-341.json";
 import checkinsToday from "../test/fixtures/checkins-today.json";
@@ -16,6 +17,7 @@ import { BASE, server } from "../test/server";
 import { Activity } from "./Activity";
 
 beforeEach(() => {
+  bodies.length = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-24T20:00:00+09:00"));
 });
@@ -35,16 +37,21 @@ function serve(over: { first?: () => Response; checkins?: () => Response } = {})
       if (u.searchParams.get("before")) return HttpResponse.json(desc2 as ActivityResponse);
       return over.first ? over.first() : HttpResponse.json(desc1 as ActivityResponse);
     }),
+    http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)),
     http.get(`${BASE}/checkins`, () => (over.checkins ? over.checkins() : HttpResponse.json({ items: [] }))),
   );
   return urls;
 }
 
+const bodies: Record<string, unknown>[] = [];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 function undoes(answer: () => Response) {
   const ids: string[] = [];
   server.use(
-    http.post(`${BASE}/activity/:id/undo`, ({ params }) => {
+    http.post(`${BASE}/activity/:id/undo`, async ({ params, request }) => {
       ids.push(String(params.id));
+      bodies.push((await request.json()) as Record<string, unknown>);
       return answer();
     }),
   );
@@ -96,6 +103,7 @@ describe("Activity", () => {
     await userEvent.click(within(rowOf("‘장보기’를 내일로 옮겼어요")).getByRole("button", { name: copy.activity.undo }));
     expect(await screen.findByText("되돌렸어요")).toBeInTheDocument();
     expect(ids).toEqual(["120"]);
+    expect(bodies[0].client_msg_id).toMatch(UUID);
     await waitFor(() => expect(urls.length).toBeGreaterThan(before));
   });
 
@@ -131,10 +139,11 @@ describe("Activity", () => {
     expect(within(rowOf("‘장보기’를 내일로 옮겼어요")).queryByRole("button")).toBeNull();
     expect(screen.getAllByRole("button", { name: copy.activity.undo })).toHaveLength(1);
     expect(urls.length).toBe(n);
+    expect(screen.getAllByText(copy.activity.undoBlocked.superseded)).toHaveLength(1); // the row only, no toast
   });
 
   it("undo expired and not undoable", async () => {
-    serve();
+    const urls = serve();
     let code = "undo_expired";
     server.use(
       http.post(`${BASE}/activity/:id/undo`, () =>
@@ -147,9 +156,41 @@ describe("Activity", () => {
     await screen.findByText("‘장보기’를 내일로 옮겼어요");
     await userEvent.click(within(rowOf("‘장보기’를 내일로 옮겼어요")).getByRole("button", { name: copy.activity.undo }));
     expect(await screen.findByText(copy.activity.undoBlocked.undo_expired)).toBeInTheDocument();
+    const reads = urls.length;
     code = "not_undoable";
     await userEvent.click(within(rowOf("‘운동 30분’을 마쳤어요")).getByRole("button", { name: copy.activity.undo }));
     expect(await screen.findByText(copy.activity.undoBlocked.not_undoable)).toBeInTheDocument();
+    expect(urls.length).toBe(reads);
+    expect(screen.getAllByText(copy.activity.undoBlocked.not_undoable)).toHaveLength(1);
+    expect(screen.getAllByText(copy.activity.undoBlocked.undo_expired)).toHaveLength(1);
+  });
+
+  it("groups by the logical day and follows /today.date", async () => {
+    vi.setSystemTime(new Date("2026-10-25T01:30:00+09:00"));
+    const lateNight = { ...desc1.items[0], id: 130, at: "2026-10-24T15:30:00Z", summary: "자정 지나 한 일", undo_id: null }; // 00:30 on the 25th, Seoul
+    serve({ first: () => HttpResponse.json({ items: [lateNight, desc1.items[1], desc1.items[2]], next_since: null, next_before: null }) });
+    server.use(http.get(`${BASE}/today`, () => HttpResponse.json({ ...todayJson, date: "2026-10-24" })));
+    renderWithProviders(<Activity />);
+    await screen.findByText("자정 지나 한 일");
+    await waitFor(() => expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([copy.activity.today, copy.activity.yesterday]));
+    const group = screen.getByText("자정 지나 한 일").closest("section") as HTMLElement;
+    expect(within(group).getByText("‘운동 30분’을 마쳤어요")).toBeInTheDocument();
+    expect(within(group).getByText(copy.activity.meta("00:30", copy.actors.secretary, copy.channels.app))).toBeInTheDocument();
+  });
+
+  it("undo on an older page keeps the list and marks the row", async () => {
+    serve();
+    undoes(() => HttpResponse.json({ status: "undone", confirmation: "되돌렸어요" }));
+    renderWithProviders(<Activity />);
+    await screen.findByText("‘장보기’를 내일로 옮겼어요");
+    await userEvent.click(screen.getByRole("button", { name: copy.activity.more }));
+    await screen.findByText("‘치과 예약’을 더했어요");
+    server.use(http.post(`${BASE}/activity/:id/undo`, () => HttpResponse.json({ status: "undone", confirmation: "되돌렸어요" })));
+    // make an older row undoable by serving it so on the next page read
+    await userEvent.click(within(rowOf("‘장보기’를 내일로 옮겼어요")).getByRole("button", { name: copy.activity.undo }));
+    await screen.findByText("되돌렸어요");
+    expect(screen.getByText("‘치과 예약’을 더했어요")).toBeInTheDocument();
+    expect(screen.getByText("‘장보기’를 내일로 옮겼어요").closest("s")).not.toBeNull();
   });
 
   it("undo that fails says so", async () => {
@@ -210,6 +251,7 @@ describe("Activity", () => {
   it("falls back to since pages and reverses", async () => {
     const urls: URL[] = [];
     server.use(
+      http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)),
       http.get(`${BASE}/checkins`, () => HttpResponse.json({ items: [] })),
       http.get(`${BASE}/activity`, ({ request }) => {
         const u = new URL(request.url);
@@ -235,6 +277,7 @@ describe("Activity", () => {
   it("falls back when the BE answers 400", async () => {
     const urls: URL[] = [];
     server.use(
+      http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)),
       http.get(`${BASE}/checkins`, () => HttpResponse.json({ items: [] })),
       http.get(`${BASE}/activity`, ({ request }) => {
         const u = new URL(request.url);
@@ -286,6 +329,17 @@ describe("Activity", () => {
     renderWithProviders(<Activity />, { conn: "offline" });
     expect(await screen.findByText(copy.offline.later)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: copy.activity.undo })).toBeNull();
+  });
+
+  it("offline connection disables everything even when /activity answers", async () => {
+    serve({ checkins: () => HttpResponse.json(checkinsToday) });
+    renderWithProviders(<Activity />, { conn: "offline", catalog: true });
+    expect(await screen.findByText(copy.offline.later)).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(screen.queryByRole("button", { name: copy.activity.undo })).toBeNull();
+    expect(screen.queryByRole("button", { name: copy.activity.more })).toBeNull();
+    expect(screen.queryByRole("heading", { name: copy.activity.needsConfirm })).toBeNull();
+    expect(screen.queryByText("‘장보기’를 내일로 옮겼어요")).toBeNull();
   });
 
   it("unauthorized points to settings", async () => {
