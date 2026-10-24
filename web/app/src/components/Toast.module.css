@@ -1,0 +1,73 @@
+/* Sits above the tab bar (TabBar min-height 3.25rem). The live region stays in the page so
+   a screen reader hears the text when it appears. */
+.region {
+  position: fixed;
+  inset: auto 0 calc(3.25rem + env(safe-area-inset-bottom) + 0.5rem) 0;
+  z-index: 30;
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--pad);
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 100%;
+  min-height: var(--control-h);
+  padding: 0.25rem 0.5rem 0.25rem var(--pad);
+  background: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--radius-group);
+  animation: appear 180ms ease-out;
+}
+.text {
+  min-width: 0;
+  font-size: var(--size-meta);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.undo {
+  position: relative;
+  flex: none;
+  min-height: var(--small-control-h);
+  padding: 0 0.875rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* 9장: the pill looks 32px tall but its hit area is the 44px control height. */
+.undo::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) -0.25rem;
+}
+.undo:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.undo:focus-visible {
+  outline: 2px solid var(--on-primary);
+  outline-offset: 2px;
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

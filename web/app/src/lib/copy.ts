@@ -79,6 +79,9 @@ export const copy = {
     draftsHint: "확정하면 할 일이 돼요",
     confirm: "확정",
     confirmAll: "모두 확정",
+    confirmExpired: "확인 시간이 지났어요. 다시 해 주세요.",
+    keep: "그대로 두기",
+    change: "바꾸기",
   },
 
   activity: {
@@ -86,6 +89,11 @@ export const copy = {
     intro: "비서와 내가 바꾼 것. 가벼운 변경은 24시간 안에 되돌릴 수 있어요.",
     undo: "되돌리기",
     undoneAt: (hhmm: string) => `${hhmm}에 되돌림`,
+    undoBlocked: {
+      superseded: "뒤에 또 바뀌어서 못 되돌려요",
+      undo_expired: "24시간이 지났어요",
+      not_undoable: "되돌릴 수 없는 변경이에요",
+    },
     more: "더 보기",
   },
 
@@ -146,6 +154,12 @@ export const copy = {
     retry: "다시 시도",
     notFound: "찾는 화면이 없어요.",
     goToday: "오늘로 가기",
+  },
+
+  actions: {
+    failed: "저장하지 못했어요. 다시 해 주세요.",
+    offline: "비서에 닿지 않아요. 연결되면 다시 해 주세요.",
+    undoFailed: "되돌리지 못했어요. 다시 해 주세요.",
   },
 
   parts: {

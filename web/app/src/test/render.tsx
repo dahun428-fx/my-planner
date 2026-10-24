@@ -3,6 +3,7 @@ import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtim
 import type { NextRouter } from "next/router";
 import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
+import { ToastProvider } from "../components/Toast";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import { saveConn } from "../lib/connection";
 import { healthAnswers } from "./handlers";
@@ -54,7 +55,9 @@ export function renderWithProviders(ui: ReactElement, options: ProviderOptions =
   if (conn === "safe_mode") server.use(healthAnswers.safeMode());
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <RouterContext.Provider value={router}>
-      <ConnectionProvider>{children}</ConnectionProvider>
+      <ConnectionProvider>
+        <ToastProvider>{children}</ToastProvider>
+      </ConnectionProvider>
     </RouterContext.Provider>
   );
   return { router, ...render(ui, { wrapper: Wrapper, ...rest }) };

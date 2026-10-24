@@ -1,0 +1,41 @@
+.summary {
+  margin: 0;
+  padding: 0.5rem var(--pad) var(--pad);
+  font-size: var(--size-body);
+  text-align: center;
+}
+.buttons {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 var(--pad);
+}
+.keep,
+.change {
+  flex: 1;
+  min-height: var(--control-h);
+  border-radius: var(--radius-field);
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.keep {
+  border: 0;
+  background: var(--raised);
+  color: var(--text);
+}
+.change {
+  border: 0;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.keep:disabled,
+.change:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.keep:focus-visible,
+.change:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
