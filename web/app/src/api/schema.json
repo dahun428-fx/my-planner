@@ -1,0 +1,2734 @@
+{
+  "api": "v1",
+  "models": {
+    "CheckinDetail": {
+      "$defs": {
+        "CheckinCard": {
+          "additionalProperties": false,
+          "properties": {
+            "component": {
+              "title": "Component",
+              "type": "string"
+            },
+            "data": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Data"
+            },
+            "props": {
+              "additionalProperties": true,
+              "title": "Props",
+              "type": "object"
+            },
+            "toolCallId": {
+              "title": "Toolcallid",
+              "type": "string"
+            }
+          },
+          "required": [
+            "toolCallId",
+            "component",
+            "props"
+          ],
+          "title": "CheckinCard",
+          "type": "object"
+        },
+        "CheckinConversationIds": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App"
+            },
+            "telegram": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Telegram"
+            }
+          },
+          "required": [
+            "app",
+            "telegram"
+          ],
+          "title": "CheckinConversationIds",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "answered_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answered At"
+        },
+        "answered_via": {
+          "anyOf": [
+            {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answered Via"
+        },
+        "cadence": {
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "year"
+          ],
+          "title": "Cadence",
+          "type": "string"
+        },
+        "cards": {
+          "items": {
+            "$ref": "#/$defs/CheckinCard"
+          },
+          "title": "Cards",
+          "type": "array"
+        },
+        "conversation_ids": {
+          "$ref": "#/$defs/CheckinConversationIds"
+        },
+        "delivered_via": {
+          "items": {
+            "enum": [
+              "telegram",
+              "app"
+            ],
+            "type": "string"
+          },
+          "title": "Delivered Via",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "loop": {
+          "enum": [
+            "morning_brief",
+            "evening_checkin",
+            "review",
+            "return"
+          ],
+          "title": "Loop",
+          "type": "string"
+        },
+        "reply_until": {
+          "title": "Reply Until",
+          "type": "string"
+        },
+        "scheduled_for": {
+          "title": "Scheduled For",
+          "type": "string"
+        },
+        "sent_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sent At"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "answered",
+            "missed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "loop",
+        "cadence",
+        "scheduled_for",
+        "sent_at",
+        "delivered_via",
+        "state",
+        "answered_via",
+        "answered_at",
+        "reply_until",
+        "conversation_ids",
+        "text",
+        "cards"
+      ],
+      "title": "CheckinDetail",
+      "type": "object"
+    },
+    "CheckinList": {
+      "$defs": {
+        "CheckinConversationIds": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App"
+            },
+            "telegram": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Telegram"
+            }
+          },
+          "required": [
+            "app",
+            "telegram"
+          ],
+          "title": "CheckinConversationIds",
+          "type": "object"
+        },
+        "CheckinSummary": {
+          "additionalProperties": false,
+          "description": "답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 \"지나감\"이다.",
+          "properties": {
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "answered_via": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "telegram",
+                    "app"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered Via"
+            },
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "conversation_ids": {
+              "$ref": "#/$defs/CheckinConversationIds"
+            },
+            "delivered_via": {
+              "items": {
+                "enum": [
+                  "telegram",
+                  "app"
+                ],
+                "type": "string"
+              },
+              "title": "Delivered Via",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin",
+                "review",
+                "return"
+              ],
+              "title": "Loop",
+              "type": "string"
+            },
+            "reply_until": {
+              "title": "Reply Until",
+              "type": "string"
+            },
+            "scheduled_for": {
+              "title": "Scheduled For",
+              "type": "string"
+            },
+            "sent_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sent At"
+            },
+            "state": {
+              "enum": [
+                "pending",
+                "answered",
+                "missed"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "loop",
+            "cadence",
+            "scheduled_for",
+            "sent_at",
+            "delivered_via",
+            "state",
+            "answered_via",
+            "answered_at",
+            "reply_until",
+            "conversation_ids"
+          ],
+          "title": "CheckinSummary",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CheckinSummary"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "CheckinList",
+      "type": "object"
+    },
+    "CheckinSummary": {
+      "$defs": {
+        "CheckinConversationIds": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App"
+            },
+            "telegram": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Telegram"
+            }
+          },
+          "required": [
+            "app",
+            "telegram"
+          ],
+          "title": "CheckinConversationIds",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 \"지나감\"이다.",
+      "properties": {
+        "answered_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answered At"
+        },
+        "answered_via": {
+          "anyOf": [
+            {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Answered Via"
+        },
+        "cadence": {
+          "enum": [
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "year"
+          ],
+          "title": "Cadence",
+          "type": "string"
+        },
+        "conversation_ids": {
+          "$ref": "#/$defs/CheckinConversationIds"
+        },
+        "delivered_via": {
+          "items": {
+            "enum": [
+              "telegram",
+              "app"
+            ],
+            "type": "string"
+          },
+          "title": "Delivered Via",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "loop": {
+          "enum": [
+            "morning_brief",
+            "evening_checkin",
+            "review",
+            "return"
+          ],
+          "title": "Loop",
+          "type": "string"
+        },
+        "reply_until": {
+          "title": "Reply Until",
+          "type": "string"
+        },
+        "scheduled_for": {
+          "title": "Scheduled For",
+          "type": "string"
+        },
+        "sent_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sent At"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "answered",
+            "missed"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "loop",
+        "cadence",
+        "scheduled_for",
+        "sent_at",
+        "delivered_via",
+        "state",
+        "answered_via",
+        "answered_at",
+        "reply_until",
+        "conversation_ids"
+      ],
+      "title": "CheckinSummary",
+      "type": "object"
+    },
+    "Conditions": {
+      "$defs": {
+        "ConditionItem": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "score": {
+              "title": "Score",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date",
+            "score",
+            "note"
+          ],
+          "title": "ConditionItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /conditions` (6.3.4).",
+      "properties": {
+        "average": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Average"
+        },
+        "days_logged": {
+          "title": "Days Logged",
+          "type": "integer"
+        },
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ConditionItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "items",
+        "days_logged",
+        "average"
+      ],
+      "title": "Conditions",
+      "type": "object"
+    },
+    "Conversations": {
+      "$defs": {
+        "ConversationItem": {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "title": "Channel",
+              "type": "string"
+            },
+            "closed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "run",
+                "chat",
+                "plan"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "last_message_at": {
+              "title": "Last Message At",
+              "type": "string"
+            },
+            "opened_at": {
+              "title": "Opened At",
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "channel",
+            "run_id",
+            "opened_at",
+            "last_message_at",
+            "closed_at"
+          ],
+          "title": "ConversationItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ConversationItem"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "Conversations",
+      "type": "object"
+    },
+    "Drafts": {
+      "$defs": {
+        "DraftItem": {
+          "additionalProperties": false,
+          "properties": {
+            "conversation_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conversation Id"
+            },
+            "expires_at": {
+              "title": "Expires At",
+              "type": "string"
+            },
+            "proposed_at": {
+              "title": "Proposed At",
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "todo": {
+              "$ref": "#/$defs/Todo"
+            }
+          },
+          "required": [
+            "todo",
+            "proposed_at",
+            "expires_at",
+            "run_id",
+            "conversation_id"
+          ],
+          "title": "DraftItem",
+          "type": "object"
+        },
+        "Todo": {
+          "additionalProperties": false,
+          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
+          "properties": {
+            "areas": {
+              "items": {
+                "enum": [
+                  "career",
+                  "finance",
+                  "health",
+                  "relationships",
+                  "learning",
+                  "quality_of_life"
+                ],
+                "type": "string"
+              },
+              "title": "Areas",
+              "type": "array"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TodoPriority"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "open",
+                "done",
+                "dropped"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "status",
+            "planned_for",
+            "scheduled_at",
+            "parent_id",
+            "areas",
+            "note",
+            "priority",
+            "completed_at"
+          ],
+          "title": "Todo",
+          "type": "object"
+        },
+        "TodoPriority": {
+          "additionalProperties": false,
+          "properties": {
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "rank": {
+              "title": "Rank",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cadence",
+            "period",
+            "rank"
+          ],
+          "title": "TodoPriority",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /drafts` (6.3.8): 만료 전 초안만.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/DraftItem"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "Drafts",
+      "type": "object"
+    },
+    "Error": {
+      "$defs": {
+        "ErrorDetail": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "unauthorized",
+                "not_found",
+                "conflict",
+                "superseded",
+                "undo_expired",
+                "too_large",
+                "rejected",
+                "not_undoable",
+                "too_many_auth_failures",
+                "safe_mode",
+                "internal"
+              ],
+              "title": "Code",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "title": "ErrorDetail",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorDetail"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "title": "ErrorBody",
+      "type": "object"
+    },
+    "Health": {
+      "$defs": {
+        "HealthBrain": {
+          "additionalProperties": false,
+          "properties": {
+            "auth": {
+              "enum": [
+                "ok",
+                "login",
+                "billing",
+                "unknown"
+              ],
+              "title": "Auth",
+              "type": "string"
+            },
+            "calls_cap": {
+              "title": "Calls Cap",
+              "type": "integer"
+            },
+            "calls_today": {
+              "title": "Calls Today",
+              "type": "integer"
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checked At"
+            },
+            "limited_until": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limited Until"
+            }
+          },
+          "required": [
+            "auth",
+            "checked_at",
+            "limited_until",
+            "calls_today",
+            "calls_cap"
+          ],
+          "title": "HealthBrain",
+          "type": "object"
+        },
+        "HealthErrors": {
+          "additionalProperties": false,
+          "properties": {
+            "by_event": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "title": "By Event",
+              "type": "object"
+            },
+            "since": {
+              "title": "Since",
+              "type": "string"
+            },
+            "total": {
+              "title": "Total",
+              "type": "integer"
+            },
+            "window_hours": {
+              "title": "Window Hours",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "window_hours",
+            "since",
+            "total",
+            "by_event"
+          ],
+          "title": "HealthErrors",
+          "type": "object"
+        },
+        "HealthNotify": {
+          "additionalProperties": false,
+          "properties": {
+            "effective": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "title": "Effective",
+              "type": "string"
+            },
+            "primary": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "title": "Primary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "primary",
+            "effective"
+          ],
+          "title": "HealthNotify",
+          "type": "object"
+        },
+        "HealthProactive": {
+          "additionalProperties": false,
+          "properties": {
+            "cap": {
+              "title": "Cap",
+              "type": "integer"
+            },
+            "sent_today": {
+              "title": "Sent Today",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sent_today",
+            "cap"
+          ],
+          "title": "HealthProactive",
+          "type": "object"
+        },
+        "HealthPush": {
+          "additionalProperties": false,
+          "properties": {
+            "last_success_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Success At"
+            },
+            "subscriptions": {
+              "title": "Subscriptions",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "subscriptions",
+            "last_success_at"
+          ],
+          "title": "HealthPush",
+          "type": "object"
+        },
+        "HealthRun": {
+          "additionalProperties": false,
+          "properties": {
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "checkin_state": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "answered",
+                    "missed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checkin State"
+            },
+            "delivered_via": {
+              "items": {
+                "enum": [
+                  "telegram",
+                  "app"
+                ],
+                "type": "string"
+              },
+              "title": "Delivered Via",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin",
+                "review",
+                "return"
+              ],
+              "title": "Loop",
+              "type": "string"
+            },
+            "scheduled_for": {
+              "title": "Scheduled For",
+              "type": "string"
+            },
+            "skip_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Skip Reason"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "loop",
+            "cadence",
+            "scheduled_for",
+            "status",
+            "skip_reason",
+            "delivered_via",
+            "checkin_state"
+          ],
+          "title": "HealthRun",
+          "type": "object"
+        },
+        "HealthVersion": {
+          "additionalProperties": false,
+          "properties": {
+            "api": {
+              "const": "v1",
+              "title": "Api",
+              "type": "string"
+            },
+            "app": {
+              "title": "App",
+              "type": "string"
+            },
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            },
+            "ui_catalog": {
+              "title": "Ui Catalog",
+              "type": "string"
+            }
+          },
+          "required": [
+            "app",
+            "api",
+            "schema",
+            "ui_catalog"
+          ],
+          "title": "HealthVersion",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /health` (6.3.1).",
+      "properties": {
+        "brain": {
+          "$ref": "#/$defs/HealthBrain"
+        },
+        "errors": {
+          "$ref": "#/$defs/HealthErrors"
+        },
+        "last_tick_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Tick At"
+        },
+        "notify": {
+          "$ref": "#/$defs/HealthNotify"
+        },
+        "now": {
+          "title": "Now",
+          "type": "string"
+        },
+        "paused_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Paused Until"
+        },
+        "plan_open": {
+          "title": "Plan Open",
+          "type": "boolean"
+        },
+        "polling": {
+          "enum": [
+            "running",
+            "down",
+            "stopped"
+          ],
+          "title": "Polling",
+          "type": "string"
+        },
+        "proactive": {
+          "$ref": "#/$defs/HealthProactive"
+        },
+        "push": {
+          "$ref": "#/$defs/HealthPush"
+        },
+        "runs_today": {
+          "items": {
+            "$ref": "#/$defs/HealthRun"
+          },
+          "title": "Runs Today",
+          "type": "array"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/HealthVersion"
+        }
+      },
+      "required": [
+        "status",
+        "version",
+        "now",
+        "started_at",
+        "last_tick_at",
+        "polling",
+        "brain",
+        "proactive",
+        "paused_until",
+        "plan_open",
+        "notify",
+        "runs_today",
+        "errors",
+        "push"
+      ],
+      "title": "Health",
+      "type": "object"
+    },
+    "Messages": {
+      "$defs": {
+        "MessageItem": {
+          "additionalProperties": false,
+          "description": "대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.",
+          "properties": {
+            "at": {
+              "title": "At",
+              "type": "string"
+            },
+            "channel": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "title": "Channel",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "speaker": {
+              "enum": [
+                "user",
+                "secretary"
+              ],
+              "title": "Speaker",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tools",
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "speaker",
+            "text",
+            "tools",
+            "channel"
+          ],
+          "title": "MessageItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MessageItem"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "Messages",
+      "type": "object"
+    },
+    "Priorities": {
+      "$defs": {
+        "Todo": {
+          "additionalProperties": false,
+          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
+          "properties": {
+            "areas": {
+              "items": {
+                "enum": [
+                  "career",
+                  "finance",
+                  "health",
+                  "relationships",
+                  "learning",
+                  "quality_of_life"
+                ],
+                "type": "string"
+              },
+              "title": "Areas",
+              "type": "array"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TodoPriority"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "open",
+                "done",
+                "dropped"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "status",
+            "planned_for",
+            "scheduled_at",
+            "parent_id",
+            "areas",
+            "note",
+            "priority",
+            "completed_at"
+          ],
+          "title": "Todo",
+          "type": "object"
+        },
+        "TodoPriority": {
+          "additionalProperties": false,
+          "properties": {
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "rank": {
+              "title": "Rank",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cadence",
+            "period",
+            "rank"
+          ],
+          "title": "TodoPriority",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /priorities` (6.3.7).",
+      "properties": {
+        "cadence": {
+          "enum": [
+            "week",
+            "month",
+            "quarter",
+            "year"
+          ],
+          "title": "Cadence",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "period": {
+          "title": "Period",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cadence",
+        "period",
+        "items"
+      ],
+      "title": "Priorities",
+      "type": "object"
+    },
+    "SafeModeHealth": {
+      "$defs": {
+        "HealthVersion": {
+          "additionalProperties": false,
+          "properties": {
+            "api": {
+              "const": "v1",
+              "title": "Api",
+              "type": "string"
+            },
+            "app": {
+              "title": "App",
+              "type": "string"
+            },
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schema"
+            },
+            "ui_catalog": {
+              "title": "Ui Catalog",
+              "type": "string"
+            }
+          },
+          "required": [
+            "app",
+            "api",
+            "schema",
+            "ui_catalog"
+          ],
+          "title": "HealthVersion",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "안전 모드의 `GET /health`: 상태, 판, 지금만.",
+      "properties": {
+        "now": {
+          "title": "Now",
+          "type": "string"
+        },
+        "status": {
+          "const": "safe_mode",
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/HealthVersion"
+        }
+      },
+      "required": [
+        "status",
+        "version",
+        "now"
+      ],
+      "title": "SafeModeHealth",
+      "type": "object"
+    },
+    "SchemaBundle": {
+      "additionalProperties": false,
+      "description": "`GET /schema` (6.4): 모든 모델의 JSON 스키마.",
+      "properties": {
+        "api": {
+          "const": "v1",
+          "title": "Api",
+          "type": "string"
+        },
+        "models": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Models",
+          "type": "object"
+        }
+      },
+      "required": [
+        "api",
+        "models"
+      ],
+      "title": "SchemaBundle",
+      "type": "object"
+    },
+    "Today": {
+      "$defs": {
+        "AppCard": {
+          "additionalProperties": false,
+          "description": "고정 카드 (6.3.2 `cards`, 운영 앱용). 티켓 09 전에는 목록이 비어 있다.",
+          "properties": {
+            "component": {
+              "title": "Component",
+              "type": "string"
+            },
+            "data": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Data"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "order": {
+              "title": "Order",
+              "type": "integer"
+            },
+            "pinned_at": {
+              "title": "Pinned At",
+              "type": "string"
+            },
+            "props": {
+              "additionalProperties": true,
+              "title": "Props",
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "component",
+            "order",
+            "pinned_at",
+            "props"
+          ],
+          "title": "AppCard",
+          "type": "object"
+        },
+        "CheckinConversationIds": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "App"
+            },
+            "telegram": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Telegram"
+            }
+          },
+          "required": [
+            "app",
+            "telegram"
+          ],
+          "title": "CheckinConversationIds",
+          "type": "object"
+        },
+        "CheckinSummary": {
+          "additionalProperties": false,
+          "description": "답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 \"지나감\"이다.",
+          "properties": {
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            },
+            "answered_via": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "telegram",
+                    "app"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered Via"
+            },
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "conversation_ids": {
+              "$ref": "#/$defs/CheckinConversationIds"
+            },
+            "delivered_via": {
+              "items": {
+                "enum": [
+                  "telegram",
+                  "app"
+                ],
+                "type": "string"
+              },
+              "title": "Delivered Via",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin",
+                "review",
+                "return"
+              ],
+              "title": "Loop",
+              "type": "string"
+            },
+            "reply_until": {
+              "title": "Reply Until",
+              "type": "string"
+            },
+            "scheduled_for": {
+              "title": "Scheduled For",
+              "type": "string"
+            },
+            "sent_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sent At"
+            },
+            "state": {
+              "enum": [
+                "pending",
+                "answered",
+                "missed"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "loop",
+            "cadence",
+            "scheduled_for",
+            "sent_at",
+            "delivered_via",
+            "state",
+            "answered_via",
+            "answered_at",
+            "reply_until",
+            "conversation_ids"
+          ],
+          "title": "CheckinSummary",
+          "type": "object"
+        },
+        "ConditionItem": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "score": {
+              "title": "Score",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date",
+            "score",
+            "note"
+          ],
+          "title": "ConditionItem",
+          "type": "object"
+        },
+        "TodayBrief": {
+          "additionalProperties": false,
+          "properties": {
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin",
+                "review",
+                "return"
+              ],
+              "title": "Loop",
+              "type": "string"
+            },
+            "run_id": {
+              "title": "Run Id",
+              "type": "integer"
+            },
+            "sent_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sent At"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "run_id",
+            "loop",
+            "text",
+            "sent_at"
+          ],
+          "title": "TodayBrief",
+          "type": "object"
+        },
+        "TodayTodo": {
+          "additionalProperties": false,
+          "properties": {
+            "group": {
+              "enum": [
+                "priority",
+                "scheduled",
+                "open"
+              ],
+              "title": "Group",
+              "type": "string"
+            },
+            "todo": {
+              "$ref": "#/$defs/Todo"
+            }
+          },
+          "required": [
+            "group",
+            "todo"
+          ],
+          "title": "TodayTodo",
+          "type": "object"
+        },
+        "Todo": {
+          "additionalProperties": false,
+          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
+          "properties": {
+            "areas": {
+              "items": {
+                "enum": [
+                  "career",
+                  "finance",
+                  "health",
+                  "relationships",
+                  "learning",
+                  "quality_of_life"
+                ],
+                "type": "string"
+              },
+              "title": "Areas",
+              "type": "array"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TodoPriority"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "open",
+                "done",
+                "dropped"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "status",
+            "planned_for",
+            "scheduled_at",
+            "parent_id",
+            "areas",
+            "note",
+            "priority",
+            "completed_at"
+          ],
+          "title": "Todo",
+          "type": "object"
+        },
+        "TodoPriority": {
+          "additionalProperties": false,
+          "properties": {
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "rank": {
+              "title": "Rank",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cadence",
+            "period",
+            "rank"
+          ],
+          "title": "TodoPriority",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /today` (6.3.2).",
+      "properties": {
+        "brief": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TodayBrief"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cards": {
+          "items": {
+            "$ref": "#/$defs/AppCard"
+          },
+          "title": "Cards",
+          "type": "array"
+        },
+        "checkins": {
+          "items": {
+            "$ref": "#/$defs/CheckinSummary"
+          },
+          "title": "Checkins",
+          "type": "array"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConditionItem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/$defs/TodayTodo"
+          },
+          "title": "Todos",
+          "type": "array"
+        },
+        "weekday": {
+          "title": "Weekday",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "weekday",
+        "brief",
+        "condition",
+        "todos",
+        "checkins",
+        "cards"
+      ],
+      "title": "Today",
+      "type": "object"
+    },
+    "Todo": {
+      "$defs": {
+        "TodoPriority": {
+          "additionalProperties": false,
+          "properties": {
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "rank": {
+              "title": "Rank",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cadence",
+            "period",
+            "rank"
+          ],
+          "title": "TodoPriority",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
+      "properties": {
+        "areas": {
+          "items": {
+            "enum": [
+              "career",
+              "finance",
+              "health",
+              "relationships",
+              "learning",
+              "quality_of_life"
+            ],
+            "type": "string"
+          },
+          "title": "Areas",
+          "type": "array"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Completed At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Id"
+        },
+        "planned_for": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Planned For"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TodoPriority"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scheduled_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scheduled At"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "open",
+            "done",
+            "dropped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "status",
+        "planned_for",
+        "scheduled_at",
+        "parent_id",
+        "areas",
+        "note",
+        "priority",
+        "completed_at"
+      ],
+      "title": "Todo",
+      "type": "object"
+    },
+    "TodoRef": {
+      "additionalProperties": false,
+      "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "cadence": {
+          "anyOf": [
+            {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cadence"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "open",
+            "done",
+            "dropped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "cadence",
+        "area",
+        "status"
+      ],
+      "title": "TodoRef",
+      "type": "object"
+    },
+    "TodoRefs": {
+      "$defs": {
+        "TodoRef": {
+          "additionalProperties": false,
+          "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "cadence": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "day",
+                    "week",
+                    "month",
+                    "quarter",
+                    "year"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cadence"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "open",
+                "done",
+                "dropped"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "cadence",
+            "area",
+            "status"
+          ],
+          "title": "TodoRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "화면 조각 `data`의 모양 `{\"todos\": [TodoRef]}` (6.4.1 도구 출력, 6.4.5).",
+      "properties": {
+        "todos": {
+          "items": {
+            "$ref": "#/$defs/TodoRef"
+          },
+          "title": "Todos",
+          "type": "array"
+        }
+      },
+      "required": [
+        "todos"
+      ],
+      "title": "TodoRefs",
+      "type": "object"
+    },
+    "UiCatalog": {
+      "$defs": {
+        "UiComponent": {
+          "additionalProperties": false,
+          "properties": {
+            "origin": {
+              "enum": [
+                "brain",
+                "harness"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "schema": {
+              "additionalProperties": true,
+              "title": "Schema",
+              "type": "object"
+            }
+          },
+          "required": [
+            "origin",
+            "schema"
+          ],
+          "title": "UiComponent",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /ui/catalog` (6.4.7).",
+      "properties": {
+        "components": {
+          "additionalProperties": {
+            "$ref": "#/$defs/UiComponent"
+          },
+          "title": "Components",
+          "type": "object"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "components"
+      ],
+      "title": "UiCatalog",
+      "type": "object"
+    },
+    "Week": {
+      "$defs": {
+        "Todo": {
+          "additionalProperties": false,
+          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
+          "properties": {
+            "areas": {
+              "items": {
+                "enum": [
+                  "career",
+                  "finance",
+                  "health",
+                  "relationships",
+                  "learning",
+                  "quality_of_life"
+                ],
+                "type": "string"
+              },
+              "title": "Areas",
+              "type": "array"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            },
+            "planned_for": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Planned For"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TodoPriority"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scheduled_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scheduled At"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "open",
+                "done",
+                "dropped"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "status",
+            "planned_for",
+            "scheduled_at",
+            "parent_id",
+            "areas",
+            "note",
+            "priority",
+            "completed_at"
+          ],
+          "title": "Todo",
+          "type": "object"
+        },
+        "TodoPriority": {
+          "additionalProperties": false,
+          "properties": {
+            "cadence": {
+              "enum": [
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year"
+              ],
+              "title": "Cadence",
+              "type": "string"
+            },
+            "period": {
+              "title": "Period",
+              "type": "string"
+            },
+            "rank": {
+              "title": "Rank",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "cadence",
+            "period",
+            "rank"
+          ],
+          "title": "TodoPriority",
+          "type": "object"
+        },
+        "WeekDay": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "is_today": {
+              "title": "Is Today",
+              "type": "boolean"
+            },
+            "todos": {
+              "items": {
+                "$ref": "#/$defs/Todo"
+              },
+              "title": "Todos",
+              "type": "array"
+            },
+            "weekday": {
+              "title": "Weekday",
+              "type": "string"
+            }
+          },
+          "required": [
+            "date",
+            "weekday",
+            "is_today",
+            "todos"
+          ],
+          "title": "WeekDay",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다.",
+      "properties": {
+        "days": {
+          "items": {
+            "$ref": "#/$defs/WeekDay"
+          },
+          "title": "Days",
+          "type": "array"
+        },
+        "end": {
+          "title": "End",
+          "type": "string"
+        },
+        "priorities": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "title": "Priorities",
+          "type": "array"
+        },
+        "start": {
+          "title": "Start",
+          "type": "string"
+        },
+        "week": {
+          "title": "Week",
+          "type": "string"
+        }
+      },
+      "required": [
+        "week",
+        "start",
+        "end",
+        "priorities",
+        "days"
+      ],
+      "title": "Week",
+      "type": "object"
+    }
+  }
+}

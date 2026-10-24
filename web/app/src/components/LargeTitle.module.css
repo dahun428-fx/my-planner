@@ -1,0 +1,27 @@
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--pad);
+  padding: var(--gap) var(--pad) 0.5rem;
+}
+.text {
+  min-width: 0;
+}
+.meta {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.title {
+  margin: 0;
+  font-size: var(--size-title);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+.trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+}

@@ -1,0 +1,39 @@
+{
+  "name": "my-planner-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "test": "vitest run",
+    "test:tz": "TZ=America/Los_Angeles vitest run src/lib/time.test.ts",
+    "typecheck": "tsc --noEmit",
+    "gen:types": "node scripts/gen-types.mjs",
+    "check:csp": "node scripts/check-csp.mjs",
+    "lint:copy": "node scripts/lint-copy.mjs",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^2.0.284",
+    "@cfworker/json-schema": "^4.1.1",
+    "ai": "^5.0.281",
+    "idb-keyval": "^6.3.0",
+    "next": "^15.5.28",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "fake-indexeddb": "^6.2.6",
+    "jsdom": "^29.1.1",
+    "json-schema-to-typescript": "^16.0.0",
+    "msw": "^2.15.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}

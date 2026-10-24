@@ -1,0 +1,10 @@
+{
+  "status": "safe_mode",
+  "version": {
+    "app": "0.2.0",
+    "api": "v1",
+    "schema": 10,
+    "ui_catalog": "2026-10-24.2"
+  },
+  "now": "2026-10-24T08:00:05Z"
+}
