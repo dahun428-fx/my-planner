@@ -148,3 +148,21 @@
   color: var(--muted);
   text-align: right;
 }
+
+/* ui_period_list (6.4): a small 13/600 --muted head per day, CheckRow rows under it. */
+.period {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.dayGroup {
+  display: flex;
+  flex-direction: column;
+}
+.dayHead {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
