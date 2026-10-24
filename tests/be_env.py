@@ -1,0 +1,213 @@
+"""BE 끝에서 끝까지 시험 이음매 `BeEnv` (SP3-4 티켓 01, 모든 수용 시험이 쓴다).
+
+실제 조립 함수 `app.build_be`에 가짜 두뇌(`FakeBrain`), 가짜 전송(`FakeSender`), 가짜 시계와 sleep을 끼우고,
+API는 aiohttp `TestClient`로, 텔레그램 입력은 SP1 `handle_update` 경로로 넣는다.
+
+    async with BeEnv.start(tmp_path, script=[FakeTurn([], "좋은 아침이에요")], start=kst(...)) as env:
+        await env.tick()
+        resp = await env.get("/health")
+
+시작 시각 1분 전에 설치하고 tick한 것으로 둔다(`installed_at`, `last_seen_at`): 1분 tick이 이미 돌고 있던 BE처럼
+`start` 직전의 예정 회차를 다음 `tick()`이 만든다.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import itertools
+import sqlite3
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from aiohttp import ClientResponse
+from aiohttp.test_utils import TestClient, TestServer
+from fakes import FakeBrain, FakeSender, FakeTurn, fake_sleep, make_settings
+from telegram import Update
+
+from my_planner.api.health import ErrorCounter
+from my_planner.api.server import API_PREFIX, ApiDeps, build_app
+from my_planner.app import BeParts, build_be
+from my_planner.bot.telegram_io import handle_update
+from my_planner.clock import FakeClock, to_iso
+from my_planner.store.db import migrate, open_db, open_ro
+
+TEST_TOKEN = "test-token-" + "x" * 40  # 꾸며 낸 값(51자). 로그 검사 시험이 이 문자열을 찾는다
+OWNER = 42
+DRAIN_STEPS = 10_000
+
+
+class RecordingBot:
+    """명령 답(`bot.send_message`)과 버튼 답(`answer_callback_query`)을 적는 가짜 텔레그램 봇."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[int, str]] = []
+        self.answers: list[tuple[str, str | None]] = []
+
+    async def send_message(self, chat_id: int, text: str, reply_markup: Any = None, **kw: Any) -> None:
+        self.sent.append((chat_id, text))
+
+    async def answer_callback_query(self, callback_query_id: str, text: str | None = None, **kw: Any) -> bool:
+        self.answers.append((callback_query_id, text))
+        return True
+
+
+def _unix(dt: datetime) -> int:
+    return int(dt.timestamp())
+
+
+class BeEnv:
+    def __init__(
+        self, *, parts: BeParts, client: TestClient, clock: FakeClock, brain: FakeBrain, sender: FakeSender,
+        conn: sqlite3.Connection, db_path: Path, deps: ApiDeps,
+    ) -> None:
+        self.parts = parts
+        self.client = client
+        self.clock = clock
+        self.brain = brain
+        self.sender = sender
+        self.conn = conn
+        self.db_path = db_path
+        self.deps = deps
+        self.settings = deps.settings
+        self.bot = RecordingBot()
+        self._ids = itertools.count(1000)
+
+    @classmethod
+    @asynccontextmanager
+    async def start(
+        cls,
+        tmp_path: Path,
+        *,
+        script: list[FakeTurn] | tuple[FakeTurn, ...] = (),
+        start: datetime,
+        overrides: dict[str, Any] | None = None,
+    ) -> AsyncIterator[BeEnv]:
+        settings = make_settings(tmp_path, **{"api_token": TEST_TOKEN, **(overrides or {})})
+        db_path = settings.paths.state_dir / "planner.db"
+        conn = open_db(db_path)
+        migrate(conn)
+        clock = FakeClock(start)
+        brains: list[FakeBrain] = []
+        senders: list[FakeSender] = []
+
+        def brain_factory(tools: Any) -> FakeBrain:
+            brains.append(FakeBrain(list(script), tools, clock=clock))
+            return brains[0]
+
+        def sender_factory(_tasks: Any) -> FakeSender:
+            senders.append(FakeSender())
+            return senders[0]
+
+        parts = build_be(settings, conn, clock, brain_factory=brain_factory, sender_factory=sender_factory,
+                         sleep=fake_sleep(clock))
+        before = to_iso(start - timedelta(minutes=1))
+        parts.state.set("installed_at", before)
+        parts.state.set("last_seen_at", before)
+        deps = ApiDeps(
+            settings=settings, clock=clock, token=TEST_TOKEN, read_conn=lambda: open_ro(db_path),
+            dispatcher=parts.dispatcher, errors=ErrorCounter(clock),
+            polling_state=lambda: "down" if parts.runner.polling_down else "running",
+            started_at=start, transcripts=parts.transcripts,
+        )
+        client = TestClient(TestServer(build_app(deps)))
+        await client.start_server()
+        parts.dispatcher.start()
+        env = cls(parts=parts, client=client, clock=clock, brain=brains[0], sender=senders[0], conn=conn,
+                  db_path=db_path, deps=deps)
+        try:
+            yield env
+        finally:
+            await parts.dispatcher.stop(timeout=5)
+            await client.close()
+            conn.close()
+
+    # --- API ---
+
+    async def request(self, method: str, path: str, *, token: str | None = TEST_TOKEN, **kw: Any) -> ClientResponse:
+        """`path`가 `/api/`로 시작하지 않으면 `/api/v1`을 붙인다. `token=None`이면 인증 헤더 없이."""
+        headers = dict(kw.pop("headers", {}) or {})
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        url = path if path.startswith("/api/") else API_PREFIX + path
+        return await self.client.request(method, url, headers=headers, **kw)
+
+    async def get(self, path: str, **kw: Any) -> ClientResponse:
+        return await self.request("GET", path, **kw)
+
+    async def post(self, path: str, **kw: Any) -> ClientResponse:
+        return await self.request("POST", path, **kw)
+
+    async def put(self, path: str, **kw: Any) -> ClientResponse:
+        return await self.request("PUT", path, **kw)
+
+    async def delete(self, path: str, **kw: Any) -> ClientResponse:
+        return await self.request("DELETE", path, **kw)
+
+    # --- 텔레그램과 루프 ---
+
+    async def telegram(self, text: str, *, sent_at: datetime | None = None) -> str:
+        """사용자가 텔레그램에 글을 보낸다(SP1 `handle_update` 경로). 디스패처 큐가 빌 때까지 기다린다."""
+        uid = next(self._ids)
+        update = Update.de_json(
+            {
+                "update_id": uid,
+                "message": {
+                    "message_id": uid,
+                    "date": _unix(sent_at or self.clock.now()),
+                    "chat": {"id": OWNER, "type": "private"},
+                    "from": {"id": OWNER, "is_bot": False, "first_name": "사용자"},
+                    "text": text,
+                },
+            },
+            self.bot,  # type: ignore[arg-type]
+        )
+        p = self.parts
+        verdict = await handle_update(
+            update, bot=self.bot, owner_id=self.settings.owner_telegram_id, state=p.state, dispatcher=p.dispatcher,
+            transcripts=p.transcripts, clock=self.clock, tools=p.tools, callbacks=p.callbacks, router=p.router,
+            sleep=fake_sleep(self.clock),
+        )
+        await self.drain()
+        return verdict
+
+    async def press(self, data: str, *, message_id: int | None = None) -> str:
+        """버튼을 누른다(가짜 `CallbackQuery` → `parts.callbacks`). 처리 결과 이름을 돌려준다."""
+        uid = next(self._ids)
+        update = Update.de_json(
+            {
+                "update_id": uid,
+                "callback_query": {
+                    "id": f"cb{uid}",
+                    "from": {"id": OWNER, "is_bot": False, "first_name": "사용자"},
+                    "chat_instance": "ci",
+                    "data": data,
+                    "message": {
+                        "message_id": message_id if message_id is not None else uid,
+                        "date": _unix(self.clock.now()),
+                        "chat": {"id": OWNER, "type": "private"},
+                        "from": {"id": 1, "is_bot": True, "first_name": "비서"},
+                        "text": "꾸민 회차 본문",
+                    },
+                },
+            },
+            self.bot,  # type: ignore[arg-type]
+        )
+        assert update.callback_query is not None
+        result = await self.parts.callbacks(update.callback_query)
+        await self.drain()
+        return result
+
+    async def tick(self) -> None:
+        self.parts.runner.tick()
+        await self.drain()
+
+    async def drain(self) -> None:
+        """디스패처 큐가 비고 처리 중인 일이 없을 때까지 양보한다."""
+        for _ in range(DRAIN_STEPS):
+            await asyncio.sleep(0)
+            if self.parts.dispatcher.idle:
+                return
+        raise AssertionError("BeEnv.drain: 디스패처가 끝내 쉬지 않았다")

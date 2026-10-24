@@ -21,6 +21,8 @@ class Conversation:
     opened_at: datetime
     last_message_at: datetime
     closed_at: datetime | None
+    channel: str = "telegram"  # 'telegram' | 'app' (SP3-4 5.1)
+    forked_from: int | None = None
 
 
 def _row(r: sqlite3.Row) -> Conversation:
@@ -33,6 +35,8 @@ def _row(r: sqlite3.Row) -> Conversation:
         opened_at=from_iso(r["opened_at"]),
         last_message_at=from_iso(r["last_message_at"]),
         closed_at=from_iso(r["closed_at"]) if r["closed_at"] else None,
+        channel=r["channel"],
+        forked_from=r["forked_from"],
     )
 
 

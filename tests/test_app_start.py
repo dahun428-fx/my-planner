@@ -1,5 +1,4 @@
 import asyncio
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -70,7 +69,10 @@ def started(tmp_path, monkeypatch):
 
     root = tmp_path / "root"
     root.mkdir()
-    shutil.copy(REPO / "config.toml", root / "config.toml")
+    # SP1 시험은 API를 끈 설정으로 돈다(스펙 15 "api.enabled = false면 SP1과 똑같이 돈다"). API 시험은 _enable_api
+    toml = (REPO / "config.toml").read_text(encoding="utf-8")
+    assert "[api]\nenabled = true\n" in toml
+    (root / "config.toml").write_text(toml.replace("[api]\nenabled = true\n", "[api]\nenabled = false\n"), encoding="utf-8")
     (root / ".env").write_text("TELEGRAM_BOT_TOKEN=123:test-token\nOWNER_TELEGRAM_ID=42\n", encoding="utf-8")
     monkeypatch.setenv("MY_PLANNER_ROOT", str(root))
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)

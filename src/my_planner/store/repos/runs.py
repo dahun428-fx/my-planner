@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, tzinfo
+from zoneinfo import ZoneInfo
 
 from my_planner.clock import Clock, from_iso, to_iso
 from my_planner.domain import Cadence, LoopKey, RunStatus, SkipReason
@@ -26,6 +27,8 @@ class Run:
     conversation_id: int | None
     merged_run_ids: list[int] = field(default_factory=list)
     finished_at: datetime | None = None  # done이면 보낸 때(전송이 끝나 done으로 바꾼 시각)
+    answered_at: datetime | None = None  # 처음 답한 시각(SP3-4 6.4.5)
+    answered_via: str | None = None  # 'telegram' | 'app'
 
 
 def _row(r: sqlite3.Row) -> Run:
@@ -42,6 +45,8 @@ def _row(r: sqlite3.Row) -> Run:
         conversation_id=r["conversation_id"],
         merged_run_ids=[int(i) for i in json.loads(r["merged_run_ids"])],
         finished_at=from_iso(r["finished_at"]) if r["finished_at"] else None,
+        answered_at=from_iso(r["answered_at"]) if r["answered_at"] else None,
+        answered_via=r["answered_via"],
     )
 
 
@@ -92,6 +97,26 @@ class RunsRepo:
             (to_iso(start), to_iso(end)),
         ).fetchall()
         return [_row(r) for r in rows]
+
+    def on_logical_date(self, d: date, tz: str | tzinfo, boundary: time) -> list[Run]:
+        """예정 시각의 논리적 날짜가 `d`인 회차, 시간순(`GET /health`의 `runs_today`)."""
+        zone = ZoneInfo(tz) if isinstance(tz, str) else tz
+        start = datetime.combine(d, boundary, zone)
+        end = datetime.combine(d + timedelta(days=1), boundary, zone)
+        rows = self.conn.execute(
+            "SELECT * FROM runs WHERE scheduled_for >= ? AND scheduled_for < ? ORDER BY scheduled_for, id",
+            (to_iso(start), to_iso(end)),
+        ).fetchall()
+        return [_row(r) for r in rows]
+
+    def merged_into(self, id: int) -> Run | None:
+        """이 회차를 `merged_run_ids`에 둔 primary 회차(합쳐 보낸 회차)."""
+        r = self.conn.execute(
+            "SELECT * FROM runs WHERE EXISTS (SELECT 1 FROM json_each(runs.merged_run_ids) WHERE value = ?) "
+            "ORDER BY id LIMIT 1",
+            (id,),
+        ).fetchone()
+        return _row(r) if r is not None else None
 
     def with_status(self, *statuses: RunStatus) -> list[Run]:
         marks = ", ".join("?" for _ in statuses)

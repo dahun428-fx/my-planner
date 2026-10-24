@@ -262,6 +262,11 @@ class Runner:
         self._ticked = False  # 이 프로세스에서 tick을 한 번이라도 했는가
         self._polling_down = False  # 폴링 재시작이 안 됐다: tick마다 다시 해 본다
 
+    @property
+    def polling_down(self) -> bool:
+        """폴링 재시작이 안 된 채다(`GET /health`의 `polling: down`)."""
+        return self._polling_down
+
     def register_daily(self, job: Callable[[date], None]) -> None:
         """하루 한 번 작업. 논리적 날짜가 바뀐 뒤 첫 tick 끝에서 등록 순서대로 부른다."""
         self._daily.append(job)

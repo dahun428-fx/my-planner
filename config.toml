@@ -43,3 +43,15 @@ review_days = 3
 [retention]
 log_days = 30       # 로그 보관 일수
 backup_count = 14   # DB 백업 보관 개수
+
+# HTTP API (SP3-4). 127.0.0.1에만 연다. 밖에서는 tailscale serve로만(Funnel은 쓰지 않는다)
+[api]
+enabled = true
+host = "127.0.0.1"
+port = 8787
+cors_origins = []          # 예: ["https://my-planner-dash.vercel.app", "https://my-planner-app.vercel.app"]
+cors_origin_regex = ""     # 비우면 쓰지 않는다
+max_body_kb = 64
+
+[notify]
+default_primary = "app"   # app_state.notify_primary가 없을 때. 유효한 푸시 구독이 없으면 실제로는 텔레그램(7.3 D1a)
