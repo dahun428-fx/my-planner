@@ -554,6 +554,7 @@ CREATE TABLE status_titles (
 | `limited_until`, `paused_until` | `app_state.limited_until`, `app_state.pause_until`(지난 값은 `null`) |
 | `runs_today` | `runs` 가운데 `scheduled_for`의 논리적 날짜가 오늘인 행. `delivered_via`는 `run_deliveries.status='sent'`인 통로. `checkin_state`는 6.4.5 |
 | `errors` | `api/health.py`의 `ErrorCounter`: 루트 로거에 붙인 처리기가 WARNING 이상 기록을 **이벤트 이름**(`log.warning("send_error")`의 첫 인자)으로만 센다. 메모리에만 있고 24시간 창, 프로세스 시작 후부터다(`since`). 재시작하면 0이다. 로그 파일을 다시 읽지 않는 대신 재시작 전 오류는 보이지 않는다(받아들임) |
+| `inbound_pending_oldest_at` | (SP6 3.4에서 추가) 받은 메시지 중 아직 답을 만들지 않은 가장 오래된 것의 시각, 없으면 `null`. 자동 복구 감시자가 무응답을 잡는 데 쓴다 |
 | `push` | `push_subscriptions`의 `disabled_at IS NULL` 개수, 가장 늦은 `last_success_at` |
 | `notify` | `primary`는 설정값(`app_state.notify_primary`, 없으면 `notify.default_primary`), `effective`는 지금 회차가 실제로 갈 통로(7.3 D1a) |
 
