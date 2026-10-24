@@ -35,6 +35,8 @@ class SubprocessShell:
                 env=env,
                 timeout=timeout,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 creationflags=flags,
@@ -44,4 +46,8 @@ class SubprocessShell:
             if isinstance(out, bytes):
                 out = out.decode("utf-8", "replace")
             return 124, out or "timeout"
+        except FileNotFoundError:
+            return 127, f"{args[0]} not found"
+        except OSError as exc:
+            return 126, str(exc)
         return proc.returncode, proc.stdout or ""

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -50,3 +51,18 @@ def test_schema_created_once(tmp_path: Path) -> None:
     assert b.get("fp1") is not None
     tables = {r[0] for r in b._db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"incidents", "kv", "notices"} <= tables
+
+
+def test_set_state_validation_and_context_manager(tmp_path: Path) -> None:
+    import pytest
+
+    with MedicStore(tmp_path / "medic.db") as store:
+        store.upsert_signal(_sig(T0), T0)
+        with pytest.raises(ValueError):
+            store.set_state("fp1", "bogus")
+        with pytest.raises(ValueError):
+            store.set_state("fp1", "open", nope=1)
+        with pytest.raises(KeyError):
+            store.set_state("missing", "open")
+    with pytest.raises(sqlite3.ProgrammingError):
+        store.get("fp1")

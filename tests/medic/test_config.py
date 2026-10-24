@@ -58,3 +58,34 @@ def test_repr_hides_tokens(tmp_path: Path) -> None:
     for secret in (TOKEN, GH, TG):
         assert secret not in text
     assert "***" in text
+
+
+def test_env_parsing_edge_cases(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_bytes(
+        b"\xef\xbb\xbfAPI_TOKEN=a=b==\nexport MEDIC_GITHUB_TOKEN=gh\nTELEGRAM_BOT_TOKEN=\n"
+    )
+    cfg = load_config(tmp_path, environ={})
+    assert cfg.api_token == "a=b=="
+    assert cfg.github_token == "gh"
+    assert cfg.telegram_token is None
+
+
+def test_missing_env_and_api_enabled_defaults_true(tmp_path: Path) -> None:
+    (tmp_path / "config.toml").write_text("[api]\nport = 9000\n", encoding="utf-8")
+    cfg = load_config(tmp_path, environ={"API_TOKEN": TOKEN})
+    assert cfg.api_enabled is True
+    assert cfg.api_base == "http://127.0.0.1:9000/api/v1"
+    assert load_config(tmp_path, environ={}).api_enabled is False
+
+
+def test_environ_takes_precedence_over_env_file(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    cfg = load_config(tmp_path, environ={"MEDIC_GITHUB_TOKEN": "fromenv", "OWNER_TELEGRAM_ID": "7"})
+    assert cfg.github_token == "fromenv"
+    assert cfg.owner_telegram_id == "7"
+    assert cfg.telegram_token == TG
+
+
+def test_day_boundary_accepts_seconds(tmp_path: Path) -> None:
+    (tmp_path / "config.toml").write_text('day_boundary = "04:00:00"\n', encoding="utf-8")
+    assert load_config(tmp_path, environ={}).day_boundary == time(4, 0)

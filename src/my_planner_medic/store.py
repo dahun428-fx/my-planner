@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from .signals import Signal
 
@@ -59,10 +59,19 @@ def _row_to_incident(row: tuple[Any, ...]) -> Incident:
 class MedicStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(path)
+        self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.executescript(_SCHEMA)
         self._db.commit()
+
+    def close(self) -> None:
+        self._db.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def get(self, fp: str) -> Incident | None:
         row = self._db.execute(
@@ -113,9 +122,11 @@ class MedicStore:
             else:
                 values[k] = v
         sets = ", ".join(f"{k}=?" for k in values)
-        self._db.execute(
+        cur = self._db.execute(
             f"UPDATE incidents SET {sets} WHERE fingerprint=?", (*values.values(), fp)
         )
+        if cur.rowcount == 0:
+            raise KeyError(fp)
         self._db.commit()
 
     def kv_get(self, key: str) -> str | None:

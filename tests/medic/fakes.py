@@ -62,15 +62,39 @@ class FakeHttp:
         return item
 
 
+@dataclass
+class ShellCall:
+    args: list[str]
+    cwd: Path
+    timeout: int
+    env: dict[str, str] | None
+
+
 class FakeShell:
-    """명령(앞부분 일치) -> (returncode, stdout) 규칙. 규칙 없으면 (0, "")."""
+    """명령(앞부분 일치) -> (returncode, stdout) 규칙. 규칙 없으면 (0, "").
+
+    규칙에 결과 목록을 주면 호출마다 하나씩 꺼내고 마지막 값을 되풀이한다.
+    """
 
     def __init__(self) -> None:
-        self.rules: list[tuple[tuple[str, ...], tuple[int, str]]] = []
-        self.calls: list[list[str]] = []
+        self.rules: list[tuple[tuple[str, ...], list[tuple[int, str]]]] = []
+        self.calls: list[ShellCall] = []
 
-    def on(self, *prefix: str, returns: tuple[int, str] = (0, "")) -> None:
-        self.rules.append((prefix, returns))
+    @property
+    def commands(self) -> list[list[str]]:
+        return [c.args for c in self.calls]
+
+    def on(
+        self,
+        *prefix: str,
+        returns: tuple[int, str] | list[tuple[int, str]] = (0, ""),
+    ) -> None:
+        results = returns if isinstance(returns, list) else [returns]
+        self.rules.append((prefix, list(results)))
+
+    def missing(self, exe: str) -> None:
+        """실행 파일이 없는 것처럼 127을 돌려준다."""
+        self.on(exe, returns=(127, f"{exe} not found"))
 
     def run(
         self,
@@ -80,8 +104,8 @@ class FakeShell:
         timeout: int = 600,
         env: dict[str, str] | None = None,
     ) -> tuple[int, str]:
-        self.calls.append(list(args))
-        for prefix, result in reversed(self.rules):
+        self.calls.append(ShellCall(list(args), cwd, timeout, env))
+        for prefix, results in reversed(self.rules):
             if tuple(args[: len(prefix)]) == prefix:
-                return result
+                return results.pop(0) if len(results) > 1 else results[0]
         return 0, ""

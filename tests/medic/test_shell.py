@@ -15,3 +15,8 @@ def test_subprocess_shell_merges_stderr_and_times_out(tmp_path: Path) -> None:
     assert code == 3 and "a" in out and "b" in out
     code, out = sh.run([sys.executable, "-c", "import time;time.sleep(5)"], cwd=tmp_path, timeout=1)
     assert code == 124 and out
+
+
+def test_missing_executable_returns_127(tmp_path: Path) -> None:
+    code, out = SubprocessShell().run(["no-such-exe-xyz"], cwd=tmp_path)
+    assert code == 127 and "not found" in out

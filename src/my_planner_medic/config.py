@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from datetime import time
 from pathlib import Path
@@ -56,10 +58,11 @@ def parse_env(text: str) -> dict[str, str]:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
-        out[key.strip()] = value
+        out[key] = value
     return out
 
 
@@ -71,21 +74,28 @@ def _read_toml(path: Path) -> dict[str, Any]:
 
 
 def _parse_time(value: str) -> time:
-    hh, mm = value.split(":")
-    return time(int(hh), int(mm))
+    parts = [int(p) for p in value.split(":")]
+    if len(parts) not in (2, 3):
+        raise ValueError(f"bad time: {value!r}")
+    return time(*parts)
 
 
-def load_config(root: Path) -> MedicConfig:
+def load_config(root: Path, environ: Mapping[str, str] | None = None) -> MedicConfig:
     medic = _read_toml(root / "config.medic.toml")
     base = _read_toml(root / "config.toml")
     env_path = root / ".env"
-    env = parse_env(env_path.read_text(encoding="utf-8")) if env_path.exists() else {}
+    file_env = parse_env(env_path.read_text(encoding="utf-8-sig")) if env_path.exists() else {}
+    process_env = os.environ if environ is None else environ
+
+    def secret(key: str) -> str | None:
+        # BE(pydantic-settings)와 같은 우선순위: 프로세스 환경변수 > .env
+        return process_env.get(key) or file_env.get(key) or None
 
     api = base.get("api", {})
     host = api.get("host", "127.0.0.1")
     port = api.get("port", 8787)
-    token = env.get("API_TOKEN") or None
-    api_enabled = bool(api.get("enabled", False)) and token is not None and (
+    token = secret("API_TOKEN")
+    api_enabled = bool(api.get("enabled", True)) and token is not None and (
         len(token) >= API_TOKEN_MIN_CHARS
     )
     known = {f.name for f in fields(MedicConfig)}
@@ -96,9 +106,9 @@ def load_config(root: Path) -> MedicConfig:
         api_base=f"http://{host}:{port}/api/v1",
         api_enabled=api_enabled,
         api_token=token,
-        github_token=env.get("MEDIC_GITHUB_TOKEN") or None,
-        telegram_token=env.get("TELEGRAM_BOT_TOKEN") or None,
-        owner_telegram_id=env.get("OWNER_TELEGRAM_ID") or None,
+        github_token=secret("MEDIC_GITHUB_TOKEN"),
+        telegram_token=secret("TELEGRAM_BOT_TOKEN"),
+        owner_telegram_id=secret("OWNER_TELEGRAM_ID"),
         timezone=base.get("timezone", "Asia/Seoul"),
         day_boundary=_parse_time(base.get("day_boundary", "04:00")),
         schedule=base.get("schedule", {}),
