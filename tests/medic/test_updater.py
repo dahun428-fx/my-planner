@@ -551,6 +551,13 @@ def test_rollback_restores_db_when_schema_changed(tmp_path: Path) -> None:
     live.execute("PRAGMA user_version=2")
     live.commit()
     assert Path(f"{env.db}-wal").exists()
+    # 실제로는 BE 작업이 꺼진 뒤라 연결이 없다. Windows는 열린 파일을 옮기지 못하므로
+    # 체크포인트 안 된 WAL을 복사해 두고 연결을 닫은 뒤(닫으면 WAL이 지워진다) 되돌려 놓는다
+    snap = {suffix: Path(f"{env.db}{suffix}").read_bytes() for suffix in ("", "-wal")}
+    live.close()
+    for suffix, data in snap.items():
+        Path(f"{env.db}{suffix}").write_bytes(data)
+    Path(f"{env.db}-shm").unlink(missing_ok=True)
     env.signal(FP)
     env.tick(5)
     failed = tmp_path / "state" / "backups" / f"failed-{NEW}"
@@ -558,7 +565,6 @@ def test_rollback_restores_db_when_schema_changed(tmp_path: Path) -> None:
     assert {"planner.db", "planner.db-wal"} <= names
     assert filecmp.cmp(backup, env.db, shallow=False)
     assert not Path(f"{env.db}-wal").exists()
-    live.close()
     check = sqlite3.connect(failed / "planner.db")
     assert check.execute("PRAGMA user_version").fetchone() == (2,)  # 손으로 되살릴 수 있다
     check.close()
@@ -1224,3 +1230,79 @@ def test_keep_enabled_starts_when_task_state_unknown(tmp_path: Path) -> None:
     env.tick(5)  # 포기: 작업은 켜져 있지만 돌고 있는지 모름 → Enable+Start
     assert env.dip() is None
     assert "Enable-ScheduledTask" in env.cmds[-1] and "Start-ScheduledTask" in env.cmds[-1]
+
+
+def test_updater_ignores_pinned_medic_diff_and_cleans_before_merge(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.store.kv_set("medic_pinned", PREV)  # medic_boot가 되돌려 둔 표시
+    env.shell.on("git", "status", returns=(0, " M src/my_planner_medic/updater.py\0"))
+    env.tick()
+    assert env.has("merge --ff-only") and "dirty_tree" not in {k for _, k in env.notifier.daily_calls}
+    checkout = next(i for i, c in enumerate(env.cmds) if "checkout HEAD -- src/my_planner_medic" in c)
+    merge = next(i for i, c in enumerate(env.cmds) if "merge --ff-only" in c)
+    assert checkout < merge
+    assert env.store.kv_get("medic_pinned") is None
+
+
+def test_pinned_does_not_hide_other_hand_edits(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.store.kv_set("medic_pinned", PREV)
+    env.shell.on("git", "status", returns=(0, " M src/my_planner/app.py\0 M src/my_planner_medic/a.py\0"))
+    env.tick()
+    assert not env.has("merge --ff-only")
+    assert {k for _, k in env.notifier.daily_calls} == {"dirty_tree"}
+
+
+def test_verify_ok_of_medic_deploy_keeps_previous_sha_as_last_good(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    env.changed("src/my_planner_medic/updater.py")
+    deployed(env)
+    for _ in range(3):
+        env.tick(5)
+    assert env.updater.self_updated
+    good = json.loads((tmp_path / "state" / "medic-last-good.json").read_text())
+    assert good == {"sha": PREV, "new_sha": NEW}  # 새 medic이 60초를 넘기기 전까지는 이전 커밋이 마지막 좋은 것
+
+
+def test_deploy_while_medic_pinned_is_a_medic_change_and_records_pinned_as_last_good(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    pinned = "d" * 40
+    env.store.kv_set("medic_pinned", pinned)  # medic_boot가 되돌려 둔 상태: 디스크는 pinned의 medic
+    deployed(env)  # medic 경로가 없는 범위(PREV..NEW)
+    for _ in range(3):
+        env.tick(5)
+    assert env.updater.self_updated  # 디스크의 medic이 새 트리와 다르니 다시 떠야 한다
+    good = json.loads((tmp_path / "state" / "medic-last-good.json").read_text())
+    assert good == {"sha": pinned, "new_sha": NEW}
+
+
+def test_pinned_deploy_arms_medic_revert_before_checkout_and_survives_merge_failure(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    pinned = "d" * 40
+    env.store.kv_set("medic_pinned", pinned)
+    env.shell.on("git", "merge", "--ff-only", returns=(128, "fatal"))
+    seen: list[Any] = []
+    real_run = env.shell.run
+
+    def run(args: list[str], **kw: Any) -> tuple[int, str]:
+        if args[:2] == ["git", "checkout"]:  # 디스크를 건드리기 전에 이미 무장돼 있어야 한다
+            seen.append(json.loads((tmp_path / "state" / "medic-last-good.json").read_text()))
+        return real_run(args, **kw)
+
+    env.shell.run = run  # type: ignore[method-assign]
+    env.tick()
+    assert seen == [{"sha": pinned, "new_sha": NEW}]
+    assert json.loads((tmp_path / "state" / "medic-last-good.json").read_text()) == {"sha": pinned, "new_sha": NEW}
+    assert env.store.kv_get("medic_pinned") == pinned  # 머지 실패: 표시는 그대로
+
+
+def test_pinned_deploy_rollback_restores_pinned_medic_and_keeps_revert_armed(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    pinned = "d" * 40
+    env.store.kv_set("medic_pinned", pinned)
+    env.health(503)
+    env.tick()
+    assert env.has(f"reset --hard --quiet {PREV}") or env.has(f"reset --keep {PREV}")
+    assert json.loads((tmp_path / "state" / "medic-last-good.json").read_text()) == {"sha": pinned, "new_sha": NEW}
+    assert env.has(f"checkout {pinned} -- src/my_planner_medic")  # 롤백이 되돌린 medic을 다시 디스크에
+    assert env.store.kv_get("medic_pinned") == pinned

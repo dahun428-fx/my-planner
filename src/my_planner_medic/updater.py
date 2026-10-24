@@ -17,7 +17,7 @@
 
 kv 키:
 - `deploy_in_progress`: `{prev_sha, new_sha, schema_before, started_at, phase, verify_started_at, verify_elapsed_s,
-  last_tick_at, grace_until, window_from, repairs, repaired, medic_changed, cause, blamed, actions_done?,
+  last_tick_at, grace_until, window_from, repairs, repaired, medic_changed, medic_prev(medic이 돌던 커밋: pinned 또는 prev), cause, blamed, actions_done?,
   ran_new?, marked?, verify_failed_at?, rollback_decision? ("proceed"|"refused:<사유>"), refusals?, health_sleeps?}`.
   `phase`는 `deploy|verify|rollback|rollback_verify`. `window_from` 이후의 신호만 센다. 배포는 작업을 켜기 전에
   `verify`로, 롤백은 켜기 전에 `actions_done`을 적는다(켠 뒤 끊겨도 시작 시 복구가 같은 일을 되풀이하지 않게).
@@ -289,11 +289,13 @@ class Updater:
             return
         now = self._clock.now()
         schema_before = self._schema()
+        pinned = self._store.kv_get("medic_pinned")  # 09: 디스크의 medic은 pinned 커밋의 것이다(새 트리와 다르다)
         dip: dict[str, Any] = {
             "prev_sha": prev, "new_sha": new, "schema_before": schema_before, "started_at": iso_utc(now),
             "phase": "deploy", "verify_started_at": None, "verify_elapsed_s": 0, "last_tick_at": iso_utc(now),
             "grace_until": None, "window_from": None, "repairs": repairs, "repaired": [],
-            "medic_changed": any(p.startswith(MEDIC_PATH + "/") for p in changed), "cause": None, "blamed": [],
+            "medic_changed": bool(pinned) or any(p.startswith(MEDIC_PATH + "/") for p in changed),
+            "medic_prev": pinned or prev, "cause": None, "blamed": [],
         }
         self._store.kv_json_set(DIP, dip)
         self._store.kv_delete("deploy_deferred")
@@ -309,7 +311,10 @@ class Updater:
                 dbfile.backup_to(self._db, self._backups / f"pre-deploy-{prev}.db")
                 dbfile.prune(self._backups, "pre-deploy-*.db", self._cfg.keep_pre_deploy)
             stage = "merge"
-            if self._store.kv_get("medic_pinned"):  # 09: 되돌려 둔 medic 파일을 머지 전에 정리
+            pinned_now = self._store.kv_get("medic_pinned")
+            if pinned_now:  # 09: 되돌려 둔 medic 파일을 머지 전에 정리
+                # 디스크를 건드리기 전에 무장한다: 이 뒤 어느 길(머지 실패·롤백·끊김)로 깨진 medic이 뜨든 boot가 되돌린다
+                self._write_last_good(pinned_now, new)
                 self._git.checkout_paths("HEAD", [MEDIC_PATH])
             if not self._git.merge_ff(new):
                 self._daily(FF_TEXT, "ff_failed")  # 배포 롤백이 아니다: 바뀐 것이 없다
@@ -449,12 +454,14 @@ class Updater:
         if dip.get("phase") == "verify":
             new = str(dip["new_sha"])
             self._store.kv_set("deployed_sha", new)
-            self._write_last_good(new)
+            medic_changed = bool(dip.get("medic_changed"))
+            # medic이 바뀐 배포는 새 medic이 60초를 넘길 때까지 이전 커밋이 마지막 좋은 것이다(09 medic_boot가 승격)
+            self._write_last_good(str(dip.get("medic_prev") or dip["prev_sha"]) if medic_changed else new, new if medic_changed else None)
             for fp in dip.get("repaired") or []:
                 inc = self._store.get(fp)
                 if inc is not None and inc.state != "resolved":
                     self._resolve(inc, now)
-            self.self_updated = bool(dip.get("medic_changed"))
+            self.self_updated = medic_changed
             log.info("verify_ok")
         else:
             log.info("rollback_verify_ok")
@@ -547,6 +554,7 @@ class Updater:
                 elif not self._git.reset_keep(prev):  # 손으로 고친 파일은 덮지 않는다
                     raise RollbackError("hand edits block reset")
                 rolled = True
+                self._restore_pinned_medic(dip, prev)
                 self._store.kv_set("deployed_sha", prev)
                 self._install(True, strict=False)  # 5단계와 같은 두 명령. 실패해도 이어서 켠다
                 self._rollback_db(dip)
@@ -839,7 +847,19 @@ class Updater:
         except Exception as exc:  # noqa: BLE001 - 상태 기계가 끝까지 가야 한다
             log.warning("notify_failed %s", type(exc).__name__)
 
-    def _write_last_good(self, sha: str) -> None:
+    def _restore_pinned_medic(self, dip: dict[str, Any], prev: str) -> None:
+        """pinned였던 배포를 되돌렸으면 디스크의 medic을 알려진 좋은 커밋의 것으로 다시 둔다(최선만, 표시도 다시)."""
+        good = dip.get("medic_prev")
+        if not isinstance(good, str) or good == prev:
+            return
+        try:
+            self._git.checkout_paths(good, [MEDIC_PATH])
+            self._store.kv_set("medic_pinned", good)
+        except GitError as exc:
+            log.warning("restore_pinned_medic_failed %s", exc)
+
+    def _write_last_good(self, sha: str, new_sha: str | None = None) -> None:
         tmp = self._last_good.with_name(self._last_good.name + ".tmp")
-        tmp.write_text(json.dumps({"sha": sha}), encoding="utf-8")
+        data = {"sha": sha} if new_sha is None else {"sha": sha, "new_sha": new_sha}
+        tmp.write_text(json.dumps(data), encoding="utf-8")
         os.replace(tmp, self._last_good)

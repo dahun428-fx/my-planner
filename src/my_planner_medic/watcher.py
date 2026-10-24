@@ -122,6 +122,13 @@ class Watcher:
         self._notifier.flush_spill()  # 쌓인 알림은 다음 아침 회차 뒤 첫 tick에(스펙 6장)
         self._web.tick()  # 5.1: 웹 장애의 해결 확인
 
+    def heartbeat(self) -> None:
+        """`enabled = false`일 때: 감시 없이 하트비트만(죽은 것으로 보이지 않게)."""
+        try:
+            self._heartbeat(self._clock.now(), self._store.kv_get("deployed_sha") or "unknown")
+        except GitHubUnavailable as exc:
+            log.warning("github_unavailable %s (%d)", exc.kind, exc.status)
+
     def _wake_grace(self, now: datetime) -> bool:
         last = _parse(self._store.kv_get("last_tick_at"))
         until = _parse(self._store.kv_get("wake_grace_until"))
