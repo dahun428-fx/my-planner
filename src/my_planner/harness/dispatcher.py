@@ -13,7 +13,7 @@ from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import anyio
 
@@ -32,6 +32,13 @@ from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
 from my_planner.harness.context import ask_condition_for, build_notices, build_preamble
 from my_planner.harness.redact import MASK, redact
+from my_planner.harness.review_steps import (
+    NextStep,
+    ReviewFlow,
+    first_step,
+    review_in,
+    step_note,
+)
 from my_planner.harness.stream import (
     AppReplySender,
     QueueSink,
@@ -122,6 +129,9 @@ class Outbound:
     # 앱 사건·챕터 초안 카드의 `data.milestones`, `data.chapters`(6.4.7). `_reply_out`이 채운다
     draft_milestones: list[dict[str, Any]] | None = None
     draft_chapters: list[dict[str, Any]] | None = None
+    # 회고 단계의 사다리 버튼 `(YYYY-MM, "n" | "f")`(SP3-4 11.1). 텔레그램 `l:` 줄(컨디션 줄 자리). 컨디션 줄과
+    # 한 메시지에 같이 오지 않는다(한 메시지에 키보드 한 종류, 초안 줄은 함께 둘 수 있다)
+    ladder: tuple[str, Literal["n", "f"]] | None = None
 
 
 class Sender(Protocol):
@@ -191,6 +201,7 @@ class _ResendJob:
     confirms: list[tuple[str, str]] = field(default_factory=list)  # 회차 차례의 확인 토큰(10.1 A5)
     draft_milestone_ids: list[int] = field(default_factory=list)  # 사건·챕터 초안 버튼(11.3)
     draft_chapter_ids: list[int] = field(default_factory=list)
+    ladder: tuple[str, Literal["n", "f"]] | None = None  # 회고 메시지에 바로 붙인 사다리 1단계(11.1-1 (c))
 
 
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
@@ -329,6 +340,16 @@ class Dispatcher:
         self._no_fork: set[int] = set()
         self._stopping = False
         self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
+        # 회고 단계(SP3-4 11.1): 곡선 저장소가 있을 때만. 텔레그램 버튼 처리기도 같은 것을 쓴다
+        curve = tools.curve if tools is not None else None
+        self.review_flow: ReviewFlow | None = (
+            ReviewFlow(
+                runs=runs, state=state, curve=curve, settings=settings, clock=clock, transcripts=transcripts,
+                send=lambda step: self.sender.send(Outbound(text=step.text, ladder=step.ladder)),
+            )
+            if runs is not None and curve is not None
+            else None
+        )
 
     @property
     def idle(self) -> bool:
@@ -605,8 +626,15 @@ class Dispatcher:
                     i for i in tasks.proposed_curve_ids("chapter_proposed", conversation_id=cid)
                     if (c := curve.get_chapter(i)) is not None and c.status == "draft"
                 ]
-        job = _ResendJob(run, merged, [], drafts, self._ask_condition_for(run, merged),
-                         draft_milestone_ids=milestones, draft_chapter_ids=chapters)
+        ask = self._ask_condition_for(run, merged)
+        flow = self.review_flow
+        ladder = None
+        if flow is not None and ask is None and flow.claimed(run.id):
+            # 회고 메시지에 바로 붙였던 사다리 1단계(c): 그 달 `now`가 아직 없으면 버튼을 다시 붙인다
+            step = first_step(flow.of_run(run), flow.curve)
+            ladder = step.ladder if step is not None else None
+        job = _ResendJob(run, merged, [], drafts, ask,
+                         draft_milestone_ids=milestones, draft_chapter_ids=chapters, ladder=ladder)
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:
@@ -1256,7 +1284,8 @@ class Dispatcher:
             self._later(
                 RESEND_DELAY_S,
                 _ResendJob(run, merged, tool_names, list(out.draft_task_ids), out.ask_condition_for,
-                           list(out.confirms), list(out.draft_milestone_ids), list(out.draft_chapter_ids)),
+                           list(out.confirms), list(out.draft_milestone_ids), list(out.draft_chapter_ids),
+                           out.ladder),
             )
 
     async def _prepare_run(
@@ -1269,7 +1298,8 @@ class Dispatcher:
         conv = self.router.for_run(run)
         runs.set_conversation(run.id, conv.id)
         ask = self._ask_condition_for(run, merged)
-        result, run_ctx = await self._run_brain(run, merged, conv, ask)
+        step, question = self._review_extras(run, merged, ask)
+        result, run_ctx = await self._run_brain(run, merged, conv, ask, step=step, question=question)
         if not _run_ok(result) and self._may_rerun(run, result):
             blocked = self._run_blocked(run)
             if blocked is not None:  # 두 번째 호출 전에도 멈춤, 하루 상한, 사용 한도를 본다
@@ -1280,7 +1310,7 @@ class Dispatcher:
                 log.info("run_rerun_skipped", extra={"run_id": run.id, "reason": blocked.value})
                 return None
             runs.mark_running(run.id)
-            result, run_ctx = await self._run_brain(run, merged, conv, ask)
+            result, run_ctx = await self._run_brain(run, merged, conv, ask, step=step, question=question)
         if result.status in ("auth_error", "rate_limited"):
             # 로그인·결제는 skipped(auth), 사용 한도는 skipped(rate_limit). 다시 실행하지 않고 고정 안내만(스펙 5.3)
             reason = SkipReason.auth if result.status == "auth_error" else SkipReason.rate_limit
@@ -1312,25 +1342,63 @@ class Dispatcher:
         confirmations = render_confirmations(run_ctx.events, self._today())
         if confirmations:
             text = f"{text}\n\n{confirmations}"
+        if step is not None:
+            # 컨디션 줄이 없는 회고 메시지(11.1-1 (c)): 첫 단계를 글 끝에 붙이고 회차마다 한 번으로 표시한다
+            text = f"{text}\n\n{step.text}"
+            self._claim_review_step(run.id, "run")
         runs.save_outbound(run.id, text)
         out = _outbound(text, run_ctx)
         out.ask_condition_for = ask
+        out.ladder = step.ladder if step is not None else None
+        if question is not None and self.tools is not None:
+            self.tools.mark_question_asked(question[0])  # 열린 시드 질문은 월말 회고마다 하나(11.1-5)
         return conv, out, list(run_ctx.tool_names)
 
+    def _review_extras(
+        self, run: Run, merged: list[Run], ask: date | None
+    ) -> tuple[NextStep | None, tuple[int, str] | None]:
+        """월말 회고의 (회고 메시지에 바로 붙일 첫 단계, 두뇌에게 줄 열린 시드 질문 `(id, 글)`).
+
+        첫 단계는 컨디션 줄이 없을 때만(`ask is None`, 한 메시지에 키보드 한 종류) 붙인다.
+        """
+        flow = self.review_flow
+        of = review_in([run, *merged], self.settings)
+        if flow is None or of is None or not of.steps:
+            return None, None
+        step = flow.pending_step(run) if ask is None else None
+        q = flow.curve.next_open_question()
+        return step, ((q.id, q.text) if q is not None else None)
+
+    def _claim_review_step(self, run_id: int, where: str) -> None:
+        if self.review_flow is not None:
+            self.review_flow.claim(run_id)
+            log.info("review_step_prompted", extra={"run_id": run_id, "where": where})
+
     async def _run_brain(
-        self, run: Run, merged: list[Run], conv: Conversation, ask: date | None = None
+        self, run: Run, merged: list[Run], conv: Conversation, ask: date | None = None, *,
+        step: NextStep | None = None, question: tuple[int, str] | None = None,
     ) -> tuple[BrainResult, RunContext]:
         """루프 지시문(합친 회차의 지시문을 뒤에 이어 붙임)과 앞머리로 새 세션을 연다.
 
-        컨디션 버튼을 붙이는 회차면 두뇌가 알고 쓰도록 `## 컨디션 버튼`을 덧붙인다.
+        컨디션 버튼을 붙이는 회차면 두뇌가 알고 쓰도록 `## 컨디션 버튼`을 덧붙인다. 월말·분기·연말 회고면
+        `review_week.md` 바로 뒤에 `review_{month,quarter,year}.md`를 차례로 붙이고(11.1), 하네스가 메시지 끝에
+        붙일 질문과 열린 시드 질문(`## 이번에 물을 질문`)을 알린다.
         """
         # 회차 첫 호출의 활동 통로는 `scheduler`다(6.4.4)
         run_ctx = RunContext(conversation_id=conv.id, run_id=run.id, events=[], activity_channel="scheduler")
+        of = review_in([run, *merged], self.settings)
+        loop_prompts: list[str] = []
+        for r in (run, *merged):
+            loop_prompts.append(prompts.load(LOOP_PROMPTS[r.loop]))
+            if r.loop is LoopKey.review and of is not None:
+                loop_prompts.extend(prompts.load(f) for f in of.steps.prompt_files())
         prompt = _join(
-            *(prompts.load(LOOP_PROMPTS[r.loop]) for r in (run, *merged)),
+            *loop_prompts,
             self._preamble(False, merged=[m.loop.value for m in merged] or None),
             _condition_buttons_note(ask),
             self._review_week_note(run, merged),
+            step_note(step, where="메시지"),
+            f"## 이번에 물을 질문\n{question[1]}" if question is not None else "",
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
 
@@ -1469,6 +1537,7 @@ class Dispatcher:
                 confirms=list(job.confirms),
                 draft_milestone_ids=list(job.draft_milestone_ids),
                 draft_chapter_ids=list(job.draft_chapter_ids),
+                ladder=job.ladder,
             )
             # 전달이 하나도 안 된 회차(failed)만 여기 온다. 같은 D2~D4 순서로 한 번(7.3 D7)
             outcome = await self._send_run(out, run, attempts=1)
@@ -1533,9 +1602,12 @@ class Dispatcher:
         if review is None:
             return
         s = self.settings
-        period = period_of(Cadence.week, logical_date(review.scheduled_for, s.timezone, s.day_boundary))
+        day = logical_date(review.scheduled_for, s.timezone, s.day_boundary)
+        period = period_of(Cadence.week, day)
+        of = review_in([review], s)
+        included = of.steps.included_line(day) if of is not None else None
         try:
-            save_weekly_review(self.data_dir, period, redact(text)[0])
+            save_weekly_review(self.data_dir, period, redact(text)[0], included=included)
         except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
             log.warning("review_save_error", extra={"run_id": review.id, "error_type": type(e).__name__})
 

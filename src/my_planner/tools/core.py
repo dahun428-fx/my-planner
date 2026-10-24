@@ -808,6 +808,16 @@ class Tools:
         log.info("area_scores_recorded", extra={"period": period, "areas": len(rows)})
         return {"period": period, "scores": data["scores"]}
 
+    def mark_question_asked(self, question_id: int) -> None:
+        """하네스가 월말 회고 메시지에 열린 시드 질문을 실었다(11.1-5): `curve_questions.status = asked`.
+
+        두뇌 도구가 아니다(도구 수는 그대로). 회고 회차 차례가 부르고, 질문 글은 로그에 남기지 않는다.
+        """
+        if self.curve is None:
+            return
+        self.curve.mark_question(question_id, "asked")
+        log.info("curve_question_asked", extra={"question_id": question_id})
+
     @staticmethod
     def _ids(v: Any) -> list[int] | None:
         if not isinstance(v, list) or any(not isinstance(i, int) or isinstance(i, bool) for i in v):
