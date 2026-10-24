@@ -408,7 +408,8 @@ def test_options_with_habit_tools_28_and_35(tmp_path):
         ("telegram", FAKE_HABIT_TOOLS, 28),
         ("app", [*FAKE_HABIT_TOOLS, "ui_habit_check"], 35),
     ):
-        names = [*tool_names_for(channel), *extra]
+        # SP7-02부터 습관 도구는 실제 도구다: 이미 있는 이름은 다시 더하지 않는다(수는 그대로 28, 35)
+        names = [*tool_names_for(channel), *(n for n in extra if n not in tool_names_for(channel))]
         assert len(names) == expected == len(set(names))
         tools = [
             SdkMcpTool(name=n, description=n, input_schema={"type": "object", "properties": {}}, handler=_ok)

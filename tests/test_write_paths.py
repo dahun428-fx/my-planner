@@ -22,9 +22,11 @@ import test_api_e2e
 
 from my_planner.store.db import is_write, open_db
 
-# 도구 함수(`tools/core.py`), 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구,
-# UI)는 쓰지 않는다
-TOOLS = frozenset({"my_planner.tools.core", "my_planner.tools.actions", "my_planner.tools.activity"})
+# 도구 함수(`tools/core.py`, 습관 `tools/habits.py`), 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의
+# `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
+TOOLS = frozenset({
+    "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
+})
 DISPATCHER = "my_planner.harness.dispatcher"
 LOOP = "my_planner.loop.*"
 SEED = "my_planner.curve.seed"  # 잠금을 잡은 별도 프로세스(4.3, 12장)

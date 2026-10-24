@@ -1,4 +1,5 @@
-"""사람이 읽는 내보내기 `data/exports/tasks.md` (ADR 0003), `data/curve/chapters.md` (SP3-4 스펙 5.4).
+"""사람이 읽는 내보내기 `data/exports/tasks.md` (ADR 0003), `data/curve/chapters.md` (SP3-4 스펙 5.4),
+`data/exports/habits.md` (SP7 스펙 5.8).
 
 변경 도구가 부를 때마다 다시 만든다."""
 
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from my_planner.domain import TaskStatus
 from my_planner.store.repos.curve import CurveRepo, Milestone
+from my_planner.store.repos.habits import Habit, HabitsRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 
@@ -93,4 +95,28 @@ def export_curve(curve: CurveRepo, path: Path) -> None:
     loose = [_milestone_line(m) for m in milestones if m.chapter_id not in known]
     if loose or not chapters:
         lines += ["## 챕터 밖 사건", "", *(loose or ["(없음)"]), ""]
+    _write(path, lines)
+
+
+HABIT_EXPORT_WEEKS = 4
+_HABIT_GROUPS = (("active", "챙기는 습관"), ("paused", "쉬는 습관"), ("archived", "그만둔 습관"))
+_AREA_LABELS = {  # `status.xp.AREA_LABELS`와 같다(저장소 층은 status를 가져오지 않는다)
+    "career": "커리어", "finance": "경제", "health": "건강", "relationships": "관계", "learning": "배움",
+    "quality_of_life": "삶의 질",
+}
+
+
+def _habit_export_line(h: Habit, count: int) -> str:
+    cadence = "매일" if h.kind == "daily" else f"주 {h.target_per_week}회"
+    return f"- {h.title} · {cadence} · {_AREA_LABELS[str(h.area)]} · 지난 {HABIT_EXPORT_WEEKS}주 {count}번"
+
+
+def export_habits(habits: HabitsRepo, path: Path, today: date) -> None:
+    """활성·쉬는·그만둔 묶음(`sort_order` 순)과 습관마다 지난 4주 체크 수(5.8). 지난 4주는 `GET /habits/{id}`처럼
+    오늘이 든 주의 3주 전 월요일부터 오늘까지다. 지운 습관(되돌린 추가)은 넣지 않는다. 시각 줄은 두지 않는다."""
+    start, _ = week_bounds(today - timedelta(weeks=HABIT_EXPORT_WEEKS - 1))
+    lines = ["# 습관", "", "_이 파일은 자동으로 다시 만들어져요. 직접 고치지 마세요._", ""]
+    for status, heading in _HABIT_GROUPS:
+        rows = [_habit_export_line(h, len(habits.checks_between(h.id, start, today))) for h in habits.list((status,))]
+        lines += [f"## {heading}", "", *(rows or ["(없음)"]), ""]
     _write(path, lines)

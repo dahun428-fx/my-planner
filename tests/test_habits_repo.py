@@ -72,6 +72,18 @@ def test_update_and_set_status(habits):
         habits.update(h.id, now=later, sort_order=9)
 
 
+def test_soft_delete_unknown_or_deleted_raises_like_update(habits):
+    """`update`·`set_status`처럼 없는·이미 지운 습관이면 `KeyError`(되돌린 추가를 두 번 하지 않게)."""
+    h = mk(habits)
+    habits.soft_delete(h.id, NOW)
+    with pytest.raises(KeyError):
+        habits.soft_delete(h.id, NOW)
+    with pytest.raises(KeyError):
+        habits.soft_delete(999, NOW)
+    with pytest.raises(KeyError):
+        habits.set_status(h.id, "active", NOW)
+
+
 def test_count_active(habits):
     a, b, _ = mk(habits, "가"), mk(habits, "나"), mk(habits, "다")
     assert habits.count_active() == 3

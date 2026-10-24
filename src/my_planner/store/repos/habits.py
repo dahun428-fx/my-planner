@@ -148,12 +148,14 @@ class HabitsRepo:
         return h
 
     def soft_delete(self, id: int, now: datetime) -> None:
-        """되돌린 추가(스펙 5.1)."""
+        """되돌린 추가(스펙 5.1). 없거나 이미 지운 습관이면 `update`·`set_status`처럼 `KeyError`."""
         with transaction(self.conn):
-            self.conn.execute(
+            cur = self.conn.execute(
                 "UPDATE habits SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
                 (to_iso(now), to_iso(now), id),
             )
+            if cur.rowcount == 0:
+                raise KeyError(id)
 
     def check(self, id: int, day: date, now: datetime) -> bool:
         """체크한다. 새로 넣었으면 True, 이미 있었으면 바꾸지 않고 False."""

@@ -1,7 +1,8 @@
 """활동 기록 (SP3-4 스펙 5.2, 6.4.4). 변경 도구가 데이터 변경과 같은 트랜잭션 안에서 부른다.
 
 대상 문자열(5.2): `task:12`, `condition:2026-10-24`, `priorities:week:2026-W43`, `ladder:2026-10`, `areas:2026-Q4`,
-`milestone:7`, `chapter:3`, `card:2`, `cards:order`. `summary`는 확인 문구 한 줄이고 메시지 본문(메모 포함)은 넣지 않는다.
+`milestone:7`, `chapter:3`, `card:2`, `cards:order`,
+`habit:3`, `habit:3:2026-10-24`(SP7 5.5). `summary`는 확인 문구 한 줄이고 메시지 본문(메모 포함)은 넣지 않는다.
 """
 
 from __future__ import annotations
@@ -55,6 +56,16 @@ def milestone_target(milestone_id: int) -> str:
 
 def chapter_target(chapter_id: int) -> str:
     return f"chapter:{chapter_id}"
+
+
+def habit_target(habit_id: int) -> str:
+    """습관 추가·고치기·상태(SP7 5.5)."""
+    return f"habit:{habit_id}"
+
+
+def habit_day_target(habit_id: int, d: date) -> str:
+    """습관 체크·취소(SP7 5.5): 대상은 이것 하나다. 같은 날짜끼리만 U3로 서로 막는다. 원장 `source_ref`(X11)도 같다."""
+    return f"habit:{habit_id}:{d.isoformat()}"
 
 
 def many_target(every: list[str]) -> tuple[str | None, list[str]]:

@@ -28,6 +28,11 @@ _CADENCE_LABEL = {"day": "오늘", "week": "이번 주", "month": "이번 달", 
 def confirmation_line(e: ToolEvent, today: date) -> str | None:
     """이벤트 하나의 확인 문구 한 줄(SP1 5.5). 문구가 없는 종류는 None. 활동의 `summary`도 이것이다(5.2)."""
     title = e.data.get("title", "")
+    if e.kind in HABIT_KINDS:
+        day = e.data.get("date")
+        return habit_line(
+            e.kind, title, label=e.data.get("label"), day=date.fromisoformat(day) if day else None, today=today
+        )
     if e.kind == "task_added":
         out = f"✓ 추가: {title}"
         if e.data.get("scheduled_at"):
@@ -69,6 +74,36 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         # 비서가 준 경험치(X10, SP3-4 10장)
         "xp_granted_by_secretary": xp_granted_line(e.data.get("amount", 0), e.data.get("reason", "")),
     }.get(e.kind)
+
+
+# --- 습관 (SP7 스펙 5.4 규칙 H4, 부록 A) ---
+
+HABIT_KINDS = frozenset({"habit_added", "habit_updated", "habit_status_set", "habit_checked", "habit_unchecked"})
+_HABIT_STATUS_VERB = {"paused": "쉬어 가기", "active": "다시 시작", "archived": "그만두기"}
+
+
+def habit_kind_label(kind: str, target_per_week: int | None) -> str:
+    """`매일` 또는 `주 {N}회`."""
+    return "매일" if kind == "daily" else f"주 {target_per_week}회"
+
+
+def habit_line(kind: str, title: str, *, label: str | None = None, day: date | None = None, today: date) -> str:
+    """부록 A 확인 문구 9개. 활동 `summary`도 이것이다.
+
+    `label`: `habit_added`·`habit_updated`는 주기(`habit_kind_label`), `habit_status_set`은 새 상태
+    (`active` | `paused` | `archived`). `day`: 체크한 날짜. 오늘이 아니면 `(10/22)`를 붙인다(`habit_checked`만).
+    """
+    if kind == "habit_added":
+        return f"✓ 습관 추가: {title} ({label})"
+    if kind == "habit_updated":
+        return f"✓ 습관 고침: {title} ({label})"
+    if kind == "habit_status_set":
+        return f"✓ 습관 {_HABIT_STATUS_VERB[label or '']}: {title}"
+    if kind == "habit_checked":
+        return f"✓ 습관: {title}" if day is None or day == today else f"✓ 습관: {title} ({_md(day)})"
+    if kind == "habit_unchecked":
+        return f"↩ 습관 체크 취소: {title}"
+    raise ValueError(f"습관 확인 문구가 없는 종류: {kind}")
 
 
 # --- 경험치 (SP3-4 9장, 부록 A) ---
@@ -212,6 +247,38 @@ def confirm_button_move(title: str) -> str:
     return f"옮기기: {title}"
 
 
+def _ro(word: str) -> str:
+    """조사 `로`/`으로`. 받침이 없거나 ㄹ 받침이면 `로`. 한글로 끝나지 않으면 `(으)로`."""
+    last = word[-1:] if word else ""
+    if "가" <= last <= "힣":
+        jong = (ord(last) - 0xAC00) % 28
+        return "로" if jong in (0, 8) else "으로"
+    return "(으)로"
+
+
+def confirm_habit_update_summary(title: str, label: str) -> str:
+    """회차 차례의 `update_habit`(규칙 H7, 계획 문구 표): `{제목} 습관을 {매일 | 주 N회}로 바꿀까요?`."""
+    return f"{title} 습관을 {label}로 바꿀까요?"
+
+
+def confirm_habit_rename_summary(before: str, after: str) -> str:
+    """이름만 바꾸는 `update_habit`: `{이전 제목} 습관 이름을 {새 제목}(으)로 바꿀까요?`."""
+    return f"{before} 습관 이름을 {after}{_ro(after)} 바꿀까요?"
+
+
+def confirm_habit_archive_summary(title: str) -> str:
+    """`set_habit_status(archived)`의 확인 요청(부록 A, 앱 `/actions`와 회차 차례가 같다)."""
+    return f"{title} 습관을 그만둘까요? 기록은 남아요."
+
+
+def confirm_button_habit_update(title: str) -> str:
+    return f"습관 고치기: {title}"
+
+
+def confirm_button_habit_archive(title: str) -> str:
+    return f"그만두기: {title}"
+
+
 def confirm_requested_summary(summary: str) -> str:
     """활동 `confirm_requested`의 한 줄(바뀐 것 없음, 6.4.4)."""
     return f"확인을 기다려요: {summary}"
@@ -234,11 +301,20 @@ _CURVE_RECORD = re.compile(r"^✓ (?P<what>사다리|영역 점수)를 기록했
 _SAVE_TAIL = re.compile(r" \((\d{4}(-\d{2}){0,2}, (고점|저점|전환점)|\d{4}-\d{2}~(\d{4}-\d{2}|지금))\)")
 
 
+# 습관 확인 문구(SP7 부록 A): `✓ 습관 추가: 운동 (주 3회)`, `✓ 습관: 운동 (10/22)`, `↩ 습관 체크 취소: 운동`
+_HABIT_SUMMARY = re.compile(r"^[✓↩] (?P<verb>습관[^:]*): (?P<rest>.*)$")
+_HABIT_TAIL = re.compile(r" \((매일|주 \d회|\d{1,2}/\d{1,2})\)$")
+
+
 def undo_summary(summary: str) -> str:
     """되돌림 확인(부록 A): `↩ 되돌림: {확인 문구 요지}`. `✓ 완료: 운동` → `↩ 되돌림: 운동 완료`.
 
     요지는 원래 활동의 확인 문구에서 만든다: 날짜 꼬리(`→ 내일`, `(10/25 14:00)`)는 떼고, 우선순위는 목록 이름만.
+    습관은 주기·날짜 꼬리를 떼고 `운동 습관 체크`, `운동 습관 쉬어 가기`처럼 둔다.
     """
+    if (h := _HABIT_SUMMARY.match(summary)) is not None:
+        verb = "습관 체크" if h["verb"] == "습관" else h["verb"]
+        return f"↩ 되돌림: {_HABIT_TAIL.sub('', h['rest'])} {verb}"
     if (cr := _CURVE_RECORD.match(summary)) is not None:
         return f"↩ 되돌림: {cr['what']} 기록 ({cr['period']})"
     if (m := _SUMMARY.match(summary)) is not None:

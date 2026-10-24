@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import functools
 import logging
 import re
 from collections.abc import Callable
@@ -42,11 +41,13 @@ from my_planner.store.exports import SENSITIVE_MASK, export_curve, export_tasks
 from my_planner.store.repos.cards import Card, CardsRepo
 from my_planner.store.repos.conditions import Condition
 from my_planner.store.repos.curve import AreaScore, CurveRepo, Ladder, date_precision
+from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.store.views import todo_refs
 from my_planner.timefmt import api_time
+from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import (
     CARDS_ORDER_TARGET,
     SUPERSEDED,
@@ -86,6 +87,7 @@ from my_planner.tools.confirmations import (
     titles_summary,
     xp_granted_line,
 )
+from my_planner.tools.habits import HabitTools
 from my_planner.tools.ui import BRAIN_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
@@ -120,22 +122,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-def _err(msg: str) -> dict[str, Any]:
-    return {"error": msg}
-
-
-def _tool(fn: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
-    """부른 도구 이름(인자 없이)을 `ctx.tool_names`에 남긴다. 원문 기록의 `> 도구:` 줄과 로그가 쓴다."""
-
-    @functools.wraps(fn)
-    def wrapper(self: Tools, ctx: RunContext, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        ctx.tool_names.append(fn.__name__)
-        return fn(self, ctx, *args, **kwargs)
-
-    return wrapper
-
-
-class Tools:
+class Tools(HabitTools):
     def __init__(
         self,
         *,
@@ -154,6 +141,7 @@ class Tools:
         status: StatusRepo | None = None,
         review_date_for: Callable[[RunContext], date | None] | None = None,
         curve_export_path: Path | None = None,
+        habits: HabitsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -176,6 +164,8 @@ class Tools:
             Path(curve_export_path) if curve_export_path is not None
             else self.export_path.parent.parent / "curve" / "chapters.md"  # data/exports/tasks.md → data/curve/
         )
+        self.habits = habits  # 습관(SP7 5.4). None이면 습관 도구가 거절한다
+        self.habits_export_path = self.export_path.parent / "habits.md"  # data/exports/habits.md (5.8)
 
     # --- 공통 ---
 
@@ -285,12 +275,13 @@ class Tools:
         self._export()
 
     def _export(self) -> None:
-        """`tasks.md`, 곡선 저장소가 있으면 `curve/chapters.md`도. 되돌리기와 실패한 즉시 갈래도 이것을 부른다."""
+        """`tasks.md`, 곡선 저장소가 있으면 `curve/chapters.md`, 습관 저장소가 있으면 `habits.md`도. 되돌리기와 실패한 즉시 갈래도 이것을 부른다."""
         try:
             export_tasks(self.tasks, self.export_path, self.today())
         except OSError as e:  # 데이터는 이미 저장됐다. 내보내기는 다음 변경 때 다시 만든다.
             log.warning("export_failed", extra={"error_type": type(e).__name__})
         self._export_curve()
+        self._export_habits()
 
     def _export_curve(self) -> None:
         if self.curve is None:
