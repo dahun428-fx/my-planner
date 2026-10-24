@@ -88,7 +88,7 @@ def _is_imported(fp: str) -> bool:
 class Watcher:
     def __init__(
         self, cfg: MedicConfig, store: MedicStore, gh: GitHub, http: Http, clock: Clock,
-        notifier: NotifierLike | None = None,
+        notifier: NotifierLike,
     ) -> None:
         self._cfg = cfg
         self._store = store
@@ -96,7 +96,7 @@ class Watcher:
         self._http = http
         self._clock = clock
         self._notifier = notifier
-        self._web = WebVerifier(cfg, store, gh, notifier, clock) if notifier is not None else None
+        self._web = WebVerifier(cfg, store, gh, notifier, clock)
         self.suppressed = False  # 업데이터가 배포·배포 롤백 동안 켠다
         self._log_dir = cfg.root / "state" / "logs"
         if zone(cfg.timezone) is UTC and cfg.timezone not in ("UTC", "Etc/UTC"):
@@ -119,10 +119,8 @@ class Watcher:
         for sig in signals:
             self._record(sig, records, rows, now)
         self._sync(now, health)
-        if self._notifier is not None:
-            self._notifier.flush_spill()  # 쌓인 알림은 다음 아침 회차 뒤 첫 tick에(스펙 6장)
-        if self._web is not None:
-            self._web.tick()  # 5.1: 웹 장애의 해결 확인
+        self._notifier.flush_spill()  # 쌓인 알림은 다음 아침 회차 뒤 첫 tick에(스펙 6장)
+        self._web.tick()  # 5.1: 웹 장애의 해결 확인
 
     def _wake_grace(self, now: datetime) -> bool:
         last = _parse(self._store.kv_get("last_tick_at"))
@@ -363,8 +361,6 @@ class Watcher:
 
     def _notify_ci_fixed(self, n: int) -> None:
         """결과 알림 한 번(6장 "고침" 틀). 수리 PR이 있으면 그 제목·링크, 없으면 위 제목과 이슈 링크."""
-        if self._notifier is None:
-            return
         try:
             try:
                 pr = self._gh.pr_for_issue(n)

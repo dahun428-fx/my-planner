@@ -157,5 +157,56 @@ def test_be_incidents_and_github_outage_are_left_alone(tmp_path: Path) -> None:
     assert "web" not in e.store.get("be:KeyError x.py:f").detail
     e.http.outage = 503
     e.clock.advance(hours=4)
+    before = len(e.http.requests)
     e.verifier.tick()  # 예외 없이, 상태 그대로
     assert e.store.get(APP_FP).state == "merged"
+    assert len(e.http.requests) - before == 1  # 첫 장애에서 멈춘다(다음 장애로 넘어가지 않는다)
+
+
+def test_lost_label_response_does_not_double_count_failure(tmp_path: Path) -> None:
+    e = make(tmp_path)
+    n = e.merged(APP_FP, "app")
+    e.vercel("sha1", SUCCESS)
+    e.verifier.tick()
+    e.clock.advance(minutes=20)
+    e.recur(APP_FP, "app")
+    e.http.lose_next("POST", f"/repos/{REPO}/issues/{n}/labels")  # 적용은 되고 응답만 끊김
+    e.verifier.tick()
+    assert e.store.get(APP_FP).state == "merged"
+    assert "failed-1" in e.server.labels(n)
+    e.verifier.tick()  # 다음 회차
+    labels = e.server.labels(n)
+    assert "failed-2" not in labels and labels.count("recurred") == 1
+    assert e.store.get(APP_FP).state == "open" and e.store.get(APP_FP).failures == 1
+    removed = [r for r in e.http.calls("DELETE", f"/repos/{REPO}/issues/{n}/labels/recurred")]
+    assert len(removed) == 1  # `recurred`를 다시 떼고 달지 않는다(두 번째 `labeled` 방지)
+
+
+def test_vercel_context_must_belong_to_the_incident_app(tmp_path: Path) -> None:
+    e = make(tmp_path)
+    e.merged(APP_FP, "app")
+    e.vercel("sha1", [
+        {"context": "Vercel – dashboard", "state": "success"},
+        {"context": "Vercel – app", "state": "pending"},
+    ])
+    e.verifier.tick()
+    e.clock.advance(minutes=1)
+    e.verifier.tick()
+    assert e.store.get(APP_FP).detail["web"]["ok_at"] is None
+    e.vercel("sha1", [
+        {"context": "Vercel – dashboard", "state": "pending"},
+        {"context": "Vercel – app", "state": "success"},
+    ])
+    e.verifier.tick()
+    assert e.store.get(APP_FP).detail["web"]["ok_at"] is not None
+
+
+def test_vercel_fingerprint_uses_its_own_context(tmp_path: Path) -> None:
+    e = make(tmp_path)
+    e.merged("vercel:Vercel – dashboard", "vercel")
+    e.vercel("sha1", [
+        {"context": "Vercel – app", "state": "success"},
+        {"context": "Vercel – dashboard", "state": "failure"},
+    ])
+    e.verifier.tick()
+    assert e.store.get("vercel:Vercel – dashboard").state == "merged"

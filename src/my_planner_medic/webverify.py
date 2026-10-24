@@ -8,7 +8,9 @@
 4. 3시간 안에 `success`가 안 되면 `failed-N` +1. 둘 다 `merged`를 떼고 `open`으로 돌려 `repair.yml`이 다시 집게 한다.
 
 진행은 장애의 `detail["web"]` = `{"sha", "since", "ok_at"}`에 둔다(medic.db). GitHub이 안 되면 그 회차만 멈춘다.
-라벨 쓰기는 `merged` 떼기 → 라벨 달기 순서라 중간에 끊겨 다시 해도 같은 N이다.
+실패 처리는 N을 먼저 `detail["web"]["fail"]`에 저장하고 라벨을 쓴다(응답이 끊겨 다시 해도 같은 N, `recurred`는
+한 번만 단다). Vercel 컨텍스트는 장애의 앱(`app`/`dashboard`) 이름이 든 것만 본다(없으면 `Vercel*` 전부가 `success`여야).
+`resolved`로 바꾼 뒤 알림 전에 죽으면 알림은 잃는다(두 번 보내느니 한 번 놓친다. 업데이터와 같다).
 """
 
 from __future__ import annotations
@@ -73,12 +75,15 @@ class WebVerifier:
             sha = self._gh.head_sha("main")
             web = {"sha": sha, "since": iso_utc(now), "ok_at": None}
             self._save(inc, web)
+        if isinstance(web.get("fail"), dict):  # 쓰다 끊긴 실패 처리를 먼저 마친다
+            self._fail(inc, web, recurred=bool(web["fail"].get("recurred")))
+            return
         since = _parse(web["since"]) or now
         ok_at = _parse(web.get("ok_at"))
         if ok_at is None:
-            if not self._vercel_ok(web["sha"]):
+            if not self._vercel_ok(inc, web["sha"]):
                 if now - since >= VERCEL_WAIT:
-                    self._fail(inc, recurred=False)
+                    self._fail(inc, web, recurred=False)
                 return
             ok_at = now
             web["ok_at"] = iso_utc(now)
@@ -88,15 +93,25 @@ class WebVerifier:
             return
         last = _parse(inc.last_seen)
         if last is not None and last > ok_at:
-            self._fail(inc, recurred=True)
+            self._fail(inc, web, recurred=True)
         elif now - ok_at >= timedelta(minutes=self._cfg.web_verify_minutes):
             self._resolve(inc, now)
 
-    def _vercel_ok(self, sha: str) -> bool:
-        if self._gh.commit_state(sha, VERCEL_CONTEXT) == "success":
+    def _vercel_ok(self, inc: Incident, sha: str) -> bool:
+        if self._commit_ok(inc, sha):
             return True
         head = self._gh.head_sha("main")
-        return head != sha and self._gh.commit_state(head, VERCEL_CONTEXT) == "success"
+        return head != sha and self._commit_ok(inc, head)
+
+    def _commit_ok(self, inc: Incident, sha: str) -> bool:
+        """이 장애의 Vercel 상태가 모두 `success`. `vercel:<컨텍스트>`는 그 컨텍스트, 웹 장애는 앱 이름이 든 컨텍스트.
+
+        그런 컨텍스트가 없으면 `Vercel*` 전부를 본다(이름 규칙을 모를 때 더 보수적인 쪽)."""
+        states = self._gh.commit_states(sha, VERCEL_CONTEXT)
+        own = inc.fingerprint.partition(":")[2] if inc.part == "vercel" else inc.part
+        picked = {c: st for c, st in states.items() if (c == own if inc.part == "vercel" else own in c.lower())}
+        picked = picked or states
+        return bool(picked) and all(st == "success" for st in picked.values())
 
     def _save(self, inc: Incident, web: dict[str, Any]) -> None:
         self._store.set_state(inc.fingerprint, "merged", detail={**inc.detail, "web": web})
@@ -118,17 +133,23 @@ class WebVerifier:
         except Exception as exc:  # noqa: BLE001 - 알림 때문에 상태가 어긋나면 안 된다
             log.warning("notify_failed %s", type(exc).__name__)
 
-    def _fail(self, inc: Incident, *, recurred: bool) -> None:
+    def _fail(self, inc: Incident, web: dict[str, Any], *, recurred: bool) -> None:
         n = inc.issue_number
         assert n is not None
-        labels = self._gh.issue_labels(n)
-        failed = max((int(m[1]) for x in labels if (m := _FAILED_RE.match(x))), default=0) + 1
-        self._gh.remove_label(n, "merged")
-        add = [f"failed-{failed}"]
-        if recurred:
-            self._gh.remove_label(n, "recurred")  # 이미 달려 있으면 `labeled`가 다시 안 온다
-            add.insert(0, "recurred")
-        self._gh.add_labels(n, add)  # 한 번에: repair 게이트가 N을 본다
+        fail = web.get("fail")
+        if not isinstance(fail, dict):  # N은 한 번만 정해 먼저 저장한다(업데이터의 rolled_back 연산과 같다)
+            labels = self._gh.issue_labels(n)
+            failed = max((int(m[1]) for x in labels if (m := _FAILED_RE.match(x))), default=0) + 1
+            fail = {"n": failed, "recurred": recurred}
+            self._save(inc, {**web, "fail": fail})
+        failed = int(fail["n"])
+        if f"failed-{failed}" not in self._gh.issue_labels(n):  # 이미 달렸으면(응답만 끊긴 경우) 다시 쓰지 않는다
+            self._gh.remove_label(n, "merged")
+            add = [f"failed-{failed}"]
+            if recurred:
+                self._gh.remove_label(n, "recurred")  # 이미 달려 있으면 `labeled`가 다시 안 온다
+                add.insert(0, "recurred")
+            self._gh.add_labels(n, add)  # 한 번에: repair 게이트가 N을 본다
         detail = {k: v for k, v in inc.detail.items() if k != "web"}
         self._store.set_state(inc.fingerprint, "open", failures=failed, detail=detail)
         log.warning("web_verify_failed recurred=%s failed=%d", recurred, failed)

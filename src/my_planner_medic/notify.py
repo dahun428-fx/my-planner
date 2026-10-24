@@ -30,6 +30,7 @@ GAVE_UP_TEXT = "⚠️ 자동으로 못 고쳤어요: {fp}. 지금은 {state}. {
 ROLLED_BACK = "이전 버전으로 돌려 둠"
 AS_IS = "그대로"
 BUNDLE_TEXT = "자동 복구 알림 {n}개: {items}"
+BE_TIMEOUT_S = 20  # BE가 안에서 텔레그램으로 물러서는 시간까지 기다려, 같은 알림이 두 번 가는 일을 줄인다
 BUNDLE_MAX = 480  # BE `RecoveryNoticeBody.text`는 500자까지
 TELEGRAM = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -147,7 +148,7 @@ class Notifier:
                 f"{cfg.api_base}/internal/notify",
                 headers={"Authorization": f"Bearer {cfg.api_token}"},
                 json={"text": text, "kind": "recovery"},
-                timeout=10,
+                timeout=BE_TIMEOUT_S,
             )
             if 200 <= status < 300:
                 return True

@@ -84,7 +84,7 @@ def make_env(tmp_path: Path, start: datetime = START, **cfg: Any) -> Env:
     values.update(cfg)
     config = make_config(tmp_path, **values)
     store = MedicStore(tmp_path / "state" / "medic.db")
-    w = Watcher(config, store, GitHub(http, "gh-secret", REPO), http, clock)
+    w = Watcher(config, store, GitHub(http, "gh-secret", REPO), http, clock, FakeNotifier())
     (tmp_path / "state" / "logs").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "logs" / "my-planner.jsonl").write_text("", encoding="utf-8")
     return Env(tmp_path, clock, server, http, store, w, hb)
@@ -292,7 +292,7 @@ def test_warn_window_persists_across_ticks_and_restarts(env: Env) -> None:
     assert len(saved["slow_reply"]) == 12
     assert all(isinstance(t, str) for t in saved["slow_reply"])
     # medic 재시작: 새 Watcher, 같은 DB
-    env.watcher = Watcher(env.watcher._cfg, env.store, env.watcher._gh, env.http, env.clock)
+    env.watcher = Watcher(env.watcher._cfg, env.store, env.watcher._gh, env.http, env.clock, FakeNotifier())
     env.clock.advance(minutes=2)
     env.log(*[_warn(env, env.clock.now()) for _ in range(8)])
     env.tick()
