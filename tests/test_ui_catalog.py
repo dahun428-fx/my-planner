@@ -12,6 +12,7 @@ import jsonschema
 import pytest
 from test_tools_tasks import ToolEnv
 
+from my_planner.bot.commands import command_of
 from my_planner.domain import RunContext
 from my_planner.store.repos.cards import CardsRepo
 from my_planner.tools.mcp_adapter import TOOL_NAMES, tool_names_for
@@ -168,6 +169,36 @@ def test_slash_rejected_for_send_and_choice():
     choice = {"question": "어느 쪽?", "options": [{"id": "a", "label": "/today"}, {"id": "b", "label": "산책"}]}
     assert validate_props("ui_choice", choice) == "options.0.label: slash (/로 시작하는 글은 쓸 수 없어요)"
     assert validate_props("ui_summary_card", {"title": "정리", "lines": ["/today"]}) is None
+
+
+@pytest.mark.parametrize("label", [" /pause 14", "\N{IDEOGRAPHIC SPACE}/done"])
+def test_slash_ignores_leading_space_like_command_of(label):
+    """`/chat`의 `command_of`는 앞뒤 공백(U+3000 포함)을 빼고 명령을 읽으므로 `slash`도 같게 본다(12장)."""
+    assert command_of(label) is not None
+    send = _block(TEXT, {"type": "buttons", "items": [{"label": label, "do": {"kind": "send"}}]})
+    assert validate_props("ui_block", send) == "children.1.items.0.label: slash (/로 시작하는 글은 쓸 수 없어요)"
+    choice = {"question": "어느 쪽?", "options": [{"id": "a", "label": "산책"}, {"id": "b", "label": label}]}
+    assert validate_props("ui_choice", choice) == "options.1.label: slash (/로 시작하는 글은 쓸 수 없어요)"
+
+
+def test_extra_key_name_not_echoed():
+    err = validate_props("ui_block", _block({"type": "text", "md": "가", "비밀제목XYZ": 1}))
+    assert err == "children.0.text: extra_forbidden"
+    assert validate_props("ui_todo_list", {"title": "가", "task_ids": [1], "비밀제목XYZ": 1}) == "props: extra_forbidden"
+
+
+def test_banned_words_need_the_block(monkeypatch):
+    from my_planner.harness import prompts
+
+    monkeypatch.setattr(prompts, "load", lambda name: "표지 없는 지시문")
+    banned_words.cache_clear()
+    try:
+        with pytest.raises(RuntimeError):
+            banned_words()
+    finally:
+        monkeypatch.undo()
+        banned_words.cache_clear()
+    assert "놓쳤어요" in banned_words()
 
 
 def test_harness_components_skip_text_checks():

@@ -228,3 +228,17 @@ async def test_todo_ref_has_dates_in_utc(tmp_path):
         {"id": b, "title": "꾸민 날짜 없음", "cadence": None, "area": "learning", "status": "open",
          "planned_for": None, "scheduled_at": None},
     ]
+
+
+async def test_harness_card_times_are_utc():
+    """하네스 초안 카드의 `data.todos[].scheduled_at`도 스트림에서 UTC `Z`다(6.1)."""
+    sink = ListSink()
+    refs = [{"id": 7, "title": "꾸민", "cadence": None, "area": "health", "status": "draft",
+             "planned_for": "2026-10-25", "scheduled_at": "2026-10-25T14:00:00+09:00"}]
+    out = Outbound(text="답", draft_task_ids=[7], channel="app", writer=UiMessageWriter(sink, "m-1-1"),
+                   draft_todos=refs)
+    await AppReplySender().send(out)
+
+    (output,) = [c["output"] for c in sink.chunks if c["type"] == "tool-output-available"]
+    assert output["data"]["todos"][0]["scheduled_at"] == "2026-10-25T05:00:00Z"
+    assert output["data"]["todos"][0]["planned_for"] == "2026-10-25"

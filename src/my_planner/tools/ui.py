@@ -375,7 +375,9 @@ def banned_words() -> tuple[str, ...]:
     from my_planner.harness import prompts
 
     block = _BANNED_BLOCK.search(prompts.load("system.md"))
-    words = re.findall(r'"([^"]+)"', block.group(1)) if block else []
+    if block is None:  # 표지가 깨지면 금지어 검사가 조용히 약해지지 않게
+        raise RuntimeError("system.md에 banned-words 블록이 없어요")
+    words = re.findall(r'"([^"]+)"', block.group(1))
     return (*dict.fromkeys(w.strip() for w in words if w.strip()), *APP_BANNED_WORDS)
 
 
@@ -413,7 +415,7 @@ def _text_error(component: str, props: dict[str, Any]) -> str | None:
             (component == "ui_choice" and loc[0] == "options")
             or (isinstance(parent.get("do"), dict) and parent["do"].get("kind") == "send")
         )
-        if sends and s.startswith("/"):
+        if sends and s.strip().startswith("/"):  # `bot.commands.command_of`처럼 앞뒤 공백(U+3000 포함)을 뺀다
             return _fail(_where(loc), "slash")
     return None
 
@@ -437,7 +439,8 @@ def validate_props(component: str, props: Any) -> str | None:
     except ValidationError as e:
         first = e.errors(include_input=False, include_url=False, include_context=False)[0]
         code = first["type"]
-        return _fail("props" if code in _PROPS_LEVEL else _where(first["loc"]), code)
+        loc = first["loc"][:-1] if code == "extra_forbidden" else first["loc"]  # 두뇌가 지은 키 이름도 담지 않는다
+        return _fail("props" if code in _PROPS_LEVEL else _where(loc), code)
     if len(json.dumps(props, ensure_ascii=False).encode()) > PROPS_MAX_BYTES:
         return _fail("props", "too_large")
     if origin == "brain":
