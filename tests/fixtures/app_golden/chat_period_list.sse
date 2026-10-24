@@ -1,0 +1,38 @@
+data: {"type":"start","messageId":"<id>","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat","checkin_id":null}}
+
+data: {"type":"data-status","data":{"state":"queued"},"transient":true}
+
+data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"move_task","input":{"id":1,"planned_for":"2026-10-29"}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"id":1,"title":"꾸민 보고서 초안","status":"open","areas":["career"],"planned_for":"2026-10-29","scheduled_at":null,"parent_id":null,"note":"","completed_at":null}}
+
+data: {"type":"tool-input-available","toolCallId":"tc_02","toolName":"move_task","input":{"id":3,"planned_for":"2026-10-30"}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_02","output":{"id":3,"title":"꾸민 화분 분갈이","status":"open","areas":["quality_of_life"],"planned_for":"2026-10-30","scheduled_at":null,"parent_id":null,"note":"","completed_at":null}}
+
+data: {"type":"tool-input-available","toolCallId":"tc_03","toolName":"move_task","input":{"id":4,"planned_for":"2026-11-03"}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_03","output":{"id":4,"title":"꾸민 산책","status":"open","areas":["health"],"planned_for":"2026-11-03","scheduled_at":null,"parent_id":null,"note":"","completed_at":null}}
+
+data: {"type":"tool-input-available","toolCallId":"tc_04","toolName":"ui_period_list","input":{"week":"2026-W44","highlight_task_ids":[1,3,4]}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_04","output":{"ok":true,"data":{"today":"2026-10-24","start":"2026-10-26","end":"2026-11-01","days":[{"date":"2026-10-26","weekday":"월","is_today":false,"todos":[{"id":2,"title":"꾸민 독서 모임","cadence":null,"area":"learning","status":"open","planned_for":"2026-10-26","scheduled_at":"2026-10-26T10:30:00Z"}]},{"date":"2026-10-27","weekday":"화","is_today":false,"todos":[]},{"date":"2026-10-28","weekday":"수","is_today":false,"todos":[]},{"date":"2026-10-29","weekday":"목","is_today":false,"todos":[{"id":1,"title":"꾸민 보고서 초안","cadence":null,"area":"career","status":"open","planned_for":"2026-10-29","scheduled_at":null}]},{"date":"2026-10-30","weekday":"금","is_today":false,"todos":[{"id":3,"title":"꾸민 화분 분갈이","cadence":null,"area":"quality_of_life","status":"open","planned_for":"2026-10-30","scheduled_at":null}]},{"date":"2026-10-31","weekday":"토","is_today":false,"todos":[]},{"date":"2026-11-01","weekday":"일","is_today":false,"todos":[]}],"outside":[{"reason":"moved","todo":{"id":4,"title":"꾸민 산책","cadence":null,"area":"health","status":"open","planned_for":"2026-11-03","scheduled_at":null}}]}}}
+
+data: {"type":"text-start","id":"t1"}
+
+data: {"type":"text-delta","id":"t1","delta":"다음 주로 나눠 옮겼어요."}
+
+data: {"type":"text-end","id":"t1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"data-activity","data":{"activity_ids":[5,6,7],"undo_ids":[5,6,7],"confirmation":"✓ 옮김: 꾸민 보고서 초안 → 10/29\n✓ 옮김: 꾸민 화분 분갈이 → 10/30\n✓ 옮김: 꾸민 산책 → 11/3"}}
+
+data: {"type":"finish","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat"}}
+
+data: [DONE]
+

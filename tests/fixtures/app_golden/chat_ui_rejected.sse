@@ -1,0 +1,24 @@
+data: {"type":"start","messageId":"<id>","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat","checkin_id":null}}
+
+data: {"type":"data-status","data":{"state":"queued"},"transient":true}
+
+data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"ui_block","input":{"title":"이번 주 운동","children":[{"type":"group","layout":"row","children":[{"type":"stat","label":"이번 주","value":"3회","delta":{"text":"1회","trend":"up"}},{"type":"stat","label":"지난주","value":"2회"}]},{"type":"progress","label":"이번 주 목표","value":3,"max":4},{"type":"text","md":"**목요일** 오후가 비어 있어요."},{"type":"todo_rows","task_ids":[1]},{"type":"buttons","items":[{"label":"운동 끝났어","do":{"kind":"complete","task_id":1}}]}]}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"ok":true,"data":{"today":"2026-10-24","todos":[{"id":1,"title":"꾸민 저녁 운동","cadence":null,"area":"health","status":"open","planned_for":"2026-10-24","scheduled_at":null}]}}}
+
+data: {"type":"text-start","id":"t1"}
+
+data: {"type":"text-delta","id":"t1","delta":"이번 주 운동이에요."}
+
+data: {"type":"text-end","id":"t1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat"}}
+
+data: [DONE]
+

@@ -484,3 +484,35 @@ async def test_week_of_xp(tmp_path):
     assert telegram.startswith("상태창\n레벨 2 · 경험치 155/200")
     assert after["xp_total"] == 310
     assert (after["recent_xp"][0]["label"], after["recent_xp"][0]["amount"]) == ("쉬는 날", 5)
+
+
+async def test_date_choice_then_move_from_app(tmp_path):
+    """SP6 G-BE2 수용(6.2): 날짜가 분명하지 않은 할 일 → 날짜 없이 추가 + 날짜 고르기 → 후보 누름이 `/actions move_task`로
+    그 날짜에 둔다. 두뇌는 다시 불리지 않는다. 내용은 꾸며 낸 것이다."""
+    from ui_stream import parse_sse
+
+    add = ("add_task", {"title": "꾸민 치과 예약", "areas": ["health"]})
+    choice = ("ui_date_choice", {"task_id": 1, "question": "치과 예약은 언제 할까요?",
+                                 "candidates": [{"date": "2026-10-27", "note": "오후가 비어요"}, {"date": "2026-10-28"}]})
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([add, choice], "날짜를 골라 주세요.")]) as env:
+        _, raw = await env.chat("다음 주에 치과 예약 추가해 줘")
+        chunks = parse_sse(raw)
+        names = {c["toolCallId"]: c["toolName"] for c in chunks if c["type"] == "tool-input-available"}
+        (part,) = [c["output"] for c in chunks if c["type"] == "tool-output-available"
+                   and names[c["toolCallId"]] == "ui_date_choice"]
+        todo = part["data"]["todo"]
+        status, body = await env.action("move_task", {"id": todo["id"], "planned_for": "2026-10-27"})
+        brain_calls = len(env.brain.calls)
+        env.clock.set(kst(2026, 10, 27, 9, 0))  # 그날이 되면 오늘·이번 주 화면에 있다
+        today = await (await env.get("/today")).json()
+        week = await (await env.get("/week")).json()
+
+    assert "ui_result" not in names.values()
+    assert [c for c in chunks if c["type"] == "data-activity"]
+    assert todo["planned_for"] is None and todo["status"] == "open"
+    assert status == 200 and body["status"] == "applied"
+    assert body["result"]["planned_for"] == "2026-10-27"
+    assert brain_calls == 1  # 누름은 두뇌를 다시 부르지 않는다
+    assert [t["todo"]["id"] for t in today["todos"]] == [todo["id"]] and today["date"] == "2026-10-27"
+    (tue,) = [d for d in week["days"] if d["date"] == "2026-10-27"]
+    assert [t["id"] for t in tue["todos"]] == [todo["id"]]
