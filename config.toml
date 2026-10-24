@@ -49,8 +49,7 @@ backup_count = 14   # DB 백업 보관 개수
 enabled = true
 host = "127.0.0.1"
 port = 8787
-cors_origins = []          # 예: ["https://my-planner-dash.vercel.app", "https://my-planner-app.vercel.app"]
-cors_origin_regex = ""     # 비우면 쓰지 않는다
+cors_origins = ["https://my-planner-beige-eight.vercel.app"]  # 정확한 출처만. 운영 앱(SP5). 대시보드는 19b에서 더한다
 max_body_kb = 64
 
 [notify]

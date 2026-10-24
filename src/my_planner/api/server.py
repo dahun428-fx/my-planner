@@ -216,7 +216,7 @@ def build_app(deps: ApiDeps) -> web.Application:
     app = web.Application(
         middlewares=[
             access_log,
-            cors_middleware(CorsPolicy(cfg.cors_origins, cfg.cors_origin_regex)),
+            cors_middleware(CorsPolicy(cfg.cors_origins)),
             body_limit_middleware(cfg.max_body_kb * 1024),
             auth,
             safe_mode,
