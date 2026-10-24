@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { ConnectionProvider } from "../lib/ConnectionProvider";
+import { ConnectionProvider, useConnection } from "../lib/ConnectionProvider";
 import Settings from "../pages/settings";
 import { ORIGIN, healthAnswers } from "./handlers";
 import { server } from "./server";
@@ -68,6 +68,25 @@ describe("settings", () => {
     await fill(`${ORIGIN}/api/v1`, "fake-token-abc");
     expect(await screen.findByText("BE가 켜지면 다시 보여 드릴게요.")).toBeInTheDocument();
     expect(saved()).toEqual({ beUrl: ORIGIN, token: "fake-token-abc" });
+  });
+
+  it("restarts a poll stopped by 401 when the same token is entered again", async () => {
+    localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
+    server.use(healthAnswers.unauthorized());
+    function Probe() {
+      return <p data-testid="probe">{useConnection().health?.kind ?? "none"}</p>;
+    }
+    render(
+      <ConnectionProvider>
+        <Settings />
+        <Probe />
+      </ConnectionProvider>,
+    );
+    expect(await screen.findByText("unauthorized")).toBeInTheDocument();
+    server.resetHandlers(); // the BE accepts the token again
+    await userEvent.click(screen.getByRole("button", { name: "연결 확인" }));
+    expect(await screen.findByText("연결했어요.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("probe")).toHaveTextContent("ok"));
   });
 
   it("fills the saved connection", async () => {

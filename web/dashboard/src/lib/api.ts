@@ -23,6 +23,7 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
   const onAbort = () => ac.abort();
   opts.signal?.addEventListener("abort", onAbort);
+  if (opts.signal?.aborted) ac.abort();
   try {
     let res: Response;
     try {
@@ -45,6 +46,8 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
     try {
       body = await res.json();
     } catch {
+      // The 10 s timer can fire after the headers, while the body is still coming: that is "off".
+      if (ac.signal.aborted) return { kind: "offline" };
       parsed = false;
     }
     if (!res.ok) {
@@ -55,8 +58,6 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
     }
     if (!parsed || !isT(body)) return { kind: "broken", code: "shape" };
     return { kind: "ok", data: body };
-  } catch {
-    return { kind: "offline" }; // the body stopped arriving (timeout while reading)
   } finally {
     clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onAbort);

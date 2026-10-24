@@ -27,6 +27,13 @@ export function bandText(health: ApiResult<Health> | null, hasConn: boolean, las
   }
 }
 
+const BAND_STATE_TEXT: Record<BandState, string> = {
+  on: BAND_TEXT.onNoTime,
+  off: "BE 꺼짐",
+  checking: BAND_TEXT.checking,
+  none: "BE 연결 전",
+};
+
 /** Top of every screen (spec 13.1, 13.2): BE on with its answer time, or off with this browser's last answer. */
 export function ConnectionBand() {
   const { ready, conn, health, lastOk, check } = useConnection();
@@ -42,8 +49,12 @@ export function ConnectionBand() {
     }
   };
   return (
-    <div className="band" data-state={state} role="status" aria-live="polite">
-      <span className="band-text">
+    <div className="band" data-state={state}>
+      {/* Screen readers hear on/off changes only, not the answer time every 60 s. */}
+      <span className="visually-hidden" role="status" aria-live="polite">
+        {BAND_STATE_TEXT[state]}
+      </span>
+      <span className="band-text" aria-hidden="true">
         <span className="dot" data-tone={state === "on" ? "positive" : "neutral"} aria-hidden="true" />
         {bandText(health, conn !== null, lastOk)}
       </span>

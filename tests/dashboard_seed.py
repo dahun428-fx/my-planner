@@ -9,11 +9,11 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from curve_sql import area_default, area_scores, chapter, ladder, milestone, title, xp
 
-from my_planner.clock import Clock, to_iso
+from my_planner.clock import Clock, logical_date, to_iso
 
 # 꾸며 낸 할 일: (제목, 상태, 오늘부터 며칠 뒤, 영역)
 TASKS = (
@@ -35,9 +35,11 @@ def _kst(day: datetime, h: int, mi: int = 0) -> datetime:
 
 
 def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
+    """`clock`은 SP1 기본 설정(Asia/Seoul, 04:00 경계)의 BE와 같은 시계다."""
     now = clock.now().astimezone(UTC)
-    kst_now = now + timedelta(hours=9)
-    today = kst_now.date()
+    # The BE's logical date (Asia/Seoul, day starts at 04:00, SP1), so runs and usage line up with /health
+    # even for a clock between 00:00 and 03:59.
+    today = logical_date(now, "Asia/Seoul", time(4, 0))
     midnight = datetime(today.year, today.month, today.day, tzinfo=UTC) - timedelta(hours=9)  # 오늘 00:00 KST
     ts = to_iso(now)
 

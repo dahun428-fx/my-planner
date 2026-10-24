@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +21,18 @@ from aiohttp.test_utils import TestClient, TestServer
 from be_env import TEST_TOKEN, BeEnv
 from dashboard_seed import seed_dashboard_db
 from fakes import FakePushSender, make_settings
-from test_dispatcher_messages import kst
 
 from my_planner.api.health import ErrorCounter
 from my_planner.api.models import MODELS, schema_bundle
 from my_planner.api.server import ApiDeps, build_app
 from my_planner.clock import FakeClock, to_iso
 from my_planner.store.db import LATEST_VERSION
+
+
+def kst(y: int, mo: int, d: int, h: int, mi: int = 0) -> datetime:
+    """KST 벽시계 시각을 UTC로(이 파일만 쓴다)."""
+    return datetime(y, mo, d, h, mi, tzinfo=UTC) - timedelta(hours=9)
+
 
 DASHBOARD = Path(__file__).parent.parent / "web" / "dashboard"
 FIXTURES = DASHBOARD / "src" / "test" / "fixtures"
@@ -129,6 +134,14 @@ async def test_safe_mode_fixture(tmp_path, update_dashboard_fixtures):
     body = await _record_safe_mode(tmp_path)
     MODELS["SafeModeHealth"].model_validate(body)
     _compare("health-safe-mode", body, update_dashboard_fixtures)
+
+
+def test_seed_uses_logical_date_before_four(tmp_path, conn):
+    """02:00 KST는 아직 전날이다: 오늘 회차와 사용량은 전날 논리적 날짜에 들어간다."""
+    seed_dashboard_db(conn, FakeClock(kst(2026, 10, 25, 2, 0)))
+    assert conn.execute("SELECT date FROM usage_state").fetchone()[0] == "2026-10-24"
+    assert conn.execute("SELECT scheduled_for FROM runs WHERE loop = 'morning_brief'").fetchone()[0].startswith(
+        "2026-10-24T01:00")
 
 
 def test_seed_is_invented_and_shaped(tmp_path, conn):

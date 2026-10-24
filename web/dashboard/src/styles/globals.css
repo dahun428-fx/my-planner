@@ -37,6 +37,14 @@ input {
   outline: 2px solid var(--hue);
   outline-offset: 2px;
 }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .num {
   font-variant-numeric: tabular-nums;
 }

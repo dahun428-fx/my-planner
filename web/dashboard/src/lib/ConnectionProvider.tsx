@@ -52,10 +52,15 @@ export function ConnectionProvider({ children, intervalMs = 60_000 }: { children
   const key = !ready ? "" : conn ? `${conn.beUrl}\n${conn.token}` : "none";
   const { result, refresh } = usePolling(load, intervalMs, key);
 
-  const connect = useCallback((c: Conn) => {
-    saveConnection(c);
-    setConn(c);
-  }, []);
+  // The same BE and token again (after a 401 stopped the poll) keep the poll's key: check right away.
+  const connect = useCallback(
+    (c: Conn) => {
+      saveConnection(c);
+      if (conn && conn.beUrl === c.beUrl && conn.token === c.token) void refresh();
+      else setConn(c);
+    },
+    [conn, refresh],
+  );
 
   const value = useMemo<ConnectionState>(
     () => ({ ready, conn, health: ready && conn ? result : null, lastOk, check: refresh, connect }),

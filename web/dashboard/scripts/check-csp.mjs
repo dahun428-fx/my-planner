@@ -53,10 +53,24 @@ export function checkHtml(html) {
     problems.push({ line: lineOf(html, m.index), what: "page-level stylesheet" });
   }
 
-  const meta = html.search(/<meta\b[^>]*http-equiv\s*=\s*["']?Content-Security-Policy/i);
+  const metaMatch = html.match(/<meta\b[^>]*http-equiv\s*=\s*["']?Content-Security-Policy[^>]*>/i);
+  const meta = metaMatch ? metaMatch.index : -1;
+  const firstSheet = html.search(/<link\b[^>]*rel\s*=\s*["']?stylesheet/i);
   if (meta < 0) problems.push({ line: 1, what: "CSP meta missing" });
-  else if (firstScript >= 0 && meta > firstScript) {
-    problems.push({ line: lineOf(html, meta), what: "CSP meta after first <script>" });
+  else {
+    if (firstScript >= 0 && meta > firstScript) {
+      problems.push({ line: lineOf(html, meta), what: "CSP meta after first <script>" });
+    }
+    if (firstSheet >= 0 && meta > firstSheet) {
+      problems.push({ line: lineOf(html, meta), what: "CSP meta after first stylesheet" });
+    }
+    const policy = (attr(metaMatch[0], "content") ?? "").replace(/&#x27;|&#39;/g, "'");
+    for (const need of ["script-src 'self'", "style-src 'self'"]) {
+      if (!policy.includes(need)) problems.push({ line: lineOf(html, meta), what: `CSP lacks ${need}` });
+    }
+    if (/connect-src 'self'\s*(;|$)/.test(policy)) {
+      problems.push({ line: lineOf(html, meta), what: "CSP connect-src has no BE source" });
+    }
   }
   return { problems, inlineScripts, inlineStyles };
 }

@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const script = fileURLToPath(new URL("./check-csp.mjs", import.meta.url));
-const META = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'"/>`;
+const POLICY = "default-src &#x27;self&#x27;; script-src &#x27;self&#x27;; style-src &#x27;self&#x27;; connect-src &#x27;self&#x27; https://*.example.ts.net";
+const META = `<meta http-equiv="Content-Security-Policy" content="${POLICY}"/>`;
 const DATA = `<script id="__NEXT_DATA__" type="application/json">{"props":{}}</script>`;
 const page = (head, body = "") =>
   `<!DOCTYPE html><html lang="ko"><head><meta charSet="utf-8"/>${head}</head><body><div id="__next">${body}</div>${DATA}</body></html>`;
@@ -74,6 +75,22 @@ describe("check-csp", () => {
     const r = run(exportDir({ "index.html": bad }));
     expect(r.code).toBe(1);
     expect(r.out).toMatch(/index\.html:1: CSP meta/);
+  });
+
+  it("fails when meta comes after a stylesheet", () => {
+    const bad = page(`<link rel="stylesheet" href="/a.css"/>${META}<script src="/a.js"></script>`);
+    const r = run(exportDir({ "index.html": bad }));
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/CSP meta after first stylesheet/);
+  });
+
+  it("fails on a weak policy or an empty connect-src", () => {
+    const weak = page(`<meta http-equiv="Content-Security-Policy" content="default-src *"/><script src="/a.js"></script>`);
+    const empty = page(`<meta http-equiv="Content-Security-Policy" content="script-src 'self'; style-src 'self'; connect-src 'self' "/><script src="/a.js"></script>`);
+    const r = run(exportDir({ "index.html": weak, "settings/index.html": empty }));
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/index\.html:1: CSP lacks script-src 'self'/);
+    expect(r.out).toMatch(/settings\/index\.html:1: CSP connect-src has no BE source/);
   });
 
   it("fails when meta missing", () => {

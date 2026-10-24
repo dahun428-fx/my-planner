@@ -25,6 +25,8 @@ describe("ConnectionBand", () => {
     renderBand();
     expect(await screen.findByText("BE 켜짐 · 17:00:05 응답")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "연결 확인" })).toBeInTheDocument();
+    // the live region says on/off only, not the time that changes every minute
+    expect(screen.getByRole("status")).toHaveTextContent(/^BE 켜짐$/);
     // the good answer is remembered for the next time the BE is off
     expect(JSON.parse(localStorage.getItem("mp.lastHealthOk") ?? "null")).toMatchObject({ lastTickAt: "2026-10-24T08:00:00Z" });
   });
@@ -62,7 +64,7 @@ describe("ConnectionBand", () => {
 
   it("shows BE not set up when there is no connection", async () => {
     renderBand();
-    expect(await screen.findByText("BE 연결 전")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("BE 연결 전");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -70,7 +72,8 @@ describe("ConnectionBand", () => {
     saveConn();
     server.use(healthAnswers.unauthorized());
     renderBand();
-    expect(await screen.findByText("BE 켜짐")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent(/^BE 켜짐$/);
+    expect(document.querySelector(".band-text")).toHaveTextContent(/^BE 켜짐$/);
   });
 
   it("checks again on the button", async () => {

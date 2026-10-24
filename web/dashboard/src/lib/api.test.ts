@@ -76,6 +76,32 @@ describe("api", () => {
     expect(await pending).toEqual({ kind: "offline" });
   });
 
+  it("maps a body that stops arriving for 10 seconds to offline", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // Headers came; json() rejects once the request's signal aborts (Fetch standard).
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const signal = (init as RequestInit).signal as AbortSignal;
+      const res = new Response(null, { status: 200, headers: { "content-type": "application/json" } });
+      Object.defineProperty(res, "json", {
+        value: () =>
+          new Promise((_resolve, reject) =>
+            signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))),
+          ),
+      });
+      return res;
+    });
+    const pending = getHealth(conn);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await pending).toEqual({ kind: "offline" });
+    vi.restoreAllMocks();
+  });
+
+  it("returns offline at once for a signal already aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    expect(await getHealth(conn, { signal: ac.signal })).toEqual({ kind: "offline" });
+  });
+
   it("checks fixtures by hand, ignoring fields added later", () => {
     for (const f of [health, degraded, quiet]) expect(isHealth(f)).toBe(true);
     expect(isHealth({ ...health, added_later: { x: 1 } })).toBe(true);
