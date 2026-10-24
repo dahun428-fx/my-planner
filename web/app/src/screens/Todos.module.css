@@ -1,0 +1,196 @@
+.main {
+  padding-bottom: calc(var(--row) + env(safe-area-inset-bottom) + var(--gap));
+}
+.trailing {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.add {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+}
+.add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.add:focus-visible,
+.draftButton:focus-visible,
+.bulk:focus-visible,
+.retry:focus-visible,
+.save:focus-visible,
+.cancel:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.tabs {
+  margin: 0 var(--pad) var(--gap);
+}
+.line {
+  margin: 0 var(--pad) var(--gap);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.emptyDay {
+  margin: 0 var(--pad) var(--gap);
+  padding: 0 0.25rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.notice {
+  margin: 0 var(--pad) var(--gap);
+  padding: 0.75rem var(--pad);
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-group);
+  color: var(--notice-ink);
+  font-size: var(--size-meta);
+  line-height: 1.45;
+}
+.lead {
+  font-weight: 600;
+}
+.retry {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: var(--notice-ink);
+  cursor: pointer;
+}
+.draftRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--row);
+  padding: 0.25rem var(--pad);
+}
+.draftRow + .draftRow {
+  border-top: 1px solid var(--rule);
+}
+.draftTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-body);
+  overflow-wrap: anywhere;
+}
+.draftButton {
+  position: relative;
+  min-height: var(--small-control-h);
+  min-width: var(--control-h);
+  padding: 0 0.75rem;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  color: var(--text);
+  cursor: pointer;
+}
+.draftButton::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
+}
+.draftButton:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.confirm {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.hint {
+  margin: 0;
+  padding: 0.5rem var(--pad);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.bulkRow {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--pad) 0.5rem;
+}
+.bulk {
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+.bulk:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.label {
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--muted);
+}
+.input {
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--size-body);
+  color: var(--text);
+}
+.input:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+.save,
+.cancel {
+  flex: 1;
+  min-height: var(--control-h);
+  border: 0;
+  border-radius: var(--radius-field);
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cancel {
+  background: var(--raised);
+  color: var(--text);
+}
+.save {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

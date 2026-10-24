@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { copy } from "./copy";
-import { addDays, formatKst, relativeChecked } from "./time";
+import { addDays, formatKst, kstToUtcIso, relativeChecked } from "./time";
 
 describe("time", () => {
   it("shows KST regardless of device time zone", () => {
@@ -24,5 +24,12 @@ describe("time", () => {
     const t = Date.parse("2026-10-24T08:00:00Z");
     expect(relativeChecked("2026-10-24T07:59:40Z", t)).toBe(copy.settings.checkedJustNow);
     expect(relativeChecked("2026-10-24T07:55:00Z", t)).toBe(copy.settings.checkedMinutesAgo(5));
+  });
+});
+
+describe("kstToUtcIso", () => {
+  it("reads the wall clock as Seoul time whatever the device zone is", () => {
+    expect(kstToUtcIso("2026-10-25", "14:00")).toBe("2026-10-25T05:00:00Z");
+    expect(kstToUtcIso("2026-10-25", "00:30")).toBe("2026-10-24T15:30:00Z");
   });
 });

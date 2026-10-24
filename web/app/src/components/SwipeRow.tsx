@@ -29,6 +29,7 @@ export function SwipeRow({
   menuTitle,
   onLongPress,
   moreLabel,
+  menuExtra = [],
   children,
 }: {
   actions: SwipeAction[];
@@ -37,6 +38,8 @@ export function SwipeRow({
   onLongPress?: () => void;
   /** Accessible name of the keyboard button that opens the same menu as a long press. */
   moreLabel?: string;
+  /** Actions that only the menu offers (they have no swipe button). */
+  menuExtra?: SwipeAction[];
   children: ReactNode;
 }) {
   const surface = useRef<HTMLDivElement>(null);
@@ -216,7 +219,7 @@ export function SwipeRow({
       </div>
       <Sheet open={menu && !off} onClose={() => setMenu(false)} title={menuTitle}>
         <div className={styles.menu}>
-          {actions.map((a) => (
+          {[...actions, ...menuExtra].map((a) => (
             <button
               key={a.label}
               type="button"

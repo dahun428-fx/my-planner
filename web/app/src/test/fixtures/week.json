@@ -1,0 +1,186 @@
+{
+  "week": "2026-W43",
+  "start": "2026-10-19",
+  "end": "2026-10-25",
+  "priorities": [
+    {
+      "id": 31,
+      "title": "주간 계획 세우기",
+      "status": "done",
+      "planned_for": "2026-10-19",
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": {
+        "cadence": "week",
+        "period": "2026-W43",
+        "rank": 1
+      },
+      "completed_at": "2026-10-19T03:20:00Z"
+    },
+    {
+      "id": 32,
+      "title": "운동 세 번 하기",
+      "status": "open",
+      "planned_for": "2026-10-24",
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": {
+        "cadence": "week",
+        "period": "2026-W43",
+        "rank": 2
+      },
+      "completed_at": null
+    },
+    {
+      "id": 33,
+      "title": "서랍 정리",
+      "status": "open",
+      "planned_for": "2026-10-24",
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": {
+        "cadence": "week",
+        "period": "2026-W43",
+        "rank": 3
+      },
+      "completed_at": null
+    }
+  ],
+  "days": [
+    {
+      "date": "2026-10-19",
+      "weekday": "월",
+      "is_today": false,
+      "todos": [
+        {
+          "id": 31,
+          "title": "주간 계획 세우기",
+          "status": "done",
+          "planned_for": "2026-10-19",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": {
+            "cadence": "week",
+            "period": "2026-W43",
+            "rank": 1
+          },
+          "completed_at": "2026-10-19T03:20:00Z"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-20",
+      "weekday": "화",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-21",
+      "weekday": "수",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-22",
+      "weekday": "목",
+      "is_today": false,
+      "todos": [
+        {
+          "id": 36,
+          "title": "빨래 개기",
+          "status": "open",
+          "planned_for": "2026-10-22",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": null,
+          "completed_at": null
+        }
+      ]
+    },
+    {
+      "date": "2026-10-23",
+      "weekday": "금",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-24",
+      "weekday": "토",
+      "is_today": true,
+      "todos": [
+        {
+          "id": 32,
+          "title": "운동 세 번 하기",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": {
+            "cadence": "week",
+            "period": "2026-W43",
+            "rank": 2
+          },
+          "completed_at": null
+        },
+        {
+          "id": 33,
+          "title": "서랍 정리",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": {
+            "cadence": "week",
+            "period": "2026-W43",
+            "rank": 3
+          },
+          "completed_at": null
+        },
+        {
+          "id": 34,
+          "title": "장보기",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": "2026-10-24T05:00:00Z",
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": null,
+          "completed_at": null
+        },
+        {
+          "id": 35,
+          "title": "책 열 쪽 읽기",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": null,
+          "completed_at": null
+        }
+      ]
+    },
+    {
+      "date": "2026-10-25",
+      "weekday": "일",
+      "is_today": false,
+      "todos": []
+    }
+  ]
+}
