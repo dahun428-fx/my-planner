@@ -290,7 +290,11 @@ async def _open_api(
         settings=settings, clock=clock, token=token, read_conn=read_conn, dispatcher=dispatcher, errors=errors,
         polling_state=polling_state, started_at=errors.started_at, transcripts=transcripts, safe_mode=safe_mode,
     )
-    return await start_api(build_app(deps), settings.api.host, settings.api.port)
+    try:
+        return await start_api(build_app(deps), settings.api.host, settings.api.port)
+    except Exception:  # BE 핵심(텔레그램, 루프)이 API 때문에 멈추지 않는다(스펙 15). 포트 문제는 start_api가 본다
+        log.exception("api_start_error")
+        return None
 
 
 async def _serve(settings: Settings) -> None:

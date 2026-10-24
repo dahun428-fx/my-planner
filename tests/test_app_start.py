@@ -803,3 +803,27 @@ async def test_start_api_serves_on_loopback_and_stops(tmp_path):
         await stop_api(runner)
     with socket.socket() as again:  # 닫았으니 같은 포트를 다시 잡을 수 있다
         again.bind(("127.0.0.1", port))
+
+
+def test_api_build_error_keeps_polling(started, monkeypatch):
+    app, root, calls = started
+    _enable_api(root)
+
+    def broken(deps):
+        raise RuntimeError("조립 실패")
+
+    monkeypatch.setattr(app, "build_app", broken)
+    assert app.main() == 0
+    assert "serving" in [c[0] for c in calls]
+    assert [e["exc_type"] for e in _log_entries(root) if e["msg"] == "api_start_error"] == ["RuntimeError"]
+
+
+@pytest.mark.parametrize("bad", ['cors_origin_regex = "(["', 'cors_origins = ["https://*.vercel.app"]'])
+def test_bad_cors_config_is_settings_error(started, bad):
+    app, root, calls = started
+    toml = root / "config.toml"
+    key = bad.split(" =")[0]
+    lines = [bad if line.startswith(key + " ") else line for line in toml.read_text(encoding="utf-8").splitlines()]
+    toml.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert app.main() == app.EXIT_BAD_SETTINGS
+    assert calls == []
