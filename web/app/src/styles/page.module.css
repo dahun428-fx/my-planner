@@ -1,0 +1,7 @@
+/* Tab screens: leave room for the fixed tab bar. */
+.main {
+  padding-bottom: calc(var(--row) + env(safe-area-inset-bottom) + var(--gap));
+}
+.lead {
+  margin: 0 var(--pad);
+}

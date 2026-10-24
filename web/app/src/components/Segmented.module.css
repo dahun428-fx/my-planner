@@ -1,0 +1,35 @@
+.group {
+  display: flex;
+  gap: 0.125rem;
+  padding: 0.125rem;
+  background: var(--raised);
+  border-radius: var(--radius-field);
+}
+.option {
+  position: relative;
+  flex: 1;
+  min-height: var(--small-control-h);
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: calc(var(--radius-field) - 2px);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  cursor: pointer;
+}
+/* 9장: the pill looks 32px tall but its hit area is the 44px control height. */
+.option::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
+}
+.option[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+.option:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}

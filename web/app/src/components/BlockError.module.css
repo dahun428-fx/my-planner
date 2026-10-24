@@ -1,0 +1,23 @@
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: var(--row);
+  padding: 0.5rem var(--pad);
+  box-sizing: border-box;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.retry {
+  min-height: var(--control-h);
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.retry:focus-visible {
+  outline: 2px solid var(--text);
+}

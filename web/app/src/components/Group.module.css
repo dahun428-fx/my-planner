@@ -1,0 +1,21 @@
+.group {
+  margin: 0 var(--pad) var(--gap);
+}
+.heading {
+  margin: 0 0 0.5rem;
+  padding: 0 0.25rem;
+  font-size: var(--size-section);
+  font-weight: 600;
+  color: var(--text);
+}
+.body {
+  background: var(--surface);
+  border-radius: var(--radius-group);
+  overflow: hidden;
+}
+.footer {
+  margin-top: 0.5rem;
+  padding: 0 0.25rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}

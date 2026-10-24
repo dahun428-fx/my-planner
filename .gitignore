@@ -20,3 +20,10 @@ dist/
 *.seed.json
 life-seed/
 life-curve-seed*.json
+
+# SP5 operating app (web/app)
+web/app/node_modules/
+web/app/.next/
+web/app/out/
+web/app/next-env.d.ts
+web/app/tsconfig.tsbuildinfo

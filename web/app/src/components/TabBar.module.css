@@ -1,0 +1,40 @@
+.bar {
+  position: fixed;
+  inset: auto 0 0 0;
+  background: var(--bar);
+  border-top: 1px solid var(--rule);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+.list {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.item {
+  flex: 1;
+}
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: 3.25rem;
+  color: var(--muted);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tab[aria-current="page"] {
+  color: var(--text);
+  font-weight: 600;
+}
+.label {
+  font-size: var(--size-tab);
+  line-height: 1.2;
+}
+.tab:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
