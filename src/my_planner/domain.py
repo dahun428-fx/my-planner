@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
+from my_planner.status.xp import XpGain
+
 
 class Area(StrEnum):
     career = "career"
@@ -94,6 +96,8 @@ class RunContext:
     undo_ids: list[int] = field(default_factory=list)  # 그 가운데 되돌릴 수 있는 것
     # 앱 채팅의 조각 쓰개(`harness.stream.UiMessageWriter`, 6.4.1). 있으면 도구마다 `tool-*` 조각을 쓴다
     stream: Any = None
+    # 이 묶음의 도구가 쌓은 경험치와 넘긴 레벨(`status.xp.XpGain`, SP3-4 9.2). 레벨 오름 한 줄은 이것으로만 정한다
+    xp: XpGain = field(default_factory=XpGain)
 
     @property
     def run_turn(self) -> bool:

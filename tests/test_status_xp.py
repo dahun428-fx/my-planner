@@ -1,5 +1,6 @@
 """상태창 경험치 원장 X1~X10, 레벨 오름 (SP3-4 스펙 9.1, 9.2, 4.3). 내용은 꾸며 낸 것이다."""
 
+import asyncio
 import re
 import sqlite3
 from datetime import date, timedelta
@@ -10,8 +11,10 @@ from be_env import BeEnv
 from fakes import FakeTurn
 from test_dispatcher_messages import kst
 
+from my_planner.clock import FakeClock
 from my_planner.domain import Cadence, LoopKey, RunContext
 from my_planner.harness.dispatcher import Dispatcher
+from my_planner.status.xp import XpGain
 from my_planner.store.repos.status import StatusRepo
 from my_planner.tools.actions import ActionRequest
 from my_planner.tools.confirmations import level_up_line
@@ -95,7 +98,7 @@ async def _x8(env):
     review = _sent_run(env, LoopKey.review, kst(2026, 12, 27, 18, 0), Cadence.week)
     env.clock.set(kst(2026, 12, 27, 19, 0))
     env.parts.dispatcher.mark_answered(review.id, "telegram")
-    return ("year_review", "year:2026", 50)
+    return [("review_week", f"run:{review.id}", 30), ("year_review", "year:2026", 50)]  # 연말 회고도 주간 회고다
 
 
 async def _x9(env):
@@ -117,12 +120,13 @@ X_CASES = {"X1": _x1, "X2": _x2, "X3": _x3, "X4": _x4, "X5": _x5, "X6": _x6, "X7
 @pytest.mark.parametrize("rule", list(X_CASES))
 async def test_xp_table_x1_to_x10(tmp_path, rule):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
-        expected = await X_CASES[rule](env)
+        got = await X_CASES[rule](env)
+        expected = got if isinstance(got, list) else [got]
         ledger = _ledger(env)
         status = await (await env.get("/status")).json()
 
-    assert expected in ledger
-    assert status["xp_total"] == sum(a for *_, a in ledger)
+    assert ledger == expected  # 그 규칙의 줄만(예: X5에 X3가 함께 붙지 않는다)
+    assert status["xp_total"] == sum(a for *_, a in expected)
 
 
 async def test_x2_biggest_cadence_at_completion(tmp_path):
@@ -274,6 +278,18 @@ async def test_rest_days_skip_before_install(tmp_path):
     assert got == ["2026-10-26", "2026-10-27"]
 
 
+async def test_rest_days_first_run_without_install_or_checked_is_capped(tmp_path):
+    """`installed_at`도 `last_rest_day_checked`도 없으면 어제부터 14일까지만 본다(9.1 X9, 상한)."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        env.conn.execute("DELETE FROM app_state WHERE key IN ('installed_at', 'last_rest_day_checked')")
+        env.conn.commit()
+        env.clock.set(kst(2026, 11, 20, 9, 0))
+        got = _scheduler(env, "grant_rest_days").body["result"]["granted_dates"]
+        checked = env.parts.state.get("last_rest_day_checked")
+    assert got == [f"2026-11-{d:02d}" for d in range(6, 20)]
+    assert checked == "2026-11-19"
+
+
 async def test_task_done_at_0130_counts_previous_day_so_no_rest_day(tmp_path):
     """Review Focus 5: 01:30에 끝낸 할 일은 전날(논리적 날짜)의 완료다."""
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
@@ -410,6 +426,46 @@ async def test_level_up_line_in_telegram_reply_and_button(tmp_path):
     assert reply.endswith("✓ 완료: 꾸민 운동\n레벨 2이 됐어요.")
     assert toast == "컨디션 4 기록했어요."
     assert toast3 == "컨디션 3 기록했어요.\n레벨 3이 됐어요."
+
+
+
+async def test_level_up_line_only_on_the_change_that_crossed(tmp_path):
+    """두뇌가 답하는 사이 즉시 갈래(/actions)가 레벨을 넘겨도, 레벨 오름 줄은 그 동작의 확인 문구에만 붙는다.
+    도구를 부르지 않은 대화 답에는 붙지 않는다(9.2, 4.3 사이에 끼어드는 즉시 갈래)."""
+    gate = asyncio.Event()
+    script = [FakeTurn([], "그냥 대화 답", gate=gate)]
+    async with BeEnv.start(tmp_path, start=SAT_1300, script=script) as env:
+        _seed_xp(env, 140)
+        a = await _add(env, "꾸민 운동")
+        chat = asyncio.create_task(env.telegram("안녕"))
+        for _ in range(10_000):
+            if env.brain.calls:
+                break
+            await asyncio.sleep(0)
+        assert env.brain.calls  # 두뇌가 gate 앞에서 기다리는 중
+        _, body = await env.action("complete_task", {"id": a})  # 140 → 150, 레벨 2
+        gate.set()
+        await chat
+        reply = env.sender.sent[-1].text
+
+    assert body["xp"] == {"gained": 10, "level_up": 2}
+    assert body["confirmation"] == "✓ 완료: 꾸민 운동\n레벨 2이 됐어요."
+    assert "레벨" not in reply
+
+
+def test_xp_gain_counts_only_its_own_grants(conn):
+    """`grant(gain=…)`는 실제로 넣은 줄만 센다(이미 있는 출처는 0). 레벨 오름은 넘긴 그 쌓기에서."""
+    at = kst(2026, 10, 24, 13, 0)
+    repo = StatusRepo(conn, FakeClock(at))
+    other, mine = XpGain(), XpGain()
+    repo.grant(at=at, logical_date=date(2026, 10, 24), source_kind="rest_day", source_ref="date:2026-10-20",
+               amount=145, label="쉬는 날", gain=other)
+    repo.grant(at=at, logical_date=date(2026, 10, 24), source_kind="condition", source_ref="date:2026-10-24",
+               amount=5, label="컨디션 기록", gain=mine)
+    repo.grant(at=at, logical_date=date(2026, 10, 24), source_kind="condition", source_ref="date:2026-10-24",
+               amount=5, label="컨디션 기록", gain=mine)  # 같은 출처: 넣지 않는다
+    assert (other.gained, other.level_up) == (145, None)
+    assert (mine.gained, mine.level_up) == (5, 2)
 
 
 # --- 오르기만 한다 ---

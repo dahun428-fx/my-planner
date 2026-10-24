@@ -300,14 +300,14 @@ class Tools:
         except OSError as e:
             log.warning("curve_export_failed", extra={"error_type": type(e).__name__})
 
-    def _grant(self, *, source_kind: str, source_ref: str, amount: int, label: str) -> bool:
+    def _grant(self, ctx: RunContext, *, source_kind: str, source_ref: str, amount: int, label: str) -> bool:
         """경험치 원장 한 줄(9.1 X1~X8, X10). 변경과 같은 트랜잭션 안에서 부른다. 상태창 저장소가 없으면(SP1 시험)
         쌓지 않는다. 되돌리기는 원장을 건드리지 않는다(U6)."""
         if self.status is None:
             return False
         return self.status.grant(
             at=self.clock.now(), logical_date=self.today(), source_kind=source_kind, source_ref=source_ref,
-            amount=amount, label=label,
+            amount=amount, label=label, gain=ctx.xp,
         )
 
     def _get(self, id: Any) -> Task | str:
@@ -569,7 +569,7 @@ class Tools:
             t = self.tasks.set_status(t.id, new)
             out = self._finish(ctx, kind, t, undo=undo, extra=extra)
             if new is TaskStatus.done:  # 다시 완료해도 한 번만(`task:<id>`, U6)
-                self._grant(source_kind="task_done", source_ref=f"task:{t.id}",
+                self._grant(ctx, source_kind="task_done", source_ref=f"task:{t.id}",
                             amount=task_xp(prio[0].value if prio is not None else None), label=LABEL_TASK)
         self._after(ctx, kind, t)
         return out
@@ -725,7 +725,7 @@ class Tools:
                 ctx, "condition_recorded", condition_target(day), condition_summary(c.score),
                 {"date": day.isoformat(), "before": before},
             )
-            self._grant(source_kind="condition", source_ref=f"date:{day.isoformat()}", amount=XP_CONDITION,
+            self._grant(ctx, source_kind="condition", source_ref=f"date:{day.isoformat()}", amount=XP_CONDITION,
                         label=LABEL_CONDITION)  # X4: 날마다 한 번
         # 메모는 남기지 않는다. 날짜와 점수만.
         log.info("condition_recorded", extra={"date": day.isoformat(), "score": c.score})
@@ -786,7 +786,7 @@ class Tools:
             event = self._curve_event(ctx, "ladder_recorded", data)
             self._record(ctx, "ladder_recorded", ladder_target(period), ladder_line(period, row.now, row.future),
                          {"period": period, "before": _ladder_dict(before)})
-            self._grant(source_kind="ladder", source_ref=f"ladder:{period}", amount=XP_LADDER,
+            self._grant(ctx, source_kind="ladder", source_ref=f"ladder:{period}", amount=XP_LADDER,
                         label=LABEL_LADDER)  # X6: 그 달 처음
         ctx.events.append(event)
         self._export_curve()
@@ -836,7 +836,7 @@ class Tools:
             event = self._curve_event(ctx, "area_scores_recorded", data)
             self._record(ctx, "area_scores_recorded", areas_target(period), area_scores_line(period, data["scores"]),
                          {"period": period, "before": before})
-            self._grant(source_kind="wheel", source_ref=f"areas:{period}", amount=XP_WHEEL,
+            self._grant(ctx, source_kind="wheel", source_ref=f"areas:{period}", amount=XP_WHEEL,
                         label=LABEL_WHEEL)  # X7: 그 분기 처음(한 영역이라도)
         ctx.events.append(event)
         self._export_curve()
@@ -865,7 +865,7 @@ class Tools:
             if n >= SECRETARY_DAILY_MAX:
                 return _err(f"비서가 주는 경험치는 하루 {SECRETARY_DAILY_MAX}번까지예요. 오늘은 이미 다 줬어요.")
             ref = f"secretary:{today.isoformat()}:{n + 1}"
-            self._grant(source_kind="secretary", source_ref=ref, amount=amount, label=why)
+            self._grant(ctx, source_kind="secretary", source_ref=ref, amount=amount, label=why)
             data = {"amount": amount, "reason": why}
             event = self._curve_event(ctx, "xp_granted_by_secretary", data)
             self._record(ctx, "xp_granted_by_secretary", None, xp_granted_line(amount, why), None)

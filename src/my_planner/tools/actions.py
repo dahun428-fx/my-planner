@@ -55,7 +55,7 @@ from my_planner.status.xp import (
     LABEL_REST_DAY,
     REST_DAY_MAX_DAYS,
     XP_REST_DAY,
-    level_up_to,
+    XpGain,
 )
 from my_planner.store.db import transaction
 from my_planner.timefmt import (  # API 경계의 시각 변환(6.1). 도구 결과는 현지 시각이다
@@ -313,7 +313,7 @@ def _grant_rest_days(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) ->
     while d <= yesterday:
         if not tools.tasks.completed_on(d) and tools.status.grant(
             at=now, logical_date=d, source_kind="rest_day", source_ref=f"date:{d.isoformat()}", amount=XP_REST_DAY,
-            label=LABEL_REST_DAY,
+            label=LABEL_REST_DAY, gain=ctx.xp,
         ):
             granted.append(d.isoformat())
         d += timedelta(days=1)
@@ -519,13 +519,15 @@ def _accepts(deps: ActionDeps, spec: ActionSpec, args: dict[str, Any]) -> bool:
     return set(args) <= spec.accepts
 
 
-def _context(req: ActionRequest) -> RunContext:
+def _context(req: ActionRequest, gain: XpGain) -> RunContext:
+    """동작 하나의 맥락. `gain`은 이 요청의 트랜잭션이 적은 경험치(레벨 오름 문구는 그것으로만 정한다, 9.2)."""
     return RunContext(
         conversation_id=None,
         run_id=None,
         actor=req.actor,
         channel="app" if req.channel == "app" else "telegram",
         activity_channel=req.channel,
+        xp=gain,
     )
 
 
@@ -544,7 +546,7 @@ def _call(deps: ActionDeps, spec: ActionSpec, ctx: RunContext, args: dict[str, A
     return _applied(deps, ctx, out)
 
 
-def _decline(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionResult:
+def _decline(deps: ActionDeps, req: ActionRequest, args: dict[str, Any], gain: XpGain) -> ActionResult:
     token = args.get("confirm_token")
     p = deps.confirms.get(token) if deps.confirms is not None and isinstance(token, str) else None
     now = deps.clock.now()
@@ -554,7 +556,7 @@ def _decline(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> Acti
         return _error("conflict", 409, "conflict", STALE_TOKEN)
     assert deps.confirms is not None
     deps.confirms.resolve(p.token, "declined")
-    ctx = _context(req)
+    ctx = _context(req, gain)
     record_activity(
         deps.activity, ctx, kind="confirm_declined", target=None, summary=confirm_declined_summary(p.summary),
         risk="low", undo=None,
@@ -562,7 +564,9 @@ def _decline(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> Acti
     return _applied(deps, ctx, {})
 
 
-def _with_token(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[str, Any]) -> ActionResult:
+def _with_token(
+    deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[str, Any], gain: XpGain
+) -> ActionResult:
     p = deps.confirms.get(req.confirm_token) if deps.confirms is not None and req.confirm_token else None
     now = deps.clock.now()
     if p is None or p.resolved_at is not None:
@@ -577,7 +581,7 @@ def _with_token(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: di
     if deps.activity is not None and any(deps.activity.changed_after(t, p.created_at) for t in targets):
         deps.confirms.resolve(p.token, "stale")  # 확인 사이에 대상이 바뀌었다: 적용하지 않는다(5.2)
         return _error("conflict", 409, "conflict", STALE_TOKEN)
-    ctx = _context(req)
+    ctx = _context(req, gain)
     ctx.risk = "confirm"
     res = _call(deps, spec, ctx, args)
     if res.status == "applied":
@@ -593,7 +597,7 @@ def _already_undone(undo_activity_id: int | None) -> ActionResult:
     return ActionResult("already_undone", 200, {"status": "already_undone", "activity_id": undo_activity_id})
 
 
-def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionResult:
+def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any], gain: XpGain) -> ActionResult:
     """되돌리기 한 번(6.4.3). 바깥 트랜잭션 안에서 부른다."""
     aid = _int(args.get("activity_id"))
     a = deps.activity.get(aid) if deps.activity is not None and aid is not None else None
@@ -607,7 +611,7 @@ def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionR
         http, message = UNDO_ERRORS[block]
         return _error(block, http, block, message)
     assert a.undo is not None
-    ctx = _context(req)
+    ctx = _context(req, gain)
     payload = {**a.undo, "targets": live_targets(a, deps.activity)[1]}  # 처리 함수가 되돌린 대상만 남긴다
     try:
         with transaction(deps.conn):
@@ -630,13 +634,15 @@ def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionR
     )
 
 
-def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[str, Any]) -> ActionResult:
+def _decide(
+    deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[str, Any], gain: XpGain
+) -> ActionResult:
     if req.action == UNDO_KIND:
-        return _undo(deps, req, args)
+        return _undo(deps, req, args, gain)
     if req.action == "decline_confirm":
-        return _decline(deps, req, args)
+        return _decline(deps, req, args, gain)
     if req.confirm_token is not None:
-        return _with_token(deps, spec, req, args)
+        return _with_token(deps, spec, req, args, gain)
     if req.channel == "app" and spec.needs_confirm is not None:
         summary = spec.needs_confirm(deps.tools, args, deps.tools.today())
         if summary is not None:
@@ -651,10 +657,10 @@ def _decide(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: dict[s
                 {"status": "needs_confirm", "confirm_token": p.token, "summary": summary,
                  "expires_at": api_time(p.expires_at)},
             )
-    return _call(deps, spec, _context(req), args)
+    return _call(deps, spec, _context(req, gain), args)
 
 
-def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
+def _mark_answered(deps: ActionDeps, req: ActionRequest, gain: XpGain) -> None:
     """적용한 동작이 답한 회차가 있으면 처음 한 번 적는다(`harness.checkins.run_answered_by`, 같은 트랜잭션의 안쪽 SAVEPOINT, `_answer_in_savepoint`)."""
     if deps.mark_answered is None or deps.runs is None or deps.settings is None:
         return
@@ -665,23 +671,26 @@ def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
         activity=deps.activity, confirms=deps.confirms,
     )
     if run_id is not None:
-        deps.mark_answered(run_id, "app" if req.channel == "app" else "telegram")
+        deps.mark_answered(run_id, "app" if req.channel == "app" else "telegram", gain=gain)
 
 
-def _answer_in_savepoint(deps: ActionDeps, req: ActionRequest) -> None:
-    """답한 회차 기록(답 표시와 경험치)을 안쪽 SAVEPOINT에서. 안 되면 그것만 되돌리고 적용은 그대로 둔다."""
+def _answer_in_savepoint(deps: ActionDeps, req: ActionRequest, gain: XpGain) -> None:
+    """답한 회차 기록(답 표시와 경험치)을 안쪽 SAVEPOINT에서. 안 되면 그것만 되돌리고 적용은 그대로 둔다.
+    그 경험치는 SAVEPOINT가 풀린(커밋에 남는) 뒤에만 `gain`에 더한다."""
+    answer = XpGain()
     try:
         with transaction(deps.conn):
-            _mark_answered(deps, req)
+            _mark_answered(deps, req, answer)
+        gain.merge(answer)
     except Exception as e:  # noqa: BLE001 - 본문 없이 종류만 남긴다
         log.warning("action_answer_record_error", extra={"action": req.action, "error_type": type(e).__name__})
 
 
-def _add_xp(body: dict[str, Any], before: int, after: int) -> None:
-    """응답의 `xp`(이 요청에서 쌓인 양과 오른 레벨)와 확인 문구 끝의 레벨 오름 한 줄(9.2)."""
-    body["xp"] = {"gained": after - before, "level_up": level_up_to(before, after)}
-    if body["xp"]["level_up"] is not None:
-        body["confirmation"] = with_level_up(body.get("confirmation"), before, after)
+def _add_xp(body: dict[str, Any], gain: XpGain) -> None:
+    """응답의 `xp`(이 요청의 트랜잭션이 적은 양과 오른 레벨)와 확인 문구 끝의 레벨 오름 한 줄(9.2)."""
+    body["xp"] = {"gained": gain.gained, "level_up": gain.level_up}
+    if gain.level_up is not None:
+        body["confirmation"] = with_level_up(body.get("confirmation"), gain.level_up)
 
 
 _REQUEST_KEY = "_request"  # 저장한 undo 응답 옆에 둔 요청(활동 id). 다시 돌려줄 때 뺀다
@@ -719,15 +728,14 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     args = req.args if req.args is not None else {}
     if not isinstance(args, dict) or not _accepts(deps, spec, args):
         return _error("invalid", 400, "invalid_request", BAD_ARGS)
-    status_repo = deps.tools.status
+    gain = XpGain()  # 이 요청의 트랜잭션이 적은 경험치만(다른 통로가 그 사이 적은 것은 넣지 않는다)
     try:
         with transaction(deps.conn):
-            xp_before = status_repo.total() if status_repo is not None else 0
-            res = _decide(deps, spec, req, args)
+            res = _decide(deps, spec, req, args, gain)
             if res.status == "applied":
-                _answer_in_savepoint(deps, req)
+                _answer_in_savepoint(deps, req, gain)
                 if "xp" in res.body:
-                    _add_xp(res.body, xp_before, status_repo.total() if status_repo is not None else 0)
+                    _add_xp(res.body, gain)
             if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(

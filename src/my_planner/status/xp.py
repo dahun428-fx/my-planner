@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Final
 
 # 9.1 경험치
@@ -81,6 +82,31 @@ def level_up_to(before: int, after: int) -> int | None:
     """경험치 합계가 `before`에서 `after`로 바뀌어 레벨이 올랐으면 새 레벨, 아니면 None."""
     new = level_for(after)
     return new if new > level_for(before) else None
+
+
+@dataclass
+class XpGain:
+    """한 차례(두뇌 답 하나, 즉시 갈래 요청 하나, 버튼 하나)가 **스스로** 쌓은 경험치와 그 쌓기가 넘긴 레벨(9.2).
+
+    원장에 한 줄을 쌓는 그 자리(`StatusRepo.grant`)에서 쌓기 직전·직후 합계로 동기적으로 적는다. 그래서 같은 두뇌
+    호출 사이에 끼어든 다른 갈래(4.3)의 경험치는 이 차례의 레벨 오름으로 세지 않는다.
+    """
+
+    gained: int = 0
+    level_up: int | None = None
+
+    def add(self, before: int, after: int) -> None:
+        self.gained += after - before
+        self.note(level_up_to(before, after))
+
+    def note(self, level: int | None) -> None:
+        """다른 차례가 알려 준 레벨 오름(예: 버튼이 부른 즉시 갈래 응답의 `xp.level_up`)을 합친다."""
+        if level is not None and (self.level_up is None or level > self.level_up):
+            self.level_up = level
+
+    def merge(self, other: XpGain) -> None:
+        self.gained += other.gained
+        self.note(other.level_up)
 
 
 def progress(xp_total: int) -> tuple[int, int, int]:

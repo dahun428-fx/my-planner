@@ -74,18 +74,22 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
 # --- 경험치 (SP3-4 9장, 부록 A) ---
 
 
-def level_up_line(before: int, after: int) -> str:
-    """부록 A "레벨 오름": 경험치 합계가 `before` → `after`로 바뀌며 레벨이 올랐으면 `레벨 {N}이 됐어요.`, 아니면 빈 글.
-
-    확인 문구 끝에 한 줄로 붙인다(9.2). 따로 먼저 보내는 메시지는 없다.
-    """
-    level = level_up_to(before, after)
+def level_line(level: int | None) -> str:
+    """부록 A "레벨 오름": `레벨 {N}이 됐어요.`, 오른 레벨이 없으면 빈 글. 확인 문구 끝에 한 줄로 붙인다(9.2)."""
     return f"레벨 {level}이 됐어요." if level is not None else ""
 
 
-def with_level_up(confirmation: str | None, before: int, after: int) -> str | None:
-    """확인 문구(없으면 None) 끝에 레벨 오름 한 줄을 붙인다. 둘 다 없으면 None."""
-    line = level_up_line(before, after)
+def level_up_line(before: int, after: int) -> str:
+    """경험치 합계가 `before` → `after`로 바뀌며 레벨이 올랐으면 그 한 줄. 두 값은 **한 쌓기**의 직전·직후다(`XpGain`)."""
+    return level_line(level_up_to(before, after))
+
+
+def with_level_up(confirmation: str | None, level: int | None) -> str | None:
+    """확인 문구(없으면 None) 끝에 그 차례가 넘긴 레벨(`XpGain.level_up`)의 한 줄을 붙인다. 둘 다 없으면 None.
+    이미 그 줄로 끝나면 다시 붙이지 않는다."""
+    line = level_line(level)
+    if line and confirmation and confirmation.endswith(line):
+        return confirmation
     joined = "\n".join(x for x in (confirmation, line) if x)
     return joined or None
 
