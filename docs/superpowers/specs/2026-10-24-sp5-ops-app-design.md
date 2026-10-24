@@ -1,6 +1,6 @@
 # SP5 운영 앱 상세 설계 (청사진 · 화면 · 기능)
 
-- 상태: 확정 v3 (Dahun 검토), Dahun 검토 대기
+- 상태: 확정 v3 (Dahun 검토)
 - 작성일: 2026-10-24
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP1 비서 코어](2026-10-23-sp1-secretary-core-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 **정본**)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md), 결정 기록: [`docs/adr/`](../../adr/) (이번에 [0009](../../adr/0009-ops-app-static-pwa-keeps-read-snapshot.md) 추가)
