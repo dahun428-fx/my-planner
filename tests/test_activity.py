@@ -99,7 +99,7 @@ def test_every_mutation_records_activity_with_undo_before_values(aenv):
     assert undo[0] == {"task_id": a}
     assert undo[2] == {"task_id": a, "before": {"title": "운동"}}
     assert undo[3] == {"task_id": a, "planned_for": "2026-10-24", "scheduled_at": None}
-    assert undo[4] == {"cadence": "week", "period": "2026-W43", "task_ids": []}
+    assert undo[4] == {"cadence": "week", "period": "2026-W43", "task_ids": [], "statuses": []}
     assert undo[5]["status"] == "open" and undo[5]["completed_at"] is None
     assert undo[6]["status"] == "done" and undo[6]["completed_at"] is not None
     assert undo[7]["status"] == "open" and undo[7]["priorities"] == [["week", "2026-W43", 1]]

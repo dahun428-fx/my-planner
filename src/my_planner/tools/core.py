@@ -501,7 +501,9 @@ class Tools:
             if t.status is not TaskStatus.open:
                 return _err(f"{t.id}번 할 일은 열린 할 일이 아니라서 우선순위에 올릴 수 없어요.")
         ids: list[int] = list(task_ids)
-        before = [t.id for _, t in self.tasks.priority_ranks(c, period)]
+        ranked = self.tasks.priority_ranks(c, period)
+        before = [t.id for _, t in ranked]
+        before_status = [t.status.value for _, t in ranked]  # 되돌릴 때 그 뒤에 상태가 바뀌었는지 본다(6.4.3)
         with self.tasks.transaction():
             self.tasks.set_priorities(c, period, ids)
             picked = self.tasks.priorities(c, period)
@@ -512,7 +514,7 @@ class Tools:
             self._record(
                 ctx, "priorities_set", priorities_target(c.value, period),
                 confirmation_line(ToolEvent("priorities_set", None, data), self.today()),
-                {"cadence": c.value, "period": period, "task_ids": before},
+                {"cadence": c.value, "period": period, "task_ids": before, "statuses": before_status},
                 # 목록과 함께, 빠지거나 들어온 할 일도 바뀐 대상이다(그 할 일의 확인 토큰이 stale이 된다)
                 targets=[priorities_target(c.value, period), *(task_target(i) for i in dict.fromkeys([*before, *ids]))],
             )
@@ -708,12 +710,15 @@ def _undo_tasks_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -
 
 
 def _undo_priorities_set(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
-    """이전 목록으로. 이전 목록의 할 일이 지금도 목록에 오를 수 있어야 한다(`set_priorities`와 같은 규칙: 있고,
-    지워지지 않았고, `open`). 하나라도 아니면 superseded. U3은 목록 대상만 본다(할 일 대상은 지켜보기만 한다)."""
+    """이전 목록으로. 이전 목록의 할 일 가운데 지워졌거나, 내려놓았거나, 그 목록 변경 뒤에 상태가 바뀐 것이 있으면
+    superseded. 그때 이미 `done`이던 할 일은 그대로 되살린다(완료한 할 일이 목록에 남는 것은 정상이다).
+    U3은 목록 대상만 본다(할 일 대상은 지켜보기만 한다)."""
     ids = list(undo["task_ids"])
-    for i in ids:
+    statuses = undo.get("statuses")  # 티켓 05 전 행에는 없다: 그때는 `open`이었다고 본다(set_priorities 규칙)
+    for k, i in enumerate(ids):
         t = tools.tasks.get(i)
-        if t is None or t.status is not TaskStatus.open:
+        then = statuses[k] if isinstance(statuses, list) and k < len(statuses) else TaskStatus.open.value
+        if t is None or t.status is TaskStatus.dropped or t.status.value != then:
             return SUPERSEDED
     tools.tasks.set_priorities(undo["cadence"], undo["period"], ids)
     return None

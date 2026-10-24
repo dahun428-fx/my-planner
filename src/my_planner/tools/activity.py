@@ -112,6 +112,11 @@ def _watch_only(kind: str, target: str) -> bool:
     return any(kind == k and target.startswith(p) for k, p in WATCH_ONLY_TARGETS)
 
 
+def watched_targets(a: Activity, repo: ActivityRepo) -> list[str]:
+    """그 활동의 지켜보는 대상. 되돌리기 행도 적는다: 확인 토큰의 stale 판정이 그 되돌림을 보게(U3은 거른다)."""
+    return [t for t in repo.targets(a.id) if _watch_only(a.kind, t)]
+
+
 def live_targets(a: Activity, repo: ActivityRepo) -> tuple[list[str], list[str]]:
     """(U3이 보는 대상, 그 가운데 나중에 바뀌지 않은 것). 나중 행은 `(at, id)`가 큰 되돌리지 않은 행이고,
     다른 행의 지켜보는 대상(`WATCH_ONLY_TARGETS`)은 바꾼 것으로 세지 않는다."""

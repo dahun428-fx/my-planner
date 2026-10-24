@@ -171,8 +171,8 @@ async def test_undo_each_kind(tmp_path, kind):
     assert (new["kind"], new["undo_json"], new["risk"], new["actor"], new["channel"]) == (
         "undo", None, "low", "user", "app")
     assert new["summary"] == out["confirmation"] and new["target"] == original["target"]
-    # 되돌리기 행은 원래 행이 바꾼 대상을 적는다(목록 변경의 할 일 대상은 지켜보기만 하므로 빼고)
-    assert new_targets == [t for t in old_targets if not (kind == "priorities_set" and t.startswith("task:"))]
+    # 되돌리기 행은 원래 행의 대상을 모두 적는다(목록 변경의 할 일 대상은 지켜보는 대상으로)
+    assert new_targets == old_targets
     assert ledger_after == ledger_before  # U6
 
 
@@ -673,3 +673,40 @@ async def test_undo_tasks_confirmed_partial_single_summary(tmp_path):
         row = _row(env, body["activity_id"])["summary"]
 
     assert status == 200 and body["confirmation"] == "↩ 되돌림: 스트레칭 확정" == row
+
+
+async def test_undo_list_with_task_done_before_change_p4(tmp_path):
+    """N1/P4: 목록 [a, b] → a 완료 → 목록 [b] → 목록 되돌리기. a는 목록 변경 전에 이미 `done`이었다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = await _add(env, "가"), await _add(env, "나")
+        await _apply(env, "set_priorities", {**WEEK, "task_ids": [a, b]})
+        await _apply(env, "complete_task", {"id": a})
+        second = await _apply(env, "set_priorities", {**WEEK, "task_ids": [b]})
+        status, body = await undo(env, second["undo_id"])
+        listed = [t.id for t in env.parts.tasks.priorities("week", "2026-W43")]
+        task = env.parts.tasks.get(a).status.value
+
+    assert status == 200 and body["status"] == "undone"
+    assert listed == [a, b] and task == "done"
+
+
+async def test_list_undo_makes_drop_token_stale_n2(tmp_path):
+    """N2: 이번 주 목록 [n] → `drop_task n` 확인 토큰 → 목록 되돌리기(n이 빠진다) → 그 토큰은 stale(409).
+    되돌리기 행의 할 일 대상은 지켜보기만 하므로 U3은 그대로다(그 전 완료 되돌리기는 막히지 않는다)."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        n, m = await _add(env, "가"), await _add(env, "나")
+        done_m = await _apply(env, "complete_task", {"id": m})
+        listed = await _apply(env, "set_priorities", {**WEEK, "task_ids": [n]})
+        _, nc = await env.action("drop_task", {"id": n})
+        assert nc["status"] == "needs_confirm"
+        env.clock.advance(minutes=1)
+        s_undo, _ = await undo(env, listed["undo_id"])
+        st, body = await env.action("drop_task", {"id": n}, confirm_token=nc["confirm_token"])
+        token = env.conn.execute("SELECT resolution FROM pending_confirms WHERE token = ?",
+                                 (nc["confirm_token"],)).fetchone()["resolution"]
+        task = env.parts.tasks.get(n).status.value
+        s_m, _ = await undo(env, done_m["undo_id"])
+
+    assert s_undo == 200
+    assert st == 409 and body["error"]["code"] == "conflict" and token == "stale" and task == "open"
+    assert s_m == 200

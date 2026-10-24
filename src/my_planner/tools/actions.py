@@ -50,6 +50,7 @@ from my_planner.tools.activity import (
     record_activity,
     task_target,
     undo_block,
+    watched_targets,
 )
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
@@ -377,7 +378,8 @@ def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionR
     summary = undo_summary(payload.get("summary", a.summary))  # 일부만 되돌렸으면 처리 함수가 좁힌 문구
     new_id = record_activity(
         deps.activity, ctx, kind=UNDO_KIND, target=a.target, summary=summary, risk="low", undo=None,
-        targets=list(payload["targets"]),  # 되돌리기도 그 대상을 바꾼 활동이다(U3). 실제로 되돌린 대상만
+        # 되돌리기도 그 대상을 바꾼 활동이다(U3): 실제로 되돌린 대상과, 원래 행의 지켜보는 대상(확인 토큰 stale용)
+        targets=[*payload["targets"], *watched_targets(a, deps.activity)],
     )
     assert new_id is not None
     deps.activity.mark_undone(a.id, new_id)  # U5

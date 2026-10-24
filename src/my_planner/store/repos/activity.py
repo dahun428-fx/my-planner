@@ -104,7 +104,8 @@ class ActivityRepo:
 
         확인 토큰의 `stale` 판정(5.2)은 시각만 본다. 되돌리기 U3(6.4.3)은 그 활동 `(at, id)`보다 나중 행을 보고
         (`after_id`: 같은 시각이면 id가 큰 행이 나중이다), 되돌린 활동은 빼고(`skip_undone`) 되돌리기 활동은 센다.
-        `ignore`의 (종류, 대상 접두)에 맞는 행은 그 대상을 바꾼 것으로 세지 않는다(지켜보기만 하는 대상).
+        `ignore`의 (종류, 대상 접두)에 맞는 행은 그 대상을 바꾼 것으로 세지 않는다(지켜보기만 하는 대상). 그 종류를
+        되돌린 `undo` 행도 같은 대상을 지켜보기만 한다(원래 행의 대상을 그대로 적는다).
         """
         sql = "SELECT 1 FROM activity_targets t JOIN activity a ON a.id = t.activity_id WHERE t.target = ? AND "
         args: list[object] = [target, to_iso(after)]
@@ -116,8 +117,11 @@ class ActivityRepo:
         if skip_undone:
             sql += " AND a.undone_at IS NULL"
         for kind, prefix in ignore:
-            sql += " AND NOT (a.kind = ? AND substr(t.target, 1, ?) = ?)"
-            args += [kind, len(prefix), prefix]
+            sql += (
+                " AND NOT (substr(t.target, 1, ?) = ? AND (a.kind = ? OR (a.kind = 'undo' AND EXISTS ("
+                "SELECT 1 FROM activity o WHERE o.undone_by = a.id AND o.kind = ?))))"
+            )
+            args += [len(prefix), prefix, kind, kind]
         return self.conn.execute(sql + " LIMIT 1", args).fetchone() is not None
 
     def mark_undone(self, id: int, undo_id: int) -> None:
