@@ -8,6 +8,7 @@ import { type ChatSheetApi, ChatSheetContext } from "../chat/sheetContext";
 import { ToastProvider, useToast } from "../components/Toast";
 import { ConnectionProvider, useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { reportBrowserError } from "../lib/errorReport";
 import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
 import { pruneDeviceData } from "../lib/snapshot";
 import { applyTheme, loadTheme } from "../lib/theme";
@@ -27,13 +28,13 @@ import "../components/TabBar";
 import "../styles/page.module.css";
 
 // A crash inside the chat sheet takes down only the sheet, never the screen behind it.
-class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode }, { failed: boolean }> {
+class ChatBoundary extends ReactComponent<{ onError(error: unknown): void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
-  componentDidCatch() {
-    this.props.onError();
+  componentDidCatch(error: unknown) {
+    this.props.onError(error);
   }
   render() {
     return this.state.failed ? null : this.props.children;
@@ -46,6 +47,9 @@ class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode
 // there to read offline (F9).
 function ChatHost({ children }: { children: ReactNode }) {
   const toast = useToast();
+  const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   // Another BE address (re-entered on /connect/) gets a fresh sheet: the old conversation, its id
   // and any stream still coming must never reach the new BE.
   const beUrl = useConnection().conn?.beUrl ?? "";
@@ -100,7 +104,13 @@ function ChatHost({ children }: { children: ReactNode }) {
     <ChatSheetContext.Provider value={api}>
       {children}
       {Sheet && (
-        <ChatBoundary key={`${generation}|${beUrl}`} onError={fail}>
+        <ChatBoundary
+          key={`${generation}|${beUrl}`}
+          onError={(error) => {
+            reportBrowserError(error, routerRef.current.pathname);
+            fail();
+          }}
+        >
           <Sheet open={open} onClose={close} />
         </ChatBoundary>
       )}
@@ -119,6 +129,15 @@ function useAppShell() {
     applyTheme(loadTheme());
     void registerServiceWorker((url) => void routerRef.current.push(url)).then(() => ensurePushSubscription());
     void pruneDeviceData();
+    // Uncaught errors and rejected promises go to the BE as name + place, never the message (spec 3.3).
+    const onError = (e: ErrorEvent) => reportBrowserError(e.error, routerRef.current.pathname);
+    const onRejection = (e: PromiseRejectionEvent) => reportBrowserError(e.reason, routerRef.current.pathname);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
   }, []);
 }
 

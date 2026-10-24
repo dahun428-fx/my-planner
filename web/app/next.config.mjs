@@ -17,6 +17,7 @@ export default function config(phase) {
     trailingSlash: true,
     images: { unoptimized: true },
     reactStrictMode: true,
+    env: { NEXT_PUBLIC_APP_VERSION: (process.env.VERCEL_GIT_COMMIT_SHA ?? "dev").slice(0, 7) },
   };
   return nextConfig;
 }
