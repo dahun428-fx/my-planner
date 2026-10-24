@@ -10,7 +10,7 @@ const BUILD_ID = "dev";
 //   /_next/static is cache first. Requests to the BE (another origin) are never touched.
 
 const CACHE = "app-" + BUILD_ID;
-const SHELL = ["/", "/todos/", "/activity/", "/settings/", "/checkin/", "/connect/"];
+const SHELL = ["/", "/todos/", "/activity/", "/settings/", "/checkin/", "/habits/", "/connect/"];
 const DEFAULT_TITLE = "비서"; // the app name, as in manifest.webmanifest
 
 // The push payload `url` (SP3-4 6.4.8) as a path inside this app: /checkins/<n> is the static

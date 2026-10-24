@@ -20,6 +20,7 @@ import "../styles/globals.css";
 import "../screens/Activity";
 import "../screens/Checkin";
 import "../screens/Connect";
+import "../screens/Habits";
 import "../screens/Settings";
 import "../screens/Today";
 import "../screens/Todos";

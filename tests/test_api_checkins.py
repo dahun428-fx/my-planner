@@ -107,3 +107,20 @@ async def test_checkin_cards_no_habit_card_without_habits(tmp_path):
         run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
         detail = await get_json(env, f"/checkins/{run_id}")
         assert [c["component"] for c in detail["cards"]] == ["ui_condition_picker"]  # 활성 습관이 없다
+
+
+async def test_checkin_cards_habit_card_only_within_seven_day_window(tmp_path):
+    """도구는 오늘 포함 7일(오늘..오늘-6)만 받는다. 창 밖 체크인 상세에는 눌러도 거절될 습관 카드를 붙이지 않는다."""
+    script = [FakeTurn([], "꾸민 저녁")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 18, 0) + timedelta(seconds=30), script=script) as env:
+        _add_habit(env, "꾸민 운동")
+        await env.tick()
+        run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+
+        env.clock.advance(timedelta(days=6))  # 10/30: 체크인 날짜 10/24는 창의 맨 끝(오늘-6)
+        recent = await get_json(env, f"/checkins/{run_id}")
+        env.clock.advance(timedelta(days=1))  # 10/31: 오늘-7, 창 밖
+        old = await get_json(env, f"/checkins/{run_id}")
+
+    assert "ui_habit_check" in [c["component"] for c in recent["cards"]]
+    assert "ui_habit_check" not in [c["component"] for c in old["cards"]]

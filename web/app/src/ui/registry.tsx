@@ -5,6 +5,7 @@ import { ChapterDraft } from "./components/ChapterDraft";
 import { Choice } from "./components/Choice";
 import { ConditionPicker } from "./components/ConditionPicker";
 import { Confirm } from "./components/Confirm";
+import { HabitCheck } from "./components/HabitList";
 import { LadderPicker } from "./components/LadderPicker";
 import { MilestoneDraft } from "./components/MilestoneDraft";
 import { SummaryCard } from "./components/SummaryCard";
@@ -20,6 +21,7 @@ const registry: Record<string, ComponentType<PartProps<any>>> = {
   ui_todo_list: TodoList,
   ui_choice: Choice,
   ui_summary_card: SummaryCard,
+  ui_habit_check: HabitCheck,
   ui_todo_draft: TodoDraft,
   ui_condition_picker: ConditionPicker,
   ui_ladder_picker: LadderPicker,

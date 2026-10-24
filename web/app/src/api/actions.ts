@@ -26,7 +26,12 @@ export type ActionName =
   | "pin_card"
   | "unpin_card"
   | "reorder_cards"
-  | "decline_confirm";
+  | "decline_confirm"
+  | "add_habit"
+  | "update_habit"
+  | "set_habit_status"
+  | "check_habit"
+  | "uncheck_habit";
 
 export type ActionOutcome =
   | { kind: "applied"; activityId: number; undoId: number | null; confirmation: string; result: unknown }

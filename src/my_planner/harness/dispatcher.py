@@ -1515,7 +1515,7 @@ class Dispatcher:
             self._preamble(
                 False,
                 merged=[m.loop.value for m in merged] or None,
-                include_habits=any(r.loop in (LoopKey.evening_checkin, LoopKey.review) for r in (run, *merged)),
+                include_habits=any(r.loop is LoopKey.evening_checkin for r in (run, *merged)),  # 오늘 블록(5.7). 주간 블록은 아래
                 habit_day=habit_date,
             ),
             self._habit_week_block(run, merged),

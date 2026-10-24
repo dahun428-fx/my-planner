@@ -1,10 +1,12 @@
-import type { Todo } from "../api/types.gen";
+import type { Habit, Todo } from "../api/types.gen";
 
 // Every Korean sentence the app shows lives here (spec 10장). Screen code takes text from `copy`;
 // `npm run lint:copy` rejects Hangul literals anywhere else. Templates are functions.
 // Later tickets add entries to these groups.
 
 const CHAT_LATER = "비서가 다시 연결되면 말할 수 있어요";
+// The back link of a screen off the tabs (check-in detail, habits).
+const BACK_TODAY = "‹ 오늘";
 
 export const copy = {
   appName: "비서",
@@ -85,7 +87,7 @@ export const copy = {
   },
 
   checkin: {
-    back: "‹ 오늘",
+    back: BACK_TODAY,
     canReply: "답장할 수 있어요",
     answeredVia: (channel: string) => `${channel}에서 답했어요`,
     answered: "답했어요",
@@ -315,6 +317,45 @@ export const copy = {
     checkLabel: (title: string) => `${title} 체크`,
   },
 
+  // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,
+  // nothing about what is left.
+  habits: {
+    heading: "습관",
+    manage: "관리",
+    todayLine: "오늘 습관",
+    addRow: "습관 추가하기",
+    empty: "챙기고 싶은 습관을 더해 보세요. 매일 하는 것도, 주 몇 번 하는 것도 돼요.",
+    weekOfTarget: (n: number, target: number) => `이번 주 ${n}번 · 목표 ${target}번`,
+    weekMet: "이번 주 목표만큼 했어요",
+    week: (n: number) => `이번 주 ${n}번`,
+    lastWeek: (n: number) => `지난주 ${n}번`,
+    weekOf: (m: number, d: number, n: number) => `${m}월 ${d}일 주 ${n}번`,
+    // 6.2 habits screen and its sheets.
+    back: BACK_TODAY,
+    add: "습관 추가",
+    editTitle: "습관 고치기",
+    active: "챙기는 습관",
+    paused: "쉬는 습관",
+    archived: "그만둔 습관",
+    resume: "다시 시작",
+    resumeLabel: (title: string) => `${title} 다시 시작`,
+    edit: "고치기",
+    pause: "쉬어 가기",
+    archive: "그만두기",
+    daily: "매일",
+    weekly: "주 N회",
+    weeklyN: (n: number) => `주 ${n}회`,
+    detailMeta: (area: string, cadence: string) => `${area} · ${cadence}`,
+    gridLabel: "지난 4주",
+    titleLabel: "제목",
+    areaLabel: "영역",
+    cadenceLabel: "주기",
+    targetLabel: "주 몇 회",
+    addSubmit: "추가",
+    save: "저장",
+    close: "닫기",
+  },
+
   areas: {
     career: "커리어",
     finance: "경제",
@@ -349,3 +390,11 @@ export const copy = {
 } as const;
 
 export type Copy = typeof copy;
+
+/** The grey line at the right of a habit row (SP7 6.1). The app works out "met"; it earns nothing. */
+export function habitMeta(h: Pick<Habit, "kind" | "target_per_week" | "week_count">): string {
+  if (h.kind === "weekly" && h.target_per_week !== null) {
+    return h.week_count >= h.target_per_week ? copy.habits.weekMet : copy.habits.weekOfTarget(h.week_count, h.target_per_week);
+  }
+  return copy.habits.week(h.week_count);
+}

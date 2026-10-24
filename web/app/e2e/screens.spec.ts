@@ -2,7 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../src/lib/copy";
 import { LONG_TITLE, beUnreachable, mockBe, seedConn } from "./routes";
 
-// Spec 13장 "눈으로": the eight canvas screens at 390×844, light and dark, saved to
+// Spec 13장 "눈으로": the canvas screens (and the SP7 habits screen with its detail sheet) at 390×844, light and dark, saved to
 // e2e/__screens__/ (not committed) to be read next to the mockups. Each screen also must not
 // scroll sideways, with a 200-character todo title in the fixtures (spec 9장).
 
@@ -80,6 +80,26 @@ const SCREENS: Screen[] = [
       await page.goto("/settings/");
       await expect(heading(page, copy.settings.title)).toBeVisible();
       await page.waitForLoadState("networkidle");
+    },
+  },
+  {
+    name: "habits",
+    seed: true,
+    open: async (page) => {
+      await page.goto("/habits/");
+      await expect(heading(page, copy.habits.heading)).toBeVisible();
+      await page.getByRole("button", { name: copy.habits.archived }).click();
+      await expect(page.getByText("피아노")).toBeVisible();
+    },
+  },
+  {
+    name: "habit-detail",
+    seed: true,
+    open: async (page) => {
+      await page.goto("/habits/");
+      await page.getByRole("button", { name: /운동/ }).click();
+      await expect(page.getByRole("group", { name: copy.habits.gridLabel })).toBeVisible();
+      await expect(page.getByText(copy.habits.week(2), { exact: true })).toBeVisible();
     },
   },
   {

@@ -319,7 +319,7 @@ describe("sw.js", () => {
     fire("install", e);
     await Promise.all(e.waits);
     const cached = [...caches.store.get("app-b1")!.keys()].map((k) => new URL(k).pathname).sort();
-    expect(cached).toEqual(["/", "/_next/static/chunks/a.js", "/activity/", "/checkin/", "/connect/", "/settings/", "/todos/"]);
+    expect(cached).toEqual(["/", "/_next/static/chunks/a.js", "/activity/", "/checkin/", "/connect/", "/habits/", "/settings/", "/todos/"]);
   });
 
   it("install still succeeds when the shell cannot be cached (push must keep working)", async () => {

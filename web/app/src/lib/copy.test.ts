@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { copy } from "./copy";
+import { copy, habitMeta } from "./copy";
 
 const repoRoot = join(__dirname, "../../../..");
 const srcRoot = join(__dirname, "..");
@@ -50,6 +50,61 @@ describe("copy", () => {
       return banned.filter((w) => body.includes(w)).map((w) => `${relative(srcRoot, file)}: ${w}`);
     });
     expect(inSource).toEqual([]);
+  });
+
+  it("banned list has the SP7 words", () => {
+    // SP7 7장: SP7-05 added these to the system.md block the app reads.
+    const list = readBannedList();
+    for (const w of ["끊겼", "며칠째", "남음"]) expect(list).toContain(w);
+    for (const w of ["밀렸다", "놓쳤다", "실패"]) expect(list).toContain(w);
+  });
+
+  it("habit copy is appendix A verbatim", () => {
+    expect(copy.habits.heading).toBe("습관");
+    expect(copy.habits.manage).toBe("관리");
+    expect(copy.habits.todayLine).toBe("오늘 습관");
+    expect(copy.habits.addRow).toBe("습관 추가하기");
+    expect(copy.habits.empty).toBe("챙기고 싶은 습관을 더해 보세요. 매일 하는 것도, 주 몇 번 하는 것도 돼요.");
+    expect(copy.habits.weekOfTarget(2, 3)).toBe("이번 주 2번 · 목표 3번");
+    expect(copy.habits.weekMet).toBe("이번 주 목표만큼 했어요");
+    expect(copy.habits.week(4)).toBe("이번 주 4번");
+    expect(copy.habits.lastWeek(3)).toBe("지난주 3번");
+    expect(copy.habits.weekOf(10, 5, 1)).toBe("10월 5일 주 1번");
+  });
+
+  it("habit screen copy is spec 6.2 verbatim", () => {
+    expect(copy.habits.back).toBe("‹ 오늘");
+    expect(copy.habits.back).toBe(copy.checkin.back);
+    expect(copy.habits.active).toBe("챙기는 습관");
+    expect(copy.habits.paused).toBe("쉬는 습관");
+    expect(copy.habits.archived).toBe("그만둔 습관");
+    expect(copy.habits.resume).toBe("다시 시작");
+    expect(copy.habits.edit).toBe("고치기");
+    expect(copy.habits.pause).toBe("쉬어 가기");
+    expect(copy.habits.archive).toBe("그만두기");
+    expect(copy.habits.daily).toBe("매일");
+    expect(copy.habits.weekly).toBe("주 N회");
+    expect(copy.habits.weeklyN(3)).toBe("주 3회");
+    expect(copy.habits.addSubmit).toBe("추가");
+    expect(copy.habits.save).toBe("저장");
+  });
+
+  it("habit copy has no banned word, ratio or what is left", () => {
+    const values = texts(copy.habits);
+    expect(values.length).toBeGreaterThan(5);
+    for (const t of values) {
+      expect(banned.filter((w) => t.includes(w))).toEqual([]);
+      expect(t).not.toMatch(/%|남음|남은|\d+\s*\/\s*\d+/);
+    }
+  });
+
+  it("habitMeta picks the line by kind and count", () => {
+    expect(habitMeta({ kind: "daily", target_per_week: null, week_count: 4 })).toBe("이번 주 4번");
+    expect(habitMeta({ kind: "daily", target_per_week: null, week_count: 0 })).toBe("이번 주 0번");
+    expect(habitMeta({ kind: "weekly", target_per_week: 3, week_count: 2 })).toBe("이번 주 2번 · 목표 3번");
+    expect(habitMeta({ kind: "weekly", target_per_week: 3, week_count: 3 })).toBe("이번 주 목표만큼 했어요");
+    // Over the target is still "met", never a count above it.
+    expect(habitMeta({ kind: "weekly", target_per_week: 2, week_count: 5 })).toBe("이번 주 목표만큼 했어요");
   });
 
   it("areas are glossary names", () => {
