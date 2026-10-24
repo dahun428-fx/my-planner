@@ -333,3 +333,58 @@ async def test_partial_messages_only_when_streaming(tmp_path, monkeypatch):
     await brain.run("hi", session_id=None, run_ctx=streaming)
 
     assert [o.include_partial_messages for o in seen] == [False, True]
+
+
+async def test_two_text_blocks_around_tool_call_get_separate_ids(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    tool = [
+        _stream_event({"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "x"}}),
+        _stream_event({"type": "content_block_stop", "index": 1}),
+    ]
+    msgs = [
+        _stream_event({"type": "message_start"}),
+        *_text_events("먼저 ", "할게요.", index=0),
+        *tool,
+        _stream_event({"type": "message_stop"}),
+        _stream_event({"type": "message_start"}),
+        *_text_events("끝났어요.", index=0),  # 새 메시지의 번호는 다시 0
+        _stream_event({"type": "message_stop"}),
+        _result(result="끝났어요."),
+    ]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    sink = ListSink()
+    writer = UiMessageWriter(sink, None)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=writer)
+    await brain.run("hi", session_id=None, run_ctx=ctx)
+
+    assert sink.types == [
+        "text-start", "text-delta", "text-delta", "text-end", "text-start", "text-delta", "text-end",
+    ]
+    ids = [c["id"] for c in sink.chunks if c["type"] == "text-start"]
+    assert len(set(ids)) == 2
+    assert [c["id"] for c in sink.chunks if c["type"] == "text-end"] == ids
+    assert writer.streamed_reply == "먼저 할게요.\n\n끝났어요."
+
+
+async def test_text_streamer_resets_on_message_start_even_if_stop_missing(tmp_path, monkeypatch):
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+
+    msgs = [
+        _stream_event({"type": "message_start"}),
+        *_text_events("하나")[:-1],  # stop이 빠졌다
+        _stream_event({"type": "message_start"}),
+        *_text_events("둘"),
+        _result(result="둘"),
+    ]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    sink = ListSink()
+    ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", stream=UiMessageWriter(sink, None))
+    await brain.run("hi", session_id=None, run_ctx=ctx)
+
+    ids = [c["id"] for c in sink.chunks if c["type"] == "text-start"]
+    assert len(set(ids)) == 2 and sink.types.count("text-end") == 2

@@ -105,6 +105,8 @@ class Outbound:
     writer: UiMessageWriter | None = None
     activity_ids: list[int] = field(default_factory=list)
     undo_ids: list[int] = field(default_factory=list)
+    # 두뇌 글이 `text-delta`로 이미 나갔다(상태 ok일 때만): 앱 답이 글 블록을 다시 보내지 않는다(06b)
+    streamed: bool = False
 
 
 class Sender(Protocol):
@@ -705,7 +707,9 @@ class Dispatcher:
                 ):
                     log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
                 return
-            body_text = _reply_for(result)
+            streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
+            # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
+            body_text = app.writer.streamed_reply if streamed else _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
             # 텔레그램: 두뇌 답, 빈 줄, 확인 문구(도구를 안 불렀으면 빈 줄도 없다). 앱: 확인 문구는 `data-activity`로
             reply = _join(body_text, confirmations)
@@ -714,6 +718,7 @@ class Dispatcher:
             # 않는다. 다음 시작 때 저장한 답만 다시 보낸다(두뇌는 다시 부르지 않는다)
             self.state.save_inbound_reply(lead, redact(sent_text)[0], conv.id)
             out = self._reply_out(_outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids)
+            out.streamed = streamed
             if not await self._send_reply(out, update_ids, conv.id):
                 return
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
@@ -1288,6 +1293,8 @@ class Dispatcher:
         self, prompt: str, *, session_id: str | None, run_ctx: RunContext
     ) -> BrainResult:
         """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다."""
+        if run_ctx.stream is not None:
+            run_ctx.stream.begin_attempt()  # 앞 시도가 글을 보냈으면 새 단계로 나눈다(06b)
         self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7, 두 통로가 함께)
         # '입력 중'은 텔레그램에만. 앱은 `data-status`와 `: ping`이 대신한다(6.4.1)
         typing = asyncio.create_task(self._typing_loop() if run_ctx.channel != "app" else _idle(), name="typing")

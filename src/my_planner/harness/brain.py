@@ -263,6 +263,9 @@ class _TextStreamer:
         self._open: dict[int, str] = {}
 
     def feed(self, event: dict[str, Any]) -> None:
+        if event.get("type") in ("message_start", "message_stop"):
+            self.close()  # 새 메시지의 블록 번호는 0부터다. 빠진 stop 때문에 옛 id를 쓰지 않게
+            return
         parsed = text_block_event(event)
         if parsed is None:
             return

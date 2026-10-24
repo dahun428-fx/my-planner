@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import json
 from datetime import timedelta
 
 import pytest
@@ -93,13 +94,13 @@ async def test_chat_stream_order_with_deltas(tmp_path):
     assert _one(chunks, "data-activity")["data"]["confirmation"] == "✓ 추가: 치과 → 내일"
 
 
-async def test_streamed_text_is_never_sent_twice_but_fixed_notice_still_is():
+async def test_streamed_flag_skips_text_block_and_unflagged_text_is_sent():
     from fakes import ListSink
 
     from my_planner.harness.dispatcher import Outbound
-    from my_planner.harness.stream import AppReplySender, UiMessageWriter
+    from my_planner.harness.stream import AppReplySender
 
-    async def reply(streamed: list[str], text: str) -> list[str]:
+    async def reply(streamed: list[str], text: str, flag: bool) -> list[str]:
         sink = ListSink()
         w = UiMessageWriter(sink, None)
         w.start_step()
@@ -108,13 +109,64 @@ async def test_streamed_text_is_never_sent_twice_but_fixed_notice_still_is():
             for d in streamed:
                 w.text_delta("t1", d)
             w.text_end("t1")
-        await AppReplySender().send(Outbound(text=text, channel="app", writer=w))
+        await AppReplySender().send(Outbound(text=text, channel="app", writer=w, streamed=flag))
         return [c["delta"] for c in sink.chunks if c["type"] == "text-delta"]
 
-    assert await reply(["안녕", "하세요"], "안녕하세요") == ["안녕", "하세요"]  # 같은 글: 다시 보내지 않는다
-    assert await reply(["도구 전에 ", "한 말. ", "마지막 말."], "마지막 말.") == ["도구 전에 ", "한 말. ", "마지막 말."]
-    assert await reply([], "안녕하세요") == ["안녕하세요"]  # 조각이 없으면 06 그대로(글 블록 하나)
-    assert await reply(["일부"], "고정 안내 문구") == ["일부", "고정 안내 문구"]  # 다른 글(고정 안내)은 보낸다
+    assert await reply(["안녕", "하세요"], "안녕하세요", True) == ["안녕", "하세요"]  # 조각으로 나갔다: 다시 안 보낸다
+    assert await reply([], "안녕하세요", False) == ["안녕하세요"]  # 조각이 없으면 06 그대로
+    # 같은 글이어도 flag가 없으면(고정 안내) 보낸다: 글 비교로 삼키지 않는다
+    assert await reply(["끝 문구"], "끝 문구", False) == ["끝 문구", "끝 문구"]
+
+
+@pytest.mark.parametrize("case", ["login", "rate_limit", "error_fallback", "max_turns"])
+async def test_fixed_notice_is_sent_after_partial_deltas(tmp_path, case):
+    from my_planner.harness.dispatcher import FALLBACK_REPLY, MAX_TURNS_REPLY
+
+    part = ["일부 글"]
+    if case == "login":
+        script, want = [FakeTurn([], "", status="auth_error", error="login", deltas=part)], LOGIN_NOTICE
+    elif case == "rate_limit":
+        until = START + timedelta(hours=2)
+        script = [FakeTurn([], "", status="rate_limited", retry_at=until, deltas=part)]
+        want = rate_limit_notice("15:00")
+    elif case == "max_turns":
+        script, want = [FakeTurn([], "", status="max_turns", deltas=part)], MAX_TURNS_REPLY
+    else:
+        script = [FakeTurn([], "", status="error", error="x", deltas=part) for _ in range(4)]
+        want = FALLBACK_REPLY
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        _, raw = await env.chat("안녕")
+
+    chunks = parse_sse(raw)
+    deltas = [c["delta"] for c in chunks if c["type"] == "text-delta"]
+    assert want in deltas and deltas.count(want) == 1  # 고정 안내는 늘 한 번 나간다
+
+
+async def test_retry_after_partial_deltas_gets_own_step_and_ids(tmp_path):
+    """첫 시도가 글 일부를 보낸 뒤 오류 → 재시도는 새 단계와 새 글 id로 정상 스트림, 글 블록을 다시 보내지 않는다."""
+    script = [
+        FakeTurn([], "", status="error", error="boom", deltas=["부분 "]),
+        FakeTurn([], "전체 답", deltas=["전체 ", "답"]),
+    ]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        _, raw = await env.chat("안녕", client_msg_id="cm-retry")
+        _, replay = await env.chat("안녕", client_msg_id="cm-retry")
+        stored = env.conn.execute("SELECT response_json FROM api_idempotency").fetchone()[0]
+
+    chunks = parse_sse(raw)  # 파서가 id 짝, 단계 짝을 본다
+    assert types(chunks) == [
+        "start", "data-status", "data-status", "start-step",
+        "text-start", "text-delta", "text-end", "finish-step",
+        "start-step", "text-start", "text-delta", "text-delta", "text-end", "finish-step", "finish",
+    ]
+    starts = [c["id"] for c in chunks if c["type"] == "text-start"]
+    assert len(set(starts)) == 2
+    second = [c["delta"] for c in chunks if c["type"] == "text-delta" and c["id"] == starts[1]]
+    assert "".join(second) == "전체 답"  # 재시도 글이 온전하고
+    assert _text(chunks).count("전체 답") == 1  # 마지막에 다시 붙지 않는다
+    # 6: 저장·재생의 글은 스트림에서 본 글 블록 전부
+    assert json.loads(stored)["reply_text"] == "부분\n\n전체 답"
+    assert _text(parse_sse(replay)) == "부분\n\n전체 답"
 
 
 async def test_tool_chunk_name_has_no_prefix_and_output_is_utc(tmp_path):
