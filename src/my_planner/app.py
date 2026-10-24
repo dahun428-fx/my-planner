@@ -314,6 +314,7 @@ def build_be(
         mark_answered=dispatcher.mark_answered,
         confirms=confirms,  # 회차 차례의 확인 버튼 `k:`(SP3-4 10.1 A5)
         review=dispatcher.review_flow,  # 회고 단계의 사다리 버튼 `l:`와 컨디션 다음 1단계(SP3-4 11.1)
+        runs=runs,  # 습관 버튼 다시 그리기: 앱에서 먼저 답한 회차 메시지는 다시 그리지 않는다(SP7 5.7)
     )
     return BeParts(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
@@ -444,7 +445,8 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 max_turns=settings.limits.max_turns,
             ),
             sender_factory=lambda tasks: TelegramSender(
-                bot, settings.owner_telegram_id, tasks=tasks, curve=CurveRepo(tasks.conn, clock)
+                bot, settings.owner_telegram_id, tasks=tasks, curve=CurveRepo(tasks.conn, clock),
+                habits=HabitsRepo(tasks.conn, clock),  # 저녁 체크인의 습관 줄(SP7 5.7)
             ),
             on_resume=restart_polling,
             keep_awake=keep_awake,

@@ -55,10 +55,23 @@ class RecordingBot:
 
     def __init__(self) -> None:
         self.sent: list[tuple[int, str]] = []
+        self.markups: list[Any] = []  # `sent`과 같은 순서의 `reply_markup`
         self.answers: list[tuple[str, str | None]] = []
+        self.edits: list[tuple[int, Any]] = []  # (message_id, reply_markup): `editMessageReplyMarkup`
+        self.edit_error: Exception | None = None  # 주면 버튼 다시 그리기가 이 예외를 올린다
 
     async def send_message(self, chat_id: int, text: str, reply_markup: Any = None, **kw: Any) -> None:
         self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
+
+    async def edit_message_reply_markup(
+        self, chat_id: int | None = None, message_id: int | None = None, reply_markup: Any = None, **kw: Any
+    ) -> bool:
+        if self.edit_error is not None:
+            raise self.edit_error
+        assert message_id is not None
+        self.edits.append((message_id, reply_markup))
+        return True
 
     async def answer_callback_query(self, callback_query_id: str, text: str | None = None, **kw: Any) -> bool:
         self.answers.append((callback_query_id, text))
@@ -242,9 +255,12 @@ class BeEnv:
         await self.drain()
         return verdict
 
-    async def press(self, data: str, *, message_id: int | None = None) -> str:
-        """버튼을 누른다(가짜 `CallbackQuery` → `parts.callbacks`, 즉시 갈래 `apply_action`). 처리 결과 이름을 돌려준다."""
+    async def press(self, data: str, *, message_id: int | None = None, reply_markup: Any = None) -> str:
+        """버튼을 누른다(가짜 `CallbackQuery` → `parts.callbacks`, 즉시 갈래 `apply_action`). 처리 결과 이름을 돌려준다.
+
+        `reply_markup`: 누른 메시지에 붙어 있던 버튼(`InlineKeyboardMarkup`). 버튼 다시 그리기 시험이 준다."""
         uid = next(self._ids)
+        markup = {"reply_markup": reply_markup.to_dict()} if reply_markup is not None else {}
         update = Update.de_json(
             {
                 "update_id": uid,
@@ -259,6 +275,7 @@ class BeEnv:
                         "chat": {"id": OWNER, "type": "private"},
                         "from": {"id": 1, "is_bot": True, "first_name": "비서"},
                         "text": "꾸민 회차 본문",
+                        **markup,
                     },
                 },
             },

@@ -161,7 +161,7 @@ class FakePushSender:
 
 
 class FakeSender:
-    """`send`는 버튼(초안, 확인, 컨디션)이 붙은 메시지면 가짜 메시지 id(1부터)를 돌려준다(`TelegramSender`와 같다).
+    """`send`는 버튼(초안, 확인, 컨디션, 습관)이 붙은 메시지면 가짜 메시지 id(1부터)를 돌려준다(`TelegramSender`와 같다).
 
     `cleared`: 버튼을 거둔 메시지 id(`clear_buttons`). `clear_fail`이면 거두기가 예외를 올린다.
     """
@@ -183,6 +183,7 @@ class FakeSender:
         if (
             out.draft_task_ids or out.draft_milestone_ids or out.draft_chapter_ids
             or out.ask_condition_for is not None or out.confirms or out.ladder is not None
+            or out.habit_date is not None
         ):
             mid, self._next_id = self._next_id, self._next_id + 1
         self.message_ids.append(mid)

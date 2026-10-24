@@ -88,9 +88,11 @@ PHOTO = [{"file_id": "p1", "file_unique_id": "u1", "width": 10, "height": 10}]
 class _RecordingBot:
     def __init__(self):
         self.sent = []
+        self.markups = []  # `sent`과 같은 순서의 `reply_markup`
 
-    async def send_message(self, chat_id, text, **kw):
+    async def send_message(self, chat_id, text, reply_markup=None, **kw):
         self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
 
 
 class _NoDispatch:

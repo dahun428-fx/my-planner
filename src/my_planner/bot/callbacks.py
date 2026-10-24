@@ -9,7 +9,8 @@
 `k:a:<token>`(회차 차례의 확인: 토큰의 `action`·`args`를 그대로 적용), `k:x:<token>`(그대로 두기, SP3-4 10.1 A5·A6),
 `m:c:<id>`·`m:x:<id>`·`m:all:<conversation_id>`(사건 초안 저장·빼기·전부 저장), `h:c:<id>`·`h:x:<id>`(챕터 초안,
 SP3-4 10장·11.3), `l:<YYYY-MM>:n:<0-10>`·`l:<YYYY-MM>:f:<0-10>`·`l:<YYYY-MM>:f:skip`(회고 단계의 사다리 지금·5년 뒤·
-건너뛰기, SP3-4 11.1. 버튼에 든 달에 기록한다).
+건너뛰기, SP3-4 11.1. 버튼에 든 달에 기록한다), `hb:<habit_id>:<YYYY-MM-DD>`(그 날짜의 습관 체크 토글, SP7 5.7.
+누른 메시지의 `hb:` 버튼 글자를 지금 DB 상태로 다시 그린다. 챕터 `h:`와는 `parts[0]`이 달라 겹치지 않는다).
 
 회고 단계(`review`, `harness.review_steps.ReviewFlow`): 월말 회고 묶음 메시지의 컨디션 누름은 토스트 대신 새 메시지로
 답하고 사다리 1단계를 붙인다(회차마다 한 번, 계획 빈 곳 12). 사다리 누름은 그 달 월말 회고의 답장 창 안이면 다음
@@ -25,7 +26,8 @@ from dataclasses import replace
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
-from telegram import CallbackQuery
+from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 
 from my_planner.clock import Clock
 from my_planner.domain import RunContext, TaskStatus
@@ -51,6 +53,7 @@ if TYPE_CHECKING:
     from my_planner.harness.review_steps import NextStep, ReviewFlow
     from my_planner.store.repos.activity import ConfirmsRepo
     from my_planner.store.repos.channels import DeliveriesRepo
+    from my_planner.store.repos.runs import RunsRepo
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +101,19 @@ def _parse_condition(data: str | None) -> tuple[date, int] | None:
         return None
 
 
+def _parse_habit(data: str | None) -> tuple[int, date] | None:
+    """`hb:12:2026-10-24` → (12, date(2026, 10, 24)). 모르는 모양이면 None. `h:c:3`(챕터)은 습관이 아니다."""
+    parts = (data or "").split(":")
+    if len(parts) != 3 or parts[0] != "hb" or not (parts[1].isascii() and parts[1].isdecimal()):
+        return None
+    if not _ISO_DATE.fullmatch(parts[2]):  # fromisoformat은 20261024, 2026-W43-6도 받는다
+        return None
+    try:
+        return int(parts[1]), date.fromisoformat(parts[2])
+    except ValueError:
+        return None
+
+
 def _parse_confirm(data: str | None) -> tuple[str, str] | None:
     """`k:a:ct_…` → ("a", "ct_…"). 모르는 모양이면 None."""
     m = _CONFIRM.fullmatch(data or "")
@@ -130,6 +146,7 @@ async def handle_callback(
     mark_answered: MarkAnswered | None = None,
     confirms: ConfirmsRepo | None = None,
     review: ReviewFlow | None = None,
+    runs: RunsRepo | None = None,
 ) -> CallbackResult:
     """버튼 하나를 처리한다. 무엇을 하든 `query.answer()`를 꼭 한 번 부른다.
 
@@ -168,6 +185,9 @@ async def handle_callback(
             ):
                 reply = None
             return "recorded"
+        if (hb := _parse_habit(query.data)) is not None:
+            result_h, reply = await _habit(query, *hb, tools, apply, transcripts, clock, deliveries, mark_answered, runs)
+            return result_h
         if (lad := _parse_ladder(query.data)) is not None:
             result_l, reply = await _ladder(*lad, tools, apply, review, transcripts, clock)
             return result_l
@@ -267,6 +287,71 @@ def _curve(
     if not done:
         return "stale", gone, []
     return "confirmed", confirmation, [f"[버튼] 저장: {titles[i]}" for i in done if i in titles]
+
+
+async def _habit(
+    query: CallbackQuery, habit_id: int, day: date, tools: Tools, apply: Apply | None, transcripts: TranscriptStore,
+    clock: Clock, deliveries: DeliveriesRepo | None, mark_answered: MarkAnswered | None, runs: RunsRepo | None,
+) -> tuple[CallbackResult, str | None]:
+    """습관 버튼(SP7 5.7): 누르기 전 DB 상태로 `uncheck_habit`(체크돼 있으면) 또는 `check_habit`을 즉시 갈래로.
+    (결과, 알림 문구 = 확인 문구 한 줄). 쉬는·그만둔·지운 습관, 7일 밖의 날은 바꾸지 않고 도구의 거절 문구.
+
+    회차 메시지의 버튼이면 그 회차의 답이다(`_answer_run`, X3). 그다음 누른 메시지의 `hb:` 버튼 글자를 DB 상태로
+    다시 그린다. 회차 메시지이고 그 회차를 앱에서 먼저 답해 버튼을 거뒀으면(`answered_via = app`) 다시 그리지
+    않는다. 로그에는 습관 id와 결과만 남긴다(제목 없이, 8장).
+    """
+    habits = tools.habits
+    if habits is None:
+        log.info("callback_unknown")
+        return "unknown", None
+    uncheck = habit_id in habits.checked_on(day)
+    action = "uncheck_habit" if uncheck else "check_habit"
+    out, confirmation = _run(tools, apply, action, {"id": habit_id, "date": day.isoformat()})
+    log.info("callback_habit", extra={"habit_id": habit_id, "op": action, "ok": "error" not in out})
+    if "error" in out:
+        return "stale", out["error"] or None
+    _transcript(transcripts, clock, f"[버튼] 습관 체크 {'취소 ' if uncheck else ''}{out['habit']['title']}")
+    _answer_run(query, deliveries, mark_answered)
+    await _redraw_habits(query, habits.checked_on(day), deliveries, runs)
+    return "recorded", confirmation
+
+
+def redraw_habit_buttons(markup: InlineKeyboardMarkup, checked: set[int]) -> InlineKeyboardMarkup:
+    """`markup`을 복사하고 그 안의 모든 `hb:` 버튼 글자(`☐`/`✓`)를 `checked`로 다시 정한다. 다른 버튼은 그대로."""
+    from my_planner.bot.telegram_io import HABIT_OFF, HABIT_ON
+
+    def redraw(b: InlineKeyboardButton) -> InlineKeyboardButton:
+        parsed = _parse_habit(b.callback_data if isinstance(b.callback_data, str) else None)
+        if parsed is None:
+            return b
+        _, rest = b.text.split(" ", 1) if " " in b.text else ("", b.text)
+        mark = HABIT_ON if parsed[0] in checked else HABIT_OFF
+        return InlineKeyboardButton(f"{mark} {rest}", callback_data=b.callback_data)
+
+    return InlineKeyboardMarkup([[redraw(b) for b in row] for row in markup.inline_keyboard])
+
+
+async def _redraw_habits(
+    query: CallbackQuery, checked: set[int], deliveries: DeliveriesRepo | None, runs: RunsRepo | None
+) -> None:
+    """누른 메시지의 버튼만 다시 그린다(`editMessageReplyMarkup`). 본문은 그대로다."""
+    msg = query.message
+    markup = getattr(msg, "reply_markup", None)
+    if msg is None or not isinstance(markup, InlineKeyboardMarkup):
+        return
+    try:
+        run_id = deliveries.run_for_message(msg.message_id) if deliveries is not None else None
+        run = runs.get(run_id) if runs is not None and run_id is not None else None
+        primary = (runs.merged_into(run.id) or run) if runs is not None and run is not None else None
+        if primary is not None and primary.answered_via == "app":
+            log.info("habit_redraw_skipped", extra={"run_id": primary.id})
+            return  # 앱에서 먼저 답해 거둔 버튼(SP3-4 6.4.5)
+        await query.edit_message_reply_markup(reply_markup=redraw_habit_buttons(markup, checked))
+    except BadRequest as e:
+        if "not modified" not in str(e).lower():  # 같은 모양이면 텔레그램이 거절한다: 잡고 넘어간다
+            log.warning("habit_redraw_failed", extra={"error_type": type(e).__name__})
+    except Exception as e:  # noqa: BLE001 - 체크는 이미 커밋됐다. 버튼 글자만 못 바꿨다
+        log.warning("habit_redraw_failed", extra={"error_type": type(e).__name__})
 
 
 def _review_step(

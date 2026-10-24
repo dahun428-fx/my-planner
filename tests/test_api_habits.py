@@ -373,3 +373,25 @@ async def test_app_uncheck_on_evening_date_marks_run_answered(tmp_path):
         run = run_row(env)
 
     assert status == 200 and run["answered_via"] == "app"
+
+
+async def test_app_check_on_sunday_merged_review_marks_primary_answered(tmp_path):
+    """일요일 10/25 18:00: 저녁 체크인을 주간 회고에 합쳐 한 메시지로 보낸다. 10/25 앱 체크는 그 묶음(primary)의 답이다."""
+    sunday = kst(2026, 10, 25, 18, 0) + timedelta(seconds=30)
+    async with BeEnv.start(tmp_path, start=sunday, script=[FakeTurn([], "꾸민 회고 본문")]) as env:
+        h = habit(env, "운동")
+        await env.tick()
+        rows = env.conn.execute("SELECT * FROM runs ORDER BY id").fetchall()
+        env.clock.set(kst(2026, 10, 25, 19, 0))
+        status, body = await env.action("check_habit", {"id": h.id, "date": "2026-10-25"})
+        await env.drain()
+        after = {r["id"]: r for r in env.conn.execute("SELECT * FROM runs").fetchall()}
+
+    primary = [r for r in rows if json.loads(r["merged_run_ids"] or "[]")]
+    assert len(primary) == 1
+    merged_ids = json.loads(primary[0]["merged_run_ids"])
+    loops = {r["loop"] for r in rows if r["id"] in (primary[0]["id"], *merged_ids)}
+    assert {"evening_checkin", "review"} <= loops
+    assert status == 200 and body["status"] == "applied"
+    assert after[primary[0]["id"]]["answered_via"] == "app"
+    assert len(env.sender.cleared) == 1

@@ -141,6 +141,9 @@ class Outbound:
     # 회고 단계의 사다리 버튼 `(YYYY-MM, "n" | "f")`(SP3-4 11.1). 텔레그램 `l:` 줄(컨디션 줄 자리). 컨디션 줄과
     # 한 메시지에 같이 오지 않는다(한 메시지에 키보드 한 종류, 초안 줄은 함께 둘 수 있다)
     ladder: tuple[str, Literal["n", "f"]] | None = None
+    # 습관 버튼의 날짜(SP7 5.7): 저녁 체크인(합친 회차 포함)이고 활성 습관이 있으면 그 체크인의 날짜. 텔레그램 `hb:`
+    # 줄(확인 줄 다음, 컨디션·사다리 줄 앞). 사다리 때문에 `ask_condition_for`를 지워도 이 값은 그대로다
+    habit_date: date | None = None
 
 
 class Sender(Protocol):
@@ -211,6 +214,7 @@ class _ResendJob:
     draft_milestone_ids: list[int] = field(default_factory=list)  # 사건·챕터 초안 버튼(11.3)
     draft_chapter_ids: list[int] = field(default_factory=list)
     ladder: tuple[str, Literal["n", "f"]] | None = None  # 회고 메시지에 바로 붙인 사다리 1단계(11.1-1 (c))
+    habit_date: date | None = None  # 습관 버튼의 날짜(SP7 5.7)
 
 
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
@@ -680,6 +684,7 @@ class Dispatcher:
                     if (c := curve.get_chapter(i)) is not None and c.status == "draft"
                 ]
         ask = self._ask_condition_for(run, merged)
+        habit_date = self._habit_date(run, merged, ask)
         flow = self.review_flow
         ladder = None
         if flow is not None and flow.claimed(run.id):
@@ -689,7 +694,8 @@ class Dispatcher:
             step = first_step(flow.of_run(run), flow.curve)
             ladder = step.ladder if step is not None else None
         job = _ResendJob(run, merged, [], drafts, ask,
-                         draft_milestone_ids=milestones, draft_chapter_ids=chapters, ladder=ladder)
+                         draft_milestone_ids=milestones, draft_chapter_ids=chapters, ladder=ladder,
+                         habit_date=habit_date)
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
     async def _work(self) -> None:
@@ -1361,7 +1367,7 @@ class Dispatcher:
                 RESEND_DELAY_S,
                 _ResendJob(run, merged, tool_names, list(out.draft_task_ids), out.ask_condition_for,
                            list(out.confirms), list(out.draft_milestone_ids), list(out.draft_chapter_ids),
-                           out.ladder),
+                           out.ladder, habit_date=out.habit_date),
             )
 
     async def _prepare_run(
@@ -1374,6 +1380,7 @@ class Dispatcher:
         conv = self.router.for_run(run)
         runs.set_conversation(run.id, conv.id)
         ask = self._ask_condition_for(run, merged)
+        habit_date = self._habit_date(run, merged, ask)  # 사다리 때문에 `ask`를 지우기 전의 값(SP7 5.7)
         step, question = self._review_extras(run, merged, ask)
         if step is not None:
             ask = None  # 컨디션 줄 대신 첫 단계 줄(한 메시지에 숫자 키보드 한 종류)
@@ -1428,6 +1435,7 @@ class Dispatcher:
         out = _outbound(text, run_ctx)
         out.ask_condition_for = ask
         out.ladder = step.ladder if step is not None else None
+        out.habit_date = habit_date
         if question is not None:
             self._run_questions[run.id] = question[0]  # 보낸 뒤에 `asked`(11.1-5, `_run_delivered`)
         return conv, out, list(run_ctx.tool_names)
@@ -1514,6 +1522,14 @@ class Dispatcher:
             f"- 이번 회고: {_week_label(mon)}\n"
             f"- 다음 주: {_week_label(nxt)}"
         )
+
+    def _habit_date(self, run: Run, merged: list[Run], ask: date | None) -> date | None:
+        """습관 버튼의 날짜(SP7 5.7): 저녁 체크인(합친 회차 포함)이고 활성 습관이 하나 이상이면 `ask`(그 체크인의
+        날짜), 아니면 None. 아침 브리핑의 어제 컨디션 날짜에는 습관 줄을 붙이지 않는다."""
+        habits = self.tools.habits if self.tools is not None else None
+        if habits is None or not any(r.loop is LoopKey.evening_checkin for r in (run, *merged)):
+            return None
+        return ask if habits.list() else None
 
     def _ask_condition_for(self, run: Run, merged: list[Run] | None = None) -> date | None:
         """컨디션 버튼의 날짜. 판정은 `harness.context.ask_condition_for`(앱 카드와 같은 함수)."""
@@ -1629,6 +1645,7 @@ class Dispatcher:
                 draft_milestone_ids=list(job.draft_milestone_ids),
                 draft_chapter_ids=list(job.draft_chapter_ids),
                 ladder=job.ladder,
+                habit_date=job.habit_date,
             )
             # 전달이 하나도 안 된 회차(failed)만 여기 온다. 같은 D2~D4 순서로 한 번(7.3 D7)
             outcome = await self._send_run(out, run, attempts=1)

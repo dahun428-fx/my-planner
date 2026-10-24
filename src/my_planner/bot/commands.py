@@ -1,6 +1,7 @@
-"""명령 /today /week /status /help /pause /unpause /plan /done (스펙 5.6, SP3-4 11.4). /plan 말고는 두뇌를 거치지 않고 하네스가 바로 답한다.
+"""명령 /today /week /status /habits /help /pause /unpause /plan /done (스펙 5.6, SP3-4 11.4, SP7 5.7). /plan 말고는
+두뇌를 거치지 않고 하네스가 바로 답한다.
 
-/today /week /status는 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
+/today /week /status /habits는 읽기 전용이다. /habits는 텔레그램에서만 습관 버튼을 붙인다(`telegram_io._answer_command`). 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
 
 텔레그램과 앱(`POST /chat`, SP3-4 6.4.1)이 같은 함수 `run_command`를 쓴다. 상태를 바꾸는 `/pause`, `/unpause`,
 `/done`은 즉시 갈래(`apply_action`의 내부 동작 `cmd_*`)로 처리하고, 앱 요청이면 그 자리에서 `api_idempotency`에
@@ -15,16 +16,17 @@ from datetime import date, time, timedelta, tzinfo
 from datetime import datetime as _datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
-from my_planner.clock import Clock, from_iso, local, to_iso
+from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
-from my_planner.store.views import today_view, week_view
+from my_planner.store.views import WEEKDAY, today_view, week_view
 
 if TYPE_CHECKING:
     from my_planner.domain import Channel
     from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.curve import CurveRepo
+    from my_planner.store.repos.habits import HabitsRepo
     from my_planner.store.repos.status import StatusRepo
     from my_planner.tools.actions import ActionRequest, ActionResult
 
@@ -33,6 +35,7 @@ HELP_TEXT = (
     "/today  오늘 우선순위, 일정, 열린 할 일\n"
     "/week  이번 주 우선순위와 할 일\n"
     "/status  레벨, 스탯, 퀘스트\n"
+    "/habits — 오늘 습관 체크\n"
     "/pause 3  사흘 동안 먼저 연락하지 않기(1~14일)\n"
     "/unpause  멈춤 풀기\n"
     "/plan 주제  함께 계획 세우기(주제는 없어도 돼요)\n"
@@ -42,7 +45,7 @@ HELP_TEXT = (
     "그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요."
 )
 
-COMMANDS = ("/today", "/week", "/status", "/help", "/pause", "/unpause", "/plan", "/done")
+COMMANDS = ("/today", "/week", "/status", "/habits", "/help", "/pause", "/unpause", "/plan", "/done")
 
 PAUSE_MIN_DAYS, PAUSE_MAX_DAYS = 1, 14
 PAUSE_USAGE = "쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3"
@@ -195,6 +198,28 @@ def _status_reply(deps: CommandDeps, now: _datetime) -> str:
     return status_text(snap)
 
 
+# --- 습관 (SP7 5.7, 부록 A) ---
+
+HABITS_EMPTY = "아직 습관이 없어요. '매일 물 마시기 습관 추가해 줘'처럼 말하면 만들어 드려요."
+HABITS_UNAVAILABLE = "습관을 다룰 수 없어요."
+
+
+def habits_text(habits: HabitsRepo, today: date) -> str:
+    """`/habits`의 글: `오늘 습관 (10/24 토)` 다음 활성 습관마다 한 줄. 주 N회 습관은 이번 주(ISO 주) 체크 수와 목표,
+    매일 습관은 제목만. 활성 습관이 없으면 빈 목록 문구. 텔레그램과 앱이 같은 글이다."""
+    active = habits.list()
+    if not active:
+        return HABITS_EMPTY
+    counts = habits.week_counts(today - timedelta(days=today.weekday()))
+    lines = [f"오늘 습관 ({_md(today)} {WEEKDAY[today.weekday()]})"]
+    for h in active:
+        if h.kind == "weekly":
+            lines.append(f"- {h.title} · 이번 주 {counts.get(h.id, 0)}번 / 목표 {h.target_per_week}번")
+        else:
+            lines.append(f"- {h.title}")
+    return "\n".join(lines)
+
+
 # --- 상태를 바꾸는 명령 (즉시 갈래의 내부 동작 `cmd_*`이 부른다) ---
 
 
@@ -252,6 +277,7 @@ class CommandDeps:
     apply: Callable[[ActionRequest], ActionResult] | None = None
     status: StatusRepo | None = None  # `/status`(11.4). 없으면 "상태창을 읽을 수 없어요."
     curve: CurveRepo | None = None
+    habits: HabitsRepo | None = None  # `/habits`(SP7 5.7). 없으면 "습관을 다룰 수 없어요."
 
 
 def _tz(deps: CommandDeps) -> str | tzinfo:
@@ -278,6 +304,10 @@ def run_command(
         return render(deps.tasks, now, _tz(deps), _boundary(deps))
     if cmd == "/status":
         return _status_reply(deps, now)
+    if cmd == "/habits":
+        if deps.habits is None:
+            return HABITS_UNAVAILABLE
+        return habits_text(deps.habits, logical_date(now, _tz(deps), _boundary(deps)))
     action = STATEFUL_COMMANDS.get(cmd)
     if action is None:
         raise ValueError(f"unknown command: {cmd}")

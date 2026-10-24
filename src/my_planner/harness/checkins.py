@@ -126,8 +126,9 @@ def run_answered_by(
     """즉시 갈래 동작이 답한 회차(6.4.5 "답으로 치는 것"). `apply_action`이 적용한 뒤 부른다. 없으면 None.
 
     - `record_condition`: 그 날짜에 컨디션 버튼을 단, 지금 답장 창 안의 회차(저녁 체크인의 날짜 등)
-    - `check_habit`, `uncheck_habit`: 그 날짜(없으면 논리적 오늘)가 저녁 체크인의 날짜인, 지금 답장 창 안의 회차
-      (SP7 5.7 "누름은 그 회차의 답으로 친다". `record_condition`과 같은 규칙)
+    - `check_habit`, `uncheck_habit`(앱만): 그 날짜(없으면 논리적 오늘)가 저녁 체크인의 날짜인, 지금 답장 창 안의
+      회차(SP7 5.7, `record_condition`과 같은 규칙). 텔레그램 `hb:` 버튼은 누른 메시지가 그 회차 메시지일 때만
+      답이다(`bot.callbacks._answer_run`). `/habits` 답의 버튼은 회차의 답이 아니다
     - `confirm_tasks`, `drop_task`: 그 초안을 제안한(`tool_events_log.run_id`), 지금 답장 창 안의 회차
     - 회차 차례의 확인 토큰으로 적용한 동작과 `decline_confirm`: 그 토큰을 만든, 지금 답장 창 안의 회차(10.1 A5의
       확인 카드·버튼도 그 회차에 붙은 버튼이다)
@@ -156,8 +157,10 @@ def run_answered_by(
             return None
         if req.action == "record_condition":
             run = _condition_run(day, runs, now, settings, activity)
-        else:
+        elif req.channel == "app":
             run = _habit_run(day, runs, now, settings)
+        else:
+            return None
         return run.id if run is not None else None
     if req.action in ("record_ladder_score", "record_area_scores"):
         return _review_step_run(req.action, args.get("period"), runs, now, settings)
