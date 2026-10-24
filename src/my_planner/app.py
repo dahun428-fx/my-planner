@@ -40,6 +40,7 @@ from my_planner.loop.runner import (
     backup_daily,
     cleanup_logs_daily,
     expire_drafts,
+    prune_api_state_daily,
     prune_updates_daily,
     recover_on_start,
     resubmit_inbound,
@@ -51,6 +52,7 @@ from my_planner.platform.windows import (
     keep_awake,
 )
 from my_planner.store.db import integrity_ok, migrate, open_db, open_ro
+from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo, IdempotencyRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
@@ -183,6 +185,9 @@ class BeParts:
     sender: Sender
     deliveries: DeliveriesRepo
     callbacks: Callable[[CallbackQuery], Awaitable[str]]
+    activity: ActivityRepo
+    idempotency: IdempotencyRepo
+    confirms: ConfirmsRepo
 
 
 def build_be(
@@ -203,6 +208,9 @@ def build_be(
     runs = RunsRepo(conn, clock)
     conditions = ConditionsRepo(conn, clock)
     deliveries = DeliveriesRepo(conn, clock)
+    activity = ActivityRepo(conn, clock)
+    idempotency = IdempotencyRepo(conn, clock)
+    confirms = ConfirmsRepo(conn, clock)
     transcripts = TranscriptStore(paths.data_dir, settings.timezone, settings.day_boundary)
     tasks = TasksRepo(conn, clock, tz=settings.timezone, boundary=settings.day_boundary)
     sender = sender_factory(tasks)
@@ -214,6 +222,7 @@ def build_be(
         tz=settings.timezone,
         boundary=settings.day_boundary,
         conditions=conditions,
+        activity=activity,
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -234,17 +243,21 @@ def build_be(
         keep_awake=keep_awake,
         sleep=sleep,
         deliveries=deliveries,
+        activity=activity,
+        idempotency=idempotency,
+        confirms=confirms,
     )
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
         on_resume=on_resume, sleep=sleep,
     )
-    # 만든 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped
-    runner.register_daily(expire_drafts(tasks, clock, days=settings.limits.draft_ttl_days))
+    # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
+    runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
+    runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
     runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다
     runner.register_daily(cleanup_logs_daily(paths.state_dir / "logs", keep=settings.retention.log_days))
-    # 버튼 누름: 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다(스펙 5.7)
+    # 버튼 누름: 두뇌를 거치지 않고 즉시 갈래(`apply_action`)로 바꾼다(스펙 5.7, SP3-4 4.3)
     callbacks = functools.partial(
         handle_callback,
         owner_id=settings.owner_telegram_id,
@@ -252,11 +265,12 @@ def build_be(
         transcripts=transcripts,
         clock=clock,
         router=router,
+        apply=dispatcher.apply_action,
     )
     return BeParts(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
-        callbacks=callbacks,
+        callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms,
     )
 
 

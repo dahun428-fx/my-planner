@@ -22,7 +22,8 @@ def _day_label(d: date, today: date) -> str:
 _CADENCE_LABEL = {"day": "오늘", "week": "이번 주", "month": "이번 달", "quarter": "이번 분기", "year": "올해"}
 
 
-def _line(e: ToolEvent, today: date) -> str | None:
+def confirmation_line(e: ToolEvent, today: date) -> str | None:
+    """이벤트 하나의 확인 문구 한 줄(SP1 5.5). 문구가 없는 종류는 None. 활동의 `summary`도 이것이다(5.2)."""
     title = e.data.get("title", "")
     if e.kind == "task_added":
         out = f"✓ 추가: {title}"
@@ -53,8 +54,31 @@ def _line(e: ToolEvent, today: date) -> str | None:
 
 def render_confirmations(events: list[ToolEvent], today: date) -> str:
     """이벤트마다 한 줄. 문구가 없는 종류(조회 등)는 건너뛴다. 없으면 빈 문자열."""
-    lines = [ln for e in events if (ln := _line(e, today)) is not None]
+    lines = [ln for e in events if (ln := confirmation_line(e, today)) is not None]
     return "\n".join(lines)
+
+
+def titles_summary(verb: str, titles: list[str]) -> str:
+    """할 일 여럿을 한 활동으로 남길 때의 한 줄: `✓ 확정: 물 마시기, 스트레칭`."""
+    return f"✓ {verb}: " + ", ".join(titles)
+
+
+def condition_summary(score: int) -> str:
+    """컨디션 기록 활동의 한 줄. SP1 버튼 답과 같은 문구이고 메모는 넣지 않는다(5.2)."""
+    return f"컨디션 {score} 기록했어요."
+
+
+def drafts_expired_summary(count: int) -> str:
+    return f"✓ 초안 정리: {count}개"
+
+
+def confirm_declined_summary(summary: str) -> str:
+    return f"✗ 그대로 뒀어요 ({summary})"
+
+
+def period_label(cadence: str, period: str, current: str) -> str:
+    """지금 기간이면 `이번 분기` 같은 말, 아니면 기간 그대로(`2027-Q1`)."""
+    return _CADENCE_LABEL[cadence] if period == current else period
 
 
 def draft_dropped_reply(title: str) -> str:

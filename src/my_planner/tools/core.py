@@ -1,7 +1,7 @@
 """도구 함수 (스펙 5.5). 메서드는 `(ctx, **inputs) -> dict`이고 잘못된 입력은 `{"error": "…"}`로 돌려준다.
 
-변경 도구는 데이터 변경과 `tool_events_log`를 같은 트랜잭션에서 쓰고, `ctx.events`에 이벤트를 쌓고,
-`tasks.md`를 다시 만든다. 로그에는 제목이나 인자를 남기지 않는다.
+변경 도구는 데이터 변경, `tool_events_log`, `activity`(SP3-4 스펙 5.2)를 같은 트랜잭션에서 쓰고, `ctx.events`에
+이벤트를 쌓고, `tasks.md`를 다시 만든다. 로그에는 제목이나 인자를 남기지 않는다.
 """
 
 from __future__ import annotations
@@ -15,11 +15,25 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, local, logical_date
+from my_planner.clock import Clock, local, logical_date, to_iso
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
+from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
+from my_planner.tools.activity import (
+    condition_target,
+    priorities_target,
+    record_activity,
+    task_target,
+    tasks_target,
+)
+from my_planner.tools.confirmations import (
+    condition_summary,
+    confirmation_line,
+    drafts_expired_summary,
+    titles_summary,
+)
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +81,7 @@ class Tools:
         tz: str | tzinfo,
         boundary: time,
         conditions: Any = None,
+        activity: Any = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -75,6 +90,7 @@ class Tools:
         self.tz = ZoneInfo(tz) if isinstance(tz, str) else tz
         self.boundary = boundary
         self.conditions = conditions
+        self.activity = activity  # `ActivityRepo`. None이면 활동을 남기지 않는다(SP1 시험)
 
     # --- 공통 ---
 
@@ -147,12 +163,37 @@ class Tools:
             "scheduled_at": self._local_iso(t.scheduled_at),
         }
 
-    def _finish(self, ctx: RunContext, kind: str, t: Task) -> dict[str, Any]:
-        """트랜잭션 안에서 부른다: 호출 기록. 끝난 뒤 `_after`를 부른다."""
-        self.tasks.log_tool_event(
-            ctx.run_id, ctx.conversation_id, t.id, kind, inbound_id=ctx.inbound_id, data=self._event_data(t)
-        )
+    def _finish(
+        self, ctx: RunContext, kind: str, t: Task, *, undo: dict[str, Any] | None = None, extra: tuple[str, ...] | list[str] = ()
+    ) -> dict[str, Any]:
+        """트랜잭션 안에서 부른다: 호출 기록과 활동(확인 문구 한 줄, 바꾸기 전 값). 끝난 뒤 `_after`를 부른다.
+
+        `extra`는 할 일 말고도 바뀐 대상(내려놓기로 지워진 우선순위 칸)이다.
+        """
+        data = self._event_data(t)
+        self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, kind, inbound_id=ctx.inbound_id, data=data)
+        summary = confirmation_line(ToolEvent(kind, t.id, data), self.today())
+        self._record(ctx, kind, task_target(t.id), summary, undo, targets=[task_target(t.id), *extra])
         return self._task_dict(t)
+
+    def _record(
+        self, ctx: RunContext, kind: str, target: str | None, summary: str | None, undo: dict[str, Any] | None,
+        *, targets: list[str] | None = None,
+    ) -> None:
+        record_activity(
+            self.activity, ctx, kind=kind, target=target, summary=summary or kind, undo=undo, targets=targets
+        )
+
+    @staticmethod
+    def _before(t: Task) -> dict[str, Any]:
+        """되돌릴 때 쓸 이전 값(활동 `undo_json`). 시각은 저장 형식(UTC ISO) 그대로."""
+        return {
+            "task_id": t.id,
+            "status": t.status.value,
+            "completed_at": to_iso(t.completed_at) if t.completed_at else None,
+            "planned_for": t.planned_for.isoformat() if t.planned_for else None,
+            "scheduled_at": to_iso(t.scheduled_at) if t.scheduled_at else None,
+        }
 
     def _after(self, ctx: RunContext, kind: str, t: Task) -> None:
         ctx.events.append(ToolEvent(kind=kind, task_id=t.id, data=self._event_data(t)))
@@ -216,7 +257,7 @@ class Tools:
             return _err(new)
         with self.tasks.transaction():
             t = self.tasks.create(status=TaskStatus.open, **new)
-            out = self._finish(ctx, "task_added", t)
+            out = self._finish(ctx, "task_added", t, undo={"task_id": t.id})
         self._after(ctx, "task_added", t)
         return out
 
@@ -247,6 +288,9 @@ class Tools:
                     inbound_id=ctx.inbound_id, data={"ids": [t.id], "titles": [t.title]},
                 )
                 made.append(t)
+            target, targets = tasks_target([t.id for t in made])
+            self._record(ctx, "tasks_proposed", target, titles_summary("제안", [t.title for t in made]), None,
+                         targets=targets)
         ids = [t.id for t in made]
         ctx.events.append(
             ToolEvent(kind="tasks_proposed", task_id=None, data={"ids": ids, "titles": [t.title for t in made]})
@@ -273,6 +317,15 @@ class Tools:
                     inbound_id=ctx.inbound_id, data=self._event_data(t),
                 )
                 confirmed.append(t)
+            if confirmed:
+                one = len(confirmed) == 1
+                target, targets = tasks_target([t.id for t in confirmed])
+                self._record(
+                    ctx, "tasks_confirmed", target,
+                    confirmation_line(ToolEvent("tasks_confirmed", confirmed[0].id, self._event_data(confirmed[0])),
+                                      self.today()) if one else titles_summary("확정", [t.title for t in confirmed]),
+                    {"task_ids": [t.id for t in confirmed]}, targets=targets,
+                )
         for t in confirmed:
             ctx.events.append(ToolEvent(kind="tasks_confirmed", task_id=t.id, data=self._event_data(t)))
         if confirmed:
@@ -311,9 +364,11 @@ class Tools:
             changes["scheduled_at"] = sa
             if sa is not None:  # 시각을 바꾸면 하려는 날도 그 시각의 논리적 날짜로 다시 정한다
                 changes["planned_for"] = logical_date(sa, self.tz, self.boundary)
+        prior = {**self._before(t), "title": t.title, "note": t.note, "areas": [a.value for a in t.areas]}
+        before = {k: prior[k] for k in changes}  # 바뀐 필드의 이전 값만
         with self.tasks.transaction():
             t = self.tasks.update(t.id, **changes)
-            out = self._finish(ctx, "task_updated", t)
+            out = self._finish(ctx, "task_updated", t, undo={"task_id": t.id, "before": before})
         self._after(ctx, "task_updated", t)
         return out
 
@@ -333,9 +388,11 @@ class Tools:
             # 경계 전(00:00~03:59)의 시각은 새 논리적 날짜의 다음 달력 날에 놓는다
             day = pf + timedelta(days=1) if at.time() < self.boundary else pf
             changes["scheduled_at"] = datetime.combine(day, at.timetz().replace(tzinfo=None), tzinfo=self.tz)
+        prior = self._before(t)
+        undo = {"task_id": t.id, "planned_for": prior["planned_for"], "scheduled_at": prior["scheduled_at"]}
         with self.tasks.transaction():
             t = self.tasks.update(t.id, event_kind="moved", **changes)
-            out = self._finish(ctx, "task_moved", t)
+            out = self._finish(ctx, "task_moved", t, undo=undo)
         self._after(ctx, "task_moved", t)
         return out
 
@@ -347,9 +404,15 @@ class Tools:
             return _err(t)
         if t.status not in allowed:
             return _err(why)
+        undo = self._before(t)
+        extra: list[str] = []
+        if new is TaskStatus.dropped:  # 내려놓으면 우선순위 칸이 지워진다. 비어 있으면 되살린다(6.4.3)
+            rows = self.tasks.priority_rows(t.id)
+            undo["priorities"] = [list(row) for row in rows]
+            extra = [priorities_target(c, p) for c, p, _ in rows]  # 그 목록도 바뀐 대상이다
         with self.tasks.transaction():
             t = self.tasks.set_status(t.id, new)
-            out = self._finish(ctx, kind, t)
+            out = self._finish(ctx, kind, t, undo=undo, extra=extra)
         self._after(ctx, kind, t)
         return out
 
@@ -435,12 +498,20 @@ class Tools:
             if t.status is not TaskStatus.open:
                 return _err(f"{t.id}번 할 일은 열린 할 일이 아니라서 우선순위에 올릴 수 없어요.")
         ids: list[int] = list(task_ids)
+        before = [t.id for _, t in self.tasks.priority_ranks(c, period)]
         with self.tasks.transaction():
             self.tasks.set_priorities(c, period, ids)
             picked = self.tasks.priorities(c, period)
+            data = {"cadence": c.value, "period": period, "titles": [t.title for t in picked]}
             self.tasks.log_tool_event(
-                ctx.run_id, ctx.conversation_id, None, "priorities_set", inbound_id=ctx.inbound_id,
-                data={"cadence": c.value, "period": period, "titles": [t.title for t in picked]},
+                ctx.run_id, ctx.conversation_id, None, "priorities_set", inbound_id=ctx.inbound_id, data=data,
+            )
+            self._record(
+                ctx, "priorities_set", priorities_target(c.value, period),
+                confirmation_line(ToolEvent("priorities_set", None, data), self.today()),
+                {"cadence": c.value, "period": period, "task_ids": before},
+                # 목록과 함께, 빠지거나 들어온 할 일도 바뀐 대상이다(그 할 일의 확인 토큰이 stale이 된다)
+                targets=[priorities_target(c.value, period), *(task_target(i) for i in dict.fromkeys([*before, *ids]))],
             )
         ctx.events.append(
             ToolEvent(
@@ -468,10 +539,32 @@ class Tools:
         day = d if d is not None else self.today()
         if day > self.today():
             return _err("아직 오지 않은 날의 컨디션은 기록할 수 없어요.")
-        c = self.conditions.upsert(day, score, note if isinstance(note, str) else None)
+        with transaction(self.conditions.conn):
+            prev = self.conditions.get(day)
+            c = self.conditions.upsert(day, score, note if isinstance(note, str) else None)
+            # 활동에도 메모(사용자 글)는 넣지 않는다. 되돌릴 이전 행만 `undo_json`에 둔다
+            before = (
+                {"score": prev.score, "note": prev.note, "recorded_at": to_iso(prev.recorded_at)} if prev else None
+            )
+            self._record(
+                ctx, "condition_recorded", condition_target(day), condition_summary(c.score),
+                {"date": day.isoformat(), "before": before},
+            )
         # 메모는 남기지 않는다. 날짜와 점수만.
         log.info("condition_recorded", extra={"date": day.isoformat(), "score": c.score})
         return {"date": c.date.isoformat(), "score": c.score, "note": c.note}
+
+    def expire_drafts(self, ctx: RunContext, older_than: datetime) -> dict[str, Any]:
+        """하루 한 번 작업(`apply_action`, `secretary`/`scheduler`): `proposed_at`이 `older_than` 이전인 초안을
+        조용히 `dropped`로 바꾸고 활동 `drafts_expired` 하나를 남긴다(되돌릴 수 없다). 알리지 않는다."""
+        with self.tasks.transaction():
+            ids = self.tasks.expire_drafts(older_than)
+            if ids:
+                target, targets = tasks_target(ids)
+                self._record(ctx, "drafts_expired", target, drafts_expired_summary(len(ids)), None, targets=targets)
+        if ids:
+            self._export()
+        return {"expired_ids": ids}
 
     # --- 읽기 도구 ---
 

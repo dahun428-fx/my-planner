@@ -256,10 +256,15 @@ class TasksRepo:
         return task
 
     def expire_drafts(self, older_than: datetime) -> list[int]:
-        """`older_than`이나 그보다 먼저 만든 초안을 조용히 `dropped`로 바꾼다(딱 3일이 된 것도 포함)."""
+        """`proposed_at`이 `older_than`이거나 그보다 먼저인 초안을 조용히 `dropped`로 바꾼다(딱 3일이 된 것도 포함).
+
+        `proposed_at`은 가장 최근 `proposed` 이벤트 시각, 없으면 `created_at`이다(`proposed_at()`, 스펙 6.3.8).
+        `/drafts`의 `draft_live`(`store/views.py`)와 같은 기준이라 화면에 보이는 초안과 밤 정리가 어긋나지 않는다.
+        """
         rows = self.conn.execute(
-            "SELECT id FROM tasks WHERE status = 'draft' AND deleted_at IS NULL AND created_at <= ? "
-            "ORDER BY id",
+            "SELECT t.id FROM tasks t WHERE t.status = 'draft' AND t.deleted_at IS NULL AND COALESCE("
+            "(SELECT MAX(e.at) FROM task_events e WHERE e.task_id = t.id AND e.kind = 'proposed'), t.created_at"
+            ") <= ? ORDER BY t.id",
             (to_iso(older_than),),
         ).fetchall()
         ids = [r["id"] for r in rows]
@@ -280,6 +285,14 @@ class TasksRepo:
                     "INSERT INTO priorities (cadence, period, rank, task_id) VALUES (?, ?, ?, ?)",
                     (c, period, rank, task_id),
                 )
+
+    def priority_rows(self, task_id: int) -> list[tuple[str, str, int]]:
+        """그 할 일이 오른 우선순위 칸 (주기, 기간, 순위). 내려놓기 전 값으로 활동에 남긴다."""
+        rows = self.conn.execute(
+            "SELECT cadence, period, rank FROM priorities WHERE task_id = ? ORDER BY cadence, period",
+            (task_id,),
+        ).fetchall()
+        return [(r["cadence"], r["period"], r["rank"]) for r in rows]
 
     def priorities(self, cadence: Cadence | str, period: str) -> list[Task]:
         rows = self.conn.execute(

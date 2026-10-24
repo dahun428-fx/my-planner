@@ -1,4 +1,8 @@
-"""인라인 버튼 누름 (스펙 5.7). 두뇌를 거치지 않고 하네스가 도구 함수를 직접 부른다.
+"""인라인 버튼 누름 (스펙 5.7). 두뇌를 거치지 않는다.
+
+`apply`(디스패처의 즉시 갈래 `Dispatcher.apply_action`, SP3-4 스펙 4.3)가 있으면 그것으로 바꾼다
+(`actor = user`, `channel = telegram`: 활동 기록이 함께 남는다). 없으면 SP1처럼 도구 함수를 직접 부른다.
+답 문구는 어느 쪽이든 SP1 그대로다.
 
 콜백 데이터: `d:c:<task_id>`(추가), `d:x:<task_id>`(빼기), `d:all:<conversation_id>`(전부 추가),
 `c:<YYYY-MM-DD>:<1-5>`(그 날짜의 컨디션. 지난 날짜의 버튼도 그 날짜에 기록한다).
@@ -8,15 +12,21 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import date
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from telegram import CallbackQuery
 
 from my_planner.clock import Clock
 from my_planner.domain import RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
-from my_planner.tools.confirmations import draft_dropped_reply, render_confirmations
+from my_planner.tools.actions import ActionRequest, ActionResult
+from my_planner.tools.confirmations import (
+    condition_summary,
+    draft_dropped_reply,
+    render_confirmations,
+)
 from my_planner.tools.core import Tools
 
 if TYPE_CHECKING:
@@ -25,6 +35,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 CallbackResult = Literal["confirmed", "dropped", "recorded", "stale", "ignored", "unknown"]
+Apply = Callable[[ActionRequest], ActionResult]
 
 STALE_REPLY = "이미 정리된 할 일이에요."
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -52,7 +63,7 @@ def _parse_condition(data: str | None) -> tuple[date, int] | None:
 
 
 def condition_reply(score: int) -> str:
-    return f"컨디션 {score} 기록했어요."
+    return condition_summary(score)  # 활동 한 줄과 같은 문구(SP1)
 
 
 async def handle_callback(
@@ -63,6 +74,7 @@ async def handle_callback(
     transcripts: TranscriptStore,
     clock: Clock,
     router: ConversationRouter | None = None,
+    apply: Apply | None = None,
 ) -> CallbackResult:
     """버튼 하나를 처리한다. 무엇을 하든 `query.answer()`를 꼭 한 번 부른다.
 
@@ -78,7 +90,7 @@ async def handle_callback(
             return "ignored"
         if (cond := _parse_condition(query.data)) is not None:
             d, score = cond
-            out = tools.record_condition(RunContext(conversation_id=None, run_id=None), score=score, date=d.isoformat())
+            out, _ = _run(tools, apply, "record_condition", {"score": score, "date": d.isoformat()})
             if "error" in out:
                 log.info("callback_condition_error")
                 return "unknown"
@@ -101,25 +113,34 @@ async def handle_callback(
             return "stale"
 
         # 순서: 상태 커밋 → 원문 기록 → (finally) answer. answer가 안 돼도 기록은 남는다.
-        ctx = RunContext(conversation_id=None, run_id=None)
         if action == "x":
-            out = tools.drop_task(ctx, id=n)
+            out, _ = _run(tools, apply, "drop_task", {"id": n})
             result: CallbackResult = "dropped"
             lines = [f"[버튼] 빼기: {out['title']}"] if "error" not in out else []
-        else:
-            out = tools.confirm_tasks(ctx, ids=ids)
-            result = "confirmed"
-            lines = [f"[버튼] 확정: {t['title']}" for t in out.get("confirmed", [])]
-        if action == "x":
             reply = draft_dropped_reply(out["title"]) if "error" not in out else None
         else:
-            reply = render_confirmations(ctx.events, tools.today()) or None
+            out, confirmation = _run(tools, apply, "confirm_tasks", {"ids": ids})
+            result = "confirmed"
+            lines = [f"[버튼] 확정: {t['title']}" for t in out.get("confirmed", [])]
+            reply = confirmation
         log.info("callback_handled", extra={"action": action, "task_ids": ids})
         if lines:
             _transcript(transcripts, clock, "\n".join(lines))
         return result
     finally:
         await _answer(query, reply)
+
+
+def _run(tools: Tools, apply: Apply | None, action: str, args: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """동작 하나를 하고 (도구 결과, 확인 문구)를 돌려준다. 거절이면 결과에 `error`가 있다."""
+    if apply is not None:
+        res = apply(ActionRequest(action, args, actor="user", channel="telegram"))
+        if res.status != "applied":
+            return {"error": res.body.get("error", {}).get("message", "")}, None
+        return res.body["result"], res.body.get("confirmation")
+    ctx = RunContext(conversation_id=None, run_id=None)
+    out = getattr(tools, action)(ctx, **args)
+    return out, render_confirmations(ctx.events, tools.today()) or None
 
 
 def _transcript(transcripts: TranscriptStore, clock: Clock, text: str) -> None:

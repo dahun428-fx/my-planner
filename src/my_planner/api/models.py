@@ -8,55 +8,21 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from typing import Any, Literal
 
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field
 
-log = logging.getLogger(__name__)
+# 시각 변환의 정본은 `my_planner.timefmt`다. API 쪽 가져오기가 그대로 되도록 다시 내보낸다
+from my_planner.timefmt import TIME_KEYS, api_time, is_time_key, to_api_times  # noqa: F401 - 다시 내보냄
 
-# 오프셋(또는 Z)이 붙은 ISO 시각만. 날짜만 있는 값과 오프셋 없는 시각은 건드리지 않는다
-_OFFSET_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$")
+log = logging.getLogger(__name__)
 
 ErrorCode = Literal[
     "invalid_request", "unauthorized", "not_found", "conflict", "superseded", "undo_expired", "too_large",
     "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal",
 ]
-
-
-def api_time(dt: datetime) -> str:
-    """UTC `Z` 형식. 마이크로초가 0이면 초까지만 쓴다."""
-    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
-
-
-# 시각 필드 이름(스펙 6.1 "시각 필드를 변환"). 이 이름이거나 `_at`으로 끝나는 키의 값만 바꾼다
-TIME_KEYS = frozenset({"now", "at", "scheduled_for", "since", "limited_until", "paused_until", "reply_until"})
-
-
-def is_time_key(key: str | None) -> bool:
-    return key is not None and (key in TIME_KEYS or key.endswith("_at"))
-
-
-def to_api_times(value: Any, *, key: str | None = None) -> Any:
-    """dict·list 안의 시각 필드(`is_time_key`) 값 가운데 오프셋 붙은 ISO 문자열을 UTC `Z`로 바꾼다.
-
-    키를 본다: 할 일 제목이나 메모가 우연히 시각 모양이어도 바꾸지 않는다. `datetime` 값은 늘 바꾼다.
-    """
-    if isinstance(value, dict):
-        return {k: to_api_times(v, key=k) for k, v in value.items()}
-    if isinstance(value, list | tuple):
-        return [to_api_times(v, key=key) for v in value]
-    if isinstance(value, datetime):
-        return api_time(value)
-    if isinstance(value, str) and is_time_key(key) and _OFFSET_ISO.match(value):
-        try:
-            return api_time(datetime.fromisoformat(value))
-        except ValueError:
-            return value
-    return value
 
 
 class ApiError(Exception):
@@ -552,6 +518,48 @@ class SchemaBundle(_Model):
     models: dict[str, dict[str, Any]]
 
 
+class ActionRequestBody(_Model):
+    """`POST /actions` 요청 (6.4.2). `client_msg_id`는 필수다(6.1 중복 방지)."""
+
+    action: str = Field(min_length=1)
+    args: dict[str, Any] = Field(default_factory=dict)
+    client_msg_id: str = Field(min_length=1, max_length=200)
+    confirm_token: str | None = None
+
+
+class ActionXp(_Model):
+    gained: int
+    level_up: None  # 티켓 15 전까지 늘 null
+
+
+class ActionApplied(_Model):
+    """적용(200). `undo_id`는 되돌릴 수 있을 때만 있고 값은 `activity_id`와 같다."""
+
+    status: Literal["applied"]
+    activity_id: int | None
+    undo_id: int | None = None
+    result: dict[str, Any]
+    confirmation: str | None
+    xp: ActionXp
+
+
+class ActionNeedsConfirm(_Model):
+    """확인 필요(200). 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다(10분)."""
+
+    status: Literal["needs_confirm"]
+    confirm_token: str
+    summary: str
+    expires_at: str
+
+
+class ActionRejected(_Model):
+    """거절(422). `error.message`는 도구의 오류 문구다."""
+
+    status: Literal["rejected"]
+    activity_id: None
+    error: ErrorDetail
+
+
 def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -578,6 +586,10 @@ MODELS: dict[str, type[BaseModel]] = {
     "Messages": Messages,
     "UiCatalog": UiCatalog,
     "SchemaBundle": SchemaBundle,
+    "ActionRequestBody": ActionRequestBody,
+    "ActionApplied": ActionApplied,
+    "ActionNeedsConfirm": ActionNeedsConfirm,
+    "ActionRejected": ActionRejected,
 }
 
 

@@ -148,6 +148,8 @@ async def test_run_forever_ticks_each_interval_and_survives_errors(tmp_path, con
 
 
 def test_expire_drafts_after_3_days(tmp_path, conn, state):
+    from fakes import RepoApplier
+
     from my_planner.domain import Area, TaskStatus
     from my_planner.loop.runner import expire_drafts
     from my_planner.store.repos.tasks import TasksRepo
@@ -155,7 +157,7 @@ def test_expire_drafts_after_3_days(tmp_path, conn, state):
     mon_0400 = kst(2026, 10, 26, 4, 0)
     env = Env(tmp_path, conn, state, mon_0400, installed=mon_0400 - timedelta(days=7), last_seen=mon_0400)
     repo = TasksRepo(conn, env.clock)
-    env.runner.register_daily(expire_drafts(repo, env.clock))
+    env.runner.register_daily(expire_drafts(RepoApplier(repo), env.clock))  # 즉시 갈래 대신 저장소로
     env.clock.set(kst(2026, 10, 26, 3, 58))
     older = repo.create("목 03:59에 3일이 넘는 초안", [Area.career], TaskStatus.draft)
     env.clock.set(mon_0400)

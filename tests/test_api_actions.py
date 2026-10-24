@@ -1,0 +1,395 @@
+"""`POST /actions` (SP3-4 스펙 6.4.2): 즉시 갈래 `apply_action`, 확인 토큰, 중복 방지. 내용은 꾸며 낸 것이다."""
+
+import jsonschema
+import pytest
+from be_env import BeEnv
+from test_dispatcher_messages import kst
+
+from my_planner.api.models import schema_bundle
+from my_planner.store.exports import export_tasks
+from my_planner.tools.actions import ACTIONS
+
+SAT_1300 = kst(2026, 10, 24, 13, 0)  # 토요일 낮: 예정된 회차가 없다
+
+
+def _validate(model, body):
+    jsonschema.Draft202012Validator(schema_bundle()["models"][model]).validate(body)
+
+
+async def _add(env, title="운동", **extra):
+    status, body = await env.action("add_task", {"title": title, "areas": ["health"], **extra})
+    assert status == 200, body
+    return body["result"]["id"]
+
+
+def _token_row(env, token):
+    return env.conn.execute("SELECT * FROM pending_confirms WHERE token = ?", (token,)).fetchone()
+
+
+async def test_complete_task_applied_shape(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env, planned_for="2026-10-24")
+        env.clock.advance(minutes=5)
+        status, body = await env.action("complete_task", {"id": tid})
+        (row,) = [r for r in env.activity() if r["kind"] == "task_completed"]
+
+    assert status == 200
+    _validate("ActionApplied", body)
+    assert body["status"] == "applied"
+    assert body["activity_id"] == row["id"] and body["undo_id"] == row["id"]
+    assert body["confirmation"] == "✓ 완료: 운동"
+    assert body["xp"] == {"gained": 0, "level_up": None}
+    assert body["result"]["id"] == tid and body["result"]["status"] == "done"
+    assert body["result"]["completed_at"] == "2026-10-24T04:05:00Z"  # 도구 결과의 +09:00 → UTC
+    assert (row["actor"], row["channel"], row["target"], row["risk"]) == ("user", "app", f"task:{tid}", "low")
+    assert row["summary"] == "✓ 완료: 운동"
+
+
+def _public_cases(ids):
+    """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d)."""
+    a, b, c, d = ids
+    return {
+        "add_task": {"title": "새 일", "areas": ["learning"]},
+        "update_task": {"id": a, "note": "꾸민 메모"},
+        "move_task": {"id": a, "planned_for": "2026-10-25"},
+        "complete_task": {"id": b},
+        "reopen_task": {"id": c},
+        "drop_task": {"id": a},
+        "confirm_tasks": {"ids": [d]},
+        "set_priorities": {"cadence": "week", "period": "2026-W43", "task_ids": [a]},
+        "record_condition": {"score": 4},
+        "decline_confirm": None,  # 토큰을 따로 만든다
+    }
+
+
+@pytest.mark.parametrize("action", sorted(n for n, s in ACTIONS.items() if s.public))
+async def test_every_public_action_applies(tmp_path, action):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b, c = [await _add(env, t) for t in ("가", "나", "다")]
+        await env.action("complete_task", {"id": c})
+        d = env.parts.tools.propose_tasks(_ctx(), tasks=[{"title": "초안", "areas": ["health"]}])["proposed"][0]["id"]
+        cases = _public_cases((a, b, c, d))
+        assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
+        args = cases[action]
+        if action == "decline_confirm":
+            await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [a]})
+            _, nc = await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [b]})
+            args = {"confirm_token": nc["confirm_token"]}
+        before = len(env.activity())
+        status, body = await env.action(action, args)
+        after = env.activity()
+
+    assert status == 200, body
+    _validate("ActionApplied", body)
+    assert body["status"] == "applied"
+    assert len(after) == before + 1 and body["activity_id"] == after[-1]["id"]
+    assert (after[-1]["actor"], after[-1]["channel"]) == ("user", "app")
+
+
+def _ctx():
+    from my_planner.domain import RunContext
+
+    return RunContext(conversation_id=None, run_id=None)
+
+
+async def test_rejected_422_uses_tool_message(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        status, body = await env.action("complete_task", {"id": 999})
+        status2, body2 = await env.action("set_priorities", {"cadence": "week", "period": "2026-W43",
+                                                             "task_ids": [1, 2, 3, 4]})
+        rows = env.activity()
+
+    assert status == 422
+    _validate("ActionRejected", body)
+    assert body == {"status": "rejected", "activity_id": None,
+                    "error": {"code": "rejected", "message": "999번 할 일을 찾을 수 없어요."}}
+    assert status2 == 422 and body2["error"]["message"] == "우선순위는 3개까지 정할 수 있어요."
+    assert rows == []
+
+
+async def test_needs_confirm_drop_priority_task_then_apply_with_token(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        await env.action("set_priorities", {"cadence": "day", "period": "2026-10-24", "task_ids": [tid]})
+        n_before = len(env.activity())
+        status, body = await env.action("drop_task", {"id": tid})
+        still_open = env.parts.tasks.get(tid).status.value
+        n_mid = len(env.activity())
+        env.clock.advance(minutes=1)
+        status2, body2 = await env.action("drop_task", {"id": tid}, confirm_token=body["confirm_token"])
+        row = env.activity()[-1]
+        token = _token_row(env, body["confirm_token"])
+        dropped = env.parts.tasks.get(tid).status.value
+
+    assert status == 200
+    _validate("ActionNeedsConfirm", body)
+    assert body["status"] == "needs_confirm" and body["confirm_token"].startswith("ct_")
+    assert body["summary"] == "우선순위 할 일을 내려놓아요: 운동"
+    assert body["expires_at"] == "2026-10-24T04:10:00Z"  # 10분
+    assert still_open == "open" and n_mid == n_before  # 아무것도 바꾸지 않았다
+    assert status2 == 200 and body2["status"] == "applied" and dropped == "dropped"
+    assert "undo_id" not in body2  # 확인으로 적용한 변경은 되돌릴 수 없다
+    assert (row["kind"], row["risk"]) == ("task_dropped", "confirm")
+    assert (token["resolution"], token["origin"]) == ("applied", "actions")
+
+
+async def test_drop_task_without_priority_applies_directly(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        status, body = await env.action("drop_task", {"id": tid})
+    assert status == 200 and body["status"] == "applied" and body["undo_id"] == body["activity_id"]
+
+
+async def test_set_priorities_quarter_replacing_nonempty_needs_confirm(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        ids = [await _add(env, t) for t in ("가", "나", "다", "라")]
+        q = {"cadence": "quarter", "period": "2026-Q4"}
+        await env.action("set_priorities", {**q, "task_ids": ids[:3]})
+        status, body = await env.action("set_priorities", {**q, "task_ids": [ids[3]]})
+        _, same = await env.action("set_priorities", {**q, "task_ids": ids[:3]})  # 같은 목록은 바로
+        _, year = await env.action("set_priorities", {"cadence": "year", "period": "2026", "task_ids": [1]})
+        week = [await env.action("set_priorities", {"cadence": "week", "period": "2026-W43", "task_ids": x})
+                for x in ([1], [2])]
+        kept = [t.id for t in env.parts.tasks.priorities("quarter", "2026-Q4")]
+
+    assert status == 200 and body["status"] == "needs_confirm"
+    assert body["summary"] == "이번 분기 우선순위 3개를 바꿔요"
+    assert kept == ids[:3]
+    assert same["status"] == "applied"
+    assert year["status"] == "applied"  # 올해 목록은 비어 있었다
+    assert [b["status"] for _, b in week] == ["applied", "applied"]  # 주는 늘 바로
+
+
+async def test_set_priorities_quarter_first_time_applies(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        status, body = await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4",
+                                                           "task_ids": [tid]})
+    assert status == 200 and body["status"] == "applied"
+    assert body["confirmation"] == "✓ 우선순위(이번 분기): 1. 운동"
+
+
+async def _priority_token(env):
+    a, b = await _add(env, "가"), await _add(env, "나")
+    q = {"cadence": "quarter", "period": "2026-Q4"}
+    await env.action("set_priorities", {**q, "task_ids": [a]})
+    _, body = await env.action("set_priorities", {**q, "task_ids": [b]})
+    return {**q, "task_ids": [b]}, body["confirm_token"]
+
+
+async def test_confirm_token_used_or_expired_409(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        args, token = await _priority_token(env)
+        ok, _ = await env.action("set_priorities", args, confirm_token=token)
+        used, used_body = await env.action("set_priorities", args, confirm_token=token)
+
+        other = {**args, "task_ids": [1]}  # 지금 목록 [2]를 바꾼다: 다시 확인이 필요하다
+        _, nc = await env.action("set_priorities", other)
+        env.clock.advance(minutes=10)
+        late, late_body = await env.action("set_priorities", other, confirm_token=nc["confirm_token"])
+        expired = _token_row(env, nc["confirm_token"])["resolution"]
+        unknown, _ = await env.action("set_priorities", other, confirm_token="ct_nope")
+        _, nc2 = await env.action("set_priorities", other)
+        mismatch, mismatch_body = await env.action("set_priorities", {**args, "task_ids": [1, 2]},
+                                                   confirm_token=nc2["confirm_token"])
+
+    assert ok == 200
+    assert used == 409 and used_body == {"error": {"code": "conflict", "message": "이미 정리된 제안이에요."}}
+    assert late == 409 and late_body["error"]["code"] == "conflict" and expired == "expired"
+    assert unknown == 409
+    assert mismatch == 409 and mismatch_body["error"]["message"] == "확인한 제안과 요청이 달라요."
+
+
+async def test_confirm_token_stale_409(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        await env.action("set_priorities", {"cadence": "day", "period": "2026-10-24", "task_ids": [tid]})
+        _, nc = await env.action("drop_task", {"id": tid})
+        env.clock.advance(minutes=1)
+        await env.action("update_task", {"id": tid, "title": "아침 운동"})  # 토큰 뒤에 대상이 바뀌었다
+        env.clock.advance(minutes=1)
+        status, body = await env.action("drop_task", {"id": tid}, confirm_token=nc["confirm_token"])
+        token = _token_row(env, nc["confirm_token"])
+        state = env.parts.tasks.get(tid).status.value
+
+    assert status == 409 and body["error"] == {"code": "conflict", "message": "이미 정리된 제안이에요."}
+    assert token["resolution"] == "stale" and state == "open"
+
+
+async def test_decline_confirm_closes_token_changes_nothing(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        args, token = await _priority_token(env)
+        before = [t.id for t in env.parts.tasks.priorities("quarter", "2026-Q4")]
+        status, body = await env.action("decline_confirm", {"confirm_token": token})
+        after = [t.id for t in env.parts.tasks.priorities("quarter", "2026-Q4")]
+        row = env.activity()[-1]
+        resolution = _token_row(env, token)["resolution"]
+        again, _ = await env.action("decline_confirm", {"confirm_token": token})
+        apply_after, _ = await env.action("set_priorities", args, confirm_token=token)
+
+    assert status == 200 and body["status"] == "applied" and "undo_id" not in body
+    assert before == after
+    assert row["kind"] == "confirm_declined" and row["undo_json"] is None and token not in row["summary"]
+    assert row["summary"] == "✗ 그대로 뒀어요 (이번 분기 우선순위 1개를 바꿔요)"
+    assert resolution == "declined"
+    assert again == 409 and apply_after == 409
+
+
+async def test_duplicate_client_msg_id_returns_first_response(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        first = await env.action("complete_task", {"id": tid}, client_msg_id="dup-1")
+        env.clock.advance(minutes=1)
+        second = await env.action("complete_task", {"id": tid}, client_msg_id="dup-1")
+        rejected = await env.action("complete_task", {"id": tid}, client_msg_id="dup-2")  # 이미 완료: 422
+        rejected_again = await env.action("complete_task", {"id": tid}, client_msg_id="dup-2")
+        n = len([r for r in env.activity() if r["kind"] == "task_completed"])
+
+    assert first == second and first[0] == 200
+    assert n == 1
+    assert rejected == rejected_again and rejected[0] == 422
+
+
+async def test_missing_client_msg_id_400(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        missing = await env.post("/actions", json={"action": "complete_task", "args": {"id": tid}})
+        not_json = await env.post("/actions", data=b"{not json", headers={"Content-Type": "application/json"})
+        not_object = await env.post("/actions", json=[1, 2])
+        no_token = await env.post("/actions", token=None, json={"action": "complete_task", "args": {"id": tid},
+                                                                 "client_msg_id": "x"})
+        bodies = [await r.json() for r in (missing, not_json, not_object)]
+        state = env.parts.tasks.get(tid).status.value
+
+    assert [r.status for r in (missing, not_json, not_object)] == [400, 400, 400]
+    for b in bodies:
+        _validate("Error", b)
+        assert b["error"]["code"] == "invalid_request"
+    assert no_token.status == 401
+    assert state == "open"
+
+
+@pytest.mark.parametrize(
+    ("action", "args"),
+    [("propose_tasks", {"tasks": []}), ("grant_xp", {}), ("expire_drafts", {}), ("prune_api_state", {}),
+     ("complete_task", {"id": 1, "extra": True})],
+)
+async def test_unknown_or_internal_action_400(tmp_path, action, args):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        await _add(env)
+        status, body = await env.action(action, args, client_msg_id="cm-x")
+        stored = env.conn.execute("SELECT count(*) FROM api_idempotency WHERE client_msg_id = 'cm-x'").fetchone()[0]
+
+    assert status == 400 and body["error"]["code"] == "invalid_request"
+    assert stored == 0
+
+
+async def test_actions_result_and_idempotency_atomic(tmp_path, monkeypatch):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env)
+        n_activity = len(env.activity())
+        n_idem = env.conn.execute("SELECT count(*) FROM api_idempotency").fetchone()[0]
+
+        def boom(*a, **kw):
+            raise RuntimeError("boom")
+
+        real_put = env.parts.idempotency.put
+        monkeypatch.setattr(env.parts.idempotency, "put", boom)
+        status, body = await env.action("complete_task", {"id": tid}, client_msg_id="atomic-1")
+        state = env.parts.tasks.get(tid).status.value
+        rows = (len(env.activity()), env.conn.execute("SELECT count(*) FROM api_idempotency").fetchone()[0])
+        events = env.conn.execute("SELECT count(*) FROM tool_events_log WHERE kind = 'task_completed'").fetchone()[0]
+        export = env.parts.tools.export_path.read_text(encoding="utf-8")
+        expected = tmp_path / "expected.md"
+        export_tasks(env.parts.tasks, expected, env.parts.tools.today())  # 되돌린 DB에서 다시 만든 모양
+        monkeypatch.setattr(env.parts.idempotency, "put", real_put)
+        retry, retry_body = await env.action("complete_task", {"id": tid}, client_msg_id="atomic-1")
+        state_after = env.parts.tasks.get(tid).status.value
+
+    assert status == 500 and body["error"]["code"] == "internal"
+    assert state == "open" and rows == (n_activity, n_idem) and events == 0
+    assert export == expected.read_text(encoding="utf-8")  # tasks.md도 DB와 같다(완료로 남지 않았다)
+    assert retry == 200 and retry_body["status"] == "applied" and state_after == "done"
+
+
+async def test_actions_log_has_no_title_args_or_token(tmp_path, caplog):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env, "꾸민제목문장")
+        await env.action("set_priorities", {"cadence": "day", "period": "2026-10-24", "task_ids": [tid]})
+        _, nc = await env.action("drop_task", {"id": tid})
+        await env.action("drop_task", {"id": tid}, confirm_token=nc["confirm_token"])
+        await env.action("record_condition", {"score": 3, "note": "꾸민메모문장"})
+
+    text = "\n".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
+    assert "action_handled" in text
+    for secret in ("꾸민제목문장", "꾸민메모문장", nc["confirm_token"]):
+        assert secret not in text
+
+
+@pytest.mark.parametrize("which", ["old", "new"])
+async def test_priorities_token_stale_when_listed_task_dropped(tmp_path, which):
+    """분기 우선순위 토큰 뒤에 지금 목록이나 새 목록의 할 일을 내려놓으면 그 토큰은 stale(409)이다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        old, new = await _add(env, "가"), await _add(env, "나")
+        q = {"cadence": "quarter", "period": "2026-Q4"}
+        await env.action("set_priorities", {**q, "task_ids": [old]})
+        _, nc = await env.action("set_priorities", {**q, "task_ids": [old, new]})
+        env.clock.advance(minutes=1)
+        victim = old if which == "old" else new
+        st, body = await env.action("drop_task", {"id": victim})
+        if body["status"] == "needs_confirm":  # 지금 분기 우선순위인 할 일은 내려놓기도 확인을 받는다
+            st, body = await env.action("drop_task", {"id": victim}, confirm_token=body["confirm_token"])
+        assert (st, body["status"]) == (200, "applied")
+        env.clock.advance(minutes=1)
+        status, err = await env.action("set_priorities", {**q, "task_ids": [old, new]},
+                                       confirm_token=nc["confirm_token"])
+        resolution = _token_row(env, nc["confirm_token"])["resolution"]
+        kept = [t.id for t in env.parts.tasks.priorities("quarter", "2026-Q4")]
+
+    assert status == 409 and err["error"]["code"] == "conflict"
+    assert resolution == "stale"
+    assert kept == ([] if which == "old" else [old])
+
+
+def test_needs_confirm_without_confirms_repo_never_applies(tmp_path, conn):
+    from test_activity import ActivityEnv
+
+    from my_planner.tools.actions import ActionDeps, ActionRequest, apply_action
+
+    env = ActivityEnv(tmp_path, conn)
+    tid = env.tools.add_task(env.ctx(), title="운동", areas=["health"])["id"]
+    env.tools.set_priorities(env.ctx(), cadence="day", period="2026-10-24", task_ids=[tid])
+    deps = ActionDeps(tools=env.tools, clock=env.clock, activity=env.activity, confirms=None)
+    with pytest.raises(RuntimeError):
+        apply_action(deps, ActionRequest("drop_task", {"id": tid}, actor="user", channel="app"))
+    assert env.repo.get(tid).status.value == "open"
+
+
+@pytest.mark.parametrize("which", ["old", "new"])
+async def test_drop_token_stale_after_set_priorities_touches_task(tmp_path, which):
+    """`drop_task` 토큰 뒤에 그 할 일이 든(빠지거나 들어온) 목록을 바꾸면 그 토큰은 stale(409)이다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        a, b = await _add(env, "가"), await _add(env, "나")
+        day = {"cadence": "day", "period": "2026-10-24"}
+        await env.action("set_priorities", {**day, "task_ids": [a]})
+        await env.action("set_priorities", {"cadence": "week", "period": "2026-W43", "task_ids": [b]})
+        victim = a if which == "old" else b
+        _, nc = await env.action("drop_task", {"id": victim})
+        assert nc["status"] == "needs_confirm"
+        env.clock.advance(minutes=1)
+        # 오늘 목록을 바꾼다: old는 a가 빠지고, new는 b가 들어온다
+        await env.action("set_priorities", {**day, "task_ids": [b] if which == "old" else [a, b]})
+        row = env.activity()[-1]
+        targets = env.parts.activity.targets(row["id"])
+        env.clock.advance(minutes=1)
+        status, err = await env.action("drop_task", {"id": victim}, confirm_token=nc["confirm_token"])
+        resolution = _token_row(env, nc["confirm_token"])["resolution"]
+        state = env.parts.tasks.get(victim).status.value
+
+    assert row["kind"] == "priorities_set" and row["target"] == "priorities:day:2026-10-24"
+    assert set(targets) == {"priorities:day:2026-10-24", f"task:{a}", f"task:{b}"}
+    assert status == 409 and err["error"]["code"] == "conflict"
+    assert resolution == "stale" and state == "open"

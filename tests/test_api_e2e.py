@@ -96,3 +96,28 @@ async def test_curve_and_status_read_model(tmp_path):
     assert status["main_quests"][0]["title"] == "수채화 전시 준비"
     assert (status["level"], status["xp_total"]) == (1, 0)
     assert next(s for s in status["stats"] if s["area"] == "health")["debuff"] is True
+
+
+async def test_actions_end_to_end(tmp_path):
+    # 토요일 낮: 텔레그램으로 할 일을 넣고(가짜 두뇌), 앱에서 완료한다(즉시 갈래)
+    add = ("add_task", {"title": "운동", "areas": ["health"], "planned_for": "2026-10-24"})
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([add], "넣었어요")]) as env:
+        await env.telegram("운동 추가")
+        before = await (await env.get("/today")).json()
+        (todo,) = [x["todo"] for x in before["todos"]]
+        assert todo["title"] == "운동"
+        await env.telegram("/today")
+        assert "운동" in env.bot.sent[-1][1]
+
+        status, body = await env.action("complete_task", {"id": todo["id"]}, client_msg_id="e2e-1")
+        again = await env.action("complete_task", {"id": todo["id"]}, client_msg_id="e2e-1")
+        await env.telegram("/today")
+        today_text = env.bot.sent[-1][1]
+        after = await (await env.get("/today")).json()
+        rows = [(r["kind"], r["actor"], r["channel"]) for r in env.activity()]
+
+    assert status == 200 and body["status"] == "applied" and body["confirmation"] == "✓ 완료: 운동"
+    assert again == (status, body)
+    assert "운동" not in today_text
+    assert after["todos"] == []
+    assert rows == [("task_added", "secretary", "telegram"), ("task_completed", "user", "app")]

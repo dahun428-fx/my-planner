@@ -146,6 +146,21 @@ class BeEnv:
     async def delete(self, path: str, **kw: Any) -> ClientResponse:
         return await self.request("DELETE", path, **kw)
 
+    async def action(
+        self, action: str, args: dict[str, Any] | None = None, *, client_msg_id: str | None = None,
+        confirm_token: str | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        """`POST /actions`(즉시 갈래). `client_msg_id`를 주지 않으면 새로 만든다. (HTTP 상태, 본문)."""
+        body = {
+            "action": action, "args": args or {}, "client_msg_id": client_msg_id or f"cm-{next(self._ids)}",
+            "confirm_token": confirm_token,
+        }
+        resp = await self.post("/actions", json=body)
+        return resp.status, await resp.json()
+
+    def activity(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM activity ORDER BY id").fetchall()
+
     # --- 텔레그램과 루프 ---
 
     async def telegram(self, text: str, *, sent_at: datetime | None = None) -> str:
@@ -174,7 +189,7 @@ class BeEnv:
         return verdict
 
     async def press(self, data: str, *, message_id: int | None = None) -> str:
-        """버튼을 누른다(가짜 `CallbackQuery` → `parts.callbacks`). 처리 결과 이름을 돌려준다."""
+        """버튼을 누른다(가짜 `CallbackQuery` → `parts.callbacks`, 즉시 갈래 `apply_action`). 처리 결과 이름을 돌려준다."""
         uid = next(self._ids)
         update = Update.de_json(
             {
