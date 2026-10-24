@@ -199,7 +199,7 @@ web/app/                         # Vercel 루트 디렉터리
 | 읽기 스냅샷(오늘 + 오늘 체크인 요약, 이번 주) | IndexedDB `snap:today`, `snap:week` (받을 때의 `beUrl` 포함) | 같음, 그리고 받은 지 7일 지나면 |
 | 최근 대화 조각 | IndexedDB `parts:*` (200개) | 같음, 그리고 받은 지 7일 지나면 |
 | 부품 목록(카탈로그) | IndexedDB `catalog` | 같음, 그리고 판이 바뀌면 |
-| 화면 설정(시스템 따라 · 밝게 · 어둡게) | `localStorage` `mp.theme` | 지우지 않는다(연결 해제에도 남는다) |
+| 화면 설정(시스템 따라 · 밝게 · 어둡게) | `localStorage` `mp.theme` | 설정 "이 기기 연결 해제" |
 
 - 토큰은 빌드, Vercel 환경 변수, 저장소, 로그, 오류 보고 어디에도 넣지 않는다(SP3-4 14장). 화면에도 보이지 않는다(입력 칸은 `type="password"`).
 - CSP는 대시보드(SP3-4 계획 16)의 문자열에 `worker-src 'self'; manifest-src 'self'` 두 개만 더한다: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ${NEXT_PUBLIC_CONNECT_SRC}; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'`. `_document`의 첫 `<meta>`로 넣는다. `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, 최소 `Permissions-Policy`는 `<meta>`에서 듣지 않으므로 대시보드처럼 `vercel.json` 헤더로 보낸다. `check:csp` 스크립트가 `out/`의 모든 HTML에 인라인 스크립트와 인라인 스타일이 없는지 본다(대시보드와 같은 규칙·같은 출력 문구의 스크립트를 `web/app/scripts/`에 따로 둔다. 둘 중 하나를 고치면 다른 쪽도 같은 PR에서 고친다).
@@ -529,7 +529,7 @@ R1, R2, R4a가 들어오기 전에는: 해당 경로가 `404`면 그 탭과 묶�
 | 문구 | `src/lib/copy.ts`와 `src/**/*.tsx`의 한국어 문자열에 10장 금지어 없음 | Vitest | `npx vitest run src/lib/copy.test.ts` → `0 failed` |
 | 대비 | 5.2 토큰의 글자·면 쌍(밝게, 어둡게) 모두 4.5:1 이상 | Vitest(대비 계산) | `npx vitest run src/styles` → `0 failed` |
 | 빌드 | 정적 내보내기, CSP(인라인 스크립트·스타일 없음) | `npm run build && npm run check:csp` | `CSP OK: <n> files` |
-| CSP 실행 | 빌드한 `out/`을 CSP 헤더와 함께 띄우고, 고정 SSE로 대화를 열어 `ui_todo_draft` 조각이 부품으로 그려지는지(검사기가 CSP 아래에서 도는지), 콘솔에 CSP 위반이 없는지. 실패 원인을 가르기 쉽게 시험 둘로 나눈다(조각 그리기, 위반 0건) | Playwright | `npx playwright test csp.spec.ts` → `2 passed` |
+| CSP 실행 | 빌드한 `out/`을 CSP 헤더와 함께 띄우고, 고정 SSE로 대화를 열어 `ui_todo_draft` 조각이 부품으로 그려지는지(검사기가 CSP 아래에서 도는지), 콘솔에 CSP 위반이 없는지. 원인을 가르기 쉽게 시험 둘로 나눈다(조각 그리기, 위반 0건) | Playwright | `npx playwright test csp.spec.ts` → `2 passed` |
 | 디자인 | taste 규칙 | `node <taste>/scripts/lint.mjs --app web/app/src` | `0 FAIL` |
 | 눈으로 | 390×844에서 화면 8개 스크린샷(밝게·어둡게)을 시안과 나란히 보고 다른 곳을 고친다 | Playwright + MSW 고정 데이터 | `npx playwright test` → 16장 저장, 사람이 확인 |
 | 실기기 | 아이폰에서 Safari 탭 안내 확인 → 홈 화면 추가 → 연결 → 시험 알림 → 앱이 닫혀 있을 때와 열려 있을 때 각각 알림 눌러 체크인 열기 → 답장 → 텔레그램 버튼 사라짐 확인 | Dahun과 함께 | 체크리스트 `docs/acceptance/sp5-checklist.md` 모든 줄 확인 |
