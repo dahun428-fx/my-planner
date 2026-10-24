@@ -30,7 +30,12 @@ from my_planner.domain import (
 )
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
-from my_planner.harness.context import ask_condition_for, build_notices, build_preamble
+from my_planner.harness.context import (
+    ask_condition_for,
+    build_notices,
+    build_preamble,
+    habit_week_block,
+)
 from my_planner.harness.redact import MASK, redact
 from my_planner.harness.review_steps import (
     NextStep,
@@ -866,7 +871,7 @@ class Dispatcher:
             prompt = _join(
                 notices,
                 "" if resumed else instructions,
-                self._preamble(resumed),
+                self._preamble(resumed, include_habits=True),
                 "" if resumed else origin_text,
                 f"## 최근 대화\n{history}" if history else "",
                 body,
@@ -895,7 +900,7 @@ class Dispatcher:
                 prompt = _join(
                     notices,
                     instructions,
-                    self._preamble(False),
+                    self._preamble(False, include_habits=True),
                     origin_text,
                     f"## 최근 대화\n{history}" if history else "",
                     body,
@@ -1384,7 +1389,9 @@ class Dispatcher:
         step, question = self._review_extras(run, merged, ask)
         if step is not None:
             ask = None  # 컨디션 줄 대신 첫 단계 줄(한 메시지에 숫자 키보드 한 종류)
-        result, run_ctx = await self._run_brain(run, merged, conv, ask, step=step, question=question)
+        result, run_ctx = await self._run_brain(
+            run, merged, conv, ask, step=step, question=question, habit_date=habit_date
+        )
         if not _run_ok(result) and self._may_rerun(run, result):
             blocked = self._run_blocked(run)
             if blocked is not None:  # 두 번째 호출 전에도 멈춤, 하루 상한, 사용 한도를 본다
@@ -1395,7 +1402,9 @@ class Dispatcher:
                 log.info("run_rerun_skipped", extra={"run_id": run.id, "reason": blocked.value})
                 return None
             runs.mark_running(run.id)
-            result, run_ctx = await self._run_brain(run, merged, conv, ask, step=step, question=question)
+            result, run_ctx = await self._run_brain(
+            run, merged, conv, ask, step=step, question=question, habit_date=habit_date
+        )
         if result.status in ("auth_error", "rate_limited"):
             # 로그인·결제는 skipped(auth), 사용 한도는 skipped(rate_limit). 다시 실행하지 않고 고정 안내만(스펙 5.3)
             reason = SkipReason.auth if result.status == "auth_error" else SkipReason.rate_limit
@@ -1482,7 +1491,7 @@ class Dispatcher:
 
     async def _run_brain(
         self, run: Run, merged: list[Run], conv: Conversation, ask: date | None = None, *,
-        step: NextStep | None = None, question: tuple[int, str] | None = None,
+        step: NextStep | None = None, question: tuple[int, str] | None = None, habit_date: date | None = None,
     ) -> tuple[BrainResult, RunContext]:
         """루프 지시문(합친 회차의 지시문을 뒤에 이어 붙임)과 앞머리로 새 세션을 연다.
 
@@ -1500,13 +1509,28 @@ class Dispatcher:
                 loop_prompts.extend(prompts.load(f) for f in of.steps.prompt_files())
         prompt = _join(
             *loop_prompts,
-            self._preamble(False, merged=[m.loop.value for m in merged] or None),
+            self._preamble(
+                False,
+                merged=[m.loop.value for m in merged] or None,
+                include_habits=any(r.loop in (LoopKey.evening_checkin, LoopKey.review) for r in (run, *merged)),
+            ),
+            self._habit_week_block(run, merged),
             _condition_buttons_note(ask),
+            _habit_buttons_note(habit_date),
             self._review_week_note(run, merged),
             step_note(step, where="메시지"),
             f"## 이번에 물을 질문\n{question[1]}" if question is not None else "",
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
+
+    def _habit_week_block(self, run: Run, merged: list[Run]) -> str:
+        """주간 회고 회차에만 `## 이번 주 습관`(SP7 5.7)."""
+        review = _review_of(run, merged)
+        habits = self.tools.habits if self.tools is not None else None
+        if review is None or habits is None:
+            return ""
+        s = self.settings
+        return habit_week_block(habits, logical_date(review.scheduled_for, s.timezone, s.day_boundary))
 
     def _review_week_note(self, run: Run, merged: list[Run]) -> str:
         """회고가 함께 있으면 회고 주와 다음 주를 알린다. 다음 주는 `set_priorities(week, ...)`에 쓴다."""
@@ -1728,8 +1752,8 @@ class Dispatcher:
     def _today(self) -> date:
         return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
 
-    def _preamble(self, resumed: bool, *, merged: list[str] | None = None) -> str:
-        """새 세션일 때만 붙인다: 지금 시각, 열린 할 일, 오늘 일정(, 함께 처리하는 회차)."""
+    def _preamble(self, resumed: bool, *, merged: list[str] | None = None, include_habits: bool = False) -> str:
+        """새 세션일 때만 붙인다: 지금 시각, 열린 할 일, 오늘 일정(, 함께 처리하는 회차, 오늘 습관)."""
         if resumed or self.tools is None:
             return ""
         return build_preamble(
@@ -1740,6 +1764,8 @@ class Dispatcher:
             conditions=self.tools.conditions,
             paused_until=self._state_time(PAUSE_UNTIL_KEY),
             merged=merged,
+            habits=self.tools.habits,
+            include_habits=include_habits,
         )
 
     def _state_time(self, key: str) -> datetime | None:
@@ -1898,6 +1924,18 @@ def _condition_buttons_note(d: date | None) -> str:
     if d is None:
         return ""
     return f"## 컨디션 버튼\n이 메시지 아래에 {d.month}/{d.day}({_WEEKDAY[d.weekday()]}) 컨디션 버튼(1~5)이 붙습니다."
+
+
+
+
+def _habit_buttons_note(day: date | None) -> str:
+    """메시지에 습관 버튼 줄이 붙을 때만(`Outbound.habit_date`) 두뇌에게 알린다(SP7 5.7, 부록 A)."""
+    if day is None:
+        return ""
+    return (
+        "## 습관 버튼\n메시지 아래에 오늘 습관 버튼이 붙습니다. 습관을 글로 하나하나 묻지 말고, "
+        "'오늘 챙긴 습관은 아래에서 눌러 주세요'처럼 한 줄로 부탁합니다."
+    )
 
 
 _WEEKDAY = "월화수목금토일"
