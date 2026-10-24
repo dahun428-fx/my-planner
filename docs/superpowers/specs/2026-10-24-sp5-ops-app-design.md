@@ -106,8 +106,8 @@
 | 아이콘 | 손으로 그린 인라인 SVG 8개 (`src/components/icons.tsx`) | 외부 아이콘 묶음을 들이지 않는다. 1.7px 선, 24px |
 | 글꼴 | 시스템 글꼴(`-apple-system`, `Apple SD Gothic Neo`) | 아이폰에서 기본 앱처럼 보이게. 외부 글꼴을 받지 않는다(CSP) |
 | 기기 저장 | `localStorage`(주소, 토큰, 마지막 연결 시각), IndexedDB `idb-keyval`(읽기 스냅샷, 최근 대화 조각) | 4.6 |
-| 서비스 워커 | 손으로 쓴 `public/sw.js` (푸시, 알림 누름, 앱 껍데기 캐시) | 플러그인 없이 50줄 안팎. CSP와 충돌하지 않는다 |
-| API 타입 | BE `GET /schema` → `json-schema-to-typescript` → `src/api/types.gen.ts` | 대시보드의 `scripts/gen-types.mjs`를 함께 쓴다 |
+| 서비스 워커 | 손으로 쓴 `public/sw.js` (푸시, 알림 누름, 앱 껍데기 캐시) | 플러그인 없이 50줄 안팎. CSP와 충돌하지 않는다. 의존성 없는 고전 스크립트라 시험은 Node `vm`으로 돌린다. 빌드 뒤 `sw-manifest.json`이 캐시 목록과 빌드 id를 준다 |
+| API 타입 | BE `GET /schema` → `json-schema-to-typescript` → `src/api/types.gen.ts` | 같은 규칙·같은 출력 문구의 `scripts/gen-types.mjs`를 `web/app/scripts/`에 따로 둔다. Vercel 루트가 패키지마다 달라 다른 패키지의 스크립트를 부르면 빌드가 루트 밖에 기대고, 대시보드가 아직 없을 수도 있다. 둘 중 하나를 고치면 다른 쪽도 같은 PR에서 고친다 |
 | 조각 검사 | `@cfworker/json-schema` | `eval`·`new Function`을 쓰지 않는 JSON Schema 검사기. ajv는 실행 중 컴파일에 `new Function`을 써서 CSP `script-src 'self'`(`unsafe-eval` 없음)에서 막힌다 |
 | 테스트 | Vitest + Testing Library + MSW + jsdom, Playwright(390×844) | 13장 |
 
@@ -115,29 +115,37 @@
 
 ```
 web/app/                         # Vercel 루트 디렉터리
-  package.json  next.config.mjs  tsconfig.json  vitest.config.ts  playwright.config.ts
+  package.json  package-lock.json  next.config.mjs  tsconfig.json  vercel.json
+  vitest.config.ts  playwright.config.ts
   public/  manifest.webmanifest  sw.js  icons/{icon-192,icon-512,apple-touch-icon}.png
   src/
     pages/       _app.tsx _document.tsx index.tsx connect.tsx todos.tsx activity.tsx settings.tsx checkin.tsx
-    api/         client.ts  errors.ts  types.gen.ts  schema.json
-    lib/         connection.ts  snapshot.ts  time.ts  polling.ts  push.ts  ids.ts  copy.ts
-    chat/        transport.ts  ChatSheet.tsx  MessageView.tsx  parts.ts  localParts.ts
-    ui/          catalog.ts  registry.tsx  components/{TodoList,Choice,SummaryCard,TodoDraft,
-                 ConditionPicker,LadderPicker,AreaScores,Confirm,UnknownPart}.tsx
-    screens/     Today.tsx  Checkin.tsx  Todos.tsx  Activity.tsx  Settings.tsx  Connect.tsx
-    components/  TabBar.tsx  LargeTitle.tsx  Group.tsx  Row.tsx  SwipeRow.tsx  Segmented.tsx
-                 Toast.tsx  StatusDot.tsx  OfflineNotice.tsx  icons.tsx
-    styles/      tokens.css  globals.css
-    test/        server.ts  handlers.ts  fixtures/{today,week,activity,checkin,catalog,chat-golden.sse}
+    api/         client.ts  actions.ts  validate.ts  errors.ts  types.gen.ts  schema.json
+    lib/         connection.ts  ConnectionProvider.tsx  snapshot.ts  time.ts  polling.ts  push.ts
+                 ids.ts  copy.ts  theme.ts
+    chat/        transport.ts  ChatSheet.tsx  MessageView.tsx  parts.ts  localParts.ts  command.ts
+    ui/          catalog.ts  CatalogProvider.tsx  registry.tsx
+                 components/{TodoList,Choice,SummaryCard,TodoDraft,ConditionPicker,LadderPicker,
+                 AreaScores,MilestoneDraft,ChapterDraft,Confirm,UnknownPart}.tsx
+    screens/     Today.tsx  Checkin.tsx  Todos.tsx  AddTodoSheet.tsx  Activity.tsx  Settings.tsx  Connect.tsx
+    components/  TabBar.tsx  LargeTitle.tsx  Group.tsx  Row.tsx  TodoRow.tsx  SwipeRow.tsx  Segmented.tsx
+                 Sheet.tsx  Toast.tsx  ConfirmSheet.tsx  StatusDot.tsx  OfflineNotice.tsx  BlockError.tsx
+                 Skeleton.tsx  ChatLauncher.tsx  icons.tsx
+    styles/      tokens.css  globals.css  *.module.css(컴포넌트 옆)
+    test/        setup.ts  server.ts  handlers.ts  render.tsx  fixtures/*.json
+  scripts/       check-csp.mjs  gen-types.mjs  lint-copy.mjs  sw-manifest.mjs  make-icons.mjs  size.mjs  serve-csp.mjs
+  e2e/           csp.spec.ts  screens.spec.ts  routes.ts
 ```
+
+쓰기 동작은 `api/actions.ts`, 연결 상태 공급자는 `lib/ConnectionProvider.tsx`, 부품 목록 공급자는 `ui/CatalogProvider.tsx`, 확인 시트는 `components/ConfirmSheet.tsx`, 명령 보내기는 `chat/command.ts`에 둔다. 응답 모양 검사는 `api/validate.ts`, 화면 설정은 `lib/theme.ts`다.
 
 모듈 경계:
 
 | 모듈 | 하는 일 | 쓰는 쪽 | 기대는 것 |
 |---|---|---|---|
-| `api/client.ts` | `fetch` 감싸기: 주소·토큰 붙이기, 10초 시간 제한, 오류 모양(SP3-4 6.1)을 `ApiError`로, 네트워크 오류를 `lib/connection`에 알림 | 화면 전부 | `lib/connection` |
+| `api/client.ts` | `fetch` 감싸기: 주소·토큰 붙이기, 10초 시간 제한, 오류 모양(SP3-4 6.1)을 `ApiError`로, 네트워크 오류를 `lib/connection`에 알림. 성공 응답은 `schema.json`의 모델을 `@cfworker/json-schema`로 검사하고 모양이 다르면 `error`, 코드 `shape`로 돌려준다(`api/validate.ts`). 시험용 고정 자료도 같은 검사를 거친다(`fixtures.test.ts`) | 화면 전부 | `lib/connection` |
 | `lib/connection.ts` | 주소·토큰 저장과 읽기, 연결 상태(`online`·`offline`·`unauthorized`·`safe_mode`) 하나를 앱 전체에 알림 | `_app`, 화면 | `/health` |
-| `lib/snapshot.ts` | 읽기 응답을 IndexedDB에 저장하고 오프라인일 때 돌려줌 | 오늘, 할 일 | `idb-keyval` |
+| `lib/snapshot.ts` | 읽기 응답을 `beUrl`과 함께 IndexedDB에 저장하고 오프라인일 때 돌려줌. 저장된 `beUrl`이 지금 BE 주소와 다르면 버린다 | 오늘, 할 일 | `idb-keyval` |
 | `chat/transport.ts` | `DefaultChatTransport` 설정: 마지막 사용자 메시지 하나만 보냄, `client_msg_id`·`conversation_id`·`checkin_id` 붙임 | `ChatSheet` | `lib/connection` |
 | `ui/registry.tsx` | `ui_*` 이름 → 컴포넌트. 카탈로그 판 확인, props 검증, 모르면 `UnknownPart` | 대화, 오늘, 체크인 | `ui/catalog` |
 | `screens/*` | 화면 하나씩. 데이터 가져오기, 상태 표시 | `pages/*` | 위 모듈 |
@@ -160,12 +168,13 @@ web/app/                         # Vercel 루트 디렉터리
 **읽기**
 
 - 화면을 열 때, 앱이 앞으로 올 때(`visibilitychange`), 보이는 동안 60초마다 그 화면의 `GET`을 부른다(대시보드와 같은 주기). 쓰기 응답을 받은 뒤에는 그 화면의 `GET`을 한 번 더 부른다.
-- 성공한 `GET /today`, `GET /week`, `GET /checkins?date=오늘` 응답은 받은 시각과 함께 IndexedDB 스냅샷에 덮어쓴다(키 `snap:today`, `snap:week`, `snap:checkins`). 다른 응답은 저장하지 않는다.
+- 성공한 `GET /today`, `GET /week` 응답은 받은 시각과 함께 IndexedDB 스냅샷에 덮어쓴다(키 `snap:today`, `snap:week`). 오늘 체크인 요약은 `/today.checkins`에 있으므로 `snap:today` 하나에 같이 남기고 `snap:checkins`는 두지 않는다. 다른 응답은 저장하지 않는다. 스냅샷에는 받은 시각과 함께 그때의 BE 주소(`beUrl`)를 두고, 지금 주소와 다르면 버린다(다른 BE로 다시 연결했을 때 옛 내용이 보이지 않게).
 
 **쓰기**
 
 - 모든 쓰기는 `POST /actions`, `POST /activity/{id}/undo`, `POST /chat`, `PUT /settings/notify`, `POST|DELETE /push/subscriptions`, `POST /push/test`다. 이 가운데 `/actions`, `/undo`, `/chat` 셋만 `client_msg_id`(UUID v4)를 갖는다(SP3-4 6.1). 동작마다 새 값을 만들고, 네트워크 오류로 같은 동작을 다시 보낼 때만 같은 값을 쓴다. 나머지 경로에는 넣지 않는다.
 - **낙관적 반영은 체크 표시 하나만** 한다: 할 일을 체크하면 바로 줄을 그리고, 실패하면 되돌리며 오류 줄을 띄운다. 나머지는 응답을 받고 바꾼다(BE가 `needs_confirm`이나 `rejected`를 줄 수 있어서).
+- 응답이 올 때까지 같은 동작·같은 인자의 두 번째 누름은 보내지 않는다(`useAction`이 열쇠별로 진행 중 표시를 둔다).
 - 오프라인에서는 쓰기를 모아 두지 않는다. 쓰는 버튼은 꺼지고 "비서가 다시 연결되면 할 수 있어요"가 보인다. 나중에 보낸 쓰기가 그 사이 바뀐 상태를 덮는 일을 막기 위해서다.
 
 **대화**
@@ -187,12 +196,13 @@ web/app/                         # Vercel 루트 디렉터리
 | BE 주소, 토큰 | `localStorage` `mp.beUrl`, `mp.token` | 설정 "이 기기 연결 해제" |
 | 마지막 연결 시각 | `localStorage` `mp.lastHealthOk` | 같음 |
 | 푸시 구독 id | `localStorage` `mp.pushId` | 같음 (BE `DELETE /push/subscriptions/{id}`도 부름) |
-| 읽기 스냅샷(오늘, 이번 주, 오늘 체크인 요약) | IndexedDB `snap:*` | 같음, 그리고 받은 지 7일 지나면 |
+| 읽기 스냅샷(오늘 + 오늘 체크인 요약, 이번 주) | IndexedDB `snap:today`, `snap:week` (받을 때의 `beUrl` 포함) | 같음, 그리고 받은 지 7일 지나면 |
 | 최근 대화 조각 | IndexedDB `parts:*` (200개) | 같음, 그리고 받은 지 7일 지나면 |
 | 부품 목록(카탈로그) | IndexedDB `catalog` | 같음, 그리고 판이 바뀌면 |
+| 화면 설정(시스템 따라 · 밝게 · 어둡게) | `localStorage` `mp.theme` | 설정 "이 기기 연결 해제" |
 
 - 토큰은 빌드, Vercel 환경 변수, 저장소, 로그, 오류 보고 어디에도 넣지 않는다(SP3-4 14장). 화면에도 보이지 않는다(입력 칸은 `type="password"`).
-- CSP는 대시보드(SP3-4 계획 16)의 문자열에 `worker-src 'self'; manifest-src 'self'` 두 개만 더한다: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ${NEXT_PUBLIC_CONNECT_SRC}; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'`. `_document`의 첫 `<meta>`로 넣는다. `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, 최소 `Permissions-Policy`는 `<meta>`에서 듣지 않으므로 대시보드처럼 `vercel.json` 헤더로 보낸다. `check:csp` 스크립트가 `out/`의 모든 HTML에 인라인 스크립트와 인라인 스타일이 없는지 본다(대시보드 스크립트를 함께 쓴다).
+- CSP는 대시보드(SP3-4 계획 16)의 문자열에 `worker-src 'self'; manifest-src 'self'` 두 개만 더한다: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ${NEXT_PUBLIC_CONNECT_SRC}; base-uri 'none'; form-action 'none'; worker-src 'self'; manifest-src 'self'`. `_document`의 첫 `<meta>`로 넣는다. `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, 최소 `Permissions-Policy`는 `<meta>`에서 듣지 않으므로 대시보드처럼 `vercel.json` 헤더로 보낸다. `check:csp` 스크립트가 `out/`의 모든 HTML에 인라인 스크립트와 인라인 스타일이 없는지 본다(대시보드와 같은 규칙·같은 출력 문구의 스크립트를 `web/app/scripts/`에 따로 둔다. 둘 중 하나를 고치면 다른 쪽도 같은 PR에서 고친다).
 - 설정 화면은 `NEXT_PUBLIC_CONNECT_SRC` 범위 밖의 BE 주소를 받지 않는다(CSP가 어차피 막는다. 미리 알려 준다).
 - **대시보드와 다른 점**: 대시보드는 화면 데이터를 기기에 남기지 않는다. 운영 앱은 Dahun 결정 D12에 따라 오늘·이번 주 할 일, 체크인 요약, 최근 대화 조각을 남긴다. 폰을 잃어버렸을 때의 노출 범위가 그만큼 넓다. 대신 7일이 지나면 지우고, 연결 해제 한 번으로 모두 지운다. ADR 0009.
 
@@ -283,7 +293,7 @@ web/app/                         # Vercel 루트 디렉터리
 | 3 | **확인이 필요해요** (있을 때만) | 대기 중인 체크인의 `GET /checkins/{id}.cards` 중 `ui_confirm` | 7장 `Confirm` 부품 |
 | 4 | 아침 브리핑 | `/today.brief.text`, `sent_at` | 없으면 블록째 숨김. 세 줄 넘으면 "더 보기" |
 | 5 | 오늘 컨디션 | `/today.condition` | 1~5 알약 다섯 개(44px). 이미 있으면 그 값이 검정으로 채워지고 "바꾸기"가 된다. 누르면 `/actions record_condition` |
-| 6 | 할 일 (n) | `/today.todos` 묶음 순서 그대로 | 줄 체크 = `complete_task`(완료된 줄 다시 체크 = `reopen_task`), 줄 밀기 = 내일로·빼기(5.5.5와 같음), "전체 보기" = 할 일 화면 |
+| 6 | 할 일 (n) | `/today.todos` 묶음 순서 그대로 | 줄 체크 = `complete_task`(완료된 줄 다시 체크 = `reopen_task`), 줄 밀기 = 내일로·빼기(5.5.5와 같음. "내일"은 `addDays(/today.date, 1)`), "전체 보기" = 할 일 화면 |
 | 7 | 고정 카드 | `/today.cards` (`sort_order` 순) | 7장 부품으로 그린다. 카드 머리 오른쪽에 `--hue` 표시 "비서가 올려 둔 카드". 길게 누르면 "내리기"(`unpin_card`), "위로·아래로"(`reorder_cards`) |
 
 - 완료된 할 일은 목록 끝에 회색 취소선으로 남는다(오늘 하루). "{HH:MM} 완료".
@@ -296,7 +306,7 @@ web/app/                         # Vercel 루트 디렉터리
 
 - 화면 위 50px을 남기고 올라오는 시트(반지름 16, 위 손잡이). 위에 "닫기" · "비서" · "앱 대화". 아래로 끌거나 "닫기"로 닫는다.
 - 메시지: 내 글은 오른쪽 검정 말풍선, 비서 글은 왼쪽 말풍선 없는 본문(15px). 시각은 대화가 바뀔 때와 10분 넘게 비었을 때만 가운데 회색으로.
-- **다른 곳에서 바뀐 것**: 시트를 열 때 이 대화의 마지막 메시지 뒤에 `channel != app`인 활동이 있으면(`GET /activity?since=`), 맨 아래에 회색 칸 한 줄 "다른 곳에서 바뀐 것: 텔레그램에서 ‘{제목}’을 완료했어요." 최대 3줄. 두뇌도 같은 알림을 받는다(SP3-4 7.1).
+- **다른 곳에서 바뀐 것**: 시트를 열 때 이 대화의 마지막 메시지 뒤에 `channel != app`인 활동이 있으면(`GET /activity?since=`), 맨 아래에 회색 칸 한 줄 "다른 곳에서 바뀐 것: " 뒤에 `GET /activity` 항목의 `summary` 한 줄을 그대로 붙인다(항목에는 `summary`뿐이라 틀로 할 일 제목을 쓰지 않는다). 최대 3줄. 두뇌도 같은 알림을 받는다(SP3-4 7.1).
 - **확인 문구**: `data-activity.confirmation`(예: "✓ 추가: 치과 → 10월 25일", 12장 R4b)을 회색 칸으로 그리고, 같은 조각의 `undo_ids`가 있으면 칸 오른쪽에 "되돌리기".
 - **상태**: `data-status`가 `queued`면 "비서가 앞의 일을 끝내는 중이에요", `thinking`이면 점 세 개(움직임 줄이기 설정이면 멈춘 점). 15초 핑은 보이지 않는다.
 - **조각**: `ui_*` 도구 조각은 7장 부품으로, 비서 글 사이 제자리에 그린다. 그 밖의 도구 조각(`add_task` 등)은 그리지 않는다(확인 문구가 대신한다).
@@ -313,7 +323,7 @@ web/app/                         # Vercel 루트 디렉터리
 | 큰 제목 = 회차 이름(SP3-4 부록 A 그대로: 아침 브리핑, 저녁 체크인, 주간 회고, 다시 이어서) + "{HH:MM}에 보냄 · {앱 알림으로 받음 \| 텔레그램으로 받음}" | `loop`, `sent_at`, `delivered_via` | |
 | 회차 본문 | `text` | |
 | 카드들 | `cards` (컨디션 고르기, 초안, 사다리, 영역 점수, 확인) | 7장 부품 |
-| 남은 할 일 | `/today.todos` 중 열린 것 (저녁 체크인일 때만) | "내일로"(`move_task`), "완료"(`complete_task`). 이미 끝난 것은 회색 "완료"(어느 통로에서 끝냈는지는 기록 화면에서 본다) |
+| 남은 할 일 | `/today.todos` 중 열린 것 (저녁 체크인일 때만) | "내일로"(`move_task`, 날짜는 `addDays(/today.date, 1)`), "완료"(`complete_task`). 이미 끝난 것은 회색 "완료"(어느 통로에서 끝냈는지는 기록 화면에서 본다) |
 | 답장 입력 | | `POST /chat` with `checkin_id`. 보낸 뒤 시트가 아닌 이 화면 아래로 답이 이어진다(같은 `ChatSheet` 부품을 화면 안에 넣는다) |
 
 - `state = answered`여도 카드는 그대로 쓸 수 있다(답장 창 안이면 대화도 이어진다, SP3-4 6.4.5).
@@ -343,10 +353,10 @@ web/app/                         # Vercel 루트 디렉터리
 | 이번 달 · 분기 · 올해 | 그 기간 우선순위 | `GET /priorities?cadence=` (**12장 추가 요청**) |
 | (모든 탭 아래) | 초안 (n) "확정하면 할 일이 돼요" | `GET /drafts` (**12장 추가 요청**) |
 
-- 줄 동작: 체크 = 완료/다시 열기. **왼쪽으로 밀기** = "내일로"(회색, `move_task` planned_for = 내일) · "빼기"(빨강, `drop_task`). 밀기를 못 쓰는 경우를 위해 줄을 길게 누르면 같은 두 동작과 "날짜 바꾸기", "제목 고치기"가 담긴 메뉴가 뜬다(접근성).
+- 줄 동작: 체크 = 완료/다시 열기. **왼쪽으로 밀기** = "내일로"(회색, `move_task` planned_for = `addDays(/today.date, 1)`) · "빼기"(빨강, `drop_task`). 밀기를 못 쓰는 경우를 위해 줄을 길게 누르면 같은 두 동작과 "날짜 바꾸기", "제목 고치기"가 담긴 메뉴가 뜬다(접근성).
 - `drop_task`에 BE가 `needs_confirm`을 주면(그 할 일이 지금 기간 우선순위이거나 열린 첫 걸음이 있을 때, SP3-4 6.4.2) 줄 아래로 확인 시트: `summary` + "그대로 두기" · "바꾸기". 앱의 `move_task`는 늘 바로 적용된다.
 - 초안 줄: "빼기"(`drop_task`) · "확정"(`confirm_tasks`). 여러 개면 묶음 위에 "모두 확정".
-- **추가 시트**: 제목(필수), 영역(6개 중 여러 개, 알약), 날짜(오늘·내일·날짜 고르기·없음), 시각(선택), 메모(선택). "추가" = `add_task`. 우선순위 지정은 v1에서 대화로만 한다(비서가 `set_priorities`).
+- **추가 시트**: 제목(필수), 영역(6개 중 여러 개, 알약), 날짜(오늘·내일·날짜 고르기·없음. "오늘"은 `/today.date`, "내일"은 `addDays(/today.date, 1)`), 시각(선택), 메모(선택). "추가" = `add_task`. 우선순위 지정은 v1에서 대화로만 한다(비서가 `set_priorities`).
 
 #### 5.5.6 기록 (`/activity/`)
 
@@ -366,8 +376,8 @@ web/app/                         # Vercel 루트 디렉터리
 | 비서 연결 | 상태(점 + "연결됨 · {방금 \| n분 전} 확인") · 주소(가운데 줄임) · 열쇠(토큰) "다시 입력" | `/health`, `mp.*` |
 | 체크인 알림 | "어디로 울릴까요" 분할 버튼 이 앱 · 텔레그램 + 설명 "한 곳에서만 울려요. 앱 알림이 안 가면 텔레그램으로 대신 보내요." · 실제 상태(`effective`가 다르면 "지금은 텔레그램으로 가요: 알림을 받을 기기가 없어요") · 이 기기 알림 켜짐/꺼짐/허용하기 · "시험 알림 보내기" | `GET/PUT /settings/notify`, `/push/*` |
 | 체크인 시간 | 평일 09:00 · 17:30, 주말 10:00 · 18:00 (읽기 전용) + "일요일 18:00은 주간 회고와 함께 와요. 시간은 노트북의 비서 설정에서 바꿔요." | v1은 앱 상수(SP1 기본값). **12장 요청 3**이 들어오면 `/health`에서 읽는다 |
-| 쉬어 가기 | "체크인 잠시 멈추기" 줄. 멈추지 않았으면 누를 때 시트에서 1일 · 3일 · 7일 · 14일을 고른다. 멈췄으면 "{M}월 {D}일 {HH:MM}까지 쉬는 중" + "다시 시작" | 고르기 = `/chat`으로 `/pause N`(SP1: 1~14일, 아침 브리핑·저녁 체크인·주간 회고를 멈춤), 다시 시작 = `/unpause`(BE 명령, SP3-4 6.4.1). 상태는 `/health.paused_until`. 멈춘 동안에도 말을 걸면 답한다는 SP1 문구가 BE 답으로 온다 |
-| 이 기기 | 화면(시스템 따라 · 밝게 · 어둡게) · "이 기기 연결 해제"(빨강 글자, 확인 시트: "이 폰에 저장된 주소, 열쇠, 받아 둔 내용이 지워져요") | 4.7 |
+| 쉬어 가기 | "체크인 잠시 멈추기" 줄. 멈추지 않았으면 누를 때 시트에서 1일 · 3일 · 7일 · 14일을 고른다. 멈췄으면 "{M}월 {D}일 {HH:MM}까지 쉬는 중" + "다시 시작" | 고르기 = `/chat`으로 `/pause N`(SP1: 1~14일, 아침 브리핑·저녁 체크인·주간 회고를 멈춤), 다시 시작 = `/unpause`(BE 명령, SP3-4 6.4.1). 대화 시트 없이 보내려고 `chat/command.ts`의 `sendCommand`가 새 id로 `/chat`에 보내고 스트림을 읽어 버린 뒤 `/health`를 다시 본다. 그 명령과 답은 앱 대화 기록에 남는다. 상태는 `/health.paused_until`. 멈춘 동안에도 말을 걸면 답한다는 SP1 문구가 BE 답으로 온다 |
+| 이 기기 | 화면(시스템 따라 · 밝게 · 어둡게. 5.2의 미디어 쿼리 토큰에 `:root[data-theme="light"]`·`:root[data-theme="dark"]` 두 벌을 더하고, 고른 값은 `localStorage` `mp.theme`에 둔다. 인라인 스크립트를 쓸 수 없어 `data-theme`는 첫 그림 뒤에 바뀔 수 있다. 받아들인다) · "이 기기 연결 해제"(빨강 글자, 확인 시트: "이 폰에 저장된 주소, 열쇠, 받아 둔 내용이 지워져요") | 4.7 |
 | 정보 | 앱 판, BE 판(`/health.version`), 부품 목록 판 | |
 
 #### 5.5.8 처음 연결 (`/connect/`)
@@ -427,6 +437,7 @@ web/app/                         # Vercel 루트 디렉터리
 ### F3. 오늘
 
 - 읽기: `GET /today`(+ 대기 체크인마다 `GET /checkins/{id}`로 `ui_confirm` 모으기).
+- "내일"은 논리적 날짜의 다음 날, 곧 `addDays(/today.date, 1)`이다(00:00~04:00에는 기기 달력과 논리적 날짜가 다르다). 앱은 기기 달력으로 날짜를 만들지 않는다.
 - 쓰기: `complete_task`, `reopen_task`, `move_task`, `drop_task`, `record_condition`, `unpin_card`, `reorder_cards`.
 - 비서가 카드를 바꾸면(대화 중 `pin_card` 등) 대화 시트를 닫을 때 오늘 화면을 다시 읽는다.
 
@@ -436,18 +447,18 @@ web/app/                         # Vercel 루트 디렉터리
 - 메시지 조각 처리(`chat/parts.ts`): `text` → 본문, `tool-ui_*`(또는 `dynamic-tool`의 `toolName`이 `ui_`로 시작) + 상태 `input-available` 이상 → 부품, 그 밖의 `tool-*` → 그리지 않음, `data-activity` → 확인 칸(`confirmation`)과 되돌리기 id(12장 R4b). 일시 조각 `data-status`는 `message.parts`에 남지 않으므로 `onData`에서 받아 상태 줄로 쓴다.
 - `ui_*` 조각을 받으면 `localParts`에 `{messageId, parts}`로 저장.
 - 재요청: 스트림 오류(네트워크)면 `regenerate()`로 한 번(같은 사용자 메시지 id = 같은 `client_msg_id`). 두 번째도 안 되면 "다시 받기" 버튼(같은 방법).
-- 13장 계약 테스트: BE 티켓 06이 만드는 기준 SSE(`chat-golden.sse`)를 이 파서로 읽어 화면 결과를 확인한다.
+- 13장 계약 테스트: BE 티켓 06이 만드는 기준 SSE는 앱으로 복사하지 않는다. 저장소의 `tests/fixtures/app_golden/`을 시험이 바로 읽어 이 파서로 화면 결과를 확인한다. 두 쪽이 늘 같은 파일을 본다.
 
 ### F5. 체크인
 
-- 열기: 오늘 화면의 대기 줄, 푸시 알림, 기록 화면의 회차 이름 링크.
+- 열기: 오늘 화면의 대기 줄, 푸시 알림. 기록 화면의 회차 이름은 링크로 두지 않는다(활동 항목에 회차 id가 없다. 필요하면 BE에 `run_id`를 요청한다).
 - 읽기: `GET /checkins/{id}`, 저녁 체크인이면 `GET /today`도.
 - 답장: `POST /chat` + `checkin_id`. 카드 버튼은 7장.
 - 답장 창이 이 화면을 보는 동안 끝나면 오른쪽 위가 "지나감"으로 바뀐다(앱 시계로 `reply_until` 비교, 다음 읽기에서 BE 값으로 맞춘다).
 
 ### F6. 할 일
 
-- 읽기: 탭별(5.5.5). 쓰기: `add_task`, `update_task`, `move_task`, `complete_task`, `reopen_task`, `drop_task`, `confirm_tasks`.
+- 읽기: 탭별(5.5.5). 쓰기: `add_task`, `update_task`, `move_task`, `complete_task`, `reopen_task`, `drop_task`, `confirm_tasks`. "오늘"과 "내일"은 `/today.date`와 `addDays(/today.date, 1)`로 만든다(기기 달력을 쓰지 않는다).
 - `needs_confirm` 응답: 확인 시트에서 "바꾸기"면 같은 `action`, `args`에 `confirm_token`을 넣고 **새 `client_msg_id`**로 보낸다(같은 id면 BE가 처음의 `needs_confirm` 응답을 그대로 돌려준다, 6.1 중복 방지). 10분 지나 `409`면 "확인 시간이 지났어요. 다시 해 주세요."
 
 ### F7. 알림
@@ -512,13 +523,13 @@ R1, R2, R4a가 들어오기 전에는: 해당 경로가 `404`면 그 탭과 묶�
 | 층 | 무엇 | 도구 | 통과 기준 |
 |---|---|---|---|
 | 단위 | `api/client`(토큰 붙이기, 10초 시간 제한, 오류 모양 → `ApiError`), `lib/connection` 상태 판정 표(5.4), 주소 정리(F1), 4.5 주소 바꾸기, `snapshot` 7일 만료 | Vitest | `npx vitest run src/lib src/api` → `0 failed` |
-| 대화 계약 | `chat-golden.sse`(BE 티켓 06의 기준 SSE)를 `useChat` + `parts.ts`로 읽어: 글, `data-activity` 확인 칸 + 되돌리기, `ui_todo_draft` 부품, `onData`의 `data-status` 상태 줄, 대화 id(`start` 메타데이터). 끊김 뒤 `regenerate()`가 같은 `client_msg_id`를 보냄 | Vitest + MSW(SSE 응답) | `npx vitest run src/chat` → `0 failed` |
+| 대화 계약 | 저장소의 `tests/fixtures/app_golden/`(BE 티켓 06의 기준 SSE, 앱에 복사하지 않음)를 `useChat` + `parts.ts`로 읽어: 글, `data-activity` 확인 칸 + 되돌리기, `ui_todo_draft` 부품, `onData`의 `data-status` 상태 줄, 대화 id(`start` 메타데이터). 끊김 뒤 `regenerate()`가 같은 `client_msg_id`를 보냄 | Vitest + MSW(SSE 응답) | `npx vitest run src/chat` → `0 failed` |
 | 부품 | 7장 10개 부품: props로 그려짐, 누르면 정확한 `/actions` 본문, 스키마 틀린 props → `UnknownPart`, 모르는 이름 → `UnknownPart` | Testing Library + MSW | `npx vitest run src/ui` → `0 failed` |
 | 화면 | 오늘(정상, 할 일 0개, 오프라인 + 스냅샷, 오프라인 + 스냅샷 없음, `401`, `503`), 할 일 탭 5개, 기록(되돌리기 성공·`superseded`·만료), 설정(주 통로 바꾸기 `effective` 다름), 처음 연결(성공, `401`, 닿지 않음) | Testing Library + MSW | `npx vitest run src/screens` → `0 failed` |
 | 문구 | `src/lib/copy.ts`와 `src/**/*.tsx`의 한국어 문자열에 10장 금지어 없음 | Vitest | `npx vitest run src/lib/copy.test.ts` → `0 failed` |
 | 대비 | 5.2 토큰의 글자·면 쌍(밝게, 어둡게) 모두 4.5:1 이상 | Vitest(대비 계산) | `npx vitest run src/styles` → `0 failed` |
 | 빌드 | 정적 내보내기, CSP(인라인 스크립트·스타일 없음) | `npm run build && npm run check:csp` | `CSP OK: <n> files` |
-| CSP 실행 | 빌드한 `out/`을 CSP 헤더와 함께 띄우고, 고정 SSE로 대화를 열어 `ui_todo_draft` 조각이 부품으로 그려지는지(검사기가 CSP 아래에서 도는지), 콘솔에 CSP 위반이 없는지 | Playwright | `npx playwright test csp.spec.ts` → `1 passed` |
+| CSP 실행 | 빌드한 `out/`을 CSP 헤더와 함께 띄우고, 고정 SSE로 대화를 열어 `ui_todo_draft` 조각이 부품으로 그려지는지(검사기가 CSP 아래에서 도는지), 콘솔에 CSP 위반이 없는지. 원인을 가르기 쉽게 시험 둘로 나눈다(조각 그리기, 위반 0건) | Playwright | `npx playwright test csp.spec.ts` → `2 passed` |
 | 디자인 | taste 규칙 | `node <taste>/scripts/lint.mjs --app web/app/src` | `0 FAIL` |
 | 눈으로 | 390×844에서 화면 8개 스크린샷(밝게·어둡게)을 시안과 나란히 보고 다른 곳을 고친다 | Playwright + MSW 고정 데이터 | `npx playwright test` → 16장 저장, 사람이 확인 |
 | 실기기 | 아이폰에서 Safari 탭 안내 확인 → 홈 화면 추가 → 연결 → 시험 알림 → 앱이 닫혀 있을 때와 열려 있을 때 각각 알림 눌러 체크인 열기 → 답장 → 텔레그램 버튼 사라짐 확인 | Dahun과 함께 | 체크리스트 `docs/acceptance/sp5-checklist.md` 모든 줄 확인 |
@@ -538,3 +549,4 @@ R1, R2, R4a가 들어오기 전에는: 해당 경로가 `404`면 그 탭과 묶�
 | 2026-10-24 | v1 | 첫 초안: 질문 10개의 결정, 청사진, 화면 8개, 부품 8개, 기능 9개, BE 계약 추가 요청 3개 | 운영 앱 스레드 |
 | 2026-10-24 | v2 | 문서 리뷰 반영: CSP 아래 도는 검사기, 기록 최근순(R4a), 확인 문구·할 일 제목·메시지 id(R4b~d), 카탈로그 `.2`(사건·챕터 초안), AI SDK 5 사용법(`onData`, `regenerate`, `resume` 끔), 확인 재요청은 새 id, 마감 시각·남은 시간·완료 개수 표시 뺌(P2, P4), 회차 이름 "다시 이어서", 오프라인 판정, CSP·헤더를 대시보드와 맞춤, Safari 탭과 홈 화면 앱의 저장 공간 분리, 알림 누름 대체 경로 | 운영 앱 스레드 |
 | 2026-10-24 | v3 | 14장 미결 사항 다섯 가지를 추천대로 확정, R4a~d를 SP3-4가 받음 | Dahun |
+| 2026-10-24 | v4 | 구현 계획의 결정(빈 곳 1~14) 반영 | 운영 앱 스레드 |
