@@ -138,7 +138,7 @@ PAT은 만료일을 1년으로 두고 `PAT_EXPIRES` 변수에 같은 날짜를 �
 
 ```powershell
 Stop-ScheduledTask -TaskName my-planner-medic
-$r = (Get-Location).Path.ToLowerInvariant()
+$r = (Get-Location).Path.ToLowerInvariant() + '\'
 Get-CimInstance Win32_Process | Where-Object {
     $_.Name -in 'python.exe', 'pythonw.exe' -and $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($r) -and
     ($_.CommandLine -match '-m\s+my_planner_medic' -or $_.CommandLine -match 'medic_boot\.py') } |

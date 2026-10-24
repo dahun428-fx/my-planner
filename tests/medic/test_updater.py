@@ -1268,3 +1268,35 @@ def test_deploy_while_medic_pinned_is_a_medic_change_and_records_pinned_as_last_
     assert env.updater.self_updated  # 디스크의 medic이 새 트리와 다르니 다시 떠야 한다
     good = json.loads((tmp_path / "state" / "medic-last-good.json").read_text())
     assert good == {"sha": pinned, "new_sha": NEW}
+
+
+def test_pinned_deploy_arms_medic_revert_before_checkout_and_survives_merge_failure(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    pinned = "d" * 40
+    env.store.kv_set("medic_pinned", pinned)
+    env.shell.on("git", "merge", "--ff-only", returns=(128, "fatal"))
+    seen: list[Any] = []
+    real_run = env.shell.run
+
+    def run(args: list[str], **kw: Any) -> tuple[int, str]:
+        if args[:2] == ["git", "checkout"]:  # 디스크를 건드리기 전에 이미 무장돼 있어야 한다
+            seen.append(json.loads((tmp_path / "state" / "medic-last-good.json").read_text()))
+        return real_run(args, **kw)
+
+    env.shell.run = run  # type: ignore[method-assign]
+    env.tick()
+    assert seen == [{"sha": pinned, "new_sha": NEW}]
+    assert json.loads((tmp_path / "state" / "medic-last-good.json").read_text()) == {"sha": pinned, "new_sha": NEW}
+    assert env.store.kv_get("medic_pinned") == pinned  # 머지 실패: 표시는 그대로
+
+
+def test_pinned_deploy_rollback_restores_pinned_medic_and_keeps_revert_armed(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    pinned = "d" * 40
+    env.store.kv_set("medic_pinned", pinned)
+    env.health(503)
+    env.tick()
+    assert env.has(f"reset --hard --quiet {PREV}") or env.has(f"reset --keep {PREV}")
+    assert json.loads((tmp_path / "state" / "medic-last-good.json").read_text()) == {"sha": pinned, "new_sha": NEW}
+    assert env.has(f"checkout {pinned} -- src/my_planner_medic")  # 롤백이 되돌린 medic을 다시 디스크에
+    assert env.store.kv_get("medic_pinned") == pinned

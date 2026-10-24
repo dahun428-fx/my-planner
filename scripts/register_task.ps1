@@ -79,7 +79,7 @@ function Register-FromXml([string]$TaskName, [string]$Xml) {
 
 function Stop-MedicProcesses {
     # 작업을 멈춰도 실행기가 띄운 자식 python(medic)은 남는다: 이 폴더의 medic 프로세스 트리를 끝낸다
-    $r = $Root.ToLowerInvariant()
+    $r = $Root.ToLowerInvariant() + '\'  # 끝의 \: my-planner-dev 같은 이웃 폴더를 맞히지 않게
     $found = @(Get-CimInstance Win32_Process | Where-Object {
         ($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') -and $_.CommandLine -and
         $_.CommandLine.ToLowerInvariant().Contains($r) -and
