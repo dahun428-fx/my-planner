@@ -166,3 +166,10 @@
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
+
+/* ui_block (7.1): its parts stacked top to bottom, 12px apart. */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
