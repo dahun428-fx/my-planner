@@ -1,46 +1,20 @@
-/* Dashboard tokens (ticket 16; UI UX Pro Max "Minimalism & Swiss" + taste app-screen rules, web/app's palette).
-   Colour: achromatic ground/ink, one hue (--hue) only for what the secretary made; status green/red on dots only.
-   Type: system faces (no web font), one family, 13/15/17/24 px, tabular figures for every number.
-   Space: 4 px base, 16 px gutters at 360 px, soft 16 px panels on a tone step, no shadows, no gradients.
-   Charts: one series one hue, straight 2 px lines, square bars, usage bars at the true ratio with both ends labelled. */
+/* Dashboard-only tokens. Colour, type, space, shape and the dashboard's older names (--neutral, --offline-bg,
+   --condition-dot, --radius-panel, --radius-control, --gutter, --gap/--panel-gap, --row, --fs-*, --measure)
+   all come from global.css, the copy of web/shared/global.css (DESIGN.md, `npm run sync:design`).
+   What is left here is what DESIGN.md does not name: the parts of the charts and bars, each one a
+   shared role. No hex, no px colour of its own (tokens.test checks). */
 :root {
-  color-scheme: light;
-  --ground: #f2f2f5;   --surface: #ffffff;  --raised: #e9e9ee;
-  --rule: #ececf0;     --control: #d4d4da;
-  --text: #111113;     --muted: #5f5f66;
-  --primary: #111113;  --on-primary: #ffffff;
-  --hue: #1d5fbf;      /* 비서가 한 일 */
-  --positive: #247b50; --negative: #c4242a; --neutral: #8e8e93;
-  --notice-bg: #fffbeb; --notice-border: #fde68a; --notice-ink: #5c2a07;
-  --offline-bg: #e5e5ea;
-  --condition-dot: #76767c; /* B6: 3:1 or more on surface, raised and ground */
-  --radius-panel: 16px; --radius-control: 999px; --radius-field: 10px;
-  --gutter: 16px; --gap: 12px; --pad: 16px; --row: 44px; --control-h: 44px;
-  --fs-title: 1.5rem; --fs-section: 0.9375rem; --fs-body: 0.9375rem; --fs-meta: 0.8125rem; --fs-nav: 1.0625rem;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-  --measure: 720px;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --ground: #000000;  --surface: #1c1c1e;  --raised: #2c2c2e;
-    --rule: #2c2c2e;    --control: #48484a;
-    --text: #ffffff;    --muted: #a1a1a6;
-    --primary: #ffffff; --on-primary: #000000;
-    --hue: #5b9bff;     --positive: #3fc07a; --negative: #ff6b6b; --neutral: #8e8e93;
-    --notice-bg: #2b2210; --notice-border: #5c4a17; --notice-ink: #f5d27a;
-    --offline-bg: #2c2c2e;
-    --condition-dot: #8e8e93;
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --ground: #000000;  --surface: #1c1c1e;  --raised: #2c2c2e;
-  --rule: #2c2c2e;    --control: #48484a;
-  --text: #ffffff;    --muted: #a1a1a6;
-  --primary: #ffffff; --on-primary: #000000;
-  --hue: #5b9bff;     --positive: #3fc07a; --negative: #ff6b6b; --neutral: #8e8e93;
-  --notice-bg: #2b2210; --notice-border: #5c4a17; --notice-ink: #f5d27a;
-  --offline-bg: #2c2c2e;
-  --condition-dot: #8e8e93;
+  /* Charts (DESIGN.md Components › 대시보드). */
+  --chart-ink: var(--text);       /* the ladder line, this quarter on the radar, milestone glyphs */
+  --chart-future: var(--muted);   /* the five-years-ahead line, last quarter on the radar */
+  --chart-grid: var(--rule);      /* one layer of grid */
+  --chart-edge: var(--control);   /* dashed chapter edges and the dashed review line: 3:1 graphics */
+  --chart-axis: var(--muted);     /* tick and axis letters */
+  --chart-band: var(--raised);    /* every other chapter strip */
+  /* Bars: XP and usage are DESIGN.md's 6px; an area score a little thicker so its ramp step reads. */
+  --bar-track: var(--raised);
+  --bar-fill: var(--primary);
+  --bar-h: 6px;
+  --stat-bar-h: 8px;
+  --hp-bar-h: 10px;
 }

@@ -25,13 +25,13 @@ const Y_MAX = 13;
 const LANE_Y = 11.05;
 const STRIP = [12, 13] as const;
 const Y_TICKS = [0, 5, 10];
-const CHAR_PX = 11.5; // a Korean glyph at the 12 px strip label, a little generous
+const CHAR_PX = 13.5; // a Korean glyph at the 13 px strip label (label role), a little generous
 const MARGIN = { top: 2, right: 12, bottom: 0, left: 0 };
 const X_AXIS_H = 24;
 const Y_AXIS_W = 24;
 const GLYPH_GAP = 14; // px: closer centres than this go on alternate rows above and below the lane
 const ROW_PX = 7; // how far a crowded marker moves off the lane
-const TAP_PX = 20; // a tap opens the nearest marker centre within this distance
+const TAP_PX = 22; // a tap opens the nearest marker centre within this distance: a 44px target
 
 interface Marker {
   x: number;

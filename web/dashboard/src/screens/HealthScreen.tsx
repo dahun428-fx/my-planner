@@ -93,8 +93,8 @@ export function HealthView({ health: h }: { health: Health }) {
   const authOk = h.brain.auth === "ok";
   const pollingOk = h.polling === "running";
   return (
-    <>
-      <section className="panel" aria-label={T.title}>
+    <div className="panels">
+      <section className="panel panel-wide" aria-label={T.title}>
         <p className="row">
           <Parts>{T.version(h.version.app, h.version.api, h.version.schema).split(" · ")}</Parts>
         </p>
@@ -149,7 +149,7 @@ export function HealthView({ health: h }: { health: Health }) {
         <Meter label={T.proactive} value={h.proactive.sent_today} cap={h.proactive.cap} tone="hue" />
         <p className="row meta">{warningsLine(h.errors)}</p>
       </section>
-    </>
+    </div>
   );
 }
 
