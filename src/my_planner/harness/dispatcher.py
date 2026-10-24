@@ -629,8 +629,10 @@ class Dispatcher:
         ask = self._ask_condition_for(run, merged)
         flow = self.review_flow
         ladder = None
-        if flow is not None and ask is None and flow.claimed(run.id):
-            # 회고 메시지에 바로 붙였던 사다리 1단계(c): 그 달 `now`가 아직 없으면 버튼을 다시 붙인다
+        if flow is not None and flow.claimed(run.id):
+            # 보내지 못한 회차의 표시는 회고 메시지에 바로 붙인 첫 단계뿐이다(11.1-1 (c)): 컨디션 줄 대신 그 단계.
+            # 그 달 `now`가 아직 없으면 사다리 버튼을 다시 붙인다(글은 저장한 본문에 이미 있다)
+            ask = None
             step = first_step(flow.of_run(run), flow.curve)
             ladder = step.ladder if step is not None else None
         job = _ResendJob(run, merged, [], drafts, ask,

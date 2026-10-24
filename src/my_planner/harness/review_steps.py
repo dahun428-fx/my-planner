@@ -230,13 +230,11 @@ class ReviewFlow:
 
     def open_month_review(self, period: str) -> tuple[Run, ReviewOf] | None:
         """그 달(`YYYY-MM`)의 월말 회고 회차(primary)가 지금 답장 창 안이면 (primary, 회고)."""
-        now = self.clock.now()
-        for r in self.runs.between(now - timedelta(days=3), now):
-            if r.loop is not LoopKey.review:
-                continue
-            primary = self.runs.merged_into(r.id) or r
+        from my_planner.harness.checkins import open_checkins
+
+        for primary in open_checkins(self.runs, self.clock.now(), self.settings):
             of = self.of_run(primary)
-            if of is not None and of.steps and of.month == period and self._open(primary, now):
+            if of is not None and of.steps and of.month == period:
                 return primary, of
         return None
 

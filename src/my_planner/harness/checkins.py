@@ -74,6 +74,11 @@ def _open_checkins(runs: RunsRepo, now: datetime, settings: Settings) -> list[Ru
     return sorted(found, key=lambda r: (r.scheduled_for, r.id), reverse=True)
 
 
+def open_checkins(runs: RunsRepo, now: datetime, settings: Settings) -> list[Run]:
+    """지금 답장 창 안의 답할 회차(primary), 최근 것부터. 회고 단계(`harness.review_steps`)도 쓴다."""
+    return _open_checkins(runs, now, settings)
+
+
 def _condition_run(
     day: date, runs: RunsRepo, now: datetime, settings: Settings, activity: ActivityRepo | None
 ) -> Run | None:

@@ -387,3 +387,22 @@ async def test_app_checkin_cards_none_outside_month_end(tmp_path):
         run_id, _ = await _review(env)
         detail = await (await env.get(f"/checkins/{run_id}")).json()
     assert [c["component"] for c in detail["cards"]] == ["ui_condition_picker"]
+
+
+async def test_resend_on_start_keeps_ladder_on_review_message(tmp_path):
+    # 회고 메시지에 바로 붙인 사다리(c)가 보내지지 않았다: 시작 때 다시 보낼 때도 컨디션 줄 대신 사다리 줄
+    async with _start(tmp_path) as env:
+        await env.action("record_condition", {"score": 4, "date": "2026-11-29"})
+        env.sender.fail = True
+        await env.tick()
+        run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+        assert env.conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()[0] == "failed"
+        env.conn.execute("UPDATE runs SET resent = 0 WHERE id = ?", (run_id,))
+        env.conn.commit()
+        env.sender.fail = False
+        env.parts.dispatcher.submit_resend(env.parts.runs.get(run_id))
+        await env.drain()
+        (out,) = env.sender.sent
+
+    assert out.text == f"{REVIEW}\n\n{LADDER_STEP1}"
+    assert out.ladder == ("2026-11", "n") and out.ask_condition_for is None
