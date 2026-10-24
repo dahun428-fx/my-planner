@@ -132,3 +132,17 @@ def test_build_fills_deployed_sha_from_git_head(tmp_path: Path) -> None:
     parts = main_mod.build(cfg, FakeClock(T0), shell=shell)
     assert MedicStore(tmp_path / "state" / "medic.db").kv_get("deployed_sha") == sha
     parts.close()
+
+
+def test_build_keeps_existing_deployed_sha(tmp_path: Path) -> None:
+    from my_planner_medic.store import MedicStore
+
+    from .fakes import FakeShell
+
+    store = MedicStore(tmp_path / "state" / "medic.db")
+    store.kv_set("deployed_sha", "a" * 40)
+    store.close()
+    shell = FakeShell()
+    shell.on("git", "rev-parse", "HEAD", returns=(0, "c" * 40 + "\n"))
+    main_mod.build(make_config(tmp_path), FakeClock(T0), shell=shell).close()
+    assert MedicStore(tmp_path / "state" / "medic.db").kv_get("deployed_sha") == "a" * 40

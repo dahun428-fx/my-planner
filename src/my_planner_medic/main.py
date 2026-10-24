@@ -34,7 +34,7 @@ from .tasks import TaskControl
 from .updater import Updater
 from .watcher import Watcher
 
-__all__ = ["EXIT_SELF_UPDATE", "Parts", "acquire_lock", "build", "main", "run"]
+__all__ = ["EXIT_SELF_UPDATE", "Parts", "acquire_lock", "build", "main", "release_lock", "run"]
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +80,19 @@ def acquire_lock(path: Path) -> IO[bytes] | None:
         fh.close()
         return None
     return fh
+
+
+def release_lock(fh: IO[bytes]) -> None:
+    """Windows는 닫기만으로는 풀리는 시점이 늦을 수 있다(바로 다시 뜨는 자기 갱신): 먼저 명시적으로 푼다."""
+    if sys.platform == "win32":
+        try:
+            import msvcrt
+
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+        except OSError:
+            pass
+    fh.close()
 
 
 def build(cfg: MedicConfig, clock: Clock, *, shell: Shell | None = None) -> Parts:
@@ -142,7 +155,7 @@ def run(
         return 0
     finally:
         parts.close()
-        lock.close()
+        release_lock(lock)
 
 
 def _setup_logging(root: Path) -> None:

@@ -60,7 +60,12 @@ def kv(root: Path, key: str) -> object:
         return None
     with contextlib.closing(sqlite3.connect(root / "state" / "medic.db")) as db:
         row = db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
-    return json.loads(row[0]) if row else None
+    if row is None:
+        return None
+    try:
+        return json.loads(row[0])
+    except ValueError:
+        return row[0]  # medic_pinned는 원문 sha
 
 
 def test_boot_reverts_medic_after_three_fast_crashes(repo: tuple[Path, str, str]) -> None:
@@ -77,6 +82,60 @@ def test_boot_reverts_medic_after_three_fast_crashes(repo: tuple[Path, str, str]
     assert kv(root, "bad_shas") == [bad]
     assert kv(root, "medic_pinned") == good
     assert not json.loads((root / "state" / "medic-crashes.json").read_text())["fast"]
+
+
+class Survivor:
+    """60초를 넘겨 사는 자식."""
+
+    def __init__(self, args: list[str], **kw: object) -> None:
+        pass
+
+    def wait(self, timeout: float | None = None) -> int:
+        if timeout is not None:
+            raise subprocess.TimeoutExpired("x", timeout)
+        return 0
+
+
+def test_revert_clears_new_sha_so_surviving_good_medic_never_promotes_bad(repo: tuple[Path, str, str]) -> None:
+    root, good, _bad = repo
+    boot = load_boot()
+    (root / "state" / "medic-crashes.json").write_text(json.dumps({"fast": [1.0, 2.0]}))
+    calls: list[int] = []
+
+    def popen(args: list[str], **kw: object) -> object:
+        calls.append(1)
+        if len(calls) == 1:
+            return subprocess.Popen([sys.executable, *args[1:]], **kw)  # type: ignore[call-overload]
+        return Survivor(args, **kw)
+
+    assert boot.main(root, python=sys.executable, popen=popen) == 0
+    assert len(calls) == 2
+    assert json.loads((root / "state" / "medic-last-good.json").read_text()) == {"sha": good}
+    assert kv(root, "medic_pinned") == good  # 따옴표 없는 원문(업데이터가 kv_set으로 쓰는 모양)
+
+
+def test_three_fast_crashes_without_pending_self_update_do_not_touch_the_tree(
+    repo: tuple[Path, str, str],
+) -> None:
+    root, _good, bad = repo
+    (root / "state" / "medic-last-good.json").write_text(json.dumps({"sha": bad}))  # 보통 배포: new_sha 없음
+    main_py = root / "src" / "my_planner_medic" / "__main__.py"
+    main_py.write_text("raise RuntimeError('hand edit')\n")  # 손으로 고친, 커밋 안 된 파일
+    boot = load_boot()
+    for _ in range(4):
+        assert boot.main(root, python=sys.executable) == 1
+    assert main_py.read_text() == "raise RuntimeError('hand edit')\n"
+    assert kv(root, "medic_pinned") is None and kv(root, "bad_shas") is None
+
+
+def test_fast_exit_0_resets_the_streak_and_corrupt_crash_file_is_tolerated(repo: tuple[Path, str, str]) -> None:
+    root, _good, _bad = repo
+    boot = load_boot()
+    (root / "state" / "medic-crashes.json").write_text(json.dumps({"fast": 5}))
+    assert boot.main(root, python=sys.executable) == 1
+    (root / "src" / "my_planner_medic" / "__main__.py").write_text(GOOD)
+    assert boot.main(root, python=sys.executable) == 0
+    assert json.loads((root / "state" / "medic-crashes.json").read_text()) == {"fast": []}
 
 
 def test_boot_relaunches_at_once_on_exit_3_and_other_codes_end_boot(tmp_path: Path) -> None:

@@ -1256,3 +1256,15 @@ def test_verify_ok_of_medic_deploy_keeps_previous_sha_as_last_good(tmp_path: Pat
     assert env.updater.self_updated
     good = json.loads((tmp_path / "state" / "medic-last-good.json").read_text())
     assert good == {"sha": PREV, "new_sha": NEW}  # 새 medic이 60초를 넘기기 전까지는 이전 커밋이 마지막 좋은 것
+
+
+def test_deploy_while_medic_pinned_is_a_medic_change_and_records_pinned_as_last_good(tmp_path: Path) -> None:
+    env = make_env(tmp_path)
+    pinned = "d" * 40
+    env.store.kv_set("medic_pinned", pinned)  # medic_boot가 되돌려 둔 상태: 디스크는 pinned의 medic
+    deployed(env)  # medic 경로가 없는 범위(PREV..NEW)
+    for _ in range(3):
+        env.tick(5)
+    assert env.updater.self_updated  # 디스크의 medic이 새 트리와 다르니 다시 떠야 한다
+    good = json.loads((tmp_path / "state" / "medic-last-good.json").read_text())
+    assert good == {"sha": pinned, "new_sha": NEW}

@@ -134,7 +134,18 @@ Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 
 **PAT 만료**
 
-PAT은 만료일을 1년으로 두고 `PAT_EXPIRES` 변수에 같은 날짜를 적습니다. 만료 30일 전부터 하루 한 번 텔레그램으로 알려 줍니다. 새 토큰을 만들어 `REPAIR_PAT` 시크릿, `.env`의 `MEDIC_GITHUB_TOKEN`을 바꾸고 `PAT_EXPIRES`를 고친 뒤 `.env`를 읽도록 medic을 다시 띄웁니다(`Stop-ScheduledTask -TaskName my-planner-medic`, 5분 안에 감시 트리거가 다시 띄웁니다).
+PAT은 만료일을 1년으로 두고 `PAT_EXPIRES` 변수에 같은 날짜를 적습니다. 만료 30일 전부터 하루 한 번 텔레그램으로 알려 줍니다. 새 토큰을 만들어 `REPAIR_PAT` 시크릿, `.env`의 `MEDIC_GITHUB_TOKEN`을 바꾸고 `PAT_EXPIRES`를 고친 뒤 medic을 다시 띄웁니다. 작업만 멈추면 자식 `python`(실제 medic)이 남을 수 있으니, 저장소 폴더(`E:\my-planner`)에서 아래로 자식까지 끝냅니다. 5분 안에 감시 트리거가 새 `.env`로 다시 띄웁니다.
+
+```powershell
+Stop-ScheduledTask -TaskName my-planner-medic
+$r = (Get-Location).Path.ToLowerInvariant()
+Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -in 'python.exe', 'pythonw.exe' -and $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($r) -and
+    ($_.CommandLine -match '-m\s+my_planner_medic' -or $_.CommandLine -match 'medic_boot\.py') } |
+    ForEach-Object { taskkill /T /F /PID $_.ProcessId }
+```
+
+실행기(`scripts\medic_boot.py`) 자체가 배포로 바뀌어도 이미 떠 있는 실행기는 그대로입니다. 다음 로그온이나 위 절차로 작업을 다시 시작하면 새 실행기가 뜹니다. medic을 `enabled = false`로 꺼 두어도 시작할 때 끊긴 배포의 되돌림은 끝까지 하고(`my-planner` 작업이 꺼진 채 남지 않게), 그 뒤로는 하트비트만 보냅니다.
 
 ## API 열기
 

@@ -43,31 +43,55 @@ def _write(path: Path, data: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def _kv_set(root: Path, key: str, value: object, *, append: bool = False) -> None:
+def _kv_set(root: Path, key: str, value: str, *, append: bool = False) -> None:
+    """append면 JSON 목록에 중복 없이 덧붙이고, 아니면 원문 그대로 쓴다(업데이터의 `kv_set`과 같은 모양)."""
     db = sqlite3.connect(root / "state" / "medic.db")  # 스키마는 medic store와 같다
     with contextlib.closing(db), db:
         db.execute("CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT)")
         if append:
             row = db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
             old = json.loads(row[0]) if row else []
-            value = [*(old if isinstance(old, list) else []), value]
-        db.execute("INSERT OR REPLACE INTO kv(key, value) VALUES(?, ?)", (key, json.dumps(value)))
+            old = old if isinstance(old, list) else []
+            value = json.dumps(old if value in old else [*old, value])
+        db.execute("INSERT OR REPLACE INTO kv(key, value) VALUES(?, ?)", (key, value))
+
+
+def _log(root: Path, line: str) -> None:
+    """한 줄만, 종류와 sha·코드만 적는다(메시지·경로 없음). pythonw에는 stderr가 없다."""
+    try:
+        with (root / "state" / "logs" / "medic.log").open("a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S") + " INFO medic_boot " + line + "\n")
+    except OSError:
+        pass
 
 
 def revert(root: Path) -> bool:
-    good = _read(root / "state" / "medic-last-good.json")
+    """자기 갱신이 대기 중일 때만(`new_sha`가 `sha`와 다름) `src/my_planner_medic`을 `sha`로 되돌린다."""
+    last_good = root / "state" / "medic-last-good.json"
+    good = _read(last_good)
     sha, new = good.get("sha"), good.get("new_sha")
-    if not isinstance(sha, str) or not _SHA_RE.match(sha):
+    if not (isinstance(sha, str) and isinstance(new, str) and _SHA_RE.match(sha) and _SHA_RE.match(new)):
+        return False
+    if sha == new:
         return False
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0  # type: ignore[attr-defined]
     done = subprocess.run(["git", "checkout", sha, "--", MEDIC_PATH], cwd=root, check=False,
                           capture_output=True, creationflags=flags)
     if done.returncode != 0:
         return False
-    if isinstance(new, str) and _SHA_RE.match(new):
+    _write(last_good, {"sha": sha})  # 나쁜 new_sha가 나중에 승격되지 않게 먼저 지운다
+    try:
         _kv_set(root, "bad_shas", new, append=True)
-    _kv_set(root, "medic_pinned", sha)
+        _kv_set(root, "medic_pinned", sha)
+    except (sqlite3.Error, OSError, ValueError):
+        _log(root, "revert_kv_failed")
+    _log(root, f"revert sha={sha} bad={new}")
     return True
+
+
+def _fast_list(path: Path) -> list[float]:
+    value = _read(path).get("fast")
+    return [x for x in value if isinstance(x, (int, float))] if isinstance(value, list) else []
 
 
 def main(
@@ -79,11 +103,13 @@ def main(
 ) -> int:
     state = root / "state"
     state.mkdir(exist_ok=True)
+    (state / "logs").mkdir(exist_ok=True)
     crashes = state / "medic-crashes.json"
     python = python or str(root / ".venv" / "Scripts" / "python.exe")
     path = [str(root / "src"), *filter(None, [os.environ.get("PYTHONPATH")])]
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(path)}
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0  # type: ignore[attr-defined]
+    reverted = False  # 한 번의 실행에서 되돌림은 한 번만(자기 갱신 코드 3이 되돌림을 무한히 되풀이하지 않게)
     while True:
         started = clock()
         proc = popen([python, "-m", "my_planner_medic"], cwd=root, env=env, creationflags=flags)
@@ -96,14 +122,16 @@ def main(
             if isinstance(good.get("new_sha"), str):
                 _write(state / "medic-last-good.json", {"sha": good["new_sha"]})
             code = proc.wait()
-        fast = [] if survived else _read(crashes).get("fast", [])
+        _log(root, f"child_exit code={code} survived={survived}")
+        fast = [] if survived or code == 0 else _fast_list(crashes)
         if not survived and code != 0:
             fast = [*fast, started][-MAX_FAST:]
         _write(crashes, {"fast": fast})
+        if len(fast) >= MAX_FAST and not reverted and revert(root):
+            reverted = True
+            _write(crashes, {"fast": []})
+            continue  # 되돌린 코드로 바로 다시
         if len(fast) >= MAX_FAST:
-            if revert(root):
-                _write(crashes, {"fast": []})
-                continue  # 되돌린 코드로 바로 다시
             return code
         if code == EXIT_SELF_UPDATE:
             continue  # 자기 갱신: 새 코드로 바로. 60초 안의 3은 위 세 번 규칙이 끊는다

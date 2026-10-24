@@ -77,6 +77,17 @@ function Register-FromXml([string]$TaskName, [string]$Xml) {
     Write-Output "등록했습니다: $TaskName ($path)"
 }
 
+function Stop-MedicProcesses {
+    # 작업을 멈춰도 실행기가 띄운 자식 python(medic)은 남는다: 이 폴더의 medic 프로세스 트리를 끝낸다
+    $r = $Root.ToLowerInvariant()
+    $found = @(Get-CimInstance Win32_Process | Where-Object {
+        ($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') -and $_.CommandLine -and
+        $_.CommandLine.ToLowerInvariant().Contains($r) -and
+        ($_.CommandLine -match '(^|\s)-m\s+my_planner_medic(\s|$)' -or $_.CommandLine -match 'medic_boot\.py')
+    })
+    foreach ($proc in $found) { & taskkill /T /F /PID $proc.ProcessId | Out-Null }
+}
+
 function Get-WakeTimes {
     # config.toml의 [schedule]만 읽습니다(.env는 읽지 않음). 한 줄에 하나: "weekday HH:MM" / "weekend HH:MM"
     $saved = $env:MY_PLANNER_ROOT
@@ -113,6 +124,7 @@ if ($MainTask -ne 'my-planner') {
 } elseif ($NoMedic) {
     if (Get-ScheduledTask -TaskName $MedicTask -ErrorAction SilentlyContinue) {
         Stop-ScheduledTask -TaskName $MedicTask -ErrorAction SilentlyContinue
+        Stop-MedicProcesses
         Unregister-ScheduledTask -TaskName $MedicTask -Confirm:$false
         Write-Output "medic 작업을 지웠습니다(-NoMedic): $MedicTask"
     } else {

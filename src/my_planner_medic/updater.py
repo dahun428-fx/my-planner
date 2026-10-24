@@ -17,7 +17,7 @@
 
 kv 키:
 - `deploy_in_progress`: `{prev_sha, new_sha, schema_before, started_at, phase, verify_started_at, verify_elapsed_s,
-  last_tick_at, grace_until, window_from, repairs, repaired, medic_changed, cause, blamed, actions_done?,
+  last_tick_at, grace_until, window_from, repairs, repaired, medic_changed, medic_prev(medic이 돌던 커밋: pinned 또는 prev), cause, blamed, actions_done?,
   ran_new?, marked?, verify_failed_at?, rollback_decision? ("proceed"|"refused:<사유>"), refusals?, health_sleeps?}`.
   `phase`는 `deploy|verify|rollback|rollback_verify`. `window_from` 이후의 신호만 센다. 배포는 작업을 켜기 전에
   `verify`로, 롤백은 켜기 전에 `actions_done`을 적는다(켠 뒤 끊겨도 시작 시 복구가 같은 일을 되풀이하지 않게).
@@ -289,11 +289,13 @@ class Updater:
             return
         now = self._clock.now()
         schema_before = self._schema()
+        pinned = self._store.kv_get("medic_pinned")  # 09: 디스크의 medic은 pinned 커밋의 것이다(새 트리와 다르다)
         dip: dict[str, Any] = {
             "prev_sha": prev, "new_sha": new, "schema_before": schema_before, "started_at": iso_utc(now),
             "phase": "deploy", "verify_started_at": None, "verify_elapsed_s": 0, "last_tick_at": iso_utc(now),
             "grace_until": None, "window_from": None, "repairs": repairs, "repaired": [],
-            "medic_changed": any(p.startswith(MEDIC_PATH + "/") for p in changed), "cause": None, "blamed": [],
+            "medic_changed": bool(pinned) or any(p.startswith(MEDIC_PATH + "/") for p in changed),
+            "medic_prev": pinned or prev, "cause": None, "blamed": [],
         }
         self._store.kv_json_set(DIP, dip)
         self._store.kv_delete("deploy_deferred")
@@ -451,7 +453,7 @@ class Updater:
             self._store.kv_set("deployed_sha", new)
             medic_changed = bool(dip.get("medic_changed"))
             # medic이 바뀐 배포는 새 medic이 60초를 넘길 때까지 이전 커밋이 마지막 좋은 것이다(09 medic_boot가 승격)
-            self._write_last_good(str(dip["prev_sha"]) if medic_changed else new, new if medic_changed else None)
+            self._write_last_good(str(dip.get("medic_prev") or dip["prev_sha"]) if medic_changed else new, new if medic_changed else None)
             for fp in dip.get("repaired") or []:
                 inc = self._store.get(fp)
                 if inc is not None and inc.state != "resolved":
