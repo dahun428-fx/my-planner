@@ -1,0 +1,53 @@
+name: promote
+
+# develop → main 자동 승격 (배포 흐름 스펙 6장). 기본 브랜치(main)의 이 파일로 돈다.
+# 검사와 쓰기는 scripts/promote_check.py가 한다. ref 쓰기만 RELEASE_PAT(Workflows 권한 필요).
+
+on:
+  status:
+  schedule:
+    # 회차 차단 구간이 끝나는 시각에 미뤄진 승격을 다시 본다(UTC. config.toml 회차 + 40분 KST)
+    - cron: "40 0 * * 1-5"  # recheck
+    - cron: "10 9 * * 1-5"  # recheck
+    - cron: "40 1 * * 0,6"  # recheck
+    - cron: "40 9 * * 0,6"  # recheck
+    # 임시: staging/be가 생기기 전까지 KST 08–23시 매시. REQUIRE_STAGING_BE=true가 되면 지운다
+    - cron: "0 23,0-14 * * *"
+  workflow_dispatch:
+    inputs:
+      skip_staging_be:
+        description: "staging/be 검사 건너뛰기(BE 파일이 바뀐 승격에는 거부)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+  statuses: read
+  issues: write
+
+jobs:
+  promote:
+    # Vercel 등 다른 상태는 러너를 띄우지 않는다
+    if: github.event_name != 'status' || github.event.context == 'staging/be'
+    # 워크플로 수준에 두면 걸러질 status 실행도 대기 칸을 차지해 staging/be 실행을 밀어낸다(스펙 6.1)
+    concurrency:
+      group: promote
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Promote
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+          TRIGGER_SHA: ${{ github.event_name == 'status' && github.event.sha || '' }}
+          REQUIRE_STAGING_BE: ${{ vars.REQUIRE_STAGING_BE }}
+          DEV_STATUS_LOGIN: ${{ vars.DEV_STATUS_LOGIN }}
+          VERCEL_CONTEXT_APP: ${{ vars.VERCEL_CONTEXT_APP }}
+          VERCEL_CONTEXT_DASHBOARD: ${{ vars.VERCEL_CONTEXT_DASHBOARD }}
+          SKIP_STAGING_BE: ${{ inputs.skip_staging_be }}
+        run: python scripts/promote_check.py

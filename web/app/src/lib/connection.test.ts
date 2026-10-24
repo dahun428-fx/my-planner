@@ -41,6 +41,13 @@ describe("normalizeBeUrl", () => {
     expect(normalizeBeUrl("https://x.two.ts.net", many)).toEqual({ ok: true, url: "https://x.two.ts.net" });
     expect(normalizeBeUrl("https://gp76.example.ts.net")).toEqual({ ok: true, url: "https://gp76.example.ts.net" });
   });
+
+  it("matches the port of a staging source (release flow spec 5.1)", () => {
+    const staging = "https://*.example.ts.net:8443";
+    expect(normalizeBeUrl("https://gp76.example.ts.net:8443/api/v1", staging)).toEqual({ ok: true, url: "https://gp76.example.ts.net:8443" });
+    expect(normalizeBeUrl("https://gp76.example.ts.net", staging)).toEqual({ ok: false, reason: "out_of_range" });
+    expect(normalizeBeUrl("https://gp76.example.ts.net:8443", ALLOWED)).toEqual({ ok: false, reason: "out_of_range" });
+  });
 });
 
 describe("normalizeToken", () => {
