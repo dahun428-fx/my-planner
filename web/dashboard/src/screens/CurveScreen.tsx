@@ -79,9 +79,10 @@ export function CurveView({ curve: c, wide = null }: { curve: Curve; wide?: Curv
   const today = seoulLogicalToday();
   const ladderDay = nextMonthlyReview(today);
   const areasDay = nextQuarterReview(today);
-  // This month's ladder is already in (11.1 skips step 1 then): an empty zoom has nothing to promise.
-  const scoredThisMonth = all.ladder.some((l) => l.period === today.slice(0, 7) && l.now !== null);
-  const askLadder = noLadder && !scoredThisMonth;
+  // The month the next review asks for is already scored (11.1 skips step 1 then): nothing to promise.
+  const asked = ladderDay.slice(0, 7);
+  const alreadyScored = all.ladder.some((l) => l.period === asked && l.now !== null);
+  const askLadder = noLadder && !alreadyScored;
   const marks: UpcomingMark[] = [];
   if (askLadder) marks.push({ day: ladderDay, what: firstLadder ? T.upcoming.firstLadderMark : T.upcoming.ladderMark });
   if (askLadder && areas.length === 0) marks.push({ day: areasDay, what: T.upcoming.areasMark });

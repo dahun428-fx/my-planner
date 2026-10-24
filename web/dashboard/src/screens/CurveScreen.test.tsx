@@ -340,16 +340,30 @@ describe("CurveScreen", () => {
     expect(screen.queryByText(FIRST_LADDER)).toBeNull();
   });
 
-  it("promises nothing when this month's ladder is already in and only the zoom is empty (11.1)", async () => {
-    today();
-    expect(curveYear.ladder.some((l) => l.period === "2026-10" && l.now !== null)).toBe(true);
+  /** The wide answer has `wideLadder`; the zoom's own answer has no ladder. */
+  function emptyZoomWith(wideLadder: object[]) {
     server.use(
       http.get(`${BASE}/curve`, ({ request }) => {
         const zoom = new URL(request.url).searchParams.get("zoom");
-        const body = zoom === "year" ? curveYear : { ...curveMonth, ladder: [] };
+        const body = zoom === "year" ? { ...curveYear, ladder: wideLadder } : { ...curveMonth, ladder: [] };
         return HttpResponse.json(body as Record<string, unknown>);
       }),
     );
+  }
+
+  it("still promises the next review when the score in is for an earlier month than it asks", async () => {
+    today(); // 10/24: the next review is 11/29 and asks for 2026-11
+    expect(curveYear.ladder.some((l) => l.period === "2026-10" && l.now !== null)).toBe(true);
+    emptyZoomWith(curveYear.ladder);
+    renderScreen();
+    expect(await screen.findByText("11월 29일(일) 월말 회고에서 사다리 점수를 여쭤볼게요.")).toBeInTheDocument();
+    const marks = screen.getByRole("list", { name: "곧 그려질 것" });
+    expect(within(marks).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["11월 29일(일)사다리"]);
+  });
+
+  it("promises nothing when the month the next review asks is already scored (11.1)", async () => {
+    today("2026-11-10T03:00:00Z"); // 11/10: the next review is 11/29, and November is already in
+    emptyZoomWith([...curveYear.ladder, { period: "2026-11", now: 7, future: 8, note: null }]);
     renderScreen();
     await screen.findByRole("figure");
     await waitFor(() => expect(screen.queryByRole("list", { name: "곧 그려질 것" })).toBeNull());
