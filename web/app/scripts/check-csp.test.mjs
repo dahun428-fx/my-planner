@@ -48,6 +48,13 @@ describe("check-csp", () => {
     expect(r.out).toMatch(/todos\/index\.html:1: inline script/);
   });
 
+  it("fails on a page-level stylesheet (Next inlines it as <style> on a client move)", () => {
+    const bad = page(`${META}<link rel="stylesheet" href="/_next/static/css/p.css" data-n-p=""/><script src="/a.js"></script>`);
+    const r = run(exportDir({ "index.html": clean, "todos/index.html": bad }));
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/todos\/index\.html:1: page-level stylesheet/);
+  });
+
   it("fails on inline style element", () => {
     const bad = page(`${META}<style>body{}</style><script src="/a.js"></script>`);
     const r = run(exportDir({ "index.html": bad }));

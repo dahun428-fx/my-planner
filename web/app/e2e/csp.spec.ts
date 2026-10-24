@@ -64,3 +64,34 @@ test("no CSP violations", async ({ page }) => {
 
   expect(problems).toEqual([]);
 });
+
+// Moving between tabs inside the app must keep each screen's styles: Next's pages router can carry
+// a page's CSS as inline style tags on a client move, which style-src 'self' blocks.
+test("screens keep their styles after moving between tabs", async ({ page }) => {
+  const problems: string[] = [];
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI}`));
+  });
+  await mockBe(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: copy.today.title })).toBeVisible();
+  const tabs: [string, string][] = [
+    [copy.tabs.todos, copy.todos.title],
+    [copy.tabs.activity, copy.activity.title],
+    [copy.tabs.settings, copy.settings.title],
+    [copy.tabs.today, copy.today.title],
+  ];
+  for (const [tab, title] of tabs) {
+    await page.getByRole("navigation").getByRole("link", { name: tab }).click();
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const position = await page.getByRole("navigation").evaluate((el) => getComputedStyle(el).position);
+    if (position !== "fixed") problems.push(`${tab}: tab bar is ${position}, styles missing`);
+    const list = await page.getByRole("navigation").locator("ul").evaluate((el) => getComputedStyle(el).display);
+    if (list !== "flex") problems.push(`${tab}: tab list is ${list}`);
+  }
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)));
+  expect(problems).toEqual([]);
+});

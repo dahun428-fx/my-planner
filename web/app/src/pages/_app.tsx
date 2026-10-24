@@ -14,6 +14,17 @@ import { applyTheme, loadTheme } from "../lib/theme";
 import { CatalogProvider } from "../ui/CatalogProvider";
 import "../styles/tokens.css";
 import "../styles/globals.css";
+// Every screen's styles go out with _app as one stylesheet. Otherwise Next's pages router carries a
+// page's CSS as inline <style> tags when the app moves between tabs, which style-src 'self' blocks.
+import "../screens/Activity";
+import "../screens/Checkin";
+import "../screens/Connect";
+import "../screens/Settings";
+import "../screens/Today";
+import "../screens/Todos";
+import "../components/LargeTitle";
+import "../components/TabBar";
+import "../styles/page.module.css";
 
 // A crash inside the chat sheet takes down only the sheet, never the screen behind it.
 class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode }, { failed: boolean }> {
