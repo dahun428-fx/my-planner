@@ -370,24 +370,24 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - Consumes: `Dispatcher._handle_messages`·`_drain_messages`·`_call_brain`, `StateRepo` 대기 메시지, `IdempotencyRepo`, `apply_action`, `command_of`, `build_planner_server` (SP1, 04)
 - Produces:
 - 마이그레이션 없음(빈 곳 15, 스펙 5.1): `inbound_pending.conversation_id`는 SP1 `005_inbound_pending.sql`에 이미 있다. 앱 행은 `add_pending_inbound`에서 받을 때 고른 대화를 이 열에 미리 적고(`save_inbound_reply`가 덮어쓰는 것은 SP1과 같다), `resubmit_inbound`가 넘긴다. FK는 두지 않는다.
-- `harness/stream.py`: `StreamSink`(Protocol `emit`, `ping`, `disconnected`), `QueueSink`(`attach() -> Queue[bytes | None]`, `detach`, `close`, 붙으면 지난 조각을 다시 넣음, M8), `encode_sse`, `SSE_DONE`, `SSE_PING`, `PING_INTERVAL_S = 15`, `UiMessageWriter(sink, message_id)`(`start`, `status`, `start_step`, `text_start/delta/end`, `text(id, whole)`, `tool_input`, `tool_output`, `tool_error`, `finish_step`, `data_activity`, `finish`, `streamed_text`), `AppReplySender.send(out)`(두뇌 글 → `h-confirm` → 하네스 조각(09·13) → `data_activity` → `finish`, 끊기면 조용히 그만둠, M7).
+- `harness/stream.py`: `StreamSink`(Protocol `emit`, `ping`, `disconnected`), `QueueSink`(`attach() -> Queue[bytes | None]`, `detach`, `close`, 붙으면 지난 조각을 다시 넣음, M8), `encode_sse`, `SSE_DONE`, `SSE_PING`, `PING_INTERVAL_S = 15`, `UiMessageWriter(sink, message_id)`(`start`, `status`, `start_step`, `text_start/delta/end`, `text(id, whole)`, `tool_input`, `tool_output`, `tool_error`, `finish_step`, `data_activity`, `finish`, `streamed_text`), `AppReplySender.send(out)`(두뇌 글 → 하네스 조각(09·13) → `data_activity`(확인 문구 `confirmation` 포함, 스펙 6.4.1) → `finish`. 앱 통로에는 `h-confirm` 글 조각이 없다, 끊기면 조용히 그만둠, M7).
 - `RunContext.stream`. `Inbound`에 `channel`, `client_msg_id`, `checkin_id`, `sink`, `conversation_id`. `Outbound`에 `channel`, `confirmation`, `writer`, `activity_ids`, `undo_ids`.
 - `Dispatcher(..., app_sender: AppReplySender | None = None)`(빈 곳 11), `_drain_messages(lead)`(M2), `route_app_message(at, *, conversation_id, checkin_id) -> Conversation`(동기, 빈 곳 2·13. 이 티켓: 열린 앱 `plan` → 요청한 앱 `chat`이 30분 안 → 30분 안 앱 `chat` → 새 앱 `chat`. 07이 회차 규칙을 앞에 넣는다), `attach_stream(client_msg_id, sink) -> bool`(M8). 앱 `Inbound`는 `conversation_id`의 대화로 가고, 그 대화가 닫혔으면 `route_app_message`가 다시 고른다.
-- `StateRepo`: `PendingInbound`에 `channel`, `client_msg_id`, `checkin_id`, `conversation_id`. `add_pending_inbound(update_id, text_redacted, sent_at, received_at, *, channel="telegram", client_msg_id=None, checkin_id=None, conversation_id=None)`, `next_app_inbound_id()`(−1, −2, …), `pending_by_client_msg_id`, `finish_app_inbound(update_id, *, client_msg_id, conversation_id, reply_text)`(M5). `resubmit_inbound`는 앱 행을 `Inbound(channel="app", sink=None, conversation_id=row.conversation_id, recovered=True)`로(M6).
+- `StateRepo`: `PendingInbound`에 `channel`, `client_msg_id`, `checkin_id`를 더한다(`conversation_id`는 SP1부터 있다, `state.py`). `add_pending_inbound`에 키워드 인자 `channel`, `client_msg_id`, `checkin_id`, `conversation_id`를 더한다: `add_pending_inbound(update_id, text_redacted, sent_at, received_at, *, channel="telegram", client_msg_id=None, checkin_id=None, conversation_id=None)`. 앱 행만 `conversation_id`를 적는다(스펙 5.1). `next_app_inbound_id()`(−1, −2, …), `pending_by_client_msg_id`, `finish_app_inbound(update_id, *, client_msg_id, conversation_id, reply_text)`(M5). `resubmit_inbound`는 앱 행을 `Inbound(channel="app", sink=None, conversation_id=row.conversation_id, recovered=True)`로(M6).
 - `build_options(..., include_partial_messages=False, fork_session=False)`. 이 티켓의 `ClaudeBrain.run`은 부분 메시지를 켜지 않는다. 앱이면 `system.md` + `channel_app.md`(빈 자리, 09가 채움).
 - `tools/mcp_adapter.py`: `call_tool(tools, ctx, name, args) -> dict`(`ctx.stream`이 있으면 `tool_input` → `tool_output(to_api_times(result))` 또는 `tool_error`), `tool_names_for(channel)`(둘 다 `TOOL_NAMES`).
 - `bot/commands.py`: `CommandDeps(tasks, conditions, state, router, clock, settings, apply)`, `run_command(cmd, text, deps, *, channel) -> str`(`/pause`·`/unpause`·`/done`은 내부 동작 `cmd_*`). 텔레그램 `_answer_command`도 이것.
 - `api/chat.py post_chat(request) -> web.StreamResponse`: 6.4.1 흐름(재생 → `attach_stream` → 명령 → `route_app_message` → `add_pending_inbound(next_app_inbound_id(), …, conversation_id=…)` → `submit_message`). 헤더 6.4.1, 15초 `: ping`(주입한 `sleep`), `messageId = m-<conversation_id>-<|inbound_id|>`.
 - `FakeBrain`은 `run_ctx.stream`이 있으면 도구를 `call_tool`로. `ListSink`.
 - `tests/ui_stream.py`: `parse_sse(body) -> list[dict]`(첫 `start`, `text-*` `id` 짝, 같은 `toolCallId`의 출력, 마지막 `finish`, `[DONE]`, AI SDK UI message stream의 조각 종류 밖은 오류), `normalize_sse(body) -> bytes`(`messageId` → `<id>`).
-- 기준 응답(빈 곳 9): `tests/test_app_golden.py`가 `BeEnv`로 `chat_add_task`, `chat_daily_cap`, `chat_replay`를 보내 `tests/fixtures/app_golden/<이름>.sse`, `headers.json`과 비교한다. `python -m pytest tests/test_app_golden.py --update-app-golden`(`tests/conftest.py` 옵션)이면 다시 쓴다.
+- 기준 응답(빈 곳 9): `tests/test_app_golden.py`가 `BeEnv`로 `chat_add_task`, `chat_daily_cap`, `chat_replay`를 보내 `tests/fixtures/app_golden/<이름>.sse`, `headers.json`과 비교한다. 네 번째 `chat_propose_tasks.sse`는 티켓 09가 더한다(스펙 16장은 네 개를 말한다). 06의 시험은 이 티켓의 세 파일만 기대한다. `python -m pytest tests/test_app_golden.py --update-app-golden`(`tests/conftest.py` 옵션)이면 다시 쓴다.
 
 **Slices**
-- [ ] `test_chat_stream_order_and_headers`(`FakeTurn([("add_task", {...})], "내일 치과를 추가할게요.")`): 순서가 정확히 `start, data-status, start-step, tool-input-available, tool-output-available, text-start, text-delta, text-end, finish-step, text-start, text-delta, text-end, data-activity, finish`, `[DONE]`. 두뇌 글은 `text-delta` 하나, `h-confirm` 글 `✓ 추가: 치과 → 내일`, 헤더 다섯
+- [ ] `test_chat_stream_order_and_headers`(`FakeTurn([("add_task", {...})], "내일 치과를 추가할게요.")`): 순서가 정확히 `start, data-status, start-step, tool-input-available, tool-output-available, text-start, text-delta, text-end, finish-step, data-activity, finish`, `[DONE]`. 두뇌 글은 `text-delta` 하나, `h-confirm` 글 조각 없음, `data-activity.data.confirmation == "✓ 추가: 치과 → 내일"`, 헤더 다섯
 - [ ] `test_tool_chunk_name_has_no_prefix_and_output_is_utc`, `test_daily_cap_rate_limit_login_are_text_chunks`(매개변수 3, `error` 조각 없음), `test_non_text_parts_get_non_text_reply`
 - [ ] `test_same_client_msg_id_replays_without_brain`, `test_disconnect_mid_stream_completes`(M7), `test_inflight_duplicate_attaches_single_brain_call`(M8), `test_ping_every_15s_while_queued`
 - [ ] `test_commands_in_app`: `/today` == `today_text`, 두뇌 없음, `/pause 3` 재요청은 다시 실행 안 함, `/plan 이사 준비`는 `kind == "plan"`
-- [ ] `test_parser_reads_spec_example`, `test_app_golden_matches_stream`(매개변수 3), `test_app_golden_files_parse`
+- [ ] `test_parser_reads_spec_example`, `test_app_golden_matches_stream`(매개변수 3), `test_app_golden_files_parse`(이 티켓의 세 파일, 09가 넷째를 더함)
 - [ ] `test_mixed_queue_batches_telegram_only`(`tests/test_dispatcher_app_channel.py`): 처리 중인 호출이 끝난 **뒤** 두뇌 호출 3회(텔레그램 묶음 1 + 앱 2), FakeSender 1개, 앱 싱크 둘이 각자 답
 - [ ] `test_app_done_writes_no_telegram_updates`, `test_recovered_app_row_replies_nowhere`(M6)
 - [ ] `test_resubmitted_app_row_keeps_conversation`: 재시작 뒤 같은 `conversation_id`, 닫혔으면 다시 고른 대화
@@ -416,7 +416,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **Slices**
 - [ ] `test_stream_events_become_text_deltas`: 가짜 SDK 메시지(`StreamEvent` 셋 + `ResultMessage`) → `ListSink`에 `text-start, text-delta×3, text-end`
 - [ ] `test_partial_messages_only_when_streaming`
-- [ ] `test_chat_stream_order_with_deltas`: `deltas=["내일 치과를 ", "추가할게요."]` → 순서 `start, data-status, start-step, text-start, text-delta, text-delta, text-end, tool-input-available, tool-output-available, finish-step, text-start, text-delta, text-end, data-activity, finish`
+- [ ] `test_chat_stream_order_with_deltas`: `deltas=["내일 치과를 ", "추가할게요."]` → 순서 `start, data-status, start-step, text-start, text-delta, text-delta, text-end, tool-input-available, tool-output-available, finish-step, data-activity, finish`(`h-confirm` 글 조각 없음, 확인 문구는 `data-activity.data.confirmation`)
 - [ ] 기준 응답을 `--update-app-golden`으로 다시 만들고 운영 앱 스레드에 바뀐 파일을 보낸다.
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
@@ -554,13 +554,13 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - `Tools(..., confirms=None, reply_until: Callable[[int], datetime] | None = None)`, `_request_confirm(ctx, action, args, summary) -> dict`(`origin="run_turn"`, 만료 = 답장 창 끝, ToolEvent·활동 `confirm_requested`, 결과 `{"status": "needs_confirm", "confirm_token", "summary"}`). `add_task`는 언제나 바로(A4).
 - `Outbound.confirms: list[tuple[str, str]]`, `confirm_keyboard(confirms)`(`✓ 확인: {summary 16자}` `k:a:<token>`, `✗ 그대로 두기` `k:x:<token>`), 줄 순서: 초안 → 확인 → 컨디션.
 - `bot/callbacks.py`: `k:a` → 토큰의 `action`·`args`로 `apply_action(confirm_token=…)`, `k:x` → `decline_confirm`, 정리된 토큰 → "이미 정리된 제안이에요."
-- 앱: `confirm_requested`마다 `h_confirm_<n>` `ui_confirm {summary, confirm_token, action, args}`, `checkin_cards`도 열린 토큰마다.
+- 앱: `checkin_cards`가 열린 토큰마다 `h_confirm_<run_id>_<n>` `ui_confirm {summary, confirm_token, action, args}`(`n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호, 스펙 6.4.5·10.1 A5). 회차 차례에서만 생기므로 `/chat` 스트림에는 없다.
 - `system.md` 원칙 12(A7).
 
 **Slices** (`tests/test_run_turn_confirm.py`)
 - [ ] `test_run_turn_detection_both_channels`, `test_run_turn_tools_need_confirm`(매개변수), `test_move_task_without_schedule_applies_in_run_turn`, `test_add_task_applies_in_run_turn`
 - [ ] `test_sp1_user_turn_behavior_unchanged`: `python -m pytest tests/test_tools_tasks.py tests/test_dispatcher_tools.py -q` → `0 failed`
-- [ ] `test_confirm_card_and_telegram_buttons`(64바이트 이하, `h_confirm_1`), `test_confirm_applies_with_activity_and_decline_changes_nothing`, `test_double_press_expired_or_stale_not_applied`, `test_token_survives_restart`
+- [ ] `test_confirm_card_and_telegram_buttons`(64바이트 이하, 회차 340의 첫 토큰 → `h_confirm_340_1`, 첫 토큰을 확인한 뒤에도 둘째는 `h_confirm_340_2`), `test_confirm_applies_with_activity_and_decline_changes_nothing`, `test_double_press_expired_or_stale_not_applied`, `test_token_survives_restart`
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
 - [ ] `tests/test_api_e2e.py::test_morning_brief_proposal_needs_confirm`: 10/26(월) 09:00 tick, FakeBrain(회차) `set_priorities(day, …)` → 그대로, `GET /checkins/{id}.cards`에 `ui_confirm` → 그 값으로 `POST /actions` → 바뀜, 활동 `actor == "user"`. → `passed`
@@ -711,7 +711,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - Produces:
 - `StatusRepo.grant(*, at, logical_date, source_kind, source_ref, amount, label, area=None) -> bool`(`ON CONFLICT DO NOTHING`, UPDATE·DELETE 함수 없음), `count_secretary_on(d)`.
 - 쌓는 자리는 9.1·4.3 표 그대로: X1/X2 `complete_task`(완료 순간 가장 큰 주기), X4, X6, X7은 그 도구, X3/X5/X8은 `Dispatcher.mark_answered`(`answered_at`과 한 `transaction(conn)`), X9는 하루 한 번 `apply_action(grant_rest_days)`, X10 `Tools.grant_xp(ctx, amount, reason)`(22/28개).
-- `level_up_line(before, after) -> str`: 텔레그램 확인 문구 끝, `h-confirm` 끝, `/actions`의 `xp`·`confirmation`.
+- `level_up_line(before, after) -> str`: 텔레그램 확인 문구 끝, 앱 `data-activity.confirmation` 끝, `/actions`의 `xp`·`confirmation`.
 - `status_text(snapshot) -> str`(11.4, 빈 스탯은 부록 A, 칭호는 첫 하나 + "외 {n}개"), `/status`, `HELP_TEXT` 줄(`run_command`라 앱도 같다).
 - `open_db(path, *, on_write: Callable[[str], None] | None = None)`(`set_trace_callback`, 시험 이음매).
 
@@ -894,7 +894,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **막는 티켓:** 없음(02를 막는다)
 **라벨:** `ready-for-agent` + **Dahun 검토**
 
-**Files:** Modify 스펙(7.4, 6.4.1, 7.5, 4.3 표, 5.1(011 마이그레이션), 6.1·15장, 12장, 6.4.5, 6.4.7 표·카탈로그 판, 13.1·14장 CSP, 16장, 변경 기록), 이 계획(빈 곳 표 머리에 "스펙 반영: <PR>")
+**Files:** Modify 스펙(7.4, 6.4.1, 7.5, 4.3 표, 5.1(받을 때 고른 대화), 6.1·15장, 12장, 6.4.5, 6.4.7 표·카탈로그 판, 13.1·14장 CSP, 16장, 변경 기록), 이 계획(빈 곳 표 머리에 "스펙 반영: <PR>")
 
 - [ ] `git fetch origin && git switch -c docs/sp3-4-spec-contract origin/main`
 - [ ] 각 줄의 결정 칸을 그 절의 문장으로(티켓 번호는 뺀다). 시드 내용·실제 사건·점수는 넣지 않는다.
