@@ -3,11 +3,19 @@ import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtim
 import type { NextRouter } from "next/router";
 import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
+import { ConnectionProvider } from "../lib/ConnectionProvider";
+import { saveConn } from "../lib/connection";
+import { healthAnswers } from "./handlers";
+import { server } from "./server";
 
-export type TestConn = "online" | "offline" | "unauthorized" | "safe_mode";
+/** "none" = nothing saved on the device (first-connect screen); the others are a saved connection whose /health answers that way. */
+export type TestConn = "online" | "offline" | "unauthorized" | "safe_mode" | "none";
+
+export const TEST_BE_URL = "https://gp76.example.ts.net";
+export const TEST_TOKEN = "test-token-not-real";
 
 export interface ProviderOptions extends Omit<RenderOptions, "wrapper"> {
-  /** Connection state for screens. ConnectionProvider (A01) reads this; A00 has no provider yet. */
+  /** Connection state for screens; the real ConnectionProvider runs against MSW answers for it. */
   conn?: TestConn;
   /** Current route, e.g. "/todos/?tab=week". */
   route?: string;
@@ -38,10 +46,16 @@ export function mockRouter(route = "/"): NextRouter {
 }
 
 export function renderWithProviders(ui: ReactElement, options: ProviderOptions = {}) {
-  const { conn: _conn = "online", route = "/", ...rest } = options;
+  const { conn = "online", route = "/", ...rest } = options;
   const router = mockRouter(route);
+  if (conn !== "none") saveConn({ beUrl: TEST_BE_URL, token: TEST_TOKEN });
+  if (conn === "offline") server.use(healthAnswers.unreachable());
+  if (conn === "unauthorized") server.use(healthAnswers.unauthorized());
+  if (conn === "safe_mode") server.use(healthAnswers.safeMode());
   const Wrapper = ({ children }: { children: ReactNode }) => (
-    <RouterContext.Provider value={router}>{children}</RouterContext.Provider>
+    <RouterContext.Provider value={router}>
+      <ConnectionProvider>{children}</ConnectionProvider>
+    </RouterContext.Provider>
   );
   return { router, ...render(ui, { wrapper: Wrapper, ...rest }) };
 }

@@ -1,0 +1,23 @@
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+.online {
+  background: var(--positive);
+}
+.unauthorized,
+.safe_mode {
+  background: var(--negative);
+}
+.label {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
