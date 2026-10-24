@@ -7,6 +7,7 @@ import { ToastProvider } from "../components/Toast";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import { CatalogProvider } from "../ui/CatalogProvider";
 import { saveConn } from "../lib/connection";
+import { saveSnap, type SnapKey } from "../lib/snapshot";
 import { healthAnswers } from "./handlers";
 import { server } from "./server";
 
@@ -23,6 +24,12 @@ export interface ProviderOptions extends Omit<RenderOptions, "wrapper"> {
   route?: string;
   /** Wrap in CatalogProvider (loads GET /ui/catalog) for tests that draw `ui_*` parts through UiPart. */
   catalog?: boolean;
+}
+
+/** A snapshot kept on the device for `beUrl`, as a good answer from it leaves one (it is saved only while connected there). */
+export async function seedSnap(key: SnapKey, data: unknown, beUrl = TEST_BE_URL): Promise<void> {
+  saveConn({ beUrl, token: TEST_TOKEN });
+  await saveSnap(key, data, beUrl);
 }
 
 export function mockRouter(route = "/"): NextRouter {

@@ -36,6 +36,12 @@ afterEach(async () => {
 const draftTodo = { id: 7, title: "장보기", status: "draft", areas: [], planned_for: "2026-10-25", scheduled_at: null, parent_id: null, note: "", priority: null, completed_at: null };
 const draftPart: ViewPart = { kind: "ui", toolCallId: "h_1", name: "ui_todo_draft", props: { task_ids: [7] }, data: { todos: [draftTodo] as never } };
 
+// A draft card kept on the device for the saved BE (as the sheet does when an answer finishes).
+async function keepDraft() {
+  saveConn({ beUrl: TEST_BE_URL, token: TEST_TOKEN });
+  await saveParts("m-5-1", [draftPart], TEST_BE_URL);
+}
+
 const start = (messageId: string, conversationId: number) => ({
   type: "start",
   messageId,
@@ -71,7 +77,7 @@ async function sendText(user: ReturnType<typeof userEvent.setup>, text: string) 
 
 describe("ChatSheet", () => {
   it("restores last conversation with local parts", async () => {
-    await saveParts("m-5-1", [draftPart]);
+    await keepDraft();
     const seen = history(5, [
       { id: "u-5-1", at: "2026-10-24T01:00:00Z", speaker: "user", text: "이번 주 정리해 줘" },
       { id: "m-5-1", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "골라 봤어요" },
@@ -94,7 +100,7 @@ describe("ChatSheet", () => {
   });
 
   it("a restored draft card does not write: its rows may have changed since it was kept", async () => {
-    await saveParts("m-5-1", [draftPart]);
+    await keepDraft();
     history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "골라 봤어요" }]);
     renderWithProviders(<ChatSheet open onClose={() => {}} />, { catalog: true });
     expect(await screen.findByText("장보기")).toBeInTheDocument();
@@ -105,7 +111,7 @@ describe("ChatSheet", () => {
   });
 
   it("restores text only from a BE without message ids (before R4d)", async () => {
-    await saveParts("m-5-1", [draftPart]);
+    await keepDraft();
     history(5, [
       { at: "2026-10-24T01:00:00Z", speaker: "user", text: "이번 주 정리해 줘" },
       { at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "골라 봤어요" },

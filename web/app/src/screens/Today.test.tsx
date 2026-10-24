@@ -7,14 +7,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Today as TodayData } from "../api/types.gen";
 import { copy } from "../lib/copy";
 import { registerServiceWorker } from "../lib/push";
-import { loadSnap, saveSnap } from "../lib/snapshot";
+import { loadSnap } from "../lib/snapshot";
 import { installPush } from "../test/push";
 import { formatKst } from "../lib/time";
 import health from "../test/fixtures/health.json";
 import degraded from "../test/fixtures/health-degraded.json";
 import todayJson from "../test/fixtures/today.json";
 import emptyJson from "../test/fixtures/today-empty.json";
-import { renderWithProviders, TEST_BE_URL } from "../test/render";
+import { renderWithProviders, seedSnap, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Today } from "./Today";
 
@@ -334,7 +334,7 @@ describe("Today", () => {
 });
 
 async function seed(data: TodayData | null) {
-  if (data) await saveSnap("today", data, TEST_BE_URL);
+  if (data) await seedSnap("today", data);
   server.use(http.get(`${BASE}/today`, () => HttpResponse.error()));
 }
 
@@ -369,7 +369,7 @@ describe("Today offline and refused", () => {
   });
 
   it("does not show a snapshot of another BE", async () => {
-    await saveSnap("today", today, "https://other.example.ts.net");
+    await seedSnap("today", today, "https://other.example.ts.net");
     server.use(http.get(`${BASE}/today`, () => HttpResponse.error()));
     renderWithProviders(<Today />, { conn: "offline" });
     expect(await screen.findByText(copy.offline.noSnapshot)).toBeInTheDocument();

@@ -6,14 +6,13 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Drafts, Priorities, Today as TodayData, Week } from "../api/types.gen";
 import { copy } from "../lib/copy";
-import { saveSnap } from "../lib/snapshot";
 import draftsJson from "../test/fixtures/drafts.json";
 import monthJson from "../test/fixtures/priorities-month.json";
 import quarterJson from "../test/fixtures/priorities-quarter.json";
 import todayJson from "../test/fixtures/today.json";
 import weekJson from "../test/fixtures/week.json";
 import yearJson from "../test/fixtures/priorities-year.json";
-import { renderWithProviders, TEST_BE_URL } from "../test/render";
+import { renderWithProviders, seedSnap } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Todos } from "./Todos";
 
@@ -236,7 +235,7 @@ describe("Todos", () => {
   });
 
   it("offline week from snapshot, others later", async () => {
-    await saveSnap("week", week, TEST_BE_URL);
+    await seedSnap("week", week);
     const first = renderWithProviders(<Todos tab="week" />, { conn: "offline" });
     expect(await screen.findByText("장보기")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: copy.todos.add })).toBeDisabled();

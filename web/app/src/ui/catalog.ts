@@ -1,7 +1,8 @@
 import { Validator, type Schema } from "@cfworker/json-schema";
-import { get, set } from "idb-keyval";
+import { get } from "idb-keyval";
 import { apiGet } from "../api/client";
 import { loadConn } from "../lib/connection";
+import { setForBe } from "../lib/snapshot";
 import type { UiCatalog } from "../api/types.gen";
 
 // Spec 6: the BE's list of screen parts with a JSON Schema for each one's props. Kept on the device
@@ -30,7 +31,7 @@ export async function loadCatalog(currentVersion: string | null): Promise<Catalo
   if (r.kind !== "ok") return saved; // offline or refused: the stored one still draws what it knows
   const fresh = r.data as Catalog;
   try {
-    if (beUrl) await set("catalog", { ...fresh, beUrl });
+    if (beUrl) await setForBe("catalog", { ...fresh, beUrl }, beUrl);
   } catch {
     // not saving is fine
   }

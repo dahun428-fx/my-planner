@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { clear, get, set } from "idb-keyval";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { saveConn } from "./connection";
 import { clearDeviceData, loadSnap, saveSnap } from "./snapshot";
 
 const A = "https://gp76.example.ts.net";
@@ -15,6 +16,8 @@ afterEach(async () => {
 });
 
 describe("snapshot", () => {
+  beforeEach(() => saveConn({ beUrl: A, token: "t" }));
+
   it("saves and loads with savedAt", async () => {
     await saveSnap("today", { date: "2026-10-24" }, A, NOW);
     const got = await loadSnap<{ date: string }>("today", A, NOW + 1000);
@@ -51,6 +54,34 @@ describe("snapshot", () => {
     expect(localStorage.getItem("mp.beUrl")).toBeNull();
     expect(localStorage.getItem("mp.token")).toBeNull();
     expect(localStorage.getItem("other")).toBe("keep");
+  });
+
+  it("an answer for a BE the device is no longer connected to is not saved", async () => {
+    await saveSnap("today", { x: 1 }, B, NOW);
+    expect(await get("snap:today")).toBeUndefined();
+    localStorage.clear(); // disconnected
+    await saveSnap("today", { x: 1 }, A, NOW);
+    expect(await get("snap:today")).toBeUndefined();
+  });
+
+  it("clearDeviceData drops the connection before IndexedDB, so a late write sees no BE", async () => {
+    const seen: (string | null)[] = [];
+    vi.doMock("idb-keyval", async (orig) => {
+      const real = await orig<typeof import("idb-keyval")>();
+      return {
+        ...real,
+        keys: () => {
+          seen.push(localStorage.getItem("mp.beUrl"));
+          return real.keys();
+        },
+      };
+    });
+    vi.resetModules();
+    const fresh = await import("./snapshot");
+    localStorage.setItem("mp.beUrl", A);
+    localStorage.setItem("mp.token", "t");
+    await fresh.clearDeviceData();
+    expect(seen).toEqual([null]);
   });
 
   it("blocked indexeddb returns null", async () => {
