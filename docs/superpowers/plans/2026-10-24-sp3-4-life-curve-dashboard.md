@@ -85,7 +85,7 @@
 ## File Structure
 
 ```
-pyproject.toml, requirements.lock, config.toml([api], [notify]), .env.example, README.md(19)
+pyproject.toml, requirements.lock, config.toml([api], [notify]), .env.example, README.md(19a, 19b)
 docs/spikes/2026-11-sp3-4.md (00), docs/acceptance/sp3-4-checklist.md (20)
 src/my_planner/
   cli.py, __main__.py            # gen-token, gen-vapid, schema, seed-life
@@ -94,7 +94,7 @@ src/my_planner/
   api/{server,auth,cors,models,read,chat,actions,push,health}.py
   harness/{stream,delivery,checkins,review_steps}.py, harness/prompts/{review_month,review_quarter,review_year,channel_app}.md
   curve/{model,seed}.py, status/{xp,snapshot}.py
-  store/db.py(open_ro, transaction), store/views.py, store/migrations/006~011_*.sql
+  store/db.py(open_ro, transaction), store/views.py, store/migrations/006~010_*.sql
   store/repos/{curve,status,activity,push,cards,channels}.py
   tools/{actions,activity,ui}.py
 tests/
@@ -129,13 +129,15 @@ web/dashboard/                   # Vercel 루트 디렉터리
 | 16 | 대시보드 뼈대와 (a) 비서 상태 | 03 | `ready-for-agent` |
 | 17 | 대시보드 (b) 할 일 + 컨디션, (d) 상태창 | 16 | `ready-for-agent` |
 | 18 | 대시보드 (c) 인생곡선 | 16 | `ready-for-agent` |
-| 19 | Vercel 배포, Tailscale serve, 운영 안내 | 15, 17, 18 | `needs-laptop` |
-| 20 | 노트북 수용 테스트 | 19 | `needs-laptop` |
+| 19a | Tailscale serve와 `cors_origins` (운영 앱이 노트북 BE에 닿게) | 08 | `needs-laptop` |
+| 19b | Vercel 대시보드 배포와 운영 안내 | 15, 17, 18, 19a | `needs-laptop` |
+| 20 | 노트북 수용 테스트 | 19b | `needs-laptop` |
 | 21a | 스펙 갱신: 계약에 걸린 빈 곳 | 없음 | `ready-for-agent` + **Dahun 검토** |
 | 21b | 스펙 갱신: 문구와 표시 (C1~C4, 빈 곳 8·10·12·14) | 없음 | `ready-for-agent` + **Dahun 검토** |
 
 - **운영 앱 계약 줄**: 00 → 01 → 02 → (03, 04 → (05, 06) → 07 → 08, 06b) → 09 → 10. 운영 앱 스레드는 02 뒤 `GET /schema`로 타입을 만든다.
 - **곡선·상태창 줄**: 11 → 12, 13 → 14 → 15.
+- **노트북 열기**: 19a는 08 바로 뒤에 노트북에서 한다. 운영 앱 스레드가 실제 BE(`/chat`, 푸시)에 붙어 볼 수 있게 대시보드 배포(19b)보다 먼저 연다.
 - **대시보드 줄**: 16 → (17, 18)은 03 뒤 어느 때나 돈다. 고정 자료는 `tests/dashboard_seed.py`가 SQL로 바로 넣으므로 곡선 쓰기(11~15)를 기다리지 않는다.
 - 21a·21b는 문서만 바꾸고 Dahun이 PR을 검토하는 사람 관문이다. 21a는 계약 줄의 02를, 21b는 문구를 쓰는 11·14를 막는다. 둘 다 01과 나란히 시작한다.
 
@@ -151,7 +153,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 - [ ] **S7**: 클라우드 `s7_loop.py`(한 루프에 `AppRunner`, 가짜 롱폴링, 10초 tick, 5초 가짜 두뇌) → `curl -s -o /dev/null -w "%{time_total}\n" http://127.0.0.1:8787/ping` 10회 모두 0.1초 미만. `needs-laptop`: 작업 스케줄러에서 `pythonw.exe spikes\s7_loop.py`(Proactor), 그 루프에서 Agent SDK `query(...)` 중에도 `/ping`이 답하고 콘솔 창이 뜨지 않는다. 실패면 스펙 3장 S7 대안으로 4.3과 01 `start_api`를 고친다.
 - [ ] **S8**: 클라우드 `s8_sse.py`(200ms 간격 `text-delta` 20개, `X-Accel-Buffering: no`) → `curl -N -s http://127.0.0.1:8787/sse | ts -s '%.s'`. `ts`(moreutils)가 없으면 `| python -u -c "import sys,time;t=time.time();[print(f'{time.time()-t:.3f}',l,end='') for l in sys.stdin]"`. 기대 간격 ≈ 0.2초. `needs-laptop`: MagicDNS·HTTPS 인증서 → `tailscale serve --bg --https=443 http://127.0.0.1:8787` → 폰(셀룰러)과 노트북 브라우저에서 같은 측정, 첫 조각 지연 기록.
-- [ ] **S9**: 클라우드 `curl -si -X OPTIONS -H "Origin: https://example.vercel.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Private-Network: true" http://127.0.0.1:8787/api/v1/health` → `204`, `Access-Control-Allow-Private-Network: true`. `needs-laptop`: Vercel 미리보기의 시험 페이지에서 데스크톱 Chrome, Android Chrome, iOS Safari로 `fetch`, 권한 창 문구 기록(19의 안내에 쓴다).
+- [ ] **S9**: 클라우드 `curl -si -X OPTIONS -H "Origin: https://example.vercel.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Private-Network: true" http://127.0.0.1:8787/api/v1/health` → `204`, `Access-Control-Allow-Private-Network: true`. `needs-laptop`: Vercel 미리보기의 시험 페이지에서 데스크톱 Chrome, Android Chrome, iOS Safari로 `fetch`, 권한 창 문구 기록(19a·19b의 안내에 쓴다).
 - [ ] **S10**: 클라우드 `pywebpush` + VAPID로 로컬 가짜 푸시 서버(201·404·410)에 보내고 `http_ece`로 풀어 원문 비교, `TTL`·`Topic` 헤더 확인. `needs-laptop`: Windows 설치, Android Chrome과 iPhone PWA(iOS 16.4+)에서 수신.
 - [ ] **S11**: `include_partial_messages=True`의 `StreamEvent` 글 조각을 이어 붙이면 `ResultMessage.result`와 같다. `resume=<id>` + `fork_session=True`: 새 `session_id`, 첫 호출의 단어 기억, 원래 세션은 갈라진 쪽을 모름. 실패면 스펙 3장 S11 대안이 06·07의 기본이다(06은 이미 대체 경로로 시작한다).
 - [ ] **S12**: 더미 도구 28개(13·09·15의 실제 이름)로 SP1 S2의 두 질문 → `mcp__planner__*`만, `Read` 불가. 22개로도 한 번.
@@ -360,32 +362,32 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **라벨:** `ready-for-agent`
 
 **Files:**
-- Create: `harness/stream.py`, `api/chat.py`, `store/migrations/011_inbound_conversation.sql`, `tests/ui_stream.py`, `tests/fixtures/app_golden/`
+- Create: `harness/stream.py`, `api/chat.py`, `tests/ui_stream.py`, `tests/fixtures/app_golden/`
 - Modify: `domain.py`, `harness/{brain,dispatcher,conversations}.py`, `store/repos/{state,conversations}.py`, `loop/runner.py`(`resubmit_inbound`), `tools/mcp_adapter.py`, `bot/{commands,telegram_io}.py`, `app.py`, `api/{models,server}.py`, `tests/{fakes,conftest}.py`
-- Test: `tests/test_api_chat.py`, `tests/test_dispatcher_app_channel.py`, `tests/test_app_golden.py`, `tests/test_migrations.py`, `tests/test_api_health.py`(01의 시험이 `LATEST_VERSION`과 비교하므로 고칠 숫자는 없다. `test_latest_version_is_11`과 `test_migrate_10_to_11_keeps_inbound_rows`를 더한다)
+- Test: `tests/test_api_chat.py`, `tests/test_dispatcher_app_channel.py`, `tests/test_app_golden.py`, `tests/test_migrations.py`, `tests/test_api_health.py`(마이그레이션은 더하지 않는다. 마지막 판은 010 그대로)
 
 **Interfaces**
 - Consumes: `Dispatcher._handle_messages`·`_drain_messages`·`_call_brain`, `StateRepo` 대기 메시지, `IdempotencyRepo`, `apply_action`, `command_of`, `build_planner_server` (SP1, 04)
 - Produces:
-- `011_inbound_conversation.sql`(빈 곳 15): `ALTER TABLE inbound_pending ADD COLUMN conversation_id INTEGER NULL REFERENCES conversations (id)`.
-- `harness/stream.py`: `StreamSink`(Protocol `emit`, `ping`, `disconnected`), `QueueSink`(`attach() -> Queue[bytes | None]`, `detach`, `close`, 붙으면 지난 조각을 다시 넣음, M8), `encode_sse`, `SSE_DONE`, `SSE_PING`, `PING_INTERVAL_S = 15`, `UiMessageWriter(sink, message_id)`(`start`, `status`, `start_step`, `text_start/delta/end`, `text(id, whole)`, `tool_input`, `tool_output`, `tool_error`, `finish_step`, `data_activity`, `finish`, `streamed_text`), `AppReplySender.send(out)`(두뇌 글 → `h-confirm` → 하네스 조각(09·13) → `data_activity` → `finish`, 끊기면 조용히 그만둠, M7).
+- 마이그레이션 없음(빈 곳 15, 스펙 5.1): `inbound_pending.conversation_id`는 SP1 `005_inbound_pending.sql`에 이미 있다. 앱 행은 `add_pending_inbound`에서 받을 때 고른 대화를 이 열에 미리 적고(`save_inbound_reply`가 덮어쓰는 것은 SP1과 같다), `resubmit_inbound`가 넘긴다. FK는 두지 않는다.
+- `harness/stream.py`: `StreamSink`(Protocol `emit`, `ping`, `disconnected`), `QueueSink`(`attach() -> Queue[bytes | None]`, `detach`, `close`, 붙으면 지난 조각을 다시 넣음, M8), `encode_sse`, `SSE_DONE`, `SSE_PING`, `PING_INTERVAL_S = 15`, `UiMessageWriter(sink, message_id)`(`start`, `status`, `start_step`, `text_start/delta/end`, `text(id, whole)`, `tool_input`, `tool_output`, `tool_error`, `finish_step`, `data_activity`, `finish`, `streamed_text`), `AppReplySender.send(out)`(두뇌 글 → 하네스 조각(09·13) → `data_activity`(확인 문구 `confirmation` 포함, 스펙 6.4.1) → `finish`. 앱 통로에는 `h-confirm` 글 조각이 없다, 끊기면 조용히 그만둠, M7).
 - `RunContext.stream`. `Inbound`에 `channel`, `client_msg_id`, `checkin_id`, `sink`, `conversation_id`. `Outbound`에 `channel`, `confirmation`, `writer`, `activity_ids`, `undo_ids`.
 - `Dispatcher(..., app_sender: AppReplySender | None = None)`(빈 곳 11), `_drain_messages(lead)`(M2), `route_app_message(at, *, conversation_id, checkin_id) -> Conversation`(동기, 빈 곳 2·13. 이 티켓: 열린 앱 `plan` → 요청한 앱 `chat`이 30분 안 → 30분 안 앱 `chat` → 새 앱 `chat`. 07이 회차 규칙을 앞에 넣는다), `attach_stream(client_msg_id, sink) -> bool`(M8). 앱 `Inbound`는 `conversation_id`의 대화로 가고, 그 대화가 닫혔으면 `route_app_message`가 다시 고른다.
-- `StateRepo`: `PendingInbound`에 `channel`, `client_msg_id`, `checkin_id`, `conversation_id`. `add_pending_inbound(update_id, text_redacted, sent_at, received_at, *, channel="telegram", client_msg_id=None, checkin_id=None, conversation_id=None)`, `next_app_inbound_id()`(−1, −2, …), `pending_by_client_msg_id`, `finish_app_inbound(update_id, *, client_msg_id, conversation_id, reply_text)`(M5). `resubmit_inbound`는 앱 행을 `Inbound(channel="app", sink=None, conversation_id=row.conversation_id, recovered=True)`로(M6).
+- `StateRepo`: `PendingInbound`에 `channel`, `client_msg_id`, `checkin_id`를 더한다(`conversation_id`는 SP1부터 있다, `state.py`). `add_pending_inbound`에 키워드 인자 `channel`, `client_msg_id`, `checkin_id`, `conversation_id`를 더한다: `add_pending_inbound(update_id, text_redacted, sent_at, received_at, *, channel="telegram", client_msg_id=None, checkin_id=None, conversation_id=None)`. 앱 행만 `conversation_id`를 적는다(스펙 5.1). `next_app_inbound_id()`(−1, −2, …), `pending_by_client_msg_id`, `finish_app_inbound(update_id, *, client_msg_id, conversation_id, reply_text)`(M5). `resubmit_inbound`는 앱 행을 `Inbound(channel="app", sink=None, conversation_id=row.conversation_id, recovered=True)`로(M6).
 - `build_options(..., include_partial_messages=False, fork_session=False)`. 이 티켓의 `ClaudeBrain.run`은 부분 메시지를 켜지 않는다. 앱이면 `system.md` + `channel_app.md`(빈 자리, 09가 채움).
 - `tools/mcp_adapter.py`: `call_tool(tools, ctx, name, args) -> dict`(`ctx.stream`이 있으면 `tool_input` → `tool_output(to_api_times(result))` 또는 `tool_error`), `tool_names_for(channel)`(둘 다 `TOOL_NAMES`).
 - `bot/commands.py`: `CommandDeps(tasks, conditions, state, router, clock, settings, apply)`, `run_command(cmd, text, deps, *, channel) -> str`(`/pause`·`/unpause`·`/done`은 내부 동작 `cmd_*`). 텔레그램 `_answer_command`도 이것.
 - `api/chat.py post_chat(request) -> web.StreamResponse`: 6.4.1 흐름(재생 → `attach_stream` → 명령 → `route_app_message` → `add_pending_inbound(next_app_inbound_id(), …, conversation_id=…)` → `submit_message`). 헤더 6.4.1, 15초 `: ping`(주입한 `sleep`), `messageId = m-<conversation_id>-<|inbound_id|>`.
 - `FakeBrain`은 `run_ctx.stream`이 있으면 도구를 `call_tool`로. `ListSink`.
 - `tests/ui_stream.py`: `parse_sse(body) -> list[dict]`(첫 `start`, `text-*` `id` 짝, 같은 `toolCallId`의 출력, 마지막 `finish`, `[DONE]`, AI SDK UI message stream의 조각 종류 밖은 오류), `normalize_sse(body) -> bytes`(`messageId` → `<id>`).
-- 기준 응답(빈 곳 9): `tests/test_app_golden.py`가 `BeEnv`로 `chat_add_task`, `chat_daily_cap`, `chat_replay`를 보내 `tests/fixtures/app_golden/<이름>.sse`, `headers.json`과 비교한다. `python -m pytest tests/test_app_golden.py --update-app-golden`(`tests/conftest.py` 옵션)이면 다시 쓴다.
+- 기준 응답(빈 곳 9): `tests/test_app_golden.py`가 `BeEnv`로 `chat_add_task`, `chat_daily_cap`, `chat_replay`를 보내 `tests/fixtures/app_golden/<이름>.sse`, `headers.json`과 비교한다. 네 번째 `chat_propose_tasks.sse`는 티켓 09가 더한다(스펙 16장은 네 개를 말한다). 06의 시험은 이 티켓의 세 파일만 기대한다. `python -m pytest tests/test_app_golden.py --update-app-golden`(`tests/conftest.py` 옵션)이면 다시 쓴다.
 
 **Slices**
-- [ ] `test_chat_stream_order_and_headers`(`FakeTurn([("add_task", {...})], "내일 치과를 추가할게요.")`): 순서가 정확히 `start, data-status, start-step, tool-input-available, tool-output-available, text-start, text-delta, text-end, finish-step, text-start, text-delta, text-end, data-activity, finish`, `[DONE]`. 두뇌 글은 `text-delta` 하나, `h-confirm` 글 `✓ 추가: 치과 → 내일`, 헤더 다섯
+- [ ] `test_chat_stream_order_and_headers`(`FakeTurn([("add_task", {...})], "내일 치과를 추가할게요.")`): 순서가 정확히 `start, data-status, start-step, tool-input-available, tool-output-available, text-start, text-delta, text-end, finish-step, data-activity, finish`, `[DONE]`. 두뇌 글은 `text-delta` 하나, `h-confirm` 글 조각 없음, `data-activity.data.confirmation == "✓ 추가: 치과 → 내일"`, 헤더 다섯
 - [ ] `test_tool_chunk_name_has_no_prefix_and_output_is_utc`, `test_daily_cap_rate_limit_login_are_text_chunks`(매개변수 3, `error` 조각 없음), `test_non_text_parts_get_non_text_reply`
 - [ ] `test_same_client_msg_id_replays_without_brain`, `test_disconnect_mid_stream_completes`(M7), `test_inflight_duplicate_attaches_single_brain_call`(M8), `test_ping_every_15s_while_queued`
 - [ ] `test_commands_in_app`: `/today` == `today_text`, 두뇌 없음, `/pause 3` 재요청은 다시 실행 안 함, `/plan 이사 준비`는 `kind == "plan"`
-- [ ] `test_parser_reads_spec_example`, `test_app_golden_matches_stream`(매개변수 3), `test_app_golden_files_parse`
+- [ ] `test_parser_reads_spec_example`, `test_app_golden_matches_stream`(매개변수 3), `test_app_golden_files_parse`(이 티켓의 세 파일, 09가 넷째를 더함)
 - [ ] `test_mixed_queue_batches_telegram_only`(`tests/test_dispatcher_app_channel.py`): 처리 중인 호출이 끝난 **뒤** 두뇌 호출 3회(텔레그램 묶음 1 + 앱 2), FakeSender 1개, 앱 싱크 둘이 각자 답
 - [ ] `test_app_done_writes_no_telegram_updates`, `test_recovered_app_row_replies_nowhere`(M6)
 - [ ] `test_resubmitted_app_row_keeps_conversation`: 재시작 뒤 같은 `conversation_id`, 닫혔으면 다시 고른 대화
@@ -414,7 +416,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **Slices**
 - [ ] `test_stream_events_become_text_deltas`: 가짜 SDK 메시지(`StreamEvent` 셋 + `ResultMessage`) → `ListSink`에 `text-start, text-delta×3, text-end`
 - [ ] `test_partial_messages_only_when_streaming`
-- [ ] `test_chat_stream_order_with_deltas`: `deltas=["내일 치과를 ", "추가할게요."]` → 순서 `start, data-status, start-step, text-start, text-delta, text-delta, text-end, tool-input-available, tool-output-available, finish-step, text-start, text-delta, text-end, data-activity, finish`
+- [ ] `test_chat_stream_order_with_deltas`: `deltas=["내일 치과를 ", "추가할게요."]` → 순서 `start, data-status, start-step, text-start, text-delta, text-delta, text-end, tool-input-available, tool-output-available, finish-step, data-activity, finish`(`h-confirm` 글 조각 없음, 확인 문구는 `data-activity.data.confirmation`)
 - [ ] 기준 응답을 `--update-app-golden`으로 다시 만들고 운영 앱 스레드에 바뀐 파일을 보낸다.
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
@@ -525,6 +527,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - [ ] `test_ui_and_card_tools_absent_from_telegram`, `test_app_prompt_includes_channel_app_only_for_app`
 - [ ] `test_harness_chunks_have_h_prefix`: 앱 대화 `propose_tasks` → `h_draft_1`
 - [ ] `test_pin_card_validates_against_its_own_component`, `test_card_activity_actor_secretary_and_undo_each`, `test_reorder_requires_all_pinned_ids`, `test_today_cards_filled_with_current_task_data`
+- [ ] 기준 응답 `tests/fixtures/app_golden/chat_propose_tasks.sse`: 앱 대화 `propose_tasks` → 하네스 `ui_todo_draft` 조각(`h_draft_*`, 출력 `data.todos`). `python -m pytest tests/test_app_golden.py --update-app-golden`으로 만들고, `test_app_golden_matches_stream`의 매개변수에 더한다(06의 셋 + 이것). 06처럼 조정자를 거쳐 운영 앱 스레드에 보낸다. 기다리지 않는다
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
 - [ ] `tests/test_api_e2e.py::test_pin_card_from_app_chat`: `POST /chat` → FakeBrain(앱) `ui_todo_list` + `pin_card` → 스트림에 `ui_todo_list` 조각, `GET /today.cards[0]`와 `data` → `card_pinned` 되돌리기 → `cards == []`. → `passed`
@@ -551,13 +554,13 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - `Tools(..., confirms=None, reply_until: Callable[[int], datetime] | None = None)`, `_request_confirm(ctx, action, args, summary) -> dict`(`origin="run_turn"`, 만료 = 답장 창 끝, ToolEvent·활동 `confirm_requested`, 결과 `{"status": "needs_confirm", "confirm_token", "summary"}`). `add_task`는 언제나 바로(A4).
 - `Outbound.confirms: list[tuple[str, str]]`, `confirm_keyboard(confirms)`(`✓ 확인: {summary 16자}` `k:a:<token>`, `✗ 그대로 두기` `k:x:<token>`), 줄 순서: 초안 → 확인 → 컨디션.
 - `bot/callbacks.py`: `k:a` → 토큰의 `action`·`args`로 `apply_action(confirm_token=…)`, `k:x` → `decline_confirm`, 정리된 토큰 → "이미 정리된 제안이에요."
-- 앱: `confirm_requested`마다 `h_confirm_<n>` `ui_confirm {summary, confirm_token, action, args}`, `checkin_cards`도 열린 토큰마다.
+- 앱: `checkin_cards`가 열린 토큰마다 `h_confirm_<run_id>_<n>` `ui_confirm {summary, confirm_token, action, args}`(`n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호, 스펙 6.4.5·10.1 A5). 회차 차례에서만 생기므로 `/chat` 스트림에는 없다.
 - `system.md` 원칙 12(A7).
 
 **Slices** (`tests/test_run_turn_confirm.py`)
 - [ ] `test_run_turn_detection_both_channels`, `test_run_turn_tools_need_confirm`(매개변수), `test_move_task_without_schedule_applies_in_run_turn`, `test_add_task_applies_in_run_turn`
 - [ ] `test_sp1_user_turn_behavior_unchanged`: `python -m pytest tests/test_tools_tasks.py tests/test_dispatcher_tools.py -q` → `0 failed`
-- [ ] `test_confirm_card_and_telegram_buttons`(64바이트 이하, `h_confirm_1`), `test_confirm_applies_with_activity_and_decline_changes_nothing`, `test_double_press_expired_or_stale_not_applied`, `test_token_survives_restart`
+- [ ] `test_confirm_card_and_telegram_buttons`(64바이트 이하, 회차 340의 첫 토큰 → `h_confirm_340_1`, 첫 토큰을 확인한 뒤에도 둘째는 `h_confirm_340_2`), `test_confirm_applies_with_activity_and_decline_changes_nothing`, `test_double_press_expired_or_stale_not_applied`, `test_token_survives_restart`
 
 **수용 확인 (가짜 두뇌 + 가짜 시계)**
 - [ ] `tests/test_api_e2e.py::test_morning_brief_proposal_needs_confirm`: 10/26(월) 09:00 tick, FakeBrain(회차) `set_priorities(day, …)` → 그대로, `GET /checkins/{id}.cards`에 `ui_confirm` → 그 값으로 `POST /actions` → 바뀜, 활동 `actor == "user"`. → `passed`
@@ -628,7 +631,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - [ ] `tests/test_api_e2e.py::test_seed_then_curve`: `run_seed_life(root, fixture, dry_run=False)` → 같은 루트로 `BeEnv` → `GET /curve?zoom=year`에 챕터 3·사건(민감 제외), `include_sensitive=true`에 확인된 민감 사건, `GET /status.titles` 개수 = 고점+전환점, `ladder == []`. → `passed`
 
 **마무리**
-- [ ] `python -m my_planner seed-life --help` 출력 확인(README 순서는 19).
+- [ ] `python -m my_planner seed-life --help` 출력 확인(README 순서는 19b).
 - [ ] **Review + Commit** `feat(curve): seed-life import CLI`
 
 ---
@@ -708,7 +711,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 - Produces:
 - `StatusRepo.grant(*, at, logical_date, source_kind, source_ref, amount, label, area=None) -> bool`(`ON CONFLICT DO NOTHING`, UPDATE·DELETE 함수 없음), `count_secretary_on(d)`.
 - 쌓는 자리는 9.1·4.3 표 그대로: X1/X2 `complete_task`(완료 순간 가장 큰 주기), X4, X6, X7은 그 도구, X3/X5/X8은 `Dispatcher.mark_answered`(`answered_at`과 한 `transaction(conn)`), X9는 하루 한 번 `apply_action(grant_rest_days)`, X10 `Tools.grant_xp(ctx, amount, reason)`(22/28개).
-- `level_up_line(before, after) -> str`: 텔레그램 확인 문구 끝, `h-confirm` 끝, `/actions`의 `xp`·`confirmation`.
+- `level_up_line(before, after) -> str`: 텔레그램 확인 문구 끝, 앱 `data-activity.confirmation` 끝, `/actions`의 `xp`·`confirmation`.
 - `status_text(snapshot) -> str`(11.4, 빈 스탯은 부록 A, 칭호는 첫 하나 + "외 {n}개"), `/status`, `HELP_TEXT` 줄(`run_command`라 앱도 같다).
 - `open_db(path, *, on_write: Callable[[str], None] | None = None)`(`set_trace_callback`, 시험 이음매).
 
@@ -830,21 +833,37 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 ---
 
-### 티켓 19: Vercel 배포, Tailscale serve, 운영 안내
+### 티켓 19a: Tailscale serve와 `cors_origins`
 
-**목표:** 대시보드를 Vercel에, 노트북 BE를 `tailscale serve`로 tailnet에 열고, 폰과 노트북 브라우저에서 연결한다. README 운영 안내.
-**막는 티켓:** 15, 17, 18
-**라벨:** `needs-laptop`(Vercel 계정, tailnet 관리 화면, 노트북 `.env`)
+**목표:** 노트북 BE를 `tailscale serve`로 tailnet에 열고, 운영 앱 출처를 `cors_origins`에 넣어 운영 앱이 실제 BE에 닿게 한다. 08 바로 뒤에 한다(대시보드 배포 19b를 기다리지 않는다).
+**막는 티켓:** 08
+**라벨:** `needs-laptop`(tailnet 관리 화면, 노트북 `.env`)
 
-**Files:** Modify `README.md`, `config.toml`(`cors_origins`, `cors_origin_regex`), 노트북 `.env`(커밋 안 함)
+**Files:** Modify `config.toml`(`cors_origins`, `cors_origin_regex`), 노트북 `.env`(커밋 안 함), `README.md`("API 열기" 단락)
 
-- [ ] tailnet: MagicDNS, HTTPS 인증서. 노트북: `gen-token` → `.env` `API_TOKEN`, `gen-vapid` → `VAPID_*`, `VAPID_SUBJECT=mailto:…`
-- [ ] Vercel: 루트 `web/dashboard`, 빌드 `npm run build`, 출력 `out`, 환경 변수는 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나(토큰·BE URL 없음), 분석 끔
-- [ ] `config.toml`: `cors_origins = ["https://<대시보드>.vercel.app", "https://<운영 앱>.vercel.app"]`, 미리보기는 팀 범위 정규식만. 다시 시작
+- [ ] tailnet: MagicDNS, HTTPS 인증서. 노트북: `gen-token` → `.env` `API_TOKEN`(43자 이상), `gen-vapid` → `VAPID_*`, `VAPID_SUBJECT=mailto:…`
+- [ ] `config.toml`: `cors_origins = ["https://<운영 앱>.vercel.app"]`(대시보드 출처는 19b에서 더한다), 미리보기는 팀 범위 정규식만. 다시 시작
 - [ ] `tailscale serve --bg --https=443 http://127.0.0.1:8787` → `tailscale serve status`에 `(tailnet only)`, `tailscale funnel status` → 꺼짐
-- [ ] 확인: `curl.exe -s -H "Authorization: Bearer $env:API_TOKEN" https://<노트북>.<tailnet>.ts.net/api/v1/health` → `"status":"ok"`, 토큰 없이 → `401`, `Origin: https://evil.vercel.app` → `Access-Control-Allow-Origin` 없음, 폰에서 설정 → "BE 켜짐", 화면 넷(PNA 권한 창은 S9 안내대로)
+- [ ] 확인: `curl.exe -s -H "Authorization: Bearer $env:API_TOKEN" https://<노트북>.<tailnet>.ts.net/api/v1/health` → `"status":"ok"`, 토큰 없이 → `401`, `Origin: https://evil.vercel.app` → `Access-Control-Allow-Origin` 없음, 운영 앱 출처의 사전 요청 → 허용 헤더(PNA 권한 창은 S9 안내대로)
+- [ ] README "API 열기": 위 명령, Funnel 금지, 토큰 바꾸기
+- [ ] **수용 확인**: 위 확인의 출력이 기대와 같고, `git status`에 `.env`, `data/`가 없다. 조정자를 거쳐 운영 앱 스레드에 BE 주소가 열렸다고 알린다(토큰은 보내지 않는다)
+- [ ] **Commit** `docs: open the API on the tailnet with tailscale serve`
+
+---
+
+### 티켓 19b: Vercel 대시보드 배포와 운영 안내
+
+**목표:** 대시보드를 Vercel에 올리고, 폰과 노트북 브라우저에서 19a의 BE에 연결한다. README 운영 안내를 마무리한다.
+**막는 티켓:** 15, 17, 18, 19a
+**라벨:** `needs-laptop`(Vercel 계정, 노트북 `.env`)
+
+**Files:** Modify `README.md`, `config.toml`(`cors_origins`에 대시보드 출처)
+
+- [ ] Vercel: 루트 `web/dashboard`, 빌드 `npm run build`, 출력 `out`, 환경 변수는 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나(토큰·BE URL 없음), 분석 끔
+- [ ] `config.toml`: `cors_origins`에 `"https://<대시보드>.vercel.app"`을 더한다(19a의 운영 앱 출처는 그대로). 다시 시작
+- [ ] 확인: 폰에서 설정 → "BE 켜짐", 화면 넷(PNA 권한 창은 S9 안내대로), 대시보드 출처의 사전 요청 → 허용 헤더
 - [ ] 폰과 노트북 Chrome의 개발자 도구 콘솔에서 화면 넷을 차례로 열어 CSP 위반(`Refused to …`)이 0건
-- [ ] README "API와 대시보드": 위 명령, Funnel 금지, 토큰 바꾸기, 시드 가져오기 순서 4단계(12장), PNA 안내(S9)
+- [ ] README "API와 대시보드": 19a 단락 + Vercel 설정, 시드 가져오기 순서 4단계(12장), PNA 안내(S9)
 - [ ] **수용 확인**: 위 확인의 출력이 기대와 같고, `git status`에 `.env`, `data/`가 없다
 - [ ] **Commit** `docs: deployment and operations guide for API and dashboard`
 
@@ -853,7 +872,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 ### 티켓 20: 노트북 수용 테스트
 
 **목표:** 완료 조건 1, 2, 5, 9, 10을 노트북·폰·Tailscale로 확인하고 `docs/acceptance/sp3-4-checklist.md`에 남긴다. 5는 11/29와 12/27 회고에서.
-**막는 티켓:** 19
+**막는 티켓:** 19b
 **라벨:** `needs-laptop`
 
 - [ ] `docs/acceptance/sp3-4-checklist.md`: 16장 "수동 수용 테스트" 표 + 아래, 단계마다 날짜·결과 칸.
@@ -875,12 +894,12 @@ web/dashboard/                   # Vercel 루트 디렉터리
 **막는 티켓:** 없음(02를 막는다)
 **라벨:** `ready-for-agent` + **Dahun 검토**
 
-**Files:** Modify 스펙(7.4, 6.4.1, 7.5, 4.3 표, 5.1(011 마이그레이션), 6.1·15장, 12장, 6.4.5, 6.4.7 표·카탈로그 판, 13.1·14장 CSP, 16장, 변경 기록), 이 계획(빈 곳 표 머리에 "스펙 반영: <PR>")
+**Files:** Modify 스펙(7.4, 6.4.1, 7.5, 4.3 표, 5.1(받을 때 고른 대화), 6.1·15장, 12장, 6.4.5, 6.4.7 표·카탈로그 판, 13.1·14장 CSP, 16장, 변경 기록), 이 계획(빈 곳 표 머리에 "스펙 반영: <PR>")
 
 - [ ] `git fetch origin && git switch -c docs/sp3-4-spec-contract origin/main`
 - [ ] 각 줄의 결정 칸을 그 절의 문장으로(티켓 번호는 뺀다). 시드 내용·실제 사건·점수는 넣지 않는다.
 - [ ] 변경 기록 한 줄: `| <날짜> | v4 | 구현 계획의 계약 결정(빈 곳 1~7, 9, 11, 13, 15) 반영 | SP3-4 구현 계획 |`(21b가 먼저 머지되면 `v5`)
-- [ ] 확인: `grep -c "ui_milestone_draft\|ui_chapter_draft" <스펙>` ≥ 2, `grep -n "2026-10-24.2\|011_inbound_conversation" <스펙>` 각 한 줄 이상, `git diff --stat`이 스펙과 이 계획뿐
+- [ ] 확인: `grep -c "ui_milestone_draft\|ui_chapter_draft" <스펙>` ≥ 2, `grep -n "2026-10-24.2" <스펙>` 한 줄 이상, `grep -n "005" <스펙>`의 5.1에 `inbound_pending.conversation_id` 문장(`011` 마이그레이션은 만들지 않는다), `git diff --stat`이 스펙과 이 계획뿐
 - [ ] **Commit** `docs(spec): fold SP3-4 plan contract decisions into the spec`, `git push -u origin docs/sp3-4-spec-contract`, PR(본문: 빈 곳 번호와 바꾼 절의 짝 표)
 - [ ] **수용 확인**: 머지 뒤 스펙만 읽고 02·06·12·16의 해당 부분을 쓸 수 있다(짝 표의 줄마다 스펙 문장이 있다).
 
@@ -914,6 +933,8 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 ## 스펙 빈 곳과 이 계획의 결정
 
+스펙 반영: 21a는 가지 `sp34/21a-spec-gaps`(PR 전, 스펙 변경 기록 v4), 21b는 아직.
+
 | # | 스펙 자리 | 빈 곳 | 이 계획의 결정 (티켓) | 스펙 반영 |
 |---|---|---|---|---|
 | 1 | 7.4 vs 1장 조건 11 | 모든 머리글에 `@telegram`/`@app`을 붙이면 SP1 시험(`"### 01:00 사용자 [1]\n\n…"`)이 깨진다 | 앱 머리글에만 ` @app`, 표시 없는 머리글은 `telegram` (02) | 21a |
@@ -930,7 +951,7 @@ web/dashboard/                   # Vercel 루트 디렉터리
 | 12 | 11.1-1 "컨디션 답 아래" | SP1 컨디션 버튼 답은 콜백 토스트라 키보드를 붙일 수 없다 | 회고 묶음의 컨디션 누름만 새 메시지로 답하고 거기에 1단계 키보드 (14) | 21b |
 | 13 | 4.3 표 | 앱 요청이 여는 `conversations`의 작성자가 없다 | 디스패처(`route_app_message`), 쓰기 경로 감시에 넣는다 (06, 15) | 21a |
 | 14 | 11.1 | 그 달 사다리가 이미 있을 때(사용자가 먼저 "이번 달 사다리 7") 1단계를 다시 물을지 | 그 달 `now`가 있으면 1단계를 묻지 않는다(11.1 "다음 회고가 두 번 묻지 않는다"와 같은 뜻) (14) | 21b |
-| 15 | 5.1, 7.5 M6 | 받을 때 고른 대화가 `inbound_pending`에 없어 재시작 뒤 다시 넣은 앱 행의 대화가 정해지지 않는다 | `011_inbound_conversation.sql`로 `inbound_pending.conversation_id`를 더하고 `resubmit_inbound`가 넘긴다. 닫혔으면 다시 고른다 (06) | 21a |
+| 15 | 5.1, 7.5 M6 | 받을 때 고른 대화가 `inbound_pending`에 없어 재시작 뒤 다시 넣은 앱 행의 대화가 정해지지 않는다 | SP1 `005`에 이미 있는 `inbound_pending.conversation_id`에 받을 때 적고 `resubmit_inbound`가 넘긴다. 닫혔으면 다시 고른다. 마이그레이션은 더하지 않는다(처음 결정한 `011_inbound_conversation.sql`은 열이 겹쳐 실패하므로 뺐다, 티켓 01 리뷰) (06) | 21a |
 
 21a·21b가 머지되면 스펙이 다시 기준이고, 이 표는 어디서 왔는지 기록으로만 남는다.
 
@@ -943,8 +964,8 @@ web/dashboard/                   # Vercel 루트 디렉터리
 
 스펙 절
 - 3 → 00 · 4.2~4.3 → 01, 04, 15 · 4.4 → File Structure
-- 5.1 → 01, 06(011), 07 · 5.2 → 04, 05 · 5.3 → 08, 09 · 5.4 → 11, 12 · 5.5 → 03, 15
+- 5.1 → 01, 06(받을 때 고른 대화), 07 · 5.2 → 04, 05 · 5.3 → 08, 09 · 5.4 → 11, 12 · 5.5 → 03, 15
 - 6.1 → 01 · 6.3.1 → 01, 08 · 6.3.2~6.3.4 → 02 · 6.3.5~6.3.6 → 03 · 6.4 `/schema` → 02 · 6.4.1 → 06, 06b · 6.4.2 → 04 · 6.4.3~6.4.4 → 05 · 6.4.5 → 02, 07 · 6.4.6 → 02 · 6.4.7 → 02, 09, 13 · 6.4.8~6.4.9 → 08
 - 7.1~7.2 → 07 · 7.3 → 01, 08 · 7.4 → 02 · 7.5 → 06
 - 8 → 03, 18 · 9.1 → 15 · 9.2~9.4 → 03, 11 · 10 → 11, 13, 15 · 10.1 → 10
-- 11.1~11.2 → 14 · 11.3 → 13 · 11.4 → 15 · 12 → 12 · 13 → 16~18 · 14 → 01, 08, 16, 19 · 15 → 01, 08 · 16 → 각 티켓, 15 · 17 → 확정됨 · 부록 A → 11, 13, 14, 15, 16, 문구 표 · 빈 곳 → 21a, 21b
+- 11.1~11.2 → 14 · 11.3 → 13 · 11.4 → 15 · 12 → 12 · 13 → 16~18 · 14 → 01, 08, 16, 19a, 19b · 15 → 01, 08 · 16 → 각 티켓, 15 · 17 → 확정됨 · 부록 A → 11, 13, 14, 15, 16, 문구 표 · 빈 곳 → 21a, 21b
