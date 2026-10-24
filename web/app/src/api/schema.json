@@ -5,14 +5,22 @@
       "$defs": {
         "ActionXp": {
           "additionalProperties": false,
+          "description": "이 요청에서 쌓인 경험치(9.1)와, 레벨이 올랐으면 새 레벨(9.2). 오르지 않았으면 `level_up`은 null.",
           "properties": {
             "gained": {
               "title": "Gained",
               "type": "integer"
             },
             "level_up": {
-              "title": "Level Up",
-              "type": "null"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level Up"
             }
           },
           "required": [
