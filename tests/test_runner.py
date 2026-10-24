@@ -682,3 +682,38 @@ async def test_clock_backwards_is_not_a_resume(tmp_path, conn, state):
     with pytest.raises(Stop):
         await runner.run_forever(interval=60)
     assert resumed == []
+
+
+# --- 릴리스 흐름 5.2: role = "dev"는 회차를 만들지도 따라잡지도 않는다 ---
+
+
+def test_checkins_off_creates_no_runs_but_housekeeping_runs(mon_morning, conn, state):
+    from my_planner.domain import ConversationKind
+
+    env = _with_router(mon_morning, conn)
+    env.runner = Runner(
+        clock=env.clock, settings=env.settings, runs=env.runs, state=state, dispatcher=env.dispatcher,
+        router=env.router, checkins=False,
+    )
+    chat = env.convs.open(ConversationKind.chat, date(2026, 10, 26))
+    env.clock.advance(minutes=31)
+    seen = []
+    env.runner.register_daily(seen.append)
+    env.runner.tick()
+    assert env.dispatcher.submitted == []
+    assert env.runs.between(kst(2026, 10, 19, 0, 0), env.clock.now()) == []
+    assert env.convs.get(chat.id).closed_at is not None  # 만료된 대화 닫기는 돈다
+    assert seen == [date(2026, 10, 26)]  # 하루 한 번 작업도 돈다
+    assert from_iso(state.get("last_seen_at")) == env.clock.now()
+
+
+def test_checkins_off_no_return_run_after_long_gap(tmp_path, conn, state):
+    woke = kst(2026, 10, 25, 18, 30)
+    env = _gap_env(tmp_path, conn, state, kst(2026, 10, 24, 17, 0), woke)
+    env.runner = Runner(
+        clock=env.clock, settings=env.settings, runs=env.runs, state=state, dispatcher=env.dispatcher,
+        checkins=False,
+    )
+    env.runner.tick()
+    assert env.dispatcher.submitted == []
+    assert env.runs.between(kst(2026, 10, 1, 0, 0), woke) == []

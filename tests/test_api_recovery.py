@@ -144,3 +144,18 @@ async def test_recovery_routes_in_schema_bundle(tmp_path):
         body = await (await env.get("/schema")).json()
     assert {"ClientErrorBody", "RecoveryNoticeBody"} <= set(body["models"])
     jsonschema.Draft202012Validator(schema_bundle()["models"]["ClientErrorBody"]).validate(GOOD)
+
+
+async def test_internal_notify_dev_role_only_logs(tmp_path, caplog):
+    # 릴리스 흐름 5.2: 개발용 BE는 보낼 통로가 없다. 로그만 남기고 응답 모양은 그대로다
+    async with BeEnv.start(tmp_path, start=MON_0900, overrides={"runtime": {"role": "dev"}}) as env:
+        before = _counts(env)
+        with caplog.at_level(logging.INFO, logger="my_planner"):
+            resp = await env.post("/internal/notify", json={"text": "비밀문구", "kind": "recovery"})
+        body = await resp.json()
+        assert env.sender.sent == []
+        assert _counts(env) == before
+    assert resp.status == 200 and body == {"channel": "telegram"}
+    assert any(r.msg == "recovery_notice_logged" and r.role == "dev" for r in caplog.records)
+    assert not any(r.msg == "recovery_notice_sent" for r in caplog.records)
+    assert "비밀문구" not in caplog.text

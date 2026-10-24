@@ -1,4 +1,7 @@
-"""진입점: 창 숨김, 단일 실행 잠금, 로그, DB, 조립, 폴링, 종료 (스펙 5.1)."""
+"""진입점: 창 숨김, 단일 실행 잠금, 로그, DB, 조립, 폴링, 종료 (스펙 5.1).
+
+`[runtime] role = "dev"`(릴리스 흐름 스펙 5.2)이면 텔레그램 앱·폴링을 띄우지 않고 보내기는 로그로만 남긴다.
+"""
 
 from __future__ import annotations
 
@@ -22,7 +25,11 @@ from telegram import Bot, CallbackQuery
 from my_planner.api.health import ErrorCounter
 from my_planner.api.server import ApiDeps, build_app, start_api, stop_api
 from my_planner.bot.callbacks import handle_callback
-from my_planner.bot.telegram_io import TelegramSender, build_application
+from my_planner.bot.telegram_io import (
+    DisabledTelegramSender,
+    TelegramSender,
+    build_application,
+)
 from my_planner.clock import Clock, SystemClock, logical_date, to_iso
 from my_planner.config import (
     API_TOKEN_MIN_CHARS,
@@ -123,6 +130,7 @@ def _run_locked(root: Path, console: str) -> int:
     log.info("starting", extra={"pid": os.getpid(), "console": console, "root": str(settings.paths.root)})
     if console == "unavailable":
         log.warning("console_hide_unavailable")
+    log.info("runtime_role", extra={"role": settings.runtime.role})
 
     try:
         asyncio.run(_serve(settings))
@@ -290,7 +298,7 @@ def build_be(
     )
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
-        on_resume=on_resume, sleep=sleep,
+        on_resume=on_resume, sleep=sleep, checkins=settings.runtime.role == "prod",  # dev는 회차·따라잡기 끔
     )
     # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
@@ -348,6 +356,16 @@ def _reply_until(runs: RunsRepo, settings: Settings, run_id: int) -> datetime:
     return reply_until(run, runs=runs, settings=settings)
 
 
+def _bot_token(settings: Settings) -> str:
+    assert settings.telegram_bot_token is not None, "role = prod에는 텔레그램 토큰이 있다(설정 검증)"
+    return settings.telegram_bot_token.get_secret_value()
+
+
+def _owner(settings: Settings) -> int:
+    assert settings.owner_telegram_id is not None, "role = prod에는 OWNER_TELEGRAM_ID가 있다(설정 검증)"
+    return settings.owner_telegram_id
+
+
 def _api_token(settings: Settings) -> str | None:
     """API를 열 토큰. 꺼져 있으면 None, 없거나 43자 미만이면 경고를 남기고 None(계획 빈 곳 4). 값은 남기지 않는다."""
     if not settings.api.enabled:
@@ -401,13 +419,15 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
     db_path = paths.state_dir / DB_FILE
     # 3. DB 열기, 무결성 검사, 마이그레이션. 검사가 실패하면 안전 모드(API는 /health만)
     checked = _open_checked(db_path)
+    dev = settings.runtime.role == "dev"  # 텔레그램 없음: Bot·앱·폴링을 만들지 않는다
     if checked is None:
-        bot = Bot(settings.telegram_bot_token.get_secret_value())
+        bot = None if dev else Bot(_bot_token(settings))
         api = await _open_api(
             settings, clock, errors, read_conn=None, dispatcher=None, polling_state=lambda: "stopped", safe_mode=True
         )
         try:
-            await enter_safe_mode(paths.state_dir, TelegramSender(bot, settings.owner_telegram_id))
+            safe_sender: Sender = DisabledTelegramSender() if bot is None else TelegramSender(bot, _owner(settings))
+            await enter_safe_mode(paths.state_dir, safe_sender)
         finally:
             await stop_api(api)
         return
@@ -415,11 +435,12 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
     try:
         log.info("db_ready", extra={"schema_version": migrate(conn)})
         # 조립: Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
-        bot = Bot(settings.telegram_bot_token.get_secret_value())
+        bot = None if dev else Bot(_bot_token(settings))
         restarting: list[asyncio.Task[None]] = []  # 진행 중인 폴링 재시작(종료가 끝날 때까지 기다린다)
 
         async def _restart() -> None:
             # 지난 재시작이 안 됐으면 이미 멈춰 있다. 멈춘 Updater를 다시 멈추면 RuntimeError라 가드한다
+            assert application is not None
             if application.updater.running:
                 await application.updater.stop()
             await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
@@ -444,11 +465,11 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 workdir=paths.state_dir / "brain-workdir",
                 max_turns=settings.limits.max_turns,
             ),
-            sender_factory=lambda tasks: TelegramSender(
-                bot, settings.owner_telegram_id, tasks=tasks, curve=CurveRepo(tasks.conn, clock),
+            sender_factory=lambda tasks: DisabledTelegramSender() if bot is None else TelegramSender(
+                bot, _owner(settings), tasks=tasks, curve=CurveRepo(tasks.conn, clock),
                 habits=HabitsRepo(tasks.conn, clock),  # 저녁 체크인의 습관 줄(SP7 5.7)
             ),
-            on_resume=restart_polling,
+            on_resume=None if bot is None else restart_polling,
             keep_awake=keep_awake,
         )
         runner, dispatcher = parts.runner, parts.dispatcher
@@ -465,27 +486,31 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
             log.exception("inbound_resubmit_error")
         # 5. 첫 실행이면 installed_at 기록
         runner.ensure_installed()
-        application = build_application(
+        application = None if bot is None else build_application(
             settings, dispatcher, parts.state, parts.transcripts,
             bot=bot, clock=clock, tools=parts.tools, callbacks=parts.callbacks, router=parts.router,
             apply=dispatcher.apply_action,
         )
 
         def polling_state() -> str:
+            if application is None:
+                return "stopped"
             if runner.polling_down:
                 return "down"
             return "running" if application.updater.running else "stopped"
 
         # 6. 첫 tick 판정 → 폴링 시작 → API 열기 → 1분 tick
-        async with application:
-            await application.start()
+        async with application if application is not None else contextlib.AsyncExitStack():
+            if application is not None:
+                await application.start()
             dispatcher.start()
             try:
                 runner.tick()
             except Exception:  # 첫 tick이 안 돼도 폴링과 1분 tick은 시작한다
                 log.exception("tick_error")
-            await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
-            log.info("polling_started")
+            if application is not None:
+                await application.updater.start_polling(allowed_updates=ALLOWED_UPDATES, drop_pending_updates=False)
+                log.info("polling_started")
             api = await _open_api(
                 settings, clock, errors, read_conn=lambda: open_ro(db_path), dispatcher=dispatcher,
                 polling_state=polling_state, transcripts=parts.transcripts,
@@ -503,9 +528,10 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                     with contextlib.suppress(Exception):
                         await task
                 await stop_api(api)
-                if application.updater.running:
-                    await application.updater.stop()
-                await application.stop()
+                if application is not None:
+                    if application.updater.running:
+                        await application.updater.stop()
+                    await application.stop()
                 await dispatcher.stop(SHUTDOWN_TIMEOUT_S)
     finally:
         conn.close()

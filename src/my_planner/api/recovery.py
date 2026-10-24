@@ -4,6 +4,8 @@
 - `/internal/notify`는 기존 고정 안내 길(`Dispatcher.send_notice`)로 실제 통로에 보낸다. 두뇌와 먼저 보낸 메시지 수
   (`proactive_messages`)를 건드리지 않는다. 로그에는 통로만 남기고 본문은 남기지 않는다.
 - `/client-errors`의 검증 실패는 `422`(스펙 3.3), `/internal/notify`는 다른 본문처럼 `400`이다.
+- role = "dev"(릴리스 흐름 스펙 5.2)는 보낼 통로가 없다: `/internal/notify`는 로그(`recovery_notice_logged`)만 남기고
+  응답 모양은 그대로(`channel: telegram`, 텔레그램 자리의 로그 전송과 같다)다. 대화 기록에도 남기지 않는다.
 """
 
 from __future__ import annotations
@@ -57,6 +59,9 @@ async def post_internal_notify(request: web.Request, deps: ApiDeps) -> web.Strea
         notice = RecoveryNoticeBody.model_validate(body)
     except ValidationError:
         return error_response(400, "invalid_request", BAD_BODY)
+    if deps.settings.runtime.role == "dev":
+        log.info("recovery_notice_logged", extra={"role": "dev", "chars": len(notice.text)})
+        return web.json_response(dump(RecoveryNoticeSent, {"channel": "telegram"}))
     assert deps.dispatcher is not None
     channel = await deps.dispatcher.send_notice(notice.text)
     if channel is None:

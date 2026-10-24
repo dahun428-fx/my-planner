@@ -89,3 +89,30 @@ def test_environ_takes_precedence_over_env_file(tmp_path: Path) -> None:
 def test_day_boundary_accepts_seconds(tmp_path: Path) -> None:
     (tmp_path / "config.toml").write_text('day_boundary = "04:00:00"\n', encoding="utf-8")
     assert load_config(tmp_path, environ={}).day_boundary == time(4, 0)
+
+
+def test_local_toml_overrides_api_port(tmp_path: Path) -> None:
+    # 릴리스 흐름 5.2: medic-dev가 개발용 BE(8788)를 검사한다. 나머지 [api] 키는 config.toml 그대로
+    _write_root(tmp_path)
+    (tmp_path / "config.local.toml").write_text('[api]\nport = 8788\n[schedule.review.week]\ntime = "19:00"\n',
+                                                encoding="utf-8")
+    cfg = load_config(tmp_path)
+    assert cfg.api_base == "http://127.0.0.1:8788/api/v1"
+    assert cfg.api_enabled is True
+    assert cfg.schedule["review"]["week"] == {"day": "sun", "time": "19:00"}
+    assert cfg.schedule["morning_brief"]["weekday"] == "09:00"
+
+
+def test_medic_local_toml_overlays_medic_toml(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    (tmp_path / "config.medic.local.toml").write_text(
+        'watch_interval_s = 30\nbranch = "develop"\nheartbeat = false\n', encoding="utf-8"
+    )
+    cfg = load_config(tmp_path)
+    assert cfg.watch_interval_s == 30
+    assert cfg.max_notices_per_day == 5 and cfg.enabled is True  # 덮어쓰지 않은 키는 그대로(모르는 키는 무시)
+
+
+def test_without_local_files_unchanged(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    assert load_config(tmp_path).api_base == "http://127.0.0.1:8787/api/v1"

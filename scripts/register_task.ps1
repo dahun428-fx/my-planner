@@ -15,17 +15,20 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1
   powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Root E:\my-planner -NoWake
+  powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1 -Root E:\my-planner-dev -TaskName my-planner-dev
+    개발용 BE(배포 흐름 스펙 5.2). 이름이 my-planner가 아니면 깨우기 작업은 만들지도 지우지도 않습니다(회차가 없고, 운영 깨우기 작업을 건드리지 않게).
 #>
 [CmdletBinding()]
 param(
     [string]$Root = '',
+    [string]$TaskName = 'my-planner',
     [switch]$NoWake
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$MainTask = 'my-planner'
+$MainTask = $TaskName
 $WakeTask = 'my-planner-wake'
 $DaysXml = @{
     weekday = '<Monday /><Tuesday /><Wednesday /><Thursday /><Friday />'
@@ -35,6 +38,12 @@ $DaysXml = @{
 # Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
+# 개발용 체크아웃을 운영 작업 이름으로 등록하면 운영 my-planner·my-planner-wake를 덮어쓴다
+$localCfg = Join-Path $Root 'config.local.toml'
+if ($TaskName -eq 'my-planner' -and (Test-Path -LiteralPath $localCfg) -and
+    (Select-String -LiteralPath $localCfg -Pattern '^\s*role\s*=\s*"dev"' -Quiet)) {
+    throw "개발용 체크아웃입니다(role = dev). -TaskName my-planner-dev로 등록하세요: $Root"
+}
 $python = Join-Path $Root '.venv\Scripts\python.exe'
 $pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
 foreach ($exe in @($python, $pythonw)) {
@@ -94,8 +103,10 @@ $common = @{
 # 1. 상시 작업
 Register-FromXml $MainTask (Expand-Template 'task_my-planner.xml.tmpl' $common)
 
-# 2. 깨우기 작업
-if ($NoWake) {
+# 2. 깨우기 작업 (운영 작업만)
+if ($MainTask -ne 'my-planner') {
+    Write-Output "깨우기 작업은 운영($WakeTask)만 둡니다: $MainTask 는 건너뜀"
+} elseif ($NoWake) {
     if (Get-ScheduledTask -TaskName $WakeTask -ErrorAction SilentlyContinue) {
         Unregister-ScheduledTask -TaskName $WakeTask -Confirm:$false
         Write-Output "깨우기 작업을 지웠습니다(-NoWake): $WakeTask"
