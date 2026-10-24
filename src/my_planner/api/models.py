@@ -552,6 +552,48 @@ class SchemaBundle(_Model):
     models: dict[str, dict[str, Any]]
 
 
+class ActionRequestBody(_Model):
+    """`POST /actions` 요청 (6.4.2). `client_msg_id`는 필수다(6.1 중복 방지)."""
+
+    action: str = Field(min_length=1)
+    args: dict[str, Any] = Field(default_factory=dict)
+    client_msg_id: str = Field(min_length=1, max_length=200)
+    confirm_token: str | None = None
+
+
+class ActionXp(_Model):
+    gained: int
+    level_up: Any  # 티켓 15 전까지 null
+
+
+class ActionApplied(_Model):
+    """적용(200). `undo_id`는 되돌릴 수 있을 때만 있고 값은 `activity_id`와 같다."""
+
+    status: Literal["applied"]
+    activity_id: int | None
+    undo_id: int | None = None
+    result: dict[str, Any]
+    confirmation: str | None
+    xp: ActionXp
+
+
+class ActionNeedsConfirm(_Model):
+    """확인 필요(200). 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다(10분)."""
+
+    status: Literal["needs_confirm"]
+    confirm_token: str
+    summary: str
+    expires_at: str
+
+
+class ActionRejected(_Model):
+    """거절(422). `error.message`는 도구의 오류 문구다."""
+
+    status: Literal["rejected"]
+    activity_id: None
+    error: ErrorDetail
+
+
 def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -578,6 +620,10 @@ MODELS: dict[str, type[BaseModel]] = {
     "Messages": Messages,
     "UiCatalog": UiCatalog,
     "SchemaBundle": SchemaBundle,
+    "ActionRequestBody": ActionRequestBody,
+    "ActionApplied": ActionApplied,
+    "ActionNeedsConfirm": ActionNeedsConfirm,
+    "ActionRejected": ActionRejected,
 }
 
 

@@ -43,11 +43,18 @@ from my_planner.store.repos.state import (
     PAUSE_UNTIL_KEY,
 )
 from my_planner.store.reviews import save_weekly_review
+from my_planner.tools.actions import ActionDeps, ActionRequest, ActionResult
+from my_planner.tools.actions import apply_action as _apply_action
 from my_planner.tools.confirmations import render_confirmations
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.activity import (
+        ActivityRepo,
+        ConfirmsRepo,
+        IdempotencyRepo,
+    )
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import Conversation, ConversationsRepo
@@ -193,6 +200,9 @@ class Dispatcher:
         keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         deliveries: DeliveriesRepo | None = None,
+        activity: ActivityRepo | None = None,
+        idempotency: IdempotencyRepo | None = None,
+        confirms: ConfirmsRepo | None = None,
     ) -> None:
         self.brain = brain
         self.sender = sender
@@ -207,6 +217,9 @@ class Dispatcher:
         self.conditions = conditions
         self.data_dir = data_dir
         self.deliveries = deliveries  # None이면 SP1과 같다(전달 기록 없음)
+        self.activity = activity
+        self.idempotency = idempotency
+        self.confirms = confirms
         self._sleep = sleep
         self._queue: asyncio.PriorityQueue[tuple[int, int, Any]] = asyncio.PriorityQueue()
         self._awake = _AwakeRefs(keep_awake, lambda: not self._queue.empty())
@@ -252,6 +265,17 @@ class Dispatcher:
         for t in list(self._timers):
             t.cancel()
         self._timers.clear()
+
+    # --- 즉시 갈래 (SP3-4 스펙 4.3) ---
+
+    def apply_action(self, req: ActionRequest) -> ActionResult:
+        """두뇌 없이 도구 함수 하나를 부른다. 동기 함수이고 안에서 `await`하지 않는다(`tools/actions.py`)."""
+        assert self.tools is not None, "즉시 갈래에는 도구가 있어야 한다"
+        deps = ActionDeps(
+            tools=self.tools, clock=self.clock, activity=self.activity, idempotency=self.idempotency,
+            confirms=self.confirms,
+        )
+        return _apply_action(deps, req)
 
     def submit_message(self, m: Inbound) -> None:
         # 받은 때를 활동으로 기록한다. 앞선 두뇌 호출을 기다리는 동안 tick이 대화를 만료로 닫지 않는다
@@ -760,7 +784,8 @@ class Dispatcher:
 
         컨디션 버튼을 붙이는 회차면 두뇌가 알고 쓰도록 `## 컨디션 버튼`을 덧붙인다.
         """
-        run_ctx = RunContext(conversation_id=conv.id, run_id=run.id, events=[])
+        # 회차 첫 호출의 활동 통로는 `scheduler`다(6.4.4)
+        run_ctx = RunContext(conversation_id=conv.id, run_id=run.id, events=[], activity_channel="scheduler")
         prompt = _join(
             *(prompts.load(LOOP_PROMPTS[r.loop]) for r in (run, *merged)),
             self._preamble(False, merged=[m.loop.value for m in merged] or None),

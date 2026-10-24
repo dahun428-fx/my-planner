@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
 
+from my_planner.api.actions import post_actions
 from my_planner.api.auth import AuthLimiter, bearer_ok
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
@@ -178,6 +179,20 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
 )
 
 
+def write_handler(view: Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]) -> Handler:
+    """쓰기 처리기: 쓰기는 디스패처(`ApiDeps.dispatcher`)로만 한다(ADR 0007). 읽기 연결은 열지 않는다."""
+
+    async def handler(request: web.Request) -> web.StreamResponse:
+        return await view(request, request.app[DEPS_KEY])
+
+    return handler
+
+
+WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]], ...] = (
+    ("/actions", post_actions),
+)
+
+
 def build_app(deps: ApiDeps) -> web.Application:
     cfg = deps.settings.api
     app = web.Application(
@@ -195,6 +210,8 @@ def build_app(deps: ApiDeps) -> web.Application:
     app.router.add_get(HEALTH_PATH, _health)
     for path, view in READ_ROUTES:
         app.router.add_get(API_PREFIX + path, read_handler(view))
+    for path, write in WRITE_ROUTES:
+        app.router.add_post(API_PREFIX + path, write_handler(write))
     return app
 
 
