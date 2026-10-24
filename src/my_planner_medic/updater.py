@@ -59,7 +59,6 @@ log = logging.getLogger(__name__)
 
 RESTART_PATHS = ("src/", "requirements.lock", "pyproject.toml", "config.toml", "scripts/")
 MEDIC_PATH = "src/my_planner_medic"
-WEB_PARTS = ("app", "dashboard", "vercel")
 FAIL_KINDS = ("exception", "late_run", "no_reply", "health")  # 5장 6단계(+ 헬스 연속 실패)
 HEALTH_WAIT = timedelta(minutes=3)
 HEALTH_POLL_S = 10

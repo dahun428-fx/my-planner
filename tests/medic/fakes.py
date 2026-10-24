@@ -274,6 +274,7 @@ class FakeNotifier:
         self.fixed_calls: list[tuple[str, str]] = []
         self.gave_up_calls: list[tuple[str, bool, str, bool]] = []
         self.daily_calls: list[tuple[str, str]] = []
+        self.flushes = 0
 
     def fixed(self, pr_title: str, pr_url: str) -> None:
         self.fixed_calls.append((pr_title, pr_url))
@@ -283,6 +284,9 @@ class FakeNotifier:
 
     def daily(self, text: str, key: str) -> None:
         self.daily_calls.append((text, key))
+
+    def flush_spill(self) -> None:
+        self.flushes += 1
 
 
 SCHEDULE = {

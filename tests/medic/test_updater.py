@@ -165,8 +165,8 @@ def make_env(tmp_path: Path, *, repairs: list[int] | None = None, **cfg: Any) ->
     shell.on("git", "symbolic-ref", returns=(0, f"refs/heads/{config.branch}\n"))
     store = MedicStore(tmp_path / "state" / "medic.db")
     gh = GitHub(http, TOKEN, REPO)
-    watcher = Watcher(config, store, gh, http, clock)
     notifier = FakeNotifier()
+    watcher = Watcher(config, store, gh, http, clock, notifier)
     tasks = TaskControl(
         shell, tmp_path, name=config.be_task_name, sleep=lambda s: clock.advance(seconds=s),
         monotonic=lambda: clock.now().timestamp(), own_pid=4242,

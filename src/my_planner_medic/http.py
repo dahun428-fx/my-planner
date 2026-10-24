@@ -8,6 +8,7 @@ from __future__ import annotations
 import http.client
 import json as _json
 import logging
+import re
 import urllib.error
 import urllib.request
 from email.message import Message
@@ -48,9 +49,14 @@ def _headers(msg: Message | None) -> dict[str, str]:
     return {k.lower(): v for k, v in msg.items()} if msg is not None else {}
 
 
+_SECRET_SEGMENT = re.compile(r"^bot.+")  # 텔레그램: /bot<토큰>/sendMessage
+
+
 def _where(url: str) -> str:
+    """로그용 호스트·경로. 경로에 비밀이 들어 있을 수 있는 칸(텔레그램 봇 토큰)은 가린다."""
     parts = urlsplit(url)
-    return f"{parts.hostname}{parts.path}"
+    path = "/".join("bot***" if _SECRET_SEGMENT.match(seg) else seg for seg in parts.path.split("/"))
+    return f"{parts.hostname}{path}"
 
 
 class UrllibHttp:

@@ -204,6 +204,16 @@ class GitHub:
                 return str(st.get("state", "unknown"))
         return "unknown"
 
+    def commit_states(self, sha: str, context_prefix: str) -> dict[str, str]:
+        """커밋 상태 중 컨텍스트가 `context_prefix`로 시작하는 것들의 {컨텍스트: state}."""
+        body = self._call("GET", f"/commits/{sha}/status")
+        statuses = body.get("statuses") if isinstance(body, dict) else None
+        return {
+            str(st["context"]): str(st.get("state", "unknown"))
+            for st in statuses or []
+            if isinstance(st, dict) and str(st.get("context", "")).startswith(context_prefix)
+        }
+
     def repairs_in_range(self, base: str, head: str) -> list[int]:
         """`base...head` 커밋 메시지의 `Repairs #N`(처음 나온 순서, 중복 없이)."""
         body = self._call("GET", f"/compare/{base}...{head}")
