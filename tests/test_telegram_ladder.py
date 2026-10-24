@@ -198,3 +198,109 @@ def test_ladder_callback_shapes():
     assert _parse_ladder("l:2026-11:f:skip") == ("2026-11", "f", None)
     for bad in ("l:2026-11:n:skip", "l:2026-13:n:1", "l:2026-11:n:11", "l:2026-11:x:1", "l:202611:n:1", None):
         assert _parse_ladder(bad) is None
+
+
+# --- 슬라이스 4: 이미 기록한 달, 분기 영역 점수, 답장 창 뒤, 건너뛴 회고 ---
+
+SUN_1227 = kst(2026, 12, 27, 18, 0)
+AREA_ASK_Q3 = (
+    "이번 분기 영역 점수도 여쭤볼게요. 1~10으로 답해 주세요. 지난 분기: 커리어 7 · 경제 5. "
+    "예: 커리어 7 경제 5 건강 6 관계 8 배움 7 삶의 질 6"
+)
+
+
+async def test_ladder_already_recorded_this_month_not_asked(tmp_path):
+    # 사용자가 먼저 "이번 달 사다리 7"이라고 해 두었다(빈 곳 14): 그 달 `now`가 있으면 1단계를 묻지 않는다
+    script = [FakeTurn([], "꾸민 답")]
+    async with _start(tmp_path, script=script) as env:
+        _, body = await env.action("record_ladder_score", {"period": "2026-11", "now": 7})
+        assert body["status"] == "applied"
+        run_id, mid = await _review(env)
+        review_msg = env.sender.sent[0]
+        await env.press("c:2026-11-29:4", message_id=mid)
+        toast = env.bot.answers[-1][1]
+        env.clock.advance(minutes=5)
+        await env.telegram("꾸민 사용자 글")
+        reply = env.sender.sent[-1]
+        detail = await (await env.get(f"/checkins/{run_id}")).json()
+
+    assert review_msg.ladder is None and review_msg.ask_condition_for == date(2026, 11, 29)
+    assert toast == "컨디션 4 기록했어요."
+    assert len(env.sender.sent) == 2 and reply.text == "꾸민 답" and reply.ladder is None
+    assert [c["component"] for c in detail["cards"]] == []  # 컨디션도 사다리도 기록됐다
+
+
+async def test_quarter_area_prompt_with_previous_scores(tmp_path):
+    from curve_sql import area_scores
+
+    async with _start(tmp_path, at=SUN_1227 + timedelta(seconds=30)) as env:
+        area_scores(env.conn, "2026-Q3", career=7, finance=5)
+        env.conn.commit()
+        _, mid = await _review(env)
+        await env.press("c:2026-12-27:4", message_id=mid)
+        step1 = env.sender.sent[-1]
+        await env.press("l:2026-12:n:6")
+        await env.press("l:2026-12:f:8")
+        done = env.sender.sent[-1]
+
+    assert step1.ladder == ("2026-12", "n")
+    assert done.text == f"기록했어요: 지금 6, 5년 뒤 8\n\n{AREA_ASK_Q3}"
+    assert done.ladder is None
+
+
+async def test_quarter_without_ladder_step_asks_areas_after_condition(tmp_path):
+    from curve_sql import ladder
+
+    # 그 달 사다리는 이미 있다: 컨디션 다음 첫 단계는 영역 점수 묻기(지난 분기 점수가 없으면 그 문장을 뺀다)
+    async with _start(tmp_path, at=SUN_1227 + timedelta(seconds=30)) as env:
+        ladder(env.conn, "2026-12", now=5)
+        env.conn.commit()
+        _, mid = await _review(env)
+        await env.press("c:2026-12-27:4", message_id=mid)
+        step = env.sender.sent[-1]
+
+    assert step.text == (
+        "컨디션 4 기록했어요.\n\n이번 분기 영역 점수도 여쭤볼게요. 1~10으로 답해 주세요. "
+        "예: 커리어 7 경제 5 건강 6 관계 8 배움 7 삶의 질 6"
+    )
+    assert step.ladder is None
+
+
+async def test_late_button_after_window_records_without_next_step(tmp_path):
+    async with _start(tmp_path) as env:
+        await _to_step1(env)
+        sent = len(env.sender.sent)
+        # 답장 창(회고 24시간)은 11/30 18:00에 끝났다. 버튼은 그대로 기록만 한다
+        env.clock.set(kst(2026, 12, 1, 10, 0))
+        assert await env.press("l:2026-11:n:6") == "recorded"
+        late_now = env.bot.answers[-1][1]
+        assert await env.press("l:2026-11:f:8") == "recorded"
+        late_future = env.bot.answers[-1][1]
+        ladder = env.parts.curve.ladder("2026-11")
+
+    assert len(env.sender.sent) == sent  # 다음 단계는 보내지 않는다
+    assert late_now == "기록했어요: 지금 6"
+    assert late_future == "기록했어요: 지금 6, 5년 뒤 8"
+    assert (ladder.now, ladder.future) == (6, 8)
+
+
+async def test_late_skipped_review_next_review_does_not_ask_twice(tmp_path):
+    from my_planner.domain import Cadence, LoopKey, SkipReason
+
+    # 11/29 월말 회고가 늦어 skipped(late): 11월 사다리는 빈 채로 둔다. 12/6 회고는 11월을 다시 묻지 않는다
+    async with _start(tmp_path, at=kst(2026, 12, 6, 18, 0) + timedelta(seconds=30)) as env:
+        runs = env.parts.runs
+        late = (runs.ensure(LoopKey.evening_checkin, SUN_1129), runs.ensure(LoopKey.review, SUN_1129, Cadence.week))
+        for r in late:
+            runs.mark_skipped(r.id, SkipReason.late)
+        await env.tick()
+        out = env.sender.sent[-1]
+        await env.press("c:2026-12-06:4", message_id=env.sender.message_ids[-1])
+        toast = env.bot.answers[-1][1]
+        prompt = env.brain.prompts[0]
+        november = env.parts.curve.ladder("2026-11")
+
+    assert out.ladder is None and toast == "컨디션 4 기록했어요."
+    assert len(env.sender.sent) == 1
+    assert "## 월말 회고" not in prompt
+    assert november is None
