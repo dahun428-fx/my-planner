@@ -81,6 +81,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.push import PushRepo
     from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.state import StateRepo
+    from my_planner.store.repos.tasks import TasksRepo
     from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
@@ -157,14 +158,15 @@ NeedsConfirm = Callable[["Tools", dict[str, Any], date], str | None]
 class ActionSpec:
     """`tool`: `Tools` 메서드 이름 또는 처리 함수. `needs_confirm`: 확인이 필요하면 확인 문구 한 줄.
 
-    `target`: 확인 토큰의 `stale` 판정에 쓰는 활동 대상(5.2). `public=False`는 하루 한 번 작업 같은 내부 동작이다.
+    `target`: 확인 토큰의 `stale` 판정에 쓰는 활동 대상(5.2, `confirm_targets`). `public=False`는 하루 한 번 작업 같은 내부 동작이다.
     `endpoint`가 있으면 그 경로(`ActionRequest.endpoint`)에서만 부른다(`undo`).
     """
 
     tool: str | Handler
     needs_confirm: NeedsConfirm | None = None
     public: bool = True
-    target: Callable[[Tools, dict[str, Any]], list[str]] | None = None
+    # 읽기 저장소(`TasksRepo`)만으로 계산한다: 체크인 상세(읽기 전용 연결)도 같은 규칙으로 쓴다(10.1 A5)
+    target: Callable[[TasksRepo, dict[str, Any]], list[str]] | None = None
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
     endpoint: RequestEndpoint | None = None
     reply: bool = False  # 명령 동작: 결과가 답 글(`reply_text`)이고 응답은 `/chat` 재생 모양(6.4.1)
@@ -202,12 +204,12 @@ def priorities_need_confirm(tools: Tools, args: dict[str, Any], today: date) -> 
     return f"{label} 우선순위 {len(current)}개를 바꿔요"
 
 
-def _task_target(tools: Tools, args: dict[str, Any]) -> list[str]:
+def _task_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     i = _int(args.get("id"))
     return [task_target(i)] if i is not None else []
 
 
-def _priorities_target(tools: Tools, args: dict[str, Any]) -> list[str]:
+def _priorities_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     """그 기간 목록과, 지금 목록·새 목록의 할 일 전부. 그 가운데 하나라도 토큰 뒤에 바뀌면 확인 문구가 맞지 않는다.
 
     토큰 뒤에 목록에서 빠진 할 일(내려놓기)은 그 활동이 목록 대상(`priorities:…`)도 적으므로 함께 잡힌다.
@@ -215,9 +217,15 @@ def _priorities_target(tools: Tools, args: dict[str, Any]) -> list[str]:
     c, p, ids = args.get("cadence"), args.get("period"), args.get("task_ids")
     if not isinstance(c, str) or not isinstance(p, str) or c not in {x.value for x in Cadence}:
         return []
-    current = [t.id for _, t in tools.tasks.priority_ranks(c, p)]
+    current = [t.id for _, t in tasks.priority_ranks(c, p)]
     new = [i for i in ids if _int(i) is not None] if isinstance(ids, list) else []
     return [priorities_target(c, p), *(task_target(i) for i in dict.fromkeys([*current, *new]))]
+
+
+def confirm_targets(tasks: TasksRepo, action: str, args: dict[str, Any]) -> list[str]:
+    """확인 토큰의 대상(`stale` 판정). 그 가운데 하나라도 토큰 뒤 활동이 있으면 적용하지 않는다(5.2). 읽기만 한다."""
+    spec = ACTIONS.get(action)
+    return spec.target(tasks, args) if spec is not None and spec.target is not None else []
 
 
 # --- 내부 처리 함수 ---
@@ -474,7 +482,7 @@ def _with_token(deps: ActionDeps, spec: ActionSpec, req: ActionRequest, args: di
         return _error("conflict", 409, "conflict", STALE_TOKEN)
     if p.action != req.action or p.args != args:
         return _error("conflict", 409, "conflict", TOKEN_MISMATCH)
-    targets = spec.target(deps.tools, args) if spec.target is not None else []
+    targets = confirm_targets(deps.tools.tasks, req.action, args)
     if deps.activity is not None and any(deps.activity.changed_after(t, p.created_at) for t in targets):
         deps.confirms.resolve(p.token, "stale")  # 확인 사이에 대상이 바뀌었다: 적용하지 않는다(5.2)
         return _error("conflict", 409, "conflict", STALE_TOKEN)
@@ -563,7 +571,7 @@ def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
 
     run_id = run_answered_by(
         req, runs=deps.runs, tasks=deps.tools.tasks, settings=deps.settings, now=deps.clock.now(),
-        activity=deps.activity,
+        activity=deps.activity, confirms=deps.confirms,
     )
     if run_id is not None:
         deps.mark_answered(run_id, "app" if req.channel == "app" else "telegram")

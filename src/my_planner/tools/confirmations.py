@@ -55,6 +55,8 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         "card_pinned": f"✓ 카드 고정: {title}",
         "card_unpinned": f"✓ 카드 고정 해제: {title}",
         "cards_reordered": "✓ 카드 순서 바꿈",
+        # 회차 차례의 확인(10.1): 바뀐 것은 없다. 회차 메시지 글에 확인 문구 전부를 남긴다(버튼은 짧다)
+        "confirm_requested": confirm_requested_summary(e.data.get("summary", "")),
     }.get(e.kind)
 
 
@@ -86,6 +88,57 @@ def card_label(component: str, props: Any) -> str:
 
 def drafts_expired_summary(count: int) -> str:
     return f"✓ 초안 정리: {count}개"
+
+
+# --- 회차 차례의 확인 문구 (SP3-4 10.1 A2). `pending_confirms.summary`, 앱 `ui_confirm`, 텔레그램 `✓ 확인:` 버튼 ---
+
+
+def confirm_drop_summary(title: str) -> str:
+    return f"할 일을 내려놓아요: {title}"
+
+
+def confirm_priorities_summary(label: str, titles: list[str]) -> str:
+    """`label`은 `period_label`(`오늘`, `이번 분기`, `2027-Q1`)."""
+    if not titles:
+        return f"{label} 우선순위를 비워요"
+    return f"{label} 우선순위를 바꿔요: " + " ".join(f"{i}. {t}" for i, t in enumerate(titles, start=1))
+
+
+def confirm_schedule_summary(title: str, at: datetime | None) -> str:
+    """`scheduled_at`을 바꾸는 `update_task`. `at`은 현지 시각."""
+    if at is None:
+        return f"시각을 지워요: {title}"
+    return f"시각을 바꿔요: {title} → {_md(at.date())} {at:%H:%M}"
+
+
+def confirm_move_summary(title: str, planned_for: date | None, today: date) -> str:
+    """시각 있는 할 일의 `move_task`."""
+    label = _day_label(planned_for, today) if planned_for is not None else "날짜 없음"
+    return f"날짜를 옮겨요: {title} → {label}"
+
+
+# 텔레그램 확인 버튼(`✓ {아래} 16자`): 짧은 동작 이름과 대상. 확인 문구 전부는 메시지 글과 앱 카드에 있다
+
+
+def confirm_button_drop(title: str) -> str:
+    return f"내려놓기: {title}"
+
+
+def confirm_button_priorities(label: str) -> str:
+    return f"우선순위: {label}"
+
+
+def confirm_button_schedule(title: str) -> str:
+    return f"일정 변경: {title}"
+
+
+def confirm_button_move(title: str) -> str:
+    return f"옮기기: {title}"
+
+
+def confirm_requested_summary(summary: str) -> str:
+    """활동 `confirm_requested`의 한 줄(바뀐 것 없음, 6.4.4)."""
+    return f"확인을 기다려요: {summary}"
 
 
 def confirm_declined_summary(summary: str) -> str:

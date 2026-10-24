@@ -16,7 +16,7 @@ from my_planner.store.views import draft_live, todo_refs
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
-    from my_planner.store.repos.activity import ActivityRepo
+    from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import ConversationsRepo
@@ -94,17 +94,27 @@ def _condition_run(
 
 def run_answered_by(
     req: ActionRequest, *, runs: RunsRepo, tasks: TasksRepo, settings: Settings, now: datetime,
-    activity: ActivityRepo | None = None,
+    activity: ActivityRepo | None = None, confirms: ConfirmsRepo | None = None,
 ) -> int | None:
     """즉시 갈래 동작이 답한 회차(6.4.5 "답으로 치는 것"). `apply_action`이 적용한 뒤 부른다. 없으면 None.
 
     - `record_condition`: 그 날짜에 컨디션 버튼을 단, 지금 답장 창 안의 회차(저녁 체크인의 날짜 등)
     - `confirm_tasks`, `drop_task`: 그 초안을 제안한(`tool_events_log.run_id`), 지금 답장 창 안의 회차
+    - 회차 차례의 확인 토큰으로 적용한 동작과 `decline_confirm`: 그 토큰을 만든, 지금 답장 창 안의 회차(10.1 A5의
+      확인 카드·버튼도 그 회차에 붙은 버튼이다)
     사용자 동작(`app`, `telegram`)만 센다. 하루 한 번 작업(`scheduler`)은 답이 아니다.
     """
     if req.actor != "user" or req.channel not in ("app", "telegram") or not isinstance(req.args, dict):
         return None
     args = req.args
+    token = args.get("confirm_token") if req.action == "decline_confirm" else req.confirm_token
+    if isinstance(token, str) and confirms is not None:
+        p = confirms.get(token)
+        if p is not None and p.origin == "run_turn" and p.run_id is not None:
+            got = runs.get(p.run_id)
+            primary = (runs.merged_into(got.id) or got) if got is not None else None
+            if primary is not None and primary.id in {r.id for r in _open_checkins(runs, now, settings)}:
+                return primary.id
     if req.action == "record_condition":
         raw = args.get("date")
         try:
@@ -195,7 +205,8 @@ def checkin_summaries(
 
 def checkin_detail(
     run_id: int, *, runs: RunsRepo, convs: ConversationsRepo, deliveries: DeliveriesRepo, tasks: TasksRepo,
-    conditions: ConditionsRepo, now: datetime, settings: Settings,
+    conditions: ConditionsRepo, now: datetime, settings: Settings, confirms: ConfirmsRepo | None = None,
+    activity: ActivityRepo | None = None,
 ) -> dict[str, Any] | None:
     """`GET /checkins/{id}` (6.4.5): 요약에 `text`와 `cards`를 더한다. 답할 회차가 아니면 None."""
     run = runs.get(run_id)
@@ -204,20 +215,25 @@ def checkin_detail(
     body = _summary(run, runs=runs, convs=convs, deliveries=deliveries, now=now, settings=settings)
     body["text"] = run.outbound_text or ""
     body["cards"] = checkin_cards(
-        run, _merged(run, runs), tasks=tasks, conditions=conditions, runs=runs, settings=settings, now=now
+        run, _merged(run, runs), tasks=tasks, conditions=conditions, runs=runs, settings=settings, now=now,
+        confirms=confirms, activity=activity,
     )
     return body
 
 
 def checkin_cards(
     run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo,
-    settings: Settings, now: datetime,
+    settings: Settings, now: datetime, confirms: ConfirmsRepo | None = None, activity: ActivityRepo | None = None,
 ) -> list[dict[str, Any]]:
     """텔레그램 버튼 재료는 저장되지 않으므로 읽을 때마다 DB에서 다시 만든다(6.4.5 표). 순서는 텔레그램 버튼 줄과 같다.
 
     - `ui_todo_draft`(`h_draft_<run_id>`): 그 회차(합친 회차 포함)가 제안해 아직 `draft`인 할 일. 없으면 카드도 없다.
+    - `ui_confirm`(`h_confirm_<run_id>_<n>`, 10.1 A5): 그 회차의 열린 확인 토큰(`resolved_at IS NULL`, 만료 전)마다.
+      토큰 뒤에 대상이 바뀐 토큰(누르면 `stale`)은 카드를 빼고 토큰은 열린 채 둔다(읽기만 한다. 누를 때 닫힌다).
+      `n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가
+      바뀌지 않는다. 회차 차례에서만 생기므로 `/chat` 스트림에는 없다. `props.args`는 `/actions`에 그대로 보낸다.
     - `ui_condition_picker`(`h_cond_<run_id>`): `ask_condition_for`가 고른 날짜. 그 날짜의 컨디션이 있으면 카드가 없다.
-    사건·챕터 초안, 사다리·영역 점수, `ui_confirm` 카드는 그 단계를 만드는 티켓이 더한다.
+    사건·챕터 초안, 사다리·영역 점수 카드는 그 단계를 만드는 티켓이 더한다.
     """
     cards: list[dict[str, Any]] = []
     today = logical_date(now, settings.timezone, settings.day_boundary)
@@ -235,6 +251,19 @@ def checkin_cards(
                 "data": {"todos": todo_refs(ids, tasks, today)},
             }
         )
+    # 순환 가져오기를 피해 함수 안에서
+    from my_planner.tools.actions import confirm_targets
+
+    for n, p in enumerate(confirms.for_run(run.id) if confirms is not None else [], start=1):
+        stale = activity is not None and any(
+            activity.changed_after(t, p.created_at) for t in confirm_targets(tasks, p.action, p.args)
+        )
+        if p.open_at(now) and not stale:
+            cards.append({
+                "toolCallId": f"h_confirm_{run.id}_{n}",
+                "component": "ui_confirm",
+                "props": {"summary": p.summary, "confirm_token": p.token, "action": p.action, "args": p.args},
+            })
     ask = ask_condition_for(run, merged, conditions=conditions, runs=runs, settings=settings)
     if ask is not None and conditions.get(ask) is None:
         cards.append(

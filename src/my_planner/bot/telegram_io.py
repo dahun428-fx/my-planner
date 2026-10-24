@@ -253,11 +253,13 @@ def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
 ADD_LABEL = "✓ 추가"
 DROP_LABEL = "✗ 빼기"
 ALL_LABEL = "전부 추가"
+CONFIRM_APPLY_MARK = "✓"  # 회차 차례의 확인 버튼(SP3-4 10.1 A5): `✓ {동작 이름: 대상, 16자}`(`내려놓기: 운동`)
+CONFIRM_KEEP_LABEL = "✗ 그대로 두기"
 BUTTON_TITLE_MAX = 16  # 버튼에 보이는 제목 글자 수. 넘으면 줄임표
 
 
 def _short(title: str) -> str:
-    return title if len(title) <= BUTTON_TITLE_MAX else title[: BUTTON_TITLE_MAX - 1] + "…"
+    return title if len(title) <= BUTTON_TITLE_MAX else title[: BUTTON_TITLE_MAX - 1].rstrip() + "…"
 
 
 def draft_keyboard(
@@ -291,10 +293,27 @@ def condition_keyboard(d: date | None) -> list[list[InlineKeyboardButton]]:
     return [[InlineKeyboardButton(str(n), callback_data=f"c:{d.isoformat()}:{n}") for n in range(1, 6)]]
 
 
+def confirm_keyboard(confirms: list[tuple[str, str]]) -> list[list[InlineKeyboardButton]]:
+    """(토큰, 버튼 이름)마다 `✓ {버튼 이름 16자}` `✗ 그대로 두기` 한 줄(10.1 A5). 확인 문구 전부는 메시지 글에 있다.
+
+    콜백 데이터 `k:a:<token>`, `k:x:<token>`. 토큰은 `ct_` + 22자라 29바이트(64바이트 이하).
+    """
+    return [
+        [
+            InlineKeyboardButton(f"{CONFIRM_APPLY_MARK} {_short(label)}", callback_data=f"k:a:{token}"),
+            InlineKeyboardButton(CONFIRM_KEEP_LABEL, callback_data=f"k:x:{token}"),
+        ]
+        for token, label in confirms
+    ]
+
+
 def message_keyboard(out: Outbound, titles: dict[int, str]) -> InlineKeyboardMarkup | None:
-    """메시지 아래 버튼: 초안 줄이 먼저, 그다음 컨디션 1~5 줄. 둘 다 없으면 None."""
+    """메시지 아래 버튼: 초안 줄 → 확인 줄(회차 차례의 확인) → 컨디션 1~5 줄. 모두 없으면 None."""
     drafts = draft_keyboard(out.draft_task_ids, out.draft_conversation_id, titles)
-    rows = [*(drafts.inline_keyboard if drafts else ()), *condition_keyboard(out.ask_condition_for)]
+    rows = [
+        *(drafts.inline_keyboard if drafts else ()), *confirm_keyboard(out.confirms),
+        *condition_keyboard(out.ask_condition_for),
+    ]
     return InlineKeyboardMarkup(rows) if rows else None
 
 
