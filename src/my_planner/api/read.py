@@ -354,6 +354,7 @@ def get_checkin(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -
         confirms=ConfirmsRepo(conn, deps.clock),  # 열린 확인 토큰마다 `ui_confirm`(10.1 A5). 읽기만 한다
         activity=ActivityRepo(conn, deps.clock),  # 대상이 그 뒤 바뀐 토큰은 카드를 뺀다
         curve=CurveRepo(conn, deps.clock),  # 남은 사건·챕터 초안 카드(11.3)
+        habits=HabitsRepo(conn, deps.clock),  # 저녁 체크인의 습관 카드(SP7 6.3)
     )
     if body is None:
         raise ApiError(404, "not_found", "없는 회차예요.")

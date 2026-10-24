@@ -119,17 +119,17 @@ async def test_ui_catalog_version_and_components(tmp_path):
     async with BeEnv.start(tmp_path, start=MON_EVENING) as env:
         body = await get_json(env, "/ui/catalog")
         health = await get_json(env, "/health")
-    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.3"
+    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.4"
     assert health["version"]["ui_catalog"] == body["version"]
     assert list(body["components"]) == [
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
         "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
         "ui_chapter_draft", "ui_confirm",
     ]
-    assert len(body["components"]) == 14 == len(UI_COMPONENTS)
+    assert len(body["components"]) == 15 == len(UI_COMPONENTS)
     origins = {name: c["origin"] for name, c in body["components"].items()}
     assert [n for n, o in origins.items() if o == "brain"] == [
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
     ]
     for name, c in body["components"].items():
         jsonschema.Draft202012Validator.check_schema(c["schema"])

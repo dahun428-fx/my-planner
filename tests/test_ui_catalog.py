@@ -58,7 +58,7 @@ def test_shared_bad_fixtures_fail_with_code(path):
 
 
 def test_fixtures_cover_every_component():
-    for name in (*NEW, *PINNABLE_COMPONENTS):
+    for name in (*NEW, *PINNABLE_COMPONENTS, "ui_habit_check"):
         assert list((PROPS / name / "ok").glob("*.json")), name
         assert list((PROPS / name / "bad").glob("*.json")), name
     for name in ("ui_date_choice", "ui_block", *PINNABLE_COMPONENTS):  # 자유 글이 있는 조각
@@ -268,10 +268,10 @@ def test_group_layout_errors():
 
 def test_app_tool_count_unchanged():
     assert set(tool_names_for("app")) - set(TOOL_NAMES) == {
-        "ui_todo_list", "ui_choice", "ui_summary_card", "pin_card", "unpin_card", "reorder_cards",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
     }
     assert not set(NEW) & set(tool_names_for("app"))
-    assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 7
+    assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 8
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 
 

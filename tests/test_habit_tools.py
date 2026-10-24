@@ -495,7 +495,7 @@ async def test_telegram_tool_count_28(env):
     habit_tools = ["add_habit", "update_habit", "set_habit_status", "check_habit", "uncheck_habit", "list_habits"]
     assert TOOL_NAMES[22:] == habit_tools
     assert len(tool_names_for("telegram")) == 28 == len(set(tool_names_for("telegram")))
-    assert len(tool_names_for("app")) == 34  # 화면 도구 `ui_habit_check`는 SP7-06에서 +1
+    assert len(tool_names_for("app")) == 35  # 화면 도구 `ui_habit_check`(SP7-06) +1
     ctx = env.user()
     handlers = {t.name: t for t in build_planner_tools(env.tools, ctx)}
     assert list(handlers) == TOOL_NAMES

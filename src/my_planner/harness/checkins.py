@@ -18,6 +18,7 @@ from my_planner.store.views import (
     chapter_refs,
     curve_draft_live,
     draft_live,
+    habits_view,
     milestone_refs,
     todo_refs,
 )
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.curve import CurveRepo
+    from my_planner.store.repos.habits import HabitsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.tools.actions import ActionRequest
@@ -263,7 +265,7 @@ def checkin_summaries(
 def checkin_detail(
     run_id: int, *, runs: RunsRepo, convs: ConversationsRepo, deliveries: DeliveriesRepo, tasks: TasksRepo,
     conditions: ConditionsRepo, now: datetime, settings: Settings, confirms: ConfirmsRepo | None = None,
-    activity: ActivityRepo | None = None, curve: CurveRepo | None = None,
+    activity: ActivityRepo | None = None, curve: CurveRepo | None = None, habits: HabitsRepo | None = None,
 ) -> dict[str, Any] | None:
     """`GET /checkins/{id}` (6.4.5): 요약에 `text`와 `cards`를 더한다. 답할 회차가 아니면 None."""
     run = runs.get(run_id)
@@ -273,7 +275,7 @@ def checkin_detail(
     body["text"] = run.outbound_text or ""
     body["cards"] = checkin_cards(
         run, _merged(run, runs), tasks=tasks, conditions=conditions, runs=runs, settings=settings, now=now,
-        confirms=confirms, activity=activity, curve=curve,
+        confirms=confirms, activity=activity, curve=curve, habits=habits,
     )
     return body
 
@@ -281,7 +283,7 @@ def checkin_detail(
 def checkin_cards(
     run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo,
     settings: Settings, now: datetime, confirms: ConfirmsRepo | None = None, activity: ActivityRepo | None = None,
-    curve: CurveRepo | None = None,
+    curve: CurveRepo | None = None, habits: HabitsRepo | None = None,
 ) -> list[dict[str, Any]]:
     """텔레그램 버튼 재료는 저장되지 않으므로 읽을 때마다 DB에서 다시 만든다(6.4.5 표). 순서는 텔레그램 버튼 줄과 같다.
 
@@ -290,6 +292,9 @@ def checkin_cards(
       토큰 뒤에 대상이 바뀐 토큰(누르면 `stale`)은 카드를 빼고 토큰은 열린 채 둔다(읽기만 한다. 누를 때 닫힌다).
       `n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가
       바뀌지 않는다. 회차 차례에서만 생기므로 `/chat` 스트림에는 없다. `props.args`는 `/actions`에 그대로 보낸다.
+    - `ui_habit_check`(`h_habit_<run_id>`, SP7 6.3): 저녁 체크인(합친 회차 포함)이고 활성 습관이 하나 이상이면, 그 체크인의
+      날짜(`ask_condition_for`)로. `data.habits`는 그 날짜 기준 지금 값. 다 체크했어도 남는다(취소할 수 있게). 확인 카드
+      뒤, 컨디션 카드 앞(텔레그램 줄 순서). 아침 브리핑에는 없다.
     - `ui_condition_picker`(`h_cond_<run_id>`): `ask_condition_for`가 고른 날짜. 그 날짜의 컨디션이 있으면 카드가 없다.
     - `ui_milestone_draft`(`h_mdraft_<run_id>`), `ui_chapter_draft`(`h_cdraft_<run_id>`): 그 회차가 `add_milestone`·
       `propose_chapter`로 꺼내 아직 초안이고 만료 전인 것(11.3). `data.milestones`·`data.chapters`(6.4.7). 할 일 초안
@@ -352,6 +357,13 @@ def checkin_cards(
                 "props": {"summary": p.summary, "confirm_token": p.token, "action": p.action, "args": p.args},
             })
     ask = ask_condition_for(run, merged, conditions=conditions, runs=runs, settings=settings)
+    if ask is not None and habits is not None and any(r.loop is LoopKey.evening_checkin for r in (run, *merged)):
+        items = habits_view(habits, ask, ("active",))["items"]
+        if items:
+            cards.append({
+                "toolCallId": f"h_habit_{run.id}", "component": "ui_habit_check",
+                "props": {"date": ask.isoformat()}, "data": {"habits": items},
+            })
     if ask is not None and conditions.get(ask) is None:
         cards.append(
             {"toolCallId": f"h_cond_{run.id}", "component": "ui_condition_picker", "props": {"date": ask.isoformat()}}

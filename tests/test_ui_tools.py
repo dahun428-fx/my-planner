@@ -18,14 +18,22 @@ from my_planner.domain import RunContext
 from my_planner.harness.dispatcher import Outbound
 from my_planner.harness.stream import AppReplySender, UiMessageWriter
 from my_planner.store.repos.cards import CardsRepo
+from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.views import todo_ref
 from my_planner.timefmt import to_api_times
+from my_planner.tools.core import Tools
 from my_planner.tools.mcp_adapter import (
     APP_ONLY_TOOLS,
     TOOL_NAMES,
     build_planner_tools,
     call_tool,
     tool_names_for,
+)
+from my_planner.tools.ui import (
+    BRAIN_COMPONENTS,
+    PINNABLE_COMPONENTS,
+    UI_CATALOG_VERSION,
+    UI_COMPONENTS,
 )
 
 START = kst(2026, 10, 24, 13, 0)  # 토요일 낮: 예정된 회차가 없다
@@ -140,7 +148,7 @@ def test_ui_todo_list_stream_output_has_current_todos(uenv):
 
 def test_ui_and_card_tools_absent_from_telegram(uenv):
     assert APP_ONLY_TOOLS == [
-        "ui_todo_list", "ui_choice", "ui_summary_card", "pin_card", "unpin_card", "reorder_cards",
+        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
     ]
     assert tool_names_for("telegram") == TOOL_NAMES
     assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
@@ -242,3 +250,73 @@ async def test_harness_card_times_are_utc():
     (output,) = [c["output"] for c in sink.chunks if c["type"] == "tool-output-available"]
     assert output["data"]["todos"][0]["scheduled_at"] == "2026-10-25T05:00:00Z"
     assert output["data"]["todos"][0]["planned_for"] == "2026-10-25"
+
+
+# --- SP7-06: ui_habit_check ---
+
+
+def test_catalog_has_ui_habit_check_brain_origin():
+    assert UI_COMPONENTS["ui_habit_check"]["origin"] == "brain"
+    assert "ui_habit_check" in BRAIN_COMPONENTS
+    assert "ui_habit_check" not in PINNABLE_COMPONENTS
+    assert UI_CATALOG_VERSION == "2026-10-24.4"
+    schema = UI_COMPONENTS["ui_habit_check"]["schema"]
+    assert schema["required"] == ["date"] and schema["additionalProperties"] is False
+
+
+def test_ui_habit_check_validates_date(uenv):
+    ctx = _app_ctx()
+    assert uenv.tools.ui_habit_check(ctx, date="2026-10-24") == {"ok": True}
+    assert uenv.tools.ui_habit_check(ctx) == {"ok": True}  # 기본은 오늘
+    for bad in ("24/10/2026", "2026-10-4", 20261024, "2026-13-45"):
+        assert "error" in uenv.tools.ui_habit_check(ctx, date=bad), bad
+    assert "error" in uenv.tools.ui_habit_check(ctx, date="2026-10-24", habit_ids=[1])
+
+
+def test_ui_habit_check_no_db_writes(uenv, tmp_path):
+    habits = HabitsRepo(uenv.conn, uenv.clock)
+    habits.add("꾸민 운동", "health", "daily", None, uenv.clock.now())
+    uenv.tools.habits = habits
+    db_before, files_before = _db_hash(uenv.conn), _files(tmp_path / "data")
+    ctx = _app_ctx(stream=UiMessageWriter(ListSink(), "m-1-1"))
+    uenv.tools.ui_habit_check(ctx, date="2026-10-24")
+    uenv.tools.ui_habit_check(ctx, date="bad")
+    call_tool(uenv.tools, ctx, "ui_habit_check", {"date": "2026-10-24"})
+    assert _db_hash(uenv.conn) == db_before and _files(tmp_path / "data") == files_before
+    assert ctx.events == [] and ctx.activity_ids == [] and ctx.undo_ids == []
+
+
+def test_app_tool_count_35():
+    assert len(tool_names_for("app")) == 35 and len(tool_names_for("telegram")) == 28
+    assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for("telegram")
+    names = [t.name for t in build_planner_tools(Tools.__new__(Tools), RunContext(conversation_id=None, run_id=None, channel="app"))]
+    assert "ui_habit_check" in names  # 도구 정의(설명, 스키마)가 있다
+
+
+def test_chat_stream_habit_part_has_data_habits(uenv):
+    habits = HabitsRepo(uenv.conn, uenv.clock)
+    run = habits.add("꾸민 운동", "health", "daily", None, uenv.clock.now())
+    habits.add("꾸민 독서", "learning", "weekly", 3, uenv.clock.now())
+    paused = habits.add("쉬는 것", "health", "daily", None, uenv.clock.now())
+    habits.set_status(paused.id, "paused", uenv.clock.now())
+    habits.check(run.id, date(2026, 10, 24), uenv.clock.now())
+    uenv.tools.habits = habits
+    sink = ListSink()
+    ctx = _app_ctx(stream=UiMessageWriter(sink, "m-1-1"))
+    call_tool(uenv.tools, ctx, "ui_habit_check", {"date": "2026-10-24"})
+    call_tool(uenv.tools, ctx, "ui_habit_check", {})  # 날짜를 빼면 오늘로 채운다
+    kinds = [c["type"] for c in sink.chunks]
+    assert kinds[:2] == ["tool-input-available", "tool-output-available"]
+    out = sink.chunks[1]["output"]
+    assert out["ok"] is True
+    assert [(h["title"], h["checked"], h["week_count"], h["status"]) for h in out["data"]["habits"]] == [
+        ("꾸민 운동", True, 1, "active"), ("꾸민 독서", False, 0, "active"),
+    ]
+    assert sink.chunks[2]["input"] == {"date": "2026-10-24"}
+
+
+def test_pin_card_rejects_ui_habit_check(uenv):
+    ctx = _app_ctx()
+    res = uenv.tools.pin_card(ctx, component="ui_habit_check", props={"date": "2026-10-24"})
+    assert "error" in res
+    assert uenv.tools.cards.active() == []

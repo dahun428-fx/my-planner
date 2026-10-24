@@ -45,7 +45,7 @@ from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
-from my_planner.store.views import todo_refs
+from my_planner.store.views import habits_view, todo_refs
 from my_planner.timefmt import api_time
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import (
@@ -1092,6 +1092,25 @@ class Tools(HabitTools):
     @_tool
     def ui_summary_card(self, ctx: RunContext, title: Any = None, lines: Any = None, **extra: Any) -> dict[str, Any]:
         return self._draw("ui_summary_card", {"title": title, "lines": lines, **extra})
+
+    @_tool
+    def ui_habit_check(self, ctx: RunContext, date: Any = None, **extra: Any) -> dict[str, Any]:
+        """오늘 습관 줄 묶음(SP7 6.3, 9장): 그리기만 한다. `date`를 빼면 오늘."""
+        day = self.today().isoformat() if date is None else date
+        err = self._parse_date(day, "date") if isinstance(day, str) else None
+        if isinstance(err, str):
+            return _err(f"화면 조각 형식이 맞지 않아요: {err}")
+        return self._draw("ui_habit_check", {"date": day, **extra})
+
+    def ui_habit_list(self, day: Any) -> list[dict[str, Any]]:
+        """화면 조각의 `data.habits`(그 날짜 기준 활성 습관 `Habit`). 날짜가 틀리거나 습관 저장소가 없으면 빈 목록. 읽기만 한다."""
+        if self.habits is None or not isinstance(day, str):
+            return []
+        try:
+            d = date.fromisoformat(day)
+        except ValueError:
+            return []
+        return habits_view(self.habits, d, ("active",))["items"]
 
     def ui_todo_refs(self, ids: Any, *, drafts: bool) -> list[dict[str, Any]]:
         """화면 조각의 `data.todos`(6.3 `TodoRef`, `ids` 순서). 소프트 삭제한 할 일은 늘 빠지고, 초안은 `drafts`일 때만
