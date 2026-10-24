@@ -1,0 +1,128 @@
+{
+  "date": "2026-10-24",
+  "weekday": "토",
+  "day_boundary": "04:00",
+  "brief": {
+    "run_id": 1,
+    "loop": "morning_brief",
+    "text": "좋은 아침이에요. 오늘은 수채화 밑그림과 저녁 산책이 우선이에요.\n14:00에 치과 정기 검진이 있어요.",
+    "sent_at": "2026-10-24T01:00:40Z"
+  },
+  "condition": {
+    "date": "2026-10-24",
+    "score": 4,
+    "note": null
+  },
+  "todos": [
+    {
+      "group": "priority",
+      "todo": {
+        "id": 1,
+        "title": "수채화 밑그림 그리기",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": null,
+        "parent_id": null,
+        "areas": [
+          "quality_of_life"
+        ],
+        "note": "",
+        "priority": {
+          "cadence": "day",
+          "period": "2026-10-24",
+          "rank": 1
+        },
+        "completed_at": null
+      }
+    },
+    {
+      "group": "priority",
+      "todo": {
+        "id": 3,
+        "title": "저녁 산책 30분",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": null,
+        "parent_id": null,
+        "areas": [
+          "health"
+        ],
+        "note": "",
+        "priority": {
+          "cadence": "day",
+          "period": "2026-10-24",
+          "rank": 2
+        },
+        "completed_at": null
+      }
+    },
+    {
+      "group": "scheduled",
+      "todo": {
+        "id": 8,
+        "title": "치과 정기 검진",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": "2026-10-24T05:00:00Z",
+        "parent_id": null,
+        "areas": [],
+        "note": "",
+        "priority": null,
+        "completed_at": null
+      }
+    },
+    {
+      "group": "open",
+      "todo": {
+        "id": 7,
+        "title": "세탁소에 겨울 외투 맡기기",
+        "status": "open",
+        "planned_for": "2026-10-22",
+        "scheduled_at": null,
+        "parent_id": null,
+        "areas": [
+          "quality_of_life"
+        ],
+        "note": "",
+        "priority": null,
+        "completed_at": null
+      }
+    },
+    {
+      "group": "open",
+      "todo": {
+        "id": 13,
+        "title": "첫 장면 색칠하기",
+        "status": "open",
+        "planned_for": "2026-10-24",
+        "scheduled_at": null,
+        "parent_id": 9,
+        "areas": [],
+        "note": "",
+        "priority": null,
+        "completed_at": null
+      }
+    }
+  ],
+  "checkins": [
+    {
+      "id": 1,
+      "loop": "morning_brief",
+      "cadence": "day",
+      "scheduled_for": "2026-10-24T01:00:00Z",
+      "sent_at": "2026-10-24T01:00:40Z",
+      "delivered_via": [
+        "app"
+      ],
+      "state": "answered",
+      "answered_via": "app",
+      "answered_at": "2026-10-24T01:12:00Z",
+      "reply_until": "2026-10-24T03:00:00Z",
+      "conversation_ids": {
+        "app": null,
+        "telegram": null
+      }
+    }
+  ],
+  "cards": []
+}

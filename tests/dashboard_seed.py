@@ -1,7 +1,8 @@
 """대시보드 고정 자료 (SP3-4 티켓 16, 스펙 13장·16장). 내용은 모두 꾸며 낸 것이다.
 
-`seed_dashboard_db(conn, clock)`이 SQL로 바로 넣는다(쓰기 도구를 거치지 않는다): 할 일·우선순위, 컨디션 30일 중
-21일, 오늘 회차와 전달, 챕터·사건·사다리·영역 점수, 경험치 원장·칭호. 시각은 `clock.now()`를 기준으로 잡는다.
+`seed_dashboard_db(conn, clock)`이 SQL로 바로 넣는다(쓰기 도구를 거치지 않는다): 할 일·우선순위·일정·전에 잡은 일,
+분기 메인 퀘스트와 첫 걸음, 컨디션 30일 중 21일, 오늘 회차와 전달, 챕터·사건·사다리·영역 점수(지난 분기와 이번 분기),
+경험치 원장(합계 1380 = 레벨 6, 130 / 400)·칭호. 시각은 `clock.now()`를 기준으로 잡는다.
 `tests/test_dashboard_fixtures.py`가 이 DB의 `GET` 응답을 `web/dashboard/src/test/fixtures/`와 비교한다.
 티켓 17·18은 그 표에 행만 더한다.
 """
@@ -11,7 +12,16 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime, time, timedelta
 
-from curve_sql import area_default, area_scores, chapter, ladder, milestone, title, xp
+from curve_sql import (
+    area_default,
+    area_scores,
+    chapter,
+    ladder,
+    milestone,
+    recovery,
+    title,
+    xp,
+)
 
 from my_planner.clock import Clock, logical_date, to_iso
 
@@ -23,7 +33,23 @@ TASKS = (
     ("이력서 한 줄 고치기", "open", 1, ("career",)),
     ("이번 달 구독 정리", "open", 2, ("finance",)),
     ("친구에게 안부 문자", "open", None, ("relationships",)),
+    ("세탁소에 겨울 외투 맡기기", "open", -2, ("quality_of_life",)),  # 전에 잡았지만 아직 열린 일
 )
+# 오늘 시각이 있는 일정(KST 시, 분)
+SCHEDULED = (("치과 정기 검진", 14, 0),)
+# 이번 분기 메인 퀘스트와 그 첫 걸음: (제목, 상태, 오늘부터 며칠 뒤)
+MAIN_QUEST = "꾸민 작은 그림책 만들기"
+FIRST_STEPS = (
+    ("이야기 줄거리 쓰기", "done", None),
+    ("등장인물 스케치", "done", None),
+    ("판형 정하기", "done", None),
+    ("첫 장면 색칠하기", "open", 0),
+    ("인쇄소 견적 묻기", "open", None),
+)
+BRIEF_TEXT = "좋은 아침이에요. 오늘은 수채화 밑그림과 저녁 산책이 우선이에요.\n14:00에 치과 정기 검진이 있어요."
+# 이번 분기 영역 점수(지난 분기보다 건강만 낮다: 디버프 하나)
+THIS_QUARTER = {"career": 6, "finance": 5, "health": 4, "relationships": 7, "learning": 6, "quality_of_life": 5}
+LAST_QUARTER = {"career": 6, "finance": 5, "health": 6, "relationships": 7, "learning": 6, "quality_of_life": 5}
 # 컨디션: 30일 가운데 21일만 기록(오늘에서 며칠 전, 점수). 빈 날은 그대로 빈 날이다.
 CONDITION_GAPS = frozenset({2, 5, 9, 12, 16, 19, 23, 26, 29})
 CONDITION_SCORES = (4, 3, 3, 4, 5, 2, 3, 4, 4, 3)
@@ -66,6 +92,27 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
             ("month", f"{today.year}-{today.month:02d}", 1, ids[4]),
         ],
     )
+    for name, h, mi in SCHEDULED:
+        conn.execute(
+            "INSERT INTO tasks (title, status, planned_for, scheduled_at, created_at, updated_at) "
+            "VALUES (?, 'open', ?, ?, ?, ?)",
+            (name, today.isoformat(), to_iso(_kst(midnight, h, mi)), ts, ts),
+        )
+    cur = conn.execute(
+        "INSERT INTO tasks (title, status, created_at, updated_at) VALUES (?, 'open', ?, ?)", (MAIN_QUEST, ts, ts)
+    )
+    quest = int(cur.lastrowid or 0)
+    conn.execute("INSERT INTO task_areas (task_id, area) VALUES (?, 'quality_of_life')", (quest,))
+    quarter = f"{today.year}-Q{(today.month - 1) // 3 + 1}"
+    conn.execute("INSERT INTO priorities (cadence, period, rank, task_id) VALUES ('quarter', ?, 1, ?)",
+                 (quarter, quest))
+    for name, status, days in FIRST_STEPS:
+        planned = (today + timedelta(days=days)).isoformat() if days is not None else None
+        conn.execute(
+            "INSERT INTO tasks (title, status, planned_for, parent_id, created_at, updated_at, completed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (name, status, planned, quest, ts, ts, ts if status == "done" else None),
+        )
 
     # --- 컨디션: 30일 중 21일 ---
     for back in range(30):
@@ -82,7 +129,7 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
     cur = conn.execute(
         "INSERT INTO runs (loop, cadence, scheduled_for, status, attempt, started_at, finished_at, outbound_text, "
         "created_at, answered_at, answered_via) VALUES ('morning_brief', 'day', ?, 'done', 1, ?, ?, ?, ?, ?, 'app')",
-        (to_iso(brief_at), to_iso(brief_at), to_iso(brief_at + timedelta(seconds=40)), "꾸민 아침 브리핑",
+        (to_iso(brief_at), to_iso(brief_at), to_iso(brief_at + timedelta(seconds=40)), BRIEF_TEXT,
          to_iso(brief_at), to_iso(brief_at + timedelta(minutes=12))),
     )
     brief_id = int(cur.lastrowid or 0)
@@ -118,19 +165,35 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
     ch = chapter(conn, "꾸민 새 출발", "2025-03", sketch="↗", certainty="estimate")
     chapter(conn, "꾸민 배움의 해", "2023-01", "2025-02")
     m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch)
-    milestone(conn, "꾸민 이사", "2026-02-14", kind="turning_point", chapter_id=ch)
+    m2 = milestone(conn, "꾸민 이사 결정", "2026-02-14", kind="turning_point", chapter_id=ch)
     milestone(conn, "꾸민 긴 감기", "2026-06", kind="low")
     for period, n, f in (("2026-08", 5, 7), ("2026-09", 6, 7), ("2026-10", 6, 8)):
         ladder(conn, period, now=n, future=f)
-    area_scores(conn, "2026-Q3", career=6, finance=5, health=6, relationships=7, learning=7, quality_of_life=6)
+    q = (today.month - 1) // 3 + 1
+    last_quarter = f"{today.year}-Q{q - 1}" if q > 1 else f"{today.year - 1}-Q4"
+    area_scores(conn, last_quarter, **LAST_QUARTER)
+    area_scores(conn, quarter, **THIS_QUARTER)
+    recovery(conn, quarter, "health", "저녁에 20분 걷기")
     area_default(conn, "health", "꾸민 회복 퀘스트: 20분 걷기")
 
     # --- 상태창: 경험치 원장·칭호 ---
     xp(conn, f"task:{ids[1]}", 10, to_iso(_kst(midnight, 11, 20)))
     xp(conn, f"run:{brief_id}", 5, to_iso(brief_at + timedelta(minutes=12)), label="회차 답", kind="checkin_reply")
     yday = midnight - timedelta(days=1)
-    xp(conn, f"date:{(today - timedelta(days=1)).isoformat()}", 3, to_iso(_kst(yday, 21)), label="컨디션 기록",
+    xp(conn, f"date:{(today - timedelta(days=1)).isoformat()}", 5, to_iso(_kst(yday, 21)), label="컨디션 기록",
        kind="condition")
-    title(conn, m1)
+    # 지난 기록: 쉬는 날 2일(5씩), 주간 회고 12번(30씩), 할 일 99개(10씩). 합계 20 + 10 + 360 + 990 = 1380
+    for back in (2, 40):
+        d = midnight - timedelta(days=back)
+        xp(conn, f"date:{(today - timedelta(days=back)).isoformat()}", 5, to_iso(_kst(d, 4, 10)), label="쉬는 날",
+           kind="rest_day")
+    for n in range(12):
+        d = midnight - timedelta(days=7 * n + 6)
+        xp(conn, f"run:{9000 + n}", 30, to_iso(_kst(d, 20)), label="주간 회고", kind="review_week")
+    for n in range(99):
+        d = midnight - timedelta(days=3 + n // 3)
+        xp(conn, f"task:{9000 + n}", 10, to_iso(_kst(d, 9 + n % 3 * 4)))
+    title(conn, m1, to_iso(_kst(midnight - timedelta(days=30), 12)))
+    title(conn, m2, to_iso(_kst(midnight - timedelta(days=20), 12)))
 
     conn.commit()

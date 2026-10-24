@@ -1,0 +1,76 @@
+{
+  "level": 1,
+  "xp_total": 0,
+  "xp_into_level": 0,
+  "xp_for_next": 150,
+  "hp": {
+    "date": "2026-10-24",
+    "score": null
+  },
+  "stats": [
+    {
+      "area": "career",
+      "label": "커리어",
+      "score": null,
+      "period": null,
+      "prev_score": null,
+      "prev_period": null,
+      "debuff": false,
+      "recovery_quest": null
+    },
+    {
+      "area": "finance",
+      "label": "경제",
+      "score": null,
+      "period": null,
+      "prev_score": null,
+      "prev_period": null,
+      "debuff": false,
+      "recovery_quest": null
+    },
+    {
+      "area": "health",
+      "label": "건강",
+      "score": null,
+      "period": null,
+      "prev_score": null,
+      "prev_period": null,
+      "debuff": false,
+      "recovery_quest": null
+    },
+    {
+      "area": "relationships",
+      "label": "관계",
+      "score": null,
+      "period": null,
+      "prev_score": null,
+      "prev_period": null,
+      "debuff": false,
+      "recovery_quest": null
+    },
+    {
+      "area": "learning",
+      "label": "배움",
+      "score": null,
+      "period": null,
+      "prev_score": null,
+      "prev_period": null,
+      "debuff": false,
+      "recovery_quest": null
+    },
+    {
+      "area": "quality_of_life",
+      "label": "삶의 질",
+      "score": null,
+      "period": null,
+      "prev_score": null,
+      "prev_period": null,
+      "debuff": false,
+      "recovery_quest": null
+    }
+  ],
+  "main_quests": [],
+  "daily_quests": [],
+  "titles": [],
+  "recent_xp": []
+}

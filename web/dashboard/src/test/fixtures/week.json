@@ -1,0 +1,164 @@
+{
+  "week": "2026-W43",
+  "start": "2026-10-19",
+  "end": "2026-10-25",
+  "priorities": [
+    {
+      "id": 4,
+      "title": "이력서 한 줄 고치기",
+      "status": "open",
+      "planned_for": "2026-10-25",
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [
+        "career"
+      ],
+      "note": "",
+      "priority": {
+        "cadence": "week",
+        "period": "2026-W43",
+        "rank": 1
+      },
+      "completed_at": null
+    }
+  ],
+  "days": [
+    {
+      "date": "2026-10-19",
+      "weekday": "월",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-20",
+      "weekday": "화",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-21",
+      "weekday": "수",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-22",
+      "weekday": "목",
+      "is_today": false,
+      "todos": [
+        {
+          "id": 7,
+          "title": "세탁소에 겨울 외투 맡기기",
+          "status": "open",
+          "planned_for": "2026-10-22",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [
+            "quality_of_life"
+          ],
+          "note": "",
+          "priority": null,
+          "completed_at": null
+        }
+      ]
+    },
+    {
+      "date": "2026-10-23",
+      "weekday": "금",
+      "is_today": false,
+      "todos": []
+    },
+    {
+      "date": "2026-10-24",
+      "weekday": "토",
+      "is_today": true,
+      "todos": [
+        {
+          "id": 8,
+          "title": "치과 정기 검진",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": "2026-10-24T05:00:00Z",
+          "parent_id": null,
+          "areas": [],
+          "note": "",
+          "priority": null,
+          "completed_at": null
+        },
+        {
+          "id": 1,
+          "title": "수채화 밑그림 그리기",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [
+            "quality_of_life"
+          ],
+          "note": "",
+          "priority": {
+            "cadence": "day",
+            "period": "2026-10-24",
+            "rank": 1
+          },
+          "completed_at": null
+        },
+        {
+          "id": 3,
+          "title": "저녁 산책 30분",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [
+            "health"
+          ],
+          "note": "",
+          "priority": {
+            "cadence": "day",
+            "period": "2026-10-24",
+            "rank": 2
+          },
+          "completed_at": null
+        },
+        {
+          "id": 13,
+          "title": "첫 장면 색칠하기",
+          "status": "open",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": 9,
+          "areas": [],
+          "note": "",
+          "priority": null,
+          "completed_at": null
+        }
+      ]
+    },
+    {
+      "date": "2026-10-25",
+      "weekday": "일",
+      "is_today": false,
+      "todos": [
+        {
+          "id": 4,
+          "title": "이력서 한 줄 고치기",
+          "status": "open",
+          "planned_for": "2026-10-25",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [
+            "career"
+          ],
+          "note": "",
+          "priority": {
+            "cadence": "week",
+            "period": "2026-W43",
+            "rank": 1
+          },
+          "completed_at": null
+        }
+      ]
+    }
+  ]
+}
