@@ -395,6 +395,142 @@ class Messages(_Model):
     items: list[MessageItem]
 
 
+# --- 인생 곡선, 상태창 (6.3.5, 6.3.6) ---
+
+
+class CurveChapter(_Model):
+    id: int
+    title: str
+    theme: str | None
+    start: str
+    end: str | None
+    sketch: str | None
+    certainty: Literal["fact", "estimate"]
+
+
+class CurveMilestone(_Model):
+    id: int
+    date: str
+    precision: Literal["year", "month", "day"]
+    kind: Literal["high", "low", "turning_point"]
+    title: str
+    note: str | None
+    chapter_id: int | None
+    sensitive: bool
+    certainty: Literal["fact", "estimate"]
+
+
+class CurveLadder(_Model):
+    period: str
+    now: int | None
+    future: int | None
+    note: str | None
+
+
+class CurveAreas(_Model):
+    period: str
+    scores: dict[AreaName, int]
+
+
+class CurveCondition(_Model):
+    bucket: str
+    start: str
+    end: str
+    average: float | None
+    days_logged: int
+
+
+class CurveReassurance(_Model):
+    period: str
+    ladder_now: int
+    condition_average: float | None
+    condition_scaled: float | None
+    days_logged: int
+    gap: float | None
+
+
+class Curve(_Model):
+    """`GET /curve` (6.3.5)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    zoom: CadenceName
+    from_: str = Field(alias="from")
+    to: str
+    chapters: list[CurveChapter]
+    milestones: list[CurveMilestone]
+    ladder: list[CurveLadder]
+    areas: list[CurveAreas]
+    condition: list[CurveCondition]
+    reassurance: list[CurveReassurance]
+
+
+class StatusHp(_Model):
+    date: str
+    score: int | None
+
+
+class StatusStat(_Model):
+    area: AreaName
+    label: str
+    score: int | None
+    period: str | None
+    prev_score: int | None
+    prev_period: str | None
+    debuff: bool
+    recovery_quest: str | None
+
+
+class FirstSteps(_Model):
+    open: int
+    done: int
+
+
+class MainQuest(_Model):
+    task_id: int
+    title: str
+    rank: int
+    period: str
+    first_steps: FirstSteps
+
+
+class DailyQuest(_Model):
+    task_id: int
+    title: str
+    parent_id: int
+    parent_title: str | None
+    planned_for: str | None
+
+
+class StatusTitle(_Model):
+    milestone_id: int
+    title: str
+    kind: Literal["high", "turning_point"]
+    date: str
+    granted_at: str
+
+
+class RecentXp(_Model):
+    at: str
+    label: str
+    amount: int
+
+
+class Status(_Model):
+    """`GET /status` (6.3.6)."""
+
+    level: int
+    xp_total: int
+    xp_into_level: int
+    xp_for_next: int
+    hp: StatusHp
+    stats: list[StatusStat]
+    main_quests: list[MainQuest]
+    daily_quests: list[DailyQuest]
+    titles: list[StatusTitle]
+    recent_xp: list[RecentXp]
+
+
 class UiComponent(_Model):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -433,6 +569,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "Conditions": Conditions,
     "Priorities": Priorities,
     "Drafts": Drafts,
+    "Curve": Curve,
+    "Status": Status,
     "CheckinList": CheckinList,
     "CheckinSummary": CheckinSummary,
     "CheckinDetail": CheckinDetail,

@@ -19,7 +19,7 @@ MON_EVENING = kst(2026, 10, 26, 17, 30) + timedelta(seconds=30)
 
 EXPECTED_MODELS = {
     "Error", "Health", "SafeModeHealth", "Todo", "TodoRef", "TodoRefs", "Today", "Week", "Conditions",
-    "Priorities", "Drafts", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "Messages",
+    "Priorities", "Drafts", "Curve", "Status", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "Messages",
     "UiCatalog", "SchemaBundle",
 }
 
