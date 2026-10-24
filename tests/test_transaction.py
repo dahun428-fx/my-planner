@@ -50,6 +50,21 @@ def test_inner_exception_rolls_back_whole_outer(conn):
     assert _count(conn, "app_state") == 1
 
 
+def test_caught_inner_exception_undoes_only_inner_writes(conn):
+    with transaction(conn):
+        conn.execute("INSERT INTO app_state (key, value) VALUES ('o', '1')")
+        try:
+            with transaction(conn):
+                conn.execute("INSERT INTO app_state (key, value) VALUES ('i', '2')")
+                raise ValueError("안쪽")
+        except ValueError:
+            pass
+        assert conn.in_transaction  # 바깥은 그대로 열려 있다
+        conn.execute("INSERT INTO app_state (key, value) VALUES ('o2', '3')")
+    keys = {k for (k,) in conn.execute("SELECT key FROM app_state")}
+    assert keys == {"o", "o2"}  # 안쪽에서 일부만 한 쓰기는 커밋되지 않았다
+
+
 def test_depth_is_per_connection(tmp_path, conn):
     from my_planner.store.db import open_db
 
