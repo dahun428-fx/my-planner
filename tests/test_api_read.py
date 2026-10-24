@@ -513,6 +513,6 @@ async def test_expired_draft_hidden_in_cards_and_drafts_alike(tmp_path):
         after = await get_json(env, f"/checkins/{item['id']}")
         drafts_after = await get_json(env, "/drafts")
 
-    assert [c["component"] for c in before["cards"]][0] == "ui_todo_draft" and drafts_before["items"]
+    assert before["cards"][0]["component"] == "ui_todo_draft" and drafts_before["items"]
     assert "ui_todo_draft" not in [c["component"] for c in after["cards"]]
     assert drafts_after["items"] == []

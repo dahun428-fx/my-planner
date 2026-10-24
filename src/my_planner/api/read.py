@@ -40,6 +40,8 @@ from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.views import (
     condition_dict,
     conditions_view,
+    draft_expiry,
+    draft_live,
     today_view,
     todo_dict,
     week_view,
