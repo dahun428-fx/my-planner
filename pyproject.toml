@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.3,<3",
     "anyio>=4,<5",  # 두뇌 호출 시간 상한(fail_after). SDK도 쓴다
+    "tzdata>=2024.1",  # Windows에는 IANA 시간대 DB가 없어 ZoneInfo("Asia/Seoul")가 실패한다
 ]
 
 [project.optional-dependencies]
