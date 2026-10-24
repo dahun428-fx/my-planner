@@ -11,7 +11,8 @@ import base64
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
 from aiohttp import web
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -24,7 +25,7 @@ log = logging.getLogger(__name__)
 
 ErrorCode = Literal[
     "invalid_request", "unauthorized", "not_found", "conflict", "superseded", "undo_expired", "too_large",
-    "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal",
+    "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal", "unavailable",
 ]
 
 
@@ -147,6 +148,7 @@ class Health(_Model):
     paused_until: str | None
     plan_open: bool
     notify: HealthNotify
+    inbound_pending_oldest_at: str | None
     runs_today: list[HealthRun]
     errors: HealthErrors
     push: HealthPush
@@ -746,6 +748,30 @@ class NotifyPutBody(_Model):
     primary: Literal["telegram", "app"]
 
 
+class ClientErrorBody(_Model):
+    """`POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부)."""
+
+    app: Literal["app", "dashboard"]
+    version: str = Field(max_length=40)
+    route: str = Field(max_length=120, pattern=r"^/[A-Za-z0-9_\-/\[\]]*$")
+    name: str = Field(max_length=80, pattern=r"^[A-Za-z][A-Za-z0-9_.]*$")
+    frames: list[Annotated[str, Field(max_length=160)]] = Field(max_length=10)
+    at: datetime
+
+
+class RecoveryNoticeBody(_Model):
+    """`POST /internal/notify` 요청 (SP6 6장). 복구 감시자가 결과 알림을 보낼 때 쓴다."""
+
+    text: str = Field(min_length=1, max_length=500)
+    kind: Literal["recovery"]
+
+
+class RecoveryNoticeSent(_Model):
+    """`POST /internal/notify` 응답: 알림이 간 통로."""
+
+    channel: Literal["telegram", "app"]
+
+
 def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     """응답 본문을 UTC로 바꾸고 모델로 검증한 뒤 JSON 값으로 돌려준다(모양이 틀리면 예외 → 500 `internal`)."""
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
@@ -789,6 +815,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "Habit": Habit,
     "HabitsList": HabitsList,
     "HabitHistory": HabitHistory,
+    "ClientErrorBody": ClientErrorBody,
+    "RecoveryNoticeBody": RecoveryNoticeBody,
+    "RecoveryNoticeSent": RecoveryNoticeSent,
 }
 
 

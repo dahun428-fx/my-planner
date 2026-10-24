@@ -50,6 +50,7 @@ from my_planner.api.read import (
     get_ui_catalog,
     get_week,
 )
+from my_planner.api.recovery import post_client_error, post_internal_notify
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
@@ -212,6 +213,8 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
     ("/activity/{id}/undo", post_undo),
     ("/push/subscriptions", post_subscription),
     ("/push/test", post_push_test),
+    ("/client-errors", post_client_error),
+    ("/internal/notify", post_internal_notify),
 )
 
 

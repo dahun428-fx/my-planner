@@ -23,7 +23,7 @@ EXPECTED_MODELS = {
     "UiCatalog", "SchemaBundle", "ActionRequestBody", "ActionApplied", "ActionNeedsConfirm", "ActionRejected",
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
-    "Habit", "HabitsList", "HabitHistory",
+    "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
 }
 
 

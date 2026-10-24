@@ -141,7 +141,8 @@
                 "not_undoable",
                 "too_many_auth_failures",
                 "safe_mode",
-                "internal"
+                "internal",
+                "unavailable"
               ],
               "title": "Code",
               "type": "string"
@@ -944,6 +945,61 @@
         "conversation_ids"
       ],
       "title": "CheckinSummary",
+      "type": "object"
+    },
+    "ClientErrorBody": {
+      "additionalProperties": false,
+      "description": "`POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부).",
+      "properties": {
+        "app": {
+          "enum": [
+            "app",
+            "dashboard"
+          ],
+          "title": "App",
+          "type": "string"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "frames": {
+          "items": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Frames",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 80,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "route": {
+          "maxLength": 120,
+          "pattern": "^/[A-Za-z0-9_\\-/\\[\\]]*$",
+          "title": "Route",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 40,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "version",
+        "route",
+        "name",
+        "frames",
+        "at"
+      ],
+      "title": "ClientErrorBody",
       "type": "object"
     },
     "Conditions": {
@@ -1753,7 +1809,8 @@
                 "not_undoable",
                 "too_many_auth_failures",
                 "safe_mode",
-                "internal"
+                "internal",
+                "unavailable"
               ],
               "title": "Code",
               "type": "string"
@@ -2402,6 +2459,17 @@
         "errors": {
           "$ref": "#/$defs/HealthErrors"
         },
+        "inbound_pending_oldest_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Inbound Pending Oldest At"
+        },
         "last_tick_at": {
           "anyOf": [
             {
@@ -2485,6 +2553,7 @@
         "paused_until",
         "plan_open",
         "notify",
+        "inbound_pending_oldest_at",
         "runs_today",
         "errors",
         "push"
@@ -2898,6 +2967,48 @@
         "failed"
       ],
       "title": "PushTestResult",
+      "type": "object"
+    },
+    "RecoveryNoticeBody": {
+      "additionalProperties": false,
+      "description": "`POST /internal/notify` 요청 (SP6 6장). 복구 감시자가 결과 알림을 보낼 때 쓴다.",
+      "properties": {
+        "kind": {
+          "const": "recovery",
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "kind"
+      ],
+      "title": "RecoveryNoticeBody",
+      "type": "object"
+    },
+    "RecoveryNoticeSent": {
+      "additionalProperties": false,
+      "description": "`POST /internal/notify` 응답: 알림이 간 통로.",
+      "properties": {
+        "channel": {
+          "enum": [
+            "telegram",
+            "app"
+          ],
+          "title": "Channel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel"
+      ],
+      "title": "RecoveryNoticeSent",
       "type": "object"
     },
     "SafeModeHealth": {
