@@ -1,0 +1,72 @@
+{
+  "items": [
+    {
+      "id": 115,
+      "at": "2026-10-21T09:00:00Z",
+      "actor": "user",
+      "channel": "app",
+      "kind": "add_task",
+      "summary": "‘치과 예약’을 더했어요",
+      "risk": "low",
+      "undo_id": null,
+      "undone_at": null
+    },
+    {
+      "id": 116,
+      "at": "2026-10-22T01:00:00Z",
+      "actor": "user",
+      "channel": "telegram",
+      "kind": "record_condition",
+      "summary": "컨디션 3을 기록했어요",
+      "risk": "low",
+      "undo_id": null,
+      "undone_at": null
+    },
+    {
+      "id": 117,
+      "at": "2026-10-22T02:00:00Z",
+      "actor": "secretary",
+      "channel": "scheduler",
+      "kind": "pin_card",
+      "summary": "카드를 올려 뒀어요",
+      "risk": "low",
+      "undo_id": null,
+      "undone_at": null
+    },
+    {
+      "id": 118,
+      "at": "2026-10-23T11:00:00Z",
+      "actor": "secretary",
+      "channel": "telegram",
+      "kind": "drop_task",
+      "summary": "‘책 반납’을 뺐어요",
+      "risk": "low",
+      "undo_id": null,
+      "undone_at": "2026-10-23T11:30:00Z"
+    },
+    {
+      "id": 119,
+      "at": "2026-10-24T03:40:00Z",
+      "actor": "user",
+      "channel": "app",
+      "kind": "complete_task",
+      "summary": "‘운동 30분’을 마쳤어요",
+      "risk": "low",
+      "undo_id": 119,
+      "undone_at": null
+    },
+    {
+      "id": 120,
+      "at": "2026-10-24T05:10:00Z",
+      "actor": "secretary",
+      "channel": "app",
+      "kind": "move_task",
+      "summary": "‘장보기’를 내일로 옮겼어요",
+      "risk": "low",
+      "undo_id": 120,
+      "undone_at": null
+    }
+  ],
+  "next_since": "2026-10-24T05:10:00Z",
+  "next_before": null
+}

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiGet } from "../api/client";
-import type { CheckinDetail, Today as TodayData, TodayTodo } from "../api/types.gen";
+import type { Today as TodayData } from "../api/types.gen";
 import { useAction } from "../api/actions";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher } from "../components/ChatLauncher";
@@ -22,6 +21,7 @@ import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
 import { PinnedCard } from "./PinnedCard";
 import styles from "./Today.module.css";
+import { useConfirms } from "./useConfirms";
 import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 const SCORES = [1, 2, 3, 4, 5];
@@ -49,40 +49,12 @@ export function Today() {
   const live = view.kind === "live";
 
   // Block 3: the ui_confirm cards of every pending check-in (read again after any write on them).
-  type ConfirmCard = { key: string; props: unknown };
-  const [byCheckin, setByCheckin] = useState<Readonly<Record<number, ConfirmCard[]>>>({});
-  const [reread, setReread] = useState(0);
   const pendingKey = view.kind === "live" ? view.data.checkins.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
-  const pendingIds = pendingKey === "" ? [] : pendingKey.split(",").map(Number);
-  // Read again only when the set of pending check-ins changes or after a write on a part (not on every poll).
-  useEffect(() => {
-    if (pendingKey === "") return;
-    const ids = pendingKey.split(",").map(Number);
-    let alive = true;
-    void Promise.all(ids.map((id) => apiGet<CheckinDetail>(`/checkins/${id}`, "CheckinDetail"))).then((results) => {
-      if (!alive) return;
-      setByCheckin((prev) => {
-        const next = { ...prev };
-        results.forEach((r, i) => {
-          const id = ids[i];
-          if (r.kind === "ok") {
-            next[id] = r.data.cards.filter((c) => c.component === "ui_confirm").map((c) => ({ key: `${id}:${c.toolCallId}`, props: c.props }));
-          } else if (r.kind === "error" && r.status === 404) {
-            delete next[id]; // gone
-          } // any other failure keeps what that check-in showed before
-        });
-        return next;
-      });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [pendingKey, reread]);
-  const confirms = pendingIds.flatMap((id) => byCheckin[id] ?? []);
+  const { confirms, reread } = useConfirms(pendingKey);
   const afterPartAction = useCallback(() => {
     void refresh();
-    setReread((n) => n + 1);
-  }, [refresh]);
+    reread();
+  }, [refresh, reread]);
 
   const offline = view.kind === "snapshot" || view.kind === "none";
   const date = data?.date ?? "";

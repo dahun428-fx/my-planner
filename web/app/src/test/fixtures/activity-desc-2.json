@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "id": 116,
+      "at": "2026-10-22T01:00:00Z",
+      "actor": "user",
+      "channel": "telegram",
+      "kind": "record_condition",
+      "summary": "컨디션 3을 기록했어요",
+      "risk": "low",
+      "undo_id": null,
+      "undone_at": null
+    },
+    {
+      "id": 115,
+      "at": "2026-10-21T09:00:00Z",
+      "actor": "user",
+      "channel": "app",
+      "kind": "add_task",
+      "summary": "‘치과 예약’을 더했어요",
+      "risk": "low",
+      "undo_id": null,
+      "undone_at": null
+    }
+  ],
+  "next_since": "2026-10-22T01:00:00Z",
+  "next_before": null
+}
