@@ -246,7 +246,11 @@ describe("sw.js", () => {
       const { fire } = load({ buildId: "b1", caches, fetch: () => new Promise<Response>(() => undefined) });
       const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
       fire("fetch", nav);
-      await vi.advanceTimersByTimeAsync(2500);
+      let settled = false;
+      void nav.responded!.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(2499);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
       expect(await (await nav.responded!).text()).toBe("cached root");
     } finally {
       vi.useRealTimers();
@@ -263,6 +267,37 @@ describe("sw.js", () => {
       await vi.advanceTimersByTimeAsync(3000);
       answer(new Response("late page"));
       expect(await (await nav.responded!).text()).toBe("late page");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a fetch that fails after the timeout keeps the cached shell answer", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail!: (e: Error) => void;
+      const caches = fakeCaches({ "app-b1": { [`${ORIGIN}/`]: "cached root" } });
+      const { fire } = load({ buildId: "b1", caches, fetch: () => new Promise<Response>((_, r) => (fail = r)) });
+      const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+      fire("fetch", nav);
+      await vi.advanceTimersByTimeAsync(2500);
+      fail(new TypeError("offline"));
+      expect(await (await nav.responded!).text()).toBe("cached root");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a fetch that fails after the timeout with nothing cached fails the page load", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail!: (e: Error) => void;
+      const { fire } = load({ buildId: "b1", fetch: () => new Promise<Response>((_, r) => (fail = r)) });
+      const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+      fire("fetch", nav);
+      await vi.advanceTimersByTimeAsync(3000);
+      fail(new TypeError("offline"));
+      await expect(nav.responded!).rejects.toThrow("offline");
     } finally {
       vi.useRealTimers();
     }

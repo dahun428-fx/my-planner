@@ -110,7 +110,8 @@ async function activate() {
 }
 
 // On a weak signal iOS can hold a page request open for tens of seconds. Past this the cached
-// shell answers instead; with no cached shell the network answer is still awaited.
+// shell answers instead; with no cached shell the network answer is still awaited. The page
+// fetch is left to finish in the background; nothing reads it.
 const NAV_TIMEOUT_MS = 2500;
 
 async function cachedShell(request) {

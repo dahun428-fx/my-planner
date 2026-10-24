@@ -55,6 +55,11 @@ describe("fixtures match schema.json", () => {
     expect(validateModel("Today", changed)).toBe(true);
   });
 
+  it("typed maps still check their values", () => {
+    const health = JSON.parse(readFileSync(join(dir, "health.json"), "utf8")) as { errors: object };
+    expect(validateModel("Health", { ...health, errors: { ...health.errors, by_event: { x: "str" } } })).toBe(false);
+  });
+
   it("every fixture file is in the table", () => {
     const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
     expect(files).toEqual(table.map(([f]) => f).sort());
