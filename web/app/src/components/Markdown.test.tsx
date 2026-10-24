@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -65,6 +65,34 @@ describe("Markdown", () => {
     expect(table!.querySelectorAll("td")).toHaveLength(2);
   });
 
+  // Aligned columns would come as style="text-align:…", which style-src 'self' blocks: classes instead.
+  it("aligned table columns use classes, never a style attribute", async () => {
+    const root = await md("| 왼 | 가운데 | 오른 | 그냥 |\n|:--|:-:|--:|---|\n| 1 | 2 | 3 | 4 |");
+    const [l, c, r, plain] = [...root.querySelectorAll("tbody td")];
+    expect(l).toHaveClass("alignLeft");
+    expect(c).toHaveClass("alignCenter");
+    expect(r).toHaveClass("alignRight");
+    expect(plain.className).toBe("");
+    expect(root.querySelector("thead th")).toHaveClass("alignLeft");
+    expect(root.querySelector("thead th")).toHaveTextContent("왼");
+    expect(root.querySelectorAll("[style]")).toHaveLength(0);
+  });
+
+  // The model's text must not set DOM ids (a footnote's default is <footer><div id=…>).
+  it("footnotes keep their text with no ids and no footer", async () => {
+    const root = await md("# 제목\n본문[^1]\n\n[^1]: 덧붙인 말");
+    expect(root.querySelector("[id]")).toBeNull();
+    expect(root.querySelector("footer")).toBeNull();
+    expect(root.textContent).toContain("덧붙인 말");
+    expect(root.querySelector("sup")).toHaveTextContent("1");
+  });
+
+  // Pinned: a bare www. address becomes an http link, like GFM.
+  it("www. autolinks to http", async () => {
+    await md("보기: www.example.com");
+    expect(screen.getByRole("link", { name: "www.example.com" })).toHaveAttribute("href", "http://www.example.com");
+  });
+
   it("headings are bold body text, not h1-h6", async () => {
     const root = await md("# 큰 제목\n## 작은 제목\n본문");
     expect(root.querySelector("h1, h2, h3, h4, h5, h6")).toBeNull();
@@ -108,6 +136,33 @@ describe("Markdown", () => {
     expect(root.textContent).toContain('<img src=x onerror="alert(1)">');
   });
 
+  it("mid-stream: an unclosed code fence is already a code block", async () => {
+    const root = await md("앞 문장\n\n```js\nconst a = 1;");
+    expect(root.querySelector("pre code")).toHaveTextContent("const a = 1;");
+  });
+
+  // Half a link is not a link to "t" yet; the bare start of its address autolinks like any URL
+  // (GFM) and turns into the real link once ")" arrives.
+  it("mid-stream: half a link makes no link of its text", async () => {
+    const view = render(<Markdown text="[t](https://ex" />);
+    expect(screen.queryByRole("link", { name: "t" })).toBeNull();
+    expect(view.container.textContent).toContain("[t](");
+    view.rerender(<Markdown text="[t](https://ex)" />);
+    expect(screen.getByRole("link", { name: "t" })).toHaveAttribute("href", "https://ex");
+  });
+
+  it("stays plain text when the chunk cannot load", async () => {
+    vi.resetModules();
+    const fresh = await import("./Markdown");
+    const load = vi.spyOn(fresh.markdownChunk, "load").mockRejectedValue(new Error("chunk failed"));
+    const view = render(<fresh.Markdown text={"**굵게** 그대로"} />);
+    await waitFor(() => expect(load).toHaveBeenCalled());
+    await act(async () => {});
+    expect(view.container.textContent).toBe("**굵게** 그대로");
+    expect(view.container.querySelector("strong")).toBeNull();
+    load.mockRestore();
+  });
+
   it("every prefix of a streaming answer renders", async () => {
     const full = "# 제목\n**굵게** 와 *기울임*\n\n- [x] 할 일\n1. 하나\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```js\nconst a = `x`;\n```\n> 인용 [링크](https://example.com)";
     await markdownChunk.load();
@@ -133,5 +188,8 @@ describe("Markdown styles", () => {
     expect(rule(".root pre")).toMatch(/font-family:[^;]*monospace/);
     expect(rule(".tableWrap")).toMatch(/overflow-x:\s*auto/);
     expect(rule(".link")).toMatch(/color:\s*var\(--hue\)/);
+    expect(rule(".root .alignLeft")).toMatch(/text-align:\s*left/);
+    expect(rule(".root .alignCenter")).toMatch(/text-align:\s*center/);
+    expect(rule(".root .alignRight")).toMatch(/text-align:\s*right/);
   });
 });

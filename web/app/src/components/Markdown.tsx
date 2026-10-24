@@ -14,11 +14,20 @@ export const markdownChunk = {
   },
 };
 let render: RenderMarkdown | null = null;
-const CLASSES: MarkdownClasses = { heading: styles.heading, link: styles.link, tableWrap: styles.tableWrap, task: styles.task };
+const CLASSES: MarkdownClasses = {
+  heading: styles.heading,
+  link: styles.link,
+  tableWrap: styles.tableWrap,
+  task: styles.task,
+  alignLeft: styles.alignLeft,
+  alignCenter: styles.alignCenter,
+  alignRight: styles.alignRight,
+  footnotes: styles.footnotes,
+};
 let loading: Promise<RenderMarkdown> | null = null;
 
 /** The classes the renderer puts on its elements. */
-export type MarkdownClasses = Record<"heading" | "link" | "tableWrap" | "task", string>;
+export type MarkdownClasses = Record<"heading" | "link" | "tableWrap" | "task" | "alignLeft" | "alignCenter" | "alignRight" | "footnotes", string>;
 
 // The secretary's words (chat answers, the brief, a check-in) as Markdown: no raw HTML, no
 // images, links only http(s). Until the parser arrives (or if it cannot) the text shows plain.

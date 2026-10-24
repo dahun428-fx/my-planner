@@ -68,6 +68,22 @@
   font-weight: 600;
   background: var(--raised);
 }
+.root .alignLeft {
+  text-align: left;
+}
+.root .alignCenter {
+  text-align: center;
+}
+.root .alignRight {
+  text-align: right;
+}
+/* Footnote definitions, gathered after the text. */
+.footnotes {
+  padding-top: 0.5em;
+  border-top: 1px solid var(--rule);
+  font-size: var(--size-meta);
+  color: var(--text-2);
+}
 .root hr {
   margin: 0.75em 0;
   border: 0;

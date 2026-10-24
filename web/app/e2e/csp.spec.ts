@@ -94,6 +94,10 @@ test("markdown answer renders with no CSP violations", async ({ page }) => {
   await expect(answer.getByRole("checkbox")).toHaveCount(2);
   await expect(answer.locator("img")).toHaveCount(0);
   await expect(answer).toContainText("<img src=x onerror=alert(1)>");
+  // Aligned columns come as classes: no element in the answer carries a style attribute.
+  await expect(answer.locator("[style]")).toHaveCount(0);
+  const aligns = await answer.locator("tbody tr").first().locator("td").evaluateAll((tds) => tds.map((td) => getComputedStyle(td).textAlign));
+  expect(aligns).toEqual(["center", "left", "right"]);
   // The table and the code block scroll inside the answer; the page itself does not.
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   for (const sel of ["pre", "table"]) {
