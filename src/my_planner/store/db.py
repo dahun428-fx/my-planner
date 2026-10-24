@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from collections.abc import Callable, Iterator
@@ -13,8 +14,10 @@ _MIGRATION_RE = re.compile(r"^(\d{3})_.+\.sql$")
 
 # 연결마다 지금 트랜잭션 깊이(키: id(conn)). 이벤트 루프 스레드 하나에서만 쓴다(스펙 4.3).
 _DEPTH: dict[int, int] = {}
-# 가장 바깥 트랜잭션이 커밋된 뒤에 부를 일(키: id(conn)). 롤백되면 버린다(`after_commit`)
-_AFTER: dict[int, list[Callable[[], None]]] = {}
+# 가장 바깥 트랜잭션이 커밋된 뒤에 부를 일(키: id(conn)). 깊이마다 목록 하나(맨 끝이 지금 SAVEPOINT):
+# 그 깊이가 롤백되면 그 목록을 버리고, 풀리면(RELEASE) 바깥 목록에 합친다(`after_commit`)
+_AFTER: dict[int, list[list[Callable[[], None]]]] = {}
+log = logging.getLogger(__name__)
 _WRITE_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
 
 
@@ -52,12 +55,23 @@ def open_ro(path: Path | str) -> sqlite3.Connection:
 def after_commit(conn: sqlite3.Connection, fn: Callable[[], None]) -> None:
     """`fn`을 그 연결의 가장 바깥 트랜잭션이 커밋된 뒤에 부른다. 트랜잭션 밖이면 바로 부른다. 롤백되면 부르지 않는다.
 
-    롤백될 수 있는 변경(예: 답한 회차)에 딸린 바깥 일(버튼 거두기 걸기)을 커밋 뒤로 미룬다.
+    롤백될 수 있는 변경(예: 답한 회차)에 딸린 바깥 일(버튼 거두기 걸기)을 커밋 뒤로 미룬다. 안쪽 SAVEPOINT에서
+    걸었고 그 SAVEPOINT가 롤백되면, 바깥이 예외를 잡고 커밋해도 부르지 않는다.
     """
-    if _DEPTH.get(id(conn), 0):
-        _AFTER.setdefault(id(conn), []).append(fn)
+    stack = _AFTER.get(id(conn))
+    if _DEPTH.get(id(conn), 0) and stack:
+        stack[-1].append(fn)
     else:
         fn()
+
+
+def _run_after(fns: list[Callable[[], None]]) -> None:
+    """커밋 뒤의 일을 하나씩. 하나가 실패해도 커밋은 이미 됐다: 종류만 남기고 나머지를 부른다."""
+    for fn in fns:
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001 - 커밋된 변경을 실패로 돌려주지 않는다
+            log.warning("after_commit_error", extra={"error_type": type(e).__name__})
 
 
 @contextmanager
@@ -77,31 +91,36 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         name = f"tx_{depth}"
         conn.execute(f"SAVEPOINT {name}")
         _DEPTH[key] = depth + 1
+        stack = _AFTER.setdefault(key, [[]])
+        stack.append([])
         try:
             yield
         except BaseException:
             conn.execute(f"ROLLBACK TO {name}")
             conn.execute(f"RELEASE {name}")
+            stack.pop()  # 롤백된 SAVEPOINT에서 건 일은 버린다
             raise
         else:
             conn.execute(f"RELEASE {name}")
+            done = stack.pop()
+            stack[-1].extend(done)
         finally:
             _DEPTH[key] = depth
         return
     if not conn.in_transaction:
         conn.execute("BEGIN IMMEDIATE")
     _DEPTH[key] = 1
+    _AFTER[key] = [[]]
     try:
         yield
         conn.commit()
     except BaseException:
         conn.rollback()
-        _AFTER.pop(key, None)
         raise
     finally:
         _DEPTH.pop(key, None)
-    for fn in _AFTER.pop(key, []):
-        fn()
+        stack = _AFTER.pop(key, [[]])
+    _run_after(stack[0])
 
 
 def _migrations() -> list[tuple[int, Path]]:
