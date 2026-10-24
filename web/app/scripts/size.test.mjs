@@ -1,13 +1,13 @@
 // @vitest-environment node
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { firstScreenChunks } from "./size.mjs";
+import { CHAT_PARTS_MARKER, firstScreenChunks } from "./size.mjs";
 
 const script = fileURLToPath(new URL("./size.mjs", import.meta.url));
 let dirs = [];
@@ -92,5 +92,11 @@ describe("size", () => {
     const big = run(outWith({ "a.js": randomBytes(190 * 1024) }, { "b.js": '"sp6-chat-parts"' }));
     expect(big.status).toBe(1);
     expect(big.stdout).toMatch(/^chat sheet chunk: /m);
+  });
+
+  it("looks for the marker registerChatParts writes", () => {
+    // Two copies of one string (a .mjs script cannot import the app's TypeScript): they must agree.
+    const src = readFileSync(fileURLToPath(new URL("../src/ui/chat/registerChatParts.ts", import.meta.url)), "utf8");
+    expect(src.match(/export const CHAT_PARTS_MARKER = "([^"]+)";/)?.[1]).toBe(CHAT_PARTS_MARKER);
   });
 });
