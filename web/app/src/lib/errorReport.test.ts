@@ -96,7 +96,7 @@ describe("ErrorReporter", () => {
   });
 
   it("dedupe and rate limit", () => {
-    const { r, sent, advance } = make();
+    const { r, sent } = make();
     for (let i = 0; i < 3; i++) r.report(new Error("same"), "/today");
     expect(sent).toHaveLength(1);
 
@@ -107,13 +107,6 @@ describe("ErrorReporter", () => {
       r2.report(e, "/today");
     }
     expect(sent2).toHaveLength(5);
-
-    // a minute later the window has room again
-    const e = new Error("x");
-    e.name = "E6";
-    advance(0);
-    r.report(e, "/today");
-    expect(sent).toHaveLength(2);
   });
 
   it("rate limit frees up after a minute", () => {
