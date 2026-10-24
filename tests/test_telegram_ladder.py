@@ -149,3 +149,52 @@ async def test_step2_after_now_press(tmp_path):
 
     assert toast is None
     assert step2.text == LADDER_STEP2 and step2.ladder == ("2026-11", "f")
+
+
+# --- 슬라이스 3: 2단계와 기록 문구 ---
+
+
+async def _to_step1(env):
+    run_id, mid = await _review(env)
+    await env.press("c:2026-11-29:4", message_id=mid)
+    return run_id
+
+
+async def test_now_then_future_then_recorded_copy(tmp_path):
+    async with _start(tmp_path) as env:
+        await _to_step1(env)
+        await env.press("l:2026-11:n:6")
+        assert await env.press("l:2026-11:f:8") == "recorded"
+        done = env.sender.sent[-1]
+        toast = env.bot.answers[-1][1]
+        ladder = env.parts.curve.ladder("2026-11")
+        lines = env.parts.transcripts.read_range(date(2026, 11, 29), date(2026, 11, 29))
+        proactive = env.parts.state.usage(date(2026, 11, 29)).proactive_messages
+
+    assert done.text == "기록했어요: 지금 6, 5년 뒤 8" and done.ladder is None
+    assert toast is None
+    assert (ladder.now, ladder.future) == (6, 8)
+    assert "[버튼] 사다리 지금 6" in lines and "[버튼] 사다리 5년 뒤 8" in lines
+    assert "기록했어요: 지금 6, 5년 뒤 8" in lines
+    assert proactive == 1  # 단계 메시지는 하루 3회에 세지 않는다(회고 메시지 하나만)
+
+
+async def test_skip_future_copy(tmp_path):
+    async with _start(tmp_path) as env:
+        await _to_step1(env)
+        await env.press("l:2026-11:n:6")
+        assert await env.press("l:2026-11:f:skip") == "skipped"
+        done = env.sender.sent[-1]
+        ladder = env.parts.curve.ladder("2026-11")
+
+    assert done.text == "기록했어요: 지금 6"
+    assert (ladder.now, ladder.future) == (6, None)
+
+
+def test_ladder_callback_shapes():
+    from my_planner.bot.callbacks import _parse_ladder
+
+    assert _parse_ladder("l:2026-11:n:10") == ("2026-11", "n", 10)
+    assert _parse_ladder("l:2026-11:f:skip") == ("2026-11", "f", None)
+    for bad in ("l:2026-11:n:skip", "l:2026-13:n:1", "l:2026-11:n:11", "l:2026-11:x:1", "l:202611:n:1", None):
+        assert _parse_ladder(bad) is None
