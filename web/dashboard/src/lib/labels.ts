@@ -121,6 +121,7 @@ export const NAV_TEXT = {
   brand: "my-planner",
   status: "비서 상태",
   tasks: "할 일",
+  curve: "인생곡선",
   window: "상태창",
   settings: "설정",
   label: "화면",
@@ -179,4 +180,64 @@ export const STATUS_TEXT = {
   recentXp: "최근 경험치",
   xpGain: (amount: number, label: string) => `+${amount} ${label}`,
   recentEmpty: "할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.",
+} as const;
+
+// SP1 area order and names (the same as `/status` stat labels).
+export const AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"] as const;
+export type Area = (typeof AREAS)[number];
+export const AREA_LABELS: Record<Area, string> = {
+  career: "커리어",
+  finance: "경제",
+  health: "건강",
+  relationships: "관계",
+  learning: "배움",
+  quality_of_life: "삶의 질",
+};
+
+// (c) 인생곡선, spec 13.4 and 8.3 (the reassurance table, verbatim). Nothing here judges a score.
+export const CURVE_TEXT = {
+  title: "인생곡선",
+  zoomLabel: "확대",
+  zooms: { day: "일", week: "주", month: "월", quarter: "분기", year: "년" },
+  sensitive: "민감한 사건 보기",
+  legendNow: "지금",
+  legendFuture: "5년 뒤",
+  legendCondition: "컨디션 (0~10으로 옮김)",
+  chart: (from: string, to: string) => `인생곡선 ${from}~${to}`,
+  dataList: "곡선의 값",
+  ladderRow: (period: string, now: number | null, future: number | null) =>
+    [`사다리 ${period}`, now !== null ? `지금 ${now}` : null, future !== null ? `5년 뒤 ${future}` : null].filter(Boolean).join(" · "),
+  conditionRow: (bucket: string, average: number, days: number) => `컨디션 ${bucket} 평균 ${average.toFixed(1)} · ${days}일 기록`,
+  chapterRow: (title: string, start: string, end: string | null) => `챕터 ${title} (${start}~${end ?? "지금"})`,
+  kinds: { high: "고점", low: "저점", turning_point: "전환점" },
+  glyphs: { high: "▲", low: "▼", turning_point: "◆" },
+  milestoneButton: (kind: string, date: string, title: string) => `${kind} ${date} ${title}`,
+  estimate: "(추정)",
+  sensitiveMark: "민감한 사건",
+  close: "닫기",
+  details: "사건 상세",
+  areas: (latest: string, previous: string | null) => (previous ? `영역 (${latest}, 점선 ${previous.slice(5)})` : `영역 (${latest})`),
+  areasTitle: "영역",
+  areaRow: (label: string, now: number | null, prev: number | null, prevPeriod: string | null, down: boolean) =>
+    `${label} ${now ?? "—"}${prev !== null && prevPeriod ? ` (${prevPeriod.slice(5)} ${prev})` : ""}${down ? " ↓" : ""}`,
+  reassurance: "안심 보기",
+  monthLabel: (period: string, sameYear: boolean) => {
+    const [y, m] = period.split("-");
+    return sameYear ? `${Number(m)}월` : `${y}년 ${Number(m)}월`;
+  },
+  remembered: (month: string, now: number) => `${month} 기억 ${now}`,
+  daily: (scaled: number) => `하루하루 ${scaled.toFixed(1)}`,
+  copy: {
+    better: "기억보다 하루하루가 괜찮았던 달이에요",
+    harder: "하루하루는 버거웠지만 한 달을 좋게 기억하는 달이에요",
+    similar: "기억과 하루하루가 비슷했던 달이에요",
+    few: "이 달은 컨디션 기록이 적어서 비교하지 않았어요",
+  },
+  moreMonths: (n: number) => `지난 달 ${n}개 더 보기`,
+  empty: {
+    events: "시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요.",
+    ladder: "첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.",
+    areas: "영역 점수는 분기 마지막 주 회고에서 함께 정해요.",
+    reassurance: "사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요.",
+  },
 } as const;
