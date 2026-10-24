@@ -88,6 +88,7 @@ export const copy = {
     back: "‹ 오늘",
     canReply: "답장할 수 있어요",
     answeredVia: (channel: string) => `${channel}에서 답했어요`,
+    answered: "답했어요",
     passed: "지나감",
     sentAt: (hhmm: string) => `${hhmm}에 보냄`,
     receivedApp: "앱 알림으로 받음",

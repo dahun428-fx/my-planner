@@ -11,7 +11,6 @@ import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Skeleton } from "../components/Skeleton";
-import { useToast } from "../components/Toast";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
@@ -20,6 +19,7 @@ import page from "../styles/page.module.css";
 import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
 import styles from "./Checkin.module.css";
+import { useNotAllowed } from "./todoActions";
 
 const POLL_MS = 15_000;
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -42,7 +42,7 @@ class ReplyBoundary extends ReactComponent<{ onError(): void; children: ReactNod
 
 // The reply box is the chat sheet drawn inside the screen. Its chunk (the AI SDK with it) loads
 // when the box is first needed; a failure says so with a retry, never a blank screen.
-function Reply({ checkinId, conversationId }: { checkinId: number; conversationId: number | null }) {
+function Reply({ checkinId, conversationId, onSent }: { checkinId: number; conversationId: number | null; onSent(): void }) {
   const [Sheet, setSheet] = useState<ComponentType<ChatSheetProps> | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -91,17 +91,18 @@ function Reply({ checkinId, conversationId }: { checkinId: number; conversationI
   return (
     <div className={styles.reply}>
       <ReplyBoundary onError={fail}>
-        <Sheet open onClose={() => {}} embedded checkinId={checkinId} conversationId={conversationId} />
+        <Sheet open onClose={() => {}} embedded checkinId={checkinId} conversationId={conversationId} onSent={onSent} />
       </ReplyBoundary>
     </div>
   );
 }
 
 // Spec 5.5.3: the open to-dos of the day, only on an evening check-in.
-function Remaining({ readOnly, reloadToken }: { readOnly: boolean; reloadToken: number }) {
+function Remaining({ readOnly: parentReadOnly, reloadToken }: { readOnly: boolean; reloadToken: number }) {
   const { result, refresh } = usePolling<Today>(() => apiGet<Today>("/today", "Today"));
   const { run } = useAction();
-  const toast = useToast();
+  const readOnly = parentReadOnly || result?.kind === "offline";
+  const notAllowed = useNotAllowed(refresh);
   const [acting, setActing] = useState<ReadonlySet<number>>(new Set());
   const busy = useRef(new Set<number>());
 
@@ -114,7 +115,13 @@ function Remaining({ readOnly, reloadToken }: { readOnly: boolean; reloadToken: 
     void refresh();
   }, [reloadToken, refresh]);
 
-  const date = result?.kind === "ok" ? result.data.date : "";
+  // The last good answer stays, disabled, when the connection drops (F9).
+  const [lastToday, setLastToday] = useState<Today | null>(null);
+  useEffect(() => {
+    if (result?.kind === "ok") setLastToday(result.data);
+  }, [result]);
+  const shownToday = result?.kind === "ok" ? result.data : lastToday;
+  const date = shownToday?.date ?? "";
 
   const act = async (id: number, action: "move_task" | "complete_task") => {
     if (busy.current.has(id)) return; // the answer to the first press has not come yet
@@ -125,10 +132,7 @@ function Remaining({ readOnly, reloadToken }: { readOnly: boolean; reloadToken: 
       const out = await run(action, action === "move_task" ? { id, planned_for: addDays(date, 1) } : { id });
       if (out === null) return;
       if (out.kind === "applied") await refresh();
-      else if (out.kind === "conflict" || out.kind === "needs_confirm" || (out.kind === "rejected" && out.message === "")) {
-        toast.show({ text: copy.actions.failed });
-        await refresh();
-      }
+      else await notAllowed(out);
     } finally {
       busy.current.delete(id);
       setActing(new Set(busy.current));
@@ -138,8 +142,8 @@ function Remaining({ readOnly, reloadToken }: { readOnly: boolean; reloadToken: 
   let body: ReactNode;
   if (result === null) {
     body = <Skeleton size="row" />;
-  } else if (result.kind === "ok") {
-    const todos = result.data.todos.map((t) => t.todo).filter((t) => t.status === "open" || t.status === "done");
+  } else if (shownToday !== null) {
+    const todos = shownToday.todos.map((t) => t.todo).filter((t) => t.status === "open" || t.status === "done");
     const list = [...todos.filter((t) => t.status === "open"), ...todos.filter((t) => t.status === "done")];
     body =
       list.length === 0 ? (
@@ -200,9 +204,11 @@ function CheckinBody({ id }: { id: number }) {
   const { result, refresh } = usePolling<CheckinDetail>(() => apiGet<CheckinDetail>(`/checkins/${id}`, "CheckinDetail"), POLL_MS);
 
   // The last good answer stays on screen when a later read fails or the connection drops.
-  const last = useRef<{ data: CheckinDetail; at: string } | null>(null);
-  if (result?.kind === "ok") last.current = { data: result.data, at: new Date().toISOString() };
-  const data = result?.kind === "ok" ? result.data : last.current?.data ?? null;
+  const [last, setLast] = useState<{ data: CheckinDetail; at: string } | null>(null);
+  useEffect(() => {
+    if (result?.kind === "ok") setLast({ data: result.data, at: new Date().toISOString() });
+  }, [result]);
+  const data = result?.kind === "ok" ? result.data : last?.data ?? null;
 
   // The reply box keeps the conversation it first opened with, so a read that shows the one the
   // BE forked while talking does not reload it under the person's hands.
@@ -211,16 +217,17 @@ function CheckinBody({ id }: { id: number }) {
     if (conv === null && data) setConv({ id: data.conversation_ids.app });
   }, [conv, data]);
 
-  // `reply_until` is used only to turn "답장할 수 있어요" into "지나감" on screen; the next read puts the BE's word back.
-  const [lapsed, setLapsed] = useState(false);
+  // `reply_until` is used only to show "지나감" once the window has ended. The word is worked out
+  // at render time, so a new read changes nothing by itself; the timer only forces that render.
+  const [, tick] = useState(0);
   useEffect(() => {
-    setLapsed(false);
     if (!data || data.state !== "pending") return;
     const wait = Date.parse(data.reply_until) - Date.now();
-    if (!(wait < MAX_TIMER_MS)) return;
-    const timer = setTimeout(() => setLapsed(true), Math.max(wait + 1, 0));
+    if (wait <= 0 || wait >= MAX_TIMER_MS) return;
+    const timer = setTimeout(() => tick((n) => n + 1), wait + 1);
     return () => clearTimeout(timer);
   }, [data]);
+  const lapsed = data !== null && data.state === "pending" && Date.now() > Date.parse(data.reply_until);
 
   const [reload, setReload] = useState(0);
   const afterPartAction = useCallback(() => {
@@ -236,7 +243,9 @@ function CheckinBody({ id }: { id: number }) {
       ? shown === "pending"
         ? copy.checkin.canReply
         : shown === "answered"
-          ? copy.checkin.answeredVia(data.answered_via ? copy.channels[data.answered_via] : copy.channels.app)
+          ? data.answered_via
+            ? copy.checkin.answeredVia(copy.channels[data.answered_via])
+            : copy.checkin.answered
           : copy.checkin.passed
       : null;
 
@@ -254,7 +263,7 @@ function CheckinBody({ id }: { id: number }) {
           </section>
         ))}
         {data.loop === "evening_checkin" && <Remaining readOnly={readOnly} reloadToken={reload} />}
-        {conv !== null && <Reply checkinId={id} conversationId={conv.id} />}
+        {conv !== null && <Reply checkinId={id} conversationId={conv.id} onSent={afterPartAction} />}
       </>
     );
   } else if (result === null && !offline) {
@@ -293,10 +302,10 @@ function CheckinBody({ id }: { id: number }) {
         <Link href="/" className={styles.back}>
           {copy.checkin.back}
         </Link>
-        {status !== null && <span className={styles.status}>{status}</span>}
+        {status !== null && <span className={styles.status} role="status">{status}</span>}
       </nav>
       <LargeTitle title={data ? copy.loops[data.loop] : copy.checkin.title} meta={data ? deliveredLine(data) ?? undefined : undefined} />
-      {offline && <OfflineNotice savedAt={last.current?.at ?? null} onRetry={() => void recheck()} />}
+      {offline && <OfflineNotice savedAt={last?.at ?? null} onRetry={() => void recheck()} />}
       {body}
     </main>
   );

@@ -36,14 +36,18 @@ export interface ChatSheetProps {
   conversationId?: number | null;
   /** Inside a screen (check-in, A06) instead of a sheet. */
   embedded?: boolean;
+  /** An answer to a sent message has finished (the screen around an embedded box reads again). */
+  onSent?(): void;
 }
 
 // Spec 5.5.2, 4.6 대화, F4, F9.
-export function ChatSheet({ open, onClose, checkinId, conversationId, embedded = false }: ChatSheetProps) {
+export function ChatSheet({ open, onClose, checkinId, conversationId, embedded = false, onSent }: ChatSheetProps) {
   const { state, conn } = useConnection();
   const online = state?.kind === "online";
   const connRef = useRef(conn);
   connRef.current = conn;
+  const onSentRef = useRef(onSent);
+  onSentRef.current = onSent;
   const ctx = useRef<ChatCtx>({ conversationId: null, checkinId: checkinId ?? null });
   ctx.current.checkinId = checkinId ?? null;
 
@@ -101,6 +105,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         return;
       }
       settle(null);
+      onSentRef.current?.();
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
       void saveParts(message.id, toViewParts(message));

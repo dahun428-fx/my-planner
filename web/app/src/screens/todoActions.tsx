@@ -13,7 +13,9 @@ export function useNotAllowed(refresh: () => Promise<void>) {
   const toast = useToast();
   return useCallback(
     async (out: ActionOutcome | null) => {
-      if (out?.kind !== "conflict" && out?.kind !== "needs_confirm") return;
+      // A refusal with no sentence of its own is not toasted by useAction, so it is said here.
+      const silentReject = out?.kind === "rejected" && out.message === "";
+      if (out?.kind !== "conflict" && out?.kind !== "needs_confirm" && !silentReject) return;
       toast.show({ text: copy.actions.failed });
       await refresh();
     },

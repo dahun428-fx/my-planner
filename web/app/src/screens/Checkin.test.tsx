@@ -161,9 +161,11 @@ describe("Checkin", () => {
     await user.click(btn);
     expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
     await waitFor(() => expect(hits.today).toBeGreaterThan(before));
+    const afterConflict = hits.today;
     await user.click(screen.getByRole("button", { name: copy.checkin.completeLabel("장보기") }));
     await waitFor(() => expect(n).toBe(2));
-    await waitFor(() => expect(screen.getAllByText(copy.actions.failed).length).toBeGreaterThan(0));
+    await waitFor(() => expect(hits.today).toBeGreaterThan(afterConflict));
+    expect(screen.getAllByText(copy.actions.failed).length).toBeGreaterThan(0);
   });
 
   it("brief has no todo block", async () => {
@@ -285,9 +287,47 @@ describe("Checkin", () => {
     const user = userEvent.setup();
     renderWithProviders(<Checkin id={341} />, { catalog: true });
     expect(await screen.findByText(copy.checkin.replyFailed)).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: copy.errors.retry }));
     expect(await input()).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("answered without a channel says so without guessing", async () => {
+    serve({ ...answered, answered_via: null });
+    serveHistory({ messages: { 44: [] } });
+    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    expect(await screen.findByText(copy.checkin.answered)).toBeInTheDocument();
+    expect(screen.queryByText(copy.checkin.answeredVia(copy.channels.app))).toBeNull();
+  });
+
+  it("status reads again after a reply finishes", async () => {
+    const hits = serve({ ...pending, conversation_ids: { app: 44, telegram: null } });
+    serveHistory({ messages: { 44: [] } });
+    serveChat(() => sseResponse(textAnswer(44)));
+    const user = userEvent.setup();
+    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    await user.type(await input(), "네");
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.send })).toBeEnabled());
+    const before = hits.checkin;
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await screen.findByText("네, 알겠어요");
+    await waitFor(() => expect(hits.checkin).toBeGreaterThan(before));
+  });
+
+  it("keeps the last to-dos, disabled, when the connection drops", async () => {
+    vi.useRealTimers(); // the polling interval has to be fake too
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"], shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    serve();
+    renderWithProviders(<Checkin id={341} />, { catalog: true });
+    await screen.findByRole("button", { name: copy.checkin.completeLabel("장보기") });
+    server.use(http.get(`${BASE}/today`, () => HttpResponse.error()), http.get(`${BASE}/checkins/341`, () => HttpResponse.error()));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    await screen.findByText(copy.offline.lead, {}, { timeout: 3000 });
+    expect(screen.getByRole("button", { name: copy.checkin.completeLabel("장보기") })).toBeDisabled();
   });
 
   it("an unknown check-in is said, with retry", async () => {
