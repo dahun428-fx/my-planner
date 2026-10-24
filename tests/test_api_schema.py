@@ -39,7 +39,9 @@ async def test_schema_lists_all_models(tmp_path):
     # 필드 이름은 별칭(`from`, `schema`)으로 나간다
     assert "from" in body["models"]["Conditions"]["properties"]
     assert "schema" in json.dumps(body["models"]["UiCatalog"])
-    assert set(body["models"]["TodoRef"]["properties"]) == {"id", "title", "cadence", "area", "status"}
+    todo_ref = body["models"]["TodoRef"]
+    assert set(todo_ref["properties"]) == {"id", "title", "cadence", "area", "status", "planned_for", "scheduled_at"}
+    assert set(todo_ref["required"]) == set(todo_ref["properties"])  # 값이 없으면 null(SP6 10.2)
 
 
 async def test_every_read_response_validates_against_schema(tmp_path):
