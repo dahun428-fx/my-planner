@@ -109,13 +109,32 @@ async function activate() {
   await self.clients.claim();
 }
 
+// On a weak signal iOS can hold a page request open for tens of seconds. Past this the cached
+// shell answers instead; with no cached shell the network answer is still awaited. The page
+// fetch is left to finish in the background; nothing reads it.
+const NAV_TIMEOUT_MS = 2500;
+
+async function cachedShell(request) {
+  return (await self.caches.match(request, { ignoreSearch: true })) || (await self.caches.match("/"));
+}
+
 async function networkFirst(request) {
+  const network = self.fetch(request);
+  let timer;
+  const slow = new Promise((resolve) => {
+    timer = self.setTimeout(() => resolve("slow"), NAV_TIMEOUT_MS);
+  });
   try {
-    return await self.fetch(request);
+    const first = await Promise.race([network, slow]);
+    if (first !== "slow") return first;
+    const hit = await cachedShell(request);
+    return hit || (await network);
   } catch (err) {
-    const hit = (await self.caches.match(request, { ignoreSearch: true })) || (await self.caches.match("/"));
+    const hit = await cachedShell(request);
     if (hit) return hit;
     throw err;
+  } finally {
+    self.clearTimeout(timer);
   }
 }
 

@@ -62,6 +62,8 @@ function load(opts: { buildId?: string; windows?: Win[]; fetch?: (r: Request) =>
     Response,
     Promise,
     JSON,
+    setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms),
+    clearTimeout: (id: ReturnType<typeof setTimeout>) => clearTimeout(id),
     location: { origin: ORIGIN },
     addEventListener: (type: string, fn: Listener) => (listeners[type] ??= []).push(fn),
     registration: { showNotification: vi.fn(async () => undefined) },
@@ -235,6 +237,70 @@ describe("sw.js", () => {
     const offline = fetchEvent(`${ORIGIN}/checkin/?id=341`, { mode: "navigate" });
     fire("fetch", offline);
     expect(await (await offline.responded!).text()).toBe("cached shell");
+  });
+
+  it("a page load that hangs on a weak signal gets the cached shell", async () => {
+    vi.useFakeTimers();
+    try {
+      const caches = fakeCaches({ "app-b1": { [`${ORIGIN}/`]: "cached root" } });
+      const { fire } = load({ buildId: "b1", caches, fetch: () => new Promise<Response>(() => undefined) });
+      const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+      fire("fetch", nav);
+      let settled = false;
+      void nav.responded!.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(2499);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await (await nav.responded!).text()).toBe("cached root");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a slow page load with nothing cached still waits for the network", async () => {
+    vi.useFakeTimers();
+    try {
+      let answer!: (r: Response) => void;
+      const { fire } = load({ buildId: "b1", fetch: () => new Promise<Response>((r) => (answer = r)) });
+      const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+      fire("fetch", nav);
+      await vi.advanceTimersByTimeAsync(3000);
+      answer(new Response("late page"));
+      expect(await (await nav.responded!).text()).toBe("late page");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a fetch that fails after the timeout keeps the cached shell answer", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail!: (e: Error) => void;
+      const caches = fakeCaches({ "app-b1": { [`${ORIGIN}/`]: "cached root" } });
+      const { fire } = load({ buildId: "b1", caches, fetch: () => new Promise<Response>((_, r) => (fail = r)) });
+      const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+      fire("fetch", nav);
+      await vi.advanceTimersByTimeAsync(2500);
+      fail(new TypeError("offline"));
+      expect(await (await nav.responded!).text()).toBe("cached root");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a fetch that fails after the timeout with nothing cached fails the page load", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail!: (e: Error) => void;
+      const { fire } = load({ buildId: "b1", fetch: () => new Promise<Response>((_, r) => (fail = r)) });
+      const nav = fetchEvent(`${ORIGIN}/todos/`, { mode: "navigate" });
+      fire("fetch", nav);
+      await vi.advanceTimersByTimeAsync(3000);
+      fail(new TypeError("offline"));
+      await expect(nav.responded!).rejects.toThrow("offline");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("dev build does not cache", () => {
