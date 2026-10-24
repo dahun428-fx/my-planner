@@ -157,3 +157,43 @@ def test_recent_xp_and_totals(conn):
     body = snap(conn)
     assert (body["level"], body["xp_total"], body["xp_into_level"], body["xp_for_next"]) == (1, 70, 70, 150)
     assert [x["label"] for x in body["recent_xp"]] == ["라벨6", "라벨5", "라벨4", "라벨3", "라벨2"]
+
+
+def test_partial_quarter_keeps_other_area_debuff(conn):
+    area_scores(conn, "2026-Q2", health=7)
+    area_scores(conn, "2026-Q3", health=4)
+    area_scores(conn, "2026-Q4", career=6)  # 이번 분기에는 커리어만 기록
+    body = snap(conn)
+    h = stat(body, "health")
+    assert (h["score"], h["period"], h["prev_score"], h["prev_period"], h["debuff"]) == (
+        4, "2026-Q3", 7, "2026-Q2", True,
+    )
+    assert h["recovery_quest"] == DEFAULT_RECOVERY_QUESTS["health"]
+    assert stat(body, "career")["debuff"] is False
+
+
+def test_non_adjacent_quarters_give_no_debuff(conn):
+    area_scores(conn, "2025-Q1", health=8)
+    area_scores(conn, "2026-Q3", health=3)
+    h = stat(snap(conn), "health")
+    assert (h["score"], h["period"], h["prev_score"], h["prev_period"], h["debuff"]) == (3, "2026-Q3", None, None, False)
+    area_scores(conn, "2025-Q4", career=5)
+    area_scores(conn, "2026-Q1", career=2)  # 해를 넘어도 바로 앞 분기다
+    c = stat(snap(conn), "career")
+    assert (c["debuff"], c["prev_period"]) == (True, "2025-Q4")
+
+
+def test_area_with_only_older_scores_still_shows_stat(conn):
+    area_scores(conn, "2025-Q2", learning=6)
+    area_scores(conn, "2026-Q4", career=7)
+    body = snap(conn)
+    ln = stat(body, "learning")
+    assert (ln["score"], ln["period"], ln["debuff"]) == (6, "2025-Q2", False)
+
+
+def test_main_quest_rank_is_priorities_rank(conn):
+    tasks = TasksRepo(conn, FakeClock(NOW))
+    a, b = mk(tasks, "목표 하나"), mk(tasks, "목표 둘")
+    tasks.set_priorities(Cadence.quarter, "2026-Q4", [a.id, b.id])
+    tasks.set_status(a.id, TaskStatus.done)
+    assert [(q["title"], q["rank"]) for q in snap(conn)["main_quests"]] == [("목표 둘", 2)]

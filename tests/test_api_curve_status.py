@@ -76,7 +76,8 @@ async def test_include_sensitive_true_marks_flag(tmp_path):
     [
         "zoom=decade", "zoom=", "include_sensitive=1", "include_sensitive=True", "from=2026-1-1", "to=내일",
         "from=2026-13-01", "from=2026-10-02&to=2026-10-01", "zoom=day&from=2025-01-01&to=2026-10-24",
-        "from=0001-01-01&to=9999-12-31&zoom=day",
+        "from=0001-01-01&to=9999-12-31&zoom=day", "zoom=month&to=0001-06-01", "zoom=week&to=0001-01-03",
+        "zoom=quarter&to=0001-02-01", "zoom=day&to=0001-01-05",
     ],
 )
 async def test_curve_bad_query_400(tmp_path, query):
@@ -86,8 +87,11 @@ async def test_curve_bad_query_400(tmp_path, query):
         status = await env.get("/status?include_sensitive=yes")
     assert resp.status == 400 and body["error"]["code"] == "invalid_request"
     assert status.status == 400
-    assert query.split("=")[-1] not in body["error"]["message"] or query.endswith("=")  # 요청 값을 되돌려 주지 않는다
-    if "day&from" in query or "zoom=day" in query:
+    # 요청 값을 되돌려 주지 않는다
+    for pair in query.split("&"):
+        value = pair.split("=", 1)[1]
+        assert not value or value not in body["error"]["message"]
+    if query in ("zoom=day&from=2025-01-01&to=2026-10-24", "from=0001-01-01&to=9999-12-31&zoom=day"):
         assert body["error"]["message"] == "범위를 줄이거나 확대 단위를 키워 주세요"
 
 

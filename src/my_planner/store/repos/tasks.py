@@ -289,6 +289,15 @@ class TasksRepo:
         tasks = [self.get(r["task_id"]) for r in rows]
         return [t for t in tasks if t is not None]
 
+    def priority_ranks(self, cadence: Cadence | str, period: str) -> list[tuple[int, Task]]:
+        """`priorities()`와 같되 `priorities.rank`를 함께 준다."""
+        rows = self.conn.execute(
+            "SELECT rank, task_id FROM priorities WHERE cadence = ? AND period = ? ORDER BY rank",
+            (Cadence(cadence).value, period),
+        ).fetchall()
+        got = [(r["rank"], self.get(r["task_id"])) for r in rows]
+        return [(rank, t) for rank, t in got if t is not None]
+
     def current_priority(self, task_id: int, today: date) -> tuple[Cadence, str, int] | None:
         """그 할 일이 지금 기간(오늘, 이번 주, 이번 달, 분기, 올해)의 우선순위이면 가장 큰 주기의 (주기, 기간, 순위)."""
         periods = [(c, period_of(c, today)) for c in Cadence]
@@ -302,6 +311,25 @@ class TasksRepo:
         order = list(Cadence)
         best = max(rows, key=lambda r: order.index(Cadence(r["cadence"])))
         return Cadence(best["cadence"]), best["period"], best["rank"]
+
+    def first_steps(self, task_id: int) -> tuple[int, int]:
+        """그 할 일의 첫 걸음(`parent_id`가 그 할 일인 것) 수: (열림, 완료). 소프트 삭제한 것은 뺀다."""
+        rows = self.conn.execute(
+            "SELECT status, COUNT(*) AS n FROM tasks WHERE parent_id = ? AND deleted_at IS NULL "
+            "AND status IN ('open', 'done') GROUP BY status",
+            (task_id,),
+        ).fetchall()
+        counts = {r["status"]: r["n"] for r in rows}
+        return counts.get("open", 0), counts.get("done", 0)
+
+    def next_undated_step(self, task_id: int) -> int | None:
+        """날짜 없는 다음 첫 걸음(`open`, `planned_for` 없음)의 id. 없으면 None."""
+        r = self.conn.execute(
+            "SELECT id FROM tasks WHERE parent_id = ? AND deleted_at IS NULL AND status = 'open' "
+            "AND planned_for IS NULL ORDER BY id LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return r["id"] if r else None
 
     # --- 도구 호출 기록 ---
 

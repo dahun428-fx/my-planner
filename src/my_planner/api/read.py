@@ -247,21 +247,21 @@ def get_curve(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     curve = CurveRepo(conn, deps.clock)
     earliest = curve.earliest_chapter_start()
     from_, to = _query_date(request, "from"), _query_date(request, "to")
-    if from_ is None or to is None:
-        # 하나만 주면 다른 쪽은 그 기준일의 기본 범위에서 가져온다
-        base = to if from_ is None and to is not None else today
-        dfrom, dto = default_range(zoom, base, earliest)
-        from_, to = from_ or dfrom, to or dto
-    if from_ > to:
-        raise _bad("from은 to보다 늦을 수 없어요.")
     try:
+        if from_ is None or to is None:
+            # 하나만 주면 다른 쪽은 그 기준일의 기본 범위에서 가져온다
+            base = to if from_ is None and to is not None else today
+            dfrom, dto = default_range(zoom, base, earliest)
+            from_, to = from_ or dfrom, to or dto
+        if from_ > to:
+            raise _bad("from은 to보다 늦을 수 없어요.")
         body = curve_view(
             curve, ConditionsRepo(conn, deps.clock), zoom=zoom, from_=from_, to=to,
             include_sensitive=include_sensitive, today=today,
         )
     except TooManyBuckets:
         raise _bad("범위를 줄이거나 확대 단위를 키워 주세요") from None
-    except OverflowError:
+    except (OverflowError, ValueError):
         raise _bad("범위가 맞지 않아요.") from None
     return dump(Curve, body)
 

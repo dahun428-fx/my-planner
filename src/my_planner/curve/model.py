@@ -128,9 +128,9 @@ def reassurance(ladder: list[Ladder], conditions: list[Condition]) -> list[dict[
             "days_logged": len(scores), "gap": None,
         }
         if len(scores) >= MIN_REASSURANCE_DAYS:
-            avg = sum(scores) / len(scores)
+            avg = round(sum(scores) / len(scores), 1)  # 표시하는 평균을 옮긴다: 6.3.5 식으로 다시 계산해도 같다
             scaled = (avg - 1) * 2.5
-            row["condition_average"] = round(avg, 1)
+            row["condition_average"] = avg
             row["condition_scaled"] = round(scaled, 1) + 0.0
             row["gap"] = round(scaled - lad.now, 1) + 0.0
         out.append(row)

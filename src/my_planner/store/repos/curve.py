@@ -160,6 +160,21 @@ class CurveRepo:
         ).fetchall()
         return [r["period"] for r in rows]
 
+    def latest_area_scores(self, up_to_period: str) -> dict[str, AreaScore]:
+        """영역마다 `up_to_period`까지(포함) 점수가 있는 가장 최근 분기의 행."""
+        rows = self.conn.execute(
+            "SELECT s.* FROM curve_area_scores s WHERE s.period <= ? AND s.period = "
+            "(SELECT MAX(period) FROM curve_area_scores WHERE area = s.area AND period <= ?)",
+            (up_to_period, up_to_period),
+        ).fetchall()
+        return {r["area"]: _area_score(r) for r in rows}
+
+    def area_score(self, period: str, area: str) -> AreaScore | None:
+        r = self.conn.execute(
+            "SELECT * FROM curve_area_scores WHERE period = ? AND area = ?", (period, area)
+        ).fetchone()
+        return _area_score(r) if r else None
+
     def area_scores(self, period: str) -> list[AreaScore]:
         rows = self.conn.execute(
             "SELECT * FROM curve_area_scores WHERE period = ? ORDER BY area", (period,)
