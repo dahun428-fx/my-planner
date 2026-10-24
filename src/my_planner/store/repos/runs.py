@@ -9,6 +9,7 @@ from datetime import datetime
 
 from my_planner.clock import Clock, from_iso, to_iso
 from my_planner.domain import Cadence, LoopKey, RunStatus, SkipReason
+from my_planner.store.db import transaction
 
 
 @dataclass
@@ -53,7 +54,7 @@ class RunsRepo:
         return to_iso(self.clock.now())
 
     def _update(self, id: int, sql: str, *args: object) -> None:
-        with self.conn:
+        with transaction(self.conn):
             self.conn.execute(f"UPDATE runs SET {sql} WHERE id = ?", (*args, id))
 
     # --- 만들기와 읽기 ---
@@ -63,7 +64,7 @@ class RunsRepo:
     ) -> Run:
         """없으면 `pending`으로 만든다. 있으면 그대로 돌려준다."""
         key = (LoopKey(loop).value, Cadence(cadence).value, to_iso(scheduled_for))
-        with self.conn:
+        with transaction(self.conn):
             self.conn.execute(
                 "INSERT OR IGNORE INTO runs (loop, cadence, scheduled_for, status, created_at) "
                 "VALUES (?, ?, ?, 'pending', ?)",
@@ -112,7 +113,7 @@ class RunsRepo:
         queued인 회차와, 시작 시 복구로 다시 실행하려고 큐에 넣은 interrupted 회차만 바꾼다.
         이미 실행 중이거나 끝난 회차는 되살리지 않는다.
         """
-        with self.conn:
+        with transaction(self.conn):
             self.conn.execute(
                 "UPDATE runs SET status = 'pending', finished_at = NULL "
                 "WHERE id = ? AND status IN ('queued', 'interrupted')",
