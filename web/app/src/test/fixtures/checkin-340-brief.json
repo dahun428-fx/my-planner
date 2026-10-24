@@ -1,0 +1,33 @@
+{
+  "id": 340,
+  "loop": "morning_brief",
+  "cadence": "day",
+  "state": "pending",
+  "scheduled_for": "2026-10-24T01:00:00Z",
+  "sent_at": "2026-10-24T01:00:12Z",
+  "reply_until": "2026-10-24T05:00:00Z",
+  "answered_at": null,
+  "answered_via": null,
+  "delivered_via": [
+    "telegram"
+  ],
+  "conversation_ids": {
+    "app": null,
+    "telegram": null
+  },
+  "text": "좋은 아침이에요. 오늘은 토요일이라 일정이 가벼워요.\n운동과 장보기가 잡혀 있어요.",
+  "cards": [
+    {
+      "toolCallId": "h_summary_1",
+      "component": "ui_summary_card",
+      "props": {
+        "title": "오늘 일정",
+        "lines": [
+          "10:00 산책",
+          "14:00 장보기"
+        ]
+      },
+      "data": null
+    }
+  ]
+}

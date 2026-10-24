@@ -50,13 +50,15 @@ export function kstToUtcIso(date: string, hhmm: string): string {
   return new Date(`${date}T${hhmm}:00+09:00`).toISOString().replace(".000Z", "Z");
 }
 
-// The BE counts the hours before this one as the previous day (clock.py `logical_date`, default
-// `day_boundary` in config.py: time(4, 0)). The API does not expose the setting, so it is fixed here.
-export const DAY_BOUNDARY_HOUR = 4;
+// An older BE sends no `/today.day_boundary`; its default was 04:00 (config.py), so that stands in.
+const DEFAULT_BOUNDARY = "04:00";
 
-/** The BE's logical date (YYYY-MM-DD) of an instant: Seoul wall time, hours before 04:00 count as the day before. */
-export function logicalDateOf(iso: string): string {
+/**
+ * The BE's logical date (YYYY-MM-DD) of an instant: Seoul wall time, minutes before `boundary` ("HH:MM",
+ * `/today.day_boundary`) count as the day before.
+ */
+export function logicalDateOf(iso: string, boundary: string | undefined): string {
+  const b = boundary !== undefined && /^\d{2}:\d{2}$/.test(boundary) ? boundary : DEFAULT_BOUNDARY;
   const date = formatKst(iso, "date");
-  const time = formatKst(iso, "HH:mm");
-  return Number(time.slice(0, 2)) < DAY_BOUNDARY_HOUR ? addDays(date, -1) : date;
+  return formatKst(iso, "HH:mm") < b ? addDays(date, -1) : date;
 }
