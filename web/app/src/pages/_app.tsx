@@ -118,6 +118,7 @@ function useAppShell() {
   routerRef.current = router;
   useEffect(() => {
     applyTheme(loadTheme());
+    // Like the theme, the palette comes in this effect: the first paint is ink, then the choice.
     applyPalette(loadPalette());
     void registerServiceWorker((url) => void routerRef.current.push(url)).then(() => ensurePushSubscription());
     void pruneDeviceData();

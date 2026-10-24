@@ -24,7 +24,8 @@
   display: block;
   width: 2rem;
   height: 2rem;
-  border: 1px solid var(--control);
+  /* --muted, not --control: the edge of a light swatch must show on a white group (3:1). */
+  border: 1px solid var(--muted);
   border-radius: var(--radius-pill);
   background: linear-gradient(to bottom, var(--ground) 50%, var(--hue) 50%);
 }

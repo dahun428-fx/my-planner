@@ -52,6 +52,10 @@
   max-height: 4.5em;
   overflow: hidden;
 }
+/* No space between blocks while folded, so the third line is whole, not half cut. */
+.briefText.folded > * + * {
+  margin-top: 0;
+}
 .more {
   position: relative;
   min-height: var(--small-control-h);

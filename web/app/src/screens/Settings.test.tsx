@@ -416,8 +416,11 @@ describe("Settings", () => {
     await user.keyboard("{ArrowRight}");
     expect(document.documentElement.dataset.palette).toBe("sea");
     expect(within(group).getByRole("radio", { name: copy.settings.palettes.sea })).toHaveFocus();
-    await user.click(within(group).getByRole("radio", { name: copy.settings.palettes.ink }));
+    await user.keyboard("{End}");
+    expect(document.documentElement.dataset.palette).toBe("lavender");
+    await user.keyboard("{Home}");
     expect(document.documentElement.hasAttribute("data-palette")).toBe(false);
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
   });
 
   it("the saved palette shows as chosen", async () => {
