@@ -374,7 +374,7 @@ def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any]) -> ActionR
     except _Superseded:
         http, message = UNDO_ERRORS[SUPERSEDED]
         return _error("superseded", http, "superseded", message)
-    summary = undo_summary(a.summary)
+    summary = undo_summary(payload.get("summary", a.summary))  # 일부만 되돌렸으면 처리 함수가 좁힌 문구
     new_id = record_activity(
         deps.activity, ctx, kind=UNDO_KIND, target=a.target, summary=summary, risk="low", undo=None,
         targets=list(payload["targets"]),  # 되돌리기도 그 대상을 바꾼 활동이다(U3). 실제로 되돌린 대상만

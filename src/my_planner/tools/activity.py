@@ -78,7 +78,8 @@ SUPERSEDED = "superseded"
 
 # 종류별 되돌리기: (도구, 입력, 맥락) → None(되돌림) 또는 `"superseded"`(되돌릴 수 없게 됐다).
 # 입력은 활동의 `undo_json`에 `targets`(U3에서 나중에 바뀌지 않은 대상, `live_targets`)를 더한 것이다. 처리 함수는
-# 실제로 되돌린 대상만 남기도록 `targets`를 좁힐 수 있다(되돌리기 활동이 그 대상을 적는다).
+# 실제로 되돌린 대상만 남기도록 `targets`를 좁힐 수 있다(되돌리기 활동이 그 대상을 적는다). 일부만 되돌리면
+# `summary`(원래 활동 모양의 확인 문구)를 넣어, 되돌림 확인이 되돌린 것만 적게 한다.
 # 처리 함수는 바깥 트랜잭션 안에서 불리고, `"superseded"`를 돌려주면 그 쓰기는 모두 되돌려진다.
 UndoHandler = Callable[["Tools", dict[str, Any], RunContext], str | None]
 UNDO_HANDLERS: dict[str, UndoHandler] = {}

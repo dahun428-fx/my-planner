@@ -691,14 +691,20 @@ def _undo_tasks_confirmed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -
     `proposed` 이벤트를 새로 써서 초안 만료 시계가 되돌린 시각부터 다시 센다. 하나도 못 돌리면 superseded.
     """
     live = set(undo["targets"])
-    reverted: list[str] = []
+    reverted: list[Task] = []
     for i in undo["task_ids"]:
         t = tools.tasks.get(i)
         if task_target(i) in live and t is not None and t.status is TaskStatus.open:
             tools.tasks.restore(t.id, status=TaskStatus.draft, completed_at=None, deleted_at=None)
-            reverted.append(task_target(i))
-    undo["targets"] = reverted
-    return None if reverted else SUPERSEDED
+            reverted.append(t)
+    undo["targets"] = [task_target(t.id) for t in reverted]
+    if not reverted:
+        return SUPERSEDED
+    # 확인 문구는 실제로 되돌린 할 일만 적는다(확정 때와 같은 모양: 하나면 `✓ 확정: 제목`, 여럿이면 제목 목록)
+    undo["summary"] = (
+        f"✓ 확정: {reverted[0].title}" if len(reverted) == 1 else titles_summary("확정", [t.title for t in reverted])
+    )
+    return None
 
 
 def _undo_priorities_set(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:

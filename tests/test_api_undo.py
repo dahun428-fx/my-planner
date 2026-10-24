@@ -348,6 +348,7 @@ async def test_undo_tasks_confirmed_partial(tmp_path):
         status, body = await undo(env, confirmed["undo_id"])
         statuses = [env.parts.tasks.get(i).status.value for i in (d1, d2, d3)]
         undo_targets = ActivityRepo(env.conn, env.clock).targets(body["activity_id"])
+        undo_row_summary = _row(env, body["activity_id"])["summary"]
         # 되돌리기 행은 되돌린 할 일만 적는다: 그대로 둔 할 일의 완료는 여전히 되돌릴 수 있다
         status2, _ = await undo(env, done2["undo_id"])
         d2_after = env.parts.tasks.get(d2).status.value
@@ -357,6 +358,7 @@ async def test_undo_tasks_confirmed_partial(tmp_path):
     assert status == 200 and body["status"] == "undone"
     assert statuses == ["draft", "done", "draft"]
     assert undo_targets == [f"task:{d1}", f"task:{d3}"]
+    assert body["confirmation"] == "↩ 되돌림: 물 마시기, 산책 확정" == undo_row_summary
     assert status2 == 200 and d2_after == "open"
 
 
@@ -660,3 +662,14 @@ def test_undo_handlers_registered_regardless_of_import_order():
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "None"
+
+
+async def test_undo_tasks_confirmed_partial_single_summary(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        d1, d2 = _propose(env, "물 마시기", "스트레칭")
+        confirmed = await _apply(env, "confirm_tasks", {"ids": [d1, d2]})
+        await _apply(env, "drop_task", {"id": d1})
+        status, body = await undo(env, confirmed["undo_id"])
+        row = _row(env, body["activity_id"])["summary"]
+
+    assert status == 200 and body["confirmation"] == "↩ 되돌림: 스트레칭 확정" == row
