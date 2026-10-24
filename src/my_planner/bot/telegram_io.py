@@ -30,6 +30,7 @@ from my_planner.config import Settings
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Inbound, Outbound, send_with_retry
 from my_planner.harness.redact import redact
+from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -256,6 +257,8 @@ ALL_LABEL = "전부 추가"
 CONFIRM_APPLY_MARK = "✓"  # 회차 차례의 확인 버튼(SP3-4 10.1 A5): `✓ {동작 이름: 대상, 16자}`(`내려놓기: 운동`)
 CONFIRM_KEEP_LABEL = "✗ 그대로 두기"
 BUTTON_TITLE_MAX = 16  # 버튼에 보이는 제목 글자 수. 넘으면 줄임표
+SAVE_LABEL = "✓ 저장"  # 사건·챕터 초안(부록 A 사건 초안 버튼)
+SAVE_ALL_LABEL = "전부 저장"
 
 
 def _short(title: str) -> str:
@@ -286,6 +289,38 @@ def draft_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
+def _curve_rows(prefix: str, ids: list[int], titles: dict[int, str]) -> list[list[InlineKeyboardButton]]:
+    rows = []
+    for i in ids:
+        title = titles.get(i)
+        save = f"{SAVE_LABEL}: {_short(title)}" if title else SAVE_LABEL
+        rows.append([
+            InlineKeyboardButton(save, callback_data=f"{prefix}:c:{i}"),
+            InlineKeyboardButton(DROP_LABEL, callback_data=f"{prefix}:x:{i}"),
+        ])
+    return rows
+
+
+def milestone_keyboard(
+    ids: list[int], conversation_id: int | None, titles: dict[int, str]
+) -> list[list[InlineKeyboardButton]]:
+    """사건 초안마다 `✓ 저장: {제목 16자}` `✗ 빼기` 한 줄, 맨 아래 `전부 저장`(SP3-4 10장, 부록 A). 없으면 빈 목록.
+
+    콜백 데이터 `m:c:<id>`, `m:x:<id>`, `m:all:<대화 id>`(그 대화에서 꺼낸 남은 초안 전부). 모두 64바이트 이하.
+    """
+    if not ids:
+        return []
+    rows = _curve_rows("m", ids, titles)
+    if conversation_id is not None:
+        rows.append([InlineKeyboardButton(SAVE_ALL_LABEL, callback_data=f"m:all:{conversation_id}")])
+    return rows
+
+
+def chapter_keyboard(ids: list[int], titles: dict[int, str]) -> list[list[InlineKeyboardButton]]:
+    """챕터 초안마다 `✓ 저장: {제목 16자}` `✗ 빼기` 한 줄. 콜백 데이터 `h:c:<id>`, `h:x:<id>`(전부 저장은 없다)."""
+    return _curve_rows("h", ids, titles)
+
+
 def condition_keyboard(d: date | None) -> list[list[InlineKeyboardButton]]:
     """그날 컨디션 버튼 `1 2 3 4 5` 한 줄. 콜백 데이터 `c:<YYYY-MM-DD>:<1-5>`(그 날짜에 기록한다)."""
     if d is None:
@@ -307,11 +342,18 @@ def confirm_keyboard(confirms: list[tuple[str, str]]) -> list[list[InlineKeyboar
     ]
 
 
-def message_keyboard(out: Outbound, titles: dict[int, str]) -> InlineKeyboardMarkup | None:
-    """메시지 아래 버튼: 초안 줄 → 확인 줄(회차 차례의 확인) → 컨디션 1~5 줄. 모두 없으면 None."""
+def message_keyboard(
+    out: Outbound, titles: dict[int, str], milestone_titles: dict[int, str] | None = None,
+    chapter_titles: dict[int, str] | None = None,
+) -> InlineKeyboardMarkup | None:
+    """메시지 아래 버튼: 할 일 초안 줄 → 사건 초안 줄 → 챕터 초안 줄 → 확인 줄(회차 차례의 확인) → 컨디션 1~5 줄.
+    모두 없으면 None."""
     drafts = draft_keyboard(out.draft_task_ids, out.draft_conversation_id, titles)
     rows = [
-        *(drafts.inline_keyboard if drafts else ()), *confirm_keyboard(out.confirms),
+        *(drafts.inline_keyboard if drafts else ()),
+        *milestone_keyboard(out.draft_milestone_ids, out.draft_conversation_id, milestone_titles or {}),
+        *chapter_keyboard(out.draft_chapter_ids, chapter_titles or {}),
+        *confirm_keyboard(out.confirms),
         *condition_keyboard(out.ask_condition_for),
     ]
     return InlineKeyboardMarkup(rows) if rows else None
@@ -320,13 +362,16 @@ def message_keyboard(out: Outbound, titles: dict[int, str]) -> InlineKeyboardMar
 class TelegramSender:
     """디스패처의 Sender. 앱보다 먼저 `telegram.Bot(token)`으로 만든 봇을 받는다.
 
-    `tasks`를 주면 초안 버튼에 제목을 붙인다.
+    `tasks`를 주면 초안 버튼에 제목을 붙인다. `curve`를 주면 사건·챕터 초안 버튼에도.
     """
 
-    def __init__(self, bot: Bot, chat_id: int, *, tasks: TasksRepo | None = None) -> None:
+    def __init__(
+        self, bot: Bot, chat_id: int, *, tasks: TasksRepo | None = None, curve: CurveRepo | None = None
+    ) -> None:
         self.bot = bot
         self.chat_id = chat_id
         self.tasks = tasks
+        self.curve = curve
 
     def _titles(self, ids: list[int]) -> dict[int, str]:
         if self.tasks is None:
@@ -334,9 +379,17 @@ class TelegramSender:
         found = (self.tasks.get(i) for i in ids)
         return {t.id: t.title for t in found if t is not None}
 
+    def _curve_titles(self, out: Outbound) -> tuple[dict[int, str], dict[int, str]]:
+        """사건·챕터 초안 버튼의 제목. 사용자 본인에게 보내는 확정 버튼이라 민감 사건도 제목 그대로다."""
+        if self.curve is None:
+            return {}, {}
+        ms = (self.curve.get_milestone(i) for i in out.draft_milestone_ids)
+        cs = (self.curve.get_chapter(i) for i in out.draft_chapter_ids)
+        return {m.id: m.title for m in ms if m is not None}, {c.id: c.title for c in cs if c is not None}
+
     async def send(self, out: Outbound) -> int | None:
         """조각마다 보낸다. 버튼이 붙었으면 그 마지막 조각의 메시지 id(답한 뒤 버튼을 거둘 때 쓴다), 없으면 None."""
-        markup = message_keyboard(out, self._titles(out.draft_task_ids))
+        markup = message_keyboard(out, self._titles(out.draft_task_ids), *self._curve_titles(out))
         parts = split_message(out.text)
         message_id: int | None = None
         for n, part in enumerate(parts, start=1):

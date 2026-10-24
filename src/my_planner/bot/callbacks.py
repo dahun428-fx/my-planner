@@ -6,7 +6,9 @@
 
 콜백 데이터: `d:c:<task_id>`(추가), `d:x:<task_id>`(빼기), `d:all:<conversation_id>`(전부 추가),
 `c:<YYYY-MM-DD>:<1-5>`(그 날짜의 컨디션. 지난 날짜의 버튼도 그 날짜에 기록한다),
-`k:a:<token>`(회차 차례의 확인: 토큰의 `action`·`args`를 그대로 적용), `k:x:<token>`(그대로 두기, SP3-4 10.1 A5·A6).
+`k:a:<token>`(회차 차례의 확인: 토큰의 `action`·`args`를 그대로 적용), `k:x:<token>`(그대로 두기, SP3-4 10.1 A5·A6),
+`m:c:<id>`·`m:x:<id>`·`m:all:<conversation_id>`(사건 초안 저장·빼기·전부 저장), `h:c:<id>`·`h:x:<id>`(챕터 초안,
+SP3-4 10장·11.3).
 """
 
 from __future__ import annotations
@@ -22,7 +24,13 @@ from telegram import CallbackQuery
 from my_planner.clock import Clock
 from my_planner.domain import Channel, RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
-from my_planner.tools.actions import STALE_TOKEN, ActionRequest, ActionResult
+from my_planner.tools.actions import (
+    CHAPTER_GONE,
+    MILESTONE_GONE,
+    STALE_TOKEN,
+    ActionRequest,
+    ActionResult,
+)
 from my_planner.tools.confirmations import (
     condition_summary,
     draft_dropped_reply,
@@ -52,6 +60,16 @@ def _parse(data: str | None) -> tuple[str, int] | None:
     parts = (data or "").split(":")
     if len(parts) == 3 and parts[0] == "d" and parts[1] in ("c", "x", "all") and parts[2].isdigit():
         return parts[1], int(parts[2])
+    return None
+
+
+def _parse_curve(data: str | None) -> tuple[str, str, int] | None:
+    """`m:c:7` → ("m", "c", 7), `h:x:3` → ("h", "x", 3), `m:all:41` → ("m", "all", 41). 모르는 모양이면 None."""
+    parts = (data or "").split(":")
+    if len(parts) != 3 or not parts[2].isdigit():
+        return None
+    if (parts[0] == "m" and parts[1] in ("c", "x", "all")) or (parts[0] == "h" and parts[1] in ("c", "x")):
+        return parts[0], parts[1], int(parts[2])
     return None
 
 
@@ -121,6 +139,13 @@ async def handle_callback(
             if result_k in ("confirmed", "declined"):
                 _answer_run(query, deliveries, mark_answered)
             return result_k
+        if (cv := _parse_curve(query.data)) is not None:
+            result_c, reply, lines = _curve(tools, apply, router, *cv)
+            if result_c in ("confirmed", "dropped"):
+                _answer_run(query, deliveries, mark_answered)
+            if lines:
+                _transcript(transcripts, clock, "\n".join(lines))
+            return result_c
         parsed = _parse(query.data)
         if parsed is None:
             log.info("callback_unknown")
@@ -155,6 +180,51 @@ async def handle_callback(
         return result
     finally:
         await _answer(query, reply)
+
+
+def _curve(
+    tools: Tools, apply: Apply | None, router: ConversationRouter | None, what: str, op: str, n: int
+) -> tuple[CallbackResult, str | None, list[str]]:
+    """사건(`m`)·챕터(`h`) 초안 버튼(10장): 즉시 갈래로 `confirm_milestones`·`drop_milestone`·`confirm_chapters`·
+    `drop_chapter`. 이미 정리된(확정, 빼기, 만료로 지운) 초안이면 바꾸지 않고 "이미 정리된 사건이에요."(챕터는
+    "이미 정리된 챕터예요."). (결과, 답 문구, 원문 기록 줄). 원문 기록은 `[버튼] 저장: {제목}`, `[버튼] 빼기: {제목}`."""
+    curve = tools.curve
+    gone = MILESTONE_GONE if what == "m" else CHAPTER_GONE
+    if curve is None:
+        log.info("callback_unknown")
+        return "unknown", None, []
+    if what == "m":
+        if op == "all":
+            ids = curve.draft_milestone_ids(n)
+            conversation_id: int | None = n
+        else:
+            m = curve.get_milestone(n)
+            ids = [n] if m is not None and m.status == "draft" else []
+            conversation_id = m.conversation_id if m is not None else None
+        if router is not None:
+            router.touch_plan(conversation_id)
+        titles = {i: m.title for i in ids if (m := curve.get_milestone(i)) is not None}
+    else:
+        c = curve.get_chapter(n)
+        ids = [n] if c is not None and c.status == "draft" else []
+        titles = {n: c.title} if c is not None else {}
+    if not ids:
+        log.info("callback_curve_stale", extra={"kind": what})
+        return "stale", gone, []
+    if op == "x":
+        action, args = ("drop_milestone" if what == "m" else "drop_chapter"), {"id": n}
+    else:
+        action, args = ("confirm_milestones" if what == "m" else "confirm_chapters"), {"ids": ids}
+    out, confirmation = _run(tools, apply, action, args)
+    log.info("callback_curve", extra={"kind": what, "op": op, "count": len(ids)})
+    if "error" in out:
+        return "stale", out["error"] or gone, []
+    if op == "x":
+        return "dropped", confirmation, [f"[버튼] 빼기: {titles[n]}"]
+    done = [c["id"] for c in out.get("confirmed", [])]
+    if not done:
+        return "stale", gone, []
+    return "confirmed", confirmation, [f"[버튼] 저장: {titles[i]}" for i in done if i in titles]
 
 
 def _confirm(

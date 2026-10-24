@@ -20,13 +20,15 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
+from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
+from my_planner.status.snapshot import status_snapshot
 from my_planner.status.xp import title_name
 from my_planner.store.db import transaction
 from my_planner.store.exports import SENSITIVE_MASK, export_curve, export_tasks
 from my_planner.store.repos.cards import Card, CardsRepo
 from my_planner.store.repos.conditions import Condition
-from my_planner.store.repos.curve import AreaScore, CurveRepo, Ladder
+from my_planner.store.repos.curve import AreaScore, CurveRepo, Ladder, date_precision
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -87,6 +89,9 @@ _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")  # fromisoformat은 20261023, 2026-
 LADDER_MIN, LADDER_MAX = 0, 10  # 사다리(5.4)
 AREA_SCORE_MIN, AREA_SCORE_MAX = 1, 10  # 영역 점수(5.4)
 RECOVERY_QUEST_MAX = 80
+MILESTONE_KINDS = ("high", "low", "turning_point")  # 5.4 `curve_milestones.kind`
+CURVE_TITLE_MAX = 100  # 사건·챕터 제목(5.4 CHECK)
+_MONTH = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
 TITLE_KINDS = frozenset({"high", "turning_point"})  # 칭호를 주는 사건 종류(9.4). 저점에는 주지 않는다
 PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
 _NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
@@ -809,6 +814,90 @@ class Tools:
             return None
         return list(dict.fromkeys(v))
 
+    def _check_curve_title(self, v: Any) -> str | None:
+        if not isinstance(v, str) or not v.strip():
+            return "제목이 비어 있어요."
+        if len(v.strip()) > CURVE_TITLE_MAX:
+            return f"제목은 {CURVE_TITLE_MAX}자까지 쓸 수 있어요."
+        return None
+
+    def _curve_origin(self, ctx: RunContext) -> str:
+        """회고 회차의 대화(연말 회고 등)에서 꺼낸 초안은 `review`, 그 밖의 대화는 `chat`(5.4 `origin`)."""
+        review = self.review_date_for(ctx) if self.review_date_for is not None else None
+        return "review" if review is not None else "chat"
+
+    @_tool
+    def add_milestone(
+        self, ctx: RunContext, date: Any = None, kind: Any = None, title: Any = None, note: Any = None,
+        chapter_id: Any = None, sensitive: Any = False,
+    ) -> dict[str, Any]:
+        """사건 **초안**(11.3). 하네스가 답 아래에 `✓ 저장` `✗ 빼기` 버튼(앱은 `ui_milestone_draft`)을 붙인다.
+        `sensitive`는 사용자가 민감하다고 말했을 때만 true다(기본 false)."""
+        if self.curve is None:
+            return _err("사건을 남길 수 없어요.")
+        try:
+            ok = isinstance(date, str) and bool(date_precision(date))
+        except ValueError:
+            ok = False
+        if not ok:
+            return _err("date는 기억하는 만큼 YYYY, YYYY-MM, YYYY-MM-DD 가운데 하나로 알려 주세요. 예: 2019, 2019-05")
+        if kind not in MILESTONE_KINDS:
+            return _err("kind는 high(고점), low(저점), turning_point(전환점) 가운데 하나예요.")
+        if (m := self._check_curve_title(title)) is not None:
+            return _err(m)
+        if note is not None and not isinstance(note, str):
+            return _err("메모는 글로 알려 주세요.")
+        if not isinstance(sensitive, bool):
+            return _err("sensitive는 true나 false예요.")
+        if chapter_id is not None and (
+            not isinstance(chapter_id, int) or isinstance(chapter_id, bool) or self.curve.get_chapter(chapter_id) is None
+        ):
+            return _err(f"{chapter_id}번 챕터를 찾을 수 없어요.")
+        assert isinstance(title, str)
+        with transaction(self.curve.conn):
+            m = self.curve.add_milestone(
+                date_text=date, kind=kind, title=title.strip(), status="draft", origin=self._curve_origin(ctx),
+                note=note, chapter_id=chapter_id, sensitive=sensitive, conversation_id=ctx.conversation_id,
+            )
+            # 메모는 넣지 않는다. 버튼과 확인 문구를 다시 만들 재료만
+            data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind, "sensitive": m.sensitive}
+            event = self._curve_event(ctx, "milestone_proposed", data)
+            # 활동 요약(`GET /activity`)에서는 민감 사건 제목을 가린다(`confirm_milestones`와 같다)
+            self._record(ctx, "milestone_proposed", milestone_target(m.id),
+                         titles_summary("제안", [SENSITIVE_MASK if m.sensitive else m.title]), None)
+        ctx.events.append(event)
+        log.info("milestone_proposed", extra={"milestone_id": m.id})
+        return _milestone_dict(m)
+
+    @_tool
+    def propose_chapter(
+        self, ctx: RunContext, title: Any = None, start: Any = None, theme: Any = None, end: Any = None
+    ) -> dict[str, Any]:
+        """챕터 **초안**(연말 회고). `start`, `end`는 `YYYY-MM`이고 `end`가 없으면 지금까지다."""
+        if self.curve is None:
+            return _err("챕터를 남길 수 없어요.")
+        if (m := self._check_curve_title(title)) is not None:
+            return _err(m)
+        for name, v, need in (("start", start, True), ("end", end, False)):
+            if v is None and not need:
+                continue
+            if not isinstance(v, str) or not _MONTH.fullmatch(v):
+                return _err(f"{name}은(는) 2019-03 같은 달 형식이에요.")
+        if end is not None and end < start:
+            return _err("end는 start와 같거나 뒤여야 해요.")
+        if theme is not None and not isinstance(theme, str):
+            return _err("theme은 글로 알려 주세요.")
+        assert isinstance(title, str) and isinstance(start, str)
+        with transaction(self.curve.conn):
+            c = self.curve.add_chapter(title=title.strip(), start_month=start, end_month=end, theme=theme,
+                                       status="draft", origin=self._curve_origin(ctx))
+            data = {"id": c.id, "title": c.title, "start_month": c.start_month, "end_month": c.end_month}
+            event = self._curve_event(ctx, "chapter_proposed", data)
+            self._record(ctx, "chapter_proposed", chapter_target(c.id), titles_summary("제안", [c.title]), None)
+        ctx.events.append(event)
+        log.info("chapter_proposed", extra={"chapter_id": c.id})
+        return _chapter_dict(c)
+
     @_tool
     def confirm_milestones(self, ctx: RunContext, ids: Any = None) -> dict[str, Any]:
         """사건 초안을 확정한다. 고점·전환점이면 칭호(9.4). 초안이 아니거나 없는 번호는 `skipped_ids`."""
@@ -1055,6 +1144,66 @@ class Tools:
             return _err("limit은 1 이상의 숫자예요.")
         found = self.tasks.list(statuses, d_from, d_to, a, n)  # type: ignore[arg-type]
         return {"tasks": [self._task_dict(t) for t in found], "count": len(found)}
+
+    @_tool
+    def get_curve(
+        self, ctx: RunContext, from_: Any = None, to: Any = None, zoom: Any = "month", **extra: Any
+    ) -> dict[str, Any]:
+        """6.3.5와 같은 데이터를 짧게: 확정한 것만, 민감 사건은 넣되 제목 대신 "(민감)", 메모(`note`)는 뺀다.
+        `from`은 파이썬 예약어라 `from_`로도 `from`으로도 받는다."""
+        if "from" in extra:
+            from_ = extra.pop("from")
+        if extra:
+            return _err(f"알 수 없는 조건이에요: {', '.join(sorted(extra))}")
+        if self.curve is None or self.conditions is None:
+            return _err("곡선을 읽을 수 없어요.")
+        zoom = "month" if zoom is None else zoom
+        if zoom not in ZOOMS:
+            return _err(f"zoom은 {', '.join(ZOOMS)} 가운데 하나예요.")
+        d_from = self._parse_date(from_, "from")
+        d_to = self._parse_date(to, "to")
+        for d in (d_from, d_to):
+            if isinstance(d, str):
+                return _err(d)
+        today = self.today()
+        if d_from is None or d_to is None:
+            lo, hi = default_range(zoom, today, self.curve.earliest_chapter_start())
+            d_from, d_to = d_from or lo, d_to or hi
+        assert isinstance(d_from, date) and isinstance(d_to, date)
+        if d_from > d_to:
+            return _err("from은 to보다 늦을 수 없어요.")
+        try:
+            body = curve_view(self.curve, self.conditions, zoom=zoom, from_=d_from, to=d_to, include_sensitive=True,
+                              today=today)
+        except TooManyBuckets:
+            return _err("범위를 줄이거나 확대 단위를 키워 주세요.")
+        for m in body["milestones"]:
+            m.pop("note", None)
+            if m["sensitive"]:
+                m["title"] = SENSITIVE_MASK
+        for x in body["ladder"]:
+            x.pop("note", None)
+        return body
+
+    @_tool
+    def get_status(self, ctx: RunContext) -> dict[str, Any]:
+        """6.3.6과 같은 데이터(`status_snapshot`, 민감 사건 칭호는 뺀다). 시각은 현지 시각(두뇌가 받는 도구 결과)."""
+        if self.curve is None or self.status is None or self.conditions is None:
+            return _err("상태창을 읽을 수 없어요.")
+        snap = status_snapshot(
+            now=self.clock.now(), tz=self.tz, boundary=self.boundary, status=self.status, curve=self.curve,
+            tasks=self.tasks, conditions=self.conditions,
+        )
+        return self._local_times(snap)
+
+    def _local_times(self, v: Any) -> Any:
+        if isinstance(v, dict):
+            return {k: self._local_times(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [self._local_times(x) for x in v]
+        if isinstance(v, datetime):
+            return self._local_iso(v)
+        return v
 
     @_tool
     def read_transcript(

@@ -436,7 +436,9 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 workdir=paths.state_dir / "brain-workdir",
                 max_turns=settings.limits.max_turns,
             ),
-            sender_factory=lambda tasks: TelegramSender(bot, settings.owner_telegram_id, tasks=tasks),
+            sender_factory=lambda tasks: TelegramSender(
+                bot, settings.owner_telegram_id, tasks=tasks, curve=CurveRepo(tasks.conn, clock)
+            ),
             on_resume=restart_polling,
             keep_awake=keep_awake,
         )
