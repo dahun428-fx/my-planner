@@ -1,7 +1,8 @@
 import { render, waitFor } from "@testing-library/react";
 import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
 import type { AppProps } from "next/app";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { installPush, type PushEnv } from "../test/push";
 import { saveConn } from "./connection";
 import { mockRouter } from "../test/render";
 import App from "../pages/_app";
@@ -35,4 +36,21 @@ describe("_app", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(router.replace).not.toHaveBeenCalled();
   });
+
+  it("applies the saved theme and follows a notification tap", async () => {
+    env = installPush();
+    localStorage.setItem("mp.theme", "dark");
+    const router = mount("/connect/");
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
+    await waitFor(() => expect(env?.register).toHaveBeenCalledWith("/sw.js", { scope: "/" }));
+    env.emit({ navigate: "/checkin/?id=341" });
+    expect(router.push).toHaveBeenCalledWith("/checkin/?id=341");
+  });
+});
+
+let env: PushEnv | null = null;
+afterEach(() => {
+  env?.restore();
+  env = null;
+  delete document.documentElement.dataset.theme;
 });

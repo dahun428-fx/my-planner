@@ -1,12 +1,15 @@
 import type { AppProps } from "next/app";
 import Head from "next/head";
-import { Component as ReactComponent, type ComponentType, type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
+import { Component as ReactComponent, type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSheetProps } from "../chat/ChatSheet";
 import { chatSheetChunk } from "../chat/loadChatSheet";
 import { type ChatSheetApi, ChatSheetContext } from "../chat/sheetContext";
 import { ToastProvider, useToast } from "../components/Toast";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
+import { applyTheme, loadTheme } from "../lib/theme";
 import { CatalogProvider } from "../ui/CatalogProvider";
 import "../styles/tokens.css";
 import "../styles/globals.css";
@@ -90,7 +93,21 @@ function ChatHost({ children }: { children: ReactNode }) {
   );
 }
 
+// First effect (no inline script under the CSP): the saved theme, then the service worker; a
+// notification tap posts {navigate} to the app router. iOS may have dropped this device's push
+// subscription since the last open: make it again (F7).
+function useAppShell() {
+  const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  useEffect(() => {
+    applyTheme(loadTheme());
+    void registerServiceWorker((url) => void routerRef.current.push(url)).then(() => ensurePushSubscription());
+  }, []);
+}
+
 export default function App({ Component, pageProps }: AppProps) {
+  useAppShell();
   return (
     <>
       <Head>

@@ -2230,6 +2230,57 @@
       "title": "Messages",
       "type": "object"
     },
+    "NotifyPutBody": {
+      "additionalProperties": false,
+      "properties": {
+        "primary": {
+          "enum": [
+            "telegram",
+            "app"
+          ],
+          "title": "Primary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "primary"
+      ],
+      "title": "NotifyPutBody",
+      "type": "object"
+    },
+    "NotifySettings": {
+      "additionalProperties": false,
+      "description": "`GET`/`PUT /settings/notify` (6.4.9). `effective`는 7.3 D1a.",
+      "properties": {
+        "effective": {
+          "enum": [
+            "telegram",
+            "app"
+          ],
+          "title": "Effective",
+          "type": "string"
+        },
+        "primary": {
+          "enum": [
+            "telegram",
+            "app"
+          ],
+          "title": "Primary",
+          "type": "string"
+        },
+        "push_subscriptions": {
+          "title": "Push Subscriptions",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "primary",
+        "effective",
+        "push_subscriptions"
+      ],
+      "title": "NotifySettings",
+      "type": "object"
+    },
     "Priorities": {
       "$defs": {
         "Todo": {
@@ -2406,6 +2457,115 @@
         "items"
       ],
       "title": "Priorities",
+      "type": "object"
+    },
+    "PushSubscribeBody": {
+      "$defs": {
+        "PushKeys": {
+          "description": "구독 키. `p256dh`는 비압축 P-256 공개점 65바이트, `auth`는 16바이트(둘 다 base64url). repr에 나오지 않는다.\n\n오류 문구에 값이 들어가지 않게 처리기는 `ValidationError`를 고정 문구 400으로 바꾼다(`api/push.py`).",
+          "properties": {
+            "auth": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Auth",
+              "type": "string"
+            },
+            "p256dh": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "P256Dh",
+              "type": "string"
+            }
+          },
+          "required": [
+            "p256dh",
+            "auth"
+          ],
+          "title": "PushKeys",
+          "type": "object"
+        }
+      },
+      "description": "`POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다.\n\n`endpoint`와 키는 비밀값처럼 다룬다: repr과 검증 오류에 넣지 않는다.",
+      "properties": {
+        "endpoint": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "pattern": "^https://",
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "expirationTime": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expirationtime"
+        },
+        "keys": {
+          "$ref": "#/$defs/PushKeys"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "endpoint",
+        "keys"
+      ],
+      "title": "PushSubscribeBody",
+      "type": "object"
+    },
+    "PushSubscribed": {
+      "additionalProperties": false,
+      "description": "`201` 구독 id. 같은 `endpoint`면 같은 id.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "PushSubscribed",
+      "type": "object"
+    },
+    "PushTestResult": {
+      "additionalProperties": false,
+      "description": "`POST /push/test`: 받은 구독 수, 못 받은 구독 수.",
+      "properties": {
+        "failed": {
+          "title": "Failed",
+          "type": "integer"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "failed"
+      ],
+      "title": "PushTestResult",
       "type": "object"
     },
     "SafeModeHealth": {
@@ -3784,6 +3944,21 @@
         "activity_id"
       ],
       "title": "UndoResponse",
+      "type": "object"
+    },
+    "VapidPublicKey": {
+      "additionalProperties": false,
+      "description": "`GET /push/vapid-public-key` (6.4.8).",
+      "properties": {
+        "public_key": {
+          "title": "Public Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "public_key"
+      ],
+      "title": "VapidPublicKey",
       "type": "object"
     },
     "Week": {

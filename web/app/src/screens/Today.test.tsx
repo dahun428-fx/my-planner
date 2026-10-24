@@ -6,7 +6,9 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Today as TodayData } from "../api/types.gen";
 import { copy } from "../lib/copy";
+import { registerServiceWorker } from "../lib/push";
 import { loadSnap, saveSnap } from "../lib/snapshot";
+import { installPush } from "../test/push";
 import { formatKst } from "../lib/time";
 import health from "../test/fixtures/health.json";
 import degraded from "../test/fixtures/health-degraded.json";
@@ -53,6 +55,21 @@ const applied = (confirmation = "✓ 처리했어요") =>
 const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
 describe("Today", () => {
+  it("reads again when a push arrives while open", async () => {
+    const env = installPush();
+    try {
+      await registerServiceWorker(() => {});
+      const hits = serve();
+      renderWithProviders(<Today />);
+      await screen.findByText(copy.today.checkinLine(copy.loops.evening_checkin));
+      const before = hits.today;
+      env.emit({ refresh: "today" }); // what sw.js posts to open windows on a push
+      await waitFor(() => expect(hits.today).toBe(before + 1));
+    } finally {
+      env.restore();
+    }
+  });
+
   it("renders blocks in order", async () => {
     // The BE sends a done row first; it still goes to the end of the list.
     const [a, b, c, d] = today.todos;

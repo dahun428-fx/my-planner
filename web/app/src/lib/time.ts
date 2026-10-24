@@ -40,7 +40,8 @@ export function addDays(date: string, n: number): string {
 }
 
 export function relativeChecked(iso: string, now: number): string {
-  const minutes = Math.floor((now - Date.parse(iso)) / 60_000);
+  // A device clock behind the BE's (or an unreadable time) reads as "just now", never "-3 minutes".
+  const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000) || 0);
   return minutes < 1 ? copy.settings.checkedJustNow : copy.settings.checkedMinutesAgo(minutes);
 }
 

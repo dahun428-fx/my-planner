@@ -1,0 +1,158 @@
+/* Settings rows that are not plain <Row>s: a labelled segmented control, full-width action buttons. */
+.control,
+.action,
+.wrap {
+  border-top: 1px solid var(--rule);
+}
+.control:first-child,
+.action:first-child,
+.wrap:first-child {
+  border-top: 0;
+}
+.control + *,
+.action + *,
+.wrap + * {
+  border-top: 1px solid var(--rule);
+}
+
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem var(--pad);
+}
+.controlLabel {
+  font-size: var(--size-body);
+  color: var(--text);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--row);
+  padding: 0.5rem var(--pad);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.action:active {
+  background: var(--ground);
+}
+.action:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.action:focus-visible,
+.pill:focus-visible,
+.link:focus-visible,
+.choice:focus-visible,
+.keep:focus-visible,
+.confirmDanger:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.danger {
+  color: var(--negative);
+}
+
+.note {
+  font-size: var(--size-meta);
+  color: var(--text-2);
+}
+.value {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
+
+/* A 32px pill whose hit area is the 44px control height (9장). */
+.pill {
+  position: relative;
+  min-height: var(--small-control-h);
+  padding: 0 0.875rem;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.pill::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) -0.25rem;
+}
+.pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Sheets */
+.choices {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.choice,
+.keep,
+.confirmDanger {
+  min-height: var(--control-h);
+  border: 0;
+  border-radius: var(--radius-field);
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.choice,
+.keep {
+  background: var(--raised);
+  color: var(--text);
+}
+.choice {
+  font-variant-numeric: tabular-nums;
+}
+.confirmDanger {
+  background: var(--raised);
+  color: var(--negative);
+}
+.choice:disabled,
+.keep:disabled,
+.confirmDanger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.summary {
+  margin: 0;
+  padding: 0.5rem var(--pad) var(--pad);
+  font-size: var(--size-body);
+  text-align: center;
+}
+.buttons {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.keep,
+.confirmDanger {
+  flex: 1;
+}

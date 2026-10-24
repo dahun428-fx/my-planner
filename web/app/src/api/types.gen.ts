@@ -17,7 +17,12 @@ export interface ApiModels {
   Error: Error;
   Health: Health;
   Messages: Messages;
+  NotifyPutBody: NotifyPutBody;
+  NotifySettings: NotifySettings;
   Priorities: Priorities;
+  PushSubscribeBody: PushSubscribeBody;
+  PushSubscribed: PushSubscribed;
+  PushTestResult: PushTestResult;
   SafeModeHealth: SafeModeHealth;
   SchemaBundle: SchemaBundle;
   Status: Status;
@@ -28,6 +33,7 @@ export interface ApiModels {
   UiCatalog: UiCatalog;
   UndoRequestBody: UndoRequestBody;
   UndoResponse: UndoResponse;
+  VapidPublicKey: VapidPublicKey;
   Week: Week;
 }
 /**
@@ -531,6 +537,24 @@ export interface MessageItem {
   tools: string[];
 }
 /**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "NotifyPutBody".
+ */
+export interface NotifyPutBody {
+  primary: "telegram" | "app";
+}
+/**
+ * `GET`/`PUT /settings/notify` (6.4.9). `effective`는 7.3 D1a.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "NotifySettings".
+ */
+export interface NotifySettings {
+  effective: "telegram" | "app";
+  primary: "telegram" | "app";
+  push_subscriptions: number;
+}
+/**
  * `GET /priorities` (6.3.7).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -540,6 +564,51 @@ export interface Priorities {
   cadence: "week" | "month" | "quarter" | "year";
   items: Todo[];
   period: string;
+}
+/**
+ * `POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다.
+ *
+ * `endpoint`와 키는 비밀값처럼 다룬다: repr과 검증 오류에 넣지 않는다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PushSubscribeBody".
+ */
+export interface PushSubscribeBody {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: PushKeys;
+  label?: string | null;
+}
+/**
+ * 구독 키. `p256dh`는 비압축 P-256 공개점 65바이트, `auth`는 16바이트(둘 다 base64url). repr에 나오지 않는다.
+ *
+ * 오류 문구에 값이 들어가지 않게 처리기는 `ValidationError`를 고정 문구 400으로 바꾼다(`api/push.py`).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PushKeys".
+ */
+export interface PushKeys {
+  auth: string;
+  p256dh: string;
+}
+/**
+ * `201` 구독 id. 같은 `endpoint`면 같은 id.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PushSubscribed".
+ */
+export interface PushSubscribed {
+  id: number;
+}
+/**
+ * `POST /push/test`: 받은 구독 수, 못 받은 구독 수.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PushTestResult".
+ */
+export interface PushTestResult {
+  failed: number;
+  ok: number;
 }
 /**
  * 안전 모드의 `GET /health`: 상태, 판, 지금만.
@@ -773,6 +842,15 @@ export interface UndoResponse {
   confirmation?: string | null;
   status: "undone" | "already_undone";
   undone?: number | null;
+}
+/**
+ * `GET /push/vapid-public-key` (6.4.8).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "VapidPublicKey".
+ */
+export interface VapidPublicKey {
+  public_key: string;
 }
 /**
  * `GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다.

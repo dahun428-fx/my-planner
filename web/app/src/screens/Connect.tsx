@@ -5,6 +5,7 @@ import { LargeTitle } from "../components/LargeTitle";
 import { type Conn, normalizeBeUrl, normalizeToken, saveConn, saveLastHealthOk } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { isIos, isStandalone } from "../lib/platform";
+import { askPermission, pushSupport, subscribePush } from "../lib/push";
 import styles from "./Connect.module.css";
 
 type Line = { tone: "ok" | "bad"; text: string } | null;
@@ -19,15 +20,22 @@ const URL_REASON = {
 export function Connect() {
   const router = useRouter();
   const [guideOnly, setGuideOnly] = useState<boolean | null>(null);
+  // The iPhone home screen app offers "알림 허용하고 시작하기"; a computer browser just "시작하기".
+  const [offerPush, setOfferPush] = useState(false);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [line, setLine] = useState<Line>(null);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
   const goWhenChecked = useRef(false);
+  // A permission request started by the tap that also asked to go (F1 step 2).
+  const asked = useRef<Promise<NotificationPermission> | null>(null);
 
   // Device checks need the browser, so they run after mount (the page is prerendered).
-  useEffect(() => setGuideOnly(isIos() && !isStandalone()), []);
+  useEffect(() => {
+    setGuideOnly(isIos() && !isStandalone());
+    setOfferPush(isIos() && isStandalone() && pushSupport() === "ok");
+  }, []);
 
   // Returns the connection to save when /health accepted it, otherwise null (and says why).
   async function check(): Promise<Conn | null> {
@@ -81,9 +89,14 @@ export function Connect() {
       const conn = await check();
       const proceed = go || goWhenChecked.current;
       goWhenChecked.current = false;
+      const permission = asked.current;
+      if (proceed) asked.current = null;
       if (proceed && conn) {
         saveConn(conn);
         saveLastHealthOk(new Date().toISOString());
+        // Subscribe when asked; whatever the answer (denied, no push on this BE, a failure), go on:
+        // settings shows this device's push state and can try again.
+        if (permission) await subscribePush(permission);
         await router.push("/");
       }
     } finally {
@@ -92,9 +105,15 @@ export function Connect() {
     }
   }
 
+  function go(withPush: boolean) {
+    // Asked here, before any await, so the prompt still counts as an answer to this tap (iOS).
+    if (withPush && !asked.current) asked.current = askPermission();
+    void run(true);
+  }
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    void run(true);
+    go(offerPush);
   }
 
   return (
@@ -151,8 +170,13 @@ export function Connect() {
             {line?.text}
           </p>
           <button type="submit" className={styles.start} disabled={busy}>
-            {copy.connect.start}
+            {offerPush ? copy.connect.startWithPush : copy.connect.start}
           </button>
+          {offerPush && (
+            <button type="button" className={styles.later} disabled={busy} onClick={() => go(false)}>
+              {copy.connect.pushLater}
+            </button>
+          )}
         </form>
       )}
     </main>

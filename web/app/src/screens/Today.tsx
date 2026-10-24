@@ -15,6 +15,7 @@ import { TodoRow } from "../components/TodoRow";
 import { useToast } from "../components/Toast";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays } from "../lib/time";
 import page from "../styles/page.module.css";
@@ -49,6 +50,8 @@ export function Today() {
   useEffect(() => toast.onUndone(() => void refresh()), [toast, refresh]);
   // What was said in the sheet may have changed today (F4): read again when it closes.
   useEffect(() => chat.onClosed(() => void refresh()), [chat, refresh]);
+  // A push came while the app is open (F7): the service worker asks for a fresh read.
+  useEffect(() => onTodayRefresh(() => void refresh()), [refresh]);
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
   const live = view.kind === "live";
