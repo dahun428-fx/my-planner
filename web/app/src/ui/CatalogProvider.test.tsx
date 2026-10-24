@@ -26,7 +26,7 @@ describe("CatalogProvider", () => {
       http.get(`${OTHER}/ui/catalog`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })),
     );
     renderWithProviders(<Version />);
-    expect(await screen.findByText("2026-10-24.2")).toBeInTheDocument();
+    expect(await screen.findByText("2026-10-24.4")).toBeInTheDocument();
     act(() => saveConn({ beUrl: "https://other.example.ts.net", token: TEST_TOKEN }));
     await waitFor(() => expect(screen.getByText("no-catalog")).toBeInTheDocument());
   });

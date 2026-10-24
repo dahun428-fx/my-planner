@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-24.2",
+  "version": "2026-10-24.4",
   "components": {
     "ui_todo_list": {
       "origin": "brain",
@@ -106,6 +106,778 @@
           "lines"
         ],
         "title": "SummaryCardProps",
+        "type": "object"
+      }
+    },
+    "ui_date_choice": {
+      "origin": "brain",
+      "schema": {
+        "$defs": {
+          "DateCandidate": {
+            "additionalProperties": false,
+            "properties": {
+              "date": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "title": "Date",
+                "type": "string"
+              },
+              "note": {
+                "anyOf": [
+                  {
+                    "maxLength": 12,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Note"
+              }
+            },
+            "required": [
+              "date"
+            ],
+            "title": "DateCandidate",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "후보 날짜의 오늘~90일 범위는 G-BE2의 뜻 검사가 본다(스키마는 시계를 모른다, 빈 곳 9).",
+        "properties": {
+          "task_id": {
+            "title": "Task Id",
+            "type": "integer"
+          },
+          "question": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/$defs/DateCandidate"
+            },
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Candidates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_id",
+          "question",
+          "candidates"
+        ],
+        "title": "DateChoiceProps",
+        "type": "object"
+      }
+    },
+    "ui_result": {
+      "origin": "brain",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "task_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Task Ids",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "task_ids"
+        ],
+        "title": "ResultProps",
+        "type": "object"
+      }
+    },
+    "ui_period_list": {
+      "origin": "brain",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Day"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-W\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Week"
+          },
+          "highlight_task_ids": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 30,
+            "title": "Highlight Task Ids",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "title": "PeriodListProps",
+        "type": "object"
+      }
+    },
+    "ui_block": {
+      "origin": "brain",
+      "schema": {
+        "$defs": {
+          "AreaTag": {
+            "additionalProperties": false,
+            "properties": {
+              "area": {
+                "enum": [
+                  "career",
+                  "finance",
+                  "health",
+                  "relationships",
+                  "learning",
+                  "quality_of_life"
+                ],
+                "title": "Area",
+                "type": "string"
+              }
+            },
+            "required": [
+              "area"
+            ],
+            "title": "AreaTag",
+            "type": "object"
+          },
+          "BulletsEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "bullets",
+                "title": "Type",
+                "type": "string"
+              },
+              "items": {
+                "items": {
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "title": "Items",
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "items"
+            ],
+            "title": "BulletsEl",
+            "type": "object"
+          },
+          "Button": {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "maxLength": 16,
+                "minLength": 1,
+                "title": "Label",
+                "type": "string"
+              },
+              "do": {
+                "discriminator": {
+                  "mapping": {
+                    "complete": "#/$defs/CompleteDo",
+                    "open": "#/$defs/OpenDo",
+                    "send": "#/$defs/SendDo"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/SendDo"
+                  },
+                  {
+                    "$ref": "#/$defs/OpenDo"
+                  },
+                  {
+                    "$ref": "#/$defs/CompleteDo"
+                  }
+                ],
+                "title": "Do"
+              }
+            },
+            "required": [
+              "label",
+              "do"
+            ],
+            "title": "Button",
+            "type": "object"
+          },
+          "ButtonsEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "buttons",
+                "title": "Type",
+                "type": "string"
+              },
+              "items": {
+                "items": {
+                  "$ref": "#/$defs/Button"
+                },
+                "maxItems": 3,
+                "minItems": 1,
+                "title": "Items",
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "items"
+            ],
+            "title": "ButtonsEl",
+            "type": "object"
+          },
+          "CompleteDo": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "complete",
+                "title": "Kind",
+                "type": "string"
+              },
+              "task_id": {
+                "title": "Task Id",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "task_id"
+            ],
+            "title": "CompleteDo",
+            "type": "object"
+          },
+          "Delta": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 8,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              },
+              "trend": {
+                "enum": [
+                  "up",
+                  "down",
+                  "same"
+                ],
+                "title": "Trend",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "trend"
+            ],
+            "title": "Delta",
+            "type": "object"
+          },
+          "DividerEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "divider",
+                "title": "Type",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "DividerEl",
+            "type": "object"
+          },
+          "HeadingEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "heading",
+                "title": "Type",
+                "type": "string"
+              },
+              "text": {
+                "maxLength": 40,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "text"
+            ],
+            "title": "HeadingEl",
+            "type": "object"
+          },
+          "OpenDo": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "open",
+                "title": "Kind",
+                "type": "string"
+              },
+              "screen": {
+                "enum": [
+                  "today",
+                  "todos_day",
+                  "todos_week",
+                  "todos_month",
+                  "activity",
+                  "settings"
+                ],
+                "title": "Screen",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "screen"
+            ],
+            "title": "OpenDo",
+            "type": "object"
+          },
+          "ProgressEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "progress",
+                "title": "Type",
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 16,
+                "minLength": 1,
+                "title": "Label",
+                "type": "string"
+              },
+              "value": {
+                "minimum": 0,
+                "title": "Value",
+                "type": "integer"
+              },
+              "max": {
+                "maximum": 100,
+                "minimum": 1,
+                "title": "Max",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "type",
+              "label",
+              "value",
+              "max"
+            ],
+            "title": "ProgressEl",
+            "type": "object"
+          },
+          "RowGroup": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "group",
+                "title": "Type",
+                "type": "string"
+              },
+              "layout": {
+                "const": "row",
+                "title": "Layout",
+                "type": "string"
+              },
+              "children": {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "progress": "#/$defs/ProgressEl",
+                      "stat": "#/$defs/StatEl"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/StatEl"
+                    },
+                    {
+                      "$ref": "#/$defs/ProgressEl"
+                    }
+                  ]
+                },
+                "maxItems": 3,
+                "minItems": 2,
+                "title": "Children",
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "layout",
+              "children"
+            ],
+            "title": "RowGroup",
+            "type": "object"
+          },
+          "SendDo": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "send",
+                "title": "Kind",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "title": "SendDo",
+            "type": "object"
+          },
+          "StackGroup": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "group",
+                "title": "Type",
+                "type": "string"
+              },
+              "layout": {
+                "const": "stack",
+                "title": "Layout",
+                "type": "string"
+              },
+              "children": {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "bullets": "#/$defs/BulletsEl",
+                      "divider": "#/$defs/DividerEl",
+                      "heading": "#/$defs/HeadingEl",
+                      "progress": "#/$defs/ProgressEl",
+                      "stat": "#/$defs/StatEl",
+                      "tags": "#/$defs/TagsEl",
+                      "text": "#/$defs/TextEl",
+                      "todo_rows": "#/$defs/TodoRowsEl"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/HeadingEl"
+                    },
+                    {
+                      "$ref": "#/$defs/TextEl"
+                    },
+                    {
+                      "$ref": "#/$defs/StatEl"
+                    },
+                    {
+                      "$ref": "#/$defs/ProgressEl"
+                    },
+                    {
+                      "$ref": "#/$defs/TodoRowsEl"
+                    },
+                    {
+                      "$ref": "#/$defs/TagsEl"
+                    },
+                    {
+                      "$ref": "#/$defs/BulletsEl"
+                    },
+                    {
+                      "$ref": "#/$defs/DividerEl"
+                    }
+                  ]
+                },
+                "maxItems": 6,
+                "minItems": 2,
+                "title": "Children",
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "layout",
+              "children"
+            ],
+            "title": "StackGroup",
+            "type": "object"
+          },
+          "StatEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "stat",
+                "title": "Type",
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 16,
+                "minLength": 1,
+                "title": "Label",
+                "type": "string"
+              },
+              "value": {
+                "maxLength": 10,
+                "minLength": 1,
+                "title": "Value",
+                "type": "string"
+              },
+              "delta": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Delta"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "type",
+              "label",
+              "value"
+            ],
+            "title": "StatEl",
+            "type": "object"
+          },
+          "TagsEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "tags",
+                "title": "Type",
+                "type": "string"
+              },
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/TextTag"
+                    },
+                    {
+                      "$ref": "#/$defs/AreaTag"
+                    }
+                  ]
+                },
+                "maxItems": 6,
+                "minItems": 1,
+                "title": "Items",
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "items"
+            ],
+            "title": "TagsEl",
+            "type": "object"
+          },
+          "TextEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "text",
+                "title": "Type",
+                "type": "string"
+              },
+              "md": {
+                "maxLength": 280,
+                "minLength": 1,
+                "title": "Md",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "md"
+            ],
+            "title": "TextEl",
+            "type": "object"
+          },
+          "TextTag": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 12,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "title": "TextTag",
+            "type": "object"
+          },
+          "TodoRowsEl": {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "todo_rows",
+                "title": "Type",
+                "type": "string"
+              },
+              "task_ids": {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 10,
+                "minItems": 1,
+                "title": "Task Ids",
+                "type": "array",
+                "uniqueItems": true
+              },
+              "checkable": {
+                "default": true,
+                "title": "Checkable",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "type",
+              "task_ids"
+            ],
+            "title": "TodoRowsEl",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "조립 카드 (7장). 스키마가 B2·B3과 길이·개수를, 이 검사가 B1, B4~B8을 본다(B9는 `validate_props`).",
+        "properties": {
+          "title": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "children": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "bullets": "#/$defs/BulletsEl",
+                  "buttons": "#/$defs/ButtonsEl",
+                  "divider": "#/$defs/DividerEl",
+                  "group": {
+                    "discriminator": {
+                      "mapping": {
+                        "row": "#/$defs/RowGroup",
+                        "stack": "#/$defs/StackGroup"
+                      },
+                      "propertyName": "layout"
+                    },
+                    "oneOf": [
+                      {
+                        "$ref": "#/$defs/RowGroup"
+                      },
+                      {
+                        "$ref": "#/$defs/StackGroup"
+                      }
+                    ]
+                  },
+                  "heading": "#/$defs/HeadingEl",
+                  "progress": "#/$defs/ProgressEl",
+                  "stat": "#/$defs/StatEl",
+                  "tags": "#/$defs/TagsEl",
+                  "text": "#/$defs/TextEl",
+                  "todo_rows": "#/$defs/TodoRowsEl"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/HeadingEl"
+                },
+                {
+                  "$ref": "#/$defs/TextEl"
+                },
+                {
+                  "$ref": "#/$defs/StatEl"
+                },
+                {
+                  "$ref": "#/$defs/ProgressEl"
+                },
+                {
+                  "$ref": "#/$defs/TodoRowsEl"
+                },
+                {
+                  "$ref": "#/$defs/TagsEl"
+                },
+                {
+                  "$ref": "#/$defs/BulletsEl"
+                },
+                {
+                  "$ref": "#/$defs/ButtonsEl"
+                },
+                {
+                  "$ref": "#/$defs/DividerEl"
+                },
+                {
+                  "discriminator": {
+                    "mapping": {
+                      "row": "#/$defs/RowGroup",
+                      "stack": "#/$defs/StackGroup"
+                    },
+                    "propertyName": "layout"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/RowGroup"
+                    },
+                    {
+                      "$ref": "#/$defs/StackGroup"
+                    }
+                  ]
+                }
+              ]
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Children",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "children"
+        ],
+        "title": "BlockProps",
         "type": "object"
       }
     },
