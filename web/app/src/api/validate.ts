@@ -7,10 +7,23 @@ export type ModelName = keyof typeof schema.models;
 
 const validators = new Map<ModelName, Validator>();
 
+// The BE contract says adding a field is not breaking and clients ignore unknown fields. The
+// generated schema closes every object, so that is opened here once, for every model and $def.
+function openObjects(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(openObjects);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "additionalProperties" && v === false) continue;
+    out[k] = openObjects(v);
+  }
+  return out;
+}
+
 function validatorFor(model: ModelName): Validator {
   let v = validators.get(model);
   if (!v) {
-    v = new Validator(schema.models[model] as unknown as Schema, "2020-12", true);
+    v = new Validator(openObjects(schema.models[model]) as Schema, "2020-12", true);
     validators.set(model, v);
   }
   return v;

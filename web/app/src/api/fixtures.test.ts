@@ -42,6 +42,19 @@ describe("fixtures match schema.json", () => {
     expect(validateModel(model, checked)).toBe(true);
   });
 
+  // A BE that gains a field must not read as a broken one.
+  it.each(table)("%s with an unknown top-level field is still a valid %s", (file, model) => {
+    const value = JSON.parse(readFileSync(join(dir, file), "utf8")) as object;
+    const base = OLD_BE.has(file) ? { next_before: null, ...value } : value;
+    expect(validateModel(model, { ...base, added_later: { x: 1 } })).toBe(true);
+  });
+
+  it("an unknown field nested in a model is ignored too", () => {
+    const today = JSON.parse(readFileSync(join(dir, "today.json"), "utf8")) as { brief: object; todos: object[] };
+    const changed = { ...today, brief: { ...today.brief, added_later: 1 }, todos: today.todos.map((t) => ({ ...t, added_later: 1 })) };
+    expect(validateModel("Today", changed)).toBe(true);
+  });
+
   it("every fixture file is in the table", () => {
     const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
     expect(files).toEqual(table.map(([f]) => f).sort());
