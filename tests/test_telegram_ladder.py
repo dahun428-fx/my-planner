@@ -1,0 +1,151 @@
+"""텔레그램 회고 단계: 사다리 1·2단계, 기록 문구, 영역 점수 묻기 (SP3-4 스펙 11.1, 부록 A, 계획 빈 곳 12·14).
+
+내용은 모두 꾸며 낸 것이다.
+"""
+
+from datetime import date, timedelta
+
+from be_env import BeEnv
+from fakes import FakeTurn
+from test_dispatcher_messages import kst
+
+from my_planner.bot.telegram_io import ladder_keyboard, message_keyboard
+from my_planner.harness.dispatcher import Outbound
+from my_planner.harness.review_steps import LADDER_STEP1, LADDER_STEP2
+
+SUN_1129 = kst(2026, 11, 29, 18, 0)
+REVIEW = "꾸민 월말 회고 본문"
+
+
+def _rows(rows):
+    return [[(b.text, b.callback_data) for b in row] for row in rows]
+
+
+def _datas(out):
+    markup = message_keyboard(out, {})
+    return [b.callback_data for row in markup.inline_keyboard for b in row] if markup else []
+
+
+async def _review(env):
+    """11/29(일) 18:00 회고+저녁 체크인 한 메시지. (회차 id, 버튼이 붙은 메시지 id)."""
+    await env.tick()
+    run_id = env.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+    return run_id, env.sender.message_ids[0]
+
+
+def _start(tmp_path, script=(), at=SUN_1129 + timedelta(seconds=30)):
+    return BeEnv.start(tmp_path, start=at, script=[FakeTurn([], REVIEW), *script])
+
+
+# --- 슬라이스 2: 1단계의 자리 ---
+
+
+def test_one_keyboard_kind_per_message():
+    now = _rows(ladder_keyboard("2026-11", "n"))
+    assert now == [
+        [(str(n), f"l:2026-11:n:{n}") for n in range(6)],
+        [(str(n), f"l:2026-11:n:{n}") for n in range(6, 11)],
+    ]
+    future = _rows(ladder_keyboard("2026-11", "f"))
+    assert future[:2] == [
+        [(str(n), f"l:2026-11:f:{n}") for n in range(6)],
+        [(str(n), f"l:2026-11:f:{n}") for n in range(6, 11)],
+    ]
+    assert future[2] == [("건너뛰기", "l:2026-11:f:skip")]
+    assert all(len(d.encode()) <= 64 for row in now + future for _, d in row)
+
+    # 사다리 줄과 컨디션 줄은 한 메시지에 같이 오지 않는다(초안 줄은 함께 둘 수 있다)
+    both = Outbound(text="꾸민 답", draft_task_ids=[3], ask_condition_for=date(2026, 11, 29), ladder=("2026-11", "n"))
+    datas = _datas(both)
+    assert datas[:2] == ["d:c:3", "d:x:3"]
+    assert not [d for d in datas if d.startswith("c:")]
+    assert [d for d in datas if d.startswith("l:")] == [f"l:2026-11:n:{n}" for n in range(11)]
+
+
+async def test_review_message_has_condition_row_not_ladder(tmp_path):
+    async with _start(tmp_path) as env:
+        await _review(env)
+        (out,) = env.sender.sent
+
+    assert out.text == REVIEW
+    assert out.ask_condition_for == date(2026, 11, 29)
+    assert out.ladder is None
+    assert _datas(out) == [f"c:2026-11-29:{n}" for n in range(1, 6)]
+    assert "## 하네스가 붙이는 질문" not in env.brain.prompts[0]
+
+
+async def test_condition_press_on_review_sends_ladder_step1_message(tmp_path):
+    async with _start(tmp_path) as env:
+        run_id, mid = await _review(env)
+        assert await env.press("c:2026-11-29:4", message_id=mid) == "recorded"
+        toast = env.bot.answers[-1][1]
+        step = env.sender.sent[-1]
+        # 다시 눌러도(점수를 바꿔도) 1단계는 회차마다 한 번: SP1처럼 토스트
+        await env.press("c:2026-11-29:3", message_id=mid)
+        again = env.bot.answers[-1][1]
+        sent = len(env.sender.sent)
+        detail = await (await env.get(f"/checkins/{run_id}")).json()
+        prompted = env.parts.state.get("ladder_prompted_run_id")
+
+    assert toast is None  # 토스트 대신 새 메시지
+    assert step.text == f"컨디션 4 기록했어요.\n\n{LADDER_STEP1}"
+    assert step.ladder == ("2026-11", "n") and step.ask_condition_for is None
+    assert again == "컨디션 3 기록했어요." and sent == 2
+    assert detail["state"] == "answered"
+    assert prompted == str(run_id)
+
+
+async def test_condition_press_outside_review_is_toast(tmp_path):
+    # 월말이 아닌 회고(11/22)의 컨디션 누름은 SP1 그대로 토스트
+    async with _start(tmp_path, at=kst(2026, 11, 22, 18, 0) + timedelta(seconds=30)) as env:
+        await env.tick()
+        await env.press("c:2026-11-22:4", message_id=env.sender.message_ids[0])
+        assert env.bot.answers[-1][1] == "컨디션 4 기록했어요."
+        assert len(env.sender.sent) == 1
+
+
+async def test_first_text_reply_gets_step1_when_no_condition_button(tmp_path):
+    async with _start(tmp_path, script=[FakeTurn([], "꾸민 답 하나"), FakeTurn([], "꾸민 답 둘")]) as env:
+        _, mid = await _review(env)
+        env.clock.advance(minutes=5)
+        await env.telegram("꾸민 사용자 글")
+        reply = env.sender.sent[-1]
+        note = env.brain.prompts[-1]
+        await env.telegram("꾸민 두 번째 글")
+        second = env.sender.sent[-1]
+        await env.press("c:2026-11-29:4", message_id=mid)
+        toast = env.bot.answers[-1][1]
+
+    assert reply.text == f"꾸민 답 하나\n\n{LADDER_STEP1}"
+    assert reply.ladder == ("2026-11", "n")
+    assert "## 하네스가 붙이는 질문" in note and LADDER_STEP1 in note
+    assert second.text == "꾸민 답 둘" and second.ladder is None
+    assert toast == "컨디션 4 기록했어요."  # 이미 물었다: 토스트
+
+
+async def test_condition_already_recorded_step1_on_review_message(tmp_path):
+    async with _start(tmp_path) as env:
+        _, added = await env.action("record_condition", {"score": 4, "date": "2026-11-29"})
+        assert added["status"] == "applied"
+        run_id, _ = await _review(env)
+        (out,) = env.sender.sent
+        prompt = env.brain.prompts[0]
+        saved = env.conn.execute("SELECT outbound_text FROM runs WHERE id = ?", (run_id,)).fetchone()[0]
+
+    assert out.ask_condition_for is None
+    assert out.ladder == ("2026-11", "n")
+    assert out.text == f"{REVIEW}\n\n{LADDER_STEP1}" == saved
+    assert _datas(out) == [f"l:2026-11:n:{n}" for n in range(11)]
+    assert "## 하네스가 붙이는 질문" in prompt
+
+
+async def test_step2_after_now_press(tmp_path):
+    async with _start(tmp_path) as env:
+        _, mid = await _review(env)
+        await env.press("c:2026-11-29:4", message_id=mid)
+        assert await env.press("l:2026-11:n:6") == "recorded"
+        toast = env.bot.answers[-1][1]
+        step2 = env.sender.sent[-1]
+
+    assert toast is None
+    assert step2.text == LADDER_STEP2 and step2.ladder == ("2026-11", "f")

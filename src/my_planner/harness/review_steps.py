@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
@@ -104,6 +104,7 @@ class NextStep:
 
     text: str
     ladder: tuple[str, LadderField] | None = None
+    conversation_id: int | None = None  # 원문 기록에 남길 회고 대화(보낼 때)
 
 
 @dataclass(frozen=True)
@@ -188,7 +189,7 @@ class ReviewFlow:
 
     def of_run(self, run: Run) -> ReviewOf | None:
         """회차(합쳐진 회차면 primary 기준) 묶음의 회고."""
-        primary = self.runs.merged_into(run.id) or run
+        primary = self.runs.merged_into(run.id) or self.runs.get(run.id) or run  # 합친 기록은 DB의 지금 값
         group = [primary, *(r for i in primary.merged_run_ids if (r := self.runs.get(i)) is not None)]
         return review_in(group, self.settings)
 
@@ -221,10 +222,11 @@ class ReviewFlow:
         if not self._open(primary, self.clock.now()):
             return None
         step = self.pending_step(primary)
-        if step is not None:
-            self.claim(primary.id)
-            log.info("review_step_prompted", extra={"run_id": primary.id, "where": "condition"})
-        return step
+        if step is None:
+            return None
+        self.claim(primary.id)
+        log.info("review_step_prompted", extra={"run_id": primary.id, "where": "condition"})
+        return replace(step, conversation_id=primary.conversation_id)
 
     def open_month_review(self, period: str) -> tuple[Run, ReviewOf] | None:
         """그 달(`YYYY-MM`)의 월말 회고 회차(primary)가 지금 답장 창 안이면 (primary, 회고)."""
@@ -240,28 +242,29 @@ class ReviewFlow:
 
     def after_now(self, period: str) -> NextStep | None:
         """`지금`을 눌렀다: 그 달 월말 회고가 열려 있으면 2단계(`5년 뒤`) + `f` 키보드."""
-        if self.open_month_review(period) is None:
+        found = self.open_month_review(period)
+        if found is None:
             return None
-        return NextStep(LADDER_STEP2, (period, "f"))
+        return NextStep(LADDER_STEP2, (period, "f"), found[0].conversation_id)
 
-    def after_future(self, period: str) -> str | None:
+    def after_future(self, period: str) -> NextStep | None:
         """`5년 뒤`를 누르거나 건너뛰었다: 열린 월말 회고면 "기록했어요: …"(분기 회고면 이어서 영역 점수 묻기)."""
         found = self.open_month_review(period)
         if found is None:
             return None
-        _, of = found
-        ladder = self.curve.ladder(period)
-        text = ladder_recorded(ladder.now if ladder else None, ladder.future if ladder else None)
+        primary, of = found
+        text = self.recorded_copy(period)
         area = area_step(of, self.curve)
-        return f"{text}\n\n{area.text}" if area is not None else text
+        return NextStep(f"{text}\n\n{area.text}" if area is not None else text, None, primary.conversation_id)
 
-    def conversation_of(self, period: str) -> int | None:
-        found = self.open_month_review(period)
-        return found[0].conversation_id if found is not None else None
+    def recorded_copy(self, period: str) -> str:
+        """부록 A "사다리 기록"(그 달 지금 값으로)."""
+        ladder = self.curve.ladder(period)
+        return ladder_recorded(ladder.now if ladder else None, ladder.future if ladder else None)
 
     # --- 보내기 ---
 
-    async def send(self, step: NextStep, *, conversation_id: int | None = None) -> bool:
+    async def send(self, step: NextStep) -> bool:
         """단계 메시지를 텔레그램에 보낸다(하루 3회에 세지 않는다). 보냈으면 원문 기록에 비서 줄을 남긴다."""
         try:
             await self._send(step)
@@ -270,7 +273,7 @@ class ReviewFlow:
             return False
         if self.transcripts is not None:
             try:
-                self.transcripts.append(self.clock.now(), "비서", conversation_id, None, step.text)
+                self.transcripts.append(self.clock.now(), "비서", step.conversation_id, None, step.text)
             except Exception as e:  # noqa: BLE001
                 log.warning("review_step_transcript_error", extra={"error_type": type(e).__name__})
         return True

@@ -773,9 +773,14 @@ class Dispatcher:
         if conv.kind is ConversationKind.run and conv.run_id is not None:
             # 회차 대화에 들어온 사용자 메시지는 그 회차의 답이다(6.4.5, 7.5 M3). 처음 한 번만, 보낸 시각으로
             self._answer_by_message(conv.run_id, channel, batch[0].sent_at)
+        # 회고 단계(SP3-4 11.1-1 (b)): 컨디션 버튼 없이 회고 대화에 처음 들어온 글이면 답 끝에 첫 단계를 붙인다
+        review_step = self._reply_review_step(conv, batch[0].sent_at) if app is None else None
 
         run_ctx = self._message_ctx(conv.id, lead)
-        body = _join(self._recorded_condition(), f"## 메시지\n{text}")
+        body = _join(
+            self._recorded_condition(), f"## 메시지\n{text}",
+            step_note(review_step[1] if review_step is not None else None, where="답"),
+        )
         with self._awake.hold():
             fell_back = False
             self._log_user_lines(batch, conv.id, pending, lead)
@@ -883,16 +888,23 @@ class Dispatcher:
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
             body_text = app.writer.streamed_reply if streamed else _reply_for(result)
             confirmations = render_confirmations(run_ctx.events, self._today())
-            # 텔레그램: 두뇌 답, 빈 줄, 확인 문구(도구를 안 불렀으면 빈 줄도 없다). 앱: 확인 문구는 `data-activity`로
-            reply = _join(body_text, confirmations)
+            # 두뇌가 제대로 답했을 때만 첫 단계를 붙인다(일반 문구 아래에는 묻지 않는다)
+            step = review_step[1] if review_step is not None and _run_ok(result) else None
+            # 텔레그램: 두뇌 답, 빈 줄, 확인 문구(도구를 안 불렀으면 빈 줄도 없다), 회고 단계. 앱: 확인 문구는
+            # `data-activity`로
+            reply = _join(body_text, confirmations, step.text if step is not None else "")
             sent_text = body_text if app is not None else reply
             # 두 단계: 보내기 전에 답을 저장한다(brain_done). 바로 3회까지 보내고, 끝내 안 되면 처리 완료로 두지
             # 않는다. 다음 시작 때 저장한 답만 다시 보낸다(두뇌는 다시 부르지 않는다)
             self.state.save_inbound_reply(lead, redact(sent_text)[0], conv.id)
             out = self._reply_out(_outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids)
             out.streamed = streamed
+            if step is not None:
+                out.ladder = step.ladder
             if not await self._send_reply(out, update_ids, conv.id):
                 return
+            if step is not None and review_step is not None:
+                self._claim_review_step(review_step[0], "message")
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
             self._messages_done(update_ids, reply=sent_text, confirmation=confirmations, conversation_id=conv.id)
             self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names))
@@ -1299,6 +1311,8 @@ class Dispatcher:
         runs.set_conversation(run.id, conv.id)
         ask = self._ask_condition_for(run, merged)
         step, question = self._review_extras(run, merged, ask)
+        if step is not None:
+            ask = None  # 컨디션 줄 대신 첫 단계 줄(한 메시지에 숫자 키보드 한 종류)
         result, run_ctx = await self._run_brain(run, merged, conv, ask, step=step, question=question)
         if not _run_ok(result) and self._may_rerun(run, result):
             blocked = self._run_blocked(run)
@@ -1359,15 +1373,32 @@ class Dispatcher:
     ) -> tuple[NextStep | None, tuple[int, str] | None]:
         """월말 회고의 (회고 메시지에 바로 붙일 첫 단계, 두뇌에게 줄 열린 시드 질문 `(id, 글)`).
 
-        첫 단계는 컨디션 줄이 없을 때만(`ask is None`, 한 메시지에 키보드 한 종류) 붙인다.
+        첫 단계는 컨디션 줄이 없을 때만 붙인다: 컨디션 버튼 날짜가 없거나 그 날짜 컨디션이 이미 있을 때(11.1-1 (c)).
+        그때는 SP1과 달리 컨디션 줄을 다시 붙이지 않는다(한 메시지에 숫자 키보드 한 종류).
         """
         flow = self.review_flow
         of = review_in([run, *merged], self.settings)
         if flow is None or of is None or not of.steps:
             return None, None
-        step = flow.pending_step(run) if ask is None else None
+        recorded = ask is not None and self.conditions is not None and self.conditions.get(ask) is not None
+        step = flow.pending_step(run) if ask is None or recorded else None
         q = flow.curve.next_open_question()
         return step, ((q.id, q.text) if q is not None else None)
+
+    def _reply_review_step(self, conv: Conversation, sent_at: datetime) -> tuple[int, NextStep] | None:
+        """텔레그램 회고 대화에 보낸 시각 기준 답장 창 안에서 들어온 글이고 첫 단계를 아직 묻지 않았으면
+        (primary 회차 id, 단계). 컨디션 버튼을 먼저 눌렀거나 회고 메시지에 이미 붙였으면 None(회차마다 한 번)."""
+        flow = self.review_flow
+        if flow is None or self.runs is None or conv.kind is not ConversationKind.run or conv.run_id is None:
+            return None
+        run = self.runs.get(conv.run_id)
+        if run is None:
+            return None
+        primary = self.runs.merged_into(run.id) or run
+        if not self.router.run_in_window(primary, sent_at):
+            return None
+        step = flow.pending_step(primary)
+        return (primary.id, step) if step is not None else None
 
     def _claim_review_step(self, run_id: int, where: str) -> None:
         if self.review_flow is not None:
