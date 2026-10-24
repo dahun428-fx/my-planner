@@ -41,7 +41,7 @@ jobs:
         id: filter
         with:
           # push는 push 전 커밋과 비교한다. 없으면 develop push를 main과의 merge-base로 비교해 매번 다 돈다
-          base: ${{ github.ref }}
+          base: ${{ github.event_name == 'push' && github.ref || '' }}
           filters: |
             be:
               - 'src/**'

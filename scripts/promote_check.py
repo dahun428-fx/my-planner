@@ -110,7 +110,8 @@ def decide(i: Inputs) -> Decision:
         if w is None:
             return Decision("wait", f"{run.sha[:7]} Windows 진행 중")
         if w != "success":
-            return Decision("blocked", f"{run.sha[:7]} Windows {w}")
+            hint = ", CI 재실행 필요" if w == "cancelled" else ""
+            return Decision("blocked", f"{run.sha[:7]} Windows {w}{hint}")
     # 4. 스테이징 BE
     if i.require_staging_be and not i.skip_staging_be:
         st = i.statuses.get(i.head, {}).get(STAGING_CONTEXT)
@@ -213,6 +214,9 @@ def _ci_for(gh: GitHub, sha: str) -> tuple[str | None, str | None, bool]:
     jobs = gh.get(f"/actions/runs/{run['id']}/jobs?per_page=50")["jobs"]
     win = next((j for j in jobs if j["name"] == WINDOWS_JOB), None)
     win_conclusion = None if win is None or win["status"] != "completed" else win["conclusion"]
+    if run["conclusion"] == "cancelled":
+        # concurrency 대기열에서 밀려 취소된 실행: 다음 실행은 이 커밋의 변경을 시험하지 않으므로 막힘으로 본다
+        win_conclusion = "cancelled"
     return run["conclusion"], win_conclusion, True
 
 

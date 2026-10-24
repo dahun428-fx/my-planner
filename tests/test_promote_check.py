@@ -104,6 +104,13 @@ def test_windows_bundled_push_uses_later_run():
     assert pc.decide(inputs(cs, ci=ci, windows={"a0": "success", "a2": None})).action == "wait"
 
 
+def test_windows_cancelled_run_blocks_with_hint():
+    cs = [commit("a1", "src/a.py"), commit("a2", "docs/x.md")]
+    d = pc.decide(inputs(cs, ci={"a1": "cancelled", "a2": "success"}, windows={"a1": "cancelled", "a2": "skipped"}))
+    assert d.action == "blocked"
+    assert "재실행" in d.reason
+
+
 def test_staging_be_rules():
     cs = [commit("a1", "docs/x.md")]
     assert pc.decide(inputs(cs, statuses={})).action == "wait"
