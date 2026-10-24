@@ -437,7 +437,7 @@ describe("Settings", () => {
     const group = (await screen.findByRole("heading", { name: copy.settings.about })).closest("section") as HTMLElement;
     expect(within(group).getByText("0.1.0")).toBeInTheDocument();
     expect(await within(group).findByText("0.2.0")).toBeInTheDocument();
-    expect(within(group).getByText("2026-10-24.2")).toBeInTheDocument();
+    expect(within(group).getByText("2026-10-24.4")).toBeInTheDocument();
   });
 
   it("no chat launcher", async () => {

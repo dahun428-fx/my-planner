@@ -1,7 +1,9 @@
 import { useId, useRef, useState } from "react";
 import { type ActionOutcome, useAction } from "../api/actions";
 import type { Todo } from "../api/types.gen";
+import { ConfirmSheet } from "../components/ConfirmSheet";
 import { Sheet } from "../components/Sheet";
+import { useToast } from "../components/Toast";
 import { copy } from "../lib/copy";
 import styles from "./Todos.module.css";
 
@@ -36,19 +38,30 @@ function EditForm({ edit, onClose, onDone, guard }: { edit: Edit; onClose(): voi
   const isDate = edit.kind === "date";
   const initial = isDate ? (edit.todo.planned_for ?? "") : edit.todo.title;
   const [value, setValue] = useState(initial);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
+  // SP6 8 (BE-2): moving a to-do that has a time asks first, with the BE's sentence.
+  const [asking, setAsking] = useState<{ token: string; summary: string } | null>(null);
   const lock = useRef(false);
   const clean = isDate ? value : value.trim();
   const ok = clean !== "" && clean !== initial;
 
-  const save = async () => {
+  const save = async (confirmToken?: string) => {
     if (!ok || lock.current) return;
     lock.current = true;
     setBusy(true);
     try {
-      const out = isDate ? await run("move_task", { id: edit.todo.id, planned_for: clean }) : await run("update_task", { id: edit.todo.id, title: clean });
+      const out = isDate
+        ? await run("move_task", { id: edit.todo.id, planned_for: clean }, confirmToken === undefined ? undefined : { confirmToken })
+        : await run("update_task", { id: edit.todo.id, title: clean });
       if (out === null) return;
+      if (isDate && out.kind === "needs_confirm") {
+        setAsking({ token: out.confirmToken, summary: out.summary });
+        return;
+      }
+      setAsking(null);
       if (out.kind === "applied") await onDone();
+      else if (out.kind === "conflict" && confirmToken !== undefined) toast.show({ text: copy.todos.confirmExpired });
       else if (out.kind === "conflict" || out.kind === "needs_confirm") await guard(out);
       else return; // rejected / failed: useAction said why, the sheet stays for another try
       onClose();
@@ -78,6 +91,7 @@ function EditForm({ edit, onClose, onDone, guard }: { edit: Edit; onClose(): voi
           {copy.todos.save}
         </button>
       </div>
+      {asking && <ConfirmSheet summary={asking.summary} busy={busy} onKeep={() => setAsking(null)} onChange={() => void save(asking.token)} />}
     </form>
   );
 }

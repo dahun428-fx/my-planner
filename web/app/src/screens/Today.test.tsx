@@ -244,6 +244,52 @@ describe("Today", () => {
     expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
   });
 
+  it("tomorrow on scheduled todo opens confirm sheet", async () => {
+    // SP6 8 (BE-2): moving a to-do that has a time asks first; "바꾸기" sends again with the token.
+    const SUMMARY = "날짜를 옮겨요: 운동 30분 → 10월 25일 (일)";
+    serve();
+    const bodies = actions((b) => (b.confirm_token ? applied() : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: SUMMARY, expires_at: "2026-10-24T09:00:00Z" })));
+    renderWithProviders(<Today />);
+    const user = userEvent.setup();
+    fireEvent.contextMenu(await screen.findByText("운동 30분"));
+    fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText(SUMMARY)).toBeInTheDocument();
+    expect(screen.queryByText(copy.actions.failed)).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.change }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ action: "move_task", args: { id: 12, planned_for: "2026-10-25" }, confirm_token: "ct-9" });
+    expect(bodies[1].client_msg_id).not.toBe(bodies[0].client_msg_id);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // "그대로 두기" sends nothing more.
+    fireEvent.contextMenu(screen.getByText("운동 30분"));
+    fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+    const again = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(again).getByText(SUMMARY)).toBeInTheDocument());
+    await user.click(within(again).getByRole("button", { name: copy.todos.keep }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(bodies).toHaveLength(3);
+  });
+
+  it("confirm then rejected says why and reads again", async () => {
+    // Review Focus 3: the to-do changed between the question and "바꾸기" (done elsewhere, say).
+    for (const [message, said] of [["열린 할 일만 날짜를 옮길 수 있어요.", "열린 할 일만 날짜를 옮길 수 있어요."], ["", copy.actions.failed]]) {
+      const hits = serve();
+      actions((b) => (b.confirm_token ? HttpResponse.json({ error: { code: "rejected", message: message } }, { status: 422 }) : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: "날짜를 옮겨요: 운동 30분 → 10월 25일 (일)", expires_at: "2026-10-24T09:00:00Z" })));
+      const { unmount } = renderWithProviders(<Today />);
+      fireEvent.contextMenu(await screen.findByText("운동 30분"));
+      fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+      const sheet = await screen.findByRole("dialog");
+      const before = hits.today;
+      await userEvent.setup().click(within(sheet).getByRole("button", { name: copy.todos.change }));
+      expect(await screen.findByText(said)).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await waitFor(() => expect(hits.today).toBeGreaterThan(before));
+      unmount();
+    }
+  });
+
   it("drop needs confirm opens sheet", async () => {
     serve();
     const bodies = actions((b) =>

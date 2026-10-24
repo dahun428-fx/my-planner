@@ -1,6 +1,7 @@
 import "./zodJitless"; // first: before "@ai-sdk/react" and "ai" build their schemas
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
+import { useRouter } from "next/router";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockError } from "../components/BlockError";
 import { Sheet } from "../components/Sheet";
@@ -9,6 +10,8 @@ import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { newClientMsgId } from "../lib/ids";
 import { formatKst } from "../lib/time";
+import { screenHref } from "../ui/openScreen";
+import type { OpenScreen } from "../ui/primitives/types";
 import styles from "./ChatSheet.module.css";
 import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
@@ -46,6 +49,7 @@ export interface ChatSheetProps {
 // Spec 5.5.2, 4.6 대화, F4, F9.
 export function ChatSheet({ open, onClose, checkinId, conversationId, embedded = false, onSent }: ChatSheetProps) {
   const { state, conn } = useConnection();
+  const router = useRouter();
   const online = state?.kind === "online";
   const connRef = useRef(conn);
   connRef.current = conn;
@@ -188,6 +192,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     void regenerate();
   };
 
+  // SP6 8 `open`: the app moves to that screen and the sheet closes (embedded in a check-in, it has none to close).
+  const openScreen = (s: OpenScreen) => {
+    void router.push(screenHref(s));
+    onClose();
+  };
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (send(text)) setText("");
@@ -228,7 +238,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       );
     }
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
-    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} />);
+    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} onOpen={openScreen} />);
     if (i === historyCount - 1) rows.push(elsewhereLines);
     if (conv !== null) prevConv = conv;
     if (at !== null) prevAt = at;

@@ -78,3 +78,32 @@ describe("primitives.module.css", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// SP6 G-A2 Step 11: the chat cards' stylesheet keeps the same rules.
+describe("cards.module.css", () => {
+  const cards = readFileSync(join(__dirname, "../chat/cards.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+
+  it("has no hex colours", () => {
+    expect(cards.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
+  });
+
+  it("uses --hue only for ui_result's change pill", () => {
+    const withHue = rules(cards).filter((r) => r.body.includes("var(--hue)"));
+    expect(withHue.map((r) => r.selector)).toEqual([".changeChip"]);
+  });
+
+  it("stacks a block's parts 12px apart", () => {
+    const block = rules(cards).find((r) => r.selector === ".block");
+    expect(block?.body).toMatch(/flex-direction:\s*column/);
+    expect(block?.body).toMatch(/gap:\s*(0\.75rem|12px)/);
+  });
+
+  it("has no 700 weight (screen titles only)", () => {
+    expect(cards).not.toMatch(/font-weight:\s*(700|bold)/);
+  });
+
+  it("is imported from _app", () => {
+    const app = readFileSync(join(__dirname, "../../pages/_app.tsx"), "utf8");
+    expect(app).toContain('import "../ui/chat/cards.module.css";');
+  });
+});

@@ -1,0 +1,175 @@
+/* SP6 6.2~6.4 and 7: the chat cards. Semantic tokens only (5.1). --hue only on ui_result's change
+   pill (.changeChip); ui_period_list's changed rows use CheckRow's own .highlight. Imported from
+   _app (11.3): the cards' JavaScript loads late, their CSS is in the first stylesheet. */
+
+/* The grey second line of a card: a count, "이미 정리된 할 일이에요". */
+.sub {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+
+/* ui_date_choice (6.2): the title 15 --text-2, then one wide 44px button per candidate. */
+.todoTitle {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-section);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.candidates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.candidateDay {
+  font-size: var(--size-section);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.candidateNote {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.candidate[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.candidate[aria-pressed="true"] .candidateNote {
+  color: var(--on-primary);
+}
+.candidate:disabled {
+  cursor: default;
+}
+.candidate:disabled:not([aria-pressed="true"]) {
+  opacity: 0.45;
+}
+.candidate:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* ui_result (6.3): one block per to-do, the change pill, a grey second line, "되돌리기" at the right. */
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.itemBody {
+  flex: 1;
+  min-width: 0;
+}
+.itemHead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0;
+}
+/* Only what the secretary did carries --hue (5.1): a 1.5px outline and its letters. */
+.changeChip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1.5px solid var(--hue);
+  border-radius: var(--radius-pill);
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--hue);
+}
+.itemTitle {
+  min-width: 0;
+  font-size: var(--size-body);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.change {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.before {
+  color: var(--muted);
+}
+/* A 32px grey pill; its hit area is 44px (SP5 9장). */
+.undo {
+  position: relative;
+  flex: none;
+  min-height: 2rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.undo::after {
+  content: "";
+  position: absolute;
+  inset: -0.375rem 0;
+}
+.undo:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.undo:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.undoNote {
+  flex: none;
+  max-width: 45%;
+  font-size: var(--size-meta);
+  color: var(--muted);
+  text-align: right;
+}
+
+/* ui_period_list (6.4): a small 13/600 --muted head per day, CheckRow rows under it. */
+.period {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.dayGroup {
+  display: flex;
+  flex-direction: column;
+}
+.dayHead {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* ui_block (7.1): its parts stacked top to bottom, 12px apart. */
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}

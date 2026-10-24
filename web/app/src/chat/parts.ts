@@ -5,7 +5,7 @@ import type { PartData } from "../ui/types";
 export type ViewPart =
   | { kind: "text"; text: string }
   | { kind: "ui"; toolCallId: string; name: string; props: unknown; data?: PartData; restored?: boolean }
-  | { kind: "activity"; confirmation: string | null; undoIds: number[] };
+  | { kind: "activity"; confirmation: string | null; undoIds: number[]; activityIds: number[] };
 
 type AnyPart = UIMessage["parts"][number];
 type ToolLike = { toolCallId: string; state: string; input?: unknown; output?: unknown };
@@ -27,9 +27,15 @@ function uiPart(name: string, p: ToolLike): ViewPart | null {
 
 function activityPart(data: unknown): ViewPart {
   const d = isObj(data) ? data : {};
-  const undoIds = Array.isArray(d.undo_ids) ? d.undo_ids.filter((n): n is number => typeof n === "number") : [];
-  // Before R4b there is no confirmation: undo still works.
-  return { kind: "activity", confirmation: typeof d.confirmation === "string" && d.confirmation !== "" ? d.confirmation : null, undoIds };
+  const numbers = (v: unknown) => (Array.isArray(v) ? v.filter((n): n is number => typeof n === "number") : []);
+  // Before R4b there is no confirmation: undo still works. `activityIds` (SP6 11.4) says which
+  // activities the box stands for, so a ui_result that shows them all can hide it.
+  return {
+    kind: "activity",
+    confirmation: typeof d.confirmation === "string" && d.confirmation !== "" ? d.confirmation : null,
+    undoIds: numbers(d.undo_ids),
+    activityIds: numbers(d.activity_ids),
+  };
 }
 
 // text -> text, ui_* tools -> parts, other tools -> nothing (the confirmation stands for them),
