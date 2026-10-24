@@ -27,6 +27,16 @@ TOOL_NAMES: list[str] = [
     "list_tasks",
     "record_condition",
     "read_transcript",
+    # 인생 곡선과 상태창(SP3-4 10장 표 순서). `grant_xp`는 티켓 15
+    "record_ladder_score",
+    "record_area_scores",
+    "add_milestone",
+    "confirm_milestones",
+    "propose_chapter",
+    "confirm_chapters",
+    "drop_curve_drafts",
+    "get_curve",
+    "get_status",
 ]
 
 # 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다
@@ -62,7 +72,7 @@ _NEW_TASK = _schema(
     ["title", "areas"],
 )
 
-# (이름, 설명, 입력 스키마). JSON 스키마의 "from"은 파이썬 이름 `from_`으로 넘기지 않고 그대로 받는다.
+# (이름, 설명, 입력 스키마). JSON 스키마의 "from"은 부르기 전에 파이썬 이름 `from_`으로 바꾼다(`_py_args`).
 _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "add_task": (
         "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다.",
@@ -167,6 +177,123 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
 }
 
 
+_MONTH = {"type": "string", "description": "달 YYYY-MM, 예: 2019-03"}
+_SCORE_10 = {"type": "integer", "minimum": 0, "maximum": 10}
+_BY_AREA_TEXT = {
+    "type": "object", "properties": {a: {"type": "string"} for a in _AREAS}, "additionalProperties": False,
+}
+_CURVE_IDS = {"type": "array", "items": {"type": "integer"}, "minItems": 1}
+_SPECS.update({
+    "record_ladder_score": (
+        (
+            "사용자가 말한 사다리 점수(0~10)를 그 달에 기록합니다. now는 지금, future는 5년 뒤입니다. 둘 가운데 하나는 "
+            "있어야 하고, 없는 쪽은 그 달 기존 값을 둡니다. 비서가 점수를 매기지 않습니다. period를 안 주면 회고 대화는 "
+            "그 회고의 달, 아니면 이번 달입니다. 아직 오지 않은 달은 기록할 수 없습니다."
+        ),
+        _schema(
+            {
+                "period": {"type": "string", "description": "달 YYYY-MM"},
+                "now": {**_SCORE_10, "type": ["integer", "null"]},
+                "future": {**_SCORE_10, "type": ["integer", "null"]},
+                "note": {"type": ["string", "null"]},
+            },
+            [],
+        ),
+    ),
+    "record_area_scores": (
+        (
+            "사용자가 말한 영역 점수(1~10)를 그 분기에 기록합니다. 말한 영역만 넣습니다. 비서가 점수를 매기지 않습니다. "
+            "recovery_quests는 지난 분기보다 내려간 영역에만, 15~30분짜리 하나씩(80자까지) 넣습니다. period를 안 주면 "
+            "회고 대화는 그 회고의 분기, 아니면 이번 분기입니다."
+        ),
+        _schema(
+            {
+                "period": {"type": "string", "description": "분기 YYYY-Qn, 예: 2026-Q4"},
+                "scores": {
+                    "type": "object",
+                    "properties": {a: {"type": "integer", "minimum": 1, "maximum": 10} for a in _AREAS},
+                    "additionalProperties": False,
+                    "minProperties": 1,
+                },
+                "notes": _BY_AREA_TEXT,
+                "recovery_quests": {
+                    "type": "object",
+                    "properties": {a: {"type": "string", "maxLength": 80} for a in _AREAS},
+                    "additionalProperties": False,
+                },
+            },
+            ["scores"],
+        ),
+    ),
+    "add_milestone": (
+        (
+            "사용자가 이야기한 과거의 일을 인생 곡선의 사건 **초안**으로 남깁니다. 추측해서 만들지 않고, \"곡선에 남길까요?\"와 "
+            "함께 냅니다. 하네스가 답 아래에 저장·빼기 버튼을 붙이므로 저장했다고 말하지 않습니다. date는 기억하는 만큼 "
+            "YYYY, YYYY-MM, YYYY-MM-DD로 씁니다. sensitive는 사용자가 민감하다고 말했을 때만 true입니다."
+        ),
+        _schema(
+            {
+                "date": {"type": "string", "description": "YYYY | YYYY-MM | YYYY-MM-DD"},
+                "kind": {"enum": ["high", "low", "turning_point"], "description": "고점, 저점, 전환점"},
+                "title": {"type": "string", "description": "1~100자"},
+                "note": {"type": ["string", "null"]},
+                "chapter_id": {"type": ["integer", "null"], "description": "속한 챕터 번호"},
+                "sensitive": {"type": "boolean"},
+            },
+            ["date", "kind", "title"],
+        ),
+    ),
+    "confirm_milestones": (
+        (
+            "사건 초안을 확정합니다. 사용자가 글로 \"응 저장해\"처럼 동의했을 때 부릅니다. 고점과 전환점은 칭호가 생깁니다. "
+            "초안이 아닌 번호는 바꾸지 않고 skipped_ids로 돌려줍니다."
+        ),
+        _schema({"ids": _CURVE_IDS}, ["ids"]),
+    ),
+    "propose_chapter": (
+        (
+            "인생의 한 시기를 챕터 **초안**으로 남깁니다(연말 회고). start, end는 YYYY-MM이고 end가 없으면 지금까지입니다. "
+            "하네스가 저장·빼기 버튼을 붙입니다."
+        ),
+        _schema(
+            {
+                "title": {"type": "string", "description": "1~100자"},
+                "theme": {"type": ["string", "null"], "description": "주제 한 줄"},
+                "start": _MONTH,
+                "end": {**_MONTH, "type": ["string", "null"]},
+            },
+            ["title", "start"],
+        ),
+    ),
+    "confirm_chapters": (
+        "챕터 초안을 확정합니다. 사용자가 글로 동의했을 때 부릅니다. 초안이 아닌 번호는 skipped_ids로 돌려줍니다.",
+        _schema({"ids": _CURVE_IDS}, ["ids"]),
+    ),
+    "drop_curve_drafts": (
+        (
+            "사건·챕터 **초안**을 뺍니다(\"그거 빼 줘\"). 확정한 것은 뺄 수 없고, 하나라도 있으면 아무것도 빼지 않습니다."
+        ),
+        _schema(
+            {
+                "milestone_ids": {"type": "array", "items": {"type": "integer"}},
+                "chapter_ids": {"type": "array", "items": {"type": "integer"}},
+            },
+            [],
+        ),
+    ),
+    "get_curve": (
+        (
+            "확정한 인생 곡선을 읽습니다: 챕터, 사건(민감한 것은 제목 대신 \"(민감)\"), 사다리, 영역 점수, 컨디션 평균. "
+            "zoom 기본은 month입니다. from, to를 안 주면 확대 단위의 기본 범위입니다."
+        ),
+        _schema(
+            {"from": _DATE, "to": _DATE, "zoom": {"enum": ["day", "week", "month", "quarter", "year"]}},
+            [],
+        ),
+    ),
+    "get_status": ("상태창을 읽습니다: 레벨, 경험치, HP, 스탯과 디버프, 퀘스트, 칭호.", _schema({}, [])),
+})
+
 _CARD_ID = {"type": "integer", "description": "고정 카드 번호"}
 _SPECS.update({
     "ui_todo_list": (
@@ -233,7 +360,7 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
     if w is not None and not ui:
         w.tool_input(call_id, name, args)
     try:
-        result = getattr(tools, name)(ctx, **args)
+        result = getattr(tools, name)(ctx, **_py_args(args))
     except Exception:
         if w is not None and not ui:
             w.tool_error(call_id, "도구를 실행하지 못했어요.")
@@ -249,6 +376,11 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
         else:
             w.tool_output(call_id, to_api_times(result))
     return result
+
+
+def _py_args(args: dict[str, Any]) -> dict[str, Any]:
+    """도구 스키마의 키 `from`은 파이썬 예약어라 메서드 인자 `from_`으로 바꿔 넘긴다(`method(ctx, **args)`)."""
+    return {("from_" if k == "from" else k): v for k, v in args.items()}
 
 
 def build_planner_tools(tools: Any, ctx: RunContext) -> list[SdkMcpTool[Any]]:

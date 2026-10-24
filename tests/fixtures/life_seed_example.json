@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "version": 1,
+    "created": "2026-10-01",
+    "status": "draft",
+    "sources": {"note": "꾸며 낸 시험용 시드. 실제 사람의 이야기가 아니다"},
+    "reviewed": true
+  },
+  "chapters": [
+    {"id": "C1", "title": "바닷가 마을의 학생 시절", "start": "2010-03", "end": "2014-02",
+     "source": "가짜 일기장", "certainty": "사실", "note": "모래와 자전거의 계절"},
+    {"id": "C2", "title": "작은 빵집 수습 시절", "start": "2014-03", "end": "2019-12",
+     "source": "가짜 메모", "certainty": "추정", "note": "새벽 반죽과 밀가루"},
+    {"id": "C3", "title": "도시 정원사로 일하는 지금", "start": "2020-01", "end": null,
+     "source": "가짜 대화", "certainty": "사실", "note": "옥상 화단 돌보기"}
+  ],
+  "events": [
+    {"date": "2012", "title": "등대 사진 대회 입상", "kind": "high", "chapter_id": "C1",
+     "source": "가짜 상장", "certainty": "사실", "kind_certainty": "사실", "sensitive": false},
+    {"date": "2014-03", "title": "첫 반죽을 혼자 맡은 날", "kind": "turning", "chapter_id": "C2",
+     "source": "가짜 메모", "certainty": "추정", "kind_certainty": "추정", "sensitive": false,
+     "note": "꾸민 메모: 손이 떨렸다"},
+    {"date": "2016-07", "title": "오븐 화상으로 쉰 여름", "kind": "low", "chapter_id": "C2",
+     "source": "가짜 메모", "certainty": "사실", "kind_certainty": "사실", "sensitive": false,
+     "note": "꾸민 메모: 손목 붕대"},
+    {"date": "2021-05", "title": "확인한 가상의 민감 사건", "kind": "low", "chapter_id": "C3",
+     "source": "가짜 대화", "certainty": "사실", "kind_certainty": "추정", "sensitive": true,
+     "confirmed": true, "note": "꾸민 민감 메모"},
+    {"date": "2022", "title": "확인하지 않은 민감 사건", "kind": "high", "chapter_id": "C3",
+     "source": "가짜 대화", "certainty": "사실", "kind_certainty": "사실", "sensitive": true,
+     "note": "꾸민 미확인 메모"},
+    {"date": "2023-04", "title": "보관 위치를 확인하지 않은 사건", "kind": "turning", "chapter_id": "C3",
+     "source": "가짜 대화", "certainty": "사실", "kind_certainty": "사실", "sensitive": false,
+     "storage": "local_only", "note": "꾸민 보관 메모"},
+    {"date": "2019-13", "title": "틀린 달에 적힌 사건", "kind": "high", "chapter_id": "C2",
+     "source": "가짜 메모", "certainty": "사실", "kind_certainty": "사실", "sensitive": false,
+     "note": "꾸민 날짜 오류 메모"},
+    {"date": "2018-02", "title": "모르는 종류의 사건", "kind": "peak", "chapter_id": "C2",
+     "source": "가짜 메모", "certainty": "사실", "kind_certainty": "사실", "sensitive": false,
+     "note": "꾸민 종류 오류 메모"}
+  ],
+  "curve_sketch": [
+    {"chapter_id": "C1", "direction": "천천히 오름", "certainty": "추정"},
+    {"chapter_id": "C2", "direction": "내려갔다가 다시 오름", "certainty": "추정"},
+    {"chapter_id": "C3", "direction": "평평하게 이어짐", "certainty": "사실"}
+  ],
+  "areas": [
+    {"key": "career", "label": "커리어", "score": 7, "evidence": "꾸민 근거 하나", "source": "가짜",
+     "quest": "가상의 커리어 퀘스트 적기", "sensitive": false},
+    {"key": "finance", "label": "경제", "score": 4, "evidence": "꾸민 근거 둘", "source": "가짜",
+     "quest": "가상의 가계부 한 줄", "sensitive": true, "sensitive_parts": ["꾸민 민감 부분"],
+     "confirmed": true},
+    {"key": "health", "label": "건강", "score": 6, "evidence": "꾸민 근거 셋", "source": "가짜",
+     "quest": "가상의 화단 산책", "sensitive": false},
+    {"key": "relationships", "label": "관계", "score": 8, "evidence": "꾸민 근거 넷", "source": "가짜",
+     "quest": "가상의 안부 엽서", "sensitive": false, "storage": "local_only", "confirmed": true},
+    {"key": "learning", "label": "배움", "score": 5, "evidence": "꾸민 근거 다섯", "source": "가짜",
+     "quest": "가상의 식물도감 한 쪽", "sensitive": false},
+    {"key": "quality_of_life", "label": "삶의 질", "score": 6, "evidence": "꾸민 근거 여섯", "source": "가짜",
+     "quest": "가상의 차 한 잔 시간", "sensitive": false}
+  ],
+  "ladder": {"now": 5, "in5y": 8},
+  "questions": [
+    "가상의 질문: 등대 사진은 아직 가지고 있나요?",
+    "가상의 질문: 빵집에서 가장 좋아한 빵은 무엇이었나요?"
+  ]
+}

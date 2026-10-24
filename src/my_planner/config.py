@@ -123,7 +123,6 @@ class ApiConfig(_Model):
     host: str = "127.0.0.1"
     port: int = 8787
     cors_origins: list[str] = []  # 정확한 문자열 목록. `*.vercel.app` 같은 와일드카드는 받지 않는다
-    cors_origin_regex: str = ""  # 비우면 쓰지 않는다(팀 범위 미리보기 주소용). 전체 일치로 본다
     # 출처 값의 검사는 CorsPolicy가 한다: 틀려도 API만 열지 않고 BE는 돈다(스펙 15)
     max_body_kb: int = 64
 

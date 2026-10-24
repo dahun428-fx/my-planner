@@ -259,7 +259,7 @@ class CheckinCard(_Model):
     toolCallId: str
     component: str
     props: dict[str, Any]
-    data: dict[str, Any] | None = None  # 할 일을 가리키는 카드만(`TodoRefs`)
+    data: dict[str, Any] | None = None  # 할 일(`todos`), 사건(`milestones`), 챕터(`chapters`) 초안 카드만
 
 
 class CheckinDetail(CheckinSummary):

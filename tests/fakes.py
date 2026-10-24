@@ -180,7 +180,10 @@ class FakeSender:
             raise ConnectionError("fake send failure")
         self.sent.append(out)
         mid = None
-        if out.draft_task_ids or out.ask_condition_for is not None or out.confirms:
+        if (
+            out.draft_task_ids or out.draft_milestone_ids or out.draft_chapter_ids
+            or out.ask_condition_for is not None or out.confirms
+        ):
             mid, self._next_id = self._next_id, self._next_id + 1
         self.message_ids.append(mid)
         return mid

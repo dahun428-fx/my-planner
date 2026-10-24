@@ -6,7 +6,7 @@
   기억에만 남고 오류를 올리지 않는다(M7).
 - `UiMessageWriter`: 조각 모양(`start`, `text-*`, `tool-*`, `data-activity`, `finish`)을 만든다. 싱크가 없어도
   (`sink=None`, 시작 때 다시 넣은 행) 상태만 따라가고 아무 데도 쓰지 않는다.
-- `AppReplySender`: 디스패처가 앱 답을 보내는 곳(M4). 두뇌 글·도구 → 하네스 화면 조각(`h_draft_<n>`, `h_cond_<n>`)
+- `AppReplySender`: 디스패처가 앱 답을 보내는 곳(M4). 두뇌 글·도구 → 하네스 화면 조각(`h_draft_<n>`, `h_mdraft_<n>`, `h_cdraft_<n>`, `h_cond_<n>`)
   → `data-activity`(확인 문구 `confirmation`) → `finish`. 앱 통로에는 `h-confirm` 글 조각이 없다(6.4.1).
 
 로그에는 조각 종류와 개수만 남기고 본문, 도구 인자, 결과는 남기지 않는다.
@@ -261,22 +261,38 @@ class UiMessageWriter:
 
 
 HarnessCard = tuple[str, str, dict[str, Any], dict[str, Any]]  # (toolCallId 앞머리, 컴포넌트, props, 출력)
+MILESTONE_CARD_MAX = 10  # `ui_milestone_draft.milestone_ids` 상한(6.4.7)
+CHAPTER_CARD_MAX = 5  # `ui_chapter_draft.chapter_ids` 상한
+
+
+def _chunks(ids: list[int], n: int) -> list[list[int]]:
+    return [list(ids[i:i + n]) for i in range(0, len(ids), n)]
 
 
 def harness_cards(out: Outbound) -> list[HarnessCard]:
-    """하네스 화면 조각(6.4.1, 6.4.7). 텔레그램 버튼 줄과 같은 재료, 같은 순서(초안 → 컨디션).
+    """하네스 화면 조각(6.4.1, 6.4.7). 텔레그램 버튼 줄과 같은 재료, 같은 순서(할 일 초안 → 사건 → 챕터 → 컨디션).
 
     확인 카드 `ui_confirm`(`out.confirms`)은 여기서 만들지 않는다: 회차 차례에서만 생기고 앱은 체크인 상세 `cards`로
     받는다(10.1 A5, `harness.checkins.checkin_cards`). `/chat`은 늘 사용자 차례라 확인 토큰이 없다.
 
     초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
-    `out.draft_todos`), 컨디션 고르기는 `{"ok": true}`다.
+    `out.draft_todos`), 사건·챕터 초안 카드는 `{"ok": true, "data": {"milestones": […]}}`·`{"data": {"chapters": […]}}`
+    (`out.draft_milestones`, `out.draft_chapters`), 컨디션 고르기는 `{"ok": true}`다.
     """
     cards: list[HarnessCard] = []
     if out.draft_task_ids:
         todos = list(out.draft_todos or [])
         cards.append(("h_draft", "ui_todo_draft", {"task_ids": list(out.draft_task_ids)},
                       {"ok": True, "data": {"todos": todos}}))
+    # 사건·챕터 초안(11.3): 할 일 초안 다음, 텔레그램 `m:`·`h:` 줄과 같은 순서. props 상한(10개, 5개)마다 나눈다
+    milestones = {m["id"]: m for m in out.draft_milestones or []}
+    for ids in _chunks(out.draft_milestone_ids, MILESTONE_CARD_MAX):
+        cards.append(("h_mdraft", "ui_milestone_draft", {"milestone_ids": ids},
+                      {"ok": True, "data": {"milestones": [milestones[i] for i in ids if i in milestones]}}))
+    chapters = {c["id"]: c for c in out.draft_chapters or []}
+    for ids in _chunks(out.draft_chapter_ids, CHAPTER_CARD_MAX):
+        cards.append(("h_cdraft", "ui_chapter_draft", {"chapter_ids": ids},
+                      {"ok": True, "data": {"chapters": [chapters[i] for i in ids if i in chapters]}}))
     if out.ask_condition_for is not None:
         cards.append(("h_cond", "ui_condition_picker", {"date": out.ask_condition_for.isoformat()}, {"ok": True}))
     return cards

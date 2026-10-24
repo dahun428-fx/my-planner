@@ -818,7 +818,7 @@ def test_api_build_error_keeps_polling(started, monkeypatch):
     assert [e["exc_type"] for e in _log_entries(root) if e["msg"] == "api_start_error"] == ["RuntimeError"]
 
 
-@pytest.mark.parametrize("bad", ['cors_origin_regex = "(["', 'cors_origins = ["https://*.vercel.app"]'])
+@pytest.mark.parametrize("bad", ['cors_origins = ["https://*.vercel.app"]'])
 def test_bad_cors_config_keeps_be_running_with_api_closed(started, monkeypatch, bad):
     app, root, calls = started
     _enable_api(root)

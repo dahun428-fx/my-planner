@@ -11,8 +11,15 @@ from typing import TYPE_CHECKING, Any, Literal
 from my_planner.clock import logical_date
 from my_planner.domain import LoopKey, RunStatus
 from my_planner.harness.context import ask_condition_for, evening_done
+from my_planner.harness.stream import CHAPTER_CARD_MAX, MILESTONE_CARD_MAX
 from my_planner.loop.schedule import Due, reply_window_end
-from my_planner.store.views import draft_live, todo_refs
+from my_planner.store.views import (
+    chapter_refs,
+    curve_draft_live,
+    draft_live,
+    milestone_refs,
+    todo_refs,
+)
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -20,6 +27,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import ConversationsRepo
+    from my_planner.store.repos.curve import CurveRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.tools.actions import ActionRequest
@@ -206,7 +214,7 @@ def checkin_summaries(
 def checkin_detail(
     run_id: int, *, runs: RunsRepo, convs: ConversationsRepo, deliveries: DeliveriesRepo, tasks: TasksRepo,
     conditions: ConditionsRepo, now: datetime, settings: Settings, confirms: ConfirmsRepo | None = None,
-    activity: ActivityRepo | None = None,
+    activity: ActivityRepo | None = None, curve: CurveRepo | None = None,
 ) -> dict[str, Any] | None:
     """`GET /checkins/{id}` (6.4.5): 요약에 `text`와 `cards`를 더한다. 답할 회차가 아니면 None."""
     run = runs.get(run_id)
@@ -216,7 +224,7 @@ def checkin_detail(
     body["text"] = run.outbound_text or ""
     body["cards"] = checkin_cards(
         run, _merged(run, runs), tasks=tasks, conditions=conditions, runs=runs, settings=settings, now=now,
-        confirms=confirms, activity=activity,
+        confirms=confirms, activity=activity, curve=curve,
     )
     return body
 
@@ -224,6 +232,7 @@ def checkin_detail(
 def checkin_cards(
     run: Run, merged: list[Run], *, tasks: TasksRepo, conditions: ConditionsRepo, runs: RunsRepo,
     settings: Settings, now: datetime, confirms: ConfirmsRepo | None = None, activity: ActivityRepo | None = None,
+    curve: CurveRepo | None = None,
 ) -> list[dict[str, Any]]:
     """텔레그램 버튼 재료는 저장되지 않으므로 읽을 때마다 DB에서 다시 만든다(6.4.5 표). 순서는 텔레그램 버튼 줄과 같다.
 
@@ -233,7 +242,10 @@ def checkin_cards(
       `n`은 그 회차의 `pending_confirms` 전체를 `created_at` 순으로 센 번호라, 하나가 닫혀도 다른 카드의 id가
       바뀌지 않는다. 회차 차례에서만 생기므로 `/chat` 스트림에는 없다. `props.args`는 `/actions`에 그대로 보낸다.
     - `ui_condition_picker`(`h_cond_<run_id>`): `ask_condition_for`가 고른 날짜. 그 날짜의 컨디션이 있으면 카드가 없다.
-    사건·챕터 초안, 사다리·영역 점수 카드는 그 단계를 만드는 티켓이 더한다.
+    - `ui_milestone_draft`(`h_mdraft_<run_id>`), `ui_chapter_draft`(`h_cdraft_<run_id>`): 그 회차가 `add_milestone`·
+      `propose_chapter`로 꺼내 아직 초안이고 만료 전인 것(11.3). `data.milestones`·`data.chapters`(6.4.7). 할 일 초안
+      다음, 확인 카드 앞(텔레그램 줄 순서). props 상한(10개, 5개)까지만 싣는다.
+    사다리·영역 점수 카드는 그 단계를 만드는 티켓이 더한다.
     """
     cards: list[dict[str, Any]] = []
     today = logical_date(now, settings.timezone, settings.day_boundary)
@@ -251,6 +263,27 @@ def checkin_cards(
                 "data": {"todos": todo_refs(ids, tasks, today)},
             }
         )
+    if curve is not None:
+        run_ids = [run.id, *(m.id for m in merged)]
+        ttl = settings.limits.draft_ttl_days
+        ms = [
+            i for i in tasks.proposed_curve_ids("milestone_proposed", run_ids=run_ids)
+            if (m := curve.get_milestone(i)) is not None and curve_draft_live(m.status, m.draft_since, ttl, now)
+        ][:MILESTONE_CARD_MAX]
+        if ms:
+            cards.append({
+                "toolCallId": f"h_mdraft_{run.id}", "component": "ui_milestone_draft",
+                "props": {"milestone_ids": ms}, "data": {"milestones": milestone_refs(ms, curve)},
+            })
+        cs = [
+            i for i in tasks.proposed_curve_ids("chapter_proposed", run_ids=run_ids)
+            if (c := curve.get_chapter(i)) is not None and curve_draft_live(c.status, c.draft_since, ttl, now)
+        ][:CHAPTER_CARD_MAX]
+        if cs:
+            cards.append({
+                "toolCallId": f"h_cdraft_{run.id}", "component": "ui_chapter_draft",
+                "props": {"chapter_ids": cs}, "data": {"chapters": chapter_refs(cs, curve)},
+            })
     # 순환 가져오기를 피해 함수 안에서
     from my_planner.tools.actions import confirm_targets
 

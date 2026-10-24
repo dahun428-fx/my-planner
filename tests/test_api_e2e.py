@@ -346,3 +346,63 @@ async def test_curve_write_path(tmp_path):
     assert still_draft is not None and still_draft.status == "draft"
     assert after is None
     assert expired == ["milestone_drafts_expired"]
+
+
+async def test_seed_then_curve(tmp_path):
+    """시드 가져오기(12장) → 같은 루트로 BE → `/curve`, `/status`. 고정 자료는 꾸며 낸 내용."""
+    import io
+    import json
+    from pathlib import Path
+
+    from my_planner.clock import FakeClock
+    from my_planner.curve.seed import EXIT_OK, run_seed_life
+
+    fixture = Path(__file__).parent / "fixtures" / "life_seed_example.json"
+    seed = json.loads(fixture.read_text(encoding="utf-8"))
+    start = kst(2026, 10, 24, 13, 0)
+    out = io.StringIO()
+    assert run_seed_life(tmp_path, fixture, dry_run=False, out=out, clock=FakeClock(start)) == EXIT_OK
+    async with BeEnv.start(tmp_path, start=start) as env:
+        curve = await (await env.get("/curve?zoom=year")).json()
+        with_sensitive = await (await env.get("/curve?zoom=year&include_sensitive=true")).json()
+        status = await (await env.get("/status")).json()
+
+    assert [c["title"] for c in curve["chapters"]] == [c["title"] for c in seed["chapters"]]
+    shown = [m["title"] for m in curve["milestones"]]
+    assert shown == [seed["events"][i]["title"] for i in (0, 1, 2)]  # 민감·미확인·틀린 것은 없다
+    (sensitive,) = [m for m in with_sensitive["milestones"] if m["sensitive"]]
+    assert sensitive["title"] == seed["events"][3]["title"]
+    assert len(with_sensitive["milestones"]) == 4
+    assert len(status["titles"]) == 2  # 고점 1 + 전환점 1
+    assert {t["kind"] for t in status["titles"]} == {"high", "turning_point"}
+    assert status["xp_total"] == 0
+    assert curve["ladder"] == []
+
+
+async def test_story_to_curve(tmp_path):
+    from my_planner.clock import to_iso
+    from my_planner.store.repos.state import PAUSE_UNTIL_KEY
+
+    # 토요일 낮, 텔레그램: 지난 이야기 → 사건 초안 둘 → 하나만 ✓ 저장 → 곡선과 상태창. 3일 뒤 남은 초안은 사라진다
+    add = ("add_milestone", {"date": "2019", "kind": "high", "title": "제주 여행"})
+    other = ("add_milestone", {"date": "2020", "kind": "low", "title": "꾸민 다른 일"})
+    script = [FakeTurn([add, other], "곡선에 고점으로 남길까요?")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=script) as env:
+        await env.telegram("예전에 처음 혼자 제주 여행 갔을 때 정말 좋았어")
+        out = env.sender.sent[-1]
+        mid, rest = out.draft_milestone_ids
+        pressed = await env.press(f"m:c:{mid}")
+        answer = env.bot.answers[-1][1]
+        curve = await (await env.get("/curve?zoom=year&from=2019-01-01")).json()
+        status = await (await env.get("/status")).json()
+
+        env.parts.state.set(PAUSE_UNTIL_KEY, to_iso(env.clock.now() + timedelta(days=30)))
+        env.clock.advance(days=3)
+        await env.tick()
+        left = (env.parts.curve.get_milestone(mid), env.parts.curve.get_milestone(rest))
+
+    assert pressed == "confirmed"
+    assert answer == "✓ 저장: 제주 여행 (2019, 고점)\n칭호: 「제주 여행」의 순간"
+    assert [(m["title"], m["date"], m["kind"]) for m in curve["milestones"]] == [("제주 여행", "2019", "high")]
+    assert [t["title"] for t in status["titles"]] == ["「제주 여행」의 순간"]
+    assert left[0] is not None and left[0].status == "confirmed" and left[1] is None

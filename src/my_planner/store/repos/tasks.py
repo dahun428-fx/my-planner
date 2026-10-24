@@ -451,6 +451,27 @@ class TasksRepo:
         ).fetchall()
         return [r["task_id"] for r in rows]
 
+    def proposed_curve_ids(
+        self, kind: str, *, run_ids: list[int] | None = None, conversation_id: int | None = None
+    ) -> list[int]:
+        """그 회차들(또는 그 대화)이 `add_milestone`(`milestone_proposed`)·`propose_chapter`(`chapter_proposed`)로 꺼낸
+        초안 번호(꺼낸 순서). 곡선 이벤트는 `task_id`가 없어 `data_json.id`로 찾는다. 상태는 거르지 않는다."""
+        if run_ids is not None:
+            if not run_ids:
+                return []
+            where, params = f"run_id IN ({','.join('?' * len(run_ids))})", list(run_ids)
+        elif conversation_id is not None:
+            where, params = "conversation_id = ?", [conversation_id]
+        else:
+            return []
+        rows = self.conn.execute(
+            "SELECT json_extract(data_json, '$.id') AS cid FROM tool_events_log "
+            f"WHERE {where} AND kind = ? AND data_json IS NOT NULL "
+            "GROUP BY cid HAVING cid IS NOT NULL ORDER BY MIN(id)",
+            [*params, kind],
+        ).fetchall()
+        return [int(r["cid"]) for r in rows]
+
     def proposed_at(self, task_id: int, fallback: datetime) -> datetime:
         """가장 최근 `proposed` 이벤트 시각. 없으면 `fallback`(만든 시각)."""
         r = self.conn.execute(

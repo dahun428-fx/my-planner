@@ -3,7 +3,7 @@
 인자가 없으면 BE를 띄운다(`app.main()`). `gen-token`은 API 토큰 하나를 출력한다(`.env`의 `API_TOKEN`에 넣는다).
 `schema`는 `GET /schema`와 같은 JSON 스키마 묶음을 출력한다(운영 앱이 빌드 때 쓴다).
 `gen-vapid`는 웹 푸시 VAPID 키 한 쌍을 `.env` 줄 모양으로 출력한다(사용자가 `.env`에 붙여 넣는다. 파일에 쓰지 않는다).
-뒤 티켓이 더한다: `seed-life`(12).
+`seed-life <파일> [--dry-run]`은 검토한 인생 곡선 시드를 가져온다(12장, `curve/seed.py`). 출력은 개수뿐이다.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import secrets
 import sys
 from collections.abc import Sequence
 
-USAGE = "사용법: python -m my_planner [gen-token | gen-vapid | schema]"
+USAGE = "사용법: python -m my_planner [gen-token | gen-vapid | schema | seed-life <파일> [--dry-run]]"
 EXIT_USAGE = 2
 
 
@@ -67,5 +67,28 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         print(json.dumps(schema_bundle(), ensure_ascii=False, indent=2, sort_keys=True))
         return 0
+    if args[0] == "seed-life":
+        return seed_life(args[1:])
     print(USAGE, file=sys.stderr)
     return EXIT_USAGE
+
+
+def seed_life(argv: Sequence[str]) -> int:
+    """`seed-life <파일> [--dry-run]`. 루트는 BE와 같다(`MY_PLANNER_ROOT` 또는 저장소 루트)."""
+    import argparse
+    from pathlib import Path
+
+    from my_planner.config import resolve_root
+    from my_planner.curve.seed import run_seed_life
+
+    parser = argparse.ArgumentParser(
+        prog="python -m my_planner seed-life",
+        description="검토한 인생 곡선 시드(meta.reviewed: true)를 한 번만 가져온다. 출력은 개수뿐이다. "
+        "BE가 돌고 있으면 거절한다(코드 3).",
+        epilog="종료 코드: 0 가져옴(또는 --dry-run 끝남), 3 BE 실행 중, 4 이미 가져옴, "
+        "5 meta.reviewed가 true가 아님, 6 읽을 수 없거나 JSON 객체가 아닌 파일.",
+    )
+    parser.add_argument("file", type=Path, help="시드 JSON 파일(노트북의 data/seed/ 아래)")
+    parser.add_argument("--dry-run", action="store_true", help="쓰지 않고 가져올 개수와 건너뛸 개수만 출력한다")
+    ns = parser.parse_args(list(argv))
+    return run_seed_life(resolve_root(), ns.file, dry_run=ns.dry_run, out=sys.stdout)

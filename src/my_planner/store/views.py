@@ -12,10 +12,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
 
-from my_planner.clock import logical_date, period_of
+from my_planner.clock import from_iso, logical_date, period_of
 from my_planner.domain import Area, Cadence, TaskStatus
 from my_planner.store.exports import week_bounds
 from my_planner.store.repos.conditions import Condition, ConditionsRepo
+from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 WEEKDAY = "월화수목금토일"
@@ -175,3 +176,34 @@ def todo_refs(ids: Iterable[int], tasks: TasksRepo, today: date, *, drafts: bool
         for i in ids
         if (t := tasks.get(i)) is not None and (drafts or t.status is not TaskStatus.draft)
     ]
+
+
+# --- 사건·챕터 초안 카드 (SP3-4 6.4.7 `ui_milestone_draft`, `ui_chapter_draft`의 `data`) ---
+
+
+def milestone_refs(ids: Iterable[int], curve: CurveRepo) -> list[dict[str, Any]]:
+    """`ids` 순서대로 `{id, title, date, area, sensitive}`. 없는 사건(빼거나 만료돼 지운 초안)은 뺀다.
+
+    `date`는 저장한 그대로(`YYYY` | `YYYY-MM` | `YYYY-MM-DD`). 사건에는 영역이 없어 `area`는 늘 null이다(6.4.7 계약의
+    자리). 초안 카드는 사용자 본인이 보는 확정·빼기 화면이라 민감 사건도 제목을 보인다(`sensitive`로 표시)."""
+    return [
+        {"id": m.id, "title": m.title, "date": m.date_text, "area": None, "sensitive": m.sensitive}
+        for i in ids
+        if (m := curve.get_milestone(i)) is not None
+    ]
+
+
+def chapter_refs(ids: Iterable[int], curve: CurveRepo) -> list[dict[str, Any]]:
+    """`ids` 순서대로 `{id, title, start_month, end_month}`(`end_month`가 null이면 지금까지). 없는 챕터는 뺀다."""
+    return [
+        {"id": c.id, "title": c.title, "start_month": c.start_month, "end_month": c.end_month}
+        for i in ids
+        if (c := curve.get_chapter(i)) is not None
+    ]
+
+
+def curve_draft_live(status: str, draft_since: str | None, ttl_days: int, now: datetime) -> bool:
+    """아직 초안이고 `draft_since`에서 `ttl_days`가 지나지 않았다(하루 한 번 작업이 아직 지우지 않은 지난 초안은 아니다)."""
+    if status != "draft" or draft_since is None:
+        return False
+    return from_iso(draft_since) + timedelta(days=ttl_days) > now

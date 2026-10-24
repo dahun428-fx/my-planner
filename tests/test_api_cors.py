@@ -9,7 +9,6 @@ from my_planner.config import ApiConfig
 
 START = kst(2026, 10, 24, 13, 0)
 DASH = "https://my-planner-dash.vercel.app"
-REGEX = r"^https://my-planner-dash-[a-z0-9-]+-team\.vercel\.app$"
 PREVIEW = "https://my-planner-dash-git-abc123-team.vercel.app"
 CORS_HEADERS = (
     "Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers",
@@ -19,7 +18,7 @@ CORS_HEADERS = (
 
 @pytest.fixture
 async def env(tmp_path):
-    api = ApiConfig(cors_origins=[DASH], cors_origin_regex=REGEX)
+    api = ApiConfig(cors_origins=[DASH])
     async with BeEnv.start(tmp_path, start=START, overrides={"api": api}) as e:
         yield e
 
@@ -48,11 +47,11 @@ async def test_private_network_preflight(env):
     assert resp.headers["Access-Control-Allow-Private-Network"] == "true"
 
 
-async def test_regex_origin_allowed(env):
+async def test_preview_origin_not_allowed(env):
     resp = await env.request("OPTIONS", "/health", token=None, headers=_preflight(PREVIEW))
-    assert resp.headers["Access-Control-Allow-Origin"] == PREVIEW
+    assert "Access-Control-Allow-Origin" not in resp.headers
     resp = await env.get("/health", headers={"Origin": PREVIEW})
-    assert resp.headers["Access-Control-Allow-Origin"] == PREVIEW
+    assert "Access-Control-Allow-Origin" not in resp.headers
 
 
 @pytest.mark.parametrize("origin", [
@@ -87,12 +86,11 @@ async def test_error_responses_carry_cors_headers(env):
         assert resp.headers["Access-Control-Allow-Origin"] == DASH
 
 
-def test_policy_without_regex():
-    p = CorsPolicy([DASH], "")
+def test_policy_exact_origins_only():
+    p = CorsPolicy([DASH])
     assert p.allows(DASH) and not p.allows(PREVIEW) and not p.allows(None) and not p.allows("")
 
 
-@pytest.mark.parametrize(("origins", "regex"), [(["https://*.vercel.app"], ""), ([DASH], "([")])
-def test_policy_rejects_wildcard_and_bad_regex(origins, regex):
+def test_policy_rejects_wildcard():
     with pytest.raises(ValueError):
-        CorsPolicy(origins, regex)
+        CorsPolicy(["https://*.vercel.app"])
