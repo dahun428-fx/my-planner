@@ -1,4 +1,7 @@
+import sqlite3
 from pathlib import Path
+
+import pytest
 
 from my_planner.store import db as dbmod
 from my_planner.store.db import migrate, open_db
@@ -14,6 +17,7 @@ def test_migrate_fresh_then_again(tmp_path):
     latest = _migration_count()
     assert latest >= 1
 
+    assert latest == dbmod.LATEST_VERSION == 10
     assert migrate(conn) == latest
     assert conn.execute("PRAGMA user_version").fetchone()[0] == latest
     assert migrate(conn) == latest
@@ -109,7 +113,7 @@ def test_migrate_to_5_inbound_pending(tmp_path):
     import pytest
 
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) >= 5
+    assert migrate(conn, upto=5) == 5  # 006이 통로 열을 더한다(test_migrate_5_to_10_keeps_sp1_rows)
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(inbound_pending)")]
     assert cols == [
         "update_id", "text_redacted", "sent_at", "received_at",
@@ -127,3 +131,165 @@ def test_migrate_to_5_inbound_pending(tmp_path):
     assert {"inbound_id", "data_json"} <= log_cols
     with pytest.raises(sqlite3.IntegrityError):  # 시각은 NOT NULL
         conn.execute("INSERT INTO inbound_pending (update_id, text_redacted) VALUES (8, '글')")
+
+
+NOW = "2026-10-24T01:00:00.000000+00:00"
+
+
+def test_migrate_5_to_10_keeps_sp1_rows(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=5) == 5
+    conn.execute(
+        "INSERT INTO conversations (kind, logical_date, opened_at, last_message_at) VALUES ('chat', '2026-10-24', ?, ?)",
+        (NOW, NOW),
+    )
+    conn.execute(
+        "INSERT INTO inbound_pending (update_id, text_redacted, sent_at, received_at) VALUES (7, '꾸민 글', ?, ?)",
+        (NOW, NOW),
+    )
+    conn.execute(
+        "INSERT INTO runs (loop, scheduled_for, status, created_at) VALUES ('morning_brief', ?, 'done', ?)", (NOW, NOW)
+    )
+    conn.execute("INSERT INTO app_state (key, value) VALUES ('installed_at', ?)", (NOW,))
+    conn.commit()
+
+    assert migrate(conn) == dbmod.LATEST_VERSION
+    c = conn.execute("SELECT * FROM conversations").fetchone()
+    assert (c["kind"], c["channel"], c["forked_from"]) == ("chat", "telegram", None)
+    p = conn.execute("SELECT * FROM inbound_pending").fetchone()
+    assert (p["text_redacted"], p["channel"], p["client_msg_id"], p["checkin_id"]) == ("꾸민 글", "telegram", None, None)
+    r = conn.execute("SELECT * FROM runs").fetchone()
+    assert (r["status"], r["answered_at"], r["answered_via"]) == ("done", None, None)
+    assert conn.execute("SELECT value FROM app_state WHERE key = 'installed_at'").fetchone()[0] == NOW
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {
+        "run_deliveries", "activity", "api_idempotency", "pending_confirms", "push_subscriptions", "app_cards",
+        "curve_chapters", "curve_milestones", "curve_ladder_scores", "curve_area_scores", "curve_area_defaults",
+        "curve_questions", "status_xp_ledger", "status_titles",
+    } <= tables
+
+
+def _ins(conn, table, **row):
+    cols = ", ".join(row)
+    conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({', '.join('?' * len(row))})", tuple(row.values()))
+
+
+def _run(conn):
+    _ins(conn, "runs", loop="evening_checkin", scheduled_for=NOW, status="done", created_at=NOW)
+    return conn.execute("SELECT max(id) FROM runs").fetchone()[0]
+
+
+_CHAPTER = {"title": "꾸민 챕터", "start_month": "2020-01", "status": "draft", "origin": "chat",
+            "created_at": NOW, "updated_at": NOW}
+_MILESTONE = {"date_text": "2021", "precision": "year", "sort_date": "2021-01-01", "kind": "high",
+              "title": "꾸민 사건", "status": "draft", "origin": "chat", "created_at": NOW, "updated_at": NOW}
+_DELIVERY = {"channel": "telegram", "mode": "full", "status": "sent", "at": NOW}
+_ACTIVITY = {"at": NOW, "actor": "user", "channel": "app", "kind": "task_done", "summary": "완료", "risk": "low"}
+_CONFIRM = {"token": "ct_x", "action": "drop_task", "args_json": "{}", "summary": "빼기", "origin": "actions",
+            "created_at": NOW, "expires_at": NOW}
+_XP = {"at": NOW, "logical_date": "2026-10-24", "source_kind": "task_done", "source_ref": "task:1",
+       "amount": 10, "label": "할 일 완료"}
+
+BAD_ROWS = [
+    ("runs.answered_via", "runs_answered", {"answered_via": "email"}),
+    ("conversations.channel", "conversations", {"channel": "email"}),
+    ("inbound_pending.channel", "inbound_pending", {"channel": "sms"}),
+    ("run_deliveries.channel", "run_deliveries", {"channel": "email"}),
+    ("run_deliveries.mode", "run_deliveries", {"mode": "partial"}),
+    ("run_deliveries.status", "run_deliveries", {"status": "queued"}),
+    ("activity.actor", "activity", {"actor": "robot"}),
+    ("activity.channel", "activity", {"channel": "email"}),
+    ("activity.risk", "activity", {"risk": "high"}),
+    ("api_idempotency.endpoint", "api_idempotency", {"endpoint": "push"}),
+    ("pending_confirms.origin", "pending_confirms", {"origin": "web"}),
+    ("pending_confirms.resolution", "pending_confirms", {"resolution": "maybe"}),
+    ("chapters.title empty", "curve_chapters", {"title": ""}),
+    ("chapters.title long", "curve_chapters", {"title": "가" * 101}),
+    ("chapters.start_month", "curve_chapters", {"start_month": "2020-1"}),
+    ("chapters.end_month", "curve_chapters", {"end_month": "202001"}),
+    ("chapters.end before start", "curve_chapters", {"end_month": "2019-12"}),
+    ("chapters.certainty", "curve_chapters", {"certainty": "guess"}),
+    ("chapters.status", "curve_chapters", {"status": "final"}),
+    ("chapters.origin", "curve_chapters", {"origin": "import"}),
+    ("milestones.precision", "curve_milestones", {"precision": "week"}),
+    ("milestones.kind", "curve_milestones", {"kind": "peak"}),
+    ("milestones.kind_certainty", "curve_milestones", {"kind_certainty": "guess"}),
+    ("milestones.title", "curve_milestones", {"title": ""}),
+    ("milestones.sensitive", "curve_milestones", {"sensitive": 2}),
+    ("milestones.certainty", "curve_milestones", {"certainty": "guess"}),
+    ("milestones.status", "curve_milestones", {"status": "final"}),
+    ("milestones.origin", "curve_milestones", {"origin": "import"}),
+    ("milestones.confirmed without at", "curve_milestones", {"status": "confirmed"}),
+    ("milestones.draft with confirmed_at", "curve_milestones", {"confirmed_at": NOW}),
+    ("ladder.period", "curve_ladder_scores", {"period": "2026-Q4", "now": 5}),
+    ("ladder.now range", "curve_ladder_scores", {"period": "2026-10", "now": 11}),
+    ("ladder.now real", "curve_ladder_scores", {"period": "2026-10", "now": 5.5}),
+    ("ladder.future range", "curve_ladder_scores", {"period": "2026-10", "future": -1}),
+    ("ladder.both null", "curve_ladder_scores", {"period": "2026-10"}),
+    ("area.period", "curve_area_scores", {"period": "2026-10", "area": "health", "score": 5}),
+    ("area.area", "curve_area_scores", {"period": "2026-Q4", "area": "sports", "score": 5}),
+    ("area.score 0", "curve_area_scores", {"period": "2026-Q4", "area": "health", "score": 0}),
+    ("area.score 11", "curve_area_scores", {"period": "2026-Q4", "area": "health", "score": 11}),
+    ("area.quest long", "curve_area_scores",
+     {"period": "2026-Q4", "area": "health", "score": 5, "recovery_quest": "가" * 81}),
+    ("area_defaults.quest long", "curve_area_defaults", {"area": "health", "recovery_quest": "가" * 81}),
+    ("questions.status", "curve_questions", {"text": "꾸민 질문", "status": "done"}),
+    ("xp.amount zero", "status_xp_ledger", {"amount": 0}),
+    ("xp.amount negative", "status_xp_ledger", {"amount": -5}),
+    ("xp.source_kind", "status_xp_ledger", {"source_kind": "streak"}),
+]
+
+
+_BASE = {
+    "runs": {"loop": "morning_brief", "scheduled_for": NOW, "status": "done", "created_at": NOW},
+    "conversations": {"kind": "chat", "logical_date": "2026-10-24", "opened_at": NOW, "last_message_at": NOW},
+    "inbound_pending": {"update_id": 1, "text_redacted": "꾸민 글", "sent_at": NOW, "received_at": NOW},
+    "run_deliveries": _DELIVERY,
+    "activity": _ACTIVITY,
+    "api_idempotency": {"client_msg_id": "u1", "endpoint": "chat", "status_code": 200, "at": NOW},
+    "pending_confirms": _CONFIRM,
+    "curve_chapters": _CHAPTER,
+    "curve_milestones": _MILESTONE,
+    "curve_ladder_scores": {"period": "2026-10", "now": 5, "recorded_at": NOW},
+    "curve_area_scores": {"period": "2026-Q4", "area": "health", "score": 5, "recorded_at": NOW},
+    "curve_area_defaults": {"area": "health", "recovery_quest": "산책 10분", "updated_at": NOW},
+    "curve_questions": {"text": "꾸민 질문"},
+    "status_xp_ledger": _XP,
+}
+
+
+@pytest.mark.parametrize(("name", "table", "bad"), BAD_ROWS, ids=[b[0] for b in BAD_ROWS])
+def test_curve_and_status_checks(tmp_path, name, table, bad):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    table = "runs" if table == "runs_answered" else table
+    base = dict(_BASE[table])
+    if table == "run_deliveries":
+        base["run_id"] = _run(conn)
+    row = {**base, **bad}
+    if table == "curve_ladder_scores" and "future" in bad or name == "ladder.both null":
+        row.pop("now")  # 그 열 하나만 틀리게(또는 둘 다 비게)
+    _ins(conn, table, **base)  # 기준 행은 들어간다: CHECK가 아니면 막히지 않는다
+    conn.execute(f"DELETE FROM {table}")
+    with pytest.raises(sqlite3.IntegrityError):
+        _ins(conn, table, **row)
+
+
+def test_curve_valid_rows_and_cascade(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    _ins(conn, "curve_chapters", **_CHAPTER)
+    chapter = conn.execute("SELECT id FROM curve_chapters").fetchone()[0]
+    _ins(conn, "curve_milestones", **{**_MILESTONE, "chapter_id": chapter})
+    _ins(conn, "curve_milestones", **{**_MILESTONE, "status": "confirmed", "confirmed_at": NOW})
+    _ins(conn, "curve_ladder_scores", period="2026-10", future=7, recorded_at=NOW)  # 5년 뒤만 먼저
+    _ins(conn, "curve_area_scores", period="2026-Q4", area="health", score=10, recorded_at=NOW)
+    _ins(conn, "status_xp_ledger", **_XP)
+    with pytest.raises(sqlite3.IntegrityError):  # UNIQUE (source_kind, source_ref): 같은 일로 두 번 오르지 않는다
+        _ins(conn, "status_xp_ledger", **_XP)
+    conn.execute("DELETE FROM curve_chapters WHERE id = ?", (chapter,))  # 챕터 초안을 지우면 사건은 남고 비워진다
+    assert conn.execute("SELECT chapter_id FROM curve_milestones ORDER BY id").fetchall()[0][0] is None
+    rid = _run(conn)
+    _ins(conn, "run_deliveries", run_id=rid, **_DELIVERY)
+    with pytest.raises(sqlite3.IntegrityError):  # PK (run_id, channel)
+        _ins(conn, "run_deliveries", run_id=rid, **_DELIVERY)
