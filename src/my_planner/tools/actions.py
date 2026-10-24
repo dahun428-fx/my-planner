@@ -14,6 +14,10 @@
      활동이 있으면 `stale`로 닫고 `409`. 맞으면 `risk = confirm`으로 적용하고 `applied`로 닫는다.
    - 앱 요청이고 확인이 필요하면(`needs_confirm`) 토큰(10분)만 만들고 `needs_confirm`.
    - 그 밖에는 도구를 부른다. 도구가 거절하면 `422 rejected`(도구의 오류 문구).
+   - 적용했고 그 동작이 회차의 답이면 `mark_answered`(답 기록과 경험치 X3/X5/X8, 안쪽 SAVEPOINT: 안 돼도 적용은
+     그대로다).
+   - 이 요청에서 쌓인 경험치를 응답 `xp`(`gained`, 레벨이 오르면 새 레벨 `level_up`)에 적고, 레벨이 오르면 확인 문구
+     끝에 "레벨 {N}이 됐어요."를 붙인다(9.2).
    - 응답을 `api_idempotency`에 쓴다(`client_msg_id`가 있을 때).
 
 푸시와 알림 설정(6.4.8, 6.4.9)은 `api/push.py`만 부르는 내부 동작이다(`endpoint="push"`, 되돌릴 수 없음):
@@ -38,7 +42,7 @@ from dataclasses import KW_ONLY, dataclass, field
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
-from my_planner.clock import Clock, period_of
+from my_planner.clock import Clock, from_iso, logical_date, period_of
 from my_planner.domain import (
     ActivityChannel,
     Actor,
@@ -46,6 +50,12 @@ from my_planner.domain import (
     Channel,
     RunContext,
     TaskStatus,
+)
+from my_planner.status.xp import (
+    LABEL_REST_DAY,
+    REST_DAY_MAX_DAYS,
+    XP_REST_DAY,
+    level_up_to,
 )
 from my_planner.store.db import transaction
 from my_planner.timefmt import (  # API 경계의 시각 변환(6.1). 도구 결과는 현지 시각이다
@@ -67,7 +77,9 @@ from my_planner.tools.confirmations import (
     confirm_declined_summary,
     period_label,
     render_confirmations,
+    rest_days_summary,
     undo_summary,
+    with_level_up,
 )
 
 if TYPE_CHECKING:
@@ -89,7 +101,9 @@ log = logging.getLogger(__name__)
 CONFIRM_TTL = timedelta(minutes=10)  # `/actions`가 만든 확인 토큰(6.4.2)
 IDEMPOTENCY_KEEP = timedelta(days=2)  # `api_idempotency` 보관(5.2)
 CONFIRMS_KEEP = timedelta(days=7)  # `pending_confirms` 보관(5.2)
-NO_XP: dict[str, Any] = {"gained": 0, "level_up": None}  # 경험치는 티켓 15가 채운다
+NO_XP: dict[str, Any] = {"gained": 0, "level_up": None}  # `apply_action`이 이 요청에서 쌓인 만큼 채운다
+REST_DAY_CHECKED_KEY = "last_rest_day_checked"  # X9: 마지막으로 본 논리적 날짜(9.1, `app_state`)
+INSTALLED_KEY = "installed_at"
 
 STALE_TOKEN = "이미 정리된 제안이에요."  # 10.1 A6
 TOKEN_MISMATCH = "확인한 제안과 요청이 달라요."
@@ -276,6 +290,43 @@ def _drop_chapter(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> di
     return _drop_one(deps, ctx, args, chapter=True)
 
 
+def _grant_rest_days(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """하루 한 번 작업 X9(9.1): 마지막으로 본 날(`app_state.last_rest_day_checked`) 다음 날부터 어제까지, 최대 14일,
+    `installed_at`의 논리적 날짜 이후만 본다. 완료한 할 일이 없는 날마다 +5(`rest_day`/`date:<날짜>`). 멈춘 날,
+    노트북이 꺼져 있던 날도 쉰 날이다. 준 날이 있으면 활동 `rest_days_granted` 하나(되돌릴 수 없다)."""
+    tools, state = deps.tools, deps.state
+    if tools.status is None or state is None:
+        return {"granted_dates": []}
+    s = deps.settings
+    tz, boundary = (s.timezone, s.day_boundary) if s is not None else (tools.tz, tools.boundary)
+    now = deps.clock.now()
+    yesterday = logical_date(now, tz, boundary) - timedelta(days=1)
+    first = yesterday - timedelta(days=REST_DAY_MAX_DAYS - 1)
+    checked = state.get(REST_DAY_CHECKED_KEY)
+    if checked:
+        first = max(first, date.fromisoformat(checked) + timedelta(days=1))
+    installed = state.get(INSTALLED_KEY)
+    if installed:
+        first = max(first, logical_date(from_iso(installed), tz, boundary))
+    granted: list[str] = []
+    d = first
+    while d <= yesterday:
+        if not tools.tasks.completed_on(d) and tools.status.grant(
+            at=now, logical_date=d, source_kind="rest_day", source_ref=f"date:{d.isoformat()}", amount=XP_REST_DAY,
+            label=LABEL_REST_DAY,
+        ):
+            granted.append(d.isoformat())
+        d += timedelta(days=1)
+    if not checked or date.fromisoformat(checked) < yesterday:
+        state.set(REST_DAY_CHECKED_KEY, yesterday.isoformat())
+    if granted:
+        record_activity(
+            deps.activity, ctx, kind="rest_days_granted", target=None, summary=rest_days_summary(len(granted)),
+            risk="low", undo=None,
+        )
+    return {"granted_dates": granted}
+
+
 def _prune_api_state(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """하루 한 번 작업: 만료된 토큰 닫기, 7일 지난 토큰과 2일 지난 `api_idempotency` 지우기. 활동은 없다."""
     now = deps.clock.now()
@@ -410,6 +461,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
     "expire_curve_drafts": ActionSpec(_expire_curve_drafts, public=False, accepts=frozenset({"older_than"})),
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
+    "grant_rest_days": ActionSpec(_grant_rest_days, public=False),  # X9
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),
     # 내부(상태를 바꾸는 명령 `/pause`, `/unpause`, `/done`: `bot.commands.run_command`, 6.4.1). 중복 방지는
@@ -616,6 +668,22 @@ def _mark_answered(deps: ActionDeps, req: ActionRequest) -> None:
         deps.mark_answered(run_id, "app" if req.channel == "app" else "telegram")
 
 
+def _answer_in_savepoint(deps: ActionDeps, req: ActionRequest) -> None:
+    """답한 회차 기록(답 표시와 경험치)을 안쪽 SAVEPOINT에서. 안 되면 그것만 되돌리고 적용은 그대로 둔다."""
+    try:
+        with transaction(deps.conn):
+            _mark_answered(deps, req)
+    except Exception as e:  # noqa: BLE001 - 본문 없이 종류만 남긴다
+        log.warning("action_answer_record_error", extra={"action": req.action, "error_type": type(e).__name__})
+
+
+def _add_xp(body: dict[str, Any], before: int, after: int) -> None:
+    """응답의 `xp`(이 요청에서 쌓인 양과 오른 레벨)와 확인 문구 끝의 레벨 오름 한 줄(9.2)."""
+    body["xp"] = {"gained": after - before, "level_up": level_up_to(before, after)}
+    if body["xp"]["level_up"] is not None:
+        body["confirmation"] = with_level_up(body.get("confirmation"), before, after)
+
+
 _REQUEST_KEY = "_request"  # 저장한 undo 응답 옆에 둔 요청(활동 id). 다시 돌려줄 때 뺀다
 
 
@@ -651,9 +719,15 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     args = req.args if req.args is not None else {}
     if not isinstance(args, dict) or not _accepts(deps, spec, args):
         return _error("invalid", 400, "invalid_request", BAD_ARGS)
+    status_repo = deps.tools.status
     try:
         with transaction(deps.conn):
+            xp_before = status_repo.total() if status_repo is not None else 0
             res = _decide(deps, spec, req, args)
+            if res.status == "applied":
+                _answer_in_savepoint(deps, req)
+                if "xp" in res.body:
+                    _add_xp(res.body, xp_before, status_repo.total() if status_repo is not None else 0)
             if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(
@@ -664,11 +738,6 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
         deps.tools._export()
         log.warning("action_failed", extra={"action": req.action, "channel": req.channel})
         raise
-    if res.status == "applied":
-        try:
-            _mark_answered(deps, req)  # 동작은 이미 커밋됐다. 답 표시가 안 돼도 응답은 그대로다
-        except Exception as e:  # noqa: BLE001 - 본문 없이 종류만 남긴다
-            log.warning("action_answer_record_error", extra={"action": req.action, "error_type": type(e).__name__})
     log.info(
         "action_handled",
         extra={"action": req.action, "status": res.status, "actor": req.actor, "channel": req.channel},

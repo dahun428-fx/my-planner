@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -13,13 +13,27 @@ _MIGRATION_RE = re.compile(r"^(\d{3})_.+\.sql$")
 
 # 연결마다 지금 트랜잭션 깊이(키: id(conn)). 이벤트 루프 스레드 하나에서만 쓴다(스펙 4.3).
 _DEPTH: dict[int, int] = {}
+# 가장 바깥 트랜잭션이 커밋된 뒤에 부를 일(키: id(conn)). 롤백되면 버린다(`after_commit`)
+_AFTER: dict[int, list[Callable[[], None]]] = {}
+_WRITE_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
 
 
-def open_db(path: Path | str) -> sqlite3.Connection:
-    """DB를 연다. WAL, foreign_keys=ON, Row 팩토리."""
+def is_write(sql: str) -> bool:
+    """데이터를 바꾸는 문 하나(`INSERT`, `UPDATE`, `DELETE`, `REPLACE`)인가. 마이그레이션 스크립트(`BEGIN;…`)는 아니다."""
+    return _WRITE_RE.match(sql) is not None
+
+
+def open_db(path: Path | str, *, on_write: Callable[[str], None] | None = None) -> sqlite3.Connection:
+    """DB를 연다. WAL, foreign_keys=ON, Row 팩토리.
+
+    `on_write`(시험 이음매, SP3-4 16장 쓰기 경로 감시): 데이터를 바꾸는 문마다 그 SQL로 부른다(`set_trace_callback`).
+    부른 자리의 호출 스택은 그 쓰기를 한 코드다. 운영에서는 쓰지 않는다.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
+    if on_write is not None:
+        conn.set_trace_callback(lambda sql: on_write(sql) if is_write(sql) else None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -33,6 +47,17 @@ def open_ro(path: Path | str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
+
+
+def after_commit(conn: sqlite3.Connection, fn: Callable[[], None]) -> None:
+    """`fn`을 그 연결의 가장 바깥 트랜잭션이 커밋된 뒤에 부른다. 트랜잭션 밖이면 바로 부른다. 롤백되면 부르지 않는다.
+
+    롤백될 수 있는 변경(예: 답한 회차)에 딸린 바깥 일(버튼 거두기 걸기)을 커밋 뒤로 미룬다.
+    """
+    if _DEPTH.get(id(conn), 0):
+        _AFTER.setdefault(id(conn), []).append(fn)
+    else:
+        fn()
 
 
 @contextmanager
@@ -71,9 +96,12 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         conn.commit()
     except BaseException:
         conn.rollback()
+        _AFTER.pop(key, None)
         raise
     finally:
         _DEPTH.pop(key, None)
+    for fn in _AFTER.pop(key, []):
+        fn()
 
 
 def _migrations() -> list[tuple[int, Path]]:

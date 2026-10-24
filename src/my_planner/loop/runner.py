@@ -105,6 +105,19 @@ def prune_api_state_daily(target: ActionApplier) -> Callable[[date], None]:
     return job
 
 
+def grant_rest_days_daily(target: ActionApplier) -> Callable[[date], None]:
+    """하루 한 번 작업 X9(SP3-4 9.1): 어제까지 완료한 할 일이 없는 날마다 쉬는 날 경험치. 즉시 갈래로(4.3).
+    알리지 않는다(따로 먼저 보내는 메시지는 없다, 9.2)."""
+
+    def job(today: date) -> None:
+        res = target.apply_action(_scheduler("grant_rest_days", {}))
+        granted = res.body.get("result", {}).get("granted_dates", []) if res.status == "applied" else []
+        log.info("rest_days_granted", extra={"count": len(granted)})
+
+    job.__name__ = "grant_rest_days"
+    return job
+
+
 def backup_daily(conn: sqlite3.Connection, backups_dir: Path, *, keep: int) -> Callable[[date], None]:
     """하루 한 번 작업: DB 백업(스펙 7). 백업이 안 돼도 예외 종류만 남기고 tick은 그대로 간다."""
 

@@ -117,7 +117,7 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         assert d.tools is not None
         cdeps = CommandDeps(
             tasks=d.tools.tasks, conditions=d.conditions, state=d.state, router=d.router, clock=deps.clock,
-            settings=deps.settings, apply=d.apply_action,
+            settings=deps.settings, apply=d.apply_action, status=d.tools.status, curve=d.tools.curve,
         )
         reply = run_command(cmd, text, cdeps, channel="app", client_msg_id=cmid)
         if cmd not in STATEFUL_COMMANDS:  # 상태를 바꾸는 명령은 즉시 갈래가 이미 적었다

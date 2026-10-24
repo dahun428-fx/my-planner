@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from my_planner.domain import Area, ToolEvent
-from my_planner.status.xp import AREA_LABELS
+from my_planner.status.xp import AREA_LABELS, level_up_to
 
 
 def _md(d: date) -> str:
@@ -66,7 +66,38 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         "chapter_dropped": dropped_line(title),
         "ladder_recorded": ladder_line(e.data.get("period", ""), e.data.get("now"), e.data.get("future")),
         "area_scores_recorded": area_scores_line(e.data.get("period", ""), e.data.get("scores", {})),
+        # 비서가 준 경험치(X10, SP3-4 10장)
+        "xp_granted_by_secretary": xp_granted_line(e.data.get("amount", 0), e.data.get("reason", "")),
     }.get(e.kind)
+
+
+# --- 경험치 (SP3-4 9장, 부록 A) ---
+
+
+def level_up_line(before: int, after: int) -> str:
+    """부록 A "레벨 오름": 경험치 합계가 `before` → `after`로 바뀌며 레벨이 올랐으면 `레벨 {N}이 됐어요.`, 아니면 빈 글.
+
+    확인 문구 끝에 한 줄로 붙인다(9.2). 따로 먼저 보내는 메시지는 없다.
+    """
+    level = level_up_to(before, after)
+    return f"레벨 {level}이 됐어요." if level is not None else ""
+
+
+def with_level_up(confirmation: str | None, before: int, after: int) -> str | None:
+    """확인 문구(없으면 None) 끝에 레벨 오름 한 줄을 붙인다. 둘 다 없으면 None."""
+    line = level_up_line(before, after)
+    joined = "\n".join(x for x in (confirmation, line) if x)
+    return joined or None
+
+
+def xp_granted_line(amount: int, reason: str) -> str:
+    """X10 활동 요약·확인 문구: `✓ 경험치 +10: {사유}`."""
+    return f"✓ 경험치 +{amount}: {reason}"
+
+
+def rest_days_summary(days: int) -> str:
+    """X9 활동 요약(하루 한 번 작업): `✓ 쉬는 날: 2일`."""
+    return f"✓ 쉬는 날: {days}일"
 
 
 # --- 인생 곡선 (SP3-4 부록 A, 문구 C1~C4) ---

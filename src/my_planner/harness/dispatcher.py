@@ -48,7 +48,15 @@ from my_planner.harness.stream import (
 )
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
-from my_planner.store.db import transaction
+from my_planner.status.xp import (
+    LABEL_CHECKIN_REPLY,
+    LABEL_REVIEW_WEEK,
+    LABEL_YEAR_REVIEW,
+    XP_CHECKIN_REPLY,
+    XP_REVIEW_WEEK,
+    XP_YEAR_REVIEW,
+)
+from my_planner.store.db import after_commit, transaction
 from my_planner.store.repos.state import (
     BRAIN_AUTH_CHECKED_AT_KEY,
     BRAIN_AUTH_STATE_KEY,
@@ -64,7 +72,7 @@ from my_planner.store.views import chapter_refs, milestone_refs
 from my_planner.tools.actions import ActionDeps, ActionRequest, ActionResult
 from my_planner.tools.actions import apply_action as _apply_action
 from my_planner.tools.activity import undoable_now
-from my_planner.tools.confirmations import render_confirmations
+from my_planner.tools.confirmations import render_confirmations, with_level_up
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -424,8 +432,10 @@ class Dispatcher:
         처음 답이 **앱**에서 왔으면 텔레그램에 보낸 회차 메시지의 버튼을 거둔다(`clear_buttons`, Dahun 결정:
         텔레그램 글 답장과 버튼 누름은 SP1처럼 버튼을 그대로 둔다). 동기 함수라 거두기는 이벤트 루프에 걸어
         두고, 안 되면 `buttons_clear_error`만 남긴다(답 기록은 그대로).
-        경험치 원장(X3/X5/X8)은 티켓 15가 이 트랜잭션에 더한다. 그때 `apply_action`의 트랜잭션 안으로 옮기면
-        거두기는 바깥 트랜잭션이 커밋된 뒤에 걸어야 한다(롤백된 답의 버튼을 거두지 않게).
+
+        답 기록과 경험치 원장(X3/X5/X8, 9.1)은 한 트랜잭션이다(4.3). `apply_action`의 트랜잭션 안에서 불리면
+        거기에 합류하고, 거두기는 가장 바깥 트랜잭션이 커밋된 뒤에 건다(`after_commit`: 롤백된 답의 버튼을 거두지
+        않게).
         """
         if self.runs is None:
             return False
@@ -433,15 +443,48 @@ class Dispatcher:
         if run is None:
             return False
         primary = self.runs.merged_into(run.id) or run
-        if not self.runs.mark_answered(primary.id, channel, at if at is not None else self.clock.now()):
-            return False
+        at = at if at is not None else self.clock.now()
+        conn = self.runs.conn
+        with transaction(conn):
+            if not self.runs.mark_answered(primary.id, channel, at):
+                return False
+            self._grant_answer_xp(primary, at)
         log.info("run_answered", extra={"run_id": primary.id, "channel": channel})
         if channel != "app":
             return True
         message_id = self.deliveries.telegram_message_id(primary.id) if self.deliveries is not None else None
         if message_id is not None:
-            self._clear_later(self.sender.clear_buttons, message_id, primary.id)
+            after_commit(conn, lambda: self._clear_later(self.sender.clear_buttons, message_id, primary.id))
         return True
+
+    def _grant_answer_xp(self, primary: Run, at: datetime) -> None:
+        """답한 회차의 경험치(9.1): 묶음에 주간 회고가 있으면 X5 하나(X3 대신, 묶음 전체에 하나), 아니면 X3.
+        연말 회고(12월 마지막 일요일 회고)면 X8도. `mark_answered`의 트랜잭션 안에서 부른다."""
+        status = self.tools.status if self.tools is not None else None
+        if status is None or self.runs is None:
+            return
+        group = [primary, *(r for i in primary.merged_run_ids if (r := self.runs.get(i)) is not None)]
+        day = logical_date(at, self.settings.timezone, self.settings.day_boundary)
+        of = review_in(group, self.settings)
+
+        def grant(kind: str, ref: str, amount: int, label: str) -> None:
+            status.grant(at=at, logical_date=day, source_kind=kind, source_ref=ref, amount=amount, label=label)
+
+        if of is None:
+            grant("checkin_reply", f"run:{primary.id}", XP_CHECKIN_REPLY, LABEL_CHECKIN_REPLY)
+            return
+        grant("review_week", f"run:{of.review.id}", XP_REVIEW_WEEK, LABEL_REVIEW_WEEK)
+        if of.steps.year:
+            grant("year_review", f"year:{of.day.year}", XP_YEAR_REVIEW, LABEL_YEAR_REVIEW)
+
+    def _confirmations(self, ctx: RunContext, xp_before: int) -> str:
+        """확인 문구(SP1 5.5) + 레벨이 올랐으면 끝에 "레벨 {N}이 됐어요."(9.2). 없으면 빈 글."""
+        return with_level_up(render_confirmations(ctx.events, self._today()), xp_before, self.xp_total()) or ""
+
+    def xp_total(self) -> int:
+        """지금 경험치 합계. 상태창 저장소가 없으면 0(레벨 오름 판정에 쓴다)."""
+        status = self.tools.status if self.tools is not None else None
+        return status.total() if status is not None else 0
 
     def _clear_later(self, clear: Callable[[int], Awaitable[object]], message_id: int, run_id: int) -> None:
         async def go() -> None:
@@ -773,6 +816,7 @@ class Dispatcher:
         )
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
         self.convs.touch(conv.id)
+        xp_before = self.xp_total()  # 이 답에서 레벨이 오르면 확인 문구 끝에 한 줄(9.2)
         if conv.kind is ConversationKind.run and conv.run_id is not None:
             # 회차 대화에 들어온 사용자 메시지는 그 회차의 답이다(6.4.5, 7.5 M3). 처음 한 번만, 보낸 시각으로
             self._answer_by_message(conv.run_id, channel, batch[0].sent_at)
@@ -884,7 +928,7 @@ class Dispatcher:
                     log.info("message_auth_error", extra={"conversation_id": conv.id, "update_ids": update_ids})
                 return
             if capped:  # 백오프 중 하루 상한: 고정 안내로(대화 밖 `[-]`), 모인 확인 문구를 붙여 답한다
-                confirmations = render_confirmations(run_ctx.events, self._today())
+                confirmations = self._confirmations(run_ctx, xp_before)
                 if await self._fixed_reply(
                     [], DAILY_CAP_REPLY, update_ids, save=True, confirmation=confirmations, ctx=run_ctx
                 ):
@@ -893,7 +937,7 @@ class Dispatcher:
             streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
             body_text = app.writer.streamed_reply if streamed else _reply_for(result)
-            confirmations = render_confirmations(run_ctx.events, self._today())
+            confirmations = self._confirmations(run_ctx, xp_before)
             # 두뇌가 제대로 답했을 때만 첫 단계를 붙인다(일반 문구 아래에는 묻지 않는다)
             step = (
                 flow.reply_step(review_run)
@@ -1316,6 +1360,7 @@ class Dispatcher:
         assert self.runs is not None
         runs = self.runs
         runs.mark_running(run.id)
+        xp_before = self.xp_total()
         conv = self.router.for_run(run)
         runs.set_conversation(run.id, conv.id)
         ask = self._ask_condition_for(run, merged)
@@ -1362,7 +1407,7 @@ class Dispatcher:
         if result.session_id:
             self.convs.set_session(conv.id, result.session_id)
         text = MAX_TURNS_REPLY if partial else result.text
-        confirmations = render_confirmations(run_ctx.events, self._today())
+        confirmations = self._confirmations(run_ctx, xp_before)
         if confirmations:
             text = f"{text}\n\n{confirmations}"
         if step is not None:

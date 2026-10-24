@@ -1,6 +1,6 @@
-"""명령 /today /week /help /pause /unpause /plan /done (스펙 5.6). /plan 말고는 두뇌를 거치지 않고 하네스가 바로 답한다.
+"""명령 /today /week /status /help /pause /unpause /plan /done (스펙 5.6, SP3-4 11.4). /plan 말고는 두뇌를 거치지 않고 하네스가 바로 답한다.
 
-/today /week는 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
+/today /week /status는 읽기 전용이다. 초안(`draft`)과 내려놓은 것, 끝낸 것은 보여 주지 않는다.
 
 텔레그램과 앱(`POST /chat`, SP3-4 6.4.1)이 같은 함수 `run_command`를 쓴다. 상태를 바꾸는 `/pause`, `/unpause`,
 `/done`은 즉시 갈래(`apply_action`의 내부 동작 `cmd_*`)로 처리하고, 앱 요청이면 그 자리에서 `api_idempotency`에
@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, time, timedelta, tzinfo
 from datetime import datetime as _datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from my_planner.clock import Clock, from_iso, local, to_iso
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
@@ -24,12 +24,15 @@ if TYPE_CHECKING:
     from my_planner.domain import Channel
     from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.curve import CurveRepo
+    from my_planner.store.repos.status import StatusRepo
     from my_planner.tools.actions import ActionRequest, ActionResult
 
 HELP_TEXT = (
     "쓸 수 있는 명령이에요.\n"
     "/today  오늘 우선순위, 일정, 열린 할 일\n"
     "/week  이번 주 우선순위와 할 일\n"
+    "/status  레벨, 스탯, 퀘스트\n"
     "/pause 3  사흘 동안 먼저 연락하지 않기(1~14일)\n"
     "/unpause  멈춤 풀기\n"
     "/plan 주제  함께 계획 세우기(주제는 없어도 돼요)\n"
@@ -39,7 +42,7 @@ HELP_TEXT = (
     "그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요."
 )
 
-COMMANDS = ("/today", "/week", "/help", "/pause", "/unpause", "/plan", "/done")
+COMMANDS = ("/today", "/week", "/status", "/help", "/pause", "/unpause", "/plan", "/done")
 
 PAUSE_MIN_DAYS, PAUSE_MAX_DAYS = 1, 14
 PAUSE_USAGE = "쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3"
@@ -133,6 +136,65 @@ def week_text(tasks: TasksRepo, now: _datetime, tz: str | tzinfo, boundary: time
     return "\n\n".join(out)
 
 
+# --- 상태창 (SP3-4 11.4) ---
+
+EMPTY_STATS = "영역 점수는 분기 마지막 주 회고에서 함께 정해요."  # 부록 A "/status 빈 스탯"
+STATUS_UNAVAILABLE = "상태창을 읽을 수 없어요."
+
+
+def status_text(snap: dict[str, Any]) -> str:
+    """`status_snapshot()`(`GET /status`와 같은 값)을 글로 바꾸기만 한다(11.4). 빈 묶음은 뺀다."""
+    hp = snap["hp"]["score"]
+    blocks = [
+        "상태창\n"
+        f"레벨 {snap['level']} · 경험치 {snap['xp_into_level']}/{snap['xp_for_next']}\n"
+        + (f"HP {hp}/5 (오늘 컨디션)" if hp is not None else "HP 기록 없음 (오늘 컨디션)")
+    ]
+    scored = [s for s in snap["stats"] if s["score"] is not None]
+    if not scored:
+        blocks.append(EMPTY_STATS)
+    else:
+        latest = max(s["period"] for s in scored)
+
+        def stat(s: dict[str, Any]) -> str:
+            if s["score"] is None:
+                return f"{s['label']} -"
+            older = f" ({s['period']})" if s["period"] != latest else ""
+            return f"{s['label']} {s['score']}{older}" + (" ↓" if s["debuff"] else "")
+
+        lines = [f"스탯 ({latest})", " · ".join(stat(s) for s in snap["stats"])]
+        lines += [
+            f"↓ {s['label']} {s['prev_score']} → {s['score']}: 회복 퀘스트 \"{s['recovery_quest']}\""
+            for s in snap["stats"] if s["debuff"]
+        ]
+        blocks.append("\n".join(lines))
+    if snap["main_quests"]:
+        blocks.append("메인 퀘스트\n" + "\n".join(
+            f"{q['rank']}. {q['title']} (첫 걸음 {q['first_steps']['done']}/"
+            f"{q['first_steps']['done'] + q['first_steps']['open']})"
+            for q in snap["main_quests"]
+        ))
+    if snap["daily_quests"]:
+        blocks.append("오늘의 퀘스트\n" + "\n".join(f"- {q['title']}" for q in snap["daily_quests"]))
+    titles = snap["titles"]
+    if titles:
+        more = f" 외 {len(titles) - 1}개" if len(titles) > 1 else ""
+        blocks.append(f"칭호: {titles[0]['title']}{more}")
+    return "\n\n".join(blocks)
+
+
+def _status_reply(deps: CommandDeps, now: _datetime) -> str:
+    from my_planner.status.snapshot import status_snapshot
+
+    if deps.status is None or deps.curve is None or deps.conditions is None:
+        return STATUS_UNAVAILABLE
+    snap = status_snapshot(
+        now=now, tz=_tz(deps), boundary=_boundary(deps), status=deps.status, curve=deps.curve, tasks=deps.tasks,
+        conditions=deps.conditions,
+    )
+    return status_text(snap)
+
+
 # --- 상태를 바꾸는 명령 (즉시 갈래의 내부 동작 `cmd_*`이 부른다) ---
 
 
@@ -188,6 +250,8 @@ class CommandDeps:
     clock: Clock
     settings: TimeSettings
     apply: Callable[[ActionRequest], ActionResult] | None = None
+    status: StatusRepo | None = None  # `/status`(11.4). 없으면 "상태창을 읽을 수 없어요."
+    curve: CurveRepo | None = None
 
 
 def _tz(deps: CommandDeps) -> str | tzinfo:
@@ -212,6 +276,8 @@ def run_command(
     if cmd in ("/today", "/week"):
         render = today_text if cmd == "/today" else week_text
         return render(deps.tasks, now, _tz(deps), _boundary(deps))
+    if cmd == "/status":
+        return _status_reply(deps, now)
     action = STATEFUL_COMMANDS.get(cmd)
     if action is None:
         raise ValueError(f"unknown command: {cmd}")

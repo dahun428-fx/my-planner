@@ -27,7 +27,7 @@ TOOL_NAMES: list[str] = [
     "list_tasks",
     "record_condition",
     "read_transcript",
-    # 인생 곡선과 상태창(SP3-4 10장 표 순서). `grant_xp`는 티켓 15
+    # 인생 곡선과 상태창(SP3-4 10장 표 순서)
     "record_ladder_score",
     "record_area_scores",
     "add_milestone",
@@ -37,6 +37,7 @@ TOOL_NAMES: list[str] = [
     "drop_curve_drafts",
     "get_curve",
     "get_status",
+    "grant_xp",
 ]
 
 # 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다
@@ -292,6 +293,17 @@ _SPECS.update({
         ),
     ),
     "get_status": ("상태창을 읽습니다: 레벨, 경험치, HP, 스탯과 디버프, 퀘스트, 칭호.", _schema({}, [])),
+    "grant_xp": (
+        (
+            "사용자가 했다고 말한 일 가운데 하네스가 경험치를 주지 않는 일(할 일 완료, 회차 답, 컨디션, 회고 점수 말고)에 "
+            "경험치를 줍니다. amount는 5 또는 10, reason은 60자까지의 짧은 사유입니다. 하루 3번까지이고 넘으면 거절됩니다. "
+            "추측해서 주지 않습니다."
+        ),
+        _schema(
+            {"amount": {"enum": [5, 10]}, "reason": {"type": "string", "description": "1~60자"}},
+            ["amount", "reason"],
+        ),
+    ),
 })
 
 _CARD_ID = {"type": "integer", "description": "고정 카드 번호"}

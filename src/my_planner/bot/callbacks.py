@@ -40,6 +40,7 @@ from my_planner.tools.actions import (
 from my_planner.tools.confirmations import (
     condition_summary,
     draft_dropped_reply,
+    level_up_line,
     render_confirmations,
 )
 from my_planner.tools.core import Tools
@@ -139,6 +140,7 @@ async def handle_callback(
        "이미 정리된 제안이에요."(10.1 A6).
     """
     reply: str | None = None  # finally에서 꼭 한 번 보낸다
+    xp_before = tools.status.total() if tools.status is not None else 0
     try:
         if query.from_user is None or query.from_user.id != owner_id:
             # 사용자가 아니면 아무것도 바꾸지 않는다. 발신자 ID만 남긴다(본문, 이름 없이).
@@ -209,6 +211,11 @@ async def handle_callback(
             _transcript(transcripts, clock, "\n".join(lines))
         return result
     finally:
+        if reply is not None and tools.status is not None:
+            # 레벨이 오르면 답 끝에 한 줄(SP3-4 9.2). 즉시 갈래의 확인 문구가 이미 붙였으면 다시 붙이지 않는다
+            line = level_up_line(xp_before, tools.status.total())
+            if line and line not in reply:
+                reply = f"{reply}\n{line}"
         await _answer(query, reply)
 
 

@@ -19,7 +19,7 @@ from my_planner.tools.mcp_adapter import (
 SAT_1300 = kst(2026, 10, 24, 13, 0)
 CURVE_TOOLS = [
     "record_ladder_score", "record_area_scores", "add_milestone", "confirm_milestones", "propose_chapter",
-    "confirm_chapters", "drop_curve_drafts", "get_curve", "get_status",
+    "confirm_chapters", "drop_curve_drafts", "get_curve", "get_status", "grant_xp",
 ]
 
 
@@ -198,10 +198,11 @@ async def test_get_status_equals_snapshot(tmp_path):
     assert got["titles"][0]["title"] == "「꾸민 결심」을 지나온 사람"
 
 
-async def test_telegram_tool_count_21_before_grant_xp(tmp_path):
+async def test_tool_counts_22_and_28(tmp_path):
+    """S12, 10장: 텔레그램 대화 22개(SP1 12 + 10), 앱 대화 28개(+ 화면 3, 카드 3)."""
     assert TOOL_NAMES[12:] == CURVE_TOOLS
-    assert len(tool_names_for("telegram")) == 21  # SP1 12 + 곡선 9(grant_xp는 티켓 15)
-    assert len(tool_names_for("app")) == 27  # + 화면 3, 카드 3
+    assert len(tool_names_for("telegram")) == 22
+    assert len(tool_names_for("app")) == 28
     assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         names = [t.name for t in build_planner_tools(env.parts.tools, _ctx())]

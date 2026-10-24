@@ -23,7 +23,20 @@ from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.status.snapshot import status_snapshot
-from my_planner.status.xp import title_name
+from my_planner.status.xp import (
+    LABEL_CONDITION,
+    LABEL_LADDER,
+    LABEL_TASK,
+    LABEL_WHEEL,
+    SECRETARY_DAILY_MAX,
+    SECRETARY_REASON_MAX,
+    XP_CONDITION,
+    XP_LADDER,
+    XP_SECRETARY,
+    XP_WHEEL,
+    task_xp,
+    title_name,
+)
 from my_planner.store.db import transaction
 from my_planner.store.exports import SENSITIVE_MASK, export_curve, export_tasks
 from my_planner.store.repos.cards import Card, CardsRepo
@@ -71,6 +84,7 @@ from my_planner.tools.confirmations import (
     milestone_confirmed_line,
     period_label,
     titles_summary,
+    xp_granted_line,
 )
 from my_planner.tools.ui import BRAIN_COMPONENTS, validate_props
 
@@ -285,6 +299,16 @@ class Tools:
             export_curve(self.curve, self.curve_export_path)
         except OSError as e:
             log.warning("curve_export_failed", extra={"error_type": type(e).__name__})
+
+    def _grant(self, *, source_kind: str, source_ref: str, amount: int, label: str) -> bool:
+        """경험치 원장 한 줄(9.1 X1~X8, X10). 변경과 같은 트랜잭션 안에서 부른다. 상태창 저장소가 없으면(SP1 시험)
+        쌓지 않는다. 되돌리기는 원장을 건드리지 않는다(U6)."""
+        if self.status is None:
+            return False
+        return self.status.grant(
+            at=self.clock.now(), logical_date=self.today(), source_kind=source_kind, source_ref=source_ref,
+            amount=amount, label=label,
+        )
 
     def _get(self, id: Any) -> Task | str:
         t = self.tasks.get(id) if isinstance(id, int) and not isinstance(id, bool) else None
@@ -534,6 +558,8 @@ class Tools:
         if t.status not in allowed:
             return _err(why)
         undo = self._before(t)
+        # X1/X2: 완료 순간 그 할 일이 든 지금 기간 우선순위 가운데 가장 큰 주기(9.1)
+        prio = self.tasks.current_priority(t.id, self.today()) if new is TaskStatus.done else None
         extra: list[str] = []
         if new is TaskStatus.dropped:  # 내려놓으면 우선순위 칸이 지워진다. 비어 있으면 되살린다(6.4.3)
             rows = self.tasks.priority_rows(t.id)
@@ -542,6 +568,9 @@ class Tools:
         with self.tasks.transaction():
             t = self.tasks.set_status(t.id, new)
             out = self._finish(ctx, kind, t, undo=undo, extra=extra)
+            if new is TaskStatus.done:  # 다시 완료해도 한 번만(`task:<id>`, U6)
+                self._grant(source_kind="task_done", source_ref=f"task:{t.id}",
+                            amount=task_xp(prio[0].value if prio is not None else None), label=LABEL_TASK)
         self._after(ctx, kind, t)
         return out
 
@@ -696,6 +725,8 @@ class Tools:
                 ctx, "condition_recorded", condition_target(day), condition_summary(c.score),
                 {"date": day.isoformat(), "before": before},
             )
+            self._grant(source_kind="condition", source_ref=f"date:{day.isoformat()}", amount=XP_CONDITION,
+                        label=LABEL_CONDITION)  # X4: 날마다 한 번
         # 메모는 남기지 않는다. 날짜와 점수만.
         log.info("condition_recorded", extra={"date": day.isoformat(), "score": c.score})
         return {"date": c.date.isoformat(), "score": c.score, "note": c.note}
@@ -755,6 +786,8 @@ class Tools:
             event = self._curve_event(ctx, "ladder_recorded", data)
             self._record(ctx, "ladder_recorded", ladder_target(period), ladder_line(period, row.now, row.future),
                          {"period": period, "before": _ladder_dict(before)})
+            self._grant(source_kind="ladder", source_ref=f"ladder:{period}", amount=XP_LADDER,
+                        label=LABEL_LADDER)  # X6: 그 달 처음
         ctx.events.append(event)
         self._export_curve()
         log.info("ladder_recorded", extra={"period": period})
@@ -803,10 +836,42 @@ class Tools:
             event = self._curve_event(ctx, "area_scores_recorded", data)
             self._record(ctx, "area_scores_recorded", areas_target(period), area_scores_line(period, data["scores"]),
                          {"period": period, "before": before})
+            self._grant(source_kind="wheel", source_ref=f"areas:{period}", amount=XP_WHEEL,
+                        label=LABEL_WHEEL)  # X7: 그 분기 처음(한 영역이라도)
         ctx.events.append(event)
         self._export_curve()
         log.info("area_scores_recorded", extra={"period": period, "areas": len(rows)})
         return {"period": period, "scores": data["scores"]}
+
+    @_tool
+    def grant_xp(self, ctx: RunContext, amount: Any = None, reason: Any = None) -> dict[str, Any]:
+        """X10(9.1, 10장): 하네스 규칙에 없는 일을 사용자가 했다고 말했을 때 비서가 주는 경험치. 5 또는 10, 하루 3회.
+
+        사유는 원장 `label`(상태창 "최근 경험치" 줄)과 확인 문구에 쓴다. 되돌릴 수 없다(원장은 오르기만 한다, U6).
+        로그에는 사유를 남기지 않는다.
+        """
+        if self.status is None:
+            return _err("경험치를 줄 수 없어요.")
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount not in XP_SECRETARY:
+            return _err("amount는 5 또는 10이에요.")
+        if not isinstance(reason, str) or not reason.strip():
+            return _err("reason에 경험치를 주는 까닭을 짧게 적어 주세요.")
+        why = reason.strip()
+        if len(why) > SECRETARY_REASON_MAX:
+            return _err(f"reason은 {SECRETARY_REASON_MAX}자까지 쓸 수 있어요.")
+        today = self.today()
+        with transaction(self.status.conn):
+            n = self.status.count_secretary_on(today)
+            if n >= SECRETARY_DAILY_MAX:
+                return _err(f"비서가 주는 경험치는 하루 {SECRETARY_DAILY_MAX}번까지예요. 오늘은 이미 다 줬어요.")
+            ref = f"secretary:{today.isoformat()}:{n + 1}"
+            self._grant(source_kind="secretary", source_ref=ref, amount=amount, label=why)
+            data = {"amount": amount, "reason": why}
+            event = self._curve_event(ctx, "xp_granted_by_secretary", data)
+            self._record(ctx, "xp_granted_by_secretary", None, xp_granted_line(amount, why), None)
+        ctx.events.append(event)
+        log.info("xp_granted_by_secretary", extra={"amount": amount})
+        return {"amount": amount, "reason": why, "today_count": n + 1}
 
     def mark_question_asked(self, question_id: int) -> None:
         """하네스가 월말 회고 메시지에 열린 시드 질문을 실었다(11.1-5): `curve_questions.status = asked`.

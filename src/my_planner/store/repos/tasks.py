@@ -140,6 +140,18 @@ class TasksRepo:
         before = json.loads(r["payload_json"]).get("from")
         return TaskStatus(before) if before else None
 
+    def completed_on(self, d: date) -> bool:
+        """그 논리적 날짜(경계 04:00부터 다음 날 04:00 전까지)에 할 일을 완료한 적이 있다(`completed` 이벤트).
+
+        상태창 X9 쉬는 날(SP3-4 9.1) 판정에 쓴다. 01:30에 끝낸 할 일은 전날의 완료다.
+        """
+        start, end = self._day_start(d), self._day_start(d + timedelta(days=1))
+        r = self.conn.execute(
+            "SELECT 1 FROM task_events WHERE kind = 'completed' AND at >= ? AND at < ? LIMIT 1",
+            (to_iso(start), to_iso(end)),
+        ).fetchone()
+        return r is not None
+
     def _day_start(self, d: date) -> datetime:
         from zoneinfo import ZoneInfo
 

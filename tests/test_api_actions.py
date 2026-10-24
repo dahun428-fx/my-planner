@@ -38,7 +38,7 @@ async def test_complete_task_applied_shape(tmp_path):
     assert body["status"] == "applied"
     assert body["activity_id"] == row["id"] and body["undo_id"] == row["id"]
     assert body["confirmation"] == "✓ 완료: 운동"
-    assert body["xp"] == {"gained": 0, "level_up": None}
+    assert body["xp"] == {"gained": 10, "level_up": None}  # X1
     assert body["result"]["id"] == tid and body["result"]["status"] == "done"
     assert body["result"]["completed_at"] == "2026-10-24T04:05:00Z"  # 도구 결과의 +09:00 → UTC
     assert (row["actor"], row["channel"], row["target"], row["risk"]) == ("user", "app", f"task:{tid}", "low")
