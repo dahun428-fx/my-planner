@@ -27,6 +27,7 @@
   font-size: var(--size-meta);
   line-height: 1.4;
   overflow-wrap: anywhere;
+  white-space: pre-line; /* a confirmation can end with "\n레벨 N이 됐어요." */
 }
 .undo {
   position: relative;

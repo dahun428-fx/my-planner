@@ -53,12 +53,14 @@ export interface ActionApplied {
   xp: ActionXp;
 }
 /**
+ * 이 요청에서 쌓인 경험치(9.1)와, 레벨이 올랐으면 새 레벨(9.2). 오르지 않았으면 `level_up`은 null.
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "ActionXp".
  */
 export interface ActionXp {
   gained: number;
-  level_up: null;
+  level_up: number | null;
 }
 /**
  * 확인 필요(200). 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다(10분).

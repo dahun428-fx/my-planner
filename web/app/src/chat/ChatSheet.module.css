@@ -104,6 +104,7 @@
 .activityText {
   flex: 1;
   overflow-wrap: anywhere;
+  white-space: pre-line; /* a confirmation can end with "\n레벨 N이 됐어요." */
 }
 .undo,
 .retry {
