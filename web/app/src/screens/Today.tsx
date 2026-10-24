@@ -55,6 +55,7 @@ export function Today() {
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
   const writable = useWritable(view.kind === "live");
+  const canChat = useWritable(view.kind === "live", { strict: true });
 
   // Block 3: the ui_confirm cards of every pending check-in (read again after any write on them).
   const pendingKey = view.kind === "live" ? view.data.checkins.filter((c) => c.state === "pending").map((c) => c.id).join(",") : "";
@@ -279,7 +280,7 @@ export function Today() {
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
       {dropSheet}
-      <ChatLauncher disabled={!writable} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
+      <ChatLauncher disabled={!canChat} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

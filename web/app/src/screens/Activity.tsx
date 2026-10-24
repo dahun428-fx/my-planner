@@ -86,7 +86,7 @@ function mergeById(first: ActivityItem[], older: ActivityItem[]): ActivityItem[]
 // Spec 5.5.6, F8: what the secretary and I changed, newest first, with undo.
 export function Activity() {
   const { state, recheck } = useConnection();
-  const writable = useWritable();
+  const canChat = useWritable(true, { strict: true });
   const toast = useToast();
   const { result, refresh } = usePolling<FirstPage>(loadFirst);
   const checkins = usePolling<CheckinList>(() => apiGet<CheckinList>("/checkins", "CheckinList"));
@@ -282,7 +282,7 @@ export function Activity() {
     <main className={`${page.main} ${styles.main}`}>
       <LargeTitle title={copy.activity.title} sub={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
       {body}
-      <ChatLauncher disabled={!writable} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
+      <ChatLauncher disabled={!canChat} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
   );
 }

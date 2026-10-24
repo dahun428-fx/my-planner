@@ -133,6 +133,17 @@ describe("Today", () => {
     expect(bodies[0]).toMatchObject({ action: "record_condition", args: { date: "2026-10-24", score: 3 } });
   });
 
+  it("live data before /health answers takes writes (no read-only flicker); the launcher waits", async () => {
+    serve();
+    server.use(http.get(`${BASE}/health`, () => new Promise<Response>(() => {})));
+    renderWithProviders(<Today />);
+    const pill = await screen.findByRole("button", { name: copy.today.conditionScore(3) });
+    expect(pill).toBeEnabled();
+    expect(screen.queryByText(copy.offline.writeLater)).toBeNull();
+    expect(screen.getByRole("checkbox", { name: copy.today.checkLabel("운동 30분") })).toBeEnabled();
+    expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled();
+  });
+
   it("a conflict on the condition says it failed and reads again", async () => {
     const hits = serve();
     actions(() => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 }));

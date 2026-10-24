@@ -35,11 +35,13 @@ export function useConnection(): ConnectionValue {
 }
 
 /**
- * Whether a screen takes writes and opens the chat: the connection is online and what the screen
- * shows is live (`live` false: a snapshot, or a read that was refused). The one rule for both.
+ * Whether a screen takes writes: what it shows is live (`live` false: a snapshot, or a read that was
+ * refused) and the connection is online, or not known yet (before the first /health answer, so live
+ * data does not flicker read-only). `strict` (the chat launcher) waits for "online": the sheet needs it.
  */
-export function useWritable(live = true): boolean {
-  return useConnection().state?.kind === "online" && live;
+export function useWritable(live = true, opts: { strict?: boolean } = {}): boolean {
+  const { state } = useConnection();
+  return live && (state?.kind === "online" || (state === null && !opts.strict));
 }
 
 const HEALTH_EVERY_MS = 30_000;

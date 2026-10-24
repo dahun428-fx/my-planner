@@ -188,6 +188,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const offline = offlineConn || (tab === "week" && weekOffline);
   const live = !offline;
   const writable = useWritable(live);
+  const canChat = useWritable(live, { strict: true });
 
   let body: React.ReactNode = null;
   if (offline && tab !== "week") {
@@ -358,7 +359,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         />
       )}
       <EditTodoSheet edit={edit} onClose={() => setEdit(null)} onDone={refreshAll} guard={guard} />
-      <ChatLauncher disabled={!writable} offline={offlineConn} reason={launcherReason(state?.kind)} onOpen={chat.open} />
+      <ChatLauncher disabled={!canChat} offline={offlineConn} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
   );
 }
