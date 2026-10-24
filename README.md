@@ -154,11 +154,11 @@ VAPID_SUBJECT=mailto:<받을 수 있는 주소>
 
 **Funnel은 절대 쓰지 않습니다.** `tailscale funnel`은 API를 인터넷 전체에 엽니다. 토큰 하나만으로 할 일과 대화 기록에 닿을 수 있으니 tailnet 밖으로 열지 않습니다.
 
-허용 출처(CORS)는 `config.toml`의 `[api] cors_origins`에 정확한 주소로만 넣습니다. 운영 앱 주소는 `https://my-planner-beige-eight.vercel.app` 하나입니다(끝에 `/` 없이):
+허용 출처(CORS)는 `config.toml`의 `[api] cors_origins`에 정확한 주소로만 넣습니다. 운영 앱 `https://my-planner-beige-eight.vercel.app`과 대시보드 `https://my-planner-dashboard-seven.vercel.app` 두 개입니다(끝에 `/` 없이):
 
 ```toml
 [api]
-cors_origins = ["https://my-planner-beige-eight.vercel.app"]
+cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner-dashboard-seven.vercel.app"]
 ```
 
 `*.vercel.app` 같은 와일드카드나 미리보기 주소 패턴은 넣지 않습니다. `config.toml`을 바꾼 뒤에도 작업을 다시 켭니다. 다시 켜지 않으면 앱 연결 화면이 "주소에 닿지 않아요"에서 막힙니다.
@@ -202,7 +202,7 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 
   ```toml
   [api]
-  cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://<대시보드>.vercel.app"]
+  cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner-dashboard-seven.vercel.app"]
   ```
 
 **연결하기**
