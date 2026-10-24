@@ -21,8 +21,20 @@ NO_CONDITION = "기록 없음"
 _WEEKDAY = "월화수목금토일"
 
 
-def build_notices(*, redacted: bool, stale_hours: float | None, truncated_to: int | None) -> str:
-    """`## 알림` 섹션. 해당하는 것이 없으면 빈 문자열. `truncated_to`는 앞에서 자른 글자 수(`limits.input_max_chars`)."""
+ELSEWHERE_MAX = 5  # "다른 곳에서 바뀐 것" 줄 수 상한(SP3-4 7.1)
+
+
+def build_notices(
+    *, redacted: bool, stale_hours: float | None, truncated_to: int | None, elsewhere: list[str] | None = None
+) -> str:
+    """`## 알림` 섹션. 해당하는 것이 없으면 빈 문자열. `truncated_to`는 앞에서 자른 글자 수(`limits.input_max_chars`).
+
+    `elsewhere`: 이 대화의 마지막 메시지 뒤 다른 통로에서 생긴 활동의 `summary`(시간순). 있으면 그 뒤에
+    `## 다른 곳에서 바뀐 것` 섹션을 최대 5줄로 붙인다(SP3-4 7.1, 매 호출).
+    """
+    other = ""
+    if elsewhere:
+        other = "## 다른 곳에서 바뀐 것\n" + "\n".join(f"- {s}" for s in elsewhere[-ELSEWHERE_MAX:])
     lines: list[str] = []
     if redacted:
         lines.append("- 인증·식별 정보를 가렸어요.")
@@ -30,9 +42,8 @@ def build_notices(*, redacted: bool, stale_hours: float | None, truncated_to: in
         lines.append(f"- 약 {max(1, round(stale_hours))}시간 전에 보낸 메시지예요.")
     if truncated_to is not None:
         lines.append(f"- 메시지가 길어 앞 {truncated_to}자만 넘겼어요.")
-    if not lines:
-        return ""
-    return "## 알림\n" + "\n".join(lines)
+    notes = "## 알림\n" + "\n".join(lines) if lines else ""
+    return "\n\n".join(p for p in (notes, other) if p)
 
 
 def build_preamble(
@@ -104,7 +115,7 @@ def build_preamble(
     return "\n\n".join(sections)
 
 
-def _evening_done(d: date, *, runs: RunsRepo, settings: Settings) -> bool:
+def evening_done(d: date, *, runs: RunsRepo, settings: Settings) -> bool:
     """그 논리적 날짜의 저녁 체크인 회차가 done인지. 회차가 없으면 done이 아니다."""
     start = datetime.combine(d, settings.day_boundary, ZoneInfo(settings.timezone))
     got = runs.between(start - timedelta(microseconds=1), start + timedelta(days=1))
@@ -133,6 +144,6 @@ def ask_condition_for(
     if run.loop is LoopKey.morning_brief:
         # 어제 기록이 없고 어제 저녁 체크인이 done이 아니면(늦음, 복귀 인사, 멈춤 등 이유와 상관없이) 어제를 묻는다
         yesterday = today - timedelta(days=1)
-        if conditions.get(yesterday) is None and not _evening_done(yesterday, runs=runs, settings=settings):
+        if conditions.get(yesterday) is None and not evening_done(yesterday, runs=runs, settings=settings):
             return yesterday
     return None

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from telegram import CallbackQuery
 
 from my_planner.clock import Clock
-from my_planner.domain import RunContext, TaskStatus
+from my_planner.domain import Channel, RunContext, TaskStatus
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.actions import ActionRequest, ActionResult
 from my_planner.tools.confirmations import (
@@ -31,11 +31,13 @@ from my_planner.tools.core import Tools
 
 if TYPE_CHECKING:
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.channels import DeliveriesRepo
 
 log = logging.getLogger(__name__)
 
 CallbackResult = Literal["confirmed", "dropped", "recorded", "stale", "ignored", "unknown"]
 Apply = Callable[[ActionRequest], ActionResult]
+MarkAnswered = Callable[[int, Channel], object]  # `Dispatcher.mark_answered(run_id, channel)`
 
 STALE_REPLY = "이미 정리된 할 일이에요."
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -75,12 +77,15 @@ async def handle_callback(
     clock: Clock,
     router: ConversationRouter | None = None,
     apply: Apply | None = None,
+    deliveries: DeliveriesRepo | None = None,
+    mark_answered: MarkAnswered | None = None,
 ) -> CallbackResult:
     """버튼 하나를 처리한다. 무엇을 하든 `query.answer()`를 꼭 한 번 부른다.
 
     1. 사용자가 아니면 무시한다. 2. 이미 초안이 아니면 바꾸지 않고 "이미 정리된 할 일이에요."라고 답한다.
     3. 바꾼 것은 원문 기록(`[-]`)에 `[버튼] 확정: {제목}`, `[버튼] 빼기: {제목}`으로 남긴다.
     4. 계획 대화에서 제안한 초안의 버튼이면 그 계획 대화의 활동으로 기록한다(2시간 만료, 스펙 5.7).
+    5. 회차 메시지에 붙은 버튼으로 바꿨으면 그 회차의 답이다(SP3-4 6.4.5, 처음 한 번 `mark_answered`).
     """
     reply: str | None = None  # finally에서 꼭 한 번 보낸다
     try:
@@ -96,6 +101,7 @@ async def handle_callback(
                 return "unknown"
             _transcript(transcripts, clock, f"[버튼] 컨디션 {score}")
             reply = condition_reply(score)
+            _answer_run(query, deliveries, mark_answered)
             return "recorded"
         parsed = _parse(query.data)
         if parsed is None:
@@ -124,11 +130,26 @@ async def handle_callback(
             lines = [f"[버튼] 확정: {t['title']}" for t in out.get("confirmed", [])]
             reply = confirmation
         log.info("callback_handled", extra={"action": action, "task_ids": ids})
+        if "error" not in out:
+            _answer_run(query, deliveries, mark_answered)
         if lines:
             _transcript(transcripts, clock, "\n".join(lines))
         return result
     finally:
         await _answer(query, reply)
+
+
+def _answer_run(query: CallbackQuery, deliveries: DeliveriesRepo | None, mark: MarkAnswered | None) -> None:
+    """누른 버튼이 붙은 메시지가 회차 메시지면(`run_deliveries.telegram_message_id`) 그 회차의 답으로 적는다."""
+    msg = query.message
+    if deliveries is None or mark is None or msg is None:
+        return
+    try:
+        run_id = deliveries.run_for_message(msg.message_id)
+        if run_id is not None:
+            mark(run_id, "telegram")
+    except Exception as e:  # noqa: BLE001 - 바꾼 것은 이미 커밋됐다. 답 표시만 못 했다
+        log.warning("callback_answer_record_error", extra={"error_type": type(e).__name__})
 
 
 def _run(tools: Tools, apply: Apply | None, action: str, args: dict[str, Any]) -> tuple[dict[str, Any], str | None]:

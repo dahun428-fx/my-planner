@@ -89,6 +89,22 @@ async def test_today_checkins_equal_checkins_list(tmp_path):
     assert today["brief"]["text"] == "좋은 아침이에요" and today["brief"]["loop"] == "morning_brief"
 
 
+async def test_today_day_boundary_from_settings(tmp_path):
+    from datetime import time
+
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        default = await get_json(env, "/today")
+    async with BeEnv.start(tmp_path / "late", start=SAT, overrides={"day_boundary": time(5, 30)}) as env:
+        late = await get_json(env, "/today")
+        schema = await get_json(env, "/schema")
+
+    assert default["day_boundary"] == "04:00"
+    assert late["day_boundary"] == "05:30"
+    today_schema = schema["models"]["Today"]
+    assert "day_boundary" in today_schema["required"]
+    assert today_schema["properties"]["day_boundary"]["pattern"] == r"^\d{2}:\d{2}$"
+
+
 # --- 슬라이스 2: 숨김, 우선순위, 안내, 시각 ---
 
 

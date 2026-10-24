@@ -181,3 +181,22 @@ async def test_chat_end_to_end(tmp_path, deltas):
     assert items[1]["id"] == chunks[0]["messageId"]  # 비서 줄의 id는 그 답의 start.messageId(6.4.6)
     assert items[1]["tools"] == ["add_task"]
     assert "치과" in today_reply
+
+
+async def test_answer_from_app_closes_telegram(tmp_path):
+    # 10/26(월) 17:30 저녁 체크인이 텔레그램으로 간다(컨디션 버튼). 18:00 앱의 체크인 화면에서 답한다
+    script = [FakeTurn([], "오늘 하루 어떠셨어요?", session_id="s-run"), FakeTurn([], "앱에서 이어 가요", session_id="s-app")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 17, 30) + timedelta(seconds=30), script=script) as env:
+        await env.tick()
+        (message_id,) = [m for m in env.sender.message_ids if m is not None]
+        listing = await (await env.get("/checkins?date=2026-10-26")).json()
+        (item,) = [i for i in listing["items"] if i["loop"] == "evening_checkin"]
+        env.clock.set(kst(2026, 10, 26, 18, 0))
+        resp, _ = await env.chat("꾸민 앱 답", checkin_id=item["id"])
+        detail = await (await env.get(f"/checkins/{item['id']}")).json()
+
+    assert resp.status == 200
+    assert (detail["state"], detail["answered_via"]) == ("answered", "app")
+    assert env.sender.cleared == [message_id]
+    second = env.brain.calls[1]
+    assert (second["session_id"], second["fork_session"]) == ("s-run", True)

@@ -274,6 +274,7 @@ class Today(_Model):
 
     date: str
     weekday: str
+    day_boundary: str = Field(pattern=r"^\d{2}:\d{2}$")  # 논리적 날짜가 바뀌는 시각 `HH:MM`(설정, 기본 04:00)
     brief: TodayBrief | None
     condition: ConditionItem | None
     todos: list[TodayTodo]

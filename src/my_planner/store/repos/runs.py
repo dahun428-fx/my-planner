@@ -180,5 +180,14 @@ class RunsRepo:
         merged = run.merged_run_ids + [i for i in ids if i not in run.merged_run_ids]
         self._update(id, "merged_run_ids = ?", json.dumps(merged))
 
+    def mark_answered(self, id: int, channel: str, at: datetime) -> bool:
+        """처음 답한 시각과 통로를 한 번만 적는다(6.4.5). 이번에 적었으면 True, 이미 답이 있었으면 False."""
+        with transaction(self.conn):
+            cur = self.conn.execute(
+                "UPDATE runs SET answered_at = ?, answered_via = ? WHERE id = ? AND answered_at IS NULL",
+                (to_iso(at), channel, id),
+            )
+        return cur.rowcount == 1
+
     def mark_resent(self, id: int) -> None:
         self._update(id, "resent = 1")

@@ -315,12 +315,22 @@ class TelegramSender:
         found = (self.tasks.get(i) for i in ids)
         return {t.id: t.title for t in found if t is not None}
 
-    async def send(self, out: Outbound) -> None:
+    async def send(self, out: Outbound) -> int | None:
+        """조각마다 보낸다. 버튼이 붙었으면 그 마지막 조각의 메시지 id(답한 뒤 버튼을 거둘 때 쓴다), 없으면 None."""
         markup = message_keyboard(out, self._titles(out.draft_task_ids))
         parts = split_message(out.text)
+        message_id: int | None = None
         for n, part in enumerate(parts, start=1):
             last = n == len(parts)  # 버튼은 마지막 조각 아래에만
-            await self.bot.send_message(chat_id=self.chat_id, text=part, reply_markup=markup if last else None)
+            sent = await self.bot.send_message(chat_id=self.chat_id, text=part, reply_markup=markup if last else None)
+            if last and markup is not None:
+                mid = getattr(sent, "message_id", None)
+                message_id = mid if isinstance(mid, int) else None
+        return message_id
+
+    async def clear_buttons(self, message_id: int) -> None:
+        """답한 회차 메시지의 버튼을 거둔다(`editMessageReplyMarkup`, SP3-4 6.4.5)."""
+        await self.bot.edit_message_reply_markup(chat_id=self.chat_id, message_id=message_id, reply_markup=None)
 
     async def typing(self) -> None:
         await self.bot.send_chat_action(chat_id=self.chat_id, action=ChatAction.TYPING)

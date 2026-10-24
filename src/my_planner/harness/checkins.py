@@ -5,22 +5,24 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.clock import logical_date
-from my_planner.domain import RunStatus
-from my_planner.harness.context import ask_condition_for
+from my_planner.domain import LoopKey, RunStatus
+from my_planner.harness.context import ask_condition_for, evening_done
 from my_planner.loop.schedule import Due, reply_window_end
 from my_planner.store.views import draft_live, todo_refs
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
+    from my_planner.store.repos.activity import ActivityRepo
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import TasksRepo
+    from my_planner.tools.actions import ActionRequest
 
 CheckinState = Literal["pending", "answered", "missed"]
 
@@ -48,6 +50,85 @@ def checkin_state(run: Run, *, runs: RunsRepo, now: datetime, settings: Settings
     if run.answered_at is not None:
         return "answered"
     return "pending" if now <= reply_until(run, runs=runs, settings=settings) else "missed"
+
+
+# 답장 창이 가장 긴 회차(회고 24시간)보다 넉넉히: 지금 답장 창 안일 수 있는 회차를 찾는 범위
+_ANSWER_LOOKBACK = timedelta(days=3)
+
+
+def _open_checkins(runs: RunsRepo, now: datetime, settings: Settings) -> list[Run]:
+    """지금 답장 창 안에 있는 답할 회차(primary), 최근 것부터."""
+    found = [
+        r for r in runs.between(now - _ANSWER_LOOKBACK, now)
+        if _is_checkin(r, runs) and (r.finished_at is None or r.finished_at <= now)
+        and now <= reply_until(r, runs=runs, settings=settings)
+    ]
+    return sorted(found, key=lambda r: (r.scheduled_for, r.id), reverse=True)
+
+
+def _condition_run(
+    day: date, runs: RunsRepo, now: datetime, settings: Settings, activity: ActivityRepo | None
+) -> Run | None:
+    """그 날짜의 컨디션 버튼을 단 회차: 그 날짜의 저녁 체크인(합쳐 보냈으면 primary), 또는 그 전날 저녁이 없고
+    보낼 때 그 날짜 컨디션이 아직 없어 어제를 물은 아침 브리핑(SP1 5.4 판정과 같은 뜻. 기록한 뒤라
+    `ask_condition_for`는 더 묻지 않으므로, 보낼 때 기록이 있었는지는 활동 기록으로 본다)."""
+    from my_planner.tools.activity import condition_target
+
+    tz, boundary = settings.timezone, settings.day_boundary
+    for r in _open_checkins(runs, now, settings):
+        for b in (r, *_merged(r, runs)):
+            d = logical_date(b.scheduled_for, tz, boundary)
+            if b.loop is LoopKey.evening_checkin and d == day:
+                return r
+            if (
+                b.loop is LoopKey.morning_brief and d - timedelta(days=1) == day
+                and not evening_done(day, runs=runs, settings=settings)
+                and not (
+                    activity is not None and r.finished_at is not None
+                    and activity.recorded_by(condition_target(day), r.finished_at)
+                )
+            ):
+                return r
+    return None
+
+
+def run_answered_by(
+    req: ActionRequest, *, runs: RunsRepo, tasks: TasksRepo, settings: Settings, now: datetime,
+    activity: ActivityRepo | None = None,
+) -> int | None:
+    """즉시 갈래 동작이 답한 회차(6.4.5 "답으로 치는 것"). `apply_action`이 적용한 뒤 부른다. 없으면 None.
+
+    - `record_condition`: 그 날짜에 컨디션 버튼을 단, 지금 답장 창 안의 회차(저녁 체크인의 날짜 등)
+    - `confirm_tasks`, `drop_task`: 그 초안을 제안한(`tool_events_log.run_id`), 지금 답장 창 안의 회차
+    사용자 동작(`app`, `telegram`)만 센다. 하루 한 번 작업(`scheduler`)은 답이 아니다.
+    """
+    if req.actor != "user" or req.channel not in ("app", "telegram") or not isinstance(req.args, dict):
+        return None
+    args = req.args
+    if req.action == "record_condition":
+        raw = args.get("date")
+        try:
+            day = date.fromisoformat(raw) if isinstance(raw, str) else logical_date(
+                now, settings.timezone, settings.day_boundary
+            )
+        except ValueError:
+            return None
+        run = _condition_run(day, runs, now, settings, activity)
+        return run.id if run is not None else None
+    if req.action in ("confirm_tasks", "drop_task"):
+        ids = args.get("ids") if req.action == "confirm_tasks" else [args.get("id")]
+        open_ids = {r.id for r in _open_checkins(runs, now, settings)}
+        for i in ids if isinstance(ids, list) else []:
+            if not isinstance(i, int) or isinstance(i, bool):
+                continue
+            run_id, _ = tasks.proposal_origin(i)
+            got = runs.get(run_id) if run_id is not None else None
+            if got is None:
+                continue
+            primary = runs.merged_into(got.id) or got
+            if primary.id in open_ids:
+                return primary.id
+    return None
 
 
 def runs_today(*, runs: RunsRepo, deliveries: DeliveriesRepo, now: datetime, settings: Settings) -> list[dict[str, Any]]:

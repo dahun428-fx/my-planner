@@ -268,6 +268,8 @@ def build_be(
         clock=clock,
         router=router,
         apply=dispatcher.apply_action,
+        deliveries=deliveries,
+        mark_answered=dispatcher.mark_answered,
     )
     return BeParts(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
