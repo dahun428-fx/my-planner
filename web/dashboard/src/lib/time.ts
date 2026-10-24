@@ -32,3 +32,9 @@ export function formatKst(iso: string, style: KstStyle): string {
       return `${p.month}/${p.day} ${hhmm}`;
   }
 }
+
+/** A logical date `YYYY-MM-DD` (already Korean, spec 6.1) as `M/D`. */
+export function formatDay(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  return m ? `${Number(m[2])}/${Number(m[3])}` : "—";
+}

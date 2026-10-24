@@ -117,4 +117,64 @@ export const SETTINGS_TEXT = {
   tokenInvalid: "토큰에는 영문, 숫자, 기호만 들어가요.",
 } as const;
 
-export const NAV_TEXT = { brand: "my-planner", status: "비서 상태", settings: "설정", label: "화면" } as const;
+export const NAV_TEXT = {
+  brand: "my-planner",
+  status: "비서 상태",
+  tasks: "할 일",
+  window: "상태창",
+  settings: "설정",
+  label: "화면",
+} as const;
+
+// (b) 할 일 + 컨디션, spec 13.3. Group names and the line shapes follow the Telegram `/today`, `/week` text.
+export const TASKS_TEXT = {
+  title: "할 일",
+  tabs: { today: "오늘", week: "이번 주" },
+  tabsLabel: "기간",
+  today: (md: string, weekday: string) => `오늘 (${md} ${weekday})`,
+  week: (start: string, end: string) => `이번 주 (${start}~${end})`,
+  groups: { priority: "우선순위", scheduled: "일정", open: "열린 할 일" },
+  weekPriorities: "우선순위",
+  todayMark: "(오늘)",
+  noTodos: "아직 비어 있어요.",
+  emptyDay: "—",
+  hint: "바꾸려면 텔레그램이나 운영 앱에서 말씀해 주세요.",
+} as const;
+
+export const CONDITION_TEXT = {
+  title: (days: number) => `컨디션 지난 ${days}일`,
+  head: (average: string, days: number) => `평균 ${average} · ${days}일 기록`,
+  chart: (days: number, logged: number, average: string) => `컨디션 지난 ${days}일: ${logged}일 기록, 평균 ${average}`,
+  empty: "저녁 체크인에서 컨디션을 기록하면 여기에 그려져요.",
+} as const;
+
+// (d) 게임형 상태창, spec 13.5 and appendix A. XP and level only rise; a debuff is a signal with a quest.
+export const STATUS_TEXT = {
+  title: "상태창",
+  level: (n: number) => `Lv. ${n}`,
+  xp: (into: number, forNext: number) => `${into} / ${forNext} XP`,
+  xpBar: (into: number, forNext: number) => `경험치 ${into} / ${forNext}`,
+  hp: (score: number) => `HP ${score}/5`,
+  hpNone: "HP 기록 없음",
+  hpBar: (score: number | null) => (score === null ? "HP 기록 없음" : `HP ${score} / 5`),
+  hpWhat: "오늘 컨디션",
+  stats: (period: string | null) => (period ? `스탯 (${period})` : "스탯"),
+  statsEmpty: "영역 점수는 분기 마지막 주 회고에서 함께 정해요.",
+  statBar: (label: string, score: number | null) => (score === null ? `${label} 기록 없음` : `${label} ${score} / 10`),
+  noScore: "—",
+  olderPeriod: (period: string) => `(${period})`,
+  debuff: (prev: string, score: number) => `↓ 디버프 (${prev} ${score})`,
+  recovery: (quest: string) => `회복 퀘스트: ${quest} (15~30분)`,
+  mainQuests: "메인 퀘스트 (이번 분기)",
+  firstSteps: (done: number, total: number) => `첫 걸음 ${done}/${total}`,
+  mainEmpty: "이번 분기 메인 퀘스트가 아직 없어요. 계획 모드(/plan)에서 함께 정할 수 있어요.",
+  dailyQuests: "오늘의 퀘스트",
+  daily: (title: string) => `${title} (15~30분)`,
+  dailyEmpty: "오늘의 퀘스트는 첫 걸음이 생기면 나타나요.",
+  take: "텔레그램이나 운영 앱에서 '그 퀘스트 할게'라고 말씀해 주세요.",
+  titles: "칭호",
+  titlesEmpty: "고점이나 전환점을 곡선에 남기면 칭호가 생겨요.",
+  recentXp: "최근 경험치",
+  xpGain: (amount: number, label: string) => `+${amount} ${label}`,
+  recentEmpty: "할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.",
+} as const;

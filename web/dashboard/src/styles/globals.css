@@ -388,6 +388,417 @@ h2 {
   font-size: var(--fs-body);
 }
 
+/* ---- nav on a phone: the links take their own row and scroll inside it, never the page ---- */
+@media (max-width: 480px) {
+  .top {
+    position: static;
+  }
+  .nav {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .nav ul {
+    flex: 1 0 100%;
+    margin: 0 -12px;
+    padding: 0 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav ul a {
+    white-space: nowrap;
+  }
+}
+
+/* ---- shared bits of the data screens ---- */
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px var(--gap);
+  margin-bottom: 12px;
+}
+.panel-head h2 {
+  margin: 0;
+}
+.hint {
+  margin: 4px 0 0;
+}
+.panel .hint {
+  margin-top: 14px;
+}
+.skeleton.short {
+  height: 96px;
+}
+.bar-track {
+  fill: var(--raised);
+}
+.part {
+  white-space: nowrap;
+}
+
+/* ---- tabs: one segmented track, as wide as its options ---- */
+.tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 0 var(--gap);
+  padding: 4px;
+  border-radius: var(--radius-control);
+  background: var(--raised);
+}
+.tab {
+  min-height: 36px;
+  min-width: 5.5rem;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text);
+}
+@media (max-width: 480px) {
+  .tabs {
+    display: flex;
+  }
+  .tab {
+    flex: 1;
+    min-height: var(--control-h);
+  }
+}
+
+/* ---- to-do lines (read only) ---- */
+.tgroups {
+  display: grid;
+  gap: 14px;
+}
+.tgroup {
+  display: grid;
+  gap: 4px;
+}
+.tgroup-name {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+@media (min-width: 481px) {
+  .tgroup {
+    grid-template-columns: 6rem 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+}
+.todos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.todo {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+}
+.todo-lead {
+  flex: none;
+  min-width: 1.25rem;
+  color: var(--muted);
+}
+.todo-since {
+  color: var(--muted);
+}
+
+.brief {
+  margin-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.brief summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row);
+  margin-bottom: calc(-1 * var(--pad));
+  cursor: pointer;
+  list-style: none;
+}
+.brief[open] summary {
+  margin-bottom: 0;
+}
+.brief summary::-webkit-details-marker {
+  display: none;
+}
+.brief summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 1.6px solid var(--muted);
+  border-bottom: 1.6px solid var(--muted);
+  transform: rotate(-45deg);
+}
+.brief[open] summary::after {
+  transform: rotate(45deg);
+}
+.brief-name {
+  font-weight: 600;
+}
+.brief-text {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ---- the week: seven cells, empty days included ---- */
+.week-prios {
+  margin-bottom: 12px;
+}
+.week-empty {
+  margin-bottom: 8px;
+}
+.days {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.day {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 0;
+}
+.day + .day {
+  border-top: 1px solid var(--rule);
+}
+.day:last-child {
+  padding-bottom: 0;
+}
+.day-name {
+  color: var(--muted);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
+.day[aria-current="date"] .day-name {
+  color: var(--text);
+}
+.day-today {
+  font-weight: 400;
+}
+.day-empty {
+  color: var(--neutral);
+}
+.day .todo:first-child {
+  padding-top: 0;
+}
+
+/* ---- condition dots: y lane, plot, x lane; empty days are blank columns ---- */
+.cdots {
+  display: grid;
+  grid-template-columns: 1rem 1fr;
+  column-gap: 10px;
+}
+.cdots-y,
+.cdots-frame {
+  height: 152px;
+  padding: 6px 0;
+}
+.cdots-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: right;
+}
+.cdots-y span {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 0;
+}
+.cdots-plot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.cdots-grid {
+  stroke: var(--rule);
+  stroke-width: 1px;
+}
+.cdots-grid[data-score="1"] {
+  stroke: var(--control);
+}
+.cdots-dot {
+  stroke: var(--primary);
+  stroke-width: 8px;
+  stroke-linecap: round;
+}
+.cdots-x {
+  grid-column: 2;
+  display: flex;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.cdots-x span {
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+.cdots-x span.end {
+  justify-content: flex-end;
+}
+
+/* ---- status window ---- */
+.hero {
+  display: grid;
+  gap: 18px;
+}
+.xp-head,
+.hp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: 8px;
+}
+.xp-level {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.xp-amount,
+.hp-value {
+  font-weight: 600;
+}
+.xp-bar {
+  display: block;
+  width: 100%;
+  height: 10px;
+}
+.xp-fill,
+.stat-fill {
+  fill: var(--primary);
+}
+.hp-bar {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  height: 10px;
+}
+.hp-cell {
+  fill: var(--raised);
+}
+.hp-cell[data-on="true"] {
+  fill: var(--primary);
+}
+
+.stats {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stat {
+  display: grid;
+  grid-template-columns: 4rem 1fr minmax(1.5rem, auto);
+  align-items: center;
+  column-gap: 12px;
+  padding: 8px 0;
+}
+.stat:first-child {
+  padding-top: 0;
+}
+.stat:last-child {
+  padding-bottom: 0;
+}
+.stat-bar {
+  display: block;
+  width: 100%;
+  height: 8px;
+}
+.stat-value {
+  text-align: right;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.stat-value .meta {
+  font-weight: 400;
+}
+.stat-debuff,
+.stat-quest {
+  grid-column: 2 / -1;
+  font-size: var(--fs-meta);
+}
+.stat-debuff {
+  margin-top: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.stat-quest {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  color: var(--text);
+}
+
+.sub-heading {
+  margin: 16px 0 6px;
+  font-size: var(--fs-section);
+  font-weight: 600;
+}
+.quests {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.quest {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.quest-title {
+  flex: 1;
+  min-width: 0;
+}
+.quest-steps {
+  flex: none;
+  white-space: nowrap;
+}
+.quest-mark {
+  flex: none;
+  align-self: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1.5px var(--neutral);
+}
+.quest-parent {
+  display: block;
+}
+.line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.panel > .row h2 {
+  margin-bottom: 4px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
