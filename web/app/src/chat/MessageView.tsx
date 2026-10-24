@@ -5,7 +5,8 @@ import { type UndoBlockReason, useUndo } from "../api/actions";
 import { Markdown } from "../components/Markdown";
 import { copy } from "../lib/copy";
 import type { OpenScreen } from "../ui/primitives/types";
-import { UiPart } from "../ui/registry";
+import { useCatalog } from "../ui/CatalogProvider";
+import { registryNames, UiPart } from "../ui/registry";
 import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
 import styles from "./ChatSheet.module.css";
@@ -70,6 +71,7 @@ export function MessageView({
   /** SP6 8: an `open` button on a part (the sheet moves there and closes). */
   onOpen?(screen: OpenScreen): void;
 }) {
+  const { check, settled } = useCatalog();
   if (message.role === "user") {
     return (
       <div className={styles.mine} data-message={message.id}>
@@ -78,8 +80,9 @@ export function MessageView({
     );
   }
   // 11.4: a box that ui_result already shows is left out, but never in a restored message.
+  // A ui_result hides the box only when it really draws (UiPart's own test: known name, props the catalog takes).
   const restored = parts.some((p) => p.kind === "ui" && p.restored === true);
-  const shown = restored ? parts : hideCoveredActivity(parts);
+  const shown = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
   return (
     <div className={styles.theirs} data-message={message.id}>
       {shown.map((p, i) => {

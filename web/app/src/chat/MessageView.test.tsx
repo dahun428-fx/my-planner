@@ -70,4 +70,11 @@ describe("MessageView", () => {
     await userEvent.click(await screen.findByRole("button", { name: copy.parts.openTodos }));
     expect(onOpen).toHaveBeenCalledWith("todos_day");
   });
+
+  it("a result that fails the catalog keeps the box", async () => {
+    const bad = { ...result(false), props: { task_ids: [53, 53] } } as ViewPart; // not unique: the schema refuses it
+    renderWithProviders(<MessageView message={answer} parts={[bad, { kind: "activity", confirmation: "옮겼어요", undoIds: [931], activityIds: [931] }]} />);
+    expect(await screen.findByText(copy.parts.unknown)).toBeInTheDocument();
+    expect(document.querySelector("[data-activity]")).toHaveTextContent("옮겼어요");
+  });
 });
