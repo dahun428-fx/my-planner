@@ -130,3 +130,14 @@ def test_wake_task_has_wake_to_run_battery_and_noop_action():
     days = [[d.tag.split("}")[1] for d in find(c, "t:ScheduleByWeek/t:DaysOfWeek")] for c in cal]
     assert days == [["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], ["Saturday", "Sunday"]]
     assert all(text(c, "t:ScheduleByWeek/t:WeeksInterval") == "1" for c in cal)
+
+
+def test_scripts_do_not_use_psscriptroot_in_param_defaults():
+    # Windows PowerShell 5.1 + -File 에서는 param 기본값 계산 때 $PSScriptRoot가 비어 있다
+    import re
+    from pathlib import Path
+
+    for name in ("register_task.ps1", "check_tasks.ps1"):
+        text = (Path(__file__).parent.parent / "scripts" / name).read_text(encoding="utf-8-sig")
+        param_block = re.search(r"param\((.*?)\n\)", text, re.DOTALL).group(1)
+        assert "$PSScriptRoot" not in param_block, name

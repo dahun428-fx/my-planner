@@ -12,7 +12,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Root = (Split-Path -Parent $PSScriptRoot),
+    [string]$Root = '',
     [switch]$NoWake
 )
 
@@ -24,6 +24,8 @@ $WakeTask = 'my-planner-wake'
 # MSFT_TaskWeeklyTrigger.DaysOfWeek 비트: 일 1, 월 2, 화 4, 수 8, 목 16, 금 32, 토 64
 $DaysMask = @{ weekday = 62; weekend = 65 }
 
+# Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
+if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
 $python = Join-Path $Root '.venv\Scripts\python.exe'
 $pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
