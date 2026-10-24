@@ -581,7 +581,7 @@ web/app/src/ui/
 
 ### 11.2 레지스트리
 
-- `registry.tsx`는 지금 10개 + `registerParts(entries)`를 내보낸다(같은 이름을 두 번 등록하면 개발 중 오류). 지금 `registryNames`는 가져올 때 `Object.keys`로 굳은 배열이라 등록 뒤의 이름을 모른다. A-2는 이것을 함수 `registryNames(): string[]`로 바꾸고, 그것을 쓰는 `ui/catalog.test.ts`(지금 "길이 10", "카탈로그 고정 자료와 같은 이름")를 `registerChatParts()`를 부른 뒤 14개, 카탈로그와 같은 이름으로 고친다. `UiPart`의 판정 순서(이름 → 카탈로그 스키마 → 컴포넌트)는 그대로이고, `ui_block`만 스키마 다음에 `checkBlock`을 한 번 더 본다. `checkBlock`은 `UiPart`가 아니라 `Block` 컴포넌트 안에서 먼저 부르고 실패면 `UnknownPart`다(`UiPart`가 가져오면 첫 화면 묶음에 들어가므로. 판정 결과는 같다). `registerParts(entries, source)`의 `source`는 중복 오류 문구에 쓰고, 대화 묶음은 `"sp6-chat-parts"`를 넘긴다.
+- `registry.tsx`는 지금 11개(습관 기록의 `ui_habit_check` 포함) + `registerParts(entries)`를 내보낸다(같은 이름을 두 번 등록하면 개발 중 오류). 지금 `registryNames`는 가져올 때 `Object.keys`로 굳은 배열이라 등록 뒤의 이름을 모른다. A-2는 이것을 함수 `registryNames(): string[]`로 바꾸고, 그것을 쓰는 `ui/catalog.test.ts`(지금 "길이 11", "카탈로그 고정 자료와 같은 이름")를 `registerChatParts()`를 부른 뒤 15개, 카탈로그와 같은 이름으로 고친다. `UiPart`의 판정 순서(이름 → 카탈로그 스키마 → 컴포넌트)는 그대로이고, `ui_block`만 스키마 다음에 `checkBlock`을 한 번 더 본다. `checkBlock`은 `UiPart`가 아니라 `Block` 컴포넌트 안에서 먼저 부르고 실패면 `UnknownPart`다(`UiPart`가 가져오면 첫 화면 묶음에 들어가므로. 판정 결과는 같다). `registerParts(entries, source)`의 `source`는 중복 오류 문구에 쓰고, 대화 묶음은 `"sp6-chat-parts"`를 넘긴다. 새 넷은 등록된 뒤에만 그려진다: 대화 묶음을 읽기 전에는 어디서든 `UnknownPart`이고, 읽은 뒤에는 이름·스키마·`checkBlock`이 맞으면 그린다.
 - **새 넷은 대화 묶음에서 등록한다**: `ui/chat/registerChatParts.ts`가 `ui_date_choice`, `ui_result`, `ui_period_list`, `ui_block`을 등록하고, `chat/MessageView.tsx`가 이것을 가져온다(대화 시트 묶음은 늦게 읽힌다, SP5 9장). 새 넷은 고정 카드와 체크인 카드에 나오지 않으므로(2장) 첫 화면 묶음에 넣지 않는다. 대화 밖에서 이 이름이 오면(있어서는 안 된다) 등록 전이라 `UnknownPart`다.
 - 기본 부품(`primitives/`)은 오늘 화면의 고정 카드(기존 넷)가 쓰므로 첫 화면 묶음에 들어간다.
 
@@ -742,4 +742,4 @@ web/app/src/ui/
 | 2026-10-24 | v2 | 문서 리뷰 반영: `ui_result`의 `before` 꺼내기 표와 `undo_id` 조건(활동 하나·대상 하나), 앱 통로 `move_task` 확인(SP5 "늘 바로 적용" 바꿈), `todos_day`, 체크 줄 뜻은 카드마다, `activityIds` 읽기와 다시 연 대화의 확인 칸, `period_view` 규칙 하나와 서명, `outside` 이유 셋, `highlight_task_ids` 뜻 검사, 날짜 고르기 답에는 `ui_result` 없음, 날짜 고르기 대상 "시각 없는 열린 할 일", `send` 남는 위험, `registryNames()`, 도구 수는 상대 수로, 묶음 구분 유니언 두 단계, `UI_PARTS_PER_REPLY`, CSP 시험 이름 | 운영 앱 스레드 |
 | 2026-10-24 | v3 | G-BE1이 계획의 빈 곳 3·9·10을 옮김: `todo_rows.checkable` 기본값 `true`(5.3.5), 후보 날짜 범위는 BE-2 뜻 검사·정수 목록 `uniqueItems`·BE 전용 판정(10.1, 7.2) | SP3-4 BE 스레드 |
 | 2026-10-24 | v4 | G-A1이 계획의 빈 곳 1·2·5·12를 옮김: `CheckRow`의 `mark`(5.3.5), `parseMiniMd`가 돌려주는 줄 배열(5.3.2), `ui_choice` 질문은 마크다운 없는 `<p>`(6.1), `dangerouslySetInnerHTML` 금지는 시험으로(12장) | 운영 앱 스레드 |
-| 2026-10-24 | v5 | G-A2가 계획의 빈 곳 4·6·13을 옮김: `updated`의 날짜만 바뀐 줄(6.3), `checkBlock`은 `Block` 안에서(11.2), 대화 묶음은 표지 문자열로 찾음(11.7) | 운영 앱 스레드 |
+| 2026-10-24 | v5 | G-A2가 계획의 빈 곳 4·6·13을 옮김: `updated`의 날짜만 바뀐 줄(6.3), `checkBlock`은 `Block` 안에서(11.2), 대화 묶음은 표지 문자열로 찾음(11.7). 레지스트리 수 11·15와 등록 뒤에만 그림(11.2) | 운영 앱 스레드 |
