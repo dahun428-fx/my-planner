@@ -1,5 +1,6 @@
 import { UnknownPart } from "../components/UnknownPart";
 import { registerParts } from "../registry";
+import { DateChoice } from "./DateChoice";
 import type { PartProps } from "../types";
 
 /**
@@ -17,5 +18,5 @@ let registered = false;
 export function registerChatParts(): void {
   if (registered) return;
   registered = true;
-  registerParts({ ui_date_choice: Pending, ui_result: Pending, ui_period_list: Pending, ui_block: Pending }, CHAT_PARTS_MARKER);
+  registerParts({ ui_date_choice: DateChoice, ui_result: Pending, ui_period_list: Pending, ui_block: Pending }, CHAT_PARTS_MARKER);
 }

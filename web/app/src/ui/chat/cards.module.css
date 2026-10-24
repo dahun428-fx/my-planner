@@ -1,0 +1,69 @@
+/* SP6 6.2~6.4 and 7: the chat cards. Semantic tokens only (5.1). --hue only on ui_result's change
+   pill (.changeChip); ui_period_list's changed rows use CheckRow's own .highlight. Imported from
+   _app (11.3): the cards' JavaScript loads late, their CSS is in the first stylesheet. */
+
+/* The grey second line of a card: a count, "이미 정리된 할 일이에요". */
+.sub {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+
+/* ui_date_choice (6.2): the title 15 --text-2, then one wide 44px button per candidate. */
+.todoTitle {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-section);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.candidates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.candidateDay {
+  font-size: var(--size-section);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.candidateNote {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.candidate[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.candidate[aria-pressed="true"] .candidateNote {
+  color: var(--on-primary);
+}
+.candidate:disabled {
+  cursor: default;
+}
+.candidate:disabled:not([aria-pressed="true"]) {
+  opacity: 0.45;
+}
+.candidate:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

@@ -29,6 +29,7 @@ import "../components/TabBar";
 import "../styles/page.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
+import "../ui/chat/cards.module.css";
 
 // A crash inside the chat sheet takes down only the sheet, never the screen behind it.
 class ChatBoundary extends ReactComponent<{ onError(error: unknown): void; children: ReactNode }, { failed: boolean }> {
