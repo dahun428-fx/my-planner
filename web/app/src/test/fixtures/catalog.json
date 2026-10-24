@@ -1,0 +1,294 @@
+{
+  "version": "2026-10-24.2",
+  "components": {
+    "ui_todo_list": {
+      "origin": "brain",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "task_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Task Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "task_ids"
+        ],
+        "title": "TodoListProps",
+        "type": "object"
+      }
+    },
+    "ui_choice": {
+      "origin": "brain",
+      "schema": {
+        "$defs": {
+          "ChoiceOption": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "minLength": 1,
+                "title": "Id",
+                "type": "string"
+              },
+              "label": {
+                "minLength": 1,
+                "title": "Label",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ],
+            "title": "ChoiceOption",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/$defs/ChoiceOption"
+            },
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question",
+          "options"
+        ],
+        "title": "ChoiceProps",
+        "type": "object"
+      }
+    },
+    "ui_summary_card": {
+      "origin": "brain",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "maxLength": 120,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "lines"
+        ],
+        "title": "SummaryCardProps",
+        "type": "object"
+      }
+    },
+    "ui_todo_draft": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "task_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Task Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "task_ids"
+        ],
+        "title": "TodoDraftProps",
+        "type": "object"
+      }
+    },
+    "ui_condition_picker": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "ConditionPickerProps",
+        "type": "object"
+      }
+    },
+    "ui_ladder_picker": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "period": {
+            "minLength": 1,
+            "title": "Period",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "now",
+              "future"
+            ],
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "field"
+        ],
+        "title": "LadderPickerProps",
+        "type": "object"
+      }
+    },
+    "ui_area_scores": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "period": {
+            "minLength": 1,
+            "title": "Period",
+            "type": "string"
+          },
+          "previous": {
+            "additionalProperties": {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ]
+            },
+            "title": "Previous",
+            "type": "object"
+          }
+        },
+        "required": [
+          "period",
+          "previous"
+        ],
+        "title": "AreaScoresProps",
+        "type": "object"
+      }
+    },
+    "ui_milestone_draft": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "milestone_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Milestone Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "milestone_ids"
+        ],
+        "title": "MilestoneDraftProps",
+        "type": "object"
+      }
+    },
+    "ui_chapter_draft": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "chapter_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Chapter Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chapter_ids"
+        ],
+        "title": "ChapterDraftProps",
+        "type": "object"
+      }
+    },
+    "ui_confirm": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "confirm_token": {
+            "title": "Confirm Token",
+            "type": "string"
+          },
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          }
+        },
+        "required": [
+          "summary",
+          "confirm_token",
+          "action",
+          "args"
+        ],
+        "title": "ConfirmProps",
+        "type": "object"
+      }
+    }
+  }
+}

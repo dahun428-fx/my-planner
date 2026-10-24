@@ -129,3 +129,29 @@
   align-items: center;
   min-height: var(--control-h);
 }
+.block {
+  margin: 0 var(--pad) var(--gap);
+}
+.blockHeading {
+  margin: 0 0 0.5rem;
+  padding: 0 0.25rem;
+  font-size: var(--size-section);
+  font-weight: 600;
+  color: var(--text);
+}
+.blockItem + .blockItem {
+  margin-top: 0.5rem;
+}
+.pinned {
+  margin: 0 var(--pad) var(--gap);
+}
+.pinnedMark {
+  margin: 0 0.25rem 0.25rem;
+  text-align: right;
+  font-size: var(--size-meta);
+  color: var(--hue);
+}
+.pinnedBody {
+  border-radius: var(--radius-group);
+  overflow: hidden;
+}

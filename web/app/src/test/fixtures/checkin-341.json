@@ -1,0 +1,45 @@
+{
+  "id": 341,
+  "loop": "evening_checkin",
+  "cadence": "day",
+  "state": "pending",
+  "scheduled_for": "2026-10-24T09:00:00Z",
+  "sent_at": "2026-10-24T09:00:05Z",
+  "reply_until": "2026-10-24T09:00:00Z",
+  "answered_at": null,
+  "answered_via": null,
+  "delivered_via": [
+    "app"
+  ],
+  "conversation_ids": {
+    "app": null,
+    "telegram": null
+  },
+  "text": "저녁 체크인이에요. 오늘 하루는 어땠나요?",
+  "cards": [
+    {
+      "toolCallId": "h_draft_1",
+      "component": "ui_todo_draft",
+      "props": {
+        "task_ids": [
+          55,
+          56
+        ]
+      },
+      "data": null
+    },
+    {
+      "toolCallId": "h_confirm_1",
+      "component": "ui_confirm",
+      "props": {
+        "summary": "‘장보기’를 할 일에서 뺄까요?",
+        "confirm_token": "tok-abc-123",
+        "action": "drop_task",
+        "args": {
+          "id": 13
+        }
+      },
+      "data": null
+    }
+  ]
+}

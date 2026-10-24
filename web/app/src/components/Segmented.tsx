@@ -6,10 +6,11 @@ export interface SegmentedProps<T extends string> {
   value: T;
   onChange(v: T): void;
   ariaLabel: string;
+  disabled?: boolean;
 }
 
 // Segmented control as a radio group: one tab stop, arrow keys move the choice.
-export function Segmented<T extends string>({ options, value, onChange, ariaLabel }: SegmentedProps<T>) {
+export function Segmented<T extends string>({ options, value, onChange, ariaLabel, disabled }: SegmentedProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const index = Math.max(
     0,
@@ -38,6 +39,7 @@ export function Segmented<T extends string>({ options, value, onChange, ariaLabe
           aria-checked={o.value === value}
           tabIndex={i === index ? 0 : -1}
           className={styles.option}
+          disabled={disabled}
           onClick={() => onChange(o.value)}
           onKeyDown={onKeyDown}
         >

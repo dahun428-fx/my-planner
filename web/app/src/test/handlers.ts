@@ -1,5 +1,7 @@
 import { http, HttpResponse } from "msw";
 import health from "./fixtures/health.json";
+import catalog from "./fixtures/catalog.json";
+import checkin341 from "./fixtures/checkin-341.json";
 import safeModeHealth from "./fixtures/health-safe-mode.json";
 
 // BE base used by screen tests (fixture tailnet name, not a real host).
@@ -13,4 +15,9 @@ export const healthAnswers = {
   unreachable: () => http.get(`${BASE}/health`, () => HttpResponse.error()),
 };
 
-export const handlers = [http.get(`${BASE}/health`, () => HttpResponse.json(health))];
+// Defaults for what every screen asks on the side: the part catalog, and a check-in with no cards.
+export const handlers = [
+  http.get(`${BASE}/health`, () => HttpResponse.json(health)),
+  http.get(`${BASE}/ui/catalog`, () => HttpResponse.json(catalog)),
+  http.get(`${BASE}/checkins/:id`, () => HttpResponse.json({ ...checkin341, cards: [] })),
+];

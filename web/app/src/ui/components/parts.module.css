@@ -1,0 +1,266 @@
+/* One stylesheet for the screen parts (spec 7장): they look the same in chat, on Today and in a check-in. */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-group);
+  padding: 0.75rem var(--pad);
+  text-align: left;
+}
+.outlined {
+  border: 1px solid var(--border);
+}
+.confirm {
+  border: 1.5px solid var(--hue);
+}
+.title {
+  margin: 0 0 0.25rem;
+  font-size: var(--size-section);
+  font-weight: 600;
+  color: var(--text);
+}
+.hint,
+.reason {
+  margin: 0 0 0.5rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.reason {
+  margin: 0.5rem 0 0;
+}
+.text {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text);
+  line-height: 1.45;
+}
+.lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--size-section);
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--control-h);
+  border-top: 1px solid var(--rule);
+}
+.row:first-child {
+  border-top: 0;
+}
+.check {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.check:disabled {
+  cursor: default;
+}
+.circle {
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--control);
+  background: transparent;
+}
+.check[aria-checked="true"] .circle {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.rowText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-body);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.rowText.done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.rowMeta {
+  display: block;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+}
+.pill {
+  position: relative;
+  min-width: 2.75rem;
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  cursor: pointer;
+}
+/* 9장: looks 36px, hit area 44px. */
+.pill::after {
+  content: "";
+  position: absolute;
+  inset: -0.25rem 0;
+}
+.pill[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.pill:disabled {
+  cursor: default;
+}
+.pill:disabled:not([aria-pressed="true"]) {
+  opacity: 0.45;
+}
+.ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.note {
+  width: 100%;
+  min-height: var(--control-h);
+  margin-top: 0.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--size-body);
+  color: var(--text);
+}
+.note:disabled {
+  opacity: 0.6;
+}
+.buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.button {
+  flex: 1;
+  min-height: var(--control-h);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.button.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.more {
+  position: relative;
+  min-height: var(--small-control-h);
+  min-width: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.more::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
+}
+.areaRow {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--rule);
+}
+.areaRow:first-child {
+  border-top: 0;
+}
+.areaHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+  font-size: var(--size-body);
+  color: var(--text);
+}
+.previous {
+  font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.draftRow {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--rule);
+}
+.draftRow:first-child {
+  border-top: 0;
+}
+.draftTitle {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text);
+}
+.draftWhen {
+  margin: 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.unknown {
+  padding: 0.75rem var(--pad);
+  border-radius: var(--radius-group);
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: var(--size-meta);
+}
+.unknownText {
+  margin: 0.25rem 0 0;
+  font-size: var(--size-body);
+  color: var(--text-2);
+}
+.gone {
+  margin: 0;
+  font-size: var(--size-body);
+  color: var(--text-2);
+}
+.check:focus-visible,
+.pill:focus-visible,
+.button:focus-visible,
+.more:focus-visible,
+.note:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
