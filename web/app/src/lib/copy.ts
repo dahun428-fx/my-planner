@@ -317,6 +317,22 @@ export const copy = {
     period: (from: string, to: string | null) => (to ? `${from} ~ ${to}` : `${from} ~ 지금`),
     confirmGone: "이미 지나간 확인이에요",
     checkLabel: (title: string) => `${title} 체크`,
+    // SP6 appendix A: the ten parts and CheckRow (Dahun to confirm). The rest of appendix A is G-A2.
+    weekdays: ["일", "월", "화", "수", "목", "금", "토"],
+    dayLabel: (m: number, d: number, w: string) => `${m}월 ${d}일 (${w})`,
+    today: "오늘",
+    tomorrow: "내일",
+    yesterday: "어제",
+    noTodos: "보여 줄 할 일이 없어요",
+    dropped: "뺌",
+    changedBySecretary: "비서가 바꿈",
+    trendAria: {
+      up: (t: string) => `지난번보다 올라감 ${t}`,
+      down: (t: string) => `지난번보다 내려감 ${t}`,
+      same: "지난번과 같음",
+    },
+    progressAria: (l: string, n: number, m: number) => `${l} ${n}/${m}`,
+    tagsLabel: "태그",
   },
 
   // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,

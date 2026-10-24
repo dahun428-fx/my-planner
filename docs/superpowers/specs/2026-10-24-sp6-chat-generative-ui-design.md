@@ -154,7 +154,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 {"type": "text", "md": "이번 주는 **화요일**이 가장 비어 있어요.\n수요일은 일정이 둘이에요."}
 ```
 
-- 마크다운은 **두 가지만** 읽는다: `**…**` → `<strong>`(600), `\n` → 줄바꿈(`<br>`). 짝이 맞지 않는 `**`, `#`, `[]()`, `<…>`, `` ` ``, `*`, `_`는 글자 그대로 보인다. 파서는 앱의 순수 함수 `parseMiniMd(md): Array<{text, strong}>`(줄 단위)이고 정규식 한 번으로 끝난다.
+- 마크다운은 **두 가지만** 읽는다: `**…**` → `<strong>`(600), `\n` → 줄바꿈(`<br>`). 짝이 맞지 않는 `**`, `#`, `[]()`, `<…>`, `` ` ``, `*`, `_`는 글자 그대로 보인다. 파서는 앱의 순수 함수 `parseMiniMd(md): MiniLine[]`이고 `MiniLine = {text, strong}[]`(줄 하나의 조각들)이다. `\n`으로 줄을 나누고 줄마다 정규식 `/\*\*([^*\n]+?)\*\*/g` 한 번으로 끝난다.
 - 링크는 없다(12장). 주소처럼 보이는 글도 그냥 글이다.
 
 #### 5.3.3 `stat`
@@ -191,7 +191,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 - `status`: `open` → 체크할 수 있음(`checkable`이 `false`면 원 대신 점). `done` → 회색 취소선, 원은 채움, 꺼짐. `dropped` → 회색 취소선, 원 없음, 보조 글 "뺌". `draft` → 나오지 않는다(`drafts=False`, 10.2).
 - 누르면 `/actions complete_task {id}`(8장). 다시 열기는 없다(지금 `ui_todo_list`와 같다).
 - `data`가 없으면(옛 BE) "할 일 {n}개" 한 줄. `data.todos`가 비면(모두 소프트 삭제) "보여 줄 할 일이 없어요".
-- **다시 쓰기**: `CheckRow`는 `ui/primitives/CheckRow.tsx`에서 내보내는 하나의 컴포넌트다. 받는 값은 `{title, meta?, checked, disabled, struck?, highlight?, onToggle}`이고 할 일을 모른다. `ui_todo_list`, `ui_todo_draft`, `todo_rows`, `ui_period_list`가 이것을 쓰고, 습관 기록 스레드의 `ui_habit_check` 줄도 `meta`("이번 주 n번 · 목표 m번")만 바꿔 같은 것을 쓴다.
+- **다시 쓰기**: `CheckRow`는 `ui/primitives/CheckRow.tsx`에서 내보내는 하나의 컴포넌트다. 받는 값은 `{title, meta?, checked, disabled, struck?, highlight?, mark?, onToggle}`이고 할 일을 모른다. `mark`는 `"circle"`(기본, 44px 체크 원) | `"dot"`(`checkable=false`의 점) | `"none"`(`dropped`, 원 없음)이다. 습관 줄은 기본값만 쓴다. `ui_todo_list`, `ui_todo_draft`, `todo_rows`, `ui_period_list`가 이것을 쓰고, 습관 기록 스레드의 `ui_habit_check` 줄도 `meta`("이번 주 n번 · 목표 m번")만 바꿔 같은 것을 쓴다.
 - 접근성: 체크 원은 `role="checkbox"`, `aria-checked`, `aria-label="{제목} 체크"`(기존 `copy.parts.checkLabel`). `highlight`이면 줄 끝에 눈에 안 보이는 글 "비서가 바꿈".
 
 #### 5.3.6 `tags`
@@ -251,7 +251,7 @@ mcp__planner__ui_result {task_ids} ─▶ call_tool
 |---|---|---|
 | `ui_todo_list` | 카드 제목 + `CheckRow` 줄 (6줄 넘으면 "n개 더") | 없음. 컴포넌트 안쪽만 `CheckRow`로 |
 | `ui_todo_draft` | 테두리 카드 "할 일 초안" + 안내 + `CheckRow` + 버튼 줄 | 없음 |
-| `ui_choice` | `text`(질문) + 버튼 줄(`send`와 같은 동작) | 없음 |
+| `ui_choice` | `text` 부품과 같은 글 모양의 질문(`<p>`, 마크다운을 읽지 않아 `**`도 글자 그대로) + 버튼 줄(`send`와 같은 동작) | 없음 |
 | `ui_summary_card` | 카드 제목 + `bullets` 모양 줄 | 없음 |
 
 - 카탈로그 스키마, BE 도구, 하네스는 그대로다. 앱 컴포넌트가 같은 부품 컴포넌트로 그려 모양을 맞춘다. SP5 13장 부품 시험이 그대로 통과해야 한다(보이는 글, 누름의 `/actions` 본문이 같다). 화면 차이는 스크린샷으로 확인한다(13장).
@@ -619,7 +619,7 @@ web/app/src/ui/
 
 | 위험 | 막는 것 |
 |---|---|
-| 두뇌가 화면 코드나 HTML을 넣음 | 화면은 앱에 미리 만든 컴포넌트뿐이다. props는 JSON 값이고 모든 글은 React 글 마디로 들어간다. `dangerouslySetInnerHTML`, `eval`, 동적 `import()`에 props를 쓰지 않는다(`lint`가 `dangerouslySetInnerHTML`을 금지, 13장) |
+| 두뇌가 화면 코드나 HTML을 넣음 | 화면은 앱에 미리 만든 컴포넌트뿐이다. props는 JSON 값이고 모든 글은 React 글 마디로 들어간다. `dangerouslySetInnerHTML`, `eval`, 동적 `import()`에 props를 쓰지 않는다(`web/app`에는 ESLint가 없어 `ui/primitives/primitives.css.test.ts`의 `noInlineStyle` 시험이 `src/ui/**/*.tsx`에서 `style={`와 `dangerouslySetInnerHTML`을 찾는다. `components/Markdown.tsx`는 이 검사 밖이고 원시 HTML을 끈다) |
 | 마크다운으로 링크·그림·HTML | `parseMiniMd`는 `**`와 `\n`만 읽는다. 나머지는 글자 그대로 |
 | 링크 주소(`javascript:`, 외부 주소) | props 어디에도 주소가 없다. 화면 열기는 `screen` 열거값 6개를 앱이 주소로 바꾼다. 그래서 주소 체계 허용 목록이 필요 없다 |
 | 버튼이 큰 일을 함 | 8장 다섯 가지만. 앱은 버튼 동작을 `kind` 열거값으로만 받고 `ActionName`을 props에서 읽지 않는다 |
@@ -741,3 +741,4 @@ web/app/src/ui/
 | 2026-10-24 | v1 | 첫 초안: Dahun 결정 G1~G7, 기본 부품 10개, 완성 카드 셋 추가, 조립 카드, 버튼 허용 목록, 두뇌 규칙, BE·앱 변경, 티켓 다섯 | 운영 앱 스레드 |
 | 2026-10-24 | v2 | 문서 리뷰 반영: `ui_result`의 `before` 꺼내기 표와 `undo_id` 조건(활동 하나·대상 하나), 앱 통로 `move_task` 확인(SP5 "늘 바로 적용" 바꿈), `todos_day`, 체크 줄 뜻은 카드마다, `activityIds` 읽기와 다시 연 대화의 확인 칸, `period_view` 규칙 하나와 서명, `outside` 이유 셋, `highlight_task_ids` 뜻 검사, 날짜 고르기 답에는 `ui_result` 없음, 날짜 고르기 대상 "시각 없는 열린 할 일", `send` 남는 위험, `registryNames()`, 도구 수는 상대 수로, 묶음 구분 유니언 두 단계, `UI_PARTS_PER_REPLY`, CSP 시험 이름 | 운영 앱 스레드 |
 | 2026-10-24 | v3 | G-BE1이 계획의 빈 곳 3·9·10을 옮김: `todo_rows.checkable` 기본값 `true`(5.3.5), 후보 날짜 범위는 BE-2 뜻 검사·정수 목록 `uniqueItems`·BE 전용 판정(10.1, 7.2) | SP3-4 BE 스레드 |
+| 2026-10-24 | v4 | G-A1이 계획의 빈 곳 1·2·5·12를 옮김: `CheckRow`의 `mark`(5.3.5), `parseMiniMd`가 돌려주는 줄 배열(5.3.2), `ui_choice` 질문은 마크다운 없는 `<p>`(6.1), `dangerouslySetInnerHTML` 금지는 시험으로(12장) | 운영 앱 스레드 |

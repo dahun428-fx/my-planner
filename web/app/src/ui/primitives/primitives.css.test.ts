@@ -1,0 +1,80 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { describe, expect, it } from "vitest";
+
+// SP6 Global Constraints and Review Focus 2, read from the stylesheet itself.
+const css = readFileSync(join(__dirname, "primitives.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+
+/** Every plain rule block (selector + body) outside @media, and each @media's own blocks. */
+function rules(text: string): { selector: string; body: string }[] {
+  return [...text.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
+}
+function media(query: string): string {
+  const at = css.indexOf(`@media ${query}`);
+  if (at < 0) return "";
+  const open = css.indexOf("{", at);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}" && --depth === 0) return css.slice(open + 1, i);
+  }
+  return "";
+}
+
+function tsxFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return tsxFiles(path);
+    return name.endsWith(".tsx") && !/\.test\./.test(name) ? [path] : [];
+  });
+}
+
+describe("primitives.module.css", () => {
+  it("has no hex colours", () => {
+    expect(css.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
+  });
+
+  it("uses --hue only for .highlight", () => {
+    const withHue = rules(css).filter((r) => r.body.includes("var(--hue)"));
+    expect(withHue.length).toBeGreaterThan(0);
+    for (const r of withHue) expect(r.selector.split(",").every((s) => /\.highlight\b/.test(s))).toBe(true);
+  });
+
+  it("styles <progress> without inline width", () => {
+    const bar = rules(css).find((r) => r.selector === ".bar");
+    expect(bar?.body).toMatch(/appearance:\s*none/);
+    expect(bar?.body).toMatch(/height:\s*6px/);
+    for (const pseudo of ["::-webkit-progress-bar", "::-webkit-progress-value", "::-moz-progress-bar"]) {
+      expect(rules(css).some((r) => r.selector === `.bar${pseudo}`), pseudo).toBe(true);
+    }
+    // Track --raised, fill --primary (5.3.4); never --hue.
+    expect(rules(css).find((r) => r.selector === ".bar::-webkit-progress-bar")?.body).toMatch(/background(-color)?:\s*var\(--raised\)/);
+    expect(rules(css).find((r) => r.selector === ".bar::-webkit-progress-value")?.body).toMatch(/background(-color)?:\s*var\(--primary\)/);
+    expect(rules(css).find((r) => r.selector === ".bar::-moz-progress-bar")?.body).toMatch(/background(-color)?:\s*var\(--primary\)/);
+  });
+
+  it("a row group is one column under 340px", () => {
+    const narrow = rules(media("(max-width: 340px)"));
+    const row = narrow.find((r) => r.selector === ".row");
+    expect(row?.body).toMatch(/grid-template-columns:\s*1fr/);
+    expect(row?.body).toMatch(/grid-auto-flow:\s*row/);
+  });
+
+  it("a read-only card draws the round mark", () => {
+    const round = rules(css).find((r) => r.selector === "[data-read-only] .circle");
+    expect(round?.body).toMatch(/border-radius:\s*var\(--radius-pill\)/);
+  });
+
+  it("has no 700 weight (screen titles only)", () => {
+    expect(css).not.toMatch(/font-weight:\s*(700|bold)/);
+  });
+
+  it("noInlineStyle: no style= or dangerouslySetInnerHTML in src/ui", () => {
+    const ui = join(__dirname, "..");
+    const offenders = tsxFiles(ui).flatMap((file) => {
+      const text = readFileSync(file, "utf8");
+      return /\bstyle=\{|dangerouslySetInnerHTML/.test(text) ? [relative(ui, file)] : [];
+    });
+    expect(offenders).toEqual([]);
+  });
+});

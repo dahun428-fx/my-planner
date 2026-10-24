@@ -103,6 +103,13 @@ describe("tokens contrast", () => {
     });
   }
 
+  // SP6 5.3.4: the progress bar's fill against its track is a graphic, 3:1 (WCAG 1.4.11). Every
+  // palette is already here, light and dark, so the preset sets are checked now, not only in G-A3.
+  it.each(Object.keys(sets))("progress fill vs track: %s --primary on --raised is at least 3:1", (set) => {
+    const t = sets[set];
+    expect(ratio(t["--primary"], t["--raised"])).toBeGreaterThanOrEqual(3);
+  });
+
   it("theme overrides repeat the light and dark values", () => {
     expect(colorsOf(block(':root[data-theme="light"]'))).toEqual(light);
     expect(colorsOf(block(':root[data-theme="dark"]'))).toEqual(dark);
