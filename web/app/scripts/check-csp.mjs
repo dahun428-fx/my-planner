@@ -63,11 +63,11 @@ export function checkHtml(html) {
 
 /** The pictogram sprite (pages/_document) is drawn once, as the first element of <body>; null when it is. */
 export function checkSprite(html) {
-  const sprites = [...html.matchAll(/class\s*=\s*["']?pictogram-sprite\b/gi)].length;
+  const sprites = [...html.matchAll(/class\s*=\s*["']?pictogram-sprite(?![\w-])/gi)].length;
   if (sprites !== 1) return `has ${sprites} sprites`;
   const body = html.match(/<body\b[^>]*>\s*/i);
   const rest = body ? html.slice(body.index + body[0].length) : "";
-  return /^<svg\b[^>]*class\s*=\s*["']?pictogram-sprite\b/i.test(rest) ? null : "is not the first child of <body>";
+  return /^<svg\b[^>]*class\s*=\s*["']?pictogram-sprite(?![\w-])/i.test(rest) ? null : "is not the first child of <body>";
 }
 
 export function checkDir(dir) {
