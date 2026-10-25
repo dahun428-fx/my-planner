@@ -580,8 +580,29 @@ class RecentXp(_Model):
     amount: int
 
 
+class Moment(_Model):
+    """이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음)."""
+
+    id: int
+    date: str
+    text: str
+    area: AreaName | None
+    sources: list[Literal["task", "habit", "condition", "chat"]]
+    hidden: bool
+
+
+class MomentsList(_Model):
+    """`GET /moments` (SP8 6.5). `to` = `before`의 전날(없으면 오늘), `from` = `to − (days − 1)`."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    items: list[Moment]
+
+
 class Status(_Model):
-    """`GET /status` (6.3.6)."""
+    """`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5."""
 
     level: int
     xp_total: int
@@ -593,6 +614,8 @@ class Status(_Model):
     daily_quests: list[DailyQuest]
     titles: list[StatusTitle]
     recent_xp: list[RecentXp]
+    moments: list[Moment]
+    moments_hidden: int
 
 
 class UiComponent(_Model):
@@ -883,6 +906,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "Drafts": Drafts,
     "Curve": Curve,
     "Status": Status,
+    "Moment": Moment,
+    "MomentsList": MomentsList,
     "CheckinList": CheckinList,
     "CheckinSummary": CheckinSummary,
     "CheckinDetail": CheckinDetail,

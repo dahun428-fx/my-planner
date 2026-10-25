@@ -897,3 +897,48 @@ async def test_undo_check_of_deleted_habit_superseded(tmp_path):
     assert restored[0] == 409 and restored[1]["error"]["code"] == "superseded"
     assert rechecked[0] == 409 and rechecked[1]["error"]["code"] == "superseded"
     assert checks == []
+
+
+# --- 이룬 순간 (SP8 6.5: `moment_hidden`, `moment_unhidden`) ---
+
+MOMENT_TEXT = "꾸며 낸 순간: 책 한 장을 읽었어요"
+
+
+def _seed_moment(env):
+    (m,) = env.parts.moments.save_day(SAT_1300.date(), [(MOMENT_TEXT, "learning", ["chat"])], env.clock.now())
+    return m.id
+
+
+async def test_undo_hide_after_delete_superseded(tmp_path):
+    """Review Focus 4: 숨긴 순간을 지운 뒤 알림 줄의 되돌리기(24시간 안) → U3 `409 superseded`, 행은 다시 생기지 않는다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        mid = _seed_moment(env)
+        hidden = await _apply(env, "hide_moment", {"id": mid})
+        env.clock.advance(minutes=2)
+        _, ask = await env.action("delete_moment", {"id": mid})
+        status, deleted = await env.action("delete_moment", {"id": mid}, confirm_token=ask["confirm_token"])
+        env.clock.advance(minutes=2)
+        code, body = await undo(env, hidden["undo_id"])
+        rows = env.conn.execute("SELECT COUNT(*) FROM status_moments").fetchone()[0]
+        original = _row(env, hidden["activity_id"])
+
+    assert (status, deleted["status"]) == (200, "applied")
+    assert (code, body["error"]["code"]) == (409, "superseded")
+    assert rows == 0
+    assert original["undone_at"] is None
+
+
+async def test_hide_and_unhide_block_each_other_u3(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        mid = _seed_moment(env)
+        hidden = await _apply(env, "hide_moment", {"id": mid})
+        env.clock.advance(minutes=1)
+        shown = await _apply(env, "unhide_moment", {"id": mid})
+        env.clock.advance(minutes=1)
+        code, body = await undo(env, hidden["undo_id"])  # 그 뒤 다시 보이기가 같은 대상을 바꿨다
+        ok_code, ok = await undo(env, shown["undo_id"])  # 나중 것은 되돌릴 수 있다: 다시 숨김
+        hidden_at = env.conn.execute("SELECT hidden_at FROM status_moments WHERE id = ?", (mid,)).fetchone()[0]
+
+    assert (code, body["error"]["code"]) == (409, "superseded")
+    assert (ok_code, ok["status"]) == (200, "undone")
+    assert hidden_at is not None

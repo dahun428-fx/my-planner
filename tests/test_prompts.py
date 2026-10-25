@@ -68,3 +68,34 @@ def test_moments_prompt_rules():
     assert full == f"{text}\n\n{line_before}\n{block}"
     assert "## 할 일을 다루는 방식" not in full and "## 말하는 방식" not in full
     assert _system().splitlines()[0] not in full
+
+
+P15 = (
+    "15. 이룬 순간은 비서가 하루 끝에 조용히 남기는 기록이다. 사용자가 지우고 싶어 하면 앱 상태창에서 밀어서 숨기거나 "
+    "지울 수 있다고 안내한다. 대화에서 직접 고치지 않는다."
+)
+P16 = (
+    "16. 보너스와 이룬 순간은 사용자가 물을 때 말한다. 보너스가 줄었다거나, 순간이 없던 날을 세어 말하지 않는다. "
+    "텔레그램 대화에서는 순간의 글을 받지 않으므로 개수만 말하고 \"운영 앱 상태창에서 볼 수 있어요\"라고 안내한다."
+)
+ASK_LINE = "순간 하나를 곡선에 남길지 묻는 것은 앱 대화에서 `get_status`로 순간의 글을 받았을 때만 한다"
+REVIEW_LINE = (
+    "앞머리의 이룬 순간은 날짜와 개수만 보인다. 회고에서 순간의 글을 짐작해 말하거나 곡선에 남기자고 묻지 않는다. "
+    "사용자가 앱에서 이어 물으면 그때 `get_status`로 본다."
+)
+
+
+def test_system_prompt_has_principles_15_16():
+    """SP8 10.3 원칙 15·16 그대로, 그리고 "곡선에 남길까요?"는 앱 대화의 `get_status`에서만(계획 결정 10)."""
+    text = _system()
+    section = text.split("## 이룬 순간\n", 1)[1].split("\n## ", 1)[0]
+    assert f"\n{P15}\n" in f"\n{section}"
+    assert f"\n{P16}\n" in f"\n{section}"
+    assert ASK_LINE in section
+
+
+def test_review_week_moments_counts_only_no_ask():
+    text = prompts.load("review_week.md")
+    assert REVIEW_LINE in text
+    assert "날짜와 개수" in text
+    assert "곡선에 남길까요" not in text

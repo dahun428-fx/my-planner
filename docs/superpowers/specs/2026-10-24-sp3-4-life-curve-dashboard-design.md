@@ -471,6 +471,7 @@ CREATE TABLE status_titles (
 | GET | `/conditions?from&to` | 대시보드, 운영 앱 | 없음 | 6.3.4 |
 | GET | `/curve?zoom&from&to&include_sensitive` | 대시보드, 운영 앱 | 없음 | 6.3.5 |
 | GET | `/status` | 대시보드, 운영 앱 | 없음 | 6.3.6 |
+| GET | `/moments?before&days&include_hidden` | 운영 앱용 | 없음 | SP8 6.5 |
 | GET | `/priorities?cadence&period` | 운영 앱용 | 없음 | 6.3.7 |
 | GET | `/drafts` | 운영 앱용 | 없음 | 6.3.8 |
 | GET | `/schema` | 운영 앱(빌드 때) | 없음 | 6.4 |
@@ -763,6 +764,9 @@ data: [DONE]
 | `unpin_card` | id | low |
 | `reorder_cards` | ids (새 순서) | low |
 | `decline_confirm` | confirm_token | low, 되돌릴 수 없음. 확인 카드의 "그대로 두기". 아무것도 바꾸지 않고 토큰을 `declined`로 닫는다 |
+| `hide_moment` | id (이룬 순간, SP8 6.4) | low. 이미 숨겼으면 `{"already": true}`. 없는 순간은 `404 not_found`(정수가 아닌 `id`도 같은 `404`, 세 순간 동작 모두) |
+| `unhide_moment` | id | low. 숨기지 않은 순간은 `{"already": true}`. 없는 순간은 `404 not_found` |
+| `delete_moment` | id | `confirm`(앱: "이 순간을 지울까요? 되돌릴 수 없어요."), 되돌릴 수 없음(행을 지운다). 없는 순간은 `404 not_found` |
 
 `propose_tasks`, `add_milestone`, `propose_chapter`, `grant_xp`는 없다. 제안과 경험치 부여는 비서(두뇌)의 일이다.
 
@@ -773,6 +777,7 @@ data: [DONE]
 | 적용 | 200 | `{"status": "applied", "activity_id": 913, "undo_id": 913, "result": {…도구 결과}, "confirmation": "✓ 완료: 운동", "xp": {"gained": 10, "level_up": null}}` |
 | 확인 필요 | 200 | `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "이번 분기 우선순위 3개를 바꿔요", "expires_at": "…"}`. 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다. 토큰은 `pending_confirms`에 두고 10분 유효하다. 회차 차례에서 생긴 토큰(10.1)도 같은 길로 확인한다: `{"action": <토큰의 action>, "args": <토큰의 args>, "confirm_token": …}`. 이미 쓰였거나 만료된 토큰은 `409 conflict` |
 | 거절 | 422 | `{"status": "rejected", "activity_id": null, "error": {"code": "rejected", "message": "<도구 오류 문구>"}}` |
+| 없는 대상 | 404 | `{"error": {"code": "not_found", "message": "없는 순간이에요."}}`. 도구 결과에 `error_code: "not_found"`가 있을 때만(SP8 6.4, 이룬 순간 동작). 그 밖의 도구 오류는 위의 422 |
 
 - `needs_confirm`은 `/actions`에서 **앱 통로 요청에만** 적용한다. 텔레그램 버튼과 `scheduler`는 SP1처럼 바로 적용한다(누름이 곧 승인이다).
 - `undo_id`는 되돌릴 수 있을 때만 있고, 값은 `activity_id`와 같다(따로 만들지 않는다). `risk = confirm`으로 적용한 변경은 `undo_id`가 없다.
@@ -810,6 +815,10 @@ data: [DONE]
 | `condition_recorded`, `ladder_recorded`, `area_scores_recorded` | 이전 행으로, 없었으면 행 삭제 |
 | `milestones_confirmed`, `chapters_confirmed` | `draft`로, `draft_since` = 되돌린 시각(3일을 다시 센다. 오래된 사건의 확정을 되돌려도 다음 날 사라지지 않는다). 칭호도 지운다(칭호는 원장이 아니다) |
 | `card_pinned`, `card_unpinned`, `cards_reordered` | 반대로 |
+| `moment_hidden` | `hidden_at = NULL`(다시 보임). 그 뒤 같은 순간(`moment:<id>`)을 다시 보이거나 지웠으면 U3 `409 superseded`(SP8 6.5) |
+| `moment_unhidden` | 이전 `hidden_at`으로(다시 숨김). U3은 위와 같다 |
+| `moment_deleted` | 되돌릴 수 없음(`422 not_undoable`, 행을 지웠다) |
+| `moments_saved` | 되돌릴 수 없음(`422 not_undoable`, 하루 끝 작업. 숨기기·지우기로 고친다) |
 
 응답: `200 {"status": "undone", "activity_id": 920, "undone": 913, "confirmation": "↩ 되돌림: 운동 완료"}`.
 
@@ -956,7 +965,7 @@ SP1 5.3 표에 통로를 더한 것이다. 위에서부터 처음 맞는 규칙�
 4. 같은 통로의 30분 이내 `chat` 대화.
 5. 새 `chat` 대화(이 통로).
 
-**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다.
+**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다. **예외(SP8 6.7)**: 원래 대화가 앱 쪽이고 새 대화가 텔레그램 쪽이면 가르지 않고 원래 대화의 원문도 붙이지 않는다(회차 본문과 이 대화의 원문만). 앱 대화의 `get_status`가 준 이룬 순간의 글이 텔레그램 통로 두뇌로 넘어가지 않게 한다.
 
 ### 7.3 회차 전달과 하루 3회 상한
 

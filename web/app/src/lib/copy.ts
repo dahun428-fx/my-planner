@@ -110,6 +110,20 @@ export const copy = {
         .filter(Boolean)
         .join(" · ")}`,
     recentAreasEmpty: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.",
+    // 10.2 moments block, appendix A (verbatim).
+    momentsHeading: "이룬 순간",
+    momentsEmpty: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.",
+    hiddenGroup: (n: number) => `숨긴 순간 ${n}개`,
+    older: "지난 순간 더 보기",
+    hide: "숨기기",
+    delete: "지우기",
+    unhide: "다시 보이기",
+    more: "더 보기",
+    hidden: "숨겼어요",
+    unhidden: "다시 보여요",
+    deleteAsk: "이 순간을 지울까요? 되돌릴 수 없어요.",
+    deleteGo: "지우기",
+    deleteKeep: "그대로 두기",
   },
 
   status: {
@@ -556,6 +570,14 @@ export const copy = {
 } as const;
 
 export type Copy = typeof copy;
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** "10월 24일 (토)": the date head over a day's moments (SP8 appendix A). `date` is a calendar day, "YYYY-MM-DD". */
+export function momentDay(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return `${m}월 ${d}일 (${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+}
 
 /** The grey line at the right of a habit row (SP7 6.1). The app works out "met"; it earns nothing. */
 export function habitMeta(h: Pick<Habit, "kind" | "target_per_week" | "week_count">): string {

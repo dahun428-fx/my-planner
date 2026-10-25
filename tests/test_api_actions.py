@@ -6,6 +6,7 @@ from be_env import BeEnv
 from test_dispatcher_messages import kst
 
 from my_planner.api.models import schema_bundle
+from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
 from my_planner.tools.actions import ACTIONS
 
@@ -48,13 +49,14 @@ async def test_complete_task_applied_shape(tmp_path):
 CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
-def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None)):
+def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
     m1, m2, h1, h2 = curve
     hb, hc = habits  # 습관 둘(체크 안 함, 오늘 체크함)
     mo, mp, mu = memos  # 메모 셋(고정 안 함, 고정함은 `mp`), `mu`는 `updated_at`
+    mv, mh, md = moments  # 이룬 순간 셋(보임, 숨김, 지울 것)
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -89,6 +91,10 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "pin_memo": {"id": mo},
         "unpin_memo": {"id": mp},
         "delete_memo": {"id": mo},
+        # 이룬 순간(SP8 6.4). 지우기는 앱에서 늘 확인을 받으므로 토큰을 따로 만든다
+        "hide_moment": {"id": mv},
+        "unhide_moment": {"id": mh},
+        "delete_moment": {"id": md},
     }
 
 
@@ -112,15 +118,23 @@ async def test_every_public_action_applies(tmp_path, action):
         ms = env.parts.memos
         mo, mp = (ms.create(t, None, "user", env.clock.now()) for t in ("꾸민 메모", "꾸민 메모 둘"))
         ms.pin(mp.id, env.clock.now())
-        cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()))
+        mv, mh, md = (m.id for m in env.parts.moments.save_day(
+            env.parts.tools.today(), [(f"꾸민 순간 {i}", None, ["chat"]) for i in (1, 2, 3)], env.clock.now()))
+        with transaction(env.conn):
+            env.parts.moments.hide(mh, env.clock.now())
+        cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()), (mv, mh, md))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
+        token = None
+        if action == "delete_moment":
+            _, ask = await env.action(action, args)
+            token = ask["confirm_token"]
         if action == "decline_confirm":
             await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [a]})
             _, nc = await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [b]})
             args = {"confirm_token": nc["confirm_token"]}
         before = len(env.activity())
-        status, body = await env.action(action, args)
+        status, body = await env.action(action, args, confirm_token=token)
         after = env.activity()
 
     assert status == 200, body

@@ -36,6 +36,8 @@ from my_planner.harness.context import (
     build_notices,
     build_preamble,
     habit_week_block,
+    moments_week_block,
+    recent_areas_block,
 )
 from my_planner.harness.redact import MASK, redact
 from my_planner.harness.review_steps import (
@@ -54,6 +56,7 @@ from my_planner.harness.stream import (
 )
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
+from my_planner.status.snapshot import status_snapshot
 from my_planner.status.xp import (
     LABEL_CHECKIN_REPLY,
     LABEL_REVIEW_WEEK,
@@ -881,7 +884,10 @@ class Dispatcher:
             # 갈라 연 회차 대화의 첫 호출: 원래 대화의 세션을 `fork_session`으로 갈라 이어 간다(7.2, S11)
             session_id, fork = conv.session_id, False
             origin_text = self._fork_origin_text(conv)
-            if session_id is None and conv.forked_from is not None and conv.id not in self._no_fork:
+            if (
+                session_id is None and conv.forked_from is not None and conv.id not in self._no_fork
+                and not self._from_app_side(conv)
+            ):
                 origin = self.convs.get(conv.forked_from)
                 if origin is not None and origin.session_id is not None:
                     session_id, fork = origin.session_id, True
@@ -1079,10 +1085,19 @@ class Dispatcher:
         갈라 연 대화면 이 대화의 최근 것을 먼저 채우고, 남는 자리를 원래 대화의 최근 것으로 앞에 채운다(합쳐 20개).
         """
         own = self.transcripts.recent_entries(conv.id, HISTORY_LINES, skip_last=skip_last)
-        if conv.forked_from is None:
+        if conv.forked_from is None or self._from_app_side(conv):
             return "\n".join(own)
         origin = self.transcripts.recent_entries(conv.forked_from, HISTORY_LINES - len(own))
         return "\n".join([*origin, *own])
+
+    def _from_app_side(self, conv: Conversation) -> bool:
+        """텔레그램 쪽 회차 대화를 앱 쪽 회차 대화에서 갈라 열었다(SP8 6.7, 11장). 앱 대화의 `get_status`는 순간의 글을
+        주므로 그 세션을 갈라 잇지 않고(`fork_session` 없음) 원래 대화의 원문도 붙이지 않는다. 회차 본문(`## 회차 메시지`,
+        회차 차례는 순간을 개수로만 본다)과 이 대화의 원문만으로 시작한다. 텔레그램 → 앱 방향은 그대로 갈라 잇는다."""
+        if conv.channel != "telegram" or conv.forked_from is None:
+            return False
+        origin = self.convs.get(conv.forked_from)
+        return origin is not None and origin.channel == "app"
 
     def _fork_origin_text(self, conv: Conversation) -> str:
         """갈라 연 회차 대화가 새 세션으로 시작할 때 앞에 붙이는 원래 회차 본문(`## 회차 메시지`, 7.2)."""
@@ -1545,6 +1560,7 @@ class Dispatcher:
                 habit_day=habit_date,
             ),
             self._habit_week_block(run, merged),
+            self._review_records_blocks(run, merged),
             _condition_buttons_note(ask),
             _habit_buttons_note(habit_date),
             self._review_week_note(run, merged),
@@ -1561,6 +1577,25 @@ class Dispatcher:
             return ""
         s = self.settings
         return habit_week_block(habits, logical_date(review.scheduled_for, s.timezone, s.day_boundary))
+
+    def _review_records_blocks(self, run: Run, merged: list[Run]) -> str:
+        """주간 회고 회차에만 `## 이번 주 이룬 순간`(날짜와 개수만, 어느 통로든: 계획 결정 10)과 `## 요즘 손이 간 영역`
+        (SP8 10.3). 전달 통로(`delivery.effective()`)는 보지 않는다."""
+        review = _review_of(run, merged)
+        t = self.tools
+        if review is None or t is None:
+            return ""
+        s = self.settings
+        day = logical_date(review.scheduled_for, s.timezone, s.day_boundary)
+        moments = moments_week_block(t.moments, day) if t.moments is not None else ""
+        areas = ""
+        if t.status is not None and t.curve is not None and t.conditions is not None:
+            snap = status_snapshot(
+                now=self.clock.now(), tz=s.timezone, boundary=s.day_boundary, status=t.status, curve=t.curve,
+                tasks=t.tasks, conditions=t.conditions,
+            )
+            areas = recent_areas_block(snap["stats"])
+        return _join(moments, areas)
 
     def _review_week_note(self, run: Run, merged: list[Run]) -> str:
         """회고가 함께 있으면 회고 주와 다음 주를 알린다. 다음 주는 `set_priorities(week, ...)`에 쓴다."""

@@ -28,10 +28,14 @@ from my_planner.status.xp import (
 )
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
+from my_planner.store.views import moment_dict
 
 RECENT_XP = 5
+MOMENTS_DAYS = 14  # `GET /status`의 `moments`: 오늘을 포함한 지난 14일(SP8 6.5)
+MOMENTS_MAX = 20
 
 
 def _prev_quarter(period: str) -> str:
@@ -123,7 +127,7 @@ def _quests(
 
 def status_snapshot(
     *, now: datetime, tz: str | tzinfo, boundary: time, status: StatusRepo, curve: CurveRepo, tasks: TasksRepo,
-    conditions: ConditionsRepo, include_sensitive: bool = False,
+    conditions: ConditionsRepo, include_sensitive: bool = False, moments: MomentsRepo | None = None,
 ) -> dict[str, Any]:
     today = logical_date(now, tz, boundary)
     xp_total = status.total()
@@ -142,4 +146,14 @@ def status_snapshot(
             for t in status.titles(include_sensitive=include_sensitive)
         ],
         "recent_xp": [{"at": x.at, "label": x.label, "amount": x.amount} for x in status.recent(RECENT_XP)],
+        **_moments(moments, today),
     }
+
+
+def _moments(repo: MomentsRepo | None, today: date) -> dict[str, Any]:
+    """`moments`(지난 14일, 숨기지 않은 것, 최근 날짜부터, 최대 20)와 `moments_hidden`(같은 14일의 숨긴 수, SP8 6.5)."""
+    if repo is None:
+        return {"moments": [], "moments_hidden": 0}
+    from_ = today - timedelta(days=MOMENTS_DAYS - 1)
+    shown = repo.between(from_, today, include_hidden=False)[:MOMENTS_MAX]
+    return {"moments": [moment_dict(m) for m in shown], "moments_hidden": repo.hidden_count(from_, today)}

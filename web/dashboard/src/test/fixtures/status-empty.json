@@ -114,5 +114,7 @@
   "main_quests": [],
   "daily_quests": [],
   "titles": [],
-  "recent_xp": []
+  "recent_xp": [],
+  "moments": [],
+  "moments_hidden": 0
 }

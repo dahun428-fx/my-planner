@@ -37,7 +37,10 @@ export type ActionName =
   | "update_memo"
   | "pin_memo"
   | "unpin_memo"
-  | "delete_memo";
+  | "delete_memo"
+  | "hide_moment"
+  | "unhide_moment"
+  | "delete_moment";
 
 // SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
 // message), and two devices editing one memo answer 409 memo_conflict (conflict shape).
@@ -165,7 +168,7 @@ export interface UseAction {
    * Shows a toast for applied, rejected and failed only: callers must handle `conflict` and
    * `needs_confirm` themselves.
    */
-  run(action: ActionName, args: object, opts?: { confirmToken?: string }): Promise<ActionOutcome | null>;
+  run(action: ActionName, args: object, opts?: { confirmToken?: string; quiet?: boolean }): Promise<ActionOutcome | null>;
   isPending(action: ActionName, args: object): boolean;
 }
 
@@ -177,14 +180,14 @@ export function useAction(): UseAction {
   const inFlight = useRef(new Set<string>());
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
-  const run = useCallback(async (action: ActionName, args: object, opts?: { confirmToken?: string }) => {
+  const run = useCallback(async (action: ActionName, args: object, opts?: { confirmToken?: string; quiet?: boolean }) => {
     const key = keyOf(action, args);
     if (inFlight.current.has(key)) return null;
     inFlight.current.add(key);
     setPending(new Set(inFlight.current));
     try {
       const out = await runAction(action, args, opts);
-      if (out.kind === "applied" && out.activityId !== null) toastRef.current.show({ text: out.confirmation, undoId: out.undoId });
+      if (out.kind === "applied" && out.activityId !== null && !opts?.quiet) toastRef.current.show({ text: out.confirmation, undoId: out.undoId });
       else if (out.kind === "rejected" && out.message) toastRef.current.show({ text: out.message });
       else if (out.kind === "failed") toastRef.current.show({ text: failureText(out.result) });
       return out;
