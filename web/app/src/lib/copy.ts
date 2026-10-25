@@ -16,7 +16,7 @@ export const copy = {
   tabs: {
     today: "오늘",
     todos: "할 일",
-    activity: "기록",
+    memos: "메모",
     settings: "설정",
     navLabel: "탭",
   },
@@ -30,6 +30,60 @@ export const copy = {
     status: "상태창",
     connect: "기기 연결",
     back: BACK_MORE,
+  },
+
+  // SP9 9.4 memos tab and its view/write screen. 10장 rows "메모 빈 목록", "메모 충돌", "메모 확인",
+  // "메모 상한", "메모 오류" verbatim (the confirmations, limits and most errors are the BE's words; they
+  // are here so the banned-word check covers them and a missing BE message has the same text).
+  // Labels marked (9.4) are the spec's words; those marked (new) are not in the spec and go to Dahun in SP9-12.
+  memos: {
+    title: "메모",
+    add: "새 메모", // (new) the "+" button's name
+    search: "검색", // (new) the search box's name
+    pinnedHeading: "고정됨", // (9.4)
+    listHeading: "메모", // (9.4)
+    empty: "아직 메모가 없어요. 떠오르는 걸 적어 두세요.",
+    noMatch: "맞는 메모가 없어요.", // (new) a search that finds nothing
+    more: "더 보기",
+    pin: "고정", // (9.4)
+    unpin: "고정 풀기", // (9.4)
+    delete: "지우기", // (9.4)
+    bySecretary: "비서", // (9.4) SP6 mark of what the secretary made
+    today: (hhmm: string) => `오늘 ${hhmm}`, // (9.4)
+    yesterday: "어제", // (9.4)
+    conflict: "다른 곳에서 바뀌었어요. 새로 불러올게요.",
+    back: "‹ 메모", // (new) the view/write screen's back link
+    body: "메모 내용", // (new) the text box's name
+    noArea: "영역 없음", // (6.4)
+    toolbar: {
+      label: "서식", // (new) the tool row's name
+      list: "목록", // (9.4)
+      checkbox: "체크박스", // (9.4)
+      bold: "굵게", // (9.4)
+      area: "영역", // (9.4)
+      done: "완료", // (9.4)
+    },
+    confirm: {
+      created: (title: string) => `✓ 메모를 만들었어요: ${title}`,
+      updated: (title: string) => `✓ 메모를 고쳤어요: ${title}`,
+      pinned: (title: string) => `✓ 메모를 고정했어요: ${title}`,
+      unpinned: (title: string) => `✓ 메모 고정을 풀었어요: ${title}`,
+      deleted: (title: string) => `✓ 메모를 지웠어요: ${title}`,
+    },
+    limits: {
+      too_many_memos: "메모는 2,000개까지 둘 수 있어요. 안 쓰는 메모를 지우면 새로 만들 수 있어요.",
+      too_many_pinned: "고정은 10개까지예요. 다른 메모의 고정을 풀면 더 고정할 수 있어요.",
+    },
+    errors: {
+      empty: "메모가 비어 있어요.",
+      tooLong: "메모는 20,000자까지 쓸 수 있어요.",
+      notFound: "없는 메모예요.",
+      onlyAsked: "사용자가 부탁한 메모만 만들 수 있어요.",
+      updatedAt: "updated_at은 앞서 받은 메모의 updated_at 값으로 보내 주세요.",
+      query: "찾을 말(query)을 알려 주세요.",
+      limit: "limit은 1~20 사이 정수예요.",
+      unavailable: "메모를 다룰 수 없어요.",
+    },
   },
 
   // SP8 10.2, appendix A (verbatim). Named apart from `status` above, the connection dot's words.
@@ -212,6 +266,8 @@ export const copy = {
 
   activity: {
     title: "기록",
+    // Off the tabs since SP9-04 (spec 9.1).
+    back: BACK_MORE,
     intro: "비서와 내가 바꾼 것. 가벼운 변경은 24시간 안에 되돌릴 수 있어요.",
     undo: "되돌리기",
     undoneAt: (hhmm: string) => `${hhmm}에 되돌림`,

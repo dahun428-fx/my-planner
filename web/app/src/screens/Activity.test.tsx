@@ -61,9 +61,12 @@ function undoes(answer: () => Response) {
 const rowOf = (text: string) => screen.getByText(text).closest("div[class*=row]") as HTMLElement;
 
 describe("Activity", () => {
-  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
-    renderWithProviders(<Activity />);
-    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+  it("off the tabs since SP9-04: back link \"‹ 더보기\" to /more/, no more button (spec 9.1)", async () => {
+    serve();
+    renderWithProviders(<Activity />, { route: "/activity/" });
+    expect(screen.getByRole("link", { name: "‹ 더보기" })).toHaveAttribute("href", "/more/");
+    expect(screen.queryByRole("link", { name: "더보기" })).toBeNull();
+    expect(await screen.findByRole("heading", { level: 1, name: copy.activity.title })).toBeInTheDocument();
   });
 
   it("chat launcher: on when connected, off with the reason when not", async () => {

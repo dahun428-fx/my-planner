@@ -1,0 +1,175 @@
+/* SP9 9.4 memo view/write screen: theme tokens only; the area colour only as small dots (DESIGN.md). */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.area {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.secretary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  padding: 0 0.4375rem;
+  border: 1.5px solid var(--hue);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--hue);
+}
+.pad {
+  margin: var(--pad) var(--gutter);
+}
+.line {
+  margin: var(--pad) var(--gutter);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.note {
+  margin: 0 var(--gutter) 0.5rem;
+  font-size: var(--size-meta);
+  color: var(--negative);
+}
+.reading {
+  flex: 1;
+  margin: 0.5rem var(--gutter) var(--gap);
+  border-radius: var(--radius-field);
+}
+.pressable {
+  cursor: text;
+}
+.reading:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 4px;
+}
+.rendered {
+  font-size: var(--size-body);
+  line-height: var(--lh-body);
+  color: var(--text);
+}
+/* The first line is the memo's title (6.1). */
+.rendered > :first-child {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: var(--lh-title);
+  letter-spacing: var(--track-title);
+}
+.box {
+  flex: 1;
+  box-sizing: border-box;
+  width: calc(100% - 2 * var(--gutter));
+  min-height: 50dvh;
+  margin: 0.5rem var(--gutter) 0.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  line-height: var(--lh-body);
+  color: var(--text);
+  resize: none;
+  outline: none;
+}
+/* The small tool row above the keyboard. */
+.tools {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-bar);
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem var(--pad) calc(0.25rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--rule);
+  background: var(--bar);
+  overflow-x: auto;
+}
+.tool {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-callout);
+  color: var(--text);
+  cursor: pointer;
+}
+.tool:active:not(:disabled) {
+  background: var(--raised);
+}
+.tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.bold {
+  font-weight: 700;
+}
+.toolDot {
+  width: 6px;
+  height: 6px;
+}
+.done {
+  margin-left: auto;
+  font-weight: 600;
+}
+.areas {
+  display: flex;
+  flex-direction: column;
+}
+.areaItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--row);
+  padding: 0 var(--pad);
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.areaItem:first-child {
+  border-top: 0;
+}
+.areaItem[aria-pressed="true"] {
+  font-weight: 600;
+}
+.back:focus-visible,
+.tool:focus-visible,
+.areaItem:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
