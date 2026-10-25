@@ -764,7 +764,7 @@ data: [DONE]
 | `unpin_card` | id | low |
 | `reorder_cards` | ids (새 순서) | low |
 | `decline_confirm` | confirm_token | low, 되돌릴 수 없음. 확인 카드의 "그대로 두기". 아무것도 바꾸지 않고 토큰을 `declined`로 닫는다 |
-| `hide_moment` | id (이룬 순간, SP8 6.4) | low. 이미 숨겼으면 `{"already": true}`. 없는 순간은 `404 not_found` |
+| `hide_moment` | id (이룬 순간, SP8 6.4) | low. 이미 숨겼으면 `{"already": true}`. 없는 순간은 `404 not_found`(정수가 아닌 `id`도 같은 `404`, 세 순간 동작 모두) |
 | `unhide_moment` | id | low. 숨기지 않은 순간은 `{"already": true}`. 없는 순간은 `404 not_found` |
 | `delete_moment` | id | `confirm`(앱: "이 순간을 지울까요? 되돌릴 수 없어요."), 되돌릴 수 없음(행을 지운다). 없는 순간은 `404 not_found` |
 
@@ -965,7 +965,7 @@ SP1 5.3 표에 통로를 더한 것이다. 위에서부터 처음 맞는 규칙�
 4. 같은 통로의 30분 이내 `chat` 대화.
 5. 새 `chat` 대화(이 통로).
 
-**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다.
+**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다. **예외(SP8 6.7)**: 원래 대화가 앱 쪽이고 새 대화가 텔레그램 쪽이면 가르지 않고 원래 대화의 원문도 붙이지 않는다(회차 본문과 이 대화의 원문만). 앱 대화의 `get_status`가 준 이룬 순간의 글이 텔레그램 통로 두뇌로 넘어가지 않게 한다.
 
 ### 7.3 회차 전달과 하루 3회 상한
 

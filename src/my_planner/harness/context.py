@@ -163,7 +163,7 @@ def habit_week_block(habits: HabitsRepo, review_day: date) -> str:
 
 
 def moments_week_block(moments: MomentsRepo, review_day: date) -> str:
-    """주간 회고 회차의 `## 이번 주 이룬 순간`(SP8 10.3): 회고 주(월~회고 날)의 보이는 순간을 날마다 `- 10/24 2개`.
+    """주간 회고 회차의 `## 이번 주 이룬 순간`(SP8 10.3): 회고 주(월~회고 날)의 보이는 순간을 날마다 `- 10/24 2개`, 오래된 날부터.
 
     **어느 통로든 날짜와 개수만** 준다(계획 결정 10): 회고 답은 푸시가 안 되면 본문 전체가 텔레그램으로 가므로
     (`delivery.deliver_run` 대체 경로) 앞머리에 순간의 글을 두지 않는다. 글은 앱 대화의 `get_status`에서만 본다.
@@ -175,7 +175,8 @@ def moments_week_block(moments: MomentsRepo, review_day: date) -> str:
     counts = moment_counts(moments.between(monday, review_day, include_hidden=False))
     if not counts:
         return ""
-    lines = [f"- {(d := date.fromisoformat(c['date'])).month}/{d.day} {c['count']}개" for c in counts]
+    # 회고는 월요일부터 돌아보므로 오래된 날부터(`moment_counts`는 최근부터)
+    lines = [f"- {(d := date.fromisoformat(c['date'])).month}/{d.day} {c['count']}개" for c in reversed(counts)]
     return "## 이번 주 이룬 순간\n" + "\n".join(lines)
 
 

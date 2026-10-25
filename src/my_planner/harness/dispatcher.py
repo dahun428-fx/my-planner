@@ -884,7 +884,10 @@ class Dispatcher:
             # 갈라 연 회차 대화의 첫 호출: 원래 대화의 세션을 `fork_session`으로 갈라 이어 간다(7.2, S11)
             session_id, fork = conv.session_id, False
             origin_text = self._fork_origin_text(conv)
-            if session_id is None and conv.forked_from is not None and conv.id not in self._no_fork:
+            if (
+                session_id is None and conv.forked_from is not None and conv.id not in self._no_fork
+                and not self._from_app_side(conv)
+            ):
                 origin = self.convs.get(conv.forked_from)
                 if origin is not None and origin.session_id is not None:
                     session_id, fork = origin.session_id, True
@@ -1082,10 +1085,19 @@ class Dispatcher:
         갈라 연 대화면 이 대화의 최근 것을 먼저 채우고, 남는 자리를 원래 대화의 최근 것으로 앞에 채운다(합쳐 20개).
         """
         own = self.transcripts.recent_entries(conv.id, HISTORY_LINES, skip_last=skip_last)
-        if conv.forked_from is None:
+        if conv.forked_from is None or self._from_app_side(conv):
             return "\n".join(own)
         origin = self.transcripts.recent_entries(conv.forked_from, HISTORY_LINES - len(own))
         return "\n".join([*origin, *own])
+
+    def _from_app_side(self, conv: Conversation) -> bool:
+        """텔레그램 쪽 회차 대화를 앱 쪽 회차 대화에서 갈라 열었다(SP8 6.7, 11장). 앱 대화의 `get_status`는 순간의 글을
+        주므로 그 세션을 갈라 잇지 않고(`fork_session` 없음) 원래 대화의 원문도 붙이지 않는다. 회차 본문(`## 회차 메시지`,
+        회차 차례는 순간을 개수로만 본다)과 이 대화의 원문만으로 시작한다. 텔레그램 → 앱 방향은 그대로 갈라 잇는다."""
+        if conv.channel != "telegram" or conv.forked_from is None:
+            return False
+        origin = self.convs.get(conv.forked_from)
+        return origin is not None and origin.channel == "app"
 
     def _fork_origin_text(self, conv: Conversation) -> str:
         """갈라 연 회차 대화가 새 세션으로 시작할 때 앞에 붙이는 원래 회차 본문(`## 회차 메시지`, 7.2)."""

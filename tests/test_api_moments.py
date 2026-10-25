@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from pathlib import Path
 
@@ -288,5 +289,6 @@ def test_dashboard_reads_only():
     files = [p for p in src.rglob("*.ts*") if ".test." not in p.name and not p.name.endswith(".gen.ts")]
     assert any(p.name == "api.ts" for p in files)
     text = "\n".join(p.read_text(encoding="utf-8") for p in files)
-    for needle in ('"/actions"', "'/actions'", "/actions`", '"/moments', "hide_moment", "delete_moment", "POST"):
+    for needle in ('"/actions"', "'/actions'", "/actions`", '"/moments', "hide_moment", "delete_moment"):
         assert needle not in text, needle
+    assert not re.search(r"""method:\s*["'](POST|PUT|PATCH|DELETE)["']""", text)

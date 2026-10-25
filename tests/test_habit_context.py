@@ -245,7 +245,7 @@ def test_moments_week_block_counts_only(tmp_path):
 
     empty, block = asyncio.run(go())
     assert empty == ""
-    assert block == "## 이번 주 이룬 순간\n- 10/24 2개\n- 10/20 1개"
+    assert block == "## 이번 주 이룬 순간\n- 10/20 1개\n- 10/24 2개"
 
 
 def test_recent_areas_block_only_positive_bonus():
@@ -271,7 +271,7 @@ async def test_review_preamble_moments_counts_only_on_every_channel(tmp_path, ch
         via_app = bool(push.sent)
 
     assert via_app is (channel == "app")
-    assert "## 이번 주 이룬 순간\n- 10/24 2개\n- 10/20 1개" in prompt
+    assert "## 이번 주 이룬 순간\n- 10/20 1개\n- 10/24 2개" in prompt
     for secret in (MOMENT_A, MOMENT_B, MOMENT_C, "꾸며 낸"):
         assert secret not in prompt
 
