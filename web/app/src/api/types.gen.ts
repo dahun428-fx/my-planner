@@ -1021,6 +1021,7 @@ export interface NotifySettings {
 }
 /**
  * `GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
+ * 날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Priorities".
@@ -1029,7 +1030,7 @@ export interface Priorities {
   cadence: "week" | "month" | "quarter" | "year";
   items: Todo[];
   period: string;
-  todos: Todo[];
+  todos?: Todo[];
 }
 /**
  * `POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다.
@@ -1377,7 +1378,8 @@ export interface VapidPublicKey {
   public_key: string;
 }
 /**
- * `GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안은 뺀다).
+ * `GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,
+ * 이번 주 우선순위는 뺀다).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Week".
@@ -1387,7 +1389,7 @@ export interface Week {
   end: string;
   priorities: Todo[];
   start: string;
-  undated: Todo[];
+  undated?: Todo[];
   week: string;
 }
 /**

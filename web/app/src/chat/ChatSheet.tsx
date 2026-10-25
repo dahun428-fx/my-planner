@@ -137,12 +137,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       }
       settle(null);
       onSentRef.current?.();
-      notifyDataChanged();
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
       const parts = toViewParts(message);
       // SP9 9.6: the answer's changes get one toast with "되돌리기" for 6 s; the chat keeps one line.
       const changed = chatActivityToast(parts);
+      // An answer that wrote something (an activity line or a card) has the screens behind read again now.
+      if (parts.some((p) => p.kind !== "text")) notifyDataChanged();
       if (changed) toastRef.current.showFor(changed, CHAT_ACTIVITY_MS);
       void saveParts(message.id, parts, sentTo.current);
     },

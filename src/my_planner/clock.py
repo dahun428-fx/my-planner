@@ -74,7 +74,7 @@ def period_of(cadence: Cadence | str, d: date) -> str:
 
 
 def period_bounds(cadence: Cadence | str, period: str) -> tuple[date, date]:
-    """`period_of`의 거꾸로: 기간 이름의 첫날과 마지막 날(둘 다 포함)."""
+    """`period_of`의 거꾸로: 기간 이름의 첫날과 마지막 날(둘 다 포함). 없는 기간(`2025-W53`)은 ValueError."""
     c = Cadence(cadence)
     if c is Cadence.day:
         d = date.fromisoformat(period)

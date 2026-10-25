@@ -193,18 +193,6 @@
         "rank": 1
       },
       "completed_at": null
-    },
-    {
-      "id": 14,
-      "title": "인쇄소 견적 묻기",
-      "status": "open",
-      "planned_for": null,
-      "scheduled_at": null,
-      "parent_id": 9,
-      "areas": [],
-      "note": "",
-      "priority": null,
-      "completed_at": null
     }
   ]
 }

@@ -174,8 +174,8 @@ def test_app_prompt_includes_channel_app_only_for_app(tmp_path):
 
 
 async def test_harness_chunks_have_h_prefix(tmp_path):
-    propose = ("propose_tasks", {"tasks": [{"title": "꾸민 산책", "areas": ["health"], "planned_for": "2026-10-24"},
-                                           {"title": "꾸민 독서", "areas": ["learning"], "planned_for": "2026-10-24"}]})
+    propose = ("propose_tasks", {"tasks": [{"title": "꾸민 산책", "areas": ["health"]},
+                                           {"title": "꾸민 독서", "areas": ["learning"]}]})
     async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([propose], "두 가지 제안해 볼게요.")]) as env:
         _, raw = await env.chat("이번 주 뭐 하면 좋을까")
     chunks = parse_sse(raw)
@@ -186,8 +186,8 @@ async def test_harness_chunks_have_h_prefix(tmp_path):
     ]
     assert harness[0]["toolName"] == "ui_todo_draft" and harness[0]["input"] == {"task_ids": [1, 2]}
     assert harness[1]["output"] == {"ok": True, "data": {"todos": [
-        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "draft", "planned_for": "2026-10-24", "scheduled_at": None},
-        {"id": 2, "title": "꾸민 독서", "cadence": None, "area": "learning", "status": "draft", "planned_for": "2026-10-24", "scheduled_at": None},
+        {"id": 1, "title": "꾸민 산책", "cadence": None, "area": "health", "status": "draft", "planned_for": None, "scheduled_at": None},
+        {"id": 2, "title": "꾸민 독서", "cadence": None, "area": "learning", "status": "draft", "planned_for": None, "scheduled_at": None},
     ]}}
     # 두뇌 도구 조각은 `tc_`, 순서는 두뇌 글·도구 → 하네스 조각 → data-activity → finish(6.4.1)
     kinds = [c["type"] for c in chunks]
@@ -322,3 +322,15 @@ def test_pin_card_rejects_ui_habit_check(uenv):
     res = uenv.tools.pin_card(ctx, component="ui_habit_check", props={"date": "2026-10-24"})
     assert "error" in res
     assert uenv.tools.cards.active() == []
+
+
+async def test_add_task_without_date_streams_the_filled_day(tmp_path):
+    # 두뇌가 날짜를 빼면 하네스가 오늘로 채우고, 앱이 받는 도구 입력·결과에도 그 날짜가 있다
+    add = ("add_task", {"title": "꾸민 치과", "areas": ["health"]})
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([add], "넣었어요.")]) as env:
+        _, raw = await env.chat("치과 예약 추가해 줘")
+    chunks = parse_sse(raw)
+    inputs = [c for c in chunks if c.get("type") == "tool-input-available" and c.get("toolName") == "add_task"]
+    outputs = [c for c in chunks if c.get("type") == "tool-output-available" and c["toolCallId"] == inputs[0]["toolCallId"]]
+    assert inputs[0]["input"]["planned_for"] == "2026-10-24"
+    assert outputs[0]["output"]["planned_for"] == "2026-10-24"

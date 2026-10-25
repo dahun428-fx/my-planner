@@ -227,6 +227,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       body = null;
     } else {
       const w = weekView.data;
+      const undated = w.undated ?? [];
       const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
@@ -247,7 +248,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
             );
           })}
           {/* An older BE (or a snapshot from before) has no `undated`. */}
-          {(w.undated ?? []).length > 0 && <Group paper heading={copy.todos.undated}>{rows(w.undated, readOnly)}</Group>}
+          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(undated, readOnly)}</Group>}
         </>
       );
     }

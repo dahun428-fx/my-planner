@@ -85,6 +85,10 @@ async def test_week_lists_undated_and_periods_list_their_todos(tmp_path):
         nxt = mk(env, "10월 28일 일", planned_for="2026-10-28")
         nov = mk(env, "11월 일", planned_for="2026-11-10")
         none = mk(env, "언젠가 할 일")
+        goal = mk(env, "이번 주 목표")  # 날짜 없는 이번 주 우선순위: 우선순위 칸에만
+        env.parts.tasks.set_priorities(Cadence.week, "2026-W43", [goal.id])
+        env.parts.tasks.create(title="첫 걸음", areas=[Area.career], planned_for=None, scheduled_at=None,
+                               parent_id=none.id, note="", status=TaskStatus.open)
         mk(env, "초안", status=TaskStatus.draft)
         mk(env, "초안 다음 주", status=TaskStatus.draft, planned_for="2026-10-28")
         gone = mk(env, "뺀 일", planned_for="2026-10-29")
@@ -94,6 +98,7 @@ async def test_week_lists_undated_and_periods_list_their_todos(tmp_path):
         nov_month = await get_json(env, "/priorities?cadence=month&period=2026-11")
         quarter = await get_json(env, "/priorities?cadence=quarter")
         weekp = await get_json(env, "/priorities?cadence=week")
+        await get_json(env, "/priorities?cadence=week&period=2025-W53", status=400)  # 2025년에는 53주가 없다
 
     assert [x["id"] for x in week["undated"]] == [none.id]
     assert [x["id"] for x in month["todos"]] == [wk.id, nxt.id]  # 날짜순, 초안·뺀 일 없음
