@@ -152,6 +152,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
       if (h) return json(route, h);
     }
     if (get && path === "/conversations") return json(route, { items: [] });
+    if (get && path === "/memos") return json(route, { items: [], next_before: null });
     if (get && path === "/settings/notify") return json(route, fixture("notify"));
     if (get && path === "/push/vapid-public-key") return json(route, { public_key: "BFixtureKeyNotReal" });
     if (req.method() === "POST" && path === "/chat") {

@@ -9,7 +9,6 @@ import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
-import { MoreButton } from "../components/MoreButton";
 import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
@@ -84,7 +83,8 @@ function mergeById(first: ActivityItem[], older: ActivityItem[]): ActivityItem[]
   return [...first, ...older.filter((a) => !seen.has(a.id))].sort(newestFirst);
 }
 
-// Spec 5.5.6, F8: what the secretary and I changed, newest first, with undo.
+// Spec 5.5.6, F8: what the secretary and I changed, newest first, with undo. Off the tabs since
+// SP9-04: "‹ 더보기" back (SP9 9.1).
 export function Activity() {
   const { state, recheck } = useConnection();
   const canChat = useWritable(true, { strict: true });
@@ -281,16 +281,12 @@ export function Activity() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <LargeTitle
-        title={copy.activity.title}
-        sub={copy.activity.intro}
-        trailing={
-          <>
-            {state && <StatusDot state={state} />}
-            <MoreButton />
-          </>
-        }
-      />
+      <nav className={styles.bar}>
+        <Link href="/more/" className={styles.back}>
+          {copy.activity.back}
+        </Link>
+      </nav>
+      <LargeTitle title={copy.activity.title} sub={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
       {body}
       <ChatLauncher disabled={!canChat} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>

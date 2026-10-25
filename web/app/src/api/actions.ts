@@ -31,7 +31,18 @@ export type ActionName =
   | "update_habit"
   | "set_habit_status"
   | "check_habit"
-  | "uncheck_habit";
+  | "uncheck_habit"
+  // SP9 6.4: the memos tab's writes. update_memo has no undo; the others do.
+  | "create_memo"
+  | "update_memo"
+  | "pin_memo"
+  | "unpin_memo"
+  | "delete_memo";
+
+// SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
+// message), and two devices editing one memo answer 409 memo_conflict (conflict shape).
+const REJECT_CODES = new Set(["rejected", "too_many_memos", "too_many_pinned"]);
+const CONFLICT_CODES = new Set(["conflict", "memo_conflict"]);
 
 export type ActionOutcome =
   | { kind: "applied"; activityId: number; undoId: number | null; confirmation: string; result: unknown }
@@ -77,8 +88,8 @@ export async function runAction(action: ActionName, args: object, opts: { confir
     confirm_token: opts.confirmToken ?? null,
   });
   if (r.kind === "error") {
-    if (r.status === 422 && r.code === "rejected") return { kind: "rejected", message: r.message ?? "" };
-    if (r.status === 409 && r.code === "conflict") return { kind: "conflict" };
+    if (r.status === 422 && REJECT_CODES.has(r.code)) return { kind: "rejected", message: r.message ?? "" };
+    if (r.status === 409 && CONFLICT_CODES.has(r.code)) return { kind: "conflict" };
   }
   if (r.kind !== "ok") return { kind: "failed", result: asFailure(r) };
   const d = r.data ?? {};

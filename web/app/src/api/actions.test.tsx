@@ -89,6 +89,15 @@ describe("runAction", () => {
 
     server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 })));
     expect(await runAction("confirm_tasks", { ids: [1] })).toEqual({ kind: "conflict" });
+    // SP9 6.4: the memo codes map to the same shapes.
+    server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ error: { code: "memo_conflict", message: copy.memos.conflict } }, { status: 409 })));
+    expect(await runAction("update_memo", { id: 1, body: "a", updated_at: "2026-10-25T00:00:00Z" })).toEqual({ kind: "conflict" });
+    server.use(
+      http.post(`${BASE}/actions`, () =>
+        HttpResponse.json({ status: "rejected", activity_id: null, error: { code: "too_many_pinned", message: copy.memos.limits.too_many_pinned } }, { status: 422 }),
+      ),
+    );
+    expect(await runAction("pin_memo", { id: 1 })).toEqual({ kind: "rejected", message: copy.memos.limits.too_many_pinned });
 
     server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })));
     expect(await runAction("confirm_tasks", { ids: [1] })).toMatchObject({ kind: "failed", result: { kind: "error", status: 500 } });

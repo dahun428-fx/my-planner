@@ -45,6 +45,7 @@ test("no CSP violations", async ({ page }) => {
     ["/", copy.today.title],
     ["/todos/", copy.todos.title],
     ["/activity/", copy.activity.title],
+    ["/memos/", copy.memos.title],
     ["/settings/", copy.settings.title],
     ["/checkin/?id=341", copy.loops.evening_checkin],
   ];
@@ -128,7 +129,7 @@ test("screens keep their styles after moving between tabs", async ({ page }) => 
   await expect(page.getByRole("heading", { level: 1, name: copy.today.title })).toBeVisible();
   const tabs: [string, string][] = [
     [copy.tabs.todos, copy.todos.title],
-    [copy.tabs.activity, copy.activity.title],
+    [copy.tabs.memos, copy.memos.title],
     [copy.tabs.settings, copy.settings.title],
     [copy.tabs.today, copy.today.title],
   ];
