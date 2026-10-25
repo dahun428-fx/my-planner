@@ -297,7 +297,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 13 == _migration_count()
+    assert dbmod.LATEST_VERSION == 15 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -406,8 +406,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 13 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+    assert migrate(conn) == 15 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 15
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -461,7 +461,7 @@ def test_013_ledger_untouched(tmp_path):
         conn.execute(_LEDGER_INS, row)
     conn.commit()
     before = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'status_xp_ledger'").fetchone()[0]
-    assert migrate(conn) == 13
+    assert migrate(conn) == 15
     got = conn.execute(
         "SELECT id, at, logical_date, source_kind, source_ref, amount, area, label "
         "FROM status_xp_ledger ORDER BY id"
@@ -469,6 +469,76 @@ def test_013_ledger_untouched(tmp_path):
     assert [tuple(r) for r in got] == _LEDGER_ROWS
     assert conn.execute("SELECT sql FROM sqlite_master WHERE name = 'status_xp_ledger'").fetchone()[0] == before
 
+
+
+# --- 014: 몸 기록 (SP8 스펙 7.1) ---
+
+
+def test_014_body_checks(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    ins = "INSERT INTO body_days (date, steps, sleep_minutes, updated_at) VALUES (?, ?, ?, ?)"
+    conn.execute(ins, ("2026-10-24", 0, None, _AT))
+    conn.execute(ins, ("2026-10-23", 100000, 1440, _AT))
+    conn.execute(ins, ("2026-10-22", None, 420, _AT))
+    for bad in (
+        ("2026-10-21", -1, None, _AT),  # 걸음 −1
+        ("2026-10-21", 100001, None, _AT),  # 걸음 100001
+        ("2026-10-21", None, 1441, _AT),  # 잠 1441
+        ("2026-10-21", None, None, _AT),  # 둘 다 NULL
+        ("2026-10-2", 10, None, _AT),  # 날짜 모양
+    ):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(ins, bad)
+    with pytest.raises(sqlite3.IntegrityError):  # 날짜가 PRIMARY KEY
+        conn.execute(ins, ("2026-10-24", 5, None, _AT))
+
+
+# --- 015: 히스토리 칸 (SP8 스펙 8.1) ---
+
+_CHAPTER_INS = (
+    "INSERT INTO curve_chapters (title, start_month, status, origin, created_at, updated_at) "
+    "VALUES (?, ?, 'confirmed', 'seed', ?, ?)"
+)
+_MILESTONE_INS = (
+    "INSERT INTO curve_milestones (date_text, precision, sort_date, kind, title, status, origin, "
+    "created_at, confirmed_at, updated_at) VALUES (?, 'year', ?, 'high', ?, 'confirmed', 'seed', ?, ?, ?)"
+)
+
+
+def test_015_area_and_ladder_checks(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    conn.execute(_CHAPTER_INS, ("챕터", "2020-01", _AT, _AT))
+    conn.execute(_MILESTONE_INS, ("2020", "2020-01-01", "사건", _AT, _AT, _AT))
+    conn.execute("UPDATE curve_milestones SET area = 'career'")
+    conn.execute("UPDATE curve_chapters SET ladder_remembered = 0")
+    conn.execute("UPDATE curve_chapters SET ladder_remembered = 10")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE curve_milestones SET area = 'money'")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE curve_chapters SET ladder_remembered = 11")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE curve_chapters SET ladder_remembered = -1")
+
+
+def test_015_keeps_curve_rows(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=14) == 14
+    conn.execute(_CHAPTER_INS, ("챕터", "2020-01", _AT, _AT))
+    conn.execute(_MILESTONE_INS, ("2020", "2020-01-01", "사건", _AT, _AT, _AT))
+    conn.commit()
+    before_c = conn.execute("SELECT id, title, start_month FROM curve_chapters").fetchall()
+    before_m = conn.execute("SELECT id, date_text, kind, title FROM curve_milestones").fetchall()
+    assert migrate(conn) == 15
+    assert [tuple(r) for r in conn.execute("SELECT id, title, start_month FROM curve_chapters")] == [
+        tuple(r) for r in before_c
+    ]
+    assert [tuple(r) for r in conn.execute("SELECT id, date_text, kind, title FROM curve_milestones")] == [
+        tuple(r) for r in before_m
+    ]
+    assert conn.execute("SELECT ladder_remembered FROM curve_chapters").fetchone()[0] is None
+    assert conn.execute("SELECT area FROM curve_milestones").fetchone()[0] is None
 
 def _fake_dir(tmp_path, numbers):
     folder = tmp_path / "mig"
