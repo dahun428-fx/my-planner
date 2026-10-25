@@ -1339,7 +1339,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools):
             return _err("to는 from보다 같거나 뒤여야 해요.")
         if (end - start) + timedelta(days=1) > timedelta(days=TRANSCRIPT_MAX_DAYS):
             return _err(f"원문 기록은 최대 {TRANSCRIPT_MAX_DAYS}일까지 읽을 수 있어요.")
-        text = self.transcripts.read_range(start, end)
+        # 텔레그램 통로(회차 차례 포함)는 앱 대화의 비서 줄을 받지 않는다: 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 11장)
+        text = self.transcripts.read_range(start, end, drop_app_secretary=ctx.channel != "app")
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
 
 

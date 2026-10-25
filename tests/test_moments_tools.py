@@ -288,3 +288,25 @@ def test_get_status_app_has_text_last_7_days(env):
     }
     text = json.dumps(out, ensure_ascii=False)
     assert SECRET_OLD not in text and SECRET_HIDDEN not in text
+
+
+def test_read_transcript_telegram_omits_app_secretary_lines(env):
+    """SP8 1장 조건 7, 11장: 앱 대화의 비서 줄은 이룬 순간의 글을 옮겨 말했을 수 있다. 텔레그램 통로(회차 차례 포함)의
+    `read_transcript`에는 그 줄이 없다. 앱 사용자 줄과 텔레그램 줄은 그대로다. 앱 통로는 전부 받는다."""
+    tr = env.tools.transcripts
+    tr.append(kst(2026, 10, 24, 9, 0), "사용자", 1, None, "꾸민 텔레그램 질문")
+    tr.append(kst(2026, 10, 24, 9, 1), "비서", 1, None, "꾸민 텔레그램 답")
+    tr.append(kst(2026, 10, 24, 20, 0), "사용자", 2, None, "꾸민 앱 질문", channel="app", message_id="m-1")
+    tr.append(kst(2026, 10, 24, 20, 1), "비서", 2, None, f"어제 순간: {SECRET_A}", ["get_status"],
+              channel="app", message_id="m-2")
+    tr.append(kst(2026, 10, 24, 21, 0), "사용자", 1, None, "꾸민 텔레그램 둘째 질문")
+    args = {"from": "2026-10-24", "to": "2026-10-24"}
+    tele = env.tools.read_transcript(RunContext(None, None, channel="telegram"), **args)["text"]
+    run = env.tools.read_transcript(RunContext(None, None, kind="run", activity_channel="scheduler"), **args)["text"]
+    app = env.tools.read_transcript(RunContext(None, None, channel="app"), **args)["text"]
+
+    for text in (tele, run):
+        assert SECRET_A not in text and "get_status" not in text
+        for kept in ("꾸민 텔레그램 질문", "꾸민 텔레그램 답", "꾸민 앱 질문", "꾸민 텔레그램 둘째 질문"):
+            assert kept in text, kept
+    assert SECRET_A in app and "꾸민 앱 질문" in app
