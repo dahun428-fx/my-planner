@@ -48,6 +48,11 @@ class ConditionsRepo:
             recorded_at=from_iso(r["recorded_at"]),
         )
 
+    def earliest(self) -> date | None:
+        """가장 이른 컨디션 기록의 날. 없으면 None(SP8 8.2 `records_since`)."""
+        r = self.conn.execute("SELECT MIN(date) AS d FROM conditions").fetchone()
+        return date.fromisoformat(r["d"]) if r is not None and r["d"] is not None else None
+
     def between(self, from_: date, to: date) -> list[Condition]:
         """`from_`~`to`(포함)에 기록한 컨디션, 날짜순. 기록 없는 날은 넣지 않는다."""
         rows = self.conn.execute(

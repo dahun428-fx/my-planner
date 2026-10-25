@@ -117,7 +117,7 @@ async def test_confirm_milestones_by_natural_language(tmp_path):
         await env.telegram("응 저장해")
         status = await (await env.get("/status")).json()
 
-    assert env.sender.sent[-1].text == "곡선에 남겼어요.\n\n✓ 저장: 제주 여행 (2019, 고점)\n칭호: 「제주 여행」의 순간"
+    assert env.sender.sent[-1].text == "곡선에 남겼어요.\n\n✓ 저장: 제주 여행 (2019, 높은 때)\n칭호: 「제주 여행」의 순간"
     assert [t["title"] for t in status["titles"]] == ["「제주 여행」의 순간"]
     assert env.sender.sent[-1].draft_milestone_ids == []
 
@@ -270,3 +270,53 @@ async def test_kill_after_curve_tool_then_restart_does_not_rerun(tmp_path, conn,
     assert second.brain.calls == [] and len(rows) == 1
     assert [o.text for o in second.sender.sent] == [FALLBACK_REPLY]  # 초안에는 확인 문구가 없다
     assert second.sender.sent[0].draft_milestone_ids == [rows[0]["id"]]  # 버튼은 도구 기록에서 다시 만든다
+
+
+# --- SP8 8.1: 사건 영역, 챕터 사다리 ---
+
+
+async def test_add_milestone_area_validated(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        ok = tools.add_milestone(_ctx(), date="2019", kind="high", title="꾸민 여행", area="quality_of_life")
+        none = tools.add_milestone(_ctx(), date="2020", kind="low", title="꾸민 감기")
+        bad = [tools.add_milestone(_ctx(), date="2019", kind="high", title="꾸민 것", area=v)
+               for v in ("hobby", "Career", 3, True, ["career"], "")]
+        handlers = {t.name: t.handler for t in build_planner_tools(tools, _ctx())}
+        via_mcp = await handlers["add_milestone"]({"date": "2021", "kind": "turning_point", "title": "꾸민 이사",
+                                                   "area": "finance"})
+        areas = dict(env.conn.execute("SELECT title, area FROM curve_milestones").fetchall())
+
+    assert areas == {"꾸민 여행": "quality_of_life", "꾸민 감기": None, "꾸민 이사": "finance"}
+    assert "error" not in ok and "error" not in none and via_mcp["is_error"] is False
+    assert all(b == {"error": "area는 career, finance, health, relationships, learning, quality_of_life "
+                              "가운데 하나예요."} for b in bad)
+
+
+async def test_propose_chapter_ladder_validated(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        zero = tools.propose_chapter(_ctx(), title="꾸민 바닥", start="2015-01", end="2016-12", ladder=0)
+        ten = tools.propose_chapter(_ctx(), title="꾸민 꼭대기", start="2017-01", ladder=10)
+        none = tools.propose_chapter(_ctx(), title="꾸민 모름", start="2018-01")
+        bad = [tools.propose_chapter(_ctx(), title="꾸민 것", start="2019-01", ladder=v)
+               for v in (11, -1, 6.5, 6.0, "6", True)]
+        got = dict(env.conn.execute("SELECT title, ladder_remembered FROM curve_chapters").fetchall())
+
+    assert all("error" not in x for x in (zero, ten, none))
+    assert got == {"꾸민 바닥": 0, "꾸민 꼭대기": 10, "꾸민 모름": None}
+    assert all(b == {"error": "ladder는 0~10 사이의 정수예요."} for b in bad)
+
+
+async def test_confirm_milestones_event_and_summary_carry_area(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        a = tools.add_milestone(_ctx(), date="2019", kind="high", title="제주 여행", area="quality_of_life")["id"]
+        b = tools.add_milestone(_ctx(), date="2020-05", kind="low", title="꾸민 비밀", sensitive=True, area="health")["id"]
+        ctx = _ctx()
+        tools.confirm_milestones(ctx, ids=[a, b])
+        (act,) = [r for r in env.activity() if r["kind"] == "milestones_confirmed"]
+
+    data = [e.data for e in ctx.events if e.kind == "milestones_confirmed"]
+    assert [d["area"] for d in data] == ["quality_of_life", "health"]
+    assert act["summary"] == "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질), (민감) (2020-05, 힘든 때, 건강)"

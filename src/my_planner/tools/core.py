@@ -119,7 +119,8 @@ RECOVERY_QUEST_MAX = 80
 MILESTONE_KINDS = ("high", "low", "turning_point")  # 5.4 `curve_milestones.kind`
 CURVE_TITLE_MAX = 100  # 사건·챕터 제목(5.4 CHECK)
 _MONTH = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
-TITLE_KINDS = frozenset({"high", "turning_point"})  # 칭호를 주는 사건 종류(9.4). 저점에는 주지 않는다
+TITLE_KINDS = frozenset({"high", "turning_point"})  # 칭호를 주는 사건 종류(9.4). 힘든 때에는 주지 않는다
+AREA_CODES = tuple(a.value for a in Area)  # 사건의 대표 영역(SP8 8.1)
 PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
 _NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
 # 확인 저장소는 있는데 답장 창을 알 수 없을 때(조립하지 않은 시험)의 회차 토큰 만료. `/actions` 토큰과 같다
@@ -922,10 +923,11 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
     @_tool
     def add_milestone(
         self, ctx: RunContext, date: Any = None, kind: Any = None, title: Any = None, note: Any = None,
-        chapter_id: Any = None, sensitive: Any = False,
+        chapter_id: Any = None, sensitive: Any = False, area: Any = None,
     ) -> dict[str, Any]:
         """사건 **초안**(11.3). 하네스가 답 아래에 `✓ 저장` `✗ 빼기` 버튼(앱은 `ui_milestone_draft`)을 붙인다.
-        `sensitive`는 사용자가 민감하다고 말했을 때만 true다(기본 false)."""
+        `sensitive`는 사용자가 민감하다고 말했을 때만 true다(기본 false). `area`는 대표 영역 하나(SP8 8.1),
+        사용자의 말에서 분명할 때만 넣는다."""
         if self.curve is None:
             return _err("사건을 남길 수 없어요.")
         try:
@@ -935,13 +937,15 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         if not ok:
             return _err("date는 기억하는 만큼 YYYY, YYYY-MM, YYYY-MM-DD 가운데 하나로 알려 주세요. 예: 2019, 2019-05")
         if kind not in MILESTONE_KINDS:
-            return _err("kind는 high(고점), low(저점), turning_point(전환점) 가운데 하나예요.")
+            return _err("kind는 high(높은 때), low(힘든 때), turning_point(전환점) 가운데 하나예요.")
         if (m := self._check_curve_title(title)) is not None:
             return _err(m)
         if note is not None and not isinstance(note, str):
             return _err("메모는 글로 알려 주세요.")
         if not isinstance(sensitive, bool):
             return _err("sensitive는 true나 false예요.")
+        if area is not None and area not in AREA_CODES:
+            return _err("area는 career, finance, health, relationships, learning, quality_of_life 가운데 하나예요.")
         if chapter_id is not None and (
             not isinstance(chapter_id, int) or isinstance(chapter_id, bool) or self.curve.get_chapter(chapter_id) is None
         ):
@@ -951,6 +955,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             m = self.curve.add_milestone(
                 date_text=date, kind=kind, title=title.strip(), status="draft", origin=self._curve_origin(ctx),
                 note=note, chapter_id=chapter_id, sensitive=sensitive, conversation_id=ctx.conversation_id,
+                area=area,
             )
             # 메모는 넣지 않는다. 버튼과 확인 문구를 다시 만들 재료만
             data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind, "sensitive": m.sensitive}
@@ -964,9 +969,11 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
 
     @_tool
     def propose_chapter(
-        self, ctx: RunContext, title: Any = None, start: Any = None, theme: Any = None, end: Any = None
+        self, ctx: RunContext, title: Any = None, start: Any = None, theme: Any = None, end: Any = None,
+        ladder: Any = None,
     ) -> dict[str, Any]:
-        """챕터 **초안**(연말 회고). `start`, `end`는 `YYYY-MM`이고 `end`가 없으면 지금까지다."""
+        """챕터 **초안**(연말 회고). `start`, `end`는 `YYYY-MM`이고 `end`가 없으면 지금까지다.
+        `ladder`는 그 시기를 돌아보며 사용자가 **말한** 사다리 칸(정수 0~10, SP8 8.1)."""
         if self.curve is None:
             return _err("챕터를 남길 수 없어요.")
         if (m := self._check_curve_title(title)) is not None:
@@ -980,10 +987,14 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             return _err("end는 start와 같거나 뒤여야 해요.")
         if theme is not None and not isinstance(theme, str):
             return _err("theme은 글로 알려 주세요.")
+        if ladder is not None and (
+            not isinstance(ladder, int) or isinstance(ladder, bool) or not LADDER_MIN <= ladder <= LADDER_MAX
+        ):
+            return _err("ladder는 0~10 사이의 정수예요.")
         assert isinstance(title, str) and isinstance(start, str)
         with transaction(self.curve.conn):
             c = self.curve.add_chapter(title=title.strip(), start_month=start, end_month=end, theme=theme,
-                                       status="draft", origin=self._curve_origin(ctx))
+                                       status="draft", origin=self._curve_origin(ctx), ladder_remembered=ladder)
             data = {"id": c.id, "title": c.title, "start_month": c.start_month, "end_month": c.end_month}
             event = self._curve_event(ctx, "chapter_proposed", data)
             self._record(ctx, "chapter_proposed", chapter_target(c.id), titles_summary("제안", [c.title]), None)
@@ -993,7 +1004,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
 
     @_tool
     def confirm_milestones(self, ctx: RunContext, ids: Any = None) -> dict[str, Any]:
-        """사건 초안을 확정한다. 고점·전환점이면 칭호(9.4). 초안이 아니거나 없는 번호는 `skipped_ids`."""
+        """사건 초안을 확정한다. 높은 때·전환점이면 칭호(9.4). 초안이 아니거나 없는 번호는 `skipped_ids`."""
         if self.curve is None or self.status is None:
             return _err("사건을 저장할 수 없어요.")
         if (wanted := self._ids(ids)) is None:
@@ -1003,7 +1014,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             done = self.curve.confirm_milestones(wanted)
             now = self.clock.now()
             for m in done:
-                data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind}
+                data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind, "area": m.area}
                 events.append(self._curve_event(ctx, "milestones_confirmed", data))
                 if m.kind in TITLE_KINDS:
                     self.status.add_title(m.id, now)
@@ -1012,8 +1023,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             if done:
                 target, targets = many_target([milestone_target(m.id) for m in done])
                 # 활동 요약(`GET /activity`)에서는 민감 사건 제목을 가린다(`chapters.md`와 같은 "(민감)")
-                lines = [milestone_confirmed_line(SENSITIVE_MASK if m.sensitive else m.title, m.date_text, m.kind)
-                         for m in done]
+                lines = [milestone_confirmed_line(SENSITIVE_MASK if m.sensitive else m.title, m.date_text, m.kind,
+                                                  m.area) for m in done]
                 summary = lines[0] if len(lines) == 1 else "✓ 저장: " + ", ".join(ln.removeprefix("✓ 저장: ") for ln in lines)
                 self._record(ctx, "milestones_confirmed", target, summary, {"milestone_ids": [m.id for m in done]},
                              targets=targets)

@@ -120,7 +120,7 @@ class StatusRepo:
         return ActivityRows(tasks=tasks, checks=checks, body=body)
 
     def titles(self, *, include_sensitive: bool) -> list[TitleRow]:
-        """확정한 고점·전환점 사건의 칭호, 받은 순서. 민감 사건은 `include_sensitive`일 때만."""
+        """확정한 높은 때·전환점 사건의 칭호, 받은 순서. 민감 사건은 `include_sensitive`일 때만."""
         sql = (
             "SELECT t.milestone_id, t.granted_at, m.kind, m.title, m.title_label, m.date_text "
             "FROM status_titles t JOIN curve_milestones m ON m.id = t.milestone_id "

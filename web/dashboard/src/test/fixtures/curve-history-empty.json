@@ -1,0 +1,22 @@
+{
+  "since_year": null,
+  "chapters": [],
+  "unassigned": {
+    "events": [],
+    "hidden_sensitive": {
+      "count": 0,
+      "years": []
+    }
+  },
+  "summary": {
+    "chapters": 0,
+    "events": 0,
+    "highest": null,
+    "turning_points": {
+      "count": 0,
+      "years": []
+    },
+    "longest": null,
+    "records_since": null
+  }
+}

@@ -243,23 +243,28 @@ _SPECS.update({
         (
             "사용자가 이야기한 과거의 일을 인생 곡선의 사건 **초안**으로 남깁니다. 추측해서 만들지 않고, \"곡선에 남길까요?\"와 "
             "함께 냅니다. 하네스가 답 아래에 저장·빼기 버튼을 붙이므로 저장했다고 말하지 않습니다. date는 기억하는 만큼 "
-            "YYYY, YYYY-MM, YYYY-MM-DD로 씁니다. sensitive는 사용자가 민감하다고 말했을 때만 true입니다."
+            "YYYY, YYYY-MM, YYYY-MM-DD로 씁니다. sensitive는 사용자가 민감하다고 말했을 때만 true입니다. area는 "
+            "사용자의 말에서 그 일의 대표 영역이 분명할 때만 넣고, 애매하면 비워 둡니다."
         ),
         _schema(
             {
                 "date": {"type": "string", "description": "YYYY | YYYY-MM | YYYY-MM-DD"},
-                "kind": {"enum": ["high", "low", "turning_point"], "description": "고점, 저점, 전환점"},
+                "kind": {"enum": ["high", "low", "turning_point"], "description": "높은 때, 힘든 때, 전환점"},
                 "title": {"type": "string", "description": "1~100자"},
                 "note": {"type": ["string", "null"]},
                 "chapter_id": {"type": ["integer", "null"], "description": "속한 챕터 번호"},
                 "sensitive": {"type": "boolean"},
+                "area": {
+                    "type": ["string", "null"], "enum": [*_AREAS, None],
+                    "description": "대표 영역 하나(분명할 때만)",
+                },
             },
             ["date", "kind", "title"],
         ),
     ),
     "confirm_milestones": (
         (
-            "사건 초안을 확정합니다. 사용자가 글로 \"응 저장해\"처럼 동의했을 때 부릅니다. 고점과 전환점은 칭호가 생깁니다. "
+            "사건 초안을 확정합니다. 사용자가 글로 \"응 저장해\"처럼 동의했을 때 부릅니다. 높은 때와 전환점은 칭호가 생깁니다. "
             "초안이 아닌 번호는 바꾸지 않고 skipped_ids로 돌려줍니다."
         ),
         _schema({"ids": _CURVE_IDS}, ["ids"]),
@@ -267,7 +272,8 @@ _SPECS.update({
     "propose_chapter": (
         (
             "인생의 한 시기를 챕터 **초안**으로 남깁니다(연말 회고). start, end는 YYYY-MM이고 end가 없으면 지금까지입니다. "
-            "하네스가 저장·빼기 버튼을 붙입니다."
+            "하네스가 저장·빼기 버튼을 붙입니다. ladder는 그 시기를 돌아보며 사용자가 직접 말한 사다리 칸(0~10)만 넣고, "
+            "추측하지 않습니다."
         ),
         _schema(
             {
@@ -275,6 +281,8 @@ _SPECS.update({
                 "theme": {"type": ["string", "null"], "description": "주제 한 줄"},
                 "start": _MONTH,
                 "end": {**_MONTH, "type": ["string", "null"]},
+                "ladder": {"type": ["integer", "null"], "minimum": 0, "maximum": 10,
+                           "description": "사용자가 말한 그 시기의 사다리 칸"},
             },
             ["title", "start"],
         ),

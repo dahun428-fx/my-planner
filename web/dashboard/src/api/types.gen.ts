@@ -26,6 +26,7 @@ export interface ApiModels {
   Conditions: Conditions;
   Conversations: Conversations;
   Curve: Curve;
+  CurveHistory: CurveHistory;
   Drafts: Drafts;
   Error: Error;
   Habit: Habit;
@@ -463,6 +464,7 @@ export interface CurveChapter {
   certainty: "fact" | "estimate";
   end: string | null;
   id: number;
+  ladder_remembered: number | null;
   sketch: string | null;
   start: string;
   theme: string | null;
@@ -494,12 +496,15 @@ export interface CurveLadder {
  * via the `definition` "CurveMilestone".
  */
 export interface CurveMilestone {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
   certainty: "fact" | "estimate";
   chapter_id: number | null;
   date: string;
   id: number;
   kind: "high" | "low" | "turning_point";
+  kind_certainty: "fact" | "estimate";
   note: string | null;
+  origin: "seed" | "chat" | "review";
   precision: "year" | "month" | "day";
   sensitive: boolean;
   title: string;
@@ -515,6 +520,119 @@ export interface CurveReassurance {
   gap: number | null;
   ladder_now: number;
   period: string;
+}
+/**
+ * `GET /curve/history` (SP8 8.2). 챕터는 `start` 최근부터, 사건은 `sort_date` 최근부터.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CurveHistory".
+ */
+export interface CurveHistory {
+  chapters: HistoryChapter[];
+  since_year: number | null;
+  summary: HistorySummary;
+  unassigned: HistoryUnassigned;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryChapter".
+ */
+export interface HistoryChapter {
+  certainty: "fact" | "estimate";
+  end: string | null;
+  events: HistoryEvent[];
+  hidden_sensitive: HiddenSensitive;
+  id: number;
+  ladder: HistoryLadder | null;
+  sketch: string | null;
+  start: string;
+  theme: string | null;
+  title: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryEvent".
+ */
+export interface HistoryEvent {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  certainty: "fact" | "estimate";
+  date: string;
+  id: number;
+  kind: "high" | "low" | "turning_point";
+  kind_certainty: "fact" | "estimate";
+  note: string | null;
+  origin: "seed" | "chat" | "review";
+  precision: "year" | "month" | "day";
+  sensitive: boolean;
+  title: string;
+}
+/**
+ * 가린 민감 사건의 개수와 해(오름차순, 중복 없음). 제목·메모는 본문에 없다(8.5).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HiddenSensitive".
+ */
+export interface HiddenSensitive {
+  count: number;
+  years: number[];
+}
+/**
+ * `remembered`는 기억한 정수, `recorded`는 그 기간 월별 사다리 평균(소수 한 자리). 둘 다 `float` 하나다(결정 16).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryLadder".
+ */
+export interface HistoryLadder {
+  source: "remembered" | "recorded";
+  value: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistorySummary".
+ */
+export interface HistorySummary {
+  chapters: number;
+  events: number;
+  highest: HistoryHighest | null;
+  longest: HistoryLongest | null;
+  records_since: number | null;
+  turning_points: HistoryTurningPoints;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryHighest".
+ */
+export interface HistoryHighest {
+  chapter_id: number;
+  ladder: number;
+  title: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryLongest".
+ */
+export interface HistoryLongest {
+  chapter_id: number;
+  title: string;
+  years: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryTurningPoints".
+ */
+export interface HistoryTurningPoints {
+  count: number;
+  years: number[];
+}
+/**
+ * 확정한 챕터에 들지 않은 사건("시기를 정하지 않은 사건").
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryUnassigned".
+ */
+export interface HistoryUnassigned {
+  events: HistoryEvent[];
+  hidden_sensitive: HiddenSensitive;
 }
 /**
  * `GET /drafts` (6.3.8): 만료 전 초안만.

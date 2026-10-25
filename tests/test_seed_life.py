@@ -9,7 +9,7 @@ import sqlite3
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Self
+from typing import Any, ClassVar, Self
 
 import pytest
 
@@ -18,6 +18,7 @@ from my_planner.curve import seed
 from my_planner.curve.seed import (
     EXIT_ALREADY,
     EXIT_BAD_FILE,
+    EXIT_NOT_IMPORTED,
     EXIT_NOT_REVIEWED,
     EXIT_OK,
     EXIT_RUNNING,
@@ -25,6 +26,7 @@ from my_planner.curve.seed import (
     load_seed,
     plan_import,
     run_seed_life,
+    run_update_history,
 )
 from my_planner.platform.windows import AlreadyRunning, SingleInstanceLock
 from my_planner.store.db import open_db
@@ -435,3 +437,186 @@ def test_db_error_during_apply_rolls_back_code_6(tmp_path, monkeypatch):
     assert counts and not any(counts.values())  # 챕터·사건·칭호·표시 모두 되돌려졌다
     monkeypatch.undo()
     assert run(tmp_path, FIXTURE)[0] == EXIT_OK  # 표시가 없으니 다시 가져올 수 있다
+
+
+# --- SP8 8.1: 사건 영역, 챕터 사다리, `--update-history` ---
+
+
+def history_seed() -> dict:
+    """꾸민 시드에 영역과 기억한 사다리를 더한다."""
+    data = fixture_seed()
+    data["chapters"][0]["ladder"] = 6
+    data["chapters"][2]["ladder"] = 0
+    data["events"][0]["area"] = "learning"  # 2012 높은 때(C1)
+    data["events"][2]["area"] = "health"  # 2016-07 힘든 때(C2)
+    data["events"][3]["area"] = "relationships"  # 확인한 민감 사건
+    return data
+
+
+def history_counts(root: Path) -> dict[str, Any]:
+    c = db(root)
+    try:
+        return {
+            "areas": dict(c.execute("SELECT date_text, area FROM curve_milestones WHERE area IS NOT NULL").fetchall()),
+            "ladders": dict(c.execute(
+                "SELECT seed_key, ladder_remembered FROM curve_chapters WHERE ladder_remembered IS NOT NULL"
+            ).fetchall()),
+            "marked": c.execute(
+                "SELECT COUNT(*) FROM app_state WHERE key = 'life_seed_history_updated_at'").fetchone()[0],
+        }
+    finally:
+        c.close()
+
+
+def update(root: Path, file: Path, *, dry_run: bool = False, lock=NoLock) -> tuple[int, str]:
+    out = io.StringIO()
+    code = run_update_history(root, file, dry_run=dry_run, out=out, lock_factory=lock, clock=FakeClock(NOW))
+    return code, out.getvalue()
+
+
+def history_output(areas: int, ladders: int, sens: int, stor: int, inv: int, amb: int) -> str:
+    return (f"채울 것: 사건 영역 {areas}, 챕터 사다리 {ladders}\n"
+            f"건너뛸 것: {sens + stor + inv + amb} (sensitive_unconfirmed {sens}, storage_unconfirmed {stor}, "
+            f"invalid {inv}, ambiguous {amb})\n")
+
+
+def test_event_area_and_chapter_ladder_imported(tmp_path):
+    assert run(tmp_path, write_seed(tmp_path, history_seed()))[0] == EXIT_OK
+    got = history_counts(tmp_path)
+    assert got["areas"] == {"2012": "learning", "2016-07": "health", "2021-05": "relationships"}
+    assert got["ladders"] == {"C1": 6, "C3": 0}
+    assert got["marked"] == 0  # 가져오기는 히스토리 채움 표시를 적지 않는다
+
+
+@pytest.mark.parametrize(("section", "index", "key", "value"), [
+    ("events", 0, "area", "hobby"), ("events", 0, "area", 3), ("events", 0, "area", ["career"]),
+    ("chapters", 0, "ladder", 11), ("chapters", 0, "ladder", -1), ("chapters", 0, "ladder", 6.0),
+    ("chapters", 0, "ladder", True), ("chapters", 0, "ladder", "6"),
+])
+def test_bad_area_or_ladder_invalid(section, index, key, value):
+    data = fixture_seed()
+    data[section][index][key] = value
+    plan = plan_import(data)
+    assert plan.skipped["invalid"] == 2 + 1
+    data[section][index][key] = None  # 없는 것과 같다
+    assert plan_import(data).skipped["invalid"] == 2
+
+
+def _imported_without_history(tmp_path: Path) -> Path:
+    """히스토리 칸 없이 가져온 DB(SP8 전 시드)와, 칸을 더한 같은 시드 파일."""
+    assert run(tmp_path, FIXTURE)[0] == EXIT_OK
+    return write_seed(tmp_path, history_seed(), "history.seed.json")
+
+
+def test_update_history_fills_empty_only(tmp_path):
+    file = _imported_without_history(tmp_path)
+    c = db(tmp_path)
+    c.execute("UPDATE curve_milestones SET area = 'career' WHERE date_text = '2016-07'")  # 이미 값이 있다
+    c.execute("UPDATE curve_chapters SET ladder_remembered = 3 WHERE seed_key = 'C3'")
+    c.commit()
+    c.close()
+    code, out = update(tmp_path, file)
+    assert code == EXIT_OK
+    assert out == history_output(2, 1, 1, 1, 2, 0)
+    got = history_counts(tmp_path)
+    assert got["areas"] == {"2012": "learning", "2016-07": "career", "2021-05": "relationships"}
+    assert got["ladders"] == {"C1": 6, "C3": 3}
+    assert got["marked"] == 1
+
+
+def test_update_history_confirm_rules(tmp_path):
+    _imported_without_history(tmp_path)
+    data = history_seed()
+    data["events"][3]["confirmed"] = False  # 확인하지 않은 민감 사건의 영역은 채우지 않는다
+    data["events"][5]["area"] = "career"  # storage가 있고 확인하지 않음
+    data["chapters"][2]["storage"] = "local_only"  # 챕터도 같은 규칙
+    code, out = update(tmp_path, write_seed(tmp_path, data, "history.seed.json"))
+    assert code == EXIT_OK
+    assert out == history_output(2, 1, 2, 2, 2, 0)
+    got = history_counts(tmp_path)
+    assert got["areas"] == {"2012": "learning", "2016-07": "health"}
+    assert got["ladders"] == {"C1": 6}
+
+
+def test_update_history_ambiguous_counted(tmp_path):
+    data = fixture_seed()
+    data["events"].append(dict(data["events"][2], note="꾸민 쌍둥이 메모"))  # DB에 같은 date + title 사건이 둘
+    assert run(tmp_path, write_seed(tmp_path, data))[0] == EXIT_OK
+    hist = history_seed()
+    hist["events"].append(dict(hist["events"][0]))  # 시드에 같은 date + title 항목이 둘
+    code, out = update(tmp_path, write_seed(tmp_path, hist, "history.seed.json"))
+    assert code == EXIT_OK
+    assert out == history_output(1, 2, 1, 1, 2, 3)  # 2012 두 항목 + 2016-07 한 항목
+    assert history_counts(tmp_path)["areas"] == {"2021-05": "relationships"}
+
+
+def test_update_history_output_has_no_content(tmp_path):
+    file = _imported_without_history(tmp_path)
+    for dry_run in (True, False):
+        code, out = update(tmp_path, file, dry_run=dry_run)
+        assert code == EXIT_OK
+        for text in [*_texts(history_seed()), "learning", "health", "relationships"]:
+            assert text not in out
+
+
+def test_update_history_second_run_code_4(tmp_path):
+    file = _imported_without_history(tmp_path)
+    assert update(tmp_path, file)[0] == EXIT_OK
+    before = history_counts(tmp_path)
+    for dry_run in (False, True):
+        assert update(tmp_path, file, dry_run=dry_run) == (EXIT_ALREADY, "이미 채웠어요.\n")
+    assert history_counts(tmp_path) == before
+
+
+def test_update_history_lock_code_3(tmp_path):
+    file = _imported_without_history(tmp_path)
+    NoLock.paths = []
+    assert update(tmp_path, file, lock=HeldLock) == (EXIT_RUNNING, RUNNING_MESSAGE + "\n")
+    assert NoLock.paths == [tmp_path.resolve() / "state" / "my-planner.lock"]
+    assert history_counts(tmp_path) == {"areas": {}, "ladders": {}, "marked": 0}
+
+
+def test_update_history_before_import_code_7(tmp_path):
+    file = write_seed(tmp_path, history_seed())
+    for dry_run in (True, False):
+        code, out = update(tmp_path, file, dry_run=dry_run)
+        assert (code, out) == (EXIT_NOT_IMPORTED, "아직 가져온 시드가 없어요. 먼저 seed-life로 가져와 주세요.\n")
+    assert not (tmp_path / "state" / "planner.db").exists()  # DB를 만들지 않는다
+    # DB는 있지만 가져온 표시가 없다(BE만 돌았다): 아무것도 쓰지 않는다
+    open_db(tmp_path / "state" / "planner.db").close()
+    assert update(tmp_path, file)[0] == EXIT_NOT_IMPORTED == 7
+    c = db(tmp_path)
+    try:
+        have = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        if "app_state" in have:
+            assert not c.execute(
+                "SELECT COUNT(*) FROM app_state WHERE key = 'life_seed_history_updated_at'").fetchone()[0]
+    finally:
+        c.close()
+
+
+def test_update_history_dry_run_writes_nothing(tmp_path):
+    file = _imported_without_history(tmp_path)
+    code, out = update(tmp_path, file, dry_run=True)
+    assert code == EXIT_OK
+    assert out == history_output(3, 2, 1, 1, 2, 0) + "--dry-run: 아무것도 쓰지 않았어요.\n"
+    assert history_counts(tmp_path) == {"areas": {}, "ladders": {}, "marked": 0}
+    assert update(tmp_path, file)[0] == EXIT_OK  # 표시가 없으니 그 뒤에 채울 수 있다
+
+
+def test_update_history_not_reviewed_and_bad_file(tmp_path):
+    _imported_without_history(tmp_path)
+    data = history_seed()
+    data["meta"]["reviewed"] = False
+    assert update(tmp_path, write_seed(tmp_path, data, "x.seed.json"))[0] == EXIT_NOT_REVIEWED
+    assert update(tmp_path, tmp_path / "missing.seed.json")[0] == EXIT_BAD_FILE
+    assert history_counts(tmp_path)["marked"] == 0
+
+
+def test_cli_seed_life_update_history_dispatch(tmp_path, monkeypatch, capsys):
+    from my_planner import cli
+
+    monkeypatch.setenv("MY_PLANNER_ROOT", str(tmp_path))
+    assert cli.main(["seed-life", "--update-history", str(FIXTURE), "--dry-run"]) == EXIT_NOT_IMPORTED
+    assert capsys.readouterr().out == "아직 가져온 시드가 없어요. 먼저 seed-life로 가져와 주세요.\n"
+    assert "--update-history" in cli.USAGE

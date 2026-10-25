@@ -28,6 +28,7 @@ EXPECTED_MODELS = {
     "Memo", "MemoItem", "MemoList",  # SP9 6.4
     "Moment", "MomentsList",  # SP8 6.5
     "BodyPostBody", "BodySaved",  # SP8 7.3
+    "CurveHistory",  # SP8 8.2
 }
 
 

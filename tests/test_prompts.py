@@ -1,5 +1,6 @@
 """프롬프트 파일 (앱 시작과 운영 산출물 경계): 루프마다 지시문이 있고, 금지어가 없다."""
 
+import json
 import re
 
 from my_planner.harness import prompts
@@ -99,3 +100,17 @@ def test_review_week_moments_counts_only_no_ask():
     assert REVIEW_LINE in text
     assert "날짜와 개수" in text
     assert "곡선에 남길까요" not in text
+
+
+def test_prompts_use_new_kind_names():
+    """SP8 8.7: 사건 종류는 "높은 때", "힘든 때", "전환점"이다. 프롬프트와 도구 설명에 옛 이름이 없다."""
+    from my_planner.tools.mcp_adapter import _SPECS as TOOL_SPECS
+
+    old = ("고점", "저점")
+    for f in sorted(prompts.PROMPTS_DIR.glob("*.md")):
+        text = f.read_text(encoding="utf-8")
+        assert not any(w in text for w in old), f.name
+    tools_text = json.dumps(TOOL_SPECS, ensure_ascii=False)
+    assert not any(w in tools_text for w in old)
+    assert "곡선에 높은 때로 남길까요?" in _system()
+    assert "높은 때, 힘든 때, 전환점" in tools_text

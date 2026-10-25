@@ -459,6 +459,12 @@ class CurveChapter(_Model):
     end: str | None
     sketch: str | None
     certainty: Literal["fact", "estimate"]
+    ladder_remembered: int | None  # SP8 8.1: 그 시기를 돌아보며 기억하는 사다리 칸(0~10)
+
+
+CurveOrigin = Literal["seed", "chat", "review"]
+Certainty = Literal["fact", "estimate"]
+MilestoneKind = Literal["high", "low", "turning_point"]
 
 
 class CurveMilestone(_Model):
@@ -471,6 +477,9 @@ class CurveMilestone(_Model):
     chapter_id: int | None
     sensitive: bool
     certainty: Literal["fact", "estimate"]
+    kind_certainty: Certainty  # SP8 8.2
+    area: AreaName | None
+    origin: CurveOrigin
 
 
 class CurveLadder(_Model):
@@ -516,6 +525,92 @@ class Curve(_Model):
     areas: list[CurveAreas]
     condition: list[CurveCondition]
     reassurance: list[CurveReassurance]
+
+
+# --- 인생 히스토리 (SP8 8.2) ---
+
+
+class HistoryLadder(_Model):
+    """`remembered`는 기억한 정수, `recorded`는 그 기간 월별 사다리 평균(소수 한 자리). 둘 다 `float` 하나다(결정 16)."""
+
+    value: float
+    source: Literal["remembered", "recorded"]
+
+
+class HiddenSensitive(_Model):
+    """가린 민감 사건의 개수와 해(오름차순, 중복 없음). 제목·메모는 본문에 없다(8.5)."""
+
+    count: int
+    years: list[int]
+
+
+class HistoryEvent(_Model):
+    id: int
+    date: str
+    precision: Literal["year", "month", "day"]
+    kind: MilestoneKind
+    kind_certainty: Certainty
+    title: str
+    note: str | None
+    area: AreaName | None
+    origin: CurveOrigin
+    certainty: Certainty
+    sensitive: bool
+
+
+class HistoryChapter(_Model):
+    id: int
+    title: str
+    theme: str | None
+    start: str
+    end: str | None
+    sketch: str | None
+    certainty: Certainty
+    ladder: HistoryLadder | None
+    events: list[HistoryEvent]
+    hidden_sensitive: HiddenSensitive
+
+
+class HistoryUnassigned(_Model):
+    """확정한 챕터에 들지 않은 사건("시기를 정하지 않은 사건")."""
+
+    events: list[HistoryEvent]
+    hidden_sensitive: HiddenSensitive
+
+
+class HistoryHighest(_Model):
+    chapter_id: int
+    title: str
+    ladder: float
+
+
+class HistoryTurningPoints(_Model):
+    count: int
+    years: list[int]
+
+
+class HistoryLongest(_Model):
+    chapter_id: int
+    title: str
+    years: int
+
+
+class HistorySummary(_Model):
+    chapters: int
+    events: int
+    highest: HistoryHighest | None
+    turning_points: HistoryTurningPoints
+    longest: HistoryLongest | None
+    records_since: int | None
+
+
+class CurveHistory(_Model):
+    """`GET /curve/history` (SP8 8.2). 챕터는 `start` 최근부터, 사건은 `sort_date` 최근부터."""
+
+    since_year: int | None
+    chapters: list[HistoryChapter]
+    unassigned: HistoryUnassigned
+    summary: HistorySummary
 
 
 class StatusHp(_Model):
@@ -945,6 +1040,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "Priorities": Priorities,
     "Drafts": Drafts,
     "Curve": Curve,
+    "CurveHistory": CurveHistory,
     "Status": Status,
     "Moment": Moment,
     "MomentsList": MomentsList,

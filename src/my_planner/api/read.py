@@ -20,6 +20,7 @@ from my_planner.api.models import (
     Conditions,
     Conversations,
     Curve,
+    CurveHistory,
     Drafts,
     HabitHistory,
     HabitsList,
@@ -37,6 +38,7 @@ from my_planner.api.models import (
     schema_bundle,
 )
 from my_planner.clock import logical_date, period_of, to_iso
+from my_planner.curve.history import curve_history
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
@@ -388,6 +390,15 @@ def get_curve(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     except (OverflowError, ValueError):
         raise _bad("범위가 맞지 않아요.") from None
     return dump(Curve, body)
+
+
+def get_curve_history(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """`GET /curve/history` (SP8 8.2, 대시보드, 쓰기 없음)."""
+    body = curve_history(
+        CurveRepo(conn, deps.clock), ConditionsRepo(conn, deps.clock), today=_today(deps),
+        include_sensitive=_include_sensitive(request),
+    )
+    return dump(CurveHistory, body)
 
 
 def get_status(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:

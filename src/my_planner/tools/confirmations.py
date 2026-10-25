@@ -66,7 +66,9 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         # 회차 차례의 확인(10.1): 바뀐 것은 없다. 회차 메시지 글에 확인 문구 전부를 남긴다(버튼은 짧다)
         "confirm_requested": confirm_requested_summary(e.data.get("summary", "")),
         # 인생 곡선(SP3-4 부록 A, 문구 C1~C4)
-        "milestones_confirmed": milestone_confirmed_line(title, e.data.get("date_text", ""), e.data.get("kind", "")),
+        "milestones_confirmed": milestone_confirmed_line(
+            title, e.data.get("date_text", ""), e.data.get("kind", ""), e.data.get("area"),
+        ),
         "milestone_dropped": dropped_line(title),
         "title_granted": f"칭호: {title}",
         "chapters_confirmed": chapter_confirmed_line(title, e.data.get("start_month", ""), e.data.get("end_month")),
@@ -159,12 +161,15 @@ def rest_days_summary(days: int) -> str:
 
 # --- 인생 곡선 (SP3-4 부록 A, 문구 C1~C4) ---
 
-KIND_LABELS = {"high": "고점", "low": "저점", "turning_point": "전환점"}
+# 사건 종류의 화면 이름(SP8 8.7). 코드 값은 그대로다
+KIND_LABELS = {"high": "높은 때", "low": "힘든 때", "turning_point": "전환점"}
 
 
-def milestone_confirmed_line(title: str, date_text: str, kind: str) -> str:
-    """부록 A 사건 확정: `✓ 저장: 제주 여행 (2019, 고점)`."""
-    return f"✓ 저장: {title} ({date_text}, {KIND_LABELS.get(kind, kind)})"
+def milestone_confirmed_line(title: str, date_text: str, kind: str, area: str | None = None) -> str:
+    """부록 A 사건 확정: `✓ 저장: 제주 여행 (2019, 높은 때)`. 영역이 있으면 끝에 붙인다(SP8 8.1):
+    `✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질)`."""
+    tail = f", {AREA_LABELS[area]}" if area in AREA_LABELS else ""
+    return f"✓ 저장: {title} ({date_text}, {KIND_LABELS.get(kind, kind)}{tail})"
 
 
 def chapter_confirmed_line(title: str, start_month: str, end_month: str | None) -> str:
@@ -320,8 +325,12 @@ _BARE = re.compile(r"^✓ (?P<verb>[^:]+)$")  # 대상 이름이 없는 한 줄(
 _CONDITION = re.compile(r"^(?P<what>컨디션 \d+) 기록했어요\.$")
 # 곡선 기록(C1, C4): 점수 줄은 요지에서 빼고 기간만 둔다
 _CURVE_RECORD = re.compile(r"^✓ (?P<what>사다리|영역 점수)를 기록했어요 \((?P<period>[^)]+)\): ")
-# `저장`(사건·챕터 확정) 뒤의 날짜·종류 꼬리: `(2019, 고점)`, `(2019-03~지금)`
-_SAVE_TAIL = re.compile(r" \((\d{4}(-\d{2}){0,2}, (고점|저점|전환점)|\d{4}-\d{2}~(\d{4}-\d{2}|지금))\)")
+# `저장`(사건·챕터 확정) 뒤의 날짜·종류(·영역) 꼬리: `(2019, 높은 때)`, `(2019, 높은 때, 삶의 질)`, `(2019-03~지금)`
+_KIND_NAMES = "|".join(re.escape(v) for v in KIND_LABELS.values())
+_AREA_NAMES = "|".join(re.escape(v) for v in AREA_LABELS.values())
+_SAVE_TAIL = re.compile(
+    rf" \((\d{{4}}(-\d{{2}}){{0,2}}, ({_KIND_NAMES})(, ({_AREA_NAMES}))?|\d{{4}}-\d{{2}}~(\d{{4}}-\d{{2}}|지금))\)"
+)
 
 
 # 습관 확인 문구(SP7 부록 A): `✓ 습관 추가: 운동 (주 3회)`, `✓ 습관: 운동 (10/22)`, `↩ 습관 체크 취소: 운동`

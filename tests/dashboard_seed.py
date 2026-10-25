@@ -208,10 +208,13 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
 
     # --- 인생 곡선: 챕터·사건·사다리·영역 점수 ---
     ch = chapter(conn, "꾸민 새 출발", "2025-03", sketch="↗", certainty="estimate")
-    chapter(conn, "꾸민 배움의 해", "2023-01", "2025-02")
-    m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch, note="꾸민 메모: 작은 카페 벽에 세 점")
-    m2 = milestone(conn, "꾸민 이사 결정", "2026-02-14", kind="turning_point", chapter_id=ch)
-    milestone(conn, "꾸민 긴 감기", "2026-06", kind="low")
+    # 기억한 사다리(SP8 8.1): 히스토리의 "그때 사다리 6". 새 출발은 월별 사다리 평균으로 그린다
+    chapter(conn, "꾸민 배움의 해", "2023-01", "2025-02", ladder_remembered=6)
+    m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch, note="꾸민 메모: 작은 카페 벽에 세 점",
+                   area="learning")
+    m2 = milestone(conn, "꾸민 이사 결정", "2026-02-14", kind="turning_point", chapter_id=ch, area="quality_of_life",
+                   origin="chat")
+    milestone(conn, "꾸민 긴 감기", "2026-06", kind="low", area="health", kind_certainty="estimate")
     milestone(conn, "꾸민 첫 자전거", "2019", kind="high")  # 가장 이른 챕터보다 앞선 사건(년 확대가 `from`을 준다)
     milestone(conn, "꾸민 조용한 겨울", "2025-12", kind="low", sensitive=1, note="꾸민 메모: 민감 표시 확인용")
     for period, n, f in CURVE_LADDER:

@@ -98,10 +98,14 @@ CASES: dict[str, tuple[str, Callable[[BeEnv], Awaitable[None]], dict[str, Any]]]
     "curve-quarter": ("/curve?zoom=quarter", _seeded, {}),
     "curve-year": ("/curve?zoom=year&from=1900-01-01", _seeded, {}),
     "curve-empty": ("/curve?zoom=month", _quiet, {}),
+    # SP8-08: 히스토리 탭(SP8 8.2). 기본은 민감 사건을 가린다
+    "curve-history": ("/curve/history", _seeded, {}),
+    "curve-history-sensitive": ("/curve/history?include_sensitive=true", _seeded, {}),
+    "curve-history-empty": ("/curve/history", _quiet, {}),
 }
 # 경로마다 응답 모델(고정 자료가 계약 모양인지 본다)
 PATH_MODELS = {"/health": "Health", "/today": "Today", "/week": "Week", "/conditions": "Conditions",
-               "/status": "Status", "/curve": "Curve"}
+               "/status": "Status", "/curve": "Curve", "/curve/history": "CurveHistory"}
 
 
 async def _record(tmp_path: Path, name: str) -> Any:
