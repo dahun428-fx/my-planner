@@ -19,6 +19,9 @@
   git clone https://github.com/dahun428-fx/my-planner.git -b develop E:\my-planner-dev
   cd E:\my-planner-dev
   powershell -ExecutionPolicy Bypass -File scripts\setup_dev.ps1
+
+  관리자 권한이 아닌 일반 PowerShell에서 실행합니다. 관리자로 등록하면 작업 소유자가 Administrators가 되어
+  medic-dev가 my-planner-dev를 끄고 켜지 못해 develop을 따라가지 못합니다(2026-10-25).
 #>
 [CmdletBinding()]
 param(
@@ -33,6 +36,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw '관리자 PowerShell이 아닌 일반 PowerShell에서 실행하세요(작업 소유자가 Administrators가 되면 medic-dev가 업데이트하지 못함)'
+}
 
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
 $Root = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\')
