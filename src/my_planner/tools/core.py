@@ -45,7 +45,7 @@ from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
-from my_planner.store.views import habits_view, todo_refs
+from my_planner.store.views import habits_view, moment_counts, moment_dict, todo_refs
 from my_planner.timefmt import api_time
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import (
@@ -108,6 +108,7 @@ LIST_LIMIT_MAX = 50
 LIST_LIMIT_DEFAULT = 20
 TRANSCRIPT_MAX_DAYS = 7
 PRIORITY_MAX = 3
+BRAIN_MOMENTS_DAYS = 7  # 두뇌 `get_status`의 이룬 순간(SP8 10.3)
 SCORE_MIN, SCORE_MAX = 1, 5  # 컨디션 점수
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")  # fromisoformat은 20261023, 2026-W43-5도 받는다
 LADDER_MIN, LADDER_MAX = 0, 10  # 사다리(5.4)
@@ -1293,14 +1294,28 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
 
     @_tool
     def get_status(self, ctx: RunContext) -> dict[str, Any]:
-        """6.3.6과 같은 데이터(`status_snapshot`, 민감 사건 칭호는 뺀다). 시각은 현지 시각(두뇌가 받는 도구 결과)."""
+        """6.3.6과 같은 데이터(`status_snapshot`, 민감 사건 칭호는 뺀다). 시각은 현지 시각(두뇌가 받는 도구 결과).
+
+        이룬 순간은 지난 7일(숨긴 것 빼고)만, 통로를 하네스가 고른다(SP8 10.3, D7): 앱 통로(`ctx.channel == "app"`)는
+        글이 있는 `Moment`, 그 밖(텔레그램 대화, 회차 차례)은 `[{"date", "count"}]`(날짜와 개수만). 두뇌에게 고르게
+        하지 않는다.
+        """
         if self.curve is None or self.status is None or self.conditions is None:
             return _err("상태창을 읽을 수 없어요.")
         snap = status_snapshot(
             now=self.clock.now(), tz=self.tz, boundary=self.boundary, status=self.status, curve=self.curve,
             tasks=self.tasks, conditions=self.conditions,
         )
+        snap["moments"] = self._brain_moments(ctx)
+        del snap["moments_hidden"]  # `GET /status`의 14일 수다. 두뇌에는 지난 7일의 보이는 순간만 준다
         return self._local_times(snap)
+
+    def _brain_moments(self, ctx: RunContext) -> list[dict[str, Any]]:
+        if self.moments is None:
+            return []
+        today = self.today()
+        week = self.moments.between(today - timedelta(days=BRAIN_MOMENTS_DAYS - 1), today, include_hidden=False)
+        return [moment_dict(m) for m in week] if ctx.channel == "app" else moment_counts(week)
 
     def _local_times(self, v: Any) -> Any:
         if isinstance(v, dict):
@@ -1330,7 +1345,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
             return _err("to는 from보다 같거나 뒤여야 해요.")
         if (end - start) + timedelta(days=1) > timedelta(days=TRANSCRIPT_MAX_DAYS):
             return _err(f"원문 기록은 최대 {TRANSCRIPT_MAX_DAYS}일까지 읽을 수 있어요.")
-        text = self.transcripts.read_range(start, end)
+        # 텔레그램 통로(회차 차례 포함)는 앱 대화의 비서 줄을 받지 않는다: 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 11장)
+        text = self.transcripts.read_range(start, end, drop_app_secretary=ctx.channel != "app")
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
 
 

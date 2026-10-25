@@ -11,7 +11,7 @@ from test_dispatcher_messages import kst
 from my_planner.api import health as health_mod
 from my_planner.api.health import ErrorCounter
 from my_planner.api.models import SafeModeHealth
-from my_planner.api.server import ApiDeps, build_app
+from my_planner.api.server import READ_ROUTES, WRITE_ROUTES, ApiDeps, build_app
 from my_planner.clock import FakeClock
 from my_planner.store.db import open_ro
 
@@ -75,3 +75,27 @@ def test_open_ro_uses_file_uri_and_sees_committed_writes(tmp_path, conn):
             ro.execute("DELETE FROM app_state")
     finally:
         ro.close()
+
+
+async def test_moments_reads_only(tmp_path, monkeypatch):
+    """SP8 6.5: `GET /moments`와 `GET /status`(순간 포함)는 읽기 전용 연결만 받는다. `/moments`에 쓰기 경로는 없다
+    (숨기기·지우기는 `POST /actions`뿐)."""
+    from my_planner.api import read as read_mod
+
+    seen = []
+    real = read_mod.MomentsRepo
+
+    def spy(conn, clock):
+        seen.append(conn)
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            conn.execute("DELETE FROM status_moments")
+        return real(conn, clock)
+
+    monkeypatch.setattr(read_mod, "MomentsRepo", spy)
+    assert "/moments" in {p for p, _ in READ_ROUTES}
+    assert not any(p.startswith("/moments") for p, _ in WRITE_ROUTES)
+    async with BeEnv.start(tmp_path, start=START) as env:
+        assert (await env.get("/moments")).status == 200
+        assert (await env.get("/status")).status == 200
+        assert (await env.post("/moments", json={})).status == 405
+    assert len(seen) == 2 and all(c is not env.conn for c in seen)

@@ -238,3 +238,75 @@ def test_no_xp_from_moments(env):
 def test_no_moments_repo_rejects(env):
     env.tools.moments = None
     assert env.save([_m()]) == {"error": NOT_HERE}
+
+
+# --- `get_status`의 이룬 순간: 통로마다 (SP8 6.7, 10.3, 1장 조건 7) ---
+
+SECRET_A = "꾸며 낸 순간: 산책을 30분 했어요"
+SECRET_B = "꾸며 낸 순간: 친구에게 먼저 연락했어요"
+SECRET_OLD = "꾸며 낸 순간: 8일 전 일"
+SECRET_HIDDEN = "꾸며 낸 순간: 숨긴 것"
+
+
+def _status_tools(env):
+    from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.curve import CurveRepo
+
+    env.tools.curve = CurveRepo(env.conn, env.clock)
+    env.tools.conditions = ConditionsRepo(env.conn, env.clock)
+    m = env.moments
+    now = env.clock.now()
+    a, b = m.save_day(date(2026, 10, 24), [(SECRET_A, "health", ["chat"]), (SECRET_B, None, ["task:12"])], now)
+    m.save_day(date(2026, 10, 22), [("꾸며 낸 순간: 22일", "career", ["habit:3"])], now)
+    m.save_day(date(2026, 10, 19), [(SECRET_OLD, None, ["chat"])], now)  # 10/26 기준 7일 밖(14일 안)
+    (h,) = m.save_day(date(2026, 10, 23), [(SECRET_HIDDEN, None, ["chat"])], now)
+    m.hide(h.id, now)
+    return a, b
+
+
+def test_get_status_telegram_has_dates_and_counts_only(env):
+    _status_tools(env)
+    out = env.tools.get_status(RunContext(None, None, channel="telegram"))
+    text = json.dumps(out, ensure_ascii=False)
+
+    assert out["moments"] == [{"date": "2026-10-24", "count": 2}, {"date": "2026-10-22", "count": 1}]
+    for secret in (SECRET_A, SECRET_B, SECRET_OLD, SECRET_HIDDEN, "꾸며 낸"):
+        assert secret not in text
+    run = env.tools.get_status(RunContext(None, None, kind="run", activity_channel="scheduler"))
+    assert "꾸며 낸" not in json.dumps(run, ensure_ascii=False)  # 회차 차례도 `ctx.channel`(telegram) 그대로
+
+
+def test_get_status_app_has_text_last_7_days(env):
+    a, b = _status_tools(env)
+    out = env.tools.get_status(RunContext(None, None, channel="app"))
+
+    assert [(m["id"], m["text"]) for m in out["moments"]] == [
+        (a.id, SECRET_A), (b.id, SECRET_B), (out["moments"][2]["id"], "꾸며 낸 순간: 22일"),
+    ]
+    assert out["moments"][0] == {
+        "id": a.id, "date": "2026-10-24", "text": SECRET_A, "area": "health", "sources": ["chat"], "hidden": False,
+    }
+    text = json.dumps(out, ensure_ascii=False)
+    assert SECRET_OLD not in text and SECRET_HIDDEN not in text
+
+
+def test_read_transcript_telegram_omits_app_secretary_lines(env):
+    """SP8 1장 조건 7, 11장: 앱 대화의 비서 줄은 이룬 순간의 글을 옮겨 말했을 수 있다. 텔레그램 통로(회차 차례 포함)의
+    `read_transcript`에는 그 줄이 없다. 앱 사용자 줄과 텔레그램 줄은 그대로다. 앱 통로는 전부 받는다."""
+    tr = env.tools.transcripts
+    tr.append(kst(2026, 10, 24, 9, 0), "사용자", 1, None, "꾸민 텔레그램 질문")
+    tr.append(kst(2026, 10, 24, 9, 1), "비서", 1, None, "꾸민 텔레그램 답")
+    tr.append(kst(2026, 10, 24, 20, 0), "사용자", 2, None, "꾸민 앱 질문", channel="app", message_id="m-1")
+    tr.append(kst(2026, 10, 24, 20, 1), "비서", 2, None, f"어제 순간: {SECRET_A}", ["get_status"],
+              channel="app", message_id="m-2")
+    tr.append(kst(2026, 10, 24, 21, 0), "사용자", 1, None, "꾸민 텔레그램 둘째 질문")
+    args = {"from": "2026-10-24", "to": "2026-10-24"}
+    tele = env.tools.read_transcript(RunContext(None, None, channel="telegram"), **args)["text"]
+    run = env.tools.read_transcript(RunContext(None, None, kind="run", activity_channel="scheduler"), **args)["text"]
+    app = env.tools.read_transcript(RunContext(None, None, channel="app"), **args)["text"]
+
+    for text in (tele, run):
+        assert SECRET_A not in text and "get_status" not in text
+        for kept in ("꾸민 텔레그램 질문", "꾸민 텔레그램 답", "꾸민 앱 질문", "꾸민 텔레그램 둘째 질문"):
+            assert kept in text, kept
+    assert SECRET_A in app and "꾸민 앱 질문" in app

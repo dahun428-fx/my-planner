@@ -26,6 +26,7 @@ from my_planner.api.models import (
     Memo,
     MemoList,
     Messages,
+    MomentsList,
     Priorities,
     SchemaBundle,
     Status,
@@ -48,6 +49,7 @@ from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
+from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -58,6 +60,7 @@ from my_planner.store.views import (
     draft_live,
     habit_history,
     habits_view,
+    moment_dict,
     today_view,
     todo_dict,
     todo_refs,
@@ -73,6 +76,7 @@ MAX_CONDITION_DAYS = 366
 DEFAULT_CONDITION_DAYS = 30
 CONVERSATIONS_DEFAULT_LIMIT, CONVERSATIONS_MAX_LIMIT = 20, 200
 HABIT_WEEKS_DEFAULT, HABIT_WEEKS_MAX = 4, 12  # `GET /habits/{id}?weeks=` (SP7 5.5)
+MOMENTS_DAYS_DEFAULT, MOMENTS_DAYS_MAX = 14, 60  # `GET /moments?days=` (SP8 6.5)
 HABIT_STATUS_FILTERS: dict[str, tuple[str, ...]] = {
     "active": ("active",), "paused": ("paused",), "archived": ("archived",), "all": ("active", "paused", "archived"),
 }
@@ -390,9 +394,35 @@ def get_status(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) ->
     body = status_snapshot(
         now=deps.clock.now(), tz=s.timezone, boundary=s.day_boundary, status=StatusRepo(conn, deps.clock),
         curve=CurveRepo(conn, deps.clock), tasks=_tasks(conn, deps), conditions=ConditionsRepo(conn, deps.clock),
-        include_sensitive=_include_sensitive(request),
+        include_sensitive=_include_sensitive(request), moments=MomentsRepo(conn, deps.clock),
     )
     return dump(Status, body)
+
+
+def get_moments(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """`GET /moments?before=YYYY-MM-DD&days=14&include_hidden=false` (SP8 6.5). `to` = `before`의 전날(없으면 오늘)."""
+    raw_before = request.query.get("before")
+    before: date | None = None
+    if raw_before is not None:
+        if not _DATE.fullmatch(raw_before):
+            raise _bad("before는 YYYY-MM-DD 형식이어야 해요.")
+        try:
+            before = date.fromisoformat(raw_before)
+        except ValueError:
+            raise _bad("before는 없는 날짜예요.") from None
+    raw_days = request.query.get("days")
+    days = MOMENTS_DAYS_DEFAULT
+    if raw_days is not None:
+        if not _INT.fullmatch(raw_days) or not 1 <= int(raw_days) <= MOMENTS_DAYS_MAX:
+            raise _bad(f"days는 1~{MOMENTS_DAYS_MAX} 사이 정수여야 해요.")
+        days = int(raw_days)
+    raw_hidden = request.query.get("include_hidden", "false")
+    if raw_hidden not in ("true", "false"):
+        raise _bad("include_hidden은 true 또는 false여야 해요.")
+    to = before - timedelta(days=1) if before is not None else _today(deps)
+    from_ = to - timedelta(days=days - 1)
+    items = MomentsRepo(conn, deps.clock).between(from_, to, include_hidden=raw_hidden == "true")
+    return dump(MomentsList, {"from": from_.isoformat(), "to": to.isoformat(), "items": [moment_dict(m) for m in items]})
 
 
 # --- 답할 회차 ---

@@ -26,6 +26,7 @@ EXPECTED_MODELS = {
     "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
     "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
     "Memo", "MemoItem", "MemoList",  # SP9 6.4
+    "Moment", "MomentsList",  # SP8 6.5
 }
 
 

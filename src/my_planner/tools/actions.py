@@ -69,6 +69,7 @@ from my_planner.tools.activity import (
     UndoRefused,
     habit_target,
     live_targets,
+    moment_target,
     priorities_target,
     record_activity,
     task_target,
@@ -232,6 +233,23 @@ def habit_archive_needs_confirm(tools: Tools, args: dict[str, Any], today: date)
     if h is None or h.status == "archived":
         return None
     return confirm_habit_archive_summary(h.title)
+
+
+MOMENT_DELETE_CONFIRM = "이 순간을 지울까요? 되돌릴 수 없어요."  # 부록 A 확인 시트
+
+
+def moment_delete_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
+    """앱의 지우기(SP8 6.4): 순간이 있으면 늘 묻는다. 없는 순간은 묻지 않는다(도구가 `404 not_found`)."""
+    i = _int(args.get("id"))
+    if tools.moments is None or i is None or tools.moments.get(i) is None:
+        return None
+    return MOMENT_DELETE_CONFIRM
+
+
+def _moment_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """순간 하나(`moment:<id>`). 토큰 뒤에 그 순간을 숨기거나 지우면 `stale`이다."""
+    i = _int(args.get("id"))
+    return [moment_target(i)] if i is not None else []
 
 
 def _habit_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
@@ -547,6 +565,10 @@ ACTIONS: dict[str, ActionSpec] = {
     "pin_memo": ActionSpec("pin_memo"),
     "unpin_memo": ActionSpec("unpin_memo"),
     "delete_memo": ActionSpec("delete_memo"),
+    # 이룬 순간(SP8 6.4): 앱 상태창. 숨기기·다시 보이기는 low(되돌리기), 지우기는 앱에서 확인 뒤(되돌릴 수 없다)
+    "hide_moment": ActionSpec("hide_moment", target=_moment_target),
+    "unhide_moment": ActionSpec("unhide_moment", target=_moment_target),
+    "delete_moment": ActionSpec("delete_moment", needs_confirm=moment_delete_needs_confirm, target=_moment_target),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
@@ -644,6 +666,8 @@ def _call(deps: ActionDeps, spec: ActionSpec, ctx: RunContext, args: dict[str, A
     else:
         out = spec.tool(deps, ctx, args)
     if "error" in out:
+        if out.get("error_code") == "not_found":  # 없는 대상(이미 지운 순간, SP8 6.4): 계획 결정 9
+            return _error("not_found", 404, "not_found", str(out["error"]))
         return _tool_error(out)
     if out.get(STALE_RESULT) is True:  # 확인을 물은 뒤 상황이 바뀌어 다른 결과가 된다: 다시 물어야 한다(5.2)
         return _error("conflict", 409, "conflict", STALE_TOKEN)

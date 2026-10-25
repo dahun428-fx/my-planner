@@ -3086,6 +3086,164 @@
       "title": "Messages",
       "type": "object"
     },
+    "Moment": {
+      "additionalProperties": false,
+      "description": "이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "hidden": {
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "sources": {
+          "items": {
+            "enum": [
+              "task",
+              "habit",
+              "condition",
+              "chat"
+            ],
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "text",
+        "area",
+        "sources",
+        "hidden"
+      ],
+      "title": "Moment",
+      "type": "object"
+    },
+    "MomentsList": {
+      "$defs": {
+        "Moment": {
+          "additionalProperties": false,
+          "description": "이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "hidden": {
+              "title": "Hidden",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "sources": {
+              "items": {
+                "enum": [
+                  "task",
+                  "habit",
+                  "condition",
+                  "chat"
+                ],
+                "type": "string"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "text",
+            "area",
+            "sources",
+            "hidden"
+          ],
+          "title": "Moment",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /moments` (SP8 6.5). `to` = `before`의 전날(없으면 오늘), `from` = `to − (days − 1)`.",
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Moment"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "items"
+      ],
+      "title": "MomentsList",
+      "type": "object"
+    },
     "NotifyPutBody": {
       "additionalProperties": false,
       "properties": {
@@ -3657,6 +3815,70 @@
           "title": "MainQuest",
           "type": "object"
         },
+        "Moment": {
+          "additionalProperties": false,
+          "description": "이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "hidden": {
+              "title": "Hidden",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "sources": {
+              "items": {
+                "enum": [
+                  "task",
+                  "habit",
+                  "condition",
+                  "chat"
+                ],
+                "type": "string"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "text",
+            "area",
+            "sources",
+            "hidden"
+          ],
+          "title": "Moment",
+          "type": "object"
+        },
         "RecentXp": {
           "additionalProperties": false,
           "properties": {
@@ -3885,7 +4107,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /status` (6.3.6).",
+      "description": "`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5.",
       "properties": {
         "daily_quests": {
           "items": {
@@ -3907,6 +4129,17 @@
           },
           "title": "Main Quests",
           "type": "array"
+        },
+        "moments": {
+          "items": {
+            "$ref": "#/$defs/Moment"
+          },
+          "title": "Moments",
+          "type": "array"
+        },
+        "moments_hidden": {
+          "title": "Moments Hidden",
+          "type": "integer"
         },
         "recent_xp": {
           "items": {
@@ -3952,7 +4185,9 @@
         "main_quests",
         "daily_quests",
         "titles",
-        "recent_xp"
+        "recent_xp",
+        "moments",
+        "moments_hidden"
       ],
       "title": "Status",
       "type": "object"

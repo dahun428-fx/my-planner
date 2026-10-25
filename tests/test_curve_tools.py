@@ -194,6 +194,7 @@ async def test_get_status_equals_snapshot(tmp_path):
         t.pop("granted_at")
     for x in (*got["recent_xp"], *snap["recent_xp"]):
         x.pop("at")
+    snap.pop("moments_hidden")  # 두뇌에는 지난 7일의 보이는 순간만 준다(SP8 10.3). 14일 숨긴 수는 `GET /status`만
     assert got == snap
     assert got["titles"][0]["title"] == "「꾸민 결심」을 지나온 사람"
 

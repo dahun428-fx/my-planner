@@ -34,6 +34,8 @@ export interface ApiModels {
   MemoItem: MemoItem;
   MemoList: MemoList;
   Messages: Messages;
+  Moment: Moment;
+  MomentsList: MomentsList;
   NotifyPutBody: NotifyPutBody;
   NotifySettings: NotifySettings;
   Priorities: Priorities;
@@ -734,6 +736,31 @@ export interface MessageItem {
   tools: string[];
 }
 /**
+ * 이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "Moment".
+ */
+export interface Moment {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  date: string;
+  hidden: boolean;
+  id: number;
+  sources: ("task" | "habit" | "condition" | "chat")[];
+  text: string;
+}
+/**
+ * `GET /moments` (SP8 6.5). `to` = `before`의 전날(없으면 오늘), `from` = `to − (days − 1)`.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "MomentsList".
+ */
+export interface MomentsList {
+  from: string;
+  items: Moment[];
+  to: string;
+}
+/**
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "NotifyPutBody".
  */
@@ -852,7 +879,7 @@ export interface SchemaBundle {
   };
 }
 /**
- * `GET /status` (6.3.6).
+ * `GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Status".
@@ -862,6 +889,8 @@ export interface Status {
   hp: StatusHp;
   level: number;
   main_quests: MainQuest[];
+  moments: Moment[];
+  moments_hidden: number;
   recent_xp: RecentXp[];
   stats: StatusStat[];
   titles: StatusTitle[];
