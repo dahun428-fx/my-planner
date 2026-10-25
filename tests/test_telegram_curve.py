@@ -77,7 +77,7 @@ async def test_m_all_confirms_only_this_conversation_drafts(tmp_path):
     assert result == "confirmed"
     assert status == {a: "confirmed", b: "confirmed", other: "draft"}
     assert env.bot.answers[-1][1] == (
-        "✓ 저장: 꾸민 하나 (2019, 고점)\n칭호: 「꾸민 하나」의 순간\n✓ 저장: 꾸민 둘 (2020, 저점)"
+        "✓ 저장: 꾸민 하나 (2019, 높은 때)\n칭호: 「꾸민 하나」의 순간\n✓ 저장: 꾸민 둘 (2020, 힘든 때)"
     )
     assert "[버튼] 저장: 꾸민 하나\n[버튼] 저장: 꾸민 둘" in _transcript(env)
 
@@ -111,7 +111,7 @@ async def test_button_reply_copy(tmp_path):
 
     assert (r1, r2) == ("confirmed", "dropped")
     assert [t for _, t in env.bot.answers] == [
-        "✓ 저장: 제주 여행 (2019, 고점)\n칭호: 「제주 여행」의 순간",
+        "✓ 저장: 제주 여행 (2019, 높은 때)\n칭호: 「제주 여행」의 순간",
         "✗ 뺐어요: 제주 여행",
     ]
     assert gone is None
@@ -152,3 +152,44 @@ def test_system_prompt_has_principles_9_to_11():
     assert "회복 퀘스트 하나를 제안합니다" in text  # 11
     for word in ("add_milestone", "confirm_milestones", "drop_curve_drafts", "propose_chapter"):
         assert word in text
+
+
+# --- SP8 8.1, 8.7: 새 종류 이름과 영역 꼬리 ---
+
+
+def test_confirmed_line_with_area():
+    from my_planner.tools.confirmations import milestone_confirmed_line
+
+    assert milestone_confirmed_line("제주 여행", "2019", "high", "quality_of_life") == (
+        "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질)")
+    assert milestone_confirmed_line("꾸민 결심", "2021-03", "turning_point", "career") == (
+        "✓ 저장: 꾸민 결심 (2021-03, 전환점, 커리어)")
+
+
+def test_confirmed_line_without_area():
+    from my_planner.tools.confirmations import milestone_confirmed_line
+
+    assert milestone_confirmed_line("꾸민 감기", "2019", "low") == "✓ 저장: 꾸민 감기 (2019, 힘든 때)"
+    assert milestone_confirmed_line("꾸민 감기", "2019", "low", None) == "✓ 저장: 꾸민 감기 (2019, 힘든 때)"
+
+
+async def test_button_text_unchanged(tmp_path):
+    add = ("add_milestone", {"date": "2019", "kind": "high", "title": "제주 여행", "area": "quality_of_life"})
+    async with BeEnv.start(tmp_path, start=SAT_1300, script=[FakeTurn([add], "곡선에 높은 때로 남길까요?")]) as env:
+        await env.telegram("예전에 처음 혼자 제주 여행 갔을 때 정말 좋았어")
+        out = env.sender.sent[-1]
+        (mid,) = out.draft_milestone_ids
+        rows = _rows(milestone_keyboard([mid], out.draft_conversation_id, {mid: "제주 여행"}))
+        result = await env.press(f"m:c:{mid}")
+
+    assert rows[0][0] == ("✓ 저장: 제주 여행", f"m:c:{mid}")  # 버튼은 `✓ 저장: {제목}` 그대로
+    assert result == "confirmed"
+    assert env.bot.answers[-1][1] == "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질)\n칭호: 「제주 여행」의 순간"
+
+
+def test_undo_summary_strips_new_tail():
+    from my_planner.tools.confirmations import undo_summary
+
+    assert undo_summary("✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질)") == "↩ 되돌림: 제주 여행 저장"
+    assert undo_summary("✓ 저장: 가 (2019, 힘든 때), 나 (2020-05-02, 전환점, 관계)") == "↩ 되돌림: 가, 나 저장"
+    assert undo_summary("✓ 저장: 꾸민 (2019, 쉬운 때)") == "↩ 되돌림: 꾸민 (2019, 쉬운 때) 저장"  # 모르는 꼬리는 그대로

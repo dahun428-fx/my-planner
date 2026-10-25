@@ -74,7 +74,7 @@ async def test_app_draft_settled_in_same_turn_has_no_card(tmp_path):
 
     assert _harness(chunks) == []
     (act,) = [c for c in chunks if c["type"] == "data-activity"]
-    assert act["data"]["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 고점)\n칭호: 「꾸민 여행」의 순간"
+    assert act["data"]["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 높은 때)\n칭호: 「꾸민 여행」의 순간"
 
 
 async def test_checkin_cards_include_curve_drafts_until_confirmed(tmp_path):

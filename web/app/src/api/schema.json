@@ -1517,6 +1517,17 @@
               "title": "Id",
               "type": "integer"
             },
+            "ladder_remembered": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ladder Remembered"
+            },
             "sketch": {
               "anyOf": [
                 {
@@ -1555,7 +1566,8 @@
             "start",
             "end",
             "sketch",
-            "certainty"
+            "certainty",
+            "ladder_remembered"
           ],
           "title": "CurveChapter",
           "type": "object"
@@ -1654,6 +1666,25 @@
         "CurveMilestone": {
           "additionalProperties": false,
           "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
             "certainty": {
               "enum": [
                 "fact",
@@ -1690,6 +1721,14 @@
               "title": "Kind",
               "type": "string"
             },
+            "kind_certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Kind Certainty",
+              "type": "string"
+            },
             "note": {
               "anyOf": [
                 {
@@ -1700,6 +1739,15 @@
                 }
               ],
               "title": "Note"
+            },
+            "origin": {
+              "enum": [
+                "seed",
+                "chat",
+                "review"
+              ],
+              "title": "Origin",
+              "type": "string"
             },
             "precision": {
               "enum": [
@@ -1728,7 +1776,10 @@
             "note",
             "chapter_id",
             "sensitive",
-            "certainty"
+            "certainty",
+            "kind_certainty",
+            "area",
+            "origin"
           ],
           "title": "CurveMilestone",
           "type": "object"
@@ -1871,6 +1922,443 @@
         "reassurance"
       ],
       "title": "Curve",
+      "type": "object"
+    },
+    "CurveHistory": {
+      "$defs": {
+        "HiddenSensitive": {
+          "additionalProperties": false,
+          "description": "가린 민감 사건의 개수와 해(오름차순, 중복 없음). 제목·메모는 본문에 없다(8.5).",
+          "properties": {
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "years": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Years",
+              "type": "array"
+            }
+          },
+          "required": [
+            "count",
+            "years"
+          ],
+          "title": "HiddenSensitive",
+          "type": "object"
+        },
+        "HistoryChapter": {
+          "additionalProperties": false,
+          "properties": {
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Certainty",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/$defs/HistoryEvent"
+              },
+              "title": "Events",
+              "type": "array"
+            },
+            "hidden_sensitive": {
+              "$ref": "#/$defs/HiddenSensitive"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "ladder": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryLadder"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sketch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sketch"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "theme": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "theme",
+            "start",
+            "end",
+            "sketch",
+            "certainty",
+            "ladder",
+            "events",
+            "hidden_sensitive"
+          ],
+          "title": "HistoryChapter",
+          "type": "object"
+        },
+        "HistoryEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Certainty",
+              "type": "string"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "high",
+                "low",
+                "turning_point"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "kind_certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Kind Certainty",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "origin": {
+              "enum": [
+                "seed",
+                "chat",
+                "review"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "precision": {
+              "enum": [
+                "year",
+                "month",
+                "day"
+              ],
+              "title": "Precision",
+              "type": "string"
+            },
+            "sensitive": {
+              "title": "Sensitive",
+              "type": "boolean"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "precision",
+            "kind",
+            "kind_certainty",
+            "title",
+            "note",
+            "area",
+            "origin",
+            "certainty",
+            "sensitive"
+          ],
+          "title": "HistoryEvent",
+          "type": "object"
+        },
+        "HistoryHighest": {
+          "additionalProperties": false,
+          "properties": {
+            "chapter_id": {
+              "title": "Chapter Id",
+              "type": "integer"
+            },
+            "ladder": {
+              "title": "Ladder",
+              "type": "number"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "chapter_id",
+            "title",
+            "ladder"
+          ],
+          "title": "HistoryHighest",
+          "type": "object"
+        },
+        "HistoryLadder": {
+          "additionalProperties": false,
+          "description": "`remembered`는 기억한 정수, `recorded`는 그 기간 월별 사다리 평균(소수 한 자리). 둘 다 `float` 하나다(결정 16).",
+          "properties": {
+            "source": {
+              "enum": [
+                "remembered",
+                "recorded"
+              ],
+              "title": "Source",
+              "type": "string"
+            },
+            "value": {
+              "title": "Value",
+              "type": "number"
+            }
+          },
+          "required": [
+            "value",
+            "source"
+          ],
+          "title": "HistoryLadder",
+          "type": "object"
+        },
+        "HistoryLongest": {
+          "additionalProperties": false,
+          "properties": {
+            "chapter_id": {
+              "title": "Chapter Id",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "years": {
+              "title": "Years",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "chapter_id",
+            "title",
+            "years"
+          ],
+          "title": "HistoryLongest",
+          "type": "object"
+        },
+        "HistorySummary": {
+          "additionalProperties": false,
+          "properties": {
+            "chapters": {
+              "title": "Chapters",
+              "type": "integer"
+            },
+            "events": {
+              "title": "Events",
+              "type": "integer"
+            },
+            "highest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryHighest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "longest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryLongest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "records_since": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Records Since"
+            },
+            "turning_points": {
+              "$ref": "#/$defs/HistoryTurningPoints"
+            }
+          },
+          "required": [
+            "chapters",
+            "events",
+            "highest",
+            "turning_points",
+            "longest",
+            "records_since"
+          ],
+          "title": "HistorySummary",
+          "type": "object"
+        },
+        "HistoryTurningPoints": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "years": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Years",
+              "type": "array"
+            }
+          },
+          "required": [
+            "count",
+            "years"
+          ],
+          "title": "HistoryTurningPoints",
+          "type": "object"
+        },
+        "HistoryUnassigned": {
+          "additionalProperties": false,
+          "description": "확정한 챕터에 들지 않은 사건(\"시기를 정하지 않은 사건\").",
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/$defs/HistoryEvent"
+              },
+              "title": "Events",
+              "type": "array"
+            },
+            "hidden_sensitive": {
+              "$ref": "#/$defs/HiddenSensitive"
+            }
+          },
+          "required": [
+            "events",
+            "hidden_sensitive"
+          ],
+          "title": "HistoryUnassigned",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /curve/history` (SP8 8.2). 챕터는 `start` 최근부터, 사건은 `sort_date` 최근부터.",
+      "properties": {
+        "chapters": {
+          "items": {
+            "$ref": "#/$defs/HistoryChapter"
+          },
+          "title": "Chapters",
+          "type": "array"
+        },
+        "since_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Since Year"
+        },
+        "summary": {
+          "$ref": "#/$defs/HistorySummary"
+        },
+        "unassigned": {
+          "$ref": "#/$defs/HistoryUnassigned"
+        }
+      },
+      "required": [
+        "since_year",
+        "chapters",
+        "unassigned",
+        "summary"
+      ],
+      "title": "CurveHistory",
       "type": "object"
     },
     "Drafts": {

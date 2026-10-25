@@ -470,6 +470,7 @@ CREATE TABLE status_titles (
 | GET | `/week` | 대시보드, 운영 앱 | 없음 | 6.3.3 |
 | GET | `/conditions?from&to` | 대시보드, 운영 앱 | 없음 | 6.3.4 |
 | GET | `/curve?zoom&from&to&include_sensitive` | 대시보드, 운영 앱 | 없음 | 6.3.5 |
+| GET | `/curve/history?include_sensitive` | 대시보드 | 없음 | SP8 8.2 |
 | GET | `/status` | 대시보드, 운영 앱 | 없음 | 6.3.6 |
 | GET | `/moments?before&days&include_hidden` | 운영 앱용 | 없음 | SP8 6.5 |
 | GET | `/priorities?cadence&period` | 운영 앱용 | 없음 | 6.3.7 |
@@ -491,7 +492,7 @@ CREATE TABLE status_titles (
 | POST | `/internal/notify` | 자동 복구 감시자용 | 없음(고정 안내 길, 푸시 결과만 기록) | SP6 6장 |
 | POST | `/body` | 아이폰 단축어(`BODY_TOKEN`만, `API_TOKEN`은 401) | 즉시 갈래(`record_body_days`, `endpoint = body`) | SP8 7.2 |
 
-대시보드는 표의 `GET` 여섯 개와 `POST /client-errors`만 쓴다.
+대시보드는 표의 `GET` 일곱 개(SP8에서 `/curve/history`를 더함)와 `POST /client-errors`만 쓴다.
 
 ### 6.3 읽기 (대시보드와 운영 앱 공통)
 
@@ -612,9 +613,10 @@ CREATE TABLE status_titles (
 {
   "zoom": "month", "from": "2024-11-01", "to": "2026-10-31",
   "chapters": [ {"id": 1, "title": "…", "theme": "…", "start": "2019-03", "end": null,
-                 "sketch": "↑", "certainty": "estimate"} ],
+                 "sketch": "↑", "certainty": "estimate", "ladder_remembered": null} ],
   "milestones": [ {"id": 7, "date": "2023-05", "precision": "month", "kind": "turning_point",
-                   "title": "…", "note": null, "chapter_id": 1, "sensitive": false, "certainty": "fact"} ],
+                   "title": "…", "note": null, "chapter_id": 1, "sensitive": false, "certainty": "fact",
+                   "kind_certainty": "fact", "area": "career", "origin": "chat"} ],
   "ladder": [ {"period": "2026-10", "now": 6, "future": 8, "note": null} ],
   "areas": [ {"period": "2026-Q4", "scores": {"career": 6, "finance": 5, "health": 4,
               "relationships": 7, "learning": 6, "quality_of_life": 5}} ],
@@ -628,6 +630,7 @@ CREATE TABLE status_titles (
 - `chapters`, `milestones`는 범위와 겹치는 **확정** 행만. `include_sensitive=false`(기본)면 `sensitive=1` 사건을 뺀다. `true`면 넣고 `sensitive: true`로 표시한다.
 - `ladder`는 달마다 하나. `areas`는 분기마다 하나(빠진 영역은 `scores`에 키가 없다). 묶음과 상관없이 원래 주기로 준다. FE가 x축 위치를 정한다.
 - `condition`은 `zoom` 단위로 묶은 평균이다(`curve/model.py bucket_conditions`, 기록 있는 날만 평균). `bucket` 이름은 `period_of(cadence, d)`의 형식이고, `day`는 날짜다.
+- SP8에서 더한 필드(필드 추가라 `/api/v1` 그대로): 챕터 `ladder_remembered`(기억한 사다리 0~10 또는 `null`), 사건 `kind_certainty`, `area`(대표 영역 하나 또는 `null`), `origin`(`seed` | `chat` | `review`). [SP8 스펙](2026-10-25-sp8-status-records-history-design.md) 8.1·8.2. 히스토리 탭의 모양은 `GET /curve/history`(SP8 8.2)다.
 - `reassurance`: 사다리 `now`가 있는 달마다(5년 뒤만 있는 달은 뺀다), 그 달의 컨디션 평균을 0~10으로 옮긴 값(`condition_scaled = (average − 1) × 2.5`)과 차이(`gap = condition_scaled − ladder_now`, 소수 한 자리). 그 달 컨디션 기록이 7일 미만이면 `condition_*`과 `gap`은 `null`이다(근거가 적다). 8.3 참고.
 
 #### 6.3.6 `GET /status`

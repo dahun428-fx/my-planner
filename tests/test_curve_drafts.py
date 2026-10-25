@@ -50,8 +50,8 @@ def test_confirmation_lines():
              scores={"quality_of_life": 6, "finance": 5, "career": 7}),
     ]
     assert lines == [
-        "✓ 저장: 제주 여행 (2019, 고점)",  # 부록 A 사건 확정
-        "✓ 저장: 꾸민 일 (2020-05, 저점)",
+        "✓ 저장: 제주 여행 (2019, 높은 때)",  # 부록 A 사건 확정
+        "✓ 저장: 꾸민 일 (2020-05, 힘든 때)",
         "✓ 저장: 꾸민 결심 (2021-03-02, 전환점)",
         "칭호: 「제주 여행」의 순간",  # 부록 A 칭호 생김
         "✗ 뺐어요: 제주 여행",  # 부록 A 사건 빼기
@@ -64,7 +64,7 @@ def test_confirmation_lines():
         "✓ 영역 점수를 기록했어요 (2026-Q4): 커리어 7 · 경제 5 · 삶의 질 6",  # C1: SP1 영역 순서
     ]
     undos = [
-        undo_summary(lines[0]), undo_summary("✓ 저장: 가 (2019, 고점), 나 (2020-05, 저점)"), undo_summary(lines[5]),
+        undo_summary(lines[0]), undo_summary("✓ 저장: 가 (2019, 높은 때), 나 (2020-05, 힘든 때)"), undo_summary(lines[5]),
         undo_summary(lines[8]), undo_summary(lines[11]),
     ]
     assert undos == [
@@ -98,8 +98,8 @@ async def test_export_chapters_md_masks_sensitive(tmp_path):
         "",
         "꾸민 주제",
         "",
-        "- 2019 · 고점 · 꾸민 여행",
-        "- 2020-03 · 저점 · (민감)",
+        "- 2019 · 높은 때 · 꾸민 여행",
+        "- 2020-03 · 힘든 때 · (민감)",
         "",
         "## 꾸민 지금 (2021-01~지금)",
         "",
@@ -107,7 +107,7 @@ async def test_export_chapters_md_masks_sensitive(tmp_path):
         "",
         "## 챕터 밖 사건",
         "",
-        "- 2018 · 고점 · 꾸민 바깥 일",
+        "- 2018 · 높은 때 · 꾸민 바깥 일",
     ]
     assert "꾸민 비밀" not in text and "꾸민 메모" not in text and "꾸민 남은 초안" not in text
 

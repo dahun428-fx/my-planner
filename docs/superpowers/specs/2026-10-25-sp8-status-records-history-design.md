@@ -420,7 +420,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 | 연말 회고 챕터 초안 `propose_chapter` | — | 새 입력 `ladder?`. 사용자가 **말한 숫자만**(SP3-4 원칙 10) |
 
 - `--update-history`에서 `date_text + title`이 같은 시드 항목이 둘 이상이면(또는 DB에 그런 사건이 둘 이상이면) 그 항목은 건너뛰고 이유 `ambiguous`로 센다.
-- `--update-history`는 `life_seed_imported_at`이 있어도 돈다. 이미 값이 있는 칸은 덮어쓰지 않는다. 같은 잠금(`state/my-planner.lock`), 같은 확인 규칙(민감·`storage` 항목은 `confirmed: true`일 때만), 같은 출력 규칙(개수와 이유별 개수만, 내용 없음)이다. 끝나면 `app_state.life_seed_history_updated_at`을 적고, 다시 돌리면 코드 4.
+- `--update-history`는 `life_seed_imported_at`이 있어도 돈다. `life_seed_imported_at`이 **없으면**(시드를 아직 가져오지 않았거나 DB가 없으면) 아무것도 쓰지 않고 "아직 가져온 시드가 없어요. 먼저 seed-life로 가져와 주세요."와 코드 7로 끝난다(DB도 만들지 않는다, 계획 결정 15). 이미 값이 있는 칸은 덮어쓰지 않는다. 같은 잠금(`state/my-planner.lock`), 같은 확인 규칙(민감·`storage` 항목은 `confirmed: true`일 때만), 같은 출력 규칙(개수와 이유별 개수만, 내용 없음)이다. 끝나면 `app_state.life_seed_history_updated_at`을 적고, 다시 돌리면 코드 4.
 - 확정한 사건의 영역을 화면이나 말로 고치는 길은 이번에 없다(2장 제외).
 - 사건 초안 버튼(텔레그램 `✓ 저장: {제목}`)과 확인 문구는 바뀌지 않는다. 영역이 있으면 확정 문구 끝에 영역을 붙인다: "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질)".
 
@@ -436,7 +436,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
   "chapters": [
     { "id": 5, "title": "지금", "theme": null, "start": "2026-10", "end": null, "sketch": "…",
       "certainty": "fact",
-      "ladder": {"value": 6, "source": "remembered"},
+      "ladder": {"value": 6.0, "source": "remembered"},
       "events": [ {"id": 31, "date": "2026-10", "precision": "month", "kind": "turning_point",
                    "kind_certainty": "fact", "title": "…", "note": "…", "area": "quality_of_life",
                    "origin": "chat", "certainty": "fact", "sensitive": false} ],
@@ -444,7 +444,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
   ],
   "unassigned": { "events": [], "hidden_sensitive": {"count": 0, "years": []} },
   "summary": { "chapters": 5, "events": 10,
-               "highest": {"chapter_id": 2, "title": "…", "ladder": 6},
+               "highest": {"chapter_id": 2, "title": "…", "ladder": 6.0},
                "turning_points": {"count": 4, "years": [2012, 2019, 2023, 2026]},
                "longest": {"chapter_id": 1, "title": "…", "years": 19},
                "records_since": 2026 }
@@ -452,9 +452,9 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 ```
 
 - 확정한 챕터·사건만. 챕터는 `start` 최근부터, 사건은 챕터 안에서 `sort_date` 최근부터. `chapter_id`가 없는 사건은 `unassigned`.
-- `ladder`: `ladder_remembered`가 있으면 `{"value", "source": "remembered"}`. 없고 그 챕터 기간에 월별 사다리 `now`가 있으면 그 평균(소수 한 자리) `{"value", "source": "recorded"}`. 둘 다 없으면 `null`.
+- `ladder`: `ladder_remembered`가 있으면 `{"value", "source": "remembered"}`. `value`는 두 출처 모두 `float` 하나다(기억 값은 정수가 `6.0`으로 온다, 계획 결정 16). 화면은 정수면 "6", 아니면 소수 한 자리로 보인다. 없고 그 챕터 기간에 월별 사다리 `now`가 있으면 그 평균(소수 한 자리) `{"value", "source": "recorded"}`. 둘 다 없으면 `null`.
 - `include_sensitive=false`(기본): 민감 사건은 `events`에서 빼고 `hidden_sensitive`에 개수와 해(중복 없이, 오름차순)만 준다. `true`면 `events`에 `sensitive: true`로 넣고 `hidden_sensitive`는 `{"count": 0, "years": []}`.
-- `summary`: `chapters`, `events`(보이는 사건 수. 민감 사건은 `include_sensitive=true`일 때만 셈), `highest`(`ladder.value`가 가장 큰 챕터, 같으면 최근 챕터, 없으면 `null`), `turning_points`(보이는 전환점 수와 해), `longest`(기간이 가장 긴 챕터, 해 수는 `end − start`를 달로 센 뒤 12로 나눠 반올림, 끝나지 않은 챕터는 오늘까지), `records_since`(첫 컨디션 또는 사다리 기록의 해, 없으면 `null`). `since_year`: 가장 이른 챕터 시작 또는 사건의 해.
+- `summary`: `chapters`, `events`(보이는 사건 수. 민감 사건은 `include_sensitive=true`일 때만 셈), `highest`(`ladder.value`가 가장 큰 챕터, 같으면 최근 챕터, 없으면 `null`), `turning_points`(보이는 전환점 수와 해), `longest`(기간이 가장 긴 챕터, 해 수는 `end − start`를 달로 센 뒤 12로 나눠 반올림, 끝나지 않은 챕터는 오늘까지), `records_since`(첫 컨디션 또는 사다리 기록(`now`가 있는 달)의 해, 없으면 `null`). `since_year`: 가장 이른 챕터 시작 또는 사건의 해.
 - 6.2 경로표에 더한다: `GET /curve/history` · 대시보드 · 쓰기 없음. 대시보드가 쓰는 `GET`은 일곱 개가 된다.
 
 ### 8.3 히스토리 탭 화면 (`/curve`, 캔버스 `HistoryDesktop`, `HistoryPhone`)
@@ -494,7 +494,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 
 ### 8.7 사건 종류 이름 바꾸기
 
-화면 전체에서 사건 종류의 이름을 캔버스 초안대로 바꾼다: 고점 → **높은 때**, 저점 → **힘든 때**, 전환점 → 전환점. 바꾸는 곳: 대시보드 `labels.ts kinds`, 앱 사건 초안 카드, 텔레그램 사건 초안·확정 문구, 프롬프트의 예시 말("곡선에 높은 때로 남길까요?"). 칭호 틀은 그대로("「{제목}」의 순간"). 코드 값(`high`, `low`, `turning_point`)과 용어집의 표제어는 바뀌지 않고, 용어집에 화면 이름을 적는다. 곡선 차트의 작은 점 표식 ▲▼◆는 8px 크기에서 알아보기 쉬워 그대로 둔다(픽토그램은 팝오버와 히스토리에). BE·텔레그램·프롬프트 쪽 이름 바꾸기는 SP8-08, 화면 쪽은 SP8-09다(14장).
+화면 전체에서 사건 종류의 이름을 캔버스 초안대로 바꾼다: 고점 → **높은 때**, 저점 → **힘든 때**, 전환점 → 전환점. 바꾸는 곳: 대시보드 `labels.ts kinds`(그리고 `titlesEmpty`), 텔레그램 사건 확정 문구와 되돌림 요지, `chapters.md` 내보내기, 도구 설명, 프롬프트의 예시 말("곡선에 높은 때로 남길까요?"). 칭호 틀은 그대로("「{제목}」의 순간"). 코드 값(`high`, `low`, `turning_point`)과 용어집의 표제어는 바뀌지 않고, 용어집에 화면 이름을 적는다. 곡선 차트의 작은 점 표식 ▲▼◆는 8px 크기에서 알아보기 쉬워 그대로 둔다(픽토그램은 팝오버와 히스토리에). BE·텔레그램·프롬프트 쪽 이름 바꾸기는 SP8-08, 화면 쪽은 SP8-09다(14장). 앱 사건 초안 카드(`MilestoneDraft`)는 종류 이름을 보이지 않으므로 고칠 곳이 없다(계획 결정 11).
 
 ## 9. 픽토그램
 
@@ -718,6 +718,7 @@ Dahun이 고르지 않은 선택은 비서가 정했다. 아래 추천으로 구
 | 금지 구 추가 | "보너스가 줄", "스탯이 떨어"(앱·대시보드 정적 문구 검사만. `system.md` 금지어 블록과 순간 M3에는 넣지 않는다: "지출이 줄었어요" 같은 좋은 말을 막지 않게) |
 
 ## 변경 기록
+- SP8-08 (2026-10-25): 8.1 `--update-history`는 시드를 가져오지 않았으면 코드 7(결정 15), 8.2 `ladder.value`는 `float` 하나(결정 16), 8.7 앱 사건 초안 카드는 고칠 곳 없음(결정 11).
 - SP8-06 (2026-10-25): 7.2 `record_body_days` 요청은 `channel = "app"`, `endpoint = "body"`(결정 1). 7.1 56일 정리는 하루 한 번 작업의 `prune_records`가 6.4 60일 정리와 함께(결정 17).
 
 - SP8-04 리뷰 2차 (2026-10-25): 11장 이룬 순간 줄에 텔레그램 통로 `read_transcript`가 앱 대화의 비서 항목을 빼고 준다는 것을 적음.

@@ -340,7 +340,7 @@ async def test_curve_write_path(tmp_path):
         expired = [r["kind"] for r in env.activity() if r["kind"] == "milestone_drafts_expired"]
 
     assert draft == ([], [])
-    assert code == 200 and body["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 고점)\n칭호: 「꾸민 여행」의 순간"
+    assert code == 200 and body["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 높은 때)\n칭호: 「꾸민 여행」의 순간"
     assert confirmed == (["꾸민 여행"], ["「꾸민 여행」의 순간"])
     assert resp.status == 200
     assert undone == ([], [])
@@ -403,7 +403,7 @@ async def test_story_to_curve(tmp_path):
         left = (env.parts.curve.get_milestone(mid), env.parts.curve.get_milestone(rest))
 
     assert pressed == "confirmed"
-    assert answer == "✓ 저장: 제주 여행 (2019, 고점)\n칭호: 「제주 여행」의 순간"
+    assert answer == "✓ 저장: 제주 여행 (2019, 높은 때)\n칭호: 「제주 여행」의 순간"
     assert [(m["title"], m["date"], m["kind"]) for m in curve["milestones"]] == [("제주 여행", "2019", "high")]
     assert [t["title"] for t in status["titles"]] == ["「제주 여행」의 순간"]
     assert left[0] is not None and left[0].status == "confirmed" and left[1] is None

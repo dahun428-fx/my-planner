@@ -70,7 +70,7 @@ def _write(path: Path, lines: list[str]) -> None:
 
 
 SENSITIVE_MASK = "(민감)"
-_KIND = {"high": "고점", "low": "저점", "turning_point": "전환점"}
+_KIND = {"high": "높은 때", "low": "힘든 때", "turning_point": "전환점"}  # `confirmations.KIND_LABELS`와 같다(SP8 8.7)
 
 
 def _milestone_line(m: Milestone) -> str:
