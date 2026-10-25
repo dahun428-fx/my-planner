@@ -205,8 +205,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   };
 
   // SP6 8 `open`: the app moves to that screen and the sheet closes (embedded in a check-in, it has none to close).
-  const openScreen = (s: OpenScreen) => {
-    void router.push(screenHref(s));
+  const openScreen = (s: OpenScreen) => openPath(screenHref(s));
+  // SP9 9.8: the same for an address the app made itself (a ui_events row: /schedule/?date=).
+  const openPath = (path: string) => {
+    void router.push(path);
     onClose();
   };
 
@@ -269,7 +271,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       );
     }
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
-    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} onOpen={openScreen} />);
+    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} onOpen={openScreen} onOpenPath={openPath} />);
     if (i === historyCount - 1) rows.push(elsewhereLines);
     if (conv !== null) prevConv = conv;
     if (at !== null) prevAt = at;

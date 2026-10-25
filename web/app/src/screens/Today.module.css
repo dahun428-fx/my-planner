@@ -208,3 +208,81 @@
 .manage:focus-visible {
   outline: 2px solid var(--text);
 }
+/* SP9 9.3: missed-reminder lines (facts only) above today's events. */
+.missed {
+  margin: 0 var(--gutter) var(--gap);
+  padding: 0;
+  list-style: none;
+}
+.missedLine {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--control-h);
+  border-bottom: 1px solid var(--rule);
+}
+.missedText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-callout);
+  color: var(--text-2);
+}
+.dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  margin-right: -0.625rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dismiss:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Today's events: time, title, area dot; a row opens the schedule tab on that day. */
+.event {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--row);
+  padding: 0.5rem var(--row-pad-x);
+  color: var(--text);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.event + .event::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--row-pad-x);
+  border-top: 1px solid var(--rule);
+}
+.event:active {
+  background: var(--raised);
+}
+.eventAt {
+  flex: none;
+  min-width: 4.5rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.eventTitle {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--size-body);
+}
+.dismiss:focus-visible,
+.event:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}

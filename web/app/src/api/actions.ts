@@ -38,13 +38,26 @@ export type ActionName =
   | "pin_memo"
   | "unpin_memo"
   | "delete_memo"
+  // SP9 5.6: the schedule tab's writes (applied at once, with undo) and closing a missed-reminder line (no activity).
+  | "create_event"
+  | "update_event"
+  | "delete_event"
+  | "dismiss_missed_reminder"
   | "hide_moment"
   | "unhide_moment"
   | "delete_moment";
 
 // SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
-// message), and two devices editing one memo answer 409 memo_conflict (conflict shape).
-const REJECT_CODES = new Set(["rejected", "too_many_memos", "too_many_pinned"]);
+// message), and two devices editing one memo answer 409 memo_conflict (conflict shape). SP9 5.1: the
+// schedule's own 422 codes come the same way.
+const REJECT_CODES = new Set([
+  "rejected",
+  "too_many_memos",
+  "too_many_pinned",
+  "remind_invalid",
+  "start_not_in_weekdays",
+  "too_many_events",
+]);
 const CONFLICT_CODES = new Set(["conflict", "memo_conflict"]);
 
 export type ActionOutcome =

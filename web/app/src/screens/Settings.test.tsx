@@ -75,10 +75,11 @@ function serve(opts: { notifyAnswer?: object; vapid?: boolean; hold?: boolean } 
 const pushRow = () => screen.findByTestId("device-push");
 
 describe("Settings", () => {
-  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+  it("off the tabs since SP9-07: \"‹ 더보기\" back above the title, no more button (spec 9.1)", async () => {
     serve(); // every side request answered (an unanswered one is an MSW error)
     renderWithProviders(<Settings />);
-    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+    expect(await screen.findByRole("link", { name: "‹ 더보기" })).toHaveAttribute("href", "/more/");
+    expect(screen.queryByRole("link", { name: "더보기" })).not.toBeInTheDocument();
   });
 
   it("primary channel change shows effective telegram", async () => {

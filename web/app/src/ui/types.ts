@@ -47,6 +47,8 @@ export type PartContext = {
   onChoose?(label: string): void;
   /** SP6 8: open an app screen (the chat sheet moves there and closes). Without it no `open` button is drawn. */
   onOpen?(screen: OpenScreen): void;
+  /** SP9 9.8 `ui_events`: open an app address the app made (`/schedule/?date=`); the chat sheet moves there and closes. */
+  onOpenPath?(path: string): void;
 };
 
 export type PartProps<P> = { props: P; data?: PartData; ctx: PartContext };

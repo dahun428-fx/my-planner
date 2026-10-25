@@ -1,0 +1,73 @@
+/* SP9 9.2 한 달 달력: 큰 제목 아래 펼친다. 종이 위에 바로, 상자 없음. */
+.calendar {
+  margin: 0 var(--gutter) var(--gap);
+  padding-bottom: var(--gap);
+  border-bottom: 1px solid var(--rule);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.name {
+  font-size: var(--size-body);
+  font-weight: 600;
+  color: var(--text);
+}
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+/* 앞 달은 같은 꺾쇠 아이콘을 뒤집어 쓴다. */
+.back {
+  display: inline-flex;
+  transform: scaleX(-1);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 0.125rem;
+  text-align: center;
+}
+.weekday {
+  padding: 0.25rem 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.day {
+  justify-self: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  color: var(--text);
+  cursor: pointer;
+}
+.outside {
+  color: var(--muted);
+}
+.day[aria-pressed="true"] {
+  border-color: var(--text);
+}
+.day[aria-current="date"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.day:focus-visible,
+.step:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

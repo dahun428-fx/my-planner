@@ -14,6 +14,7 @@ import health from "../test/fixtures/health.json";
 import degraded from "../test/fixtures/health-degraded.json";
 import todayJson from "../test/fixtures/today.json";
 import emptyJson from "../test/fixtures/today-empty.json";
+import { ev } from "../test/events";
 import { makeHabit } from "../test/parts";
 import { renderWithProviders, seedSnap, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -570,5 +571,93 @@ describe("Today offline and refused", () => {
     server.use(http.get(`${BASE}/today`, () => HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 })));
     renderWithProviders(<Today />);
     expect(await screen.findByText(copy.status.tooMany, { selector: "p" })).toBeInTheDocument();
+  });
+
+  // SP9 9.3: today's events after the condition, missed-reminder lines above them.
+  describe("today's events (SP9 9.3)", () => {
+    const D = today.date; // 2026-10-24, the BE's logical day
+    const seven = [
+      ev(10, D, null, { title: "엄마 생신" }),
+      ...["08:00", "09:00", "10:00", "11:00", "14:00", "19:00"].map((t, i) => ev(11 + i, D, t, { title: `약속 ${i + 1}` })),
+    ];
+
+    it("five rows, then 스케줄에서 {n}개 더 보기 to the schedule tab on that day", async () => {
+      serve({ ...today, events: seven });
+      renderWithProviders(<Today />);
+      const heading = await screen.findByRole("heading", { name: copy.today.events });
+      const block = heading.closest("section") as HTMLElement;
+      const rows = within(block).getAllByRole("link").filter((a) => a.getAttribute("href")?.startsWith("/schedule/?date="));
+      expect(rows.map((r) => r.textContent)).toEqual([
+        `${copy.schedule.allDay}엄마 생신`,
+        "08:00약속 1",
+        "09:00약속 2",
+        "10:00약속 3",
+        "11:00약속 4",
+        copy.today.moreEvents(2),
+      ]);
+      expect(within(block).getByRole("link", { name: copy.today.moreEvents(2) })).toHaveAttribute("href", `/schedule/?date=${D}`);
+      const condition = screen.getByRole("heading", { name: copy.today.condition });
+      const todos = screen.getByRole("heading", { name: copy.today.todosHeading(3) });
+      expect(before(condition, heading)).toBe(true);
+      expect(before(heading, todos)).toBe(true);
+    });
+
+    it("five or fewer: no more line; none at all: no block", async () => {
+      serve({ ...today, events: seven.slice(0, 5) });
+      const { unmount } = renderWithProviders(<Today />);
+      await screen.findByRole("heading", { name: copy.today.events });
+      expect(screen.queryByText(/스케줄에서/)).not.toBeInTheDocument();
+      unmount();
+      serve(today);
+      renderWithProviders(<Today />);
+      await screen.findByRole("heading", { name: copy.today.condition });
+      expect(screen.queryByRole("heading", { name: copy.today.events })).not.toBeInTheDocument();
+    });
+
+    it("missed lines say it once, above the block: 놓친 알림 and 알림을 못 보냈어요", async () => {
+      const dentist = ev(20, D, "14:00", { title: "치과" });
+      serve({
+        ...today,
+        events: [dentist],
+        missed_reminders: [
+          { event_id: 20, date: D, start: dentist.start, title: "치과", outcome: "missed" },
+          { event_id: 21, date: D, start: ev(21, D, "16:30").start, title: "약 받기", outcome: "failed" },
+          { event_id: 22, date: D, start: null, title: "엄마 생신", outcome: "skipped" },
+        ],
+      });
+      renderWithProviders(<Today />);
+      const missed = await screen.findByText(copy.today.missed("14:00", "치과"));
+      expect(screen.getByText(copy.today.unsent("16:30", "약 받기"))).toBeInTheDocument();
+      expect(screen.getByText(copy.today.unsent(copy.schedule.allDay, "엄마 생신"))).toBeInTheDocument();
+      expect(before(screen.getByRole("heading", { name: copy.today.condition }), missed)).toBe(true);
+      expect(before(missed, screen.getByRole("heading", { name: copy.today.events }))).toBe(true);
+      // 닫기 버튼마다 어느 알림인지 이름에 있다
+      expect(screen.getByRole("button", { name: copy.today.dismissMissed("치과") })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: copy.today.dismissMissed("약 받기") })).toBeInTheDocument();
+    });
+
+    it("× closes a line with dismiss_missed_reminder and reads again", async () => {
+      const hits = serve({ ...today, missed_reminders: [{ event_id: 20, date: D, start: ev(20, D, "14:00").start, title: "치과", outcome: "missed" }] });
+      const bodies = actions(() => HttpResponse.json({ status: "applied", activity_id: null, result: { event_id: 20, date: D, dismissed: true }, confirmation: null }));
+      renderWithProviders(<Today />);
+      const line = (await screen.findByText(copy.today.missed("14:00", "치과"))).closest("li") as HTMLElement;
+      await waitFor(() => expect(hits.today).toBeGreaterThan(0));
+      const before = hits.today;
+      await userEvent.click(within(line).getByRole("button", { name: copy.today.dismissMissed("치과") }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ action: "dismiss_missed_reminder", args: { event_id: 20, date: D } });
+      await waitFor(() => expect(hits.today).toBeGreaterThan(before));
+      expect(screen.queryByRole("status", { name: /./ })).toBeNull(); // no toast: nothing to undo
+    });
+
+    it("a saved copy from before the schedule (no fields) shows no block", async () => {
+      const old = { ...today } as Partial<TodayData>;
+      delete old.events;
+      delete old.missed_reminders;
+      await seedSnap("today", old);
+      renderWithProviders(<Today />, { conn: "offline" });
+      await screen.findByRole("heading", { name: copy.today.condition });
+      expect(screen.queryByRole("heading", { name: copy.today.events })).not.toBeInTheDocument();
+    });
   });
 });

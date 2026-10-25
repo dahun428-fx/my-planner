@@ -3,15 +3,15 @@ import { copy } from "../lib/copy";
 import { Icon, type IconName } from "./icons";
 import styles from "./TabBar.module.css";
 
-export type TabName = "today" | "todos" | "memos" | "settings";
+export type TabName = "today" | "todos" | "schedule" | "memos";
 
-// SP9 9.1: memos took the activity slot in SP9-04 (activity moved under the more screen); the
-// schedule tab replaces settings in SP9-07.
+// SP9 9.1 final bar: today, todos, schedule, memos. Activity (SP9-04) and settings (SP9-07) went
+// under the more screen.
 const TABS: { name: TabName; href: string; icon: IconName }[] = [
   { name: "today", href: "/", icon: "today" },
   { name: "todos", href: "/todos/", icon: "todos" },
+  { name: "schedule", href: "/schedule/", icon: "schedule" },
   { name: "memos", href: "/memos/", icon: "memo" },
-  { name: "settings", href: "/settings/", icon: "settings" },
 ];
 
 // Spec 5.3: four bottom tabs; the current one is darker text only (no coloured pill). Without

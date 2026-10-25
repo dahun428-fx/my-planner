@@ -39,6 +39,7 @@ export function MessageView({
   readOnly = false,
   onChoose,
   onOpen,
+  onOpenPath,
 }: {
   message: UIMessage;
   parts: ViewPart[];
@@ -46,6 +47,8 @@ export function MessageView({
   onChoose?(label: string): void;
   /** SP6 8: an `open` button on a part (the sheet moves there and closes). */
   onOpen?(screen: OpenScreen): void;
+  /** SP9 9.8: a `ui_events` row opens the schedule tab on its day (the sheet moves there and closes). */
+  onOpenPath?(path: string): void;
 }) {
   const { check, settled } = useCatalog();
   if (message.role === "user") {
@@ -68,7 +71,7 @@ export function MessageView({
         if (p.kind === "ui") {
           return (
             <div key={p.toolCallId} className={styles.part}>
-              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose, onOpen }} />
+              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose, onOpen, onOpenPath }} />
             </div>
           );
         }
