@@ -239,8 +239,9 @@ class CurveRepo:
         return date.fromisoformat(r["m"] + "-01")
 
     def earliest_ladder_period(self) -> str | None:
-        """가장 이른 월별 사다리 기록의 달(`YYYY-MM`). 없으면 None(SP8 8.2 `records_since`)."""
-        r = self.conn.execute("SELECT MIN(period) AS p FROM curve_ladder_scores").fetchone()
+        """`now`가 있는 가장 이른 월별 사다리 기록의 달(`YYYY-MM`). 5년 뒤만 있는 달은 세지 않는다. 없으면 None
+        (SP8 8.2 `records_since`)."""
+        r = self.conn.execute("SELECT MIN(period) AS p FROM curve_ladder_scores WHERE now IS NOT NULL").fetchone()
         return r["p"] if r is not None else None
 
     def get_milestone(self, id: int) -> Milestone | None:

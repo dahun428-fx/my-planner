@@ -162,7 +162,8 @@ async def test_get_curve_masks_sensitive_title(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         tools = env.parts.tools
         a = tools.add_milestone(_ctx(), date="2019", kind="high", title="꾸민 공개", note="꾸민 메모")["id"]
-        b = tools.add_milestone(_ctx(), date="2020", kind="low", title="꾸민 비밀", sensitive=True)["id"]
+        b = tools.add_milestone(_ctx(), date="2020", kind="low", title="꾸민 비밀", sensitive=True,
+                                area="health")["id"]
         tools.confirm_milestones(_ctx(), ids=[a, b])
         tools.record_ladder_score(_ctx(), now=6, note="꾸민 사다리 메모")
         body = tools.get_curve(_ctx(), zoom="year", **{"from": "2019-01-01", "to": "2026-12-31"})
@@ -170,6 +171,7 @@ async def test_get_curve_masks_sensitive_title(tmp_path):
         text = json.dumps(body, ensure_ascii=False)
 
     assert [(m["title"], m["sensitive"]) for m in body["milestones"]] == [("꾸민 공개", False), ("(민감)", True)]
+    assert body["milestones"][1]["area"] is None  # 민감 사건은 영역도 가린다
     assert "꾸민 비밀" not in text and "메모" not in text
     assert all("note" not in m for m in body["milestones"]) and all("note" not in x for x in body["ladder"])
     assert [x["now"] for x in body["ladder"]] == [6]
@@ -319,4 +321,4 @@ async def test_confirm_milestones_event_and_summary_carry_area(tmp_path):
 
     data = [e.data for e in ctx.events if e.kind == "milestones_confirmed"]
     assert [d["area"] for d in data] == ["quality_of_life", "health"]
-    assert act["summary"] == "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질), (민감) (2020-05, 힘든 때, 건강)"
+    assert act["summary"] == "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질), (민감) (2020-05, 힘든 때)"

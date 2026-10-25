@@ -149,12 +149,15 @@ def test_summary_values(conn):
 def test_records_since_earliest_of_condition_or_ladder_and_since_year_from_event(conn):
     milestone(conn, "꾸민 이른 일", "1999")
     chapter(conn, "꾸민 챕터", "2005-01", "2005-06")  # 5달 → 0.4 → 0년
-    ladder(conn, "2025-11", future=8)
+    ladder(conn, "2024-11", future=8)  # 5년 뒤만 있는 달은 기록의 시작이 아니다
     _condition(conn, "2026-02-01")
     conn.commit()
     body = _history(conn)
     assert body["since_year"] == 1999
-    assert body["summary"]["records_since"] == 2025
+    assert body["summary"]["records_since"] == 2026
+    ladder(conn, "2025-03", now=5)
+    conn.commit()
+    assert _history(conn)["summary"]["records_since"] == 2025
     assert body["summary"]["longest"]["years"] == 0
     assert body["summary"]["highest"] is None
 

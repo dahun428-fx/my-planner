@@ -1023,8 +1023,9 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             if done:
                 target, targets = many_target([milestone_target(m.id) for m in done])
                 # 활동 요약(`GET /activity`)에서는 민감 사건 제목을 가린다(`chapters.md`와 같은 "(민감)")
+                # 민감 사건은 영역도 붙이지 않는다(제목처럼 가린다)
                 lines = [milestone_confirmed_line(SENSITIVE_MASK if m.sensitive else m.title, m.date_text, m.kind,
-                                                  m.area) for m in done]
+                                                  None if m.sensitive else m.area) for m in done]
                 summary = lines[0] if len(lines) == 1 else "✓ 저장: " + ", ".join(ln.removeprefix("✓ 저장: ") for ln in lines)
                 self._record(ctx, "milestones_confirmed", target, summary, {"milestone_ids": [m.id for m in done]},
                              targets=targets)
@@ -1304,6 +1305,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             m.pop("note", None)
             if m["sensitive"]:
                 m["title"] = SENSITIVE_MASK
+                m["area"] = None  # 영역도 가린다(SP8 8.1)
         for x in body["ladder"]:
             x.pop("note", None)
         return body
