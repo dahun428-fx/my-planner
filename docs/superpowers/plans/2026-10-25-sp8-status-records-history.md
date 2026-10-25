@@ -23,7 +23,8 @@
 - (5.3, 12장) 보너스가 줄어드는 것을 알리는 문구·표시(아래 화살표, "−0.3", "줄었어요"), 지난 보너스 비교, 남은 날 수, 비율(%)은 어디에도 없다. 보너스는 디버프를 만들지도 지우지도 않는다.
 - (6.6) 이룬 순간은 경험치·칭호를 주지 않는다. `status_xp_ledger`의 `source_kind`는 그대로다.
 - (1장 조건 7, 11장) 이룬 순간의 글은 SQLite `status_moments`에만: 로그, `data/exports/`, 원문 기록, 활동 `summary`, 순간 호출의 SDK 세션 파일, 텔레그램, 웹 푸시, `/client-errors`에 없다. 텔레그램 통로 두뇌는 날짜와 개수만.
-- (6.3) 순간 호출: `session_id = None`, `RunContext(kind="moments")`, 지시문 `moments.md` + 금지어 블록만, `max_turns = 3`, 입력 중 표시 없음, 도구 `mcp__planner__save_moments` 하나, `extra_args = {"no-session-persistence": None}`. `save_moments`는 대화 도구 목록에 없다(텔레그램 28, 앱 35 그대로).
+- (6.3) 순간 호출: `session_id = None`, `RunContext(kind="moments")`, 지시문 `moments.md` + 금지어 블록만, `max_turns = 3`, 입력 중 표시 없음, 도구 `mcp__planner__save_moments` 하나, `extra_args = {"no-session-persistence": None}`, **그리고** 호출 바로 뒤 결과의 `session_id`로 그 세션 파일(`<CLAUDE_CONFIG_DIR 또는 ~/.claude>/projects/*/<session_id>.jsonl`)이 있으면 지운다(두 겹, 이 계획의 결정 18). `save_moments`는 대화 도구 목록에 없다(텔레그램 28, 앱 35 그대로).
+- (10.3, 이 계획의 결정 10) 주간 회고 앞머리의 이룬 순간 블록은 **어느 통로든 날짜와 개수만**이다. 순간의 글을 두뇌가 보는 자리는 앱 통로 대화의 `get_status` 하나뿐이고, "곡선에 남길까요?"는 거기서만 묻는다.
 - (6.2) `MOMENTS_LOOKBACK_DAYS = 7`, 상한 여유 `daily_brain_calls − 10`, 실패 2회 → `failed`, 사용자 메시지 6,000자, 끝낸 할 일 20개.
 - (7.2) `BODY_TOKEN`은 `POST /api/v1/body`만, 43자 이상, `API_TOKEN`과 다를 때만 열린다. 본문 4KB, CORS 없음, `client_msg_id` 없음, 활동 기록·경험치 없음. 걸음·잠 숫자는 로그에 없다.
 - (9장) 픽토그램 24px 격자, 선 1.75(16px에서 2), 둥근 끝·이음, `currentColor`, 이모지 없음. 늘 이름 글자와 함께. 조작 아이콘은 `icons.tsx` 그대로.
@@ -38,7 +39,8 @@
 - **BE 티켓 끝 검증:** `python -m pytest -q` → `0 failed`, `ruff check src tests .github/scripts` → `All checks passed!`.
 - **앱 티켓 끝 검증:** `cd web/app && npm run typecheck && npm run lint:copy && npm test && npm run test:tz && npm run build && npm run check:csp && npm run sync:design && git diff --exit-code` → 모두 통과, 마지막 diff 빈 출력.
 - **대시보드 티켓 끝 검증:** `cd web/dashboard && npm run typecheck && npm test && npm run build && npm run check:csp && npm run sync:design && git diff --exit-code` → 모두 통과, 마지막 diff 빈 출력.
-- **스키마가 바뀐 티켓:** `cd web/app && npm run gen:types`, `cd web/dashboard && npm run gen:types` 뒤 커밋. `python -m pytest tests/test_dashboard_fixtures.py --update-dashboard-fixtures`로 대시보드 고정 자료를 다시 쓰고, `python -m pytest tests/test_dashboard_fixtures.py tests/test_api_schema.py -q` → `passed`.
+- **스키마가 바뀐 티켓(`schema.json`을 다시 만드는 모든 티켓: SP8-00, SP8-04, SP8-06, SP8-08):** `cd web/app && npm run gen:types`, `cd web/dashboard && npm run gen:types` 뒤 커밋. `python -m pytest tests/test_dashboard_fixtures.py --update-dashboard-fixtures`로 대시보드 고정 자료를 다시 쓰고, `python -m pytest tests/test_dashboard_fixtures.py tests/test_api_schema.py -q` → `passed`. **같은 티켓에서** 바뀐 모델을 쓰는 앱 고정 자료(`web/app/src/test/fixtures/*.json`, SP8-02 뒤로는 `status.json`)와 `web/app/e2e/routes.ts`의 응답을 새 required 필드로 고치고, 검증에 `cd web/app && npm test`(그리고 대시보드 파일이 바뀌었으면 `cd web/dashboard && npm test`) → 통과를 넣는다. CI paths-filter가 `schema.json` 변경으로 앱 작업을 돌리기 때문이다(BE 검증만으로는 모자라다).
+- **스펙 고침:** "스펙과 코드가 맞지 않는 곳" 표의 결정마다 그 결정을 낸 티켓의 Files에 SP8 스펙 파일 `docs/superpowers/specs/2026-10-25-sp8-status-records-history-design.md`(고칠 절)이 있고, 마무리에 "스펙 그 절 고침"이 있다.
 - 생성자 새 인자는 키워드 전용, 기본값 `None`(앞 SP 시험이 그대로 돈다): `Tools(moments=…, body=…)`, `status_snapshot(moments=…, body=…)`, `ApiDeps(body_token=…)`.
 - 시험 날짜: 오늘 = 2026-10-25(일), 시각은 `kst(y, mo, d, h, mi)`(`tests/test_dispatcher_messages.py`). 순간 작업의 tick은 10/26(월) 04:01.
 - 시험 자료는 꾸며 낸 것만(`tests/fixtures/`, 11장).
@@ -82,6 +84,7 @@ src/my_planner/
   curve/history.py                          # SP8-08: curve_history()
   curve/model.py, curve/seed.py, cli.py     # SP8-08
   api/{read,models,server,auth,cors}.py, api/body.py(SP8-06), app.py, config.py
+docs/design/pictograms-draft.json           # 이 계획 PR이 넣는다: 캔버스 생성기 ICONS 28개(SP8-01의 유일한 원본)
 web/shared/pictograms.svg                   # SP8-01
 web/{app,dashboard}/scripts/sync-design.mjs(+test), src/components/pictograms.gen.tsx, src/pages/_document.tsx
 web/dashboard/src/
@@ -102,7 +105,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 | SP8-00 | 1단계 BE: 스탯 보너스 | 없음 | `ready-for-agent` |
 | SP8-01 | 픽토그램 | 없음 | `ready-for-agent` |
 | SP8-02 | 1단계 화면 | SP8-00, SP8-01 | `ready-for-agent` |
-| SP8-03 | 2단계 BE: 순간 만들기 (013) | SP8-00 | `ready-for-agent` (노트북 부분은 사람 관문 H1로 뺐다, 머지를 막지 않는다) |
+| SP8-03 | 2단계 BE: 순간 만들기 (013) | SP8-00 | `ready-for-agent` (플래그 + 호출 뒤 세션 파일 지우기 두 겹이라 H1은 플래그 확인만, 머지를 막지 않는다) |
 | SP8-04 | 2단계 API | SP8-03 | `ready-for-agent` |
 | SP8-05 | 2단계 화면 | SP8-04, SP8-02 | `ready-for-agent` |
 | SP8-06 | 3단계 BE: 몸 기록 (014) | SP8-03(번호 순서), SP8-00 | `ready-for-agent` |
@@ -122,7 +125,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **목표:** 스펙 5장 전부, 1장 조건 1·2·6, 13장 "보너스 공식·보너스 성질·스냅샷" 묶음.
 **막는 티켓:** 없음
 
-**Files:** Create `src/my_planner/status/activity.py`, `tests/test_status_activity.py`. Modify `store/repos/status.py`, `status/snapshot.py`, `api/models.py`(`StatusStat`, `StatActivity`), `tests/test_status_property.py`, `tests/test_status_snapshot.py`, `tests/test_status_command.py`, `tests/dashboard_seed.py`(4주 할 일·습관 체크를 더해 보너스가 보이게), `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md` 6.3.6(새 필드). Regenerate `web/{app,dashboard}/src/api/{schema.json,types.gen.ts}`, `web/dashboard/src/test/fixtures/status*.json`.
+**Files:** Create `src/my_planner/status/activity.py`, `tests/test_status_activity.py`. Modify `store/repos/status.py`, `status/snapshot.py`, `api/models.py`(`StatusStat`, `StatActivity`), `tests/test_status_property.py`, `tests/test_status_snapshot.py`, `tests/test_status_command.py`, `tests/dashboard_seed.py`(4주 할 일·습관 체크를 더해 보너스가 보이게), `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md` 6.3.6(새 필드), SP8 스펙 5.6(`area_points`의 `tz`·`boundary`, `activity_counts`, `activity_rows(from_utc, from_day, to_day)`: 결정 4). Regenerate `web/{app,dashboard}/src/api/{schema.json,types.gen.ts}`, `web/dashboard/src/test/fixtures/status*.json`(앱에는 아직 `Status` 고정 자료가 없다: SP8-02가 만든다).
 
 **Interfaces**
 - Consumes: `clock.logical_date(dt, tz, boundary)`, `CurveRepo.latest_area_scores`, `domain.Area`.
@@ -136,7 +139,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - `activity_counts(tasks, checks, body, today, *, tz, boundary) -> dict[str, ActivityCounts]`: 창 안의 가중하지 않은 개수(5.6).
   - `area_bonus(points, today, counts) -> dict[str, Bonus]`: 영역 6개 모두.
   - `round_bonus(s: Fraction) -> Decimal`, `effective_score(base: int | None, bonus: Decimal) -> Decimal | None`.
-- Produces (`store/repos/status.py`): `@dataclass(frozen=True) class ActivityRows: tasks: list[DoneTask]; checks: list[HabitCheckRow]; body: list[BodyDayRow]`, `StatusRepo.activity_rows(from_utc: datetime, to_day: date) -> ActivityRows`. 할 일은 `status='done' AND deleted_at IS NULL AND completed_at >= from_utc`와 `task_areas`, 습관 체크는 `habits.deleted_at IS NULL`(쉬는·그만둔 습관 포함)이고 `date <= to_day`. 이 티켓에서 `body`는 늘 `[]`(5.6). `from_utc`는 호출 쪽이 `T − 28`의 04:00(한국)으로 넘긴다(하루 넉넉히, 파이썬이 거른다).
+- Produces (`store/repos/status.py`): `@dataclass(frozen=True) class ActivityRows: tasks: list[DoneTask]; checks: list[HabitCheckRow]; body: list[BodyDayRow]`, `StatusRepo.activity_rows(from_utc: datetime, from_day: date, to_day: date) -> ActivityRows`. 할 일은 `status='done' AND deleted_at IS NULL AND completed_at >= from_utc`와 `task_areas`, 습관 체크는 `habits.deleted_at IS NULL`(쉬는·그만둔 습관 포함)이고 `date >= from_day AND date <= to_day`(`from_day = T − 27`). 이 티켓에서 `body`는 늘 `[]`(5.6). `from_utc`는 호출 쪽이 `T − 28`의 04:00(한국)으로 넘긴다(하루 넉넉히, 파이썬이 거른다).
 - Produces (`status/snapshot.py`): `stats[]` 행마다 `bonus: float`, `effective_score: float | None`, `activity: {"tasks", "habit_checks", "body_days"}`. 바탕 `score`·디버프 계산은 그대로.
 - `api/models.py`: `class StatActivity(_Model): tasks: int; habit_checks: int; body_days: int`, `StatusStat`에 `bonus: float`, `effective_score: float | None`, `activity: StatActivity`.
 
@@ -153,6 +156,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - `test_task_without_area_ignored`, `test_bonus_never_negative_and_effective_at_most_10`(base 9 + 1.5 → `Decimal("10.0")`, `bonus` 1.5 그대로), `test_no_base_effective_null_bonus_kept`
 - [ ] `tests/test_status_snapshot.py`(DB로):
   - `test_reopened_and_soft_deleted_tasks_not_counted`, `test_deleted_habit_checks_excluded_paused_and_archived_included`
+  - `test_activity_rows_checks_bounded_by_from_day`(T−28 체크는 `rows.checks`에 없고 T−27은 있다)
   - `test_stats_have_bonus_fields_and_counts`: 건강 28일 체크 → `{"score": 4, "bonus": 1.5, "effective_score": 5.5, "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0}}`
   - `test_debuff_ignores_bonus`: 바탕 Q3 6 → Q4 4, 보너스 2.0 → `debuff is True`(보이는 6.0이어도). 바탕이 오른 영역에 보너스가 있어도 `debuff is False`
 - [ ] `tests/test_status_property.py`에 속성 시험 셋(hypothesis, 활동 묶음 = 날짜·영역·출처 무작위):
@@ -169,6 +173,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - [ ] `cd web/app && npm run typecheck && npm test` · `cd web/dashboard && npm run typecheck && npm test` → 통과(필드 추가만)
 
 **마무리**
+- [ ] SP8 스펙 5.6 고침(결정 4).
 - [ ] **Review + Commit** `feat(status): activity bonus on stats, computed on read`
 
 ---
@@ -178,11 +183,11 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **목표:** 스펙 9장, 1장 조건 10.
 **막는 티켓:** 없음
 
-**Files:** Create `web/shared/pictograms.svg`, `web/app/src/components/pictograms.gen.tsx`, `web/dashboard/src/components/pictograms.gen.tsx`. Modify `web/{app,dashboard}/scripts/sync-design.mjs`, `scripts/sync-design.test.mjs`, `src/pages/_document.tsx`(두 앱), `web/shared/global.css`(`.pictogram-sprite`, `.pictogram` 크기 클래스) → 두 앱 `src/styles/global.css` 사본, `DESIGN.md`("Pictograms" 절, 대시보드 절 282행 문장).
+**Files:** Create `web/shared/pictograms.svg`, `web/app/src/components/pictograms.gen.tsx`, `web/dashboard/src/components/pictograms.gen.tsx`. Modify `web/{app,dashboard}/scripts/sync-design.mjs`, `scripts/sync-design.test.mjs`, `src/pages/_document.tsx`(두 앱), `web/shared/global.css`(`.pictogram-sprite`, `.pictogram` 크기 클래스) → 두 앱 `src/styles/global.css` 사본, `web/{app,dashboard}/scripts/check-csp.mjs`(스프라이트 검사), `DESIGN.md`("Pictograms" 절과 id 표, 대시보드 절 282행 문장: 결정 14). Read only `docs/design/pictograms-draft.json`.
 
 **Interfaces**
-- 원본 모양: 캔버스 [인생 히스토리 초안](https://claude.ai/artifact/FeapQVZFNFC5Y1sgZw4MqR) `Pictograms` 보드의 생성기 `ICONS` 사전(Artifact `read`로 읽는다). 열쇠 `life` → `quality_of_life`, `turn` → `turning_point`.
-- `pictograms.svg`: `<svg xmlns="http://www.w3.org/2000/svg">` 안에 `<symbol id="p-<id>" viewBox="0 0 24 24">` 28개, 자식은 `path`·`circle`·`rect`만, `fill`·`stroke` 색 속성·`style` 없음(점 표시만 `stroke-width`).
+- 원본 모양: **`docs/design/pictograms-draft.json` 하나만 읽는다**(이 계획 PR이 넣어 둔 파일. 캔버스 [인생 히스토리 초안](https://claude.ai/artifact/FeapQVZFNFC5Y1sgZw4MqR)의 생성기 `ICONS` 사전을 그대로 옮기고 열쇠 `life` → `quality_of_life`, `turn` → `turning_point`로 바꿨다. Artifact 도구는 필요 없다). 모양은 `{"icons": [{"id", "label", "markup"}]}` 28개이고 `markup`이 `<symbol>`의 자식 그대로다. 순서는 9.1 표 순서(일·돈·건강·관계·배움·삶의 질·높은 때·힘든 때·전환점·챕터·컨디션·사다리·레벨·퀘스트·회고·할 일·습관·기억·5년 뒤·가림·가려짐·비서가 만듦·한눈에·인생곡선·상태창·목록·추정·설정).
+- `pictograms.svg`: `<svg xmlns="http://www.w3.org/2000/svg">` 안에 `<symbol id="p-<id>" viewBox="0 0 24 24">` 28개(`markup`을 바꾸지 않고 넣는다), 자식은 `path`·`circle`·`rect`만, `fill`·`stroke` 색 속성·`style` 없음. 허용하는 표시 속성은 `stroke-width`(점: `condition`, `future`, `list`)와 `stroke-dasharray`(`estimate`)뿐.
 - `sync-design.mjs`(두 앱 같은 함수, 머리 주석만 다름) 새 내보내기: `PICTO_SOURCE`, `PICTO_TARGET`, `parseSymbols(svg: string) -> {id: string, children: string}[]`, `pictogramsModule(svg: string) -> string`, `syncDesign()`은 CSS 사본과 픽토그램 파일을 둘 다 쓰고 둘 중 하나라도 바뀌면 `true`.
 - `pictograms.gen.tsx`(생성 파일 머리말 `// GENERATED by \`npm run sync:design\` from web/shared/pictograms.svg`): `export type PictogramName = "career" | … (28개)`, `export const PICTOGRAM_NAMES: readonly PictogramName[]`, `export function PictogramSprite()`(숨긴 `<svg className="pictogram-sprite" aria-hidden="true">` 안에 JSX `<symbol>`, 속성은 camelCase), `export function Pictogram({ name, size = 24, label }: { name: PictogramName; size?: 16 | 20 | 24; label?: string })`(`<svg … fill="none" stroke="currentColor" strokeWidth={size === 16 ? 2 : 1.75} strokeLinecap="round" strokeLinejoin="round"><use href="#p-<name>"/></svg>`, `label`이 있으면 `role="img" aria-label`, 없으면 `aria-hidden="true"`).
 - `_document.tsx`: `<body>`의 첫 요소 `<PictogramSprite />`.
@@ -191,14 +196,16 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - [ ] 두 앱 `scripts/sync-design.test.mjs`에:
   - `the pictogram copy matches web/shared/pictograms.svg`: `readFileSync(PICTO_TARGET) === pictogramsModule(readFileSync(PICTO_SOURCE))`
   - `ids are exactly the spec 9.1 table`: 시험 안의 28개 목록(9.1 표 순서)과 `parseSymbols(...).map(s => s.id)`가 같다(개수를 따로 박지 않는다, 9.2)
-  - `source has no style, colour fill, script or foreignObject`: `/style=|fill="(?!none)|<script|foreignObject/` 없음, 자식 태그는 `path|circle|rect`뿐
-  - `module exports the sprite and the component`: 생성 글에 `export function PictogramSprite`, `strokeWidth`, `#p-` 있음, `stroke-width` 없음
-- [ ] 두 앱 `src/components/frame.test.tsx`(앱) / `src/test/app.test.tsx`(대시보드)에 `sprite_rendered_once_first_in_body`: 문서에 `.pictogram-sprite`가 정확히 1개
+  - `source matches docs/design/pictograms-draft.json`: 원본 JSON의 `(id, markup)` 28쌍과 `parseSymbols(...)`의 `(id, children)`이 같다
+  - `source has no style, colour fill, script or foreignObject`: `/style=|fill="(?!none)|<script|foreignObject/` 없음, 자식 태그는 `path|circle|rect`뿐, 표시 속성은 `stroke-width`·`stroke-dasharray`만
+  - `module exports the sprite and the component`: 생성 글에 `export function PictogramSprite`, `strokeWidth`, `strokeDasharray`, `#p-` 있음, `stroke-width`·`stroke-dasharray` 없음
+- [ ] 두 앱 `scripts/check-csp.mjs`에 스프라이트 검사(`_document`는 vitest에서 그릴 수 없으므로 빌드 결과로 본다): `out/index.html`(그리고 `out/` 아래 모든 `.html`)에서 `class="pictogram-sprite"`가 정확히 1개이고 `<body…>` 바로 뒤 첫 요소. 어기면 `pictogram sprite: <파일> has <n> sprites` 또는 `… is not the first child of <body>`로 끝 코드 1. 두 앱의 기존 `scripts/check-csp.test.mjs`에 `sprite_once_first_in_body_passes`, `sprite_missing_fails`, `sprite_twice_fails`, `sprite_not_first_fails`(글 조각으로).
 - [ ] `Pictogram` 렌더 시험(두 앱 `src/components/Pictogram.test.tsx`): `label` 없으면 `aria-hidden="true"`, 있으면 `role="img"`와 이름, 16px에서 `stroke-width="2"`
-- [ ] `check:csp` 통과(인라인 스크립트·`style=` 없음). DESIGN.md "Pictograms" 절(9.3 규칙 1~5 그대로), 282행 문장을 "히스토리는 영역 태그와 '비서가 만듦' 표시를 쓴다(곡선 차트의 점은 그대로 ▲▼◆, 종류는 높은 때·힘든 때·전환점)"로.
+- [ ] `npm run build && npm run check:csp`(두 앱) → 통과(인라인 스크립트·`style=` 없음, 스프라이트 1개·첫 요소).
+- [ ] DESIGN.md: "Pictograms" 절(9.3 규칙 1~5 그대로)과 9.2가 말하는 id 표(id · 이름 · 쓰는 자리, 28줄, `pictograms-draft.json` 순서), 282행 문장을 "히스토리는 영역 태그와 '비서가 만듦' 표시를 쓴다(곡선 차트의 점은 그대로 ▲▼◆, 종류는 높은 때·힘든 때·전환점)"로. → `grep -n "낮은 때" DESIGN.md` → 빈 출력.
 
 **검증**
-- [ ] `cd web/app && npx vitest run scripts/sync-design.test.mjs` · `cd web/dashboard && npx vitest run scripts/sync-design.test.mjs` → passed
+- [ ] `cd web/app && npx vitest run scripts/sync-design.test.mjs scripts/check-csp.test.mjs` · `cd web/dashboard && npx vitest run scripts/sync-design.test.mjs scripts/check-csp.test.mjs` → passed
 - [ ] 앱·대시보드 티켓 끝 검증 → 통과, `git diff --exit-code` 빈 출력
 
 **마무리**
@@ -214,6 +221,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **Files:**
 - 대시보드: Modify `components/StatBar.tsx`, `screens/StatusScreen.tsx`, `components/Nav.tsx`, `lib/labels.ts`(`STATUS_TEXT` 새 문구, `PICTOGRAM_LABELS`), `src/test/banned-words.test.ts`. Create `components/RecentAreas.tsx`, `components/StatBar.test.tsx`. Test `screens/StatusScreen.test.tsx`.
 - 앱: Create `pages/status.tsx`, `screens/Status.tsx`, `screens/Status.module.css`, `screens/Status.test.tsx`, `src/test/fixtures/status.json`. Modify `pages/_app.tsx`(CSS import), `lib/copy.ts`(`copy.status`), `lib/copy.test.ts`(`APP_BANNED`), `api/fixtures.test.ts`(표에 `["status.json", "Status"]`), `e2e/routes.ts`(`GET /status`), `e2e/screens.spec.ts`(화면 `status`).
+- 스펙: SP8 스펙 10.1(홈 칸 머리·"히스토리 보기"는 미룸, `/`의 `home` 픽토그램: 결정 12), 13장(대시보드 라이트·다크는 H3 눈 확인: 결정 13).
 
 **Interfaces**
 - Consumes: `Status`, `StatusStat`(`bonus`, `effective_score`, `activity`)(SP8-00), `Pictogram`(SP8-01).
@@ -237,16 +245,17 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - [ ] `cd web/app && npm run e2e -- --grep status` → `status (light)`, `status (dark)` passed, `e2e/__screens__/status-*.png` 생김
 
 **마무리**
+- [ ] SP8 스펙 10.1, 13장 고침(결정 12·13).
 - [ ] **Review + Commit** `feat(web): stat bonus cells, recent areas and the app status screen`
 
 ---
 
 ### 티켓 SP8-03: 2단계 BE — 순간 만들기 (013)
 
-**목표:** 스펙 6.1~6.3, 6.8, 1장 조건 3·4·6·7(로그·세션 쪽). 노트북 스파이크 S-SP8-1은 사람 관문 H1(이 티켓은 그 결과를 기다리지 않는다).
+**목표:** 스펙 6.1~6.3, 6.8, 1장 조건 3·4·6·7(로그·세션 쪽). 세션 파일은 두 겹으로 막는다: `no-session-persistence` 플래그, 그리고 호출 뒤 그 `session_id`의 파일이 있으면 지우기(결정 18). 그래서 노트북 스파이크 S-SP8-1(사람 관문 H1)은 플래그가 먹는지만 확인하고, 이 티켓은 그 결과를 기다리지 않는다(플래그가 안 먹어도 머지부터 H1까지 파일이 남지 않는다).
 **막는 티켓:** SP8-00
 
-**Files:** Create `store/migrations/013_moments.sql`(6.1 그대로), `store/repos/moments.py`, `harness/moments.py`, `harness/prompts/moments.md`, `tools/moments.py`, `tests/test_moments_job.py`, `tests/test_moments_tools.py`. Modify `domain.py`, `harness/brain.py`, `harness/dispatcher.py`, `tools/mcp_adapter.py`, `tools/core.py`(`Tools(MomentTools, HabitTools)`, `moments=`), `tools/actions.py`(`prune_records`), `loop/runner.py`, `app.py`, `store/transcripts.py`, `tests/fakes.py`, `tests/test_write_paths.py`, `tests/test_migrations.py`, `tests/test_brain_options.py`, 그리고 `tool_names_for("…")`를 부르는 시험 6개(`test_brain_options`, `test_curve_tools`, `test_ui_catalog`, `test_ui_tools`, `test_dispatcher_app_channel`, `test_habit_tools`)를 `tool_names_for(RunContext(None, None, channel="…"))`로.
+**Files:** Create `store/migrations/013_moments.sql`(6.1 그대로), `store/repos/moments.py`, `harness/moments.py`, `harness/prompts/moments.md`, `tools/moments.py`, `tests/test_moments_job.py`, `tests/test_moments_tools.py`. Modify `domain.py`, `harness/brain.py`, `harness/dispatcher.py`, `tools/mcp_adapter.py`, `tools/core.py`(`Tools(MomentTools, HabitTools)`, `moments=`), `tools/actions.py`(`prune_records`), `loop/runner.py`, `app.py`, `store/transcripts.py`, `tests/fakes.py`, `tests/test_write_paths.py`, `tests/test_migrations.py`, `tests/test_brain_options.py`, `tests/test_prompts.py`, SP8 스펙(6.2-4 멈출 때 건너뛰기: 결정 7, 6.2-5 `login`·`billing`만·안전 모드 검사 없음: 결정 5·6, 6.3 `tool_names_for(ctx)`·`moments_date`·`moments_refs`·`user_lines`·호출 뒤 세션 파일 지우기: 결정 2·3·8·18, 14장 SP8-03 줄의 스파이크: 결정 18), 그리고 `tool_names_for("…")`를 부르는 시험 6개(`test_brain_options`, `test_curve_tools`, `test_ui_catalog`, `test_ui_tools`, `test_dispatcher_app_channel`, `test_habit_tools`)를 `tool_names_for(RunContext(None, None, channel="…"))`로.
 
 **Interfaces**
 - `domain.RunContext`에 `kind: Literal["chat", "run", "moments"] = "chat"`, `moments_date: date | None = None`(M1의 그 날짜), `moments_refs: frozenset[str] = frozenset()`(입력에 나온 `task:<id>`, `habit:<id>`, `condition`, `chat`). `Dispatcher._run_brain`은 `kind="run"`.
@@ -260,20 +269,22 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - `MomentsRepo(conn, clock)`: `day(d) -> MomentDay | None`, `days_since(from_: date) -> dict[date, MomentDay]`, `save_day(d, items: list[tuple[str, str | None, list[str]]], now) -> list[Moment]`(slot 1..n, 날 행 `done`·`saved=n`), `mark(d, state, now, *, saved=0)`, `bump_attempt(d, now, max_attempts) -> str`(`pending` 행만, 2회면 `UPDATE … SET state='failed' WHERE state='pending'`), `prune_days(older_than: date) -> int`. 읽기(`between`, `get`, `hide` …)는 SP8-04.
 - `store/transcripts.py`: `TranscriptStore.user_lines(day: date) -> list[tuple[str, str]]`: 그날 파일의 `사용자` 줄 `(HH:MM, 본문)`, 오래된 것부터(이미 가린 글).
 - `harness/moments.py`: 상수 `MOMENTS_LOOKBACK_DAYS = 7`, `MOMENTS_MAX_TURNS = 3`, `MOMENTS_RESERVE_CALLS = 10`, `MOMENTS_MAX_ATTEMPTS = 2`, `MOMENTS_TASKS_MAX = 20`, `MOMENTS_CHAT_MAX_CHARS = 6000`, `MOMENT_DAYS_KEEP = 60`, `MOMENTS_SINCE_KEY = "moments_since"`, `MOMENTS_PAUSED_KEY = "moments_paused"`.
-  - `days_to_queue(repo, state, today: date) -> list[date]`: 6.2-2. `moments_since`가 없으면 `today − 1`로 적는다. `moments_paused == "1"`이면 `[]`. 오래된 날부터.
+  - `days_to_queue(repo, state, today: date) -> list[date]`: 6.2-2. `moments_since`가 없으면 `today − 1`로 적는다(`app_state` 쓰기는 이 모듈에서만). `moments_paused == "1"`이면 `[]`. 오래된 날부터.
+  - `mark_empty(repo, day, now) -> None`: `repo.mark(day, "empty", now)`. 디스패처는 직접 `mark`를 부르지 않고 이것과 `settle`만 부른다(쓰기 경로 감시가 `harness.moments` 프레임으로 본다).
+  - `remove_session_file(session_id: str | None, *, config_dir: Path) -> bool`: `session_id`가 UUID 모양(`^[0-9a-f-]{36}$`)이 아니면 아무것도 하지 않고 `False`. 맞으면 `config_dir / "projects" / "*" / f"{session_id}.jsonl"`을 glob해 있는 것을 지우고 하나라도 지웠으면 `True`. 오류는 삼키고 로그 `moments_session_cleanup {removed: bool}`(경로·id 없음). `config_dir`는 `app.py`가 `Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")`로 정해 디스패처에 넘긴다(`Dispatcher(…, claude_config_dir: Path | None = None)`, `None`이면 지우기를 건너뛴다: 앞 SP 시험 그대로).
   - `@dataclass(frozen=True) class MomentsInput: text: str; refs: frozenset[str]; has_data: bool`
   - `build_moments_input(day, *, tasks: TasksRepo, habits: HabitsRepo | None, conditions: ConditionsRepo | None, transcripts: TranscriptStore, tz, boundary) -> MomentsInput`: 6.3 입력 모양 그대로(머리 `## 날짜` … `## 사용자 메시지 (두 통로, 오래된 것부터)`), 할 일 20개, 메시지 6,000자(넘으면 오래된 줄부터 뺀다). `has_data`는 끝낸 할 일·습관 체크·사용자 메시지 가운데 하나라도 있을 때(컨디션만이면 거짓). 메모(SP9)는 읽지 않는다.
   - `moments_system_prompt() -> str`: `prompts.load("moments.md")` + 빈 줄 + `system.md`의 `<!-- banned-words:start -->…<!-- banned-words:end -->` 블록과 그 앞 한 줄.
   - `settle(repo, day, result: BrainResult, called: bool, now) -> Literal["done", "pending", "failed"]`: 6.2-6 그대로. 도구를 안 부르고 `ok`면 `mark(day, "done", saved=0)`.
-- `harness/dispatcher.py`: `@dataclass class _MomentsJob: date: date`, `_PRIORITY_MOMENTS = 2`, `Dispatcher.submit_moments(day: date) -> None`, `_handle_moments(job)`: (1) 멈추는 중이면 아무것도 하지 않는다(Review Focus 1) (2) `repo.day(d)`가 `done|empty|failed`면 끝 (3) 입력이 비면 `mark(d, "empty")` (4) 그날 `brain_calls ≥ daily_brain_calls − 10`, `brain.auth ∈ {login, billing}`, `limited_until`이 지금 뒤면 그대로 둔다 (5) `_call_brain(prompt=입력, session_id=None, run_ctx=RunContext(None, None, kind="moments", actor="secretary", activity_channel="scheduler", moments_date=d, moments_refs=…), system_prompt=moments_system_prompt(), max_turns=3, persist_session=False)`, 입력 중 표시 없음 (6) `rate_limited`면 `_set_limited`, (7) `settle`. 원문 기록에 쓰지 않는다. 로그 `moments_job {date, state, saved, rejected, duration_ms}`만.
+- `harness/dispatcher.py`: `@dataclass class _MomentsJob: date: date`, `_PRIORITY_MOMENTS = 2`, `Dispatcher.submit_moments(day: date) -> None`, `_handle_moments(job)`: (1) 멈추는 중이면 아무것도 하지 않는다(Review Focus 1) (2) `repo.day(d)`가 `done|empty|failed`면 끝 (3) 입력이 비면 `moments.mark_empty(repo, d, now)` (4) 그날 `brain_calls ≥ daily_brain_calls − 10`, `brain.auth ∈ {login, billing}`, `limited_until`이 지금 뒤면 그대로 둔다 (5) `_call_brain(prompt=입력, session_id=None, run_ctx=RunContext(None, None, kind="moments", actor="secretary", activity_channel="scheduler", moments_date=d, moments_refs=…), system_prompt=moments_system_prompt(), max_turns=3, persist_session=False)`, 입력 중 표시 없음 (5a) 결과가 무엇이든(`ok`·오류·예외 모두, `finally`) `remove_session_file(result.session_id, config_dir=…)` (6) `rate_limited`면 `_set_limited`, (7) `settle`. 원문 기록에 쓰지 않는다. 로그 `moments_job {date, state, saved, rejected, duration_ms}`만.
   - `_call_brain`은 새 세 인자를 받고 기본값이 아닐 때만 `brain.run`에 넘긴다(SP1 시험 두뇌가 그대로 돈다). `run_ctx.kind == "moments"`면 `_typing_loop`를 띄우지 않는다.
 - `tools/moments.py`: `class MomentTools`(mixin, `self.moments: MomentsRepo | None`): `save_moments(ctx, date=None, moments=None) -> dict`(`@_tool`). M1~M5(6.3) 그대로, `ctx.kind != "moments"`면 `{"error": "쓸 수 없는 도구예요."}`. 성공 `{"saved": n, "rejected": k}`, M4 `{"already": True}`. 저장·날 행·활동 `moments_saved`(`target="moments:<date>"`, summary "이룬 순간 {n}개 정리 ({M}/{D})", `undo=None`)를 한 `transaction`. `ctx.events.append(ToolEvent("moments_saved", None, {"date", "saved", "rejected"}))`(글 없음).
 - `tools/actions.py`: 내부 동작 `prune_records`(`public=False`): `status_moment_days`를 60일 전보다 오래된 행 지움. `loop/runner.py`: `queue_moments_daily(target: MomentsSubmitter, moments: MomentsRepo, state: StateRepo) -> Callable[[date], None]`(`__name__ = "queue_moments"`), `prune_records_daily(target) -> Callable[[date], None]`. `app.py`가 둘을 `register_daily`.
 - `moments.md`: 6.3 규칙 1~6을 해요체 지시문으로. 예시 문장은 "포트폴리오 사례 하나를 끝까지 다듬었어요".
-- `tests/test_write_paths.py`: `TOOLS`에 `"my_planner.tools.moments"`, `ALLOWED`에 `"status_moments": set(TOOLS)`, `"status_moment_days": {*TOOLS, "my_planner.harness.moments"}`.
+- `tests/test_write_paths.py`(이 티켓에서, 새 쓰기 모듈을 더하는 그 커밋에): `TOOLS`에 `"my_planner.tools.moments"`, `ALLOWED`에 `"status_moments": set(TOOLS)`, `"status_moment_days": {*TOOLS, "my_planner.harness.moments"}`, 기존 `"app_state"` 집합에 `"my_planner.harness.moments"`(`moments_since`). `prune_records`는 `tools.actions`(이미 `TOOLS`)라 더할 것이 없다.
 
 **Slices**
-- [ ] `tests/test_migrations.py`: `test_013_moment_checks`(text 61자·0자, slot 0·4, 틀린 area, 날짜 `2026-1-1` 모두 `IntegrityError`, `UNIQUE(date, slot)`), `test_013_day_state_check`, `test_013_ledger_untouched`(012 원장 행 그대로), `test_latest_version_is_013`(이 티켓 머지 시점 `LATEST_VERSION == 13`. SP8-06·SP8-08이 14·15로 고친다)
+- [ ] `tests/test_migrations.py`: `test_013_moment_checks`(text 61자·0자, slot 0·4, 틀린 area, 날짜 `2026-1-1` 모두 `IntegrityError`, `UNIQUE(date, slot)`), `test_013_day_state_check`, `test_013_ledger_untouched`(012 원장 행 그대로). 버전 시험은 새로 만들지 않고 기존 둘을 이름에서 번호를 뺀다: `test_latest_version_is_012_no_chat_migration`(298행) → `test_latest_version_no_chat_migration`(`LATEST_VERSION == 13`), `test_schema_version_12`(407행) → `test_schema_version_latest`(`user_version == 13`). SP8-06·SP8-08은 같은 두 시험의 숫자만 14·15로 고친다.
 - [ ] `tests/test_brain_options.py`: `test_moments_options_disable_session_persistence`(`extra_args == {"no-session-persistence": None}`), `test_chat_options_keep_session`(`extra_args == {}`), `test_claude_brain_uses_given_system_prompt_and_max_turns`(가로챈 `build_options` 인자 `max_turns == 3`, `system_prompt`가 `moments.md`로 시작하고 `system.md` 첫 줄이 없음)
 - [ ] `tests/test_moments_tools.py`:
   - `test_tool_names_moments_kind_only_save_moments`(서버에 실린 이름 `["save_moments"]`), `test_chat_and_run_tool_lists_have_no_save_moments`(28·35 그대로)
@@ -293,6 +304,8 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - `test_call_shape`(`session_id is None`, `max_turns == 3`, `persist_session is False`, 입력 중 표시 0회, `brain_calls` +1)
   - `test_moments_input_uses_logical_day_for_0230_completion`(Review Focus 5), `test_input_has_user_lines_only_and_6000_chars`(비서 줄 없음, 오래된 줄부터 잘림), `test_input_does_not_read_memos`
   - `test_stop_skips_queued_moments_jobs`(Review Focus 1: 3일 대기 → `stop()` → 두뇌 호출 0, 세 날 `pending`)
+  - `test_session_file_removed_after_moments_call`(`tmp_path/"claude"`를 `claude_config_dir`로, FakeBrain 결과 `session_id = "1b4e28ba-2fa1-11d2-883f-0016d3cca427"`, 미리 `projects/-home-x/<id>.jsonl`과 다른 id 파일 하나를 만든다 → 호출 뒤 그 파일만 없고 다른 파일은 그대로)
+  - `test_session_file_removed_even_when_brain_errors`(결과 `status="error"`여도 지움), `test_session_cleanup_ignores_bad_id`(`"../x"`·`None` → 아무것도 안 지움, 예외 없음), `test_chat_calls_never_remove_session_files`(대화·회차 호출 뒤 파일 그대로)
   - `test_three_days_off_catches_up_in_order`(1장 조건 4)
   - `test_logs_and_transcripts_have_no_moment_text`(시험 글 "꾸며 낸 순간 글"이 `state/logs/*.log`와 `data/transcripts/` 어디에도 없음, `moments_job` 줄 키는 `date, state, saved, rejected, duration_ms`뿐)
   - `test_prune_moment_days_60`
@@ -303,6 +316,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - [ ] BE 티켓 끝 검증 → `0 failed`, `All checks passed!`
 
 **마무리**
+- [ ] SP8 스펙 6.2-4, 6.2-5, 6.3, 14장 SP8-03 줄 고침(결정 2·3·5·6·7·8·18·19. 6.3의 "호출 뒤 파일 지우기는 쓰지 않는다"를 "플래그와 함께 호출 뒤 그 `session_id`의 파일이 있으면 지운다, 스파이크는 플래그만 확인"으로).
 - [ ] ADR 0013 끝에 이 계획 링크 한 줄. **Review + Commit** `feat(moments): end-of-day moments job with save_moments only`
 
 ---
@@ -312,7 +326,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **목표:** 스펙 6.4, 6.5, 6.7, 10.3, 1장 조건 5·7(통로 쪽).
 **막는 티켓:** SP8-03
 
-**Files:** Modify `store/repos/moments.py`(읽기·숨기기), `store/views.py`, `status/snapshot.py`, `tools/moments.py`, `tools/core.py`(`get_status`), `tools/actions.py`, `tools/activity.py`(`moment_target`), `api/read.py`, `api/models.py`, `api/server.py`, `harness/context.py`, `harness/dispatcher.py`, `harness/prompts/{system,review_week}.md`, `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md`(6.2 경로표 `GET /moments`, 6.4.2 동작표 셋, 6.4.3 되돌리기 표 넷). Regenerate schema/types. Test `tests/test_api_moments.py`(새), `tests/test_api_undo.py`, `tests/test_moments_tools.py`, `tests/test_prompts.py`, `tests/test_habit_context.py`.
+**Files:** Modify `store/repos/moments.py`(읽기·숨기기), `store/views.py`, `status/snapshot.py`, `tools/moments.py`, `tools/core.py`(`get_status`), `tools/actions.py`, `tools/activity.py`(`moment_target`), `api/read.py`, `api/models.py`, `api/server.py`, `harness/context.py`, `harness/dispatcher.py`, `harness/prompts/{system,review_week}.md`, `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md`(6.2 경로표 `GET /moments`, 6.4.2 동작표 셋, 6.4.3 되돌리기 표 넷), SP8 스펙 6.4(없는 순간 `404`는 `error_code`로: 결정 9), 6.7과 10.3(회고 앞머리는 어느 통로든 날짜·개수만, "곡선에 남길까요?"는 앱 대화의 `get_status`에서만, `review_week.md`의 한 줄 새 글: 결정 10). Regenerate schema/types, 대시보드 고정 자료. **앱 고정 자료** Modify `web/app/src/test/fixtures/status.json`(`moments: []`, `moments_hidden: 0`: 새 required 필드), `web/app/e2e/routes.ts`(`GET /status` 응답에 같은 두 필드). Test `tests/test_api_moments.py`(새), `tests/test_api_undo.py`, `tests/test_api_readonly.py`, `tests/test_moments_tools.py`, `tests/test_prompts.py`, `tests/test_habit_context.py`, `tests/test_delivery.py`(대체 경로).
 
 **Interfaces**
 - `MomentsRepo`: `between(from_: date, to: date, *, include_hidden: bool) -> list[Moment]`(최근 날짜부터, 같은 날 `slot` 순), `hidden_count(from_, to) -> int`, `get(id) -> Moment | None`, `hide(id, at) -> str | None`(이전 `hidden_at`, 이미 숨김이면 그대로), `unhide(id) -> str | None`, `restore_hidden(id, hidden_at: str | None)`, `delete(id) -> Moment | None`.
@@ -323,8 +337,8 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - `MomentTools`: `hide_moment(ctx, id)`, `unhide_moment(ctx, id)`, `delete_moment(ctx, id)`: 없는 id는 `{"error": "없는 순간이에요.", "error_code": "not_found"}`, 이미 숨김은 `{"already": True}`. 활동 6.4 표 그대로(`target = moment_target(id) = "moment:<id>"`, summary는 날짜만), 숨기기 `undo={"moment_id", "hidden_at": None}`, 다시 보이기 `undo={"moment_id", "hidden_at": <이전 값>}`, 지우기 `undo=None`. `register_undo("moment_hidden", …)`, `register_undo("moment_unhidden", …)`(행이 없으면 `SUPERSEDED`).
 - `tools/actions.py`: `ACTIONS`에 `hide_moment`, `unhide_moment`(`target=_moment_target`), `delete_moment`(`needs_confirm=moment_delete_needs_confirm`: 순간이 있으면 "이 순간을 지울까요? 되돌릴 수 없어요.", `target=_moment_target`). `_call`은 결과의 `error_code == "not_found"`를 `404 not_found`로.
 - `Tools.get_status(ctx)`: 스냅샷의 `moments`를 지난 7일로 바꾸고, `ctx.channel == "app"`이면 `[moment_dict]`, 아니면 `moment_counts`(글 없음). 하네스가 고른다.
-- `harness/context.py`: `moments_week_block(moments: MomentsRepo, review_day: date, *, with_text: bool) -> str`(`## 이번 주 이룬 순간`, 앱이면 `- 10/24 포트폴리오 사례 하나를 …`, 텔레그램이면 `- 10/24 2개`. 없으면 빈 문자열), `recent_areas_block(stats: list[dict]) -> str`(`## 요즘 손이 간 영역`, `- 건강 +1.5`, `bonus > 0`만). `Dispatcher`는 주간 회고 회차에서 둘을 붙이고, `with_text = (self.delivery.effective() == "app" if self.delivery else False)`.
-- `system.md`: `## 이룬 순간` 절에 원칙 15·16(10.3 문장 그대로). `review_week.md`: 10.3의 한 줄.
+- `harness/context.py`: `moments_week_block(moments: MomentsRepo, review_day: date) -> str`(`## 이번 주 이룬 순간`, 줄마다 `- 10/24 2개`, **글 인자 없음: 어느 통로든 날짜와 개수만**. 회고 답은 푸시가 실패하면 본문 전체가 텔레그램으로 가므로(`delivery.deliver_run` 대체 경로) 앞머리에 글을 두지 않는다. 없으면 빈 문자열), `recent_areas_block(stats: list[dict]) -> str`(`## 요즘 손이 간 영역`, `- 건강 +1.5`, `bonus > 0`만). `Dispatcher`는 주간 회고 회차에서 둘을 붙인다(`delivery.effective()`를 보지 않는다).
+- `system.md`: `## 이룬 순간` 절에 원칙 15·16(10.3 문장 그대로)과 한 줄 "순간 하나를 곡선에 남길지 묻는 것은 앱 대화에서 `get_status`로 순간의 글을 받았을 때만 한다". `review_week.md`: 10.3의 한 줄을 "앞머리의 이룬 순간은 날짜와 개수만 보인다. 회고에서 순간의 글을 짐작해 말하거나 곡선에 남기자고 묻지 않는다. 사용자가 앱에서 이어 물으면 그때 `get_status`로 본다."로 바꾼다.
 
 **Slices**
 - [ ] `tests/test_api_moments.py`:
@@ -336,15 +350,18 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - `test_dashboard_reads_only`(`GET /status`만, 쓰기 경로 없음 — `tests/test_api_readonly.py`에 줄 추가)
 - [ ] `tests/test_api_undo.py`: `test_undo_hide_after_delete_superseded`(Review Focus 4, `409 superseded`, 행 없음), `test_hide_and_unhide_block_each_other_u3`
 - [ ] `tests/test_moments_tools.py`: `test_get_status_telegram_has_dates_and_counts_only`(결과 JSON 문자열에 시험 글 없음), `test_get_status_app_has_text_last_7_days`
-- [ ] `tests/test_habit_context.py`(회고 앞머리): `test_review_preamble_moments_text_when_app`, `test_review_preamble_moments_counts_when_telegram`, `test_review_preamble_recent_areas_block`, `test_no_blocks_when_empty`
-- [ ] `tests/test_prompts.py`: `test_system_prompt_has_principles_15_16`, `test_review_week_asks_one_moment_only_with_text`, 금지어 검사 통과
-- [ ] 스키마 재생성, 대시보드 고정 자료 다시 쓰기.
+- [ ] `tests/test_habit_context.py`(회고 앞머리): `test_review_preamble_moments_counts_only_on_every_channel`(parametrize 실제 통로 `app`·`telegram` → 둘 다 `- 10/24 2개`, 시험 글 없음), `test_review_preamble_recent_areas_block`, `test_no_blocks_when_empty`
+- [ ] `tests/test_delivery.py::test_review_fallback_to_telegram_has_no_moment_text`(앱 통로 회고, 푸시 전부 실패 → 텔레그램 대체로 간 본문과 두뇌에 준 프롬프트 어디에도 시험 순간 글이 없다)
+- [ ] `tests/test_prompts.py`: `test_system_prompt_has_principles_15_16`, `test_review_week_moments_counts_only_no_ask`("곡선에 남길까요" 없음, "날짜와 개수" 있음), 금지어 검사 통과
+- [ ] 스키마 재생성, 대시보드 고정 자료 다시 쓰기, 앱 `status.json`·`e2e/routes.ts`에 `moments`·`moments_hidden`.
 
 **검증**
-- [ ] `python -m pytest tests/test_api_moments.py tests/test_api_undo.py tests/test_moments_tools.py tests/test_habit_context.py tests/test_prompts.py -q` → `passed`
+- [ ] `python -m pytest tests/test_api_moments.py tests/test_api_undo.py tests/test_api_readonly.py tests/test_moments_tools.py tests/test_habit_context.py tests/test_delivery.py tests/test_prompts.py -q` → `passed`
 - [ ] BE 티켓 끝 검증 → `0 failed`
+- [ ] `cd web/app && npm run typecheck && npm test` → 통과(`api/fixtures.test.ts`의 `status.json is a valid Status`). `cd web/dashboard && npm run typecheck && npm test` → 통과
 
 **마무리**
+- [ ] SP8 스펙 6.4, 6.7, 10.3 고침(결정 9·10).
 - [ ] **Review + Commit** `feat(api): moments on /status, GET /moments and hide/unhide/delete actions`
 
 ---
@@ -380,7 +397,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **목표:** 스펙 7.1~7.5, 1장 조건 8, 11장 `BODY_TOKEN` 줄.
 **막는 티켓:** SP8-03(마이그레이션 번호 순서), SP8-00
 
-**Files:** Create `store/migrations/014_body.sql`(7.1 그대로), `store/repos/body.py`, `tools/body.py`, `api/body.py`, `tests/test_api_body.py`. Modify `config.py`(`Settings.body_token`, `_Secrets.body_token` ← `BODY_TOKEN`, `load_settings`의 금지 열쇠에 `body_token`), `app.py`(`_body_token`), `api/server.py`(`ApiDeps.body_token`, 경로 등록, `auth`, `body_limit_middleware`), `api/cors.py`, `api/models.py`(`StatusBody`, `BodyPostBody`, `BodySaved`), `tools/actions.py`(`record_body_days`, `prune_records`에 56일), `tools/core.py`(`Tools(BodyTools, …)`, `body=`), `store/repos/status.py`(몸 기록 질의), `status/snapshot.py`(`body`), `tests/be_env.py`(`BeEnv.start(body_token=…)`), `tests/test_api_auth.py`, `tests/test_api_logging.py`, `tests/test_write_paths.py`, `tests/test_migrations.py`, `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md` 6.2(`POST /body`).
+**Files:** Create `store/migrations/014_body.sql`(7.1 그대로), `store/repos/body.py`, `tools/body.py`, `api/body.py`, `tests/test_api_body.py`. Modify `config.py`(`Settings.body_token`, `_Secrets.body_token` ← `BODY_TOKEN`, `load_settings`의 금지 열쇠에 `body_token`), `app.py`(`_body_token`), `api/server.py`(`ApiDeps.body_token`, 경로 등록, `auth`, `body_limit_middleware`), `api/cors.py`, `api/models.py`(`StatusBody`, `BodyPostBody`, `BodySaved`), `tools/actions.py`(`record_body_days`, `prune_records`에 56일), `tools/core.py`(`Tools(BodyTools, …)`, `body=`), `store/repos/status.py`(몸 기록 질의), `status/snapshot.py`(`body`), `tests/be_env.py`(`BeEnv.start(body_token=…)`), `tests/test_api_auth.py`, `tests/test_api_logging.py`, `tests/test_write_paths.py`, `tests/test_migrations.py`, `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md` 6.2(`POST /body`), SP8 스펙 7.2(`endpoint = body`, `channel = app`: 결정 1)와 7.1(56일 정리는 `prune_records`: 결정 17). Regenerate schema/types, 대시보드 고정 자료. **앱 고정 자료** Modify `web/app/src/test/fixtures/status.json`(`body: null`, 그리고 `stats[]` 건강 줄 `activity.body_days`), `web/app/e2e/routes.ts`(`GET /status` 응답에 `body`).
 
 **Interfaces**
 - `store/repos/body.py`: `@dataclass(frozen=True) class BodyDay: date: date; steps: int | None; sleep_minutes: int | None`, `BodyRepo(conn, clock)`: `upsert(days: list[BodyDay], now)`(날짜마다 `INSERT … ON CONFLICT(date) DO UPDATE SET` 보낸 값만), `between(from_, to) -> list[BodyDay]`, `summary(today: date) -> dict | None`(7.5: 56일에 행이 없으면 `None`, `last_date`, `days_7`, `steps_avg_7`, `sleep_avg_7` 정수 평균), `prune(older_than: date) -> int`.
@@ -393,10 +410,10 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - `StatusRepo.activity_rows`가 `body_days`를 읽는다. `status_snapshot(…, body: BodyRepo | None = None)` → `body`. `Status.body: StatusBody | None`. 건강 `activity.body_days`는 7.4.
 
 **Slices**
-- [ ] `tests/test_migrations.py`: `test_014_body_checks`(걸음 −1·100001, 잠 1441, 둘 다 NULL 거절), `test_latest_version_is_014`
+- [ ] `tests/test_migrations.py`: `test_014_body_checks`(걸음 −1·100001, 잠 1441, 둘 다 NULL 거절), `test_latest_version_no_chat_migration`·`test_schema_version_latest`의 숫자를 14로(새 버전 시험을 더하지 않는다)
 - [ ] `tests/test_api_body.py`:
   - `test_saves_three_days_returns_saved_only`(응답 `{"saved": 3}`)
-  - `test_validation`(parametrize: 모르는 최상위 키, 항목의 모르는 키, 8일, 겹친 날짜, 미래, 14일 밖, 범위 밖, `null`, 둘 다 없음 → 400과 부록 A 문구, 아무것도 안 씀)
+  - `test_validation`(parametrize: 모르는 최상위 키, 항목의 모르는 키, `days: []`(0개, 7.3 "1~7개"), 8일, 겹친 날짜, 미래, 14일 밖, 범위 밖, `null`, 둘 다 없음 → 400과 부록 A 문구, 아무것도 안 씀)
   - `test_body_rejects_bool_and_float_values`(Review Focus 2)
   - `test_today_calendar_date_accepted_at_0230`(10/26 02:30에 `2026-10-26` 받음, 보너스 셈에서는 04:00 전 `d = −1`이라 빠지고 04:00 뒤 들어감)
   - `test_overwrite_only_sent_values`(잠만 보내면 걸음 그대로)
@@ -408,14 +425,16 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - `test_prune_56_days`, `test_health_bonus_from_body`(걸음 ≥ 6000 28일 + 습관 28일 → 2.0, `activity.body_days == 28`), `test_status_body_summary_and_null`
   - `test_no_activity_no_xp_for_body`
 - [ ] `tests/test_api_logging.py::test_body_logs_have_no_numbers_or_token`(걸음 `8123`, 잠 `412`, `BODY_TOKEN` 값이 로그에 없음, `body_received` 줄은 `days`만)
-- [ ] `tests/test_write_paths.py`: `TOOLS`에 `"my_planner.tools.body"`, `ENTRIES`에 `"my_planner.api.body"`, `ALLOWED`에 `"body_days": set(TOOLS)`
-- [ ] 스키마 재생성, 대시보드 고정 자료 다시 쓰기.
+- [ ] `tests/test_write_paths.py`(새 쓰기 모듈을 더하는 이 티켓에서): `TOOLS`에 `"my_planner.tools.body"`, `ENTRIES`에 `"my_planner.api.body"`, `ALLOWED`에 `"body_days": set(TOOLS)`
+- [ ] 스키마 재생성, 대시보드 고정 자료 다시 쓰기, 앱 `status.json`·`e2e/routes.ts`에 `body`.
 
 **검증**
-- [ ] `python -m pytest tests/test_api_body.py tests/test_api_auth.py tests/test_api_logging.py tests/test_migrations.py -q` → `passed`
+- [ ] `python -m pytest tests/test_api_body.py tests/test_api_auth.py tests/test_api_logging.py tests/test_migrations.py tests/test_write_paths.py -q` → `passed`
 - [ ] BE 티켓 끝 검증 → `0 failed`
+- [ ] `cd web/app && npm run typecheck && npm test` → 통과(`status.json is a valid Status`). `cd web/dashboard && npm run typecheck && npm test` → 통과
 
 **마무리**
+- [ ] SP8 스펙 7.1, 7.2 고침(결정 1·17).
 - [ ] **Review + Commit** `feat(body): POST /body with its own token, body_days and health bonus`
 
 ---
@@ -453,7 +472,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **목표:** 스펙 8.1, 8.2, 8.7의 BE·텔레그램·프롬프트 쪽.
 **막는 티켓:** SP8-06(마이그레이션 번호 순서)
 
-**Files:** Create `store/migrations/015_curve_history.sql`(8.1 그대로), `curve/history.py`, `tests/test_curve_history.py`. Modify `store/repos/curve.py`, `store/repos/conditions.py`, `curve/model.py`, `curve/seed.py`, `cli.py`, `tools/core.py`(`add_milestone`, `propose_chapter`, `confirm_milestones`), `tools/mcp_adapter.py`(두 도구 스키마·설명), `tools/confirmations.py`(`KIND_LABELS`, `milestone_confirmed_line`, `_SAVE_TAIL`), `store/exports.py`(`_KIND`), `harness/prompts/{system,review_year}.md`(예시 말 "높은 때"), `api/read.py`, `api/models.py`, `api/server.py`, `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md` 6.2(`GET /curve/history`), `GLOSSARY.md`(사건 종류 화면 이름). Regenerate schema/types, 대시보드 고정 자료(+ `curve-history.json`, `curve-history-empty.json` 새 `CASES`). Test `tests/test_api_curve_status.py`, `tests/test_seed_life.py`, `tests/test_curve_tools.py`, `tests/test_telegram_curve.py`, `tests/test_migrations.py`.
+**Files:** Create `store/migrations/015_curve_history.sql`(8.1 그대로), `curve/history.py`, `tests/test_curve_history.py`. Modify `store/repos/curve.py`, `store/repos/conditions.py`, `curve/model.py`, `curve/seed.py`, `cli.py`, `tools/core.py`(`add_milestone`, `propose_chapter`, `confirm_milestones`), `tools/mcp_adapter.py`(두 도구 스키마·설명), `tools/confirmations.py`(`KIND_LABELS`, `milestone_confirmed_line`, `_SAVE_TAIL`), `store/exports.py`(`_KIND`), `harness/prompts/{system,review_year}.md`(예시 말 "높은 때"), `api/read.py`, `api/models.py`, `api/server.py`, `docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md` 6.2(`GET /curve/history`), `GLOSSARY.md`(사건 종류 화면 이름), SP8 스펙 8.1(`--update-history` 시드 없음 코드 7: 결정 15), 8.2(`ladder.value`는 `float`: 결정 16), 8.7(앱 초안 카드는 고칠 곳 없음: 결정 11). 주석만 바꾸는 파일(8.7 "주석 포함"): `status/xp.py`(122행), `store/repos/status.py`(80행), `tools/core.py`(111·911·969행, 911행은 오류 문구 "high(높은 때), low(힘든 때), …"). Regenerate schema/types, 대시보드 고정 자료(+ `curve-history.json`, `curve-history-empty.json` 새 `CASES`). 앱에는 곡선 모델 고정 자료가 없다(`api/fixtures.test.ts` 표 확인). Test `tests/test_api_curve_status.py`, `tests/test_seed_life.py`, `tests/test_curve_tools.py`, `tests/test_telegram_curve.py`, `tests/test_migrations.py`, 그리고 옛 이름 "(…, 고점)"·"(…, 저점)"을 단언하는 `tests/test_app_curve_cards.py`(77행), `tests/test_curve_actions.py`(148~156·370행), `tests/test_api_e2e.py`(343·406행), `tests/test_curve_drafts.py`(53·54·67·101·102·110행), `tests/test_curve_tools.py`(120행), `tests/test_telegram_curve.py`(80·114행).
 
 **Interfaces**
 - `Milestone.area: str | None`, `Chapter.ladder_remembered: int | None`. `CurveRepo.add_milestone(…, area: str | None = None)`, `add_chapter(…, ladder_remembered: int | None = None)`, `fill_history(milestone_areas: dict[int, str], chapter_ladders: dict[int, int]) -> tuple[int, int]`(`NULL`인 칸만), `earliest_ladder_period() -> str | None`. `ConditionsRepo.earliest() -> date | None`.
@@ -466,7 +485,8 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - `cli.py`: `seed-life [--update-history] <파일> [--dry-run]`, `USAGE` 고침.
 
 **Slices**
-- [ ] `tests/test_migrations.py`: `test_015_area_and_ladder_checks`(틀린 area, ladder 11 거절), `test_015_keeps_curve_rows`(기존 행 그대로, 새 칸 NULL), `test_schema_version_15`(`LATEST_VERSION == 15`, 원장 그대로)
+- [ ] `tests/test_migrations.py`: `test_015_area_and_ladder_checks`(틀린 area, ladder 11 거절), `test_015_keeps_curve_rows`(기존 행 그대로, 새 칸 NULL), `test_latest_version_no_chat_migration`·`test_schema_version_latest`의 숫자를 15로(원장 그대로)
+- [ ] 기존 단언 문자열을 새 이름으로 한 단계: 위 Files의 시험 줄에서 "(2019, 고점)" → "(2019, 높은 때)", "(…, 저점)" → "(…, 힘든 때)", 내보내기 줄 "- 2019 · 고점 · …" → "- 2019 · 높은 때 · …"(`test_curve_drafts.py` 101·102·110행). 사건 제목 안의 "고점"(시험 자료 "꾸민 고점" 등)과 두뇌 대본 글("곡선에 고점으로 남길까요?")은 그대로 둔다(BE가 만든 글이 아니다). → `python -m pytest tests/test_app_curve_cards.py tests/test_curve_actions.py tests/test_api_e2e.py tests/test_curve_drafts.py tests/test_curve_tools.py tests/test_telegram_curve.py -q` → `passed`
 - [ ] `tests/test_curve_history.py`: `test_chapters_recent_first_events_inside_recent_first`, `test_unassigned_group`, `test_ladder_source_remembered_then_recorded_avg_then_null`(기록 평균 6.25 → 6.3), `test_sensitive_hidden_count_years_and_title_absent_from_body`(본문 JSON 문자열에 시험 제목 없음), `test_include_sensitive_true_marks_and_zero_hidden`, `test_summary_values`(highest 같으면 최근, turning_points 해, longest 반올림, records_since, since_year), `test_empty_db_shape`, `test_drafts_excluded`
 - [ ] `tests/test_api_curve_status.py`: `test_curve_has_area_origin_kind_certainty_and_ladder_remembered`, `test_curve_history_route_and_schema`
 - [ ] `tests/test_seed_life.py`: `test_event_area_and_chapter_ladder_imported`, `test_bad_area_or_ladder_invalid`, `test_update_history_fills_empty_only`, `test_update_history_confirm_rules`, `test_update_history_ambiguous_counted`, `test_update_history_output_has_no_content`, `test_update_history_second_run_code_4`, `test_update_history_lock_code_3`, `test_update_history_before_import_code_7`, `test_update_history_dry_run_writes_nothing`
@@ -478,8 +498,10 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 - [ ] `python -m pytest tests/test_curve_history.py tests/test_api_curve_status.py tests/test_seed_life.py tests/test_curve_tools.py tests/test_telegram_curve.py tests/test_migrations.py -q` → `passed`
 - [ ] `grep -rn "고점\|저점" src/my_planner --include=*.py --include=*.md` → 빈 출력(주석 포함, 8.7)
 - [ ] BE 티켓 끝 검증 → `0 failed`
+- [ ] `cd web/app && npm run typecheck && npm test` · `cd web/dashboard && npm run typecheck && npm test` → 통과(스키마 재생성 뒤)
 
 **마무리**
+- [ ] SP8 스펙 8.1, 8.2, 8.7 고침(결정 11·15·16).
 - [ ] **Review + Commit** `feat(curve): history columns, GET /curve/history, seed --update-history, kind names`
 
 ---
@@ -489,7 +511,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **목표:** 스펙 8.3, 8.4, 8.7의 화면 쪽.
 **막는 티켓:** SP8-08, SP8-01
 
-**Files:** Create `web/dashboard/src/screens/HistoryView.tsx`, `components/HistoryChapter.tsx`, `components/HistoryFilters.tsx`, `lib/history.ts`, `lib/history.test.ts`, `screens/HistoryView.test.tsx`. Modify `screens/CurveScreen.tsx`(탭), `lib/labels.ts`(`HISTORY_TEXT`, `CURVE_TEXT.kinds` → 높은 때·힘든 때, `STATUS_TEXT.titlesEmpty`의 "고점"), `lib/api.ts`(`isCurveHistory`), `components/MilestonePopover.tsx`(종류 이름은 labels에서), `screens/CurveScreen.test.tsx`.
+**Files:** Create `web/dashboard/src/screens/HistoryView.tsx`, `components/HistoryChapter.tsx`, `components/HistoryFilters.tsx`, `lib/history.ts`, `lib/history.test.ts`, `screens/HistoryView.test.tsx`. Modify `screens/CurveScreen.tsx`(탭), `lib/labels.ts`(`HISTORY_TEXT`, `CURVE_TEXT.kinds` → 높은 때·힘든 때, `STATUS_TEXT.titlesEmpty`의 "고점"), `lib/api.ts`(`isCurveHistory`), `components/MilestonePopover.tsx`(종류 이름은 labels에서), `screens/CurveScreen.test.tsx`(옛 이름을 단언하는 53·100·114·129·143·157·179·241·309행), `screens/StatusScreen.test.tsx`(123행 `titlesEmpty`).
 
 **Interfaces**
 - Consumes: `CurveHistory`(SP8-08), `Pictogram`, `MilestonePopover`.
@@ -501,7 +523,8 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 **Slices**
 - [ ] `lib/history.test.ts`: `filter_by_kind`, `unassigned_last_when_recent_first_and_first_when_oldest`, `phone_expands_recent_4`, `years_text_open_end`, `event_date_text_month_and_year`
 - [ ] `HistoryView.test.tsx`: `tab_in_url_survives_reload`(`?tab=history`로 열면 히스토리), `default_tab_is_curve`, `chapter_rows_and_tags`, `assistant_tag_only_for_chat_origin`, `estimate_marks`, `empty_kind_message_keeps_chapter_header`, `sort_toggle`, `phone_folded_chapter_expands`, `empty_state_copy`, `row_opens_popover`, `no_local_storage_writes`(`Storage.prototype.setItem` 0회)
-- [ ] `CurveScreen.test.tsx`: `kind_names_are_new`(팝오버에 "높은 때"), 기존 시험 그대로 통과. `grep -rn "고점\|저점" web/dashboard/src web/app/src --include=*.ts --include=*.tsx` → 빈 출력
+- [ ] 기존 시험의 옛 이름을 새 이름으로 한 단계: `CurveScreen.test.tsx`의 접근 이름 `"고점 …"` → `"높은 때 …"`, `"저점 …"` → `"힘든 때 …"`, 143행 `"2025년 9월 · 높은 때"`, 241행 정규식 `/^(높은 때|힘든 때|전환점) /`. `StatusScreen.test.tsx` 123행을 문구 표의 새 `titlesEmpty`로. → `cd web/dashboard && npx vitest run src/screens/CurveScreen.test.tsx src/screens/StatusScreen.test.tsx` → passed
+- [ ] `CurveScreen.test.tsx`: `kind_names_are_new`(팝오버에 "높은 때"). `grep -rn "고점\|저점" web/dashboard/src web/app/src --include=*.ts --include=*.tsx` → 빈 출력(시험 파일 포함. 시험 자료 제목에 "고점"이 있으면 "꾸민 높은 날"처럼 바꾼다)
 
 **검증**
 - [ ] 대시보드 티켓 끝 검증 → 통과
@@ -549,7 +572,8 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
   - 건강 영역 점수 4(Q4), 매일 습관 체크 28일, 커리어 할 일 월·수·금 → 10/25 `GET /status`의 건강 `bonus == 1.5`, `effective_score == 5.5`, 커리어 `bonus == 1.2`
   - 10/26 04:01 tick → 10/25 순간 작업: FakeBrain `save_moments` 2개 → `GET /status.moments` 2개. 앱 `/actions hide_moment` 하나, `delete_moment` 하나(`needs_confirm` → 토큰) → `moments == []`, `moments_hidden == 1`
   - `POST /body`(`BODY_TOKEN`) 3일 → `body.days_7 == 3`
-  - 시계를 사흘 넘기고(tick 없음) 10/29 04:01 tick → 10/26~10/28 차례로 정리(두뇌 호출 순서 = 날짜 순)
+  - 시계를 사흘 넘기고(tick 없음) 10/29 04:01 tick → 10/26~10/28 차례로 정리(두뇌 호출 순서 = 날짜 순). 그래서 10/26·10/27·10/28에 습관 체크를 하나씩 미리 넣어 둔다(데이터가 없으면 `empty`로 끝나 두뇌를 부르지 않는다). FakeBrain 대본은 이 세 날 몫 셋(각 `save_moments` 1개)이고 단언은 `[c.run_ctx.moments_date for c in brain.calls if c.run_ctx.kind == "moments"] == [10/25, 10/26, 10/27, 10/28]`
+  - 9/28부터 4주 동안 도는 tick이 매일 순간 작업으로 대본을 먹지 않도록, 시작할 때 `app_state.moments_since = "2026-10-25"`를 둔다(그 전 날은 고르지 않는다)
   - 텔레그램 `/status` 글이 같은 DB의 SP7 기준 글과 같다(새 줄 없음), 텔레그램 대화에서 `get_status`를 부른 결과 JSON에 순간 글이 없다
   - `GET /curve/history` 200, 스키마에 맞음
   - → `passed`
@@ -569,10 +593,11 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 
 ### H1: 스파이크 S-SP8-1 (`needs-laptop`, 스펙 6.3, SP8-03의 첫 단계)
 
+SP8-03이 플래그와 호출 뒤 지우기를 둘 다 하므로, 이 관문은 **플래그가 먹는지만** 확인한다(지우기가 일했는지와 따로 보기 위해 로그 `moments_session_cleanup`의 `removed`를 본다).
+
 - [ ] 노트북에서 `~/.claude/projects` 아래 파일 목록을 적어 둔다(`Get-ChildItem -Recurse ~/.claude/projects | Measure-Object` 개수와 가장 최근 시각).
 - [ ] SP8-03이 들어간 BE로 순간 작업 한 번(데이터가 있는 어제, `moments_since`를 그 전날로)을 돌린다. `status_moment_days` 그날 `done`.
-- [ ] 다시 목록을 본다 → **새 `.jsonl`이 없다**. 결과 한 단락을 `docs/spikes/2026-11-sp8.md`에(파일 개수, 시각만. 경로·내용 없음).
-- [ ] 실패하면(새 파일이 생김): 스펙 6.3의 대안("호출 뒤 그 `session_id`의 jsonl을 지운다")으로 바꾸는 작은 티켓을 만들고 스펙 6.3을 고친다. **Commit** `docs: SP8 spike S-SP8-1 session persistence`
+- [ ] 다시 목록을 본다 → 새 `.jsonl`이 없다. 그리고 그 호출의 `moments_session_cleanup` 줄이 `removed: false`다(= 플래그가 파일을 막았다). `removed: true`면 플래그는 안 먹고 지우기가 막은 것: 스펙 6.3에 "플래그는 이 판에서 안 먹는다, 지우기가 막는다" 한 줄. 결과 한 단락을 `docs/spikes/2026-11-sp8.md`에(파일 개수, 시각, `removed` 값만. 경로·id·내용 없음). **Commit** `docs: SP8 spike S-SP8-1 session persistence`
 
 ### H2: iPhone 단축어 설정 (`needs-Dahun`, 스펙 7.6, SP8-07)
 
@@ -621,14 +646,16 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 | 7 | 6.2-4 "디스패처의 직렬 작업자", `Dispatcher.stop`은 "큐에 든 것까지" | 멈출 때 순간 작업 7개가 남으면 두뇌를 7번 부른다 | 멈추는 중에는 순간 작업을 건너뛴다(`pending` 그대로) (SP8-03, Review Focus 1) |
 | 8 | 6.3 입력 "`TranscriptStore.read_range`의 사용자 줄만" | `read_range`는 머리글이 섞인 원문 문자열을 돌려준다 | `TranscriptStore.user_lines(day)`를 더해 같은 파일의 `사용자` 줄만 읽는다 (SP8-03) |
 | 9 | 6.4 "이미 지운 순간을 가리키는 동작은 `404`" | 즉시 갈래는 도구 오류를 늘 `422 rejected`로 바꾼다 | 도구 결과 `error_code == "not_found"`를 `_call`이 `404 not_found`로 (SP8-04) |
-| 10 | 6.7·10.3 "앱 통로(`RunContext.channel == "app"`)" | 회차 차례의 `RunContext.channel`은 전달 통로와 상관없이 늘 `telegram`이다 | 회고 앞머리 블록은 실제 전달 통로(`delivery.effective()`)로 고르고, 회차 차례의 `get_status`는 `ctx.channel` 그대로(=개수만, 더 좁은 쪽) (SP8-04) |
+| 10 | 6.7·10.3 "앱 통로(`RunContext.channel == "app"`)", 회고 앞머리는 "실제 통로로: 앱이면 글" | 회차 차례의 `RunContext.channel`은 전달 통로와 상관없이 늘 `telegram`이다. 그리고 `deliver_run`은 푸시가 실패하면 회고 본문 전체를 텔레그램으로 보낸다(`delivery.py` 대체 경로): 앞머리에 글을 주면 순간 글이 텔레그램에 나갈 수 있다(1장 조건 7) | 주간 회고 앞머리의 이룬 순간 블록은 **어느 통로든 날짜와 개수만**(`delivery.effective()`를 보지 않는다). 순간 글은 앱 통로 대화의 `get_status`에서만 받고, "곡선에 남길까요?"도 거기서만 묻는다. 회차 차례의 `get_status`는 `ctx.channel` 그대로(=개수만). `review_week.md`의 10.3 한 줄을 그에 맞게 바꾼다. 시험 `test_review_preamble_moments_counts_only_on_every_channel`, `test_review_fallback_to_telegram_has_no_moment_text`. 스펙 6.7·10.3을 고친다 (SP8-04) |
 | 11 | 8.7 "앱 사건 초안 카드"의 종류 이름 | 앱 `MilestoneDraft`는 종류 이름을 보이지 않는다 | 앱은 고칠 곳이 없다. 대시보드 `labels.ts`(`kinds`, `titlesEmpty`)와 BE `confirmations.py`, `exports.py`, 프롬프트·도구 설명을 고친다 (SP8-08, SP8-09) |
-| 12 | 10.1 "한눈에 홈(`index`, `HomePhone2`)의 칸 머리 픽토그램과 '히스토리 보기' 링크" | 대시보드 `/`는 `HealthScreen`("비서 상태")이고 컨디션·사다리·챕터 칸이 있는 홈이 없다(`HomePhone2`는 캔버스 초안) | 이번에는 내비게이션 픽토그램만 더한다(`/`에 `home`). 홈 칸 머리와 링크는 홈 화면이 생기는 티켓으로 미룬다. 스펙 10.1을 그렇게 고친다 (SP8-02) |
+| 12 | 10.1 "한눈에 홈(`index`, `HomePhone2`)의 칸 머리 픽토그램과 '히스토리 보기' 링크" | 대시보드 `/`는 `HealthScreen`("비서 상태")이고 컨디션·사다리·챕터 칸이 있는 홈이 없다(`HomePhone2`는 캔버스 초안) | 이번에는 내비게이션 픽토그램만 더한다(`/`에 `home`). 홈 칸 머리와 링크는 홈 화면이 생기는 티켓으로 미룬다. 스펙 10.1을 그렇게 고친다 (SP8-02). 알고 받아들이는 어긋남: `home`의 9.1 이름은 "한눈에"인데 지금 `/`의 이름은 "비서 상태"다. 픽토그램은 `aria-hidden`이고 글자는 그대로라 화면 읽기에는 어긋남이 없다. 홈 화면이 생기면 `/`가 "한눈에"가 되어 맞는다 |
 | 13 | 13장 대시보드 "라이트·다크 스냅샷" | 대시보드에는 Playwright·스크린숏 장치가 없다(앱만 `e2e/`) | 새 의존성을 넣지 않고 H3에서 눈으로 확인한다. 앱은 지금처럼 `npm run e2e` (SP8-11, H3) |
 | 14 | 9.3-6 DESIGN.md 문장 | 지금 문장은 종류를 "높은 때·**낮은 때**·전환점"이라 부른다(8.7은 "힘든 때") | "힘든 때"로 맞춘다 (SP8-01) |
 | 15 | 8.1 `--update-history`, `life_seed_imported_at`이 없을 때 | 스펙은 "이미 가져온 시드"만 말한다. 그대로 돌면 아무것도 안 채우고 `life_seed_history_updated_at`만 적혀 나중에 채울 수 없다 | 코드 7과 안내 한 줄(문구 표), 아무것도 쓰지 않는다 (SP8-08) |
 | 16 | 8.2 `ladder.value` 예시 `6` | 기억 값은 정수, 기록 평균은 소수다 | 모델은 `float` 하나, 화면은 정수면 "6", 아니면 소수 한 자리 (SP8-08, SP8-09) |
 | 17 | 6.4 60일 정리, 7.1 56일 정리 "하루 한 번 작업" | 하루 한 번 작업의 표 쓰기는 즉시 갈래로 한다(SP3-4 4.3) | 내부 동작 `prune_records`(`public=False`) 하나로 둘 다 지운다 (SP8-03, SP8-06) |
+| 18 | 6.3 "플래그 방식을 고른다(호출 뒤 파일 지우기는 쓰지 않는다)", 14장 "스파이크는 SP8-03의 첫 단계" | 스파이크는 노트북에서만 돌릴 수 있다. H1이 머지를 막지 않으면, 플래그가 안 먹을 때 머지(ADR 0012 자동 승격)부터 H1까지 밤마다 순간 글이 든 세션 jsonl이 생긴다 | 두 겹: 플래그 **그리고** 호출 바로 뒤 결과 `session_id`의 `<config>/projects/*/<id>.jsonl`이 있으면 지운다(`harness/moments.remove_session_file`, UUID 모양만, 오류여도 `finally`). H1은 플래그가 먹는지만 확인하고 SP8-03 머지를 막지 않는다. 시험 `test_session_file_removed_after_moments_call` 외 셋. 스펙 6.3·14장을 고친다 (SP8-03, H1) |
+| 19 | 6.2-6 쓰기 자리, `ALLOWED` | `_handle_moments`가 `mark(d, "empty")`를 부르면 쓰기가 `harness.dispatcher` 프레임으로 잡히고, `days_to_queue`의 `moments_since`는 `app_state`에 `harness.moments`로 잡힌다. 둘 다 `ALLOWED`에 없다 | `mark_empty`를 `harness/moments.py`로 옮기고, `ALLOWED["status_moment_days"]`와 `ALLOWED["app_state"]`에 `my_planner.harness.moments`를 SP8-03 안에서 더한다 (SP8-03) |
 
 ## 스펙 대비 확인 (셀프 리뷰)
 
@@ -638,7 +665,7 @@ docs/spikes/2026-11-sp8.md                  # 사람 관문 H1
 | 1장 조건 3·4 | SP8-03(`test_moments_job.py`), SP8-11 |
 | 1장 조건 5 | SP8-04, SP8-05, H3 |
 | 1장 조건 6 | SP8-03 `test_no_xp_from_moments` |
-| 1장 조건 7 | SP8-03 로그·원문 기록, SP8-04 통로, SP8-11 `test_sp8_logs_exports_and_summaries_clean`, H1 세션 파일 |
+| 1장 조건 7 | SP8-03 로그·원문 기록·세션 파일 지우기(결정 18), SP8-04 통로·회고 대체 경로(결정 10), SP8-11 `test_sp8_logs_exports_and_summaries_clean`, H1 플래그 확인 |
 | 1장 조건 8 | SP8-06 |
 | 1장 조건 9 | SP8-08, SP8-09, SP8-10 |
 | 1장 조건 10 | SP8-01 |

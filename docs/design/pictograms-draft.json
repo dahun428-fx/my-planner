@@ -1,0 +1,146 @@
+{
+  "source": "dashboard design canvas generator gen_history.py ICONS (SP8 spec 9.1); ids renamed life->quality_of_life, turn->turning_point",
+  "viewBox": "0 0 24 24",
+  "icons": [
+    {
+      "id": "career",
+      "label": "일",
+      "markup": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18\"/>"
+    },
+    {
+      "id": "finance",
+      "label": "돈",
+      "markup": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M14.6 9.4C14 8.5 13.1 8 12 8c-1.4 0-2.5.8-2.5 2s1.1 1.6 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2c-1.1 0-2-.5-2.6-1.4M12 6v2M12 16v2\"/>"
+    },
+    {
+      "id": "health",
+      "label": "건강",
+      "markup": "<path d=\"M20.5 9.2c0 5-8.5 10.3-8.5 10.3S3.5 14.2 3.5 9.2A4.6 4.6 0 0 1 12 6.6a4.6 4.6 0 0 1 8.5 2.6z\"/><path d=\"M7 12h2.5l1.5-2.5 2 4 1.5-1.5H17\"/>"
+    },
+    {
+      "id": "relationships",
+      "label": "관계",
+      "markup": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6\"/><circle cx=\"17.5\" cy=\"9\" r=\"2.5\"/><path d=\"M17.5 14c2.2 0 3.7 1.7 4.2 4.5\"/>"
+    },
+    {
+      "id": "learning",
+      "label": "배움",
+      "markup": "<path d=\"M3 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H3zM21 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z\"/>"
+    },
+    {
+      "id": "quality_of_life",
+      "label": "삶의 질",
+      "markup": "<path d=\"M5 20c0-9 5-15 15-15 0 10-6 15-14 15\"/><path d=\"M5 20l8-8\"/>"
+    },
+    {
+      "id": "high",
+      "label": "높은 때",
+      "markup": "<path d=\"M2.5 19.5l6-9.5 4 5.5 3-4 6 8z\"/><path d=\"M8.5 10V4.5l3 1.2-3 1.3\"/>"
+    },
+    {
+      "id": "low",
+      "label": "힘든 때",
+      "markup": "<path d=\"M7 15a4 4 0 1 1 .6-7.9A5 5 0 0 1 17 8.6 3.3 3.3 0 0 1 17 15z\"/><path d=\"M9 18l-1 2.5M13 18l-1 2.5M17 18l-1 2.5\"/>"
+    },
+    {
+      "id": "turning_point",
+      "label": "전환점",
+      "markup": "<path d=\"M12 21v-7M12 14c0-4-6-4.5-6-9M12 14c0-4 6-4.5 6-9M3.8 7.2 6 5l2.2 2.2M15.8 7.2 18 5l2.2 2.2\"/>"
+    },
+    {
+      "id": "chapter",
+      "label": "챕터",
+      "markup": "<path d=\"M6 3h12v18l-6-4-6 4z\"/>"
+    },
+    {
+      "id": "condition",
+      "label": "컨디션",
+      "markup": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8.5 14.3c1 1.2 2.2 1.8 3.5 1.8s2.5-.6 3.5-1.8\"/><path d=\"M9 9.5h.01M15 9.5h.01\" stroke-width=\"2.6\"/>"
+    },
+    {
+      "id": "ladder",
+      "label": "사다리",
+      "markup": "<path d=\"M7 3v18M17 3v18M7 7.5h10M7 12h10M7 16.5h10\"/>"
+    },
+    {
+      "id": "level",
+      "label": "레벨",
+      "markup": "<path d=\"M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z\"/>"
+    },
+    {
+      "id": "quest",
+      "label": "퀘스트",
+      "markup": "<path d=\"M5 21V4M5 4h12.5l-2.5 4 2.5 4H5\"/>"
+    },
+    {
+      "id": "review",
+      "label": "회고",
+      "markup": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M3 10h18M8 3v4M16 3v4M8 15h3\"/>"
+    },
+    {
+      "id": "todo",
+      "label": "할 일",
+      "markup": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8 12.5l2.7 2.7L16.2 9.7\"/>"
+    },
+    {
+      "id": "habit",
+      "label": "습관",
+      "markup": "<path d=\"M17 2.5l3 3-3 3M4 11V9.5a4 4 0 0 1 4-4h12M7 21.5l-3-3 3-3M20 13v1.5a4 4 0 0 1-4 4H4\"/>"
+    },
+    {
+      "id": "memory",
+      "label": "기억",
+      "markup": "<path d=\"M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4v4h4M12 7.5V12l3 2\"/>"
+    },
+    {
+      "id": "future",
+      "label": "5년 뒤",
+      "markup": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"4.5\"/><path d=\"M12 12h.01\" stroke-width=\"2.6\"/>"
+    },
+    {
+      "id": "eye",
+      "label": "가림",
+      "markup": "<path d=\"M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>"
+    },
+    {
+      "id": "eyeoff",
+      "label": "가려짐",
+      "markup": "<path d=\"M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2\"/>"
+    },
+    {
+      "id": "assistant",
+      "label": "비서가 만듦",
+      "markup": "<path d=\"M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3z\"/><path d=\"M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z\"/>"
+    },
+    {
+      "id": "home",
+      "label": "한눈에",
+      "markup": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/>"
+    },
+    {
+      "id": "curve",
+      "label": "인생곡선",
+      "markup": "<path d=\"M3 17c3-6 5-9 8-6s5 2 10-6\"/><path d=\"M3 21h18\"/>"
+    },
+    {
+      "id": "status",
+      "label": "상태창",
+      "markup": "<path d=\"M4 20V10M10 20V4M16 20v-7M22 20H2\"/>"
+    },
+    {
+      "id": "list",
+      "label": "목록",
+      "markup": "<path d=\"M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01\" stroke-width=\"2\"/>"
+    },
+    {
+      "id": "estimate",
+      "label": "추정",
+      "markup": "<circle cx=\"12\" cy=\"12\" r=\"9\" stroke-dasharray=\"2.5 3\"/><path d=\"M9.8 9.5a2.3 2.3 0 0 1 4.4 1c0 1.5-2.2 1.9-2.2 3.2M12 17h.01\"/>"
+    },
+    {
+      "id": "settings",
+      "label": "설정",
+      "markup": "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1\"/>"
+    }
+  ]
+}
