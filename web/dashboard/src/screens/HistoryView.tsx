@@ -70,7 +70,7 @@ export function HistoryView({ history: h, isPhone }: { history: CurveHistory; is
           if (folded.has(item.id)) {
             return (
               <div key={item.id} className="history-chapter history-folded">
-                <button type="button" className="text-button" onClick={() => expand(item.id)}>
+                <button type="button" className="text-button" aria-expanded="false" onClick={() => expand(item.id)}>
                   {T.more(item.title, yearsText(item.start, item.end))}
                 </button>
               </div>

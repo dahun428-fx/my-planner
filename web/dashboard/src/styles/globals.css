@@ -1548,6 +1548,9 @@ h2 {
   align-items: center;
   gap: var(--space-1) var(--space-3);
 }
+.history-tags .stat-name .pictogram {
+  color: var(--area);
+}
 .tag {
   display: inline-flex;
   align-items: center;

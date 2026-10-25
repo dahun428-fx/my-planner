@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -12,8 +14,8 @@ import { server } from "../test/server";
 import { CurveScreen } from "./CurveScreen";
 import { HistoryView } from "./HistoryView";
 
-const router = vi.hoisted(() => ({ isReady: true, query: {} as Record<string, string>, replace: vi.fn(async () => true) }));
-vi.mock("next/router", () => ({ useRouter: () => router }));
+import { resetRouter, router } from "../test/router";
+vi.mock("next/router", async () => (await import("../test/router")).routerModule);
 
 const data = history as CurveHistory;
 const withChapter = (patch: Partial<CurveHistory["chapters"][number]>, i = 0): CurveHistory => ({
@@ -23,8 +25,7 @@ const withChapter = (patch: Partial<CurveHistory["chapters"][number]>, i = 0): C
 
 beforeEach(() => {
   resetMemory();
-  router.query = {};
-  router.replace.mockClear();
+  resetRouter();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -179,6 +180,49 @@ describe("HistoryView", () => {
     render(<HistoryView history={six} isPhone={false} />);
     expect(screen.queryByRole("button", { name: /더 보기/ })).toBeNull();
     expect(shown()).toBe(6);
+  });
+
+  it("folded_button_says_it_is_collapsed", () => {
+    const many: CurveHistory = { ...data, chapters: Array.from({ length: 5 }, (_, i) => ({ ...data.chapters[1], id: 20 + i, title: `꾸민 옛 ${i}` })) };
+    render(<HistoryView history={many} isPhone />);
+    expect(screen.getByRole("button", { name: /더 보기/ })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("hidden_sensitive_alone_makes_no_unassigned_group_yet", () => {
+    const h: CurveHistory = { ...data, unassigned: { events: [], hidden_sensitive: { count: 2, years: [2020] } } };
+    render(<HistoryView history={h} isPhone={false} />);
+    expect(screen.queryByRole("heading", { name: "시기를 정하지 않은 사건" })).toBeNull();
+  });
+
+  it("area_pictogram_takes_the_area_colour_rule", () => {
+    render(<HistoryView history={data} isPhone={false} />);
+    const tag = screen.getByRole("button", { name: /꾸민 첫 전시/ }).querySelector('[data-area="learning"]')!;
+    expect(tag.querySelector(".pictogram")).not.toBeNull();
+    expect(readFileSync(join(__dirname, "../styles/globals.css"), "utf8")).toMatch(/\.history-tags \.stat-name \.pictogram\s*\{\s*color: var\(--area\)/);
+  });
+
+  it("phone_follows_the_viewport_media_query", async () => {
+    const desktop = vi.fn().mockImplementation(() => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    vi.stubGlobal("matchMedia", desktop);
+    window.matchMedia = desktop as unknown as typeof window.matchMedia;
+    router.query = { tab: "history" };
+    const many: CurveHistory = { ...data, chapters: Array.from({ length: 6 }, (_, i) => ({ ...data.chapters[1], id: 30 + i, title: `꾸민 긴 ${i}`, start: `20${25 - i}-01` })) };
+    renderTab(many);
+    await screen.findByRole("region", { name: "꾸민 긴 5" });
+    expect(screen.queryByRole("button", { name: /더 보기/ })).toBeNull();
+    expect(desktop).toHaveBeenCalledWith("(min-width: 720px)");
+    // @ts-expect-error remove the stand-in again
+    delete window.matchMedia;
+    vi.unstubAllGlobals();
+  });
+
+  it("no_curve_request_before_the_router_is_ready", async () => {
+    router.isReady = false;
+    const seen: string[] = [];
+    server.use(http.get(`${BASE}/curve`, ({ request }) => (seen.push(request.url), HttpResponse.json({}))));
+    renderTab();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(seen).toEqual([]);
   });
 
   it("empty_state_copy", async () => {

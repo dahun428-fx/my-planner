@@ -10,7 +10,9 @@ export function filterEvents(events: HistoryEvent[], f: HistoryFilter): HistoryE
   return f === "all" ? events : events.filter((e) => e.kind === f);
 }
 
-const hasUnassigned = (h: CurveHistory) => h.unassigned.events.length > 0 || h.unassigned.hidden_sensitive.count > 0;
+// Only events open the group for now. SP8-10 adds the "가려 둔 사건" line (8.5) and then brings
+// `|| h.unassigned.hidden_sensitive.count > 0` back, so a group of hidden events alone is not an empty head.
+const hasUnassigned = (h: CurveHistory) => h.unassigned.events.length > 0;
 
 /**
  * The chapters in the order shown. The BE sends them newest first; the group of events with no chapter

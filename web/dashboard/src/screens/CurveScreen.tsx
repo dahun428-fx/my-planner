@@ -13,7 +13,7 @@ import { useConnection } from "../lib/ConnectionProvider";
 import type { Zoom } from "../lib/curveLayout";
 import { memory, resetMemory } from "../lib/curveMemory";
 import { CURVE_TEXT as T, HISTORY_TEXT as H } from "../lib/labels";
-import { useWidth } from "../lib/useWidth";
+import { useIsPhone } from "../lib/useIsPhone";
 import { HistoryView } from "./HistoryView";
 import { usePolling } from "../lib/polling";
 import { nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulLogicalToday } from "../lib/reviews";
@@ -38,9 +38,6 @@ export function curvePath(zoom: Zoom, sensitive: boolean): string {
 export function resetCurveMemory() {
   resetMemory();
 }
-
-/** The history tab reads from here (720px is DESIGN.md's two-column width). */
-const PHONE_MAX = 720;
 
 function Loading() {
   return (
@@ -198,10 +195,10 @@ function HistoryPane() {
   const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
   const load = useCallback(async (): Promise<ApiResult<CurveHistory>> => (conn ? fetchApi(conn, path, isCurveHistory) : NONE), [conn, path]);
   const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "", { wake: backOnline });
-  const { ref, width } = useWidth<HTMLDivElement>();
+  const isPhone = useIsPhone();
   return (
-    <div ref={ref}>
-      {!ready || !conn || result === null ? <Loading /> : result.kind === "ok" ? <HistoryView history={result.data} isPhone={width < PHONE_MAX} /> : <StateNotice result={result} />}
+    <div>
+      {!ready || !conn || result === null ? <Loading /> : result.kind === "ok" ? <HistoryView history={result.data} isPhone={isPhone} /> : <StateNotice result={result} />}
     </div>
   );
 }
@@ -232,7 +229,7 @@ export function CurveScreen() {
           </button>
         ))}
       </div>
-      {tab === "history" ? <HistoryPane /> : <CurvePane />}
+      {!router.isReady ? <Loading /> : tab === "history" ? <HistoryPane /> : <CurvePane />}
     </>
   );
 }

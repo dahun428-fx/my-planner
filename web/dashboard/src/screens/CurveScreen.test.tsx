@@ -14,8 +14,8 @@ import { BASE, ORIGIN, curveAnswers } from "../test/handlers";
 import { server } from "../test/server";
 import { CurveScreen, curvePath, resetCurveMemory } from "./CurveScreen";
 
-const router = vi.hoisted(() => ({ isReady: true, query: {} as Record<string, string>, replace: vi.fn(async () => true) }));
-vi.mock("next/router", () => ({ useRouter: () => router }));
+import { resetRouter, router } from "../test/router";
+vi.mock("next/router", async () => (await import("../test/router")).routerModule);
 
 const BY_ZOOM: Record<string, object> = { day: curveDay, week: curveWeek, month: curveMonth, quarter: curveQuarter, year: curveYear };
 
@@ -57,8 +57,7 @@ const firstMarker = () => screen.findByRole("button", { name: "높은 때 2025�
 
 beforeEach(() => {
   resetCurveMemory();
-  router.query = {};
-  router.replace.mockClear();
+  resetRouter();
 });
 
 /** Freeze only the clock (MSW and waitFor keep real timers): 2026-10-24 12:00 in Korea unless told otherwise. */

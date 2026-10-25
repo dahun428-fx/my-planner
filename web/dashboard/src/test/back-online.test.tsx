@@ -11,7 +11,7 @@ import { TasksScreen } from "../screens/TasksScreen";
 import { BASE, ORIGIN, healthAnswers } from "./handlers";
 import { server } from "./server";
 
-vi.mock("next/router", () => ({ useRouter: () => ({ isReady: true, query: {}, replace: async () => true }) }));
+vi.mock("next/router", async () => (await import("./router")).routerModule);
 
 const saveConn = () => localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
 

@@ -299,6 +299,12 @@ export function isCurveHistory(v: unknown): v is CurveHistory {
     hiddenOk(v.unassigned.hidden_sensitive) &&
     isObj(v.summary) &&
     int(v.summary.chapters) &&
-    int(v.summary.events)
+    int(v.summary.events) &&
+    (v.summary.highest === null || (isObj(v.summary.highest) && int(v.summary.highest.chapter_id) && str(v.summary.highest.title) && num(v.summary.highest.ladder))) &&
+    (v.summary.longest === null || (isObj(v.summary.longest) && int(v.summary.longest.chapter_id) && str(v.summary.longest.title) && int(v.summary.longest.years))) &&
+    isObj(v.summary.turning_points) &&
+    int(v.summary.turning_points.count) &&
+    arr(v.summary.turning_points.years, int) &&
+    intOrNull(v.summary.records_since)
   );
 }

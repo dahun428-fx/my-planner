@@ -159,6 +159,9 @@ describe("screen shapes", () => {
     expect([history, historySensitive, historyEmpty].map(isCurveHistory)).toEqual([true, true, true]);
     expect(isCurveHistory({ ...history, chapters: [{ ...history.chapters[0], ladder: { value: "6", source: "recorded" } }] })).toBe(false);
     expect(isCurveHistory({ ...history, unassigned: undefined })).toBe(false);
+    expect(isCurveHistory({ ...history, summary: { ...history.summary, turning_points: undefined } })).toBe(false);
+    expect(isCurveHistory({ ...history, summary: { ...history.summary, records_since: "2025" } })).toBe(false);
+    expect(isCurveHistory({ ...history, summary: { ...history.summary, highest: { chapter_id: 1 } } })).toBe(false);
     expect(isCurveHistory({ ...history, chapters: [{ ...history.chapters[0], events: [{ ...history.chapters[0].events[0], area: "sleep" }] }] })).toBe(false);
   });
 });
