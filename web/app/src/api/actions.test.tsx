@@ -98,6 +98,19 @@ describe("runAction", () => {
       ),
     );
     expect(await runAction("pin_memo", { id: 1 })).toEqual({ kind: "rejected", message: copy.memos.limits.too_many_pinned });
+    // The BE's "already so" (SP9 6.4): applied with no activity, not a failure.
+    server.use(
+      http.post(`${BASE}/actions`, () =>
+        HttpResponse.json({ status: "applied", activity_id: null, result: { id: 1, pinned: true, already: true }, confirmation: null }),
+      ),
+    );
+    expect(await runAction("pin_memo", { id: 1 })).toEqual({
+      kind: "applied",
+      activityId: null,
+      undoId: null,
+      confirmation: "",
+      result: { id: 1, pinned: true, already: true },
+    });
 
     server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })));
     expect(await runAction("confirm_tasks", { ids: [1] })).toMatchObject({ kind: "failed", result: { kind: "error", status: 500 } });

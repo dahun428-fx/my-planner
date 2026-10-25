@@ -45,7 +45,11 @@ const REJECT_CODES = new Set(["rejected", "too_many_memos", "too_many_pinned"]);
 const CONFLICT_CODES = new Set(["conflict", "memo_conflict"]);
 
 export type ActionOutcome =
-  | { kind: "applied"; activityId: number; undoId: number | null; confirmation: string; result: unknown }
+  /**
+   * `activityId` null: the BE found it already so (SP9 6.4 `already`) and wrote nothing; there is
+   * no activity, no undo and no confirmation (""). Callers show no toast and read again.
+   */
+  | { kind: "applied"; activityId: number | null; undoId: number | null; confirmation: string; result: unknown }
   | { kind: "needs_confirm"; confirmToken: string; summary: string; expiresAt: string }
   | { kind: "rejected"; message: string }
   | { kind: "conflict" }
@@ -109,6 +113,9 @@ export async function runAction(action: ActionName, args: object, opts: { confir
       summary: d.summary,
       expiresAt: typeof d.expires_at === "string" ? d.expires_at : "",
     };
+  }
+  if (d.status === "applied" && d.activity_id === null) {
+    return { kind: "applied", activityId: null, undoId: null, confirmation: "", result: d.result };
   }
   return { kind: "failed", result: SHAPE };
 }
@@ -177,7 +184,7 @@ export function useAction(): UseAction {
     setPending(new Set(inFlight.current));
     try {
       const out = await runAction(action, args, opts);
-      if (out.kind === "applied") toastRef.current.show({ text: out.confirmation, undoId: out.undoId });
+      if (out.kind === "applied" && out.activityId !== null) toastRef.current.show({ text: out.confirmation, undoId: out.undoId });
       else if (out.kind === "rejected" && out.message) toastRef.current.show({ text: out.message });
       else if (out.kind === "failed") toastRef.current.show({ text: failureText(out.result) });
       return out;

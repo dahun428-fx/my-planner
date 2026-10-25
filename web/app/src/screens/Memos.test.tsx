@@ -190,6 +190,18 @@ describe("Memos (spec 9.4)", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.memos.limits.too_many_pinned));
   });
 
+  it("a pin the BE finds already done (no activity) is no failure: no toast, the list is read again", async () => {
+    const seen = serve();
+    server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ status: "applied", activity_id: null, result: { id: 1, pinned: true, already: true }, confirmation: null })));
+    renderWithProviders(<Memos />, { route: "/memos/" });
+    await screen.findByText("읽을 책");
+    const reads = seen.length;
+    await userEvent.click(screen.getByRole("button", { name: copy.today.moreActions("읽을 책") }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.memos.pin }));
+    await waitFor(() => expect(seen.length).toBeGreaterThan(reads));
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
   it("+ opens a new memo; the more button sits beside it", async () => {
     serve();
     renderWithProviders(<Memos />, { route: "/memos/" });

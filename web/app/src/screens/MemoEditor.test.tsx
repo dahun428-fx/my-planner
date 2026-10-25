@@ -1,10 +1,11 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { Memo } from "../api/types.gen";
 import { copy } from "../lib/copy";
-import { checklistLines, toggleChecklistLine } from "../lib/memoText";
+import { Markdown } from "../components/Markdown";
+import { checklistLabels, checklistLines, toggleChecklistLine } from "../lib/memoText";
 import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
 import { MemoEditor } from "./MemoEditor";
@@ -57,15 +58,14 @@ function record(answer: (b: Sent) => Response) {
 const resultOf = (body: string, at = "2026-10-25T05:10:00.000001Z") => ({ id: 7, title: body.split("\n")[0], area: "learning", pinned: false, updated_at: at });
 
 describe("toggleChecklistLine", () => {
-  const BODY = "읽을 책\n- [ ] 사피엔스\n- [x] 코스모스\n  - [X] 안쪽\n1. [ ] 번호\n> - [ ] 인용\n일반 줄 [ ] 그대로\n```\n- [ ] 코드\n```\n- [ ] 끝";
+  const BODY = "읽을 책\n- [ ] 사피엔스\n- [x] 코스모스\n  - [X] 안쪽\n1. [ ] 번호\n> - [ ] 인용\n일반 줄 [ ] 그대로\n* [ ] 별표\n- [ ] 끝";
   it.each([
     // [line, the line after]
     [1, "- [x] 사피엔스"],
     [2, "- [ ] 코스모스"],
     [3, "  - [ ] 안쪽"],
     [4, "1. [x] 번호"],
-    [5, "> - [x] 인용"],
-    [10, "- [x] 끝"],
+    [8, "- [x] 끝"],
   ])("line %i flips to %s and every other line stays", (line, after) => {
     const out = toggleChecklistLine(BODY, line).split("\n");
     const before = BODY.split("\n");
@@ -75,13 +75,9 @@ describe("toggleChecklistLine", () => {
     });
   });
 
-  it.each([0, 6, 8, 99])("line %i is not a checklist line: the body stays as it is", (line) => {
-    // 8 is "- [ ] 코드" inside a code fence; toggle only reads the line, so it would flip; the
-    // renderer never offers that line (checklistLines leaves it out).
-    if (line === 8) {
-      expect(checklistLines(BODY)).not.toContain(8);
-      return;
-    }
+  // 5 is a quote and 7 a `*` list: the memo format has neither (6.2), so they show as typed, no box.
+  it.each([0, 5, 6, 7, 99])("line %i is not a checklist line: the body stays as it is", (line) => {
+    expect(checklistLines(BODY)).not.toContain(line);
     expect(toggleChecklistLine(BODY, line)).toBe(BODY);
   });
 
@@ -89,8 +85,40 @@ describe("toggleChecklistLine", () => {
     expect(toggleChecklistLine("- [ ] a [ ] b", 0)).toBe("- [x] a [ ] b");
   });
 
-  it("checklistLines lists the boxes in drawing order, leaving out code fences", () => {
-    expect(checklistLines("읽을 책\n- [ ] 사피엔스\n- [x] 코스모스\n  - [X] 안쪽\n1. [ ] 번호\n> - [ ] 인용\n일반 줄 [ ] 그대로\n```\n- [ ] 코드\n```\n- [ ] 끝")).toEqual([1, 2, 3, 4, 5, 10]);
+  it("checklistLines names exactly the boxes the memo renderer draws, in order", async () => {
+    expect(checklistLines(BODY)).toEqual([1, 2, 3, 4, 8]);
+    render(<Markdown text={BODY} tasks={{ lines: checklistLines(BODY), labels: checklistLabels(BODY, checklistLines(BODY)), disabled: false, onToggle: () => {} }} />);
+    expect(screen.getAllByRole("checkbox").map((b) => b.getAttribute("aria-label"))).toEqual(["사피엔스", "코스모스", "안쪽", "번호", "끝"]);
+  });
+});
+
+describe("memo rendering (spec 6.2)", () => {
+  const tasks = (body: string) => ({ lines: checklistLines(body), labels: checklistLabels(body, checklistLines(body)), disabled: false, onToggle: () => {} });
+  const shown = (body: string) => {
+    const { container } = render(<Markdown text={body} tasks={tasks(body)} />);
+    return container.firstElementChild as HTMLElement;
+  };
+
+  it("keeps lists, numbered lists, boxes and bold", () => {
+    const root = shown("장보기\n- 우유\n- [ ] 빵 **꼭**\n\n1. 첫째");
+    expect(root.querySelectorAll("ul > li")).toHaveLength(2);
+    expect(root.querySelector("ol li")).toHaveTextContent("첫째");
+    expect(root.querySelector("strong")).toHaveTextContent("꼭");
+    expect(screen.getByRole("checkbox", { name: "빵 꼭" })).toBeEnabled();
+  });
+
+  it.each([
+    ["heading", "# 제목\n## 둘째", ["h1", "h2", "p strong"]],
+    ["table", "| 가 | 나 |\n|---|---|\n| 1 | 2 |", ["table"]],
+    ["link", "[링크](https://example.com) https://example.com", ["a"]],
+    ["quote", "> 인용한 말", ["blockquote"]],
+    ["code", "`코드`\n```\n블록\n```", ["code", "pre"]],
+    ["strike and emphasis", "~~취소~~ _기울임_ *별*", ["del", "em"]],
+    ["rule and other lists", "위\n---\n* 별\n+ 더하기", ["hr", "ul"]],
+  ])("%s shows as plain text", (_what, body, tags) => {
+    const root = shown(body);
+    for (const t of tags) expect(root.querySelector(t)).toBeNull();
+    expect(root.textContent?.replace(/\s+/g, " ").trim()).toBe(body.replace(/\s+/g, " ").trim());
   });
 });
 
@@ -240,6 +268,41 @@ describe("MemoEditor (spec 9.4)", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button", { name: copy.memos.toolbar.done })).toBeNull();
     expect(sent).toEqual([]);
+  });
+
+  it("a create that fails is not sent again by the autosave, only by 완료 (a lost answer must not make copies)", async () => {
+    let answer: () => Response = () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 });
+    const sent = record(() => answer());
+    renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
+    const box = screen.getByRole("textbox", { name: copy.memos.body });
+    await userEvent.type(box, "한 번만");
+    await waitFor(() => expect(sent).toHaveLength(1), { timeout: 2500 });
+    await userEvent.type(box, " 더");
+    await new Promise((r) => setTimeout(r, 1400));
+    expect(sent).toHaveLength(1);
+    answer = () => applied({ ...resultOf("한 번만 더"), area: null }, "✓ 메모를 만들었어요: 한 번만 더", 900);
+    await userEvent.click(screen.getByRole("button", { name: copy.memos.toolbar.done }));
+    await waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1]).toMatchObject({ action: "create_memo", args: { body: "한 번만 더" } });
+  });
+
+  it("완료 on a saved memo emptied out says it cannot be empty and sends nothing", async () => {
+    serveMemo();
+    const sent = record(() => applied({}));
+    renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
+    await userEvent.click(await screen.findByText("읽을 책"));
+    await userEvent.clear(screen.getByRole("textbox", { name: copy.memos.body }));
+    await userEvent.click(screen.getByRole("button", { name: copy.memos.toolbar.done }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.memos.errors.empty));
+    expect(screen.getByRole("textbox", { name: copy.memos.body })).toBeInTheDocument();
+    expect(sent).toEqual([]);
+  });
+
+  it("offline, a new memo cannot be written: no tool row", async () => {
+    renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1", conn: "offline" });
+    expect(await screen.findByText(copy.offline.lead)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: copy.memos.body })).toHaveAttribute("readonly");
+    expect(screen.queryByRole("toolbar")).toBeNull();
   });
 
   it("a memo that is gone says so", async () => {

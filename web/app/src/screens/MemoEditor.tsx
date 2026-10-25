@@ -181,8 +181,10 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   // --- saving: one write at a time; changes made while one is out go in the next ---
   const inFlight = useRef<Promise<void> | null>(null);
   const again = useRef(false);
+  const forced = useRef(false);
+  const createFailed = useRef(false);
 
-  const saveOnce = useCallback(async (): Promise<boolean> => {
+  const saveOnce = useCallback(async (auto: boolean): Promise<boolean> => {
     if (!isDirty()) return true;
     const body = textRef.current;
     const a = areaRef.current;
@@ -193,9 +195,13 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       return false;
     }
     if (!writableRef.current) return false; // offline: the draft holds it
+    // A create that failed may still have been made (the answer lost): the 1s autosave does not send it
+    // again; "완료" and leaving the screen do.
+    if (s.id === null && auto && createFailed.current) return false;
     failure.current = null;
     if (s.id === null) {
       const out = await runAction("create_memo", a !== null ? { body, area: a } : { body });
+      createFailed.current = out.kind === "failed";
       if (out.kind === "applied") {
         const r = out.result as MemoResult;
         saved.current = { id: r.id, body, area: r.area, updatedAt: r.updated_at };
@@ -242,9 +248,11 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     return false;
   }, [onCreated, read, router, toast]);
 
-  const save = useCallback(async (): Promise<boolean> => {
+  // `auto`: the 1s autosave (see createFailed). A press or leaving the screen is not auto.
+  const save = useCallback(async (auto = false): Promise<boolean> => {
     if (inFlight.current) {
       again.current = true;
+      if (!auto) forced.current = true;
       await inFlight.current;
       return !isDirty();
     }
@@ -252,7 +260,9 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     const run = (async () => {
       do {
         again.current = false;
-        ok = await saveOnce();
+        const quiet = auto && !forced.current;
+        forced.current = false;
+        ok = await saveOnce(quiet);
       } while (again.current && ok);
     })();
     inFlight.current = run;
@@ -272,9 +282,10 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     writeDraft(saved.current.id, { body: text, area, base: saved.current.updatedAt });
     if (text.length <= BODY_MAX) setTooLong(false);
     if (mode !== "write") return;
-    const t = setTimeout(() => void saveRef.current(), SAVE_AFTER_MS);
+    if (!writable) return; // back online, this runs again and saves
+    const t = setTimeout(() => void saveRef.current(true), SAVE_AFTER_MS);
     return () => clearTimeout(t);
-  }, [text, area, mode]);
+  }, [text, area, mode, writable]);
 
   // Leaving: the tab goes to the background, or the screen goes away.
   useEffect(() => {
@@ -352,6 +363,10 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     const ok = await save();
     if (!alive.current) return;
     if (!ok && failure.current) toast.show({ text: failureText(failure.current) });
+    if (saved.current.id !== null && !textRef.current.trim()) {
+      toast.show({ text: copy.memos.errors.empty }); // a saved memo cannot become empty (6.1)
+      return;
+    }
     if (saved.current.id === null) {
       if (!textRef.current.trim()) void router.push("/memos/");
       return;
@@ -412,24 +427,26 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
             {copy.memos.errors.tooLong}
           </p>
         )}
-        <div className={styles.tools} role="toolbar" aria-label={copy.memos.toolbar.label}>
-          <button type="button" className={styles.tool} disabled={!writable} onMouseDown={keep} onClick={() => tool("- ")}>
-            {copy.memos.toolbar.list}
-          </button>
-          <button type="button" className={styles.tool} disabled={!writable} onMouseDown={keep} onClick={() => tool("- [ ] ")}>
-            {copy.memos.toolbar.checkbox}
-          </button>
-          <button type="button" className={`${styles.tool} ${styles.bold}`} disabled={!writable} onMouseDown={keep} onClick={bold}>
-            {copy.memos.toolbar.bold}
-          </button>
-          <button type="button" className={styles.tool} disabled={!writable} onClick={() => setAreaOpen(true)}>
-            {copy.memos.toolbar.area}
-            {area && <span className={`area-dot ${styles.toolDot}`} data-area={area} aria-hidden="true" />}
-          </button>
-          <button type="button" className={`${styles.tool} ${styles.done}`} disabled={!writable} onClick={() => void done()}>
-            {copy.memos.toolbar.done}
-          </button>
-        </div>
+        {writable && (
+          <div className={styles.tools} role="toolbar" aria-label={copy.memos.toolbar.label}>
+            <button type="button" className={styles.tool} onMouseDown={keep} onClick={() => tool("- ")}>
+              {copy.memos.toolbar.list}
+            </button>
+            <button type="button" className={styles.tool} onMouseDown={keep} onClick={() => tool("- [ ] ")}>
+              {copy.memos.toolbar.checkbox}
+            </button>
+            <button type="button" className={`${styles.tool} ${styles.bold}`} onMouseDown={keep} onClick={bold}>
+              {copy.memos.toolbar.bold}
+            </button>
+            <button type="button" className={styles.tool} onClick={() => setAreaOpen(true)}>
+              {copy.memos.toolbar.area}
+              {area && <span className={`area-dot ${styles.toolDot}`} data-area={area} aria-hidden="true" />}
+            </button>
+            <button type="button" className={`${styles.tool} ${styles.done}`} onClick={() => void done()}>
+              {copy.memos.toolbar.done}
+            </button>
+          </div>
+        )}
       </>
     );
   } else {

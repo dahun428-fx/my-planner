@@ -1,5 +1,6 @@
 import { compiler, type MarkdownToJSX, RuleType } from "markdown-to-jsx/react";
 import { createElement, type ReactNode } from "react";
+import { escapeMemoMarkdown } from "../lib/memoText";
 import type { MarkdownClasses } from "./Markdown";
 
 /**
@@ -116,7 +117,8 @@ export const renderMarkdown: RenderMarkdown = (text, classes, memo) => {
         return next();
     }
   };
-  return compiler(text, {
+  // A memo shows everything but its own format as typed (6.2): the rest is escaped before compiling.
+  return compiler(memo ? escapeMemoMarkdown(text) : text, {
     // Every element the compiler makes goes through here, including the footnotes it adds outside
     // renderRule (<footer><div id=…>): the model's text never sets a DOM id or a style.
     createElement: (tag, props, ...kids) => {
