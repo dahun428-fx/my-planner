@@ -59,7 +59,7 @@ function Stats({ stats, body }: { stats: StatusStat[]; body: StatusData["body"] 
                   <span className={styles.meta}>{T.bodyConnect}</span>
                 ) : (
                   <>
-                    <span className={styles.meta}>{T.bodyLine(body)}</span>
+                    {T.bodyLine(body) !== "" && <span className={styles.meta}>{T.bodyLine(body)}</span>}
                     <span className={styles.meta}>{T.bodyLast(body.last_date)}</span>
                   </>
                 ))}

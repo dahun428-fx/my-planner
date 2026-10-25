@@ -363,10 +363,11 @@ describe("StatusScreen body line (SP8-07)", () => {
   });
 
   it("no_warning_when_old", async () => {
-    server.use(statusAnswers.ok(withBody({ last_date: "2026-08-30", days_7: 0, steps_avg_7: 5200, sleep_avg_7: 390 })));
+    server.use(statusAnswers.ok(withBody({ last_date: "2026-08-30", days_7: 0, steps_avg_7: null, sleep_avg_7: null })));
     renderScreen();
     const health = await healthRow();
-    expect(within(health).getByText("몸 기록 · 지난 7일 걸음 평균 5,200 · 잠 평균 6시간 30분")).toBeInTheDocument();
+    expect(health.textContent).not.toContain("몸 기록");
+    expect(health.textContent).not.toContain("마지막");
     for (const w of ["오래", "경고", "끊", "부족", "목표", "못 "]) expect(health.textContent).not.toContain(w);
   });
 });

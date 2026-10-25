@@ -152,13 +152,23 @@ describe("Status (spec 10.2)", () => {
     expect(screen.queryByText(/단축어/)).toBeNull();
   });
 
-  it("body_line_omits_missing_values_and_never_warns", async () => {
-    serve({ ...body, body: { last_date: "2026-08-02", days_7: 0, steps_avg_7: null, sleep_avg_7: 420 } });
+  it("body_line_omits_missing_values", async () => {
+    serve({ ...body, body: { last_date: "2026-10-20", days_7: 1, steps_avg_7: null, sleep_avg_7: 420 } });
     renderWithProviders(<Status />, { route: "/status/" });
     await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
     const health = healthRow();
     expect(within(health).getByText("몸 기록 · 지난 7일 잠 평균 7시간 0분")).toBeInTheDocument();
+    expect(within(health).getByText("마지막 기록 10/20")).toBeInTheDocument();
+  });
+
+  it("old_record_shows_only_last_date_and_no_warning", async () => {
+    serve({ ...body, body: { last_date: "2026-08-02", days_7: 0, steps_avg_7: null, sleep_avg_7: null } });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const health = healthRow();
     expect(within(health).getByText("마지막 기록 8/2")).toBeInTheDocument();
+    expect(health.textContent).not.toContain("몸 기록");
+    for (const w of ["오래", "경고", "끊", "부족", "목표"]) expect(health.textContent).not.toContain(w);
   });
 
   it("connect_hint_when_null", async () => {

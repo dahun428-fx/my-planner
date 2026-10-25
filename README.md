@@ -252,7 +252,20 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 - **이 단축어와 `BODY_TOKEN`은 공유하지 않습니다.** 단축어는 iCloud로 기기 사이에 동기화되고, 공유하면 헤더의 `BODY_TOKEN`도 함께 나갑니다.
 - **토큰 바꾸기**: 새어 나갔다고 생각되면 `gen-token`으로 새 값을 만들어 `.env`의 `BODY_TOKEN` 줄을 바꾸고, 작업을 다시 켠 뒤, 단축어의 `Authorization` 헤더를 새 값으로 고칩니다. 옛 토큰은 바로 `401`이 됩니다.
 - `BODY_TOKEN`을 비워 두면 이 경로만 열리지 않습니다(다른 API는 그대로). 그래서 시작할 때 로그에 `body_token_missing` 경고가 한 줄 남는데, `BODY_TOKEN`을 쓰지 않는 동안은 **정상**입니다.
-- 이룬 순간 정리를 잠시 멈추려면 DB `app_state`의 `moments_paused` 값을 `1`로 둡니다(`state\planner.db`의 `app_state` 표, 키 `moments_paused`). 지우면 다시 돌아갑니다.
+
+## 이룬 순간 정리 멈추기
+
+하루 끝 이룬 순간 정리를 잠시 멈추려면 `app_state`의 `moments_paused`를 **문자열** `'1'`로 둡니다(숫자 1이 아닙니다). 행이 처음엔 없을 수 있어 `INSERT ... ON CONFLICT`로 씁니다. 작업(`my-planner`)을 먼저 멈추고(`Stop-ScheduledTask -TaskName my-planner`) 고친 뒤 다시 켭니다. 켜 둔 채 고치면 DB 잠금으로 실패할 수 있으니 그때는 잠금이 풀린 뒤 다시 시도합니다.
+
+```powershell
+sqlite3 state\planner.db "INSERT INTO app_state(key,value) VALUES('moments_paused','1') ON CONFLICT(key) DO UPDATE SET value='1'"
+```
+
+다시 돌리려면 행을 지웁니다.
+
+```powershell
+sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
+```
 
 ## 운영 앱
 
