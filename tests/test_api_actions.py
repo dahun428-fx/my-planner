@@ -49,7 +49,8 @@ async def test_complete_task_applied_shape(tmp_path):
 CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
-def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None)):
+def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None),
+                  events=(None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
@@ -57,6 +58,7 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
     hb, hc = habits  # 습관 둘(체크 안 함, 오늘 체크함)
     mo, mp, mu = memos  # 메모 셋(고정 안 함, 고정함은 `mp`), `mu`는 `updated_at`
     mv, mh, md = moments  # 이룬 순간 셋(보임, 숨김, 지울 것)
+    ev, er = events  # 매일 일정 하나, 놓친 알림 행이 있는 일정
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -95,6 +97,11 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "hide_moment": {"id": mv},
         "unhide_moment": {"id": mh},
         "delete_moment": {"id": md},
+        # 스케줄(SP9 5.6): 앱에서 누른 것은 확인 없이
+        "create_event": {"title": "치과", "date": "2026-10-27", "time": "14:00"},
+        "update_event": {"id": ev, "time": "15:00"},
+        "delete_event": {"id": ev, "scope": "one", "date": "2026-10-25"},
+        "dismiss_missed_reminder": {"event_id": er, "date": "2026-10-24"},  # 활동은 남기지 않는다
     }
 
 
@@ -122,7 +129,21 @@ async def test_every_public_action_applies(tmp_path, action):
             env.parts.tools.today(), [(f"꾸민 순간 {i}", None, ["chat"]) for i in (1, 2, 3)], env.clock.now()))
         with transaction(env.conn):
             env.parts.moments.hide(mh, env.clock.now())
-        cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()), (mv, mh, md))
+        from datetime import date, time
+
+        evs = env.parts.events
+        now = env.clock.now()
+        ev = evs.create({"title": "꾸민 일정", "start_date": date(2026, 10, 24), "start_time": time(9, 0),
+                         "repeat": "daily", "remind_min": 10, "origin": "user"}, now).id
+        er = evs.create({"title": "놓친 일정", "start_date": date(2026, 10, 24), "start_time": time(10, 0),
+                         "remind_min": 10, "origin": "user"}, now).id
+        env.conn.execute(
+            "INSERT INTO event_reminders (event_id, occurrence_date, remind_at, outcome, decided_at) "
+            "VALUES (?, '2026-10-24', '2026-10-24T00:50:00+00:00', 'missed', '2026-10-24T03:00:00+00:00')", (er,),
+        )
+        env.conn.commit()
+        cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()),
+                              (mv, mh, md), (ev, er))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         token = None
@@ -140,6 +161,9 @@ async def test_every_public_action_applies(tmp_path, action):
     assert status == 200, body
     _validate("ActionApplied", body)
     assert body["status"] == "applied"
+    if action == "dismiss_missed_reminder":  # 줄 닫기는 데이터를 바꾸지 않는 표시라 활동이 없다
+        assert len(after) == before and body["result"]["dismissed"] is True
+        return
     assert len(after) == before + 1 and body["activity_id"] == after[-1]["id"]
     assert (after[-1]["actor"], after[-1]["channel"]) == ("user", "app")
 

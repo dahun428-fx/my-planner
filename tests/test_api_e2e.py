@@ -33,8 +33,7 @@ async def test_health_after_morning_brief(tmp_path):
 
 async def test_today_after_chat_and_checkin(tmp_path):
     # 월요일 09:00:30. 낮에 텔레그램으로 일정을 넣고, 저녁 체크인이 초안 둘을 제안한다
-    add = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-27",
-                        "scheduled_at": "2026-10-27T14:00:00+09:00"})
+    add = ("create_event", {"title": "치과", "date": "2026-10-27", "time": "14:00"})
     propose = ("propose_tasks", {"tasks": [{"title": "물 마시기", "areas": ["health"]},
                                            {"title": "스트레칭", "areas": ["health"]}]})
     script = [FakeTurn([add], "치과 넣었어요"), FakeTurn([propose], "오늘 어떠셨어요?")]
@@ -58,8 +57,9 @@ async def test_today_after_chat_and_checkin(tmp_path):
         after = await (await env.get(f"/checkins/{item['id']}")).json()
 
     assert today["date"] == "2026-10-27"
-    (dentist,) = [x for x in today["todos"] if x["todo"]["title"] == "치과"]
-    assert dentist["group"] == "scheduled" and dentist["todo"]["scheduled_at"] == "2026-10-27T05:00:00Z"
+    (dentist,) = today["events"]  # SP9: 시각이 있는 일은 일정이다(오늘 일정)
+    assert (dentist["title"], dentist["start"], dentist["remind_min"]) == ("치과", "2026-10-27T05:00:00Z", 10)
+    assert "치과" not in str(today["todos"]) and today["missed_reminders"] == []
     assert after["state"] == "missed"
     assert "물 마시기" not in str(today["todos"])  # 초안은 오늘 목록에 없다
 

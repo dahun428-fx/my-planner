@@ -77,6 +77,7 @@ from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.events import EventsRepo
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
@@ -223,6 +224,7 @@ class BeParts:
     moments: MomentsRepo | None = None  # 이룬 순간(SP8)
     body: BodyRepo | None = None  # 몸 기록(SP8 7장)
     memos: MemosRepo | None = None  # 메모(SP9 6장)
+    events: EventsRepo | None = None  # 스케줄(SP9 5장)
 
 
 def build_be(
@@ -262,6 +264,7 @@ def build_be(
     moments = MomentsRepo(conn, clock)
     memos = MemosRepo(conn, clock)
     body = BodyRepo(conn, clock)
+    events = EventsRepo(conn, clock, settings.timezone)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -290,6 +293,7 @@ def build_be(
         state=state, settings=settings, runs=runs,  # 체크인 시간 바꾸기(SP9 8장)
         memos=memos,  # 메모 도구·동작(SP9 6장). `memos.md`는 하루 한 번 작업이 쓴다
         body=body,  # 몸 기록(SP8 7장): `POST /body`의 `record_body_days`, 56일 정리(`prune_records`)
+        events=events,  # 스케줄 도구·동작(SP9 5장), 앞머리 `## 오늘 일정`
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -354,6 +358,7 @@ def build_be(
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
         pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos, body=body,
+        events=events,
     )
 
 
@@ -476,7 +481,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
         return
     conn = checked
     try:
-        log.info("db_ready", extra={"schema_version": migrate(conn)})
+        log.info("db_ready", extra={"schema_version": migrate(conn, tz=settings.timezone)})
         # 조립: Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
         bot = None if dev else Bot(_bot_token(settings))
         restarting: list[asyncio.Task[None]] = []  # 진행 중인 폴링 재시작(종료가 끝날 때까지 기다린다)

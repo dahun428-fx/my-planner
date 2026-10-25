@@ -71,8 +71,12 @@ def _state(env):
         "WHERE t.deleted_at IS NULL ORDER BY a.task_id, a.area")]
     prios = [tuple(r) for r in q("SELECT cadence, period, rank, task_id FROM priorities ORDER BY 1, 2, 3")]
     conds = [tuple(r) for r in q("SELECT date, score, note, recorded_at FROM conditions ORDER BY date")]
+    events = [dict(r) for r in q("SELECT * FROM events WHERE deleted_at IS NULL ORDER BY id")]
+    for e in events:
+        del e["updated_at"]
+    skips = [tuple(r) for r in q("SELECT event_id, occurrence_date FROM event_skips ORDER BY 1, 2")]
     return {"tasks": tasks, "areas": areas, "priorities": prios, "conditions": conds, "habits": habits,
-            "habit_checks": checks}
+            "habit_checks": checks, "events": events, "event_skips": skips}
 
 
 def _ledger(env):
@@ -87,13 +91,13 @@ async def _case_task_added(env):
 
 
 async def _case_task_updated(env):
-    a = await _add(env, scheduled_at="2026-10-24T18:00")
-    return "update_task", {"id": a, "title": "아침 운동", "note": "꾸민 메모", "areas": ["health", "learning"],
-                           "scheduled_at": "2026-10-25T07:00"}, "아침 운동 바꿈"
+    a = await _add(env, planned_for="2026-10-24")
+    return "update_task", {"id": a, "title": "아침 운동", "note": "꾸민 메모", "areas": ["health", "learning"]}, (
+        "아침 운동 바꿈")
 
 
 async def _case_task_moved(env):
-    a = await _add(env, scheduled_at="2026-10-24T18:00")
+    a = await _add(env, planned_for="2026-10-24")
     return "move_task", {"id": a, "planned_for": "2026-10-26"}, "운동 옮김"
 
 
@@ -182,6 +186,36 @@ async def _case_habit_unchecked(env):
     return HABIT + "uncheck_habit", {"id": h}, "운동 습관 체크 취소"
 
 
+async def _event(env, **extra):
+    body = await _apply(env, "create_event", {"title": "팀 회의", "date": "2026-10-26", "time": "10:00", **extra})
+    env.clock.advance(minutes=2)
+    return body["result"]["id"]
+
+
+async def _case_event_created(env):
+    return "create_event", {"title": "치과", "date": "2026-10-27", "time": "14:00", "note": "꾸민 메모"}, "치과 일정 추가"
+
+
+async def _case_event_updated(env):
+    e = await _event(env)
+    return "update_event", {"id": e, "time": "11:00", "remind_min": 30, "title": "주간 회의"}, "주간 회의 일정 바꿈"
+
+
+async def _case_event_skipped(env):
+    e = await _event(env, repeat="weekly", weekdays=["mon"])
+    return "delete_event", {"id": e, "scope": "one", "date": "2026-11-02"}, "팀 회의 이번만 건너뜀"
+
+
+async def _case_event_repeat_ended(env):
+    e = await _event(env, repeat="weekly", weekdays=["mon", "wed"])
+    return "delete_event", {"id": e, "scope": "following", "date": "2026-11-02"}, "팀 회의 반복 끝냄"
+
+
+async def _case_event_deleted(env):
+    e = await _event(env, repeat="daily")
+    return "delete_event", {"id": e, "scope": "all"}, "팀 회의 일정 지움"
+
+
 CASES = {
     "task_added": _case_task_added,
     "task_updated": _case_task_updated,
@@ -197,6 +231,12 @@ CASES = {
     "habit_status_set": _case_habit_status_set,
     "habit_checked": _case_habit_checked,
     "habit_unchecked": _case_habit_unchecked,
+    # 스케줄(SP9 5.2)
+    "event_created": _case_event_created,
+    "event_updated": _case_event_updated,
+    "event_skipped": _case_event_skipped,
+    "event_repeat_ended": _case_event_repeat_ended,
+    "event_deleted": _case_event_deleted,
 }
 
 

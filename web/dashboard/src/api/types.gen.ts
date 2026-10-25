@@ -28,6 +28,9 @@ export interface ApiModels {
   Curve: Curve;
   Drafts: Drafts;
   Error: Error;
+  EventDetail: EventDetail;
+  EventItem: EventItem;
+  EventList: EventList;
   Habit: Habit;
   HabitHistory: HabitHistory;
   HabitsList: HabitsList;
@@ -36,6 +39,7 @@ export interface ApiModels {
   MemoItem: MemoItem;
   MemoList: MemoList;
   Messages: Messages;
+  MissedReminder: MissedReminder;
   Moment: Moment;
   MomentsList: MomentsList;
   NotifyPutBody: NotifyPutBody;
@@ -130,7 +134,11 @@ export interface ErrorDetail {
     | "checkin_time_invalid"
     | "memo_conflict"
     | "too_many_memos"
-    | "too_many_pinned";
+    | "too_many_pinned"
+    | "remind_invalid"
+    | "start_not_in_weekdays"
+    | "too_many_events"
+    | "range_too_long";
   message: string;
 }
 /**
@@ -571,6 +579,64 @@ export interface Error {
   error: ErrorDetail;
 }
 /**
+ * `GET /events/{id}` (SP9 5.6): 정의 하나. `date`는 첫 날(현지), `time`은 현지 `HH:MM`(하루 종일은 null),
+ * `weekdays`는 매주 반복의 요일(그 밖에는 null), `repeat_until`은 마지막이 될 수 있는 날(포함, null이면 끝없음).
+ * `skipped_dates`: 이번만 건너뛴 날. 동작(`create_event`, `update_event`)의 칸 이름과 같다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "EventDetail".
+ */
+export interface EventDetail {
+  all_day: boolean;
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  created_at: string;
+  date: string;
+  duration_min: number | null;
+  id: number;
+  note: string;
+  origin: "user" | "chat" | "migrated";
+  remind_min: (0 | 10 | 30 | 60 | 1440) | null;
+  repeat: "none" | "daily" | "weekly" | "monthly";
+  repeat_until: string | null;
+  skipped_dates: string[];
+  time: string | null;
+  title: string;
+  updated_at: string;
+  weekdays: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[] | null;
+}
+/**
+ * 그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은
+ * null, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,
+ * null 알림 없음.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "EventItem".
+ */
+export interface EventItem {
+  all_day: boolean;
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  date: string;
+  end: string | null;
+  event_id: number;
+  origin: "user" | "chat" | "migrated";
+  remind_min: (0 | 10 | 30 | 60 | 1440) | null;
+  repeat: "none" | "daily" | "weekly" | "monthly";
+  start: string | null;
+  title: string;
+}
+/**
+ * `GET /events?start=&end=` (SP9 5.6): 기간(현지 날짜, 포함, 최대 62일, 넘으면 422 `range_too_long`) 안의 그날
+ * 일정. 날짜, 하루 종일 먼저, 시작 시각순. 건너뛴 날은 없다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "EventList".
+ */
+export interface EventList {
+  end: string;
+  items: EventItem[];
+  start: string;
+}
+/**
  * 공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든
  * ISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).
  *
@@ -777,6 +843,20 @@ export interface MessageItem {
   speaker: "user" | "secretary";
   text: string;
   tools: string[];
+}
+/**
+ * 오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`
+ * (알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null). 채우기는 SP9-06.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "MissedReminder".
+ */
+export interface MissedReminder {
+  date: string;
+  event_id: number;
+  outcome: "missed" | "failed" | "skipped";
+  start: string | null;
+  title: string;
 }
 /**
  * 이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).
@@ -1043,7 +1123,8 @@ export interface StatusTitle {
   title: string;
 }
 /**
- * `GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.
+ * `GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의
+ * 그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3(SP9-06이 채운다).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Today".
@@ -1055,7 +1136,9 @@ export interface Today {
   condition: ConditionItem | null;
   date: string;
   day_boundary: string;
+  events: EventItem[];
   habits: Habit[];
+  missed_reminders: MissedReminder[];
   todos: TodayTodo[];
   weekday: string;
 }

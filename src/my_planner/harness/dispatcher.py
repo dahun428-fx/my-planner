@@ -1835,6 +1835,7 @@ class Dispatcher:
             habits=self.tools.habits,
             include_habits=include_habits,
             habit_day=habit_day,
+            events=getattr(self.tools, "events", None),  # `## 오늘 일정`(SP9 5.5)
         )
 
     def _state_time(self, key: str) -> datetime | None:

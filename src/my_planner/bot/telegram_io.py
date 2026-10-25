@@ -187,7 +187,7 @@ async def _answer_command(
     deps = CommandDeps(
         tasks=tools.tasks, conditions=tools.conditions, state=state, router=router, clock=clock,
         settings=LocalTime(tools.tz, tools.boundary), apply=apply, status=tools.status, curve=tools.curve,
-        habits=tools.habits,
+        habits=tools.habits, events=getattr(tools, "events", None),
     )
     reply = run_command(cmd, text, deps, channel="telegram")
     markup = _habits_markup(tools) if cmd == "/habits" else None

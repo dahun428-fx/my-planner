@@ -13,12 +13,14 @@ from my_planner.store.exports import format_task
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.habits import Habit, HabitsRepo
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import Task, TasksRepo
 
 OPEN_TASKS_MAX = 30
+TODAY_EVENTS_MAX = 8  # `## 오늘 일정` 줄 수(SP9 5.5)
 NO_CONDITION = "기록 없음"
 _WEEKDAY = "월화수목금토일"
 
@@ -60,8 +62,12 @@ def build_preamble(
     habits: HabitsRepo | None = None,
     include_habits: bool = False,
     habit_day: date | None = None,
+    events: EventsRepo | None = None,
 ) -> str:
     """새 세션의 앞머리. 빈 섹션은 뺀다. `paused_until`이 지금 뒤면 `## 멈춤`(한국 시간)을 붙인다.
+
+    `## 오늘 일정`(SP9 5.5)은 스케줄(`events`)의 오늘(논리적 날짜) 그날 일정, 최대 8줄: `14:00 치과 (#e12)`,
+    하루 종일은 `하루 종일 카드 결제일 (#e3)`. 아침 브리핑에도 들어간다.
 
     `include_habits`가 참이고 활성 습관이 있으면 `## 오늘 습관`을 붙인다(SP7 5.7, 아침 브리핑과 복귀 인사는 거짓).
     """
@@ -96,15 +102,12 @@ def build_preamble(
             lines.append(f"- … 외 {len(ordered) - OPEN_TASKS_MAX}개")
         sections.append("## 열린 할 일\n" + "\n".join(lines))
 
-    scheduled = sorted(
-        (t for t in open_tasks if t.scheduled_at and logical_date(t.scheduled_at, tz, boundary) == today),
-        key=lambda t: t.scheduled_at,  # type: ignore[arg-type,return-value]
-    )
-    if scheduled:
-        sections.append(
-            "## 오늘 일정\n"
-            + "\n".join(f"- {local(t.scheduled_at, tz):%H:%M} {t.title} (#{t.id})" for t in scheduled)  # type: ignore[arg-type]
-        )
+    todays = events.on_logical_date(today, boundary) if events is not None else []
+    if todays:
+        sections.append("## 오늘 일정\n" + "\n".join(
+            f"- {'하루 종일' if o.all_day else format(local(o.start, tz), '%H:%M')} {o.title} (#e{o.event_id})"  # type: ignore[arg-type]
+            for o in todays[:TODAY_EVENTS_MAX]
+        ))
 
     if conditions is not None:
         y = conditions.get(today - timedelta(days=1))

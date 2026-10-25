@@ -119,6 +119,7 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
             tasks=d.tools.tasks, conditions=d.conditions, state=d.state, router=d.router, clock=deps.clock,
             settings=deps.settings, apply=d.apply_action, status=d.tools.status, curve=d.tools.curve,
             habits=d.tools.habits,  # `/habits`는 글만(앱에는 습관 블록이 있다, SP7 5.7)
+            events=d.tools.events,
         )
         reply = run_command(cmd, text, cdeps, channel="app", client_msg_id=cmid)
         if cmd not in STATEFUL_COMMANDS:  # 상태를 바꾸는 명령은 즉시 갈래가 이미 적었다

@@ -170,18 +170,17 @@ async def test_retry_after_partial_deltas_gets_own_step_and_ids(tmp_path):
 
 
 async def test_tool_chunk_name_has_no_prefix_and_output_is_utc(tmp_path):
-    timed = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-25",
-                          "scheduled_at": "2026-10-25T14:00:00+09:00"})
+    timed = ("create_event", {"title": "치과", "date": "2026-10-25", "time": "14:00"})
     async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([timed], "넣었어요.")]) as env:
         _, raw = await env.chat("내일 2시 치과")
         brain_ctx = env.brain.calls[0]["run_ctx"]
 
     tool_in = _one(parse_sse(raw), "tool-input-available")
     tool_out = _one(parse_sse(raw), "tool-output-available")
-    assert tool_in["toolName"] == "add_task"
+    assert tool_in["toolName"] == "create_event"
     assert tool_in["input"] == timed[1]
     assert tool_out["toolCallId"] == tool_in["toolCallId"]
-    assert tool_out["output"]["scheduled_at"] == "2026-10-25T05:00:00Z"
+    assert tool_out["output"]["updated_at"].endswith("Z") and "+" not in tool_out["output"]["updated_at"]
     assert brain_ctx.channel == "app"
     # 쓰개는 MCP 이름의 앞머리를 뗀다
     from fakes import ListSink

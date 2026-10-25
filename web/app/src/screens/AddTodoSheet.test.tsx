@@ -66,35 +66,24 @@ describe("AddTodoSheet", () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(copy.todos.titleLabel), "치과");
     await user.click(screen.getByRole("radio", { name: copy.todos.dateNone }));
-    expect(screen.getByLabelText(copy.todos.timeLabel)).toBeDisabled();
     await user.click(addButton());
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect((bodies[0].args as Record<string, unknown>).planned_for).toBeUndefined();
   });
 
-  it("scheduled_at is KST converted to UTC", async () => {
+  it("no time field", async () => {
+    // SP9 5.4: a thing with a set time is an event on the schedule; the sheet never sends scheduled_at.
     const bodies = actions(() => applied());
     open();
     const user = userEvent.setup();
+    expect(document.querySelector('input[type="time"]')).toBeNull();
+    expect(screen.queryByText("시각")).toBeNull();
     await user.type(screen.getByLabelText(copy.todos.titleLabel), "치과");
     await user.click(screen.getByRole("radio", { name: copy.todos.datePick }));
     fireEvent.change(screen.getByLabelText(copy.todos.dateLabel), { target: { value: "2026-10-25" } });
-    fireEvent.change(screen.getByLabelText(copy.todos.timeLabel), { target: { value: "14:00" } });
     await user.click(addButton());
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ args: { planned_for: "2026-10-25", scheduled_at: "2026-10-25T05:00:00Z" } });
-  });
-
-  it("a time before the day boundary lands on the next calendar day", async () => {
-    const bodies = actions(() => applied());
-    renderWithProviders(<AddTodoSheet open onClose={vi.fn()} defaultDate="2026-10-24" dayBoundary="04:00" />);
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText(copy.todos.titleLabel), "약 먹기");
-    fireEvent.change(screen.getByLabelText(copy.todos.timeLabel), { target: { value: "01:30" } });
-    await user.click(addButton());
-    await waitFor(() => expect(bodies).toHaveLength(1));
-    // "오늘" is the logical 10-24, whose 01:30 is 10-25 01:30 in Seoul.
-    expect(bodies[0]).toMatchObject({ args: { planned_for: "2026-10-24", scheduled_at: "2026-10-24T16:30:00Z" } });
+    expect(bodies[0].args).toEqual({ title: "치과", areas: [], planned_for: "2026-10-25" });
   });
 
   it("double tap adds once", async () => {

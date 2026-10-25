@@ -109,8 +109,9 @@ async def test_run_turn_detection_both_channels(tmp_path):
 
 
 def _cases(env):
-    """(동작, 인자, 확인 문구 일부). 시각 있는 할 일 하나, 날짜만 있는 할 일 하나."""
-    timed = env.add("꾸민 진료", scheduled_at="2026-10-27T14:00")
+    """(동작, 인자, 확인 문구 일부). 시각 있는 할 일 하나(SP9 전에 만든 것: 도구로는 더 만들 수 없다), 날짜만 있는 할 일 하나."""
+    timed = env.tasks.create("꾸민 진료", ["health"], planned_for=kst(2026, 10, 27, 14, 0).date(),
+                             scheduled_at=kst(2026, 10, 27, 14, 0)).id
     plain = env.add("꾸민 산책", planned_for="2026-10-26")
     return timed, plain
 
@@ -122,9 +123,8 @@ CASES = [
     ("set_priorities", lambda t, p: {"cadence": "month", "period": "2026-10", "task_ids": [p]}, "이번 달 우선순위"),
     ("set_priorities", lambda t, p: {"cadence": "quarter", "period": "2026-Q4", "task_ids": [t]}, "이번 분기 우선순위"),
     ("set_priorities", lambda t, p: {"cadence": "year", "period": "2026", "task_ids": [p]}, "올해 우선순위"),
-    ("update_task", lambda t, p: {"id": t, "scheduled_at": "2026-10-28T09:30"}, "시각을 바꿔요: 꾸민 진료"),
-    ("update_task", lambda t, p: {"id": p, "scheduled_at": "2026-10-26T18:00"}, "시각을 바꿔요: 꾸민 산책"),
-    ("move_task", lambda t, p: {"id": t, "planned_for": "2026-10-29"}, "날짜를 옮겨요: 꾸민 진료"),
+    # SP9 5.4: 할 일의 시각 확인(`update_task`의 `scheduled_at`, 시각 있는 할 일의 `move_task`)은 없어졌다.
+    # 일정의 시각 확인은 `update_event`다(tests/test_event_tools.py)
 ]
 
 
@@ -159,11 +159,11 @@ def test_run_turn_tools_need_confirm(env, action, make_args, summary_part, chann
 
 
 def test_run_turn_token_args_apply_as_is(env):
-    """토큰의 `args`는 `/actions`에 그대로 다시 보낼 수 있는 모양이다(시각은 UTC `Z`)."""
-    timed, _ = _cases(env)
-    out = env.tools.update_task(env.run_ctx(), id=timed, scheduled_at="2026-10-28T09:30")
+    """토큰의 `args`는 `/actions`에 그대로 다시 보낼 수 있는 모양이다."""
+    timed, plain = _cases(env)
+    out = env.tools.set_priorities(env.run_ctx(), cadence="week", period="2026-W44", task_ids=[plain, timed])
     p = env.confirms.get(out["confirm_token"])
-    assert p.args == {"id": timed, "scheduled_at": "2026-10-28T00:30:00Z"}
+    assert p.args == {"cadence": "week", "period": "2026-W44", "task_ids": [plain, timed]}
 
 
 def test_run_turn_invalid_input_is_still_an_error(env):
@@ -171,7 +171,7 @@ def test_run_turn_invalid_input_is_still_an_error(env):
     ctx = env.run_ctx()
     assert "error" in env.tools.drop_task(ctx, id=999)
     assert "error" in env.tools.set_priorities(ctx, cadence="day", period="2026-10-26", task_ids=[999])
-    assert "error" in env.tools.update_task(ctx, id=plain, scheduled_at="내일 두 시")
+    assert "error" in env.tools.update_task(ctx, id=plain, scheduled_at="2026-10-28T09:30")  # SP9: 시각은 일정으로
     assert env.tokens() == [] and ctx.events == []
 
 
@@ -202,8 +202,8 @@ def test_drop_draft_applies_in_run_turn(env):
 
 
 def test_no_change_applies_in_run_turn(env):
-    """바뀌는 것이 없는 호출은 토큰 없이 SP1처럼 적용한다: 지금과 같은 우선순위 목록, 시각 있는 할 일을 같은 날로
-    옮기기, 지금과 같은 시각으로 `update_task`(리뷰 결정 2, 지적 5)."""
+    """바뀌는 것이 없는 호출은 토큰 없이 SP1처럼 적용한다: 지금과 같은 우선순위 목록(리뷰 결정 2, 지적 5). 시각 있는
+    할 일의 옮기기·`update_task`는 SP9부터 확인이 없다."""
     timed, plain = _cases(env)
     env.tools.set_priorities(env.user_ctx(), cadence="week", period="2026-W44", task_ids=[plain, timed])
     ctx = env.run_ctx()
@@ -211,7 +211,7 @@ def test_no_change_applies_in_run_turn(env):
     same_list = env.tools.set_priorities(ctx, cadence="week", period="2026-W44", task_ids=[plain, timed])
     empty = env.tools.set_priorities(ctx, cadence="year", period="2026", task_ids=[])  # 비어 있는 목록을 그대로
     same_day = env.tools.move_task(ctx, id=timed, planned_for="2026-10-27")
-    same_time = env.tools.update_task(ctx, id=timed, scheduled_at="2026-10-27T14:00", note="꾸민 메모")
+    same_time = env.tools.update_task(ctx, id=timed, note="꾸민 메모")
 
     assert [x.get("status") for x in (same_list, empty)] == [None, None]
     assert [t["id"] for t in same_list["priorities"]] == [plain, timed]
@@ -223,10 +223,24 @@ def test_no_change_applies_in_run_turn(env):
 
 def test_add_task_applies_in_run_turn(env):
     ctx = env.run_ctx()
-    out = env.tools.add_task(ctx, title="꾸민 물 마시기", areas=["health"], scheduled_at="2026-10-26T15:00")
+    out = env.tools.add_task(ctx, title="꾸민 물 마시기", areas=["health"], planned_for="2026-10-26")
     assert out["status"] == "open" and env.tasks.get(out["id"]) is not None
     assert env.tokens() == []
     assert [e.kind for e in ctx.events] == ["task_added"]
+
+
+def test_move_confirm_moved_to_update_event(env):
+    """SP9 5.4: 시각 있는 할 일의 날짜 옮기기 확인은 없어졌고(할 일 쪽은 지움) 일정의 `update_event` 확인으로 옮겼다."""
+    from my_planner.tools import confirmations
+
+    timed, _ = _cases(env)
+    ctx = env.run_ctx()
+    out = env.tools.move_task(ctx, id=timed, planned_for="2026-10-29")
+    assert out["planned_for"] == "2026-10-29" and out["scheduled_at"].startswith("2026-10-29T14:00")
+    assert env.tokens() == [] and [e.kind for e in ctx.events] == ["task_moved"]
+    for gone in ("confirm_schedule_summary", "confirm_move_summary", "confirm_button_schedule", "confirm_button_move"):
+        assert not hasattr(confirmations, gone)
+    assert confirmations.confirm_event_update_summary("치과", "10/27 15:00", {}, {}) == "일정을 바꿔요: 치과 → 10/27 15:00"
 
 
 # --- A3: 사용자 차례는 SP1 그대로 ---
