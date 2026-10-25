@@ -134,6 +134,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/health") return json(route, fixture("health"));
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") return json(route, today());
+    if (get && path === "/status") return json(route, fixture("status"));
     if (get && path === "/week") return json(route, week());
     if (get && path === "/drafts") return json(route, fixture("drafts"));
     if (get && path === "/priorities") return json(route, fixture(`priorities-${q.get("cadence") ?? "month"}`));

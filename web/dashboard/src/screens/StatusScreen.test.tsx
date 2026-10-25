@@ -100,7 +100,7 @@ describe("StatusScreen", () => {
     renderScreen();
     const region = await screen.findByRole("region", { name: "스탯 (2026-Q4)" });
     const [career, finance] = within(region).getAllByRole("listitem");
-    expect(career.textContent).toContain("6 (2026-Q3)");
+    expect(career.textContent).toContain("6.5 (2026-Q3)");
     expect(finance.textContent).toContain("—");
     expect(within(finance).getByRole("img")).toHaveAttribute("aria-label", "경제 기록 없음");
     expect(finance.querySelector(".stat-fill")).toBeNull();
@@ -157,5 +157,119 @@ describe("StatusScreen", () => {
     server.use(http.get(`${BASE}/status`, () => HttpResponse.json(missing)));
     renderScreen();
     expect(await screen.findByText("BE가 응답했지만 이 화면을 그리지 못했어요 (shape).")).toBeInTheDocument();
+  });
+});
+
+// SP8-02 (spec 10.1): bonus cells, the base-and-bonus line, "요즘 손이 간 영역".
+
+const withStats = (patch: Record<string, Record<string, unknown>>) => ({
+  ...status,
+  stats: status.stats.map((s) => ({ ...s, ...patch[s.area] })),
+});
+const act = (tasks: number, habit_checks: number, body_days: number) => ({ tasks, habit_checks, body_days });
+
+describe("StatusScreen bonus (SP8-02)", () => {
+  const body = withStats({
+    career: { score: 6, bonus: 1.2, effective_score: 7.2, activity: act(12, 0, 0) },
+    health: { score: 4, bonus: 1.5, effective_score: 5.5, activity: act(0, 28, 0) },
+    learning: { score: null, period: null, prev_score: null, prev_period: null, bonus: 0.4, effective_score: null, activity: act(2, 0, 0) },
+    finance: { bonus: 0, effective_score: 5, activity: act(0, 0, 0) },
+    relationships: { bonus: 0, effective_score: 7, activity: act(0, 0, 0) },
+    quality_of_life: { bonus: 0, effective_score: 5, activity: act(0, 0, 0) },
+  });
+  const rowOf = async (area: string) => {
+    const region = await screen.findByRole("region", { name: "스탯 (2026-Q4)" });
+    return within(region)
+      .getAllByRole("listitem")
+      .find((r) => r.dataset.area === area)!;
+  };
+
+  it("stat_line_shows_effective_and_base_and_bonus", async () => {
+    server.use(statusAnswers.ok(body));
+    renderScreen();
+    const health = await rowOf("health");
+    expect(within(health).getByText("5.5")).toBeInTheDocument();
+    expect(within(health).getByText("바탕 4 · 요즘 +1.5")).toBeInTheDocument();
+    expect(health.querySelectorAll("rect.stat-bonus")).toHaveLength(1);
+    expect(within(health).getByRole("img")).toHaveAttribute("aria-label", "건강 4 / 10");
+    const career = await rowOf("career");
+    expect(within(career).getByText("7.2")).toBeInTheDocument();
+    expect(within(career).getByText("바탕 6 · 요즘 +1.2")).toBeInTheDocument();
+  });
+
+  it("zero_bonus_shows_base_only", async () => {
+    server.use(statusAnswers.ok(body));
+    renderScreen();
+    const finance = await rowOf("finance");
+    expect(within(finance).getByText("바탕 5")).toBeInTheDocument();
+    expect(finance.textContent).not.toContain("요즘");
+    expect(finance.querySelector("rect.stat-bonus")).toBeNull();
+  });
+
+  it("no_base_shows_dash_and_hint", async () => {
+    server.use(statusAnswers.ok(body));
+    renderScreen();
+    const learning = await rowOf("learning");
+    expect(within(learning).getByText("—")).toBeInTheDocument();
+    expect(within(learning).getByText("요즘 +0.4 · 분기 회고에서 점수를 정하면 더해져요")).toBeInTheDocument();
+    expect(learning.querySelector("rect.stat-bonus")).toBeNull();
+  });
+
+  it("recent_areas_sorted_and_counts", async () => {
+    server.use(statusAnswers.ok(body));
+    renderScreen();
+    const panel = await screen.findByRole("region", { name: "요즘 손이 간 영역" });
+    const lines = within(panel).getAllByRole("listitem");
+    expect(lines.map((l) => l.dataset.area)).toEqual(["health", "career", "learning"]); // 1.5, 1.2, 0.4
+    expect(lines[0].textContent).toContain("건강");
+    expect(lines[0].textContent).toContain("+1.5");
+    expect(lines[0].textContent).toContain("4주 동안 습관 28번");
+    expect(lines[1].textContent).toContain("4주 동안 할 일 12개");
+    expect(lines[2].textContent).toContain("+0.4");
+    expect(lines[0].querySelector("svg.pictogram use")).toHaveAttribute("href", "#p-health");
+    expect(lines[0].querySelector("svg.pictogram")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("recent_areas_ties_keep_area_order_and_zero_counts_are_left_out", async () => {
+    const tie = withStats({
+      quality_of_life: { bonus: 0.5, activity: act(1, 2, 3) },
+      finance: { bonus: 0.5, activity: act(0, 0, 4) },
+    });
+    server.use(
+      statusAnswers.ok({ ...tie, stats: tie.stats.map((s) => (["finance", "quality_of_life"].includes(s.area) ? s : { ...s, bonus: 0 })) }),
+    );
+    renderScreen();
+    const panel = await screen.findByRole("region", { name: "요즘 손이 간 영역" });
+    const lines = within(panel).getAllByRole("listitem");
+    expect(lines.map((l) => l.dataset.area)).toEqual(["finance", "quality_of_life"]);
+    expect(lines[0].textContent).toContain("4주 동안 몸 기록 4일");
+    expect(lines[0].textContent).not.toContain("할 일");
+    expect(lines[1].textContent).toContain("4주 동안 할 일 1개 · 습관 2번 · 몸 기록 3일");
+  });
+
+  it("recent_areas_empty_copy", async () => {
+    server.use(statusAnswers.ok(statusEmpty));
+    renderScreen();
+    const panel = await screen.findByRole("region", { name: "요즘 손이 간 영역" });
+    expect(within(panel).getByText("4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.")).toBeInTheDocument();
+    expect(within(panel).queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  it("debuff_unchanged_with_bonus", async () => {
+    server.use(statusAnswers.ok(body));
+    renderScreen();
+    const health = await rowOf("health");
+    expect(within(health).getByText("↓ 디버프 (Q3 6)")).toBeInTheDocument();
+    expect(health.textContent).toContain("회복 퀘스트: 저녁에 20분 걷기 (15~30분)");
+  });
+
+  it("no_decline_marks", async () => {
+    server.use(statusAnswers.ok(body));
+    renderScreen();
+    await rowOf("health");
+    const clone = document.body.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll(".stat-debuff").forEach((n) => n.remove());
+    const all = clone.textContent ?? "";
+    for (const mark of ["−", "%", "줄었", "↓"]) expect(all).not.toContain(mark);
   });
 });

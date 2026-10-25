@@ -5,7 +5,7 @@ import { copy, habitMeta } from "./copy";
 
 const repoRoot = join(__dirname, "../../../..");
 const srcRoot = join(__dirname, "..");
-const APP_BANNED = ["연속", "스트릭", "달성률"];
+const APP_BANNED = ["연속", "스트릭", "달성률", "보너스가 줄", "스탯이 떨어"];
 
 function readBannedList(): string[] {
   const md = readFileSync(join(repoRoot, "src/my_planner/harness/prompts/system.md"), "utf8");

@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useId } from "react";
 import type { Status, StatusStat } from "../api/types.gen";
+import { RecentAreas } from "../components/RecentAreas";
 import { StatBar, rampStep } from "../components/StatBar";
 import { StateNotice } from "../components/StateNotice";
 import { HpCells } from "../components/HpCells";
@@ -24,12 +25,21 @@ function StatRow({ stat: s, latest }: { stat: StatusStat; latest: string | null 
         <span className="area-dot" aria-hidden="true" />
         {s.label}
       </span>
-      <StatBar label={s.label} score={s.score} />
+      <StatBar label={s.label} score={s.score} bonus={s.bonus} />
       <span className="stat-value num">
         {s.score !== null && <span className="stat-step" data-step={rampStep(s.score)} aria-hidden="true" />}
-        {s.score === null ? <span className="meta">{T.noScore}</span> : s.score}
+        {s.score === null || s.effective_score === null ? (
+          <span className="meta">{T.noScore}</span>
+        ) : s.bonus > 0 ? (
+          s.effective_score.toFixed(1)
+        ) : (
+          s.effective_score
+        )}
         {older && <span className="meta"> {T.olderPeriod(s.period!)}</span>}
       </span>
+      {(s.score !== null || s.bonus > 0) && (
+        <span className="stat-sub meta">{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
+      )}
       {s.debuff && s.prev_score !== null && s.prev_period !== null && (
         <span className="stat-debuff">{T.debuff(shortPeriod(s.prev_period, s.period), s.prev_score)}</span>
       )}
@@ -54,6 +64,7 @@ function Joined({ items }: { items: string[] }) {
 export function StatusView({ status: s }: { status: Status }) {
   const statsId = useId();
   const questsId = useId();
+  const recentId = useId();
   const scored = s.stats.filter((x) => x.score !== null && x.period !== null);
   const latest = scored.length > 0 ? scored.map((x) => x.period!).sort().at(-1)! : null;
   const offersQuest = s.daily_quests.length > 0 || s.stats.some((x) => x.debuff && x.recovery_quest);
@@ -76,6 +87,8 @@ export function StatusView({ status: s }: { status: Status }) {
           </ul>
         )}
       </section>
+
+      <RecentAreas stats={s.stats} headingId={recentId} />
 
       <section className="panel" aria-labelledby={questsId}>
         <h2 id={questsId}>{T.mainQuests}</h2>
