@@ -649,10 +649,10 @@ web/app/src/ui/
 | 대비 | 새로 쓰는 쌍(`--raised` 위 `--text-2`, `--surface` 위 `--hue` 글자, 진행 막대 `--primary` 대 `--raised` 3:1)을 모든 프리셋 × 밝게·어둡게에서 | Vitest(대비 계산) | `npx vitest run src/styles` → `0 failed` |
 | 빌드·CSP | 정적 내보내기에 인라인 스크립트·스타일·쪽 CSS 없음 | `npm run build && npm run check:csp` | `CSP OK: <n> files` |
 | 크기 | 첫 화면 180KB 이하 | `npm run size` | 종료 코드 0 |
-| CSP 실행 | 빌드한 `out/`을 CSP 헤더로 띄우고 `chat_gallery.sse`로 대화를 열어 새 넷이 모두 부품으로 그려짐 + 콘솔 CSP 위반 0건 | Playwright | `npx playwright test csp.spec.ts` → 지금 셋("chat part renders under CSP", "no CSP violations", "screens keep their styles after moving between tabs")에 "SP6 cards render under CSP", "SP6 gallery has no CSP violations"를 더해 `5 passed` |
+| CSP 실행 | 빌드한 `out/`을 CSP 헤더로 띄우고 `chat_gallery.sse`로 대화를 열어 새 넷이 모두 부품으로 그려짐 + 콘솔 CSP 위반 0건 | Playwright | `npx playwright test csp.spec.ts` → 지금 셋("chat part renders under CSP", "no CSP violations", "screens keep their styles after moving between tabs")에 "SP6 cards render under CSP", "SP6 gallery has no CSP violations"를 더한다. Markdown과 Pretendard 시험까지 합쳐 `7 passed` |
 | 눈으로 | 390×844, `chat_gallery.sse` 대화 시트: (1) 기본 프리셋 밝게·어둡게에서 카드 7개(새 넷 + `ui_todo_list`, `ui_choice`, `ui_summary_card`) 하나씩 = 14장, (2) 프리셋 6개 × 밝게·어둡게 시트 전체 = 12장. 다시 짠 기존 넷은 SP6 전 스크린샷과 나란히 본다 | Playwright + MSW | `npx playwright test screens.spec.ts` → 26장 저장, 사람이 확인 |
 | 디자인 | taste 규칙 | `node <taste>/scripts/lint.mjs --app web/app/src` | `0 FAIL` |
-| 실기기 | 아이폰에서 날짜 없는 할 일 말하기 → 후보 누름 → 되돌리기, 할 일 둘 옮기기 → `ui_result` 되돌리기, 셋 옮기기 → `ui_period_list`, "이번 주 컨디션 어땠지" → `ui_block` | Dahun과 함께 | `docs/acceptance/sp5-checklist.md`에 SP6 줄을 더하고 모두 확인 |
+| 실기기 | 아이폰에서 날짜 없는 할 일 말하기 → 후보 누름 → 되돌리기, 할 일 둘 옮기기 → `ui_result` 되돌리기, 셋 옮기기 → `ui_period_list`, "이번 주 컨디션 어땠지" → `ui_block` | Dahun과 함께 | `docs/acceptance/sp6-checklist.md`(계획 빈 곳 7: `sp5-checklist.md`가 아직 없어 따로 둔다)의 줄을 모두 확인 |
 
 - 프리셋 시험(대비 6벌, 스크린샷 12장)은 색 프리셋 티켓이 병합된 뒤에 켠다. 그 전에는 기본 프리셋 밝게·어둡게만 돈다.
 
@@ -748,3 +748,4 @@ web/app/src/ui/
 | 2026-10-25 | v6 | SP9 9.6(SP9-01): 활동은 한 줄 "✓ …", 버튼 없음. 되돌리기는 채팅 토스트 6초(여럿이면 "✓ {n}개를 바꿨어요", 모두 새것부터)와 기록 화면. `ui_result` 카드의 되돌리기 버튼 뺌. 활동 줄 숨김은 `undo_id`와 상관없이 그려지는 `ui_result` 항목이 활동을 모두 보일 때(11.4, 6.3, 6.4, 1장 1) | 운영 앱 스레드 |
 | 2026-10-25 | v7 | G-BE2: 누를 때 `move_task`가 `status = open`도 본다(8장 확정 줄) | SP3-4 BE 스레드 |
 | 2026-10-25 | v8 | G-BE2를 develop(SP9)과 합침: SP9-05부터 할 일에 시각이 없어(ADR 0015) 8장의 앱 통로 `move_task` 확인(`move_needs_confirm`)은 넣지 않았다. `add_task`가 날짜를 빼면 오늘로 채워지므로 기준 SSE의 `todo.planned_for`가 오늘이다 | SP3-4 BE 스레드 |
+| 2026-10-25 | v9 | G-A3이 계획의 빈 곳 7을 옮김: 13장 실기기 줄은 `docs/acceptance/sp6-checklist.md`에 | 운영 앱 스레드 |

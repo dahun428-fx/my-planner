@@ -91,8 +91,8 @@ Gentler Streak(숫자 대신 말로 풀어 주는 상태, 죄책감 없는 동�
 
 이 문서와 `web/shared/global.css`가 **단일 진실 소스**다. 앱(web/app)은 `npm run sync:design`으로
 `global.css`를 자기 `src/styles/global.css`에 복사하고(생성 파일 머리말이 붙는다), 시험
-(`scripts/sync-design.test.mjs`)이 사본이 원본과 같은지 본다. 대시보드(web/dashboard)도 다음에 같은 방식으로
-옮겨 온다. 사본을 앱 안에 두는 까닭: Vercel은 앱을 루트 `web/app`으로 빌드하고 `ignoreCommand`도 `web/app`만
+(`scripts/sync-design.test.mjs`)이 사본이 원본과 같은지 본다. 대시보드(web/dashboard)도 같은 방식으로
+옮겨 왔다(아래 "대시보드" 절). 사본을 앱 안에 두는 까닭: Vercel은 앱을 루트 `web/app`으로 빌드하고 `ignoreCommand`도 `web/app`만
 비교한다. 토큰을 바꿀 때는 이 문서의 맨 위 값과 `global.css`를 **같은 커밋에서** 함께 고친다
 (`contrast.test.ts`가 맨 위 색 값과 `global.css`를 맞춰 본다).
 
@@ -145,7 +145,7 @@ Gentler Streak(숫자 대신 말로 풀어 주는 상태, 죄책감 없는 동�
 글꼴은 **Pretendard Variable** 1.3.9(npm `pretendard`, 동적 서브셋 woff2 92개)를 앱 안에 직접 둔다
 (`public/fonts/pretendard/`, OFL 라이선스 파일 함께, `unicode-range`로 쓰는 글자의 조각만 받음,
 `font-display: swap`, CSP `font-src 'self'`). `@font-face`는 `global.css` 맨 끝에 있다(대시보드도 같은 파일을
-옮겨 오면 자기 `public/fonts/pretendard/`가 필요하다). 서비스 워커는 글꼴을 미리 받아 두지 않는다
+쓰고, 글꼴은 자기 `public/fonts/pretendard/`에 둔다). 서비스 워커는 글꼴을 미리 받아 두지 않는다
 (`/_next/static`만 받는다): 오프라인 첫 화면은 시스템 글꼴로 그려질 수 있다. 숫자는 모두
 `font-variant-numeric: tabular-nums`(`.tnum`).
 
