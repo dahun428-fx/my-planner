@@ -33,7 +33,7 @@ from my_planner.api.models import (
 from my_planner.clock import to_iso
 from my_planner.platform import windows
 from my_planner.store.repos.activity import ActivityRepo
-from my_planner.tools.actions import ActionRequest
+from my_planner.tools.actions import ActionRequest, ActionResult
 from my_planner.tools.activity import undoable_now
 from my_planner.tools.checkin_times import ACTION as CHECKIN_ACTION
 from my_planner.tools.checkin_times import KIND as CHECKIN_KIND
@@ -75,14 +75,26 @@ async def post_actions(request: web.Request, deps: ApiDeps) -> web.StreamRespons
         )
     )
     if res.status == "applied" and req.action == CHECKIN_ACTION:
-        await _refresh_wake(deps)  # 확인 카드로 바꾼 체크인 시간(SP9 8장)
+        await refresh_wake(deps)  # 확인 카드로 바꾼 체크인 시간(SP9 8장)
+    return action_response(res)
+
+
+def action_response(res: ActionResult) -> web.Response:
+    """즉시 갈래 결과 → `/actions` 응답 모양(상태 코드 그대로)."""
     model = _RESPONSE_MODELS.get(res.status, ErrorBody)
     return web.json_response(dump(model, res.body), status=res.http_status)
 
 
-async def _refresh_wake(deps: ApiDeps) -> bool:
-    """체크인 시간이 바뀌면 깨우기 작업을 다시 등록한다(SP9 8장). 안 돼도 답은 그대로다(설정 화면은 PUT의 결과를 본다)."""
-    return await windows.refresh_wake_task(root=deps.settings.paths.root)
+async def refresh_wake(deps: ApiDeps) -> bool:
+    """체크인 시간이 바뀌면 깨우기 작업을 다시 등록한다(SP9 8장). 결과는 `app_state.wake_task_stale`에 적는다
+    (즉시 갈래 `wake_task_result`): 설정 화면은 `GET /settings/checkin-times`의 `wake_updated`로 안내 줄을 보인다.
+    안 돼도 원래 동작의 답은 그대로다."""
+    ok = await windows.refresh_wake_task(root=deps.settings.paths.root)
+    assert deps.dispatcher is not None
+    deps.dispatcher.apply_action(
+        ActionRequest("wake_task_result", {"ok": ok}, actor="user", channel="app", endpoint="push")
+    )
+    return ok
 
 
 def _undid_checkin_time(deps: ApiDeps, undone_id: Any) -> bool:
@@ -115,7 +127,7 @@ async def post_undo(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         )
     )
     if res.status == "undone" and _undid_checkin_time(deps, res.body.get("undone")):
-        await _refresh_wake(deps)
+        await refresh_wake(deps)
     model = UndoResponse if res.status in ("undone", "already_undone") else ErrorBody
     return web.json_response(dump(model, res.body), status=res.http_status)
 

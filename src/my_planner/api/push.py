@@ -17,7 +17,12 @@ from typing import TYPE_CHECKING, Any
 from aiohttp import web
 from pydantic import ValidationError
 
-from my_planner.api.actions import BAD_BODY, read_json_object
+from my_planner.api.actions import (
+    BAD_BODY,
+    action_response,
+    read_json_object,
+    refresh_wake,
+)
 from my_planner.api.models import (
     ApiError,
     CheckinTimePutBody,
@@ -34,7 +39,6 @@ from my_planner.api.models import (
 )
 from my_planner.clock import logical_date
 from my_planner.harness.delivery import effective_channel
-from my_planner.platform import windows
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.state import NOTIFY_PRIMARY_KEY, StateRepo
 from my_planner.tools.actions import ActionRequest
@@ -155,7 +159,10 @@ async def put_notify(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
 def checkin_times_view(conn: sqlite3.Connection, deps: ApiDeps) -> dict[str, Any]:
     s = deps.settings
     today = logical_date(deps.clock.now(), s.timezone, s.day_boundary)
-    return {"items": checkin_items(s, StateRepo(conn, deps.clock).get_schedule_override(), today)}
+    state = StateRepo(conn, deps.clock)
+    return {
+        "items": checkin_items(s, state.get_schedule_override(), today), "wake_updated": not state.wake_task_stale(),
+    }
 
 
 def get_checkin_times(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
@@ -179,15 +186,15 @@ async def put_checkin_times(request: web.Request, deps: ApiDeps) -> web.StreamRe
     res = deps.dispatcher.apply_action(ActionRequest(
         "set_checkin_time", {"loop": req.loop, "day_type": req.day_type, "time": req.time}, actor="user", channel="app",
     ))
-    if res.status != "applied":
-        return error_response(422, "checkin_time_invalid", MSG_INVALID)
-    wake_updated = await windows.refresh_wake_task(root=deps.settings.paths.root)
+    if res.status != "applied":  # 그대로 넘긴다(검증은 위에서 했다: 여기는 거절·충돌 같은 다른 결과)
+        return action_response(res)
+    await refresh_wake(deps)
     conn = deps.read_conn()
     try:
         view = checkin_times_view(conn, deps)
     finally:
         conn.close()
     return web.json_response(dump(CheckinTimesUpdated, {
-        **view, "applies": res.body["result"]["applies"], "wake_updated": wake_updated,
+        **view, "applies": res.body["result"]["applies"],
         "activity_id": res.body.get("activity_id"), "undo_id": res.body.get("undo_id"),
     }))

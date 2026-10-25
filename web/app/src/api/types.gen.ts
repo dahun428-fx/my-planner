@@ -270,13 +270,15 @@ export interface CheckinTimePutBody {
   time: string;
 }
 /**
- * `GET /settings/checkin-times`: 네 칸(평일 아침, 평일 저녁, 주말 아침, 주말 저녁).
+ * `GET /settings/checkin-times`: 네 칸(평일 아침, 평일 저녁, 주말 아침, 주말 저녁)과, 마지막 깨우기 작업 다시
+ * 등록이 됐는지(`wake_updated`: PUT, 확인 카드, 되돌리기 어느 쪽에서 바꿨든 같은 값).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "CheckinTimes".
  */
 export interface CheckinTimes {
   items: CheckinTimeItem[];
+  wake_updated: boolean;
 }
 /**
  * 체크인 시간 한 칸(SP9 8장). `time`은 앞으로의 값("HH:MM"), `from`은 그 값이 적용되는 첫 날(논리적 날짜,
@@ -293,8 +295,7 @@ export interface CheckinTimeItem {
   time: string;
 }
 /**
- * `PUT /settings/checkin-times`의 답: 지금 네 칸과 바꾼 칸의 적용 시점, 깨우기 작업을 다시 등록했는지
- * (`wake_updated`, 안 됐으면 설정 화면에 안내 줄), 되돌리기 id(`undo_id`, 활동 id와 같다).
+ * `PUT /settings/checkin-times`의 답: 지금 네 칸(과 `wake_updated`), 바꾼 칸의 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "CheckinTimesUpdated".

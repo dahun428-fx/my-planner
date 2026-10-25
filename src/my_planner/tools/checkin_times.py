@@ -28,6 +28,7 @@ from my_planner.loop.schedule import (
     CheckinSlot,
     DayType,
     Overrides,
+    config_time,
     day_type_of,
     review_time,
     slot_time,
@@ -103,6 +104,24 @@ def _runs_today(runs: Iterable[Run], loops: set[LoopKey], today: date, settings:
     )
 
 
+def _follows_review(settings: Settings, loop: LoopKey, day_type: DayType, d: date) -> bool:
+    """d가 주간 회고 요일이고 이 칸이 주말 저녁이면 회고도 이 칸을 따라간다(8장)."""
+    return (
+        loop is LoopKey.evening_checkin and day_type == "weekend"
+        and d.weekday() == settings.schedule.review.week.weekday_index
+    )
+
+
+def _today_values(
+    settings: Settings, overrides: Overrides, loop: LoopKey, day_type: DayType, d: date
+) -> tuple[time, ...]:
+    """날짜 d에 이 칸이 정하는 시각들: 그 칸의 시각, 회고 요일의 주말 저녁이면 회고 시각도."""
+    out = (slot_time(settings, overrides, loop, day_type, d),)
+    if _follows_review(settings, loop, day_type, d):
+        out += (review_time(settings, overrides, d),)
+    return out
+
+
 def decide_from(
     now: datetime, loop: LoopKey, day_type: DayType, new: time, overrides: Overrides, runs: Iterable[Run],
     *, settings: Settings,
@@ -119,10 +138,9 @@ def decide_from(
         return tomorrow
     z = ZoneInfo(tz)
     loops = {loop}
-    originals = [slot_time(settings, overrides, loop, day_type, today)]
-    if loop is LoopKey.evening_checkin and today.weekday() == 6:  # 일요일 회고는 주말 저녁을 따라간다
+    originals = list(_today_values(settings, overrides, loop, day_type, today))
+    if _follows_review(settings, loop, day_type, today):
         loops.add(LoopKey.review)
-        originals.append(review_time(settings, overrides, today))
     if _runs_today(runs, loops, today, settings):
         return tomorrow
     if datetime.combine(today, new, z) > now and all(datetime.combine(today, t, z) > now for t in originals):
@@ -200,13 +218,20 @@ class CheckinTimeTools:
         return ov, old, new_slot, before, applies
 
     def apply_checkin_time(self: Tools, ctx: RunContext, loop: Any = None, day_type: Any = None,
-                           time: Any = None) -> dict[str, Any]:
-        """즉시 갈래(앱 설정, 확인 카드): 바로 적용하고 되돌릴 수 있게 활동을 남긴다(한 트랜잭션)."""
+                           time: Any = None, applies: Any = None) -> dict[str, Any]:
+        """즉시 갈래(앱 설정, 확인 카드): 바로 적용하고 되돌릴 수 있게 활동을 남긴다(한 트랜잭션).
+
+        `applies`는 확인 카드가 물었던 적용 시점(오늘부터/내일부터)이다. 적용 시점은 지금 다시 정하므로, 물은 뒤에
+        달라졌으면 아무것도 바꾸지 않고 `{"stale": True}`(→ 409 stale, 카드가 다시 묻게)."""
         checked = self._check_checkin(loop, day_type, time)
         if isinstance(checked, str):
             return _err(checked)
         lk, dt, new = checked
-        ov, old, new_slot, before, applies = self._plan_checkin(lk, dt, new)
+        ov, old, new_slot, before, now_applies = self._plan_checkin(lk, dt, new)
+        if applies is not None and applies != now_applies:
+            log.info("checkin_time_stale", extra={"loop": lk.value, "day_type": dt})
+            return {"stale": True}
+        applies = now_applies
         assert self.state is not None
         ov.setdefault(lk, {})[dt] = new_slot
         with self.tasks.transaction():
@@ -256,7 +281,8 @@ class CheckinTimeTools:
         lk, dt, new = checked
         _, _, _, before, applies = self._plan_checkin(lk, dt, new)
         summary = confirm_checkin_summary(lk, dt, before, new, applies)
-        args = {"loop": lk.value, "day_type": dt, "time": f"{new:%H:%M}"}
+        # 물을 때의 적용 시점도 싣는다: 확인할 때 달라졌으면 적용하지 않는다(`apply_checkin_time`)
+        args = {"loop": lk.value, "day_type": dt, "time": f"{new:%H:%M}", "applies": applies}
         button = f"체크인 시간: {slot_label(lk, dt)}"
         if ctx.run_turn and ctx.run_id is not None:
             return self._request_confirm(ctx, ACTION, args, summary, button)
@@ -288,17 +314,35 @@ class CheckinTimeTools:
 
 
 def _undo_checkin_time(tools: Tools, payload: dict[str, Any], ctx: RunContext) -> str | None:
-    """이전 칸으로 되돌린다(칸이 없었으면 칸을 지워 config 값으로)."""
-    assert tools.state is not None
+    """되돌리기 = "이전 시각으로 다시 바꾸기"(8장 적용 시점 규칙을 그대로 탄다).
+
+    이전 칸(없었으면 칸을 지워 config 값)을 그대로 두면 오늘 값이 달라지는 경우, 오늘 회차가 이미 있거나 이전 시각이
+    이미 지났으면(`decide_from`이 내일) 오늘은 지금 값을 두고 내일부터 이전 시각: `CheckinSlot(이전 시각, 내일, 지금 오늘 값)`.
+    그래서 되돌려도 오늘 회차가 사라지거나 두 번 생기지 않는다.
+    """
+    assert tools.state is not None and tools.settings is not None and tools.runs is not None
+    s = tools.settings
     loop, day_type = LoopKey(payload["loop"]), payload["day_type"]
     ov = tools.state.get_schedule_override()
     old = _slot_from_json(payload.get("slot"))
-    slots = ov.setdefault(loop, {})
+    restored = {k: dict(v) for k, v in ov.items()}
+    slots = restored.setdefault(loop, {})
     if old is None:
         slots.pop(day_type, None)
     else:
         slots[day_type] = old
-    tools.state.set_schedule_override({k: v for k, v in ov.items() if v})
+    now = tools.clock.now()
+    today = logical_date(now, s.timezone, s.day_boundary)
+    if day_type_of(today) == day_type:
+        current = _today_values(s, ov, loop, day_type, today)
+        back = _today_values(s, restored, loop, day_type, today)
+        if back != current:
+            runs = tools.runs.on_logical_date(today, s.timezone, s.day_boundary)
+            from_ = decide_from(now, loop, day_type, back[0], ov, runs, settings=s)
+            if from_ != today:
+                forward = old.time if old is not None else config_time(s, loop, day_type)
+                slots[day_type] = CheckinSlot(forward, from_, current[0])
+    tools.state.set_schedule_override({k: v for k, v in restored.items() if v})
     return None
 
 

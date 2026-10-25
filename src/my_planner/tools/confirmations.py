@@ -311,12 +311,20 @@ _HABIT_SUMMARY = re.compile(r"^[✓↩] (?P<verb>습관[^:]*): (?P<rest>.*)$")
 _HABIT_TAIL = re.compile(r" \((매일|주 \d회|\d{1,2}/\d{1,2})\)$")
 
 
+# `checkin_set_line`의 되돌림: `✓ 체크인 시간 바꿈: 평일 아침 07:00 → 07:30 (내일부터)` → `평일 아침 체크인 시간 07:30 → 07:00`
+_CHECKIN_SET = re.compile(
+    r"^✓ 체크인 시간 바꿈: (?P<slot>\S+ \S+) (?P<before>\d\d:\d\d) → (?P<after>\d\d:\d\d)"
+)
+
+
 def undo_summary(summary: str) -> str:
     """되돌림 확인(부록 A): `↩ 되돌림: {확인 문구 요지}`. `✓ 완료: 운동` → `↩ 되돌림: 운동 완료`.
 
     요지는 원래 활동의 확인 문구에서 만든다: 날짜 꼬리(`→ 내일`, `(10/25 14:00)`)는 떼고, 우선순위는 목록 이름만.
     습관은 주기·날짜 꼬리를 떼고 `운동 습관 체크`, `운동 습관 쉬어 가기`처럼 둔다.
     """
+    if (ck := _CHECKIN_SET.match(summary)) is not None:
+        return f"↩ 되돌림: {ck['slot']} 체크인 시간 {ck['after']} → {ck['before']}"
     if (h := _HABIT_SUMMARY.match(summary)) is not None:
         verb = "습관 체크" if h["verb"] == "습관" else h["verb"]
         return f"↩ 되돌림: {_HABIT_TAIL.sub('', h['rest'])} {verb}"

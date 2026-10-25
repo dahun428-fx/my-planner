@@ -242,7 +242,7 @@ async def test_undo_restores_previous_slot(tmp_path):
         assert resp.status == 200, await resp.text()
         undone = await resp.json()
         after = env.parts.state.get_schedule_override()
-    assert undone["confirmation"] == "↩ 되돌림: 평일 아침 07:00 → 07:30 (내일부터) 체크인 시간 바꿈"
+    assert undone["confirmation"] == "↩ 되돌림: 평일 아침 체크인 시간 07:30 → 07:00"
     assert after == {MB: {"weekday": CheckinSlot(time(7, 0), date(2026, 10, 27), time(9, 0))}}
 
 
@@ -257,6 +257,50 @@ async def test_undo_first_change_removes_slot(tmp_path):
     assert view["items"][3] == {
         "loop": "evening_checkin", "day_type": "weekend", "time": "18:00", "from": None, "effective_today": "18:00",
     }
+
+
+async def _undo(env, activity_id):
+    resp = await env.post(f"/activity/{activity_id}/undo", json={"client_msg_id": f"u-{activity_id}"})
+    assert resp.status == 200, await resp.text()
+    return await resp.json()
+
+
+async def test_undo_after_sent(tmp_path):
+    # 08:00에 09:00 → 08:30(오늘부터), 08:30 회차가 나간 뒤 08:40에 되돌림: 오늘 두 번째 회차가 생기면 안 된다
+    async with BeEnv.start(tmp_path, start=MON_0800) as env:
+        _, body = await _put(env, "morning_brief", "weekday", "08:30")
+        assert body["applies"] == "today"
+        run = env.parts.runs.ensure(MB, kst(2026, 10, 26, 8, 30))
+        env.parts.runs.mark_done(run.id)
+        env.clock.set(kst(2026, 10, 26, 8, 40))
+        await _undo(env, body["undo_id"])
+        ov = env.parts.state.get_schedule_override()
+        due = due_between(kst(2026, 10, 26, 8, 40), kst(2026, 10, 27, 12, 0), env.settings,
+                          env.settings.timezone, {MB}, ov)
+    assert ov == {MB: {"weekday": CheckinSlot(time(9, 0), date(2026, 10, 27), time(8, 30))}}
+    assert [d.scheduled_for for d in due] == [kst(2026, 10, 27, 9, 0)]  # 오늘 09:00 회차는 없다
+
+
+async def test_undo_after_original_time_passed(tmp_path):
+    # 08:00에 09:00 → 09:30(오늘부터), 09:10에 되돌림: 09:00은 이미 지났으니 오늘은 09:30 그대로, 내일부터 09:00
+    async with BeEnv.start(tmp_path, start=MON_0800) as env:
+        _, body = await _put(env, "morning_brief", "weekday", "09:30")
+        env.clock.set(kst(2026, 10, 26, 9, 10))
+        await _undo(env, body["undo_id"])
+        ov = env.parts.state.get_schedule_override()
+        due = due_between(kst(2026, 10, 26, 9, 10), kst(2026, 10, 27, 12, 0), env.settings,
+                          env.settings.timezone, {MB}, ov)
+    assert ov == {MB: {"weekday": CheckinSlot(time(9, 0), date(2026, 10, 27), time(9, 30))}}
+    assert [d.scheduled_for for d in due] == [kst(2026, 10, 26, 9, 30), kst(2026, 10, 27, 9, 0)]
+
+
+async def test_undo_before_either_time_restores(tmp_path):
+    async with BeEnv.start(tmp_path, start=MON_0800) as env:
+        _, body = await _put(env, "morning_brief", "weekday", "09:30")
+        env.clock.set(kst(2026, 10, 26, 8, 10))
+        await _undo(env, body["undo_id"])
+        ov = env.parts.state.get_schedule_override()
+    assert ov == {}
 
 
 async def test_tool_always_needs_confirm(tmp_path):
@@ -280,10 +324,88 @@ async def test_tool_always_needs_confirm(tmp_path):
     assert out["summary"] == "체크인 시간을 바꿔요: 평일 저녁 17:30 → 18:00 (오늘부터)"
     assert "error" in bad
     assert ev.data["card"] is True and ev.data["args"] == {"loop": "evening_checkin", "day_type": "weekday",
-                                                           "time": "18:00"}
+                                                           "time": "18:00", "applies": "today"}
     assert status == 200 and body["status"] == "applied", body
     assert ov[LoopKey.evening_checkin]["weekday"].time == time(18, 0)
     assert row["risk"] == "low" and body["undo_id"] == row["id"]  # 확인으로 적용해도 되돌릴 수 있다(8장)
+
+
+async def test_confirm_refused_when_applies_changed(tmp_path):
+    # 17:25에 물으면 오늘부터(17:30, 18:00 모두 뒤). 17:31에 확인하면 17:30이 지나 내일부터가 된다: 적용하지 않고 409 stale
+    from my_planner.domain import RunContext
+    from my_planner.tools.mcp_adapter import call_tool
+
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 17, 25)) as env:
+        ctx = RunContext(conversation_id=None, run_id=None, actor="secretary", channel="app")
+        out = call_tool(env.parts.tools, ctx, "set_checkin_time",
+                        {"loop": "evening_checkin", "day_type": "weekday", "time": "18:00"})
+        (ev,) = [e for e in ctx.events if e.kind == "confirm_requested"]
+        assert ev.data["args"]["applies"] == "today" and out["summary"].endswith("(오늘부터)")
+        env.clock.set(kst(2026, 10, 26, 17, 31))
+        status, body = await env.action("set_checkin_time", dict(ev.data["args"]), confirm_token=out["confirm_token"])
+        ov = env.parts.state.get_schedule_override()
+        token = env.parts.confirms.get(out["confirm_token"])
+        sets = [r for r in env.activity() if r["kind"] == "checkin_time_set"]
+    assert status == 409 and body["error"]["code"] == "conflict", body
+    assert ov == {} and sets == []
+    assert token.resolution == "stale"
+
+
+async def test_wake_stale_kept_in_state_and_shown_by_get(tmp_path, monkeypatch):
+    from my_planner.platform import windows
+
+    results = [False, True]
+
+    async def fake(timeout_s=20, *, root=None):
+        return results.pop(0)
+
+    monkeypatch.setattr(windows, "refresh_wake_task", fake)
+    async with BeEnv.start(tmp_path, start=MON_0800) as env:
+        before = await (await env.get("/settings/checkin-times")).json()
+        _, put = await _put(env, "evening_checkin", "weekday", "18:00")
+        failed = await (await env.get("/settings/checkin-times")).json()
+        await _undo(env, put["undo_id"])  # 되돌리기도 다시 등록한다: 이번엔 됐다
+        ok = await (await env.get("/settings/checkin-times")).json()
+    _validate("CheckinTimes", failed)
+    assert before["wake_updated"] is True
+    assert put["wake_updated"] is False and failed["wake_updated"] is False
+    assert ok["wake_updated"] is True and results == []
+
+
+async def test_confirm_card_change_records_wake_result(tmp_path, monkeypatch):
+    from my_planner.domain import RunContext
+    from my_planner.platform import windows
+    from my_planner.tools.mcp_adapter import call_tool
+
+    async def failing(timeout_s=20, *, root=None):
+        return False
+
+    monkeypatch.setattr(windows, "refresh_wake_task", failing)
+    async with BeEnv.start(tmp_path, start=MON_0800) as env:
+        ctx = RunContext(conversation_id=None, run_id=None, actor="secretary", channel="app")
+        out = call_tool(env.parts.tools, ctx, "set_checkin_time",
+                        {"loop": "evening_checkin", "day_type": "weekday", "time": "18:00"})
+        (ev,) = [e for e in ctx.events if e.kind == "confirm_requested"]
+        status, _ = await env.action("set_checkin_time", dict(ev.data["args"]), confirm_token=out["confirm_token"])
+        view = await (await env.get("/settings/checkin-times")).json()
+    assert status == 200 and view["wake_updated"] is False
+
+
+def test_wake_task_result_is_internal():
+    from my_planner.tools.actions import ACTIONS
+
+    spec = ACTIONS["wake_task_result"]
+    assert spec.public is False and spec.endpoint == "push"
+
+
+async def test_put_passes_through_non_applied_result(tmp_path, monkeypatch):
+    from my_planner.tools.actions import ActionResult
+
+    async with BeEnv.start(tmp_path, start=MON_0800) as env:
+        conflict = ActionResult("conflict", 409, {"error": {"code": "conflict", "message": "x"}})
+        monkeypatch.setattr(env.parts.dispatcher, "apply_action", lambda req: conflict)
+        status, body = await _put(env, "morning_brief", "weekday", "09:30")
+    assert status == 409 and body["error"]["code"] == "conflict"
 
 
 async def test_chat_tool_adds_confirm_card_to_stream(tmp_path):
@@ -389,8 +511,57 @@ async def test_refresh_wake_task_runs_script_one_at_a_time(tmp_path, monkeypatch
 
     monkeypatch.setattr(windows, "IS_WINDOWS", True)
     monkeypatch.setattr(windows, "_run_wake_script", fake)
+    monkeypatch.setattr(windows, "_WAKE_LOCK", asyncio.Lock())  # 시험마다 이벤트 루프가 다르다
     got = await asyncio.gather(*(windows.refresh_wake_task(root=tmp_path) for _ in range(3)))
-    assert got == [True, True, True] and peak[0] == 1 and seen == [(tmp_path, 20)] * 3
+    assert got == [True, True, True] and peak[0] == 1
+    assert [r for r, _ in seen] == [tmp_path] * 3
+    # 한 마감: 뒤에 선 호출은 잠금을 기다린 만큼 스크립트 시간 제한이 줄어든다
+    limits = [t for _, t in seen]
+    assert all(0 < t <= 20 for t in limits) and limits[2] < limits[1] < limits[0]
+
+
+async def test_refresh_wake_task_lock_wait_counts_toward_timeout(tmp_path, monkeypatch):
+    import asyncio
+
+    from my_planner.platform import windows
+
+    calls = []
+
+    def slow(root, timeout_s):
+        import time as _t
+
+        calls.append(timeout_s)
+        _t.sleep(0.3)
+        return True
+
+    monkeypatch.setattr(windows, "IS_WINDOWS", True)
+    monkeypatch.setattr(windows, "_run_wake_script", slow)
+    monkeypatch.setattr(windows, "_WAIT_MARGIN_S", 0)
+    monkeypatch.setattr(windows, "_WAKE_LOCK", asyncio.Lock())  # 시험마다 이벤트 루프가 다르다
+    first = asyncio.create_task(windows.refresh_wake_task(5, root=tmp_path))
+    await asyncio.sleep(0.05)
+    # 잠금을 0.25초 넘게 기다려야 하므로 0.1초 마감은 스크립트를 돌리지 않고 False
+    assert await windows.refresh_wake_task(0.1, root=tmp_path) is False
+    assert await first is True
+    assert len(calls) == 1
+
+
+def test_wake_script_exit_3_is_skipped_true(tmp_path, monkeypatch, caplog):
+    import logging
+    import subprocess
+
+    from my_planner.platform import windows
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 3, b"", b"")
+
+    monkeypatch.setattr(windows.subprocess, "run", fake_run)
+    with caplog.at_level(logging.INFO, logger=windows.log.name):
+        assert windows._run_wake_script(tmp_path, 5) is True
+    (rec,) = [r for r in caplog.records if r.getMessage() == "wake_task_refresh_skipped"]
+    assert rec.levelno == logging.INFO
+    monkeypatch.setattr(windows.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b""))
+    assert windows._run_wake_script(tmp_path, 5) is False
 
 
 async def test_refresh_wake_task_timeout_is_false(tmp_path, monkeypatch):
@@ -420,3 +591,13 @@ def test_update_wake_task_script_reuses_register_functions():
     assert "function Get-WakeTimes" in common and "function Register-FromXml" in common
     assert "function Get-WakeTimes" not in register
     assert '"would set $($times.Count) triggers"' in update and "[switch]$DryRun" in update
+    assert update.count("exit 3") == 2  # role=dev, 작업 없음: 건너뜀(BE는 True, info)
+
+
+def test_ps1_scripts_are_crlf_with_bom():
+    from pathlib import Path
+
+    for f in sorted((Path(__file__).resolve().parents[1] / "scripts").glob("*.ps1")):
+        raw = f.read_bytes()
+        assert raw.startswith(b"\xef\xbb\xbf"), f.name
+        assert raw.count(b"\n") == raw.count(b"\r\n"), f.name

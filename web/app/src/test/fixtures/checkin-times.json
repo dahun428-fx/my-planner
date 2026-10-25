@@ -4,5 +4,6 @@
     { "loop": "evening_checkin", "day_type": "weekday", "time": "17:30", "from": null, "effective_today": "17:30" },
     { "loop": "morning_brief", "day_type": "weekend", "time": "10:00", "from": null, "effective_today": "10:00" },
     { "loop": "evening_checkin", "day_type": "weekend", "time": "18:00", "from": null, "effective_today": "18:00" }
-  ]
+  ],
+  "wake_updated": true
 }

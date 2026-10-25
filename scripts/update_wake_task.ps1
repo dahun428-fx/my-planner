@@ -7,9 +7,10 @@
   시각은 register_task.ps1과 같은 Get-WakeTimes(`python -m my_planner.wake_times`: config.toml + DB의 바꾼 시각)로
   계산하고, 등록도 같은 Register-FromXml로 합니다(scripts\task_common.ps1). 그때의 DB 값으로 트리거를 다시 만드므로
   여러 번 겹쳐 불러도 마지막 값이 이깁니다.
-  - 운영 작업만 다룹니다. 개발용 체크아웃(config.local.toml의 role = "dev")이면 아무것도 하지 않고 끝납니다.
-  - 깨우기 작업이 없으면(-NoWake로 등록) 새로 만들지 않고 끝납니다.
-  - 실패하면 종료 코드가 0이 아닙니다. BE는 설정 화면에 register_task.ps1을 다시 실행하라는 안내를 보입니다.
+  - 운영 작업만 다룹니다. 개발용 체크아웃(config.local.toml의 role = "dev")이면 아무것도 하지 않고 끝납니다(종료 코드 3).
+  - 깨우기 작업이 없으면(-NoWake로 등록) 새로 만들지 않고 끝납니다(종료 코드 3).
+  - 건너뛰면(role = "dev", 작업 없음) 종료 코드 3입니다. BE는 성공으로 보고 info로만 남깁니다.
+  - 실패하면 종료 코드가 0도 3도 아닙니다. BE는 설정 화면에 register_task.ps1을 다시 실행하라는 안내를 보입니다.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\update_wake_task.ps1 -DryRun
@@ -33,7 +34,7 @@ $localCfg = Join-Path $Root 'config.local.toml'
 if ((Test-Path -LiteralPath $localCfg) -and
     (Select-String -LiteralPath $localCfg -Pattern '^\s*role\s*=\s*"dev"' -Quiet)) {
     Write-Output "개발용 체크아웃이라 깨우기 작업을 건드리지 않습니다: $Root"
-    exit 0
+    exit 3
 }
 $python = Join-Path $Root '.venv\Scripts\python.exe'
 $pythonw = Join-Path $Root '.venv\Scripts\pythonw.exe'
@@ -54,7 +55,7 @@ if ($DryRun) {
 }
 if (-not (Get-ScheduledTask -TaskName $WakeTask -ErrorAction SilentlyContinue)) {
     Write-Output "깨우기 작업이 없어 건너뜁니다: $WakeTask"
-    exit 0
+    exit 3
 }
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $values = @{

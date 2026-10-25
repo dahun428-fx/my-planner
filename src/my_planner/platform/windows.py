@@ -153,13 +153,15 @@ def hide_console() -> ConsoleResult:
 WAKE_SCRIPT = Path("scripts") / "update_wake_task.ps1"
 WAKE_REFRESH_TIMEOUT_S = 20
 CREATE_NO_WINDOW = 0x08000000
+WAKE_SKIPPED_EXIT = 3  # update_wake_task.ps1: 깨우기 작업이 없거나 role=dev라 건너뜀
 _WAIT_MARGIN_S = 1.0  # 스크립트 자신의 시간 제한(`subprocess.run(timeout=)`)이 먼저 걸리게 조금 더 기다린다
 # 한 번에 하나만 돈다. 스크립트는 그때의 DB 값으로 트리거를 다시 만들므로 겹쳐 바꿔도 마지막 값이 이긴다
 _WAKE_LOCK = asyncio.Lock()
 
 
 def _run_wake_script(root: Path, timeout_s: float) -> bool:
-    """`powershell -File scripts/update_wake_task.ps1 -Root <root>`. 종료 코드 0이면 True. 출력은 남기지 않는다."""
+    """`powershell -File scripts/update_wake_task.ps1 -Root <root>`. 종료 코드 0이면 True, 3(건너뜀)도 True(info 로그).
+    출력은 남기지 않는다."""
     cmd = [
         "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
         "-File", str(root / WAKE_SCRIPT), "-Root", str(root),
@@ -175,6 +177,9 @@ def _run_wake_script(root: Path, timeout_s: float) -> bool:
     except OSError as e:
         log.warning("wake_task_refresh_error", extra={"error_type": type(e).__name__})
         return False
+    if done.returncode == WAKE_SKIPPED_EXIT:
+        log.info("wake_task_refresh_skipped")  # 작업이 없거나 role=dev: 할 일이 없다
+        return True
     if done.returncode != 0:
         log.warning("wake_task_refresh_failed", extra={"exit_code": done.returncode})
         return False
@@ -183,7 +188,8 @@ def _run_wake_script(root: Path, timeout_s: float) -> bool:
 
 
 async def refresh_wake_task(timeout_s: float = WAKE_REFRESH_TIMEOUT_S, *, root: Path | None = None) -> bool:
-    """깨우기 작업만 다시 등록하고 끝나기를 최대 `timeout_s`초 기다린다. Windows가 아니면 할 일이 없어 True.
+    """깨우기 작업만 다시 등록하고 끝나기를 최대 `timeout_s`초 기다린다(잠금 기다림 포함, 한 마감). Windows가 아니면
+    할 일이 없어 True.
 
     스크립트는 `asyncio.to_thread`로 돌린다(이벤트 루프를 막지 않는다). 시간이 지나면 False(작업은 그대로일 수 있다).
     """
@@ -193,11 +199,15 @@ async def refresh_wake_task(timeout_s: float = WAKE_REFRESH_TIMEOUT_S, *, root: 
         from my_planner.config import resolve_root
 
         root = resolve_root()
-    async with _WAKE_LOCK:
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_run_wake_script, root, timeout_s), timeout_s + _WAIT_MARGIN_S
-            )
-        except TimeoutError:
-            log.warning("wake_task_refresh_timeout", extra={"timeout_s": timeout_s})
-            return False
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s  # 잠금 기다림과 스크립트 실행을 합쳐 timeout_s
+    try:
+        async with asyncio.timeout_at(deadline + _WAIT_MARGIN_S):
+            async with _WAKE_LOCK:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    raise TimeoutError
+                return await asyncio.to_thread(_run_wake_script, root, remaining)
+    except TimeoutError:
+        log.warning("wake_task_refresh_timeout", extra={"timeout_s": timeout_s})
+        return False

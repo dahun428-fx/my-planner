@@ -55,7 +55,9 @@ export function CheckinTimes({ online }: { online: boolean }) {
   const lock = useRef(false);
 
   useEffect(() => {
-    if (poll.result?.kind === "ok") setItems(poll.result.data.items);
+    if (poll.result?.kind !== "ok") return;
+    setItems(poll.result.data.items);
+    setWakeStale(!poll.result.data.wake_updated); // the same line whether the last change came from here, a card or undo
   }, [poll.result]);
   useEffect(() => toast.onUndone(() => void poll.refresh()), [toast, poll.refresh]);
 

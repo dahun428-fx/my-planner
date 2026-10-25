@@ -337,6 +337,14 @@ describe("Settings", () => {
     expect(await within(group).findByText(copy.checkinTimes.wakeStale)).toBeInTheDocument();
   });
 
+  it("check-in times: GET wake_updated false shows the same line (a change from a card or undo)", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/checkin-times`, () => HttpResponse.json({ ...checkinTimes, wake_updated: false })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await checkinGroup();
+    expect(await within(group).findByText(copy.checkinTimes.wakeStale)).toBeInTheDocument();
+  });
+
   it("check-in times: an older BE without the route shows the SP1 times read-only", async () => {
     serve();
     server.use(http.get(`${BASE}/settings/checkin-times`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
