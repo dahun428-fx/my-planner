@@ -298,7 +298,10 @@ export function Today() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <LargeTitle title={copy.today.title} meta={data ? dateLine(data) : <Skeleton size="short" />} trailing={
+      <LargeTitle
+        title={copy.today.title}
+        meta={data ? dateLine(data) : <Skeleton size="short" />}
+        trailing={
           <>
             {state && <StatusDot state={state} />}
             <MoreButton />

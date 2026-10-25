@@ -141,6 +141,9 @@ describe("copy", () => {
   it("SP9 9.6 chat activity copy", () => {
     expect(copy.chat.changedMany(3)).toBe("✓ 3개를 바꿨어요"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(copy.chat.undonePartly(1)).toBe("1개만 되돌렸어요");
+    const values = [copy.chat.changed, copy.chat.undone, ...texts(copy.chat.changedMany), ...texts(copy.chat.undonePartly)];
+    expect(values.length).toBeGreaterThan(3);
+    for (const t of values) expect(banned.filter((w) => t.includes(w))).toEqual([]);
   });
 
   it("areas are glossary names", () => {

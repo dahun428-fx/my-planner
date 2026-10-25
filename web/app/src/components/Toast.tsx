@@ -45,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const seq = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undone = useRef(new Set<() => void>());
-  const { onReconnect } = useConnection();
+  const { onReconnect, state } = useConnection();
 
   const showFor = useCallback((t: ToastContent, ms: number) => {
     if (timer.current) clearTimeout(timer.current);
@@ -117,7 +117,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo(() => ({ show, showFor, onUndone }), [show, showFor, onUndone]);
   const ids = current ? idsOf(current) : [];
-  const pending = ids.some((id) => busy.has(id) || multiBusy.has(id));
+  // A chat answer's undo (undoIds) is off while not online, as the old chat box's was (read-only).
+  const offline = current?.undoIds !== undefined && state?.kind !== "online";
+  const pending = offline || ids.some((id) => busy.has(id) || multiBusy.has(id));
   return (
     <ToastContext.Provider value={api}>
       {children}

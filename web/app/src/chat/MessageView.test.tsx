@@ -40,6 +40,11 @@ describe("MessageView", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("a confirmation without the mark gets one (9.6: \"✓ {confirmation}\")", () => {
+    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: "컨디션 7 기록했어요.", undoIds: [], activityIds: [4] }]} />);
+    expect(document.querySelector("[data-activity]")!.textContent).toBe("✓ 컨디션 7 기록했어요."); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+  });
+
   it("before R4b (no confirmation, only undo ids) the change is still one line of text", () => {
     renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: null, undoIds: [3], activityIds: [3] }]} />);
     expect(document.querySelector("[data-activity]")).toHaveTextContent(copy.chat.changed);
