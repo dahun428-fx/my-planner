@@ -10,8 +10,12 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
+import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parents[2]  # 편집 설치(`pip install -e`): src/my_planner → 저장소 뿌리
 
@@ -27,7 +31,9 @@ def command_probe_on(root: Path | None = None) -> bool:
 def _head(root: Path) -> str | None:
     try:
         out = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5, check=False
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5, check=False,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,  # type: ignore[attr-defined]
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -44,4 +50,7 @@ def health_probe_fails(root: Path | None = None) -> bool:
     if not good:
         return False
     head = _head(base)
-    return head is not None and not head.startswith(good)
+    if head is None:
+        log.warning("probe_head_unreadable")  # 표지가 있는데 시험이 조용히 무효가 되지 않게
+        return False
+    return not head.startswith(good)

@@ -171,7 +171,7 @@ async def _health(request: web.Request) -> web.StreamResponse:
     deps = request.app[DEPS_KEY]
     if deps.safe_mode:
         return web.json_response(safe_mode_view(deps))
-    if health_probe_fails():  # 개발용 결함 주입(SP6 스펙 12장 4행, `my_planner.probe`)
+    if await asyncio.to_thread(health_probe_fails):  # git을 부르므로 루프 밖에서  # 개발용 결함 주입(SP6 스펙 12장 4행, `my_planner.probe`)
         return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
     return await _health_read(request)
 
