@@ -38,8 +38,12 @@ async function handlePush(event) {
   }
   const title = typeof p.title === "string" && p.title ? p.title : DEFAULT_TITLE;
   const body = typeof p.body === "string" ? p.body : "";
-  // reminder (schedule event, SP9 5.3): one tag per target so two reminders never replace each other
-  const tag = p.checkin_id ? "run-" + p.checkin_id : p.type === "reminder" ? "reminder:" + (p.url || "") : "notice";
+  // reminder (schedule event, SP9 5.3): one tag per event and day so two reminders never replace each other
+  const tag = p.checkin_id
+    ? "run-" + p.checkin_id
+    : p.type === "reminder"
+      ? "reminder:" + (p.event_id || "") + ":" + (p.url || "")
+      : "notice";
   await self.registration.showNotification(title, { body: body, tag: tag, data: { url: mapPushUrl(p.url) } });
   const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   for (const w of wins) w.postMessage({ refresh: "today" });

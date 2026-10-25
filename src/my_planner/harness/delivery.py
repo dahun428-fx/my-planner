@@ -130,9 +130,10 @@ def notice_payload(text: str) -> dict[str, Any]:
     return {"type": "notice", "checkin_id": None, "title": NOTICE_TITLE, "body": _first_line(text), "url": NOTICE_URL}
 
 
-def reminder_payload(title: str, body: str, url: str) -> dict[str, Any]:
+def reminder_payload(title: str, body: str, url: str, event_id: int | None = None) -> dict[str, Any]:
     """일정 알림(`type: reminder`, SP9 5.3): 제목은 일정 제목, 누르면 `url`(앱 `/schedule/?date=…`)."""
-    return {"type": "reminder", "checkin_id": None, "title": title, "body": _first_line(body), "url": url}
+    return {"type": "reminder", "checkin_id": None, "title": title, "body": _first_line(body), "url": url,
+            "event_id": event_id}
 
 
 @dataclass
@@ -238,11 +239,13 @@ class Delivery:
 
     # --- 일정 알림 (SP9 5.3) ---
 
-    async def deliver_reminder(self, title: str, body: str, url: str) -> Channel | None:
+    async def deliver_reminder(
+        self, title: str, body: str, url: str, *, event_id: int | None = None, ttl_s: int = REMINDER_TTL_S
+    ) -> Channel | None:
         """`deliver_notice`와 같은 통로 규칙: 주 통로가 `app`이면 `type: reminder` 푸시, 아무도 못 받으면 텔레그램에
         같은 한 줄. 받은 통로, 어디에도 못 보냈으면 None."""
         if self.effective() == "app":
-            ok, _ = await self._push_all(reminder_payload(title, body, url), ttl=REMINDER_TTL_S, topic=None, attempts=1)
+            ok, _ = await self._push_all(reminder_payload(title, body, url, event_id), ttl=ttl_s, topic=None, attempts=1)
             if ok:
                 return "app"
             log.warning("reminder_push_fallback_telegram")

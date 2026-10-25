@@ -156,7 +156,7 @@ async def test_r4_failed(tmp_path, conn, events):
     push.always("https://push.example.invalid/sub/rem-fake", 410)
     # 푸시를 받은 구독이 없으면 텔레그램으로 대신 간다: 보낸 것이다
     delivery, tg = _delivery(tmp_path, conn, push=push)
-    await send_reminders(pending, delivery, events)
+    await send_reminders(pending, delivery, events, delays=())
     assert [o.text for o in tg.sent] == ["치과 · 14:00 (10분 뒤)"]
     assert rows(conn) == [(e.id, "2026-10-26", "sent")]
 
@@ -166,7 +166,7 @@ async def test_r4_failed(tmp_path, conn, events):
             raise RuntimeError("down")
 
     delivery, tg = _delivery(tmp_path, conn, push=push, telegram=Down())
-    await send_reminders(pending, delivery, events)
+    await send_reminders(pending, delivery, events, delays=())
     assert rows(conn) == [(e.id, "2026-10-26", "failed")]
 
 
@@ -322,10 +322,11 @@ async def test_send_failure_marks_failed(tmp_path, conn):
     now = kst(2026, 10, 26, 13, 50)
 
     class Nowhere:
-        async def deliver_reminder(self, title, body, url):
+        async def deliver_reminder(self, title, body, url, **kw):
             return None
 
     runner, ev, _ = _runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=Nowhere())
+    runner.reminder_delays = ()
     make(ev)
     runner.tick()
     assert rows(conn)[0][2] == "sent"  # 판정은 먼저 적는다
@@ -362,7 +363,7 @@ def test_today_missed_reminders_only_today_and_not_dismissed(tmp_path, conn):
 def test_reminder_payload_has_title_and_schedule_url():
     p = reminder_payload("치과", "14:00 (10분 뒤)", "/schedule/?date=2026-10-26")
     assert p == {"type": "reminder", "checkin_id": None, "title": "치과", "body": "14:00 (10분 뒤)",
-                 "url": "/schedule/?date=2026-10-26"}
+                 "url": "/schedule/?date=2026-10-26", "event_id": None}
 
 
 def test_reminder_copy_has_no_banned_words(events):
@@ -381,3 +382,151 @@ def test_reminder_copy_has_no_banned_words(events):
     assert len(set(copy)) >= 8
     words = banned_words()
     assert [(c, w) for c in copy for w in words if w in c] == []
+
+
+# --- 리뷰 1차 ---
+
+
+def test_all_day_late_body_says_today_on_the_day(conn, events):
+    make(events, all_day=True, remind=1440, d=TUE, title="휴가")  # 알림 10/26 09:00
+    (p,) = judge(events, kst(2026, 10, 26, 8, 0), kst(2026, 10, 27, 8, 30))
+    assert p.outcome.outcome == "late_sent" and p.body == "하루 종일 (오늘)"
+    make(events, all_day=True, remind=1440, d=date(2026, 10, 29), title="출장")  # 알림 10/28 09:00
+    (q,) = judge(events, kst(2026, 10, 28, 8, 0), kst(2026, 10, 28, 9, 0))
+    assert q.body == "하루 종일 (내일)"
+
+
+def test_daily_cap_counts_by_logical_day(conn, events):
+    for i in range(2):
+        make(events, title=f"밤{i}", d=TUE, at="00:30", remind=0)  # 10/27 00:30 = 논리적 날짜 10/26
+    make(events, title="새벽", d=TUE, at="03:30", remind=0)
+    make(events, title="아침", d=TUE, at="04:30", remind=0)  # 논리적 날짜 10/27
+    cap = LimitsConfig(daily_event_reminders=2)
+    judge(events, kst(2026, 10, 27, 0, 29), kst(2026, 10, 27, 0, 30), cap)  # 밤0, 밤1
+    assert [r[2] for r in rows(conn)] == ["sent", "sent"]
+    assert judge(events, kst(2026, 10, 27, 3, 29), kst(2026, 10, 27, 3, 30), cap) == []  # 0시가 지나도 같은 논리적 하루
+    assert rows(conn)[-1][2] == "skipped"
+    assert len(judge(events, kst(2026, 10, 27, 4, 29), kst(2026, 10, 27, 4, 30), cap)) == 1  # 04:00 뒤는 새 하루
+
+
+def test_judging_is_atomic(conn, events, monkeypatch):
+    for i in range(3):
+        make(events, title=f"일정{i}")
+    real = events.record_reminder
+    calls = []
+
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) == 3:
+            raise RuntimeError("database is locked")
+        return real(*a, **k)
+
+    monkeypatch.setattr(events, "record_reminder", flaky)
+    with pytest.raises(RuntimeError):
+        judge(events, kst(2026, 10, 26, 13, 49), kst(2026, 10, 26, 13, 50))
+    assert rows(conn) == []  # 하나도 안 적혔으니 다음 tick이 다시 본다
+    monkeypatch.undo()
+    assert len(judge(events, kst(2026, 10, 26, 13, 49), kst(2026, 10, 26, 13, 50))) == 3
+
+
+def test_lookback_keeps_exactly_seven_days(conn, events):
+    make(events, at="09:00", d=date(2026, 10, 20), repeat="daily")  # 알림 매일 08:50
+    now = kst(2026, 11, 3, 8, 50)  # 정확히 7일 전 11/3-7일 = 10/27 08:50
+    judge(events, now - timedelta(days=9), now)
+    assert rows(conn)[0][1] == "2026-10-27"
+
+
+class _Flaky:
+    def __init__(self, results):
+        self.results, self.calls = list(results), []
+
+    async def deliver_reminder(self, title, body, url, **kw):
+        self.calls.append(kw)
+        return self.results.pop(0)
+
+
+async def _retry(conn, events, results, *, now=None, start_in=timedelta(minutes=30)):
+    clock = events.clock
+    clock.set(now or kst(2026, 10, 26, 13, 50))
+    e = make(events)
+    (p,) = judge(events, kst(2026, 10, 26, 13, 49), kst(2026, 10, 26, 13, 50))
+    sleeps = []
+
+    async def sleep(s):
+        sleeps.append(s)
+        clock.advance(seconds=s)
+
+    d = _Flaky(results)
+    await send_reminders([p], d, events, sleep=sleep)
+    return e, d, sleeps, rows(conn)[0][2]
+
+
+async def test_send_retries_with_backoff_then_succeeds(conn, events):
+    _, d, sleeps, outcome = await _retry(conn, events, [None, None, "app"])
+    assert (len(d.calls), sleeps, outcome) == (3, [20.0, 60.0], "sent")
+
+
+async def test_send_gives_up_after_two_retries(conn, events):
+    _, d, sleeps, outcome = await _retry(conn, events, [None, None, None])
+    assert (len(d.calls), sleeps, outcome) == (3, [20.0, 60.0], "failed")
+
+
+async def test_no_retry_after_event_start(conn, events):
+    # 13:50 알림, 시작 14:00. 첫 시도가 실패하고 20초 뒤는 14:00 이전이지만, 시계가 시작을 넘기면 멈춘다
+    clock = events.clock
+    clock.set(kst(2026, 10, 26, 13, 59, ) + timedelta(seconds=50))
+    make(events)
+    (p,) = judge(events, kst(2026, 10, 26, 13, 49), kst(2026, 10, 26, 13, 50))
+    d = _Flaky([None, "app"])
+
+    async def sleep(s):
+        clock.advance(seconds=s)
+
+    await send_reminders([p], d, events, sleep=sleep)
+    assert len(d.calls) == 1 and rows(conn)[0][2] == "failed"
+
+
+async def test_cancelled_send_marks_failed_not_sent(conn, events):
+    import asyncio
+
+    make(events)
+    (p,) = judge(events, kst(2026, 10, 26, 13, 49), kst(2026, 10, 26, 13, 50))
+    started = asyncio.Event()
+
+    class Slow:
+        async def deliver_reminder(self, *a, **k):
+            started.set()
+            await asyncio.sleep(60)
+
+    task = asyncio.create_task(send_reminders([p], Slow(), events))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert rows(conn)[0][2] == "failed"
+
+
+async def test_runner_drain_cancels_unfinished_sends(tmp_path, conn):
+    import asyncio
+
+    now = kst(2026, 10, 26, 13, 50)
+
+    class Slow:
+        async def deliver_reminder(self, *a, **k):
+            await asyncio.sleep(60)
+
+    runner, ev, _ = _runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=Slow())
+    make(ev)
+    runner.tick()
+    await asyncio.sleep(0)
+    await runner.drain_reminders(timeout=0.01)
+    assert rows(conn)[0][2] == "failed" and not runner.reminder_tasks
+
+
+async def test_ttl_follows_time_until_start(tmp_path, conn, events):
+    make(events, d=TUE, remind=1440)
+    (p,) = judge(events, kst(2026, 10, 26, 13, 59), kst(2026, 10, 26, 14, 0))
+    d = _Flaky(["app"])
+    await send_reminders([p], d, events)
+    assert d.calls == [{"event_id": p.outcome.event_id, "ttl_s": 24 * 3600}]
+    assert reminder_payload("a", "b", "/x", 7)["event_id"] == 7

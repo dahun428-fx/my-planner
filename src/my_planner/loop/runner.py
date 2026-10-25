@@ -22,6 +22,7 @@ from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
 from my_planner.loop.reminders import (
     RESUME_GAP,
+    RETRY_DELAYS_S,
     PendingReminder,
     remind_events,
     send_reminders,
@@ -388,6 +389,7 @@ class Runner:
         self._polling_down = False  # 폴링 재시작이 안 됐다: tick마다 다시 해 본다
         self.events = events  # 일정 알림(SP9 5.3). 없으면 알림 판정을 건너뛴다
         self.reminder_delivery = reminder_delivery
+        self.reminder_delays = RETRY_DELAYS_S  # 보내기 재시도 간격(시험이 바꾼다)
         self.reminder_tasks: set[asyncio.Task[None]] = set()  # 보내는 중인 알림 작업(끝나면 스스로 빠진다)
 
     @property
@@ -488,7 +490,9 @@ class Runner:
         self.ensure_installed()
         last_seen = self._get_time("last_seen_at")
         installed = self._get_time("installed_at")
-        self._remind(last_seen, now)  # 회차가 없어도, 멈춤 중에도, 하트비트 기록보다 앞에서(SP9 5.3)
+        # 회차가 없어도, 멈춤 중에도, 하트비트 기록보다 앞에서(SP9 5.3). 하트비트는 tick 끝에서만 적으니, 뒷부분이 매번
+        # 예외(`tick_error`)면 공백이 커져 알림이 `late_sent`·`missed`로 바뀐다(스펙이 정한 순서)
+        self._remind(last_seen, now)
         if not self.checkins:  # 회차 없이 정리만(2·3단계의 회차 부분을 건너뛴다)
             if self.router is not None:
                 self.router.close_expired()
@@ -558,12 +562,24 @@ class Runner:
         if self.events is None or last_seen is None:  # 첫 실행은 공백을 알 수 없다
             return
         try:
-            pending = remind_events(last_seen_at=last_seen, now=now, events=self.events, limits=self.settings.limits)
+            pending = remind_events(last_seen_at=last_seen, now=now, events=self.events, limits=self.settings.limits,
+                day_boundary=self.settings.day_boundary,
+            )
         except Exception:  # 알림 판정이 안 돼도 회차 판정은 돈다
             log.exception("remind_error")
             return
         if pending:
             self._send_in_background(pending)
+
+    async def drain_reminders(self, timeout: float = 10) -> None:
+        """종료 때: 보내는 중인 알림을 잠깐 기다리고, 남은 것은 취소한다(취소된 알림의 행은 `failed`가 된다)."""
+        tasks = list(self.reminder_tasks)
+        if not tasks:
+            return
+        _, left = await asyncio.wait(tasks, timeout=timeout)
+        for t in left:
+            t.cancel()
+        await asyncio.gather(*left, return_exceptions=True)
 
     def _send_in_background(self, pending: list[PendingReminder]) -> None:
         assert self.events is not None
@@ -578,7 +594,7 @@ class Runner:
             for p in pending:
                 self.events.mark_reminder_failed(p.outcome.event_id, p.outcome.date)
             return
-        task = loop.create_task(send_reminders(pending, self.reminder_delivery, self.events))
+        task = loop.create_task(send_reminders(pending, self.reminder_delivery, self.events, delays=self.reminder_delays))
         self.reminder_tasks.add(task)
         task.add_done_callback(self.reminder_tasks.discard)
 

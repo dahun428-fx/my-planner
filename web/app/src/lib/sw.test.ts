@@ -39,7 +39,16 @@ describe("sw.js reminder notifications", () => {
     expect(sw.shown[0].title).toBe("치과");
     expect(sw.shown[0].options.body).toBe("14:00 (10분 뒤)");
     expect(sw.shown[0].options.data.url).toBe("/schedule/?date=2026-10-26");
-    expect(sw.shown[0].options.tag).toBe("reminder:/schedule/?date=2026-10-26");
+    expect(sw.shown[0].options.tag).toMatch(/^reminder:/);
+  });
+
+  it("two reminders on the same day get different tags, so neither replaces the other", async () => {
+    const sw = boot();
+    for (const event_id of [3, 4]) {
+      const data = { type: "reminder", title: "t", body: "b", url: "/schedule/?date=2026-10-26", event_id };
+      await sw.run("push", { data: { json: () => data } });
+    }
+    expect(new Set(sw.shown.map((n) => n.options.tag)).size).toBe(2);
   });
 
   it("tapping a reminder opens data.url (a new window when none is open)", async () => {

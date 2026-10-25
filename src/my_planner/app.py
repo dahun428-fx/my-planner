@@ -573,6 +573,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 ticking.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await ticking
+                await runner.drain_reminders()  # 보내는 중인 일정 알림을 기다리고, 못 끝낸 것은 failed로(DB를 닫기 전)
                 # 진행 중인 폴링 재시작은 끝나기를 기다린다(안 됐어도 종료는 계속). 끝나면 목록에서 빠지므로 복사한다
                 for task in list(restarting):  # noqa: PERF101
                     with contextlib.suppress(Exception):
