@@ -168,6 +168,21 @@ describe("copy", () => {
     for (const t of values) expect(banned.filter((w) => t.includes(w))).toEqual([]);
   });
 
+  it("conversation list and quick chip copy is SP9 10장 verbatim (9.5 sentences)", () => {
+    const c = copy.chat;
+    expect([c.pastConversations, c.newConversation, c.deleteAsk].join(" · ")).toBe("지난 대화 · 새 대화 · 이 대화를 지울까요? 되돌릴 수 없어요.");
+    const chips = [c.chips.todo, c.chips.event, c.chips.memo, c.chips.today, c.chips.checkin, c.chips.review, c.chips.next];
+    expect(chips.map((x) => x.label).join(" · ")).toBe("할 일 추가 · 일정 추가 · 메모하기 · 오늘 정리해줘 · 체크인 하기 · 이번 주 돌아보기 · 다음 일정 보기");
+    expect(chips.map((x) => x.text)).toEqual(["할 일 추가할래요", "일정 하나 추가할래요", "메모 하나 남길래요", "오늘 정리해줘", "체크인 할게요", "이번 주 돌아볼래요", "다음 일정 알려줘"]);
+    expect([c.groups.today, c.groups.yesterday, c.groups.thisWeek, c.groups.month(10)]).toEqual(["오늘", "어제", "이번 주", "10월"]);
+    expect(c.checkinTag).toBe("체크인");
+    const values = [
+      c.pastConversations, c.deleteAsk, c.delete, c.keep, c.backToChat, c.untitled, c.search, c.noConversations, c.noMatch, c.moreConversations,
+      c.chipsLabel, ...texts(c.groups), ...texts(c.chips),
+    ];
+    for (const t of values) expect(banned.filter((w) => t.includes(w))).toEqual([]);
+  });
+
   it("areas are glossary names", () => {
     expect(Object.values(copy.areas)).toEqual(["커리어", "경제", "건강", "관계", "배움", "삶의 질"]);
   });

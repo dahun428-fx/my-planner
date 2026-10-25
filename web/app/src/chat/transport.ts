@@ -2,14 +2,24 @@ import "./zodJitless"; // first: before "ai" builds its schemas
 import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
 import type { Conn } from "../lib/connection";
 
-/** What the next POST /chat carries besides the message (SP3-4 6.4.1). */
-export type ChatCtx = { conversationId: number | null; checkinId: number | null };
+/**
+ * What the next POST /chat carries besides the message (SP3-4 6.4.1). `resumeConversationId`: the
+ * conversation picked from the list (SP9 7.3 rule 0), sent with every message while it is shown.
+ */
+export type ChatCtx = { conversationId: number | null; checkinId: number | null; resumeConversationId?: number | null };
 
 export interface ChatBody {
   client_msg_id: string;
   conversation_id: number | null;
   checkin_id: number | null;
+  resume_conversation_id?: number;
   message: UIMessage;
+}
+
+// A message can name its own run (the check-in chip, SP9 9.5): `metadata.checkin_id`.
+function ownCheckinId(message: UIMessage): number | null {
+  const meta = message.metadata as { checkin_id?: unknown } | undefined;
+  return typeof meta?.checkin_id === "number" ? meta.checkin_id : null;
 }
 
 /** The body ended before `finish` (or the connection broke while it was read): the answer may still be on the BE. */
@@ -33,10 +43,15 @@ async function chatFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 
 // Spec 4.6 / F4: only the last user message goes, and its id is the client_msg_id, so a resend of
 // the same message (regenerate) gets the stored answer instead of a second one.
+// SP9 Review Focus 5: a message that goes to a run (`checkin_id`: the check-in chip, or the check-in
+// screen's box) never carries `resume_conversation_id`, so the app never sends the two together.
 export function buildChatBody(messages: UIMessage[], ctx: ChatCtx): ChatBody {
   const message = [...messages].reverse().find((m) => m.role === "user");
   if (!message) throw new Error("no user message to send");
-  return { client_msg_id: message.id, conversation_id: ctx.conversationId, checkin_id: ctx.checkinId, message };
+  const checkinId = ownCheckinId(message) ?? ctx.checkinId;
+  const body: ChatBody = { client_msg_id: message.id, conversation_id: ctx.conversationId, checkin_id: checkinId, message };
+  if (checkinId === null && ctx.resumeConversationId != null) body.resume_conversation_id = ctx.resumeConversationId;
+  return body;
 }
 
 // Read errors on the raw body become StreamCutError (a cut, not a protocol error).

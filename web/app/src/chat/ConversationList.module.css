@@ -1,0 +1,165 @@
+/* SP9 9.5 대화 목록: 시트 안의 이어지는 종이 목록(DESIGN.md 목록 줄, 카드 없음). 테마 토큰만. */
+.wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--gap);
+}
+.top {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--gutter) var(--gap);
+}
+/* 보조 버튼(투명 + 1px --border), 누르는 곳 44px. */
+.newChat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  min-height: var(--control-h);
+  padding: 0 var(--pad) 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-callout);
+  color: var(--text);
+  cursor: pointer;
+}
+.newChat:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.newMark {
+  display: inline-flex;
+}
+.search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--size-body);
+  color: var(--text);
+}
+.search::placeholder {
+  color: var(--muted);
+}
+.groups {
+  /* 체크 동그라미가 없는 줄: 가는 선은 글자에서 시작한다. */
+  --rule-inset: var(--gutter);
+}
+.groups > section {
+  --rule-inset: var(--gutter);
+}
+.row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--row);
+  padding: 0.5rem var(--row-pad-x, var(--pad));
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.row:active:not(:disabled) {
+  background: var(--raised);
+}
+.row:disabled {
+  cursor: default;
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.titleLine {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--size-body);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+}
+/* 태그(DESIGN.md): 알약, label 크기, 바탕을 칠하지 않는다. */
+.tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  padding: 0 0.4375rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.meta {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: var(--size-meta);
+  line-height: var(--lh-caption);
+  color: var(--muted);
+}
+.meta > :first-child {
+  flex: none;
+}
+.summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.line {
+  margin: 0 var(--gutter) var(--gap);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.moreWrap {
+  display: flex;
+  justify-content: center;
+  margin: 0 var(--gutter) var(--gap);
+}
+.more {
+  min-height: var(--control-h);
+  padding: 0 var(--pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  color: var(--text);
+  cursor: pointer;
+}
+.more:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.newChat:focus-visible,
+.search:focus-visible,
+.more:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.row:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}

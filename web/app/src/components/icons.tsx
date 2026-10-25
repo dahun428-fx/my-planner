@@ -1,6 +1,6 @@
 import styles from "./icons.module.css";
 
-export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send" | "schedule" | "memo" | "more";
+export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send" | "schedule" | "memo" | "more" | "list" | "compose";
 
 // Hand-drawn 24px icons, 1.7px stroke, currentColor (spec 4.3). SP9 9.1's three (schedule, memo,
 // more) follow the SP8 pictogram rule: 24px, 1.75 stroke, round ends, no emoji.
@@ -27,9 +27,13 @@ const PATHS: Record<IconName, string[]> = {
     "M12 10.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z",
     "M17.5 10.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z",
   ],
+  // SP9 9.5, the chat sheet's head: the conversation list (three lines with a dot each) and a new
+  // conversation (a page with a pencil). Same pictogram rule as the three above.
+  list: ["M9.5 7h10", "M9.5 12h10", "M9.5 17h10", "M5 7h.01", "M5 12h.01", "M5 17h.01"],
+  compose: ["M11 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V13", "M16.5 4.5l3 3L12 15H9v-3z"],
 };
 
-const STROKE: Partial<Record<IconName, string>> = { schedule: "1.75", memo: "1.75", more: "1.75" };
+const STROKE: Partial<Record<IconName, string>> = { schedule: "1.75", memo: "1.75", more: "1.75", list: "1.75", compose: "1.75" };
 
 export function Icon({ name, label }: { name: IconName; label?: string }) {
   return (

@@ -34,6 +34,19 @@ const SCREENS: Screen[] = [
     },
   },
   {
+    // SP9 9.5: the list screen inside the chat sheet, and the quick chip row in the chat.
+    name: "conversations",
+    seed: true,
+    open: async (page) => {
+      await page.goto("/");
+      await page.getByRole("button", { name: copy.chat.launcher }).click();
+      await expect(page.getByRole("group", { name: copy.chat.chipsLabel })).toBeVisible();
+      await page.getByRole("button", { name: copy.chat.pastConversations }).click();
+      await expect(page.getByText("치과 예약")).toBeVisible();
+      await expect(page.getByText(copy.chat.checkinTag, { exact: true })).toBeVisible();
+    },
+  },
+  {
     name: "checkin",
     seed: true,
     open: async (page) => {

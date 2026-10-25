@@ -7,7 +7,8 @@ import type { ViewPart } from "./parts";
 
 const ELSEWHERE_MAX = 3;
 
-export type Meta = { conversation_id?: number | null; at?: string };
+/** `checkin_id`: a message sent to a run from the check-in chip (SP9 9.5); the transport sends it as the request's. */
+export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number };
 type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string };
 
 export interface History {
@@ -49,7 +50,8 @@ export async function readElsewhere(since: string): Promise<string[]> {
 
 const failure = (r: { kind: string; code?: string }): HistoryResult => (r.kind === "offline" ? { kind: "offline" } : { kind: "failed", code: r.code ?? r.kind });
 
-export async function loadHistory(given: number | null | undefined): Promise<HistoryResult> {
+/** `notBefore` (SP9 9.5, after "새 대화"): the latest conversation counts only when its last line is after it. */
+export async function loadHistory(given: number | null | undefined, opts: { notBefore?: string | null } = {}): Promise<HistoryResult> {
   let id: number | null = null;
   if (given !== undefined) {
     id = given;
@@ -59,6 +61,7 @@ export async function loadHistory(given: number | null | undefined): Promise<His
     if (!validateModel("Conversations", r.data)) return { kind: "failed", code: "shape" };
     const latest = [...r.data.items].sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1))[0];
     id = latest?.id ?? null;
+    if (latest && opts.notBefore && Date.parse(latest.last_message_at) < Date.parse(opts.notBefore)) id = null;
   }
   if (id === null) return { kind: "ok", history: EMPTY };
   const r = await apiFetch<unknown>("GET", `/conversations/${id}/messages`);

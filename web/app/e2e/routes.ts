@@ -121,6 +121,13 @@ export function markdownSse(text = MARKDOWN_ANSWER): string {
   ].join("");
 }
 
+/** The chat sheet's conversation list (SP9 9.5): today, yesterday, a check-in, an old one with a 200-character title. */
+const CONVERSATIONS = [
+  { id: 12, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-24T05:00:00Z", last_message_at: "2026-10-24T05:10:00Z", closed_at: null, title: "치과 예약", summary: "내일 14:00 치과를 일정에 넣었어요. 알림은 30분 전이에요." },
+  { id: 11, kind: "run", channel: "app", run_id: 339, opened_at: "2026-10-23T12:00:00Z", last_message_at: "2026-10-23T12:20:00Z", closed_at: "2026-10-23T19:00:00Z", title: "저녁 돌아보기", summary: "컨디션 3, 운동은 내일로 옮겼어요." },
+  { id: 7, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-02T01:00:00Z", last_message_at: "2026-10-02T01:30:00Z", closed_at: "2026-10-02T02:00:00Z", title: LONG_TITLE, summary: LONG_TITLE },
+];
+
 /** Answers every BE call from the fixtures; returns the POST /chat bodies it saw. */
 export async function mockBe(page: Page, opts: MockOptions = {}) {
   const chat = opts.chat ?? ["chat_propose_tasks.sse"];
@@ -159,7 +166,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
       const h = habitHistory(Number(habitPath[1]));
       if (h) return json(route, h);
     }
-    if (get && path === "/conversations") return json(route, { items: [] });
+    // The sheet's first read (limit=3) finds nothing; the list screen (SP9 9.5) finds CONVERSATIONS.
+    if (get && path === "/conversations") return json(route, { items: q.get("limit") === "3" ? [] : CONVERSATIONS, next_before: null });
     if (get && path === "/memos") return json(route, { items: [], next_before: null });
     if (get && path === "/events") return json(route, { start: q.get("start"), end: q.get("end"), items: [] }); // SP9 9.2
     if (get && path === "/settings/notify") return json(route, fixture("notify"));
