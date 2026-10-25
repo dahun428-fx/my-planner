@@ -701,8 +701,9 @@ export interface MemoItem {
   updated_at: string;
 }
 /**
- * `GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모 `limit`개가 고친
- * 시각 최근순. `next_before`는 고정 아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null.
+ * `GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모가 고친 시각
+ * 최근순. `limit`(1~100, 기본 50)은 고정 아닌 메모만 센다(고정 10개까지는 첫 쪽에 더 붙는다). `next_before`는 고정
+ * 아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "MemoList".

@@ -216,10 +216,13 @@ class MemosRepo:
         with transaction(self.conn):
             self.conn.execute("UPDATE memos SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL", (to_iso(now), id))
 
-    def restore(self, id: int) -> bool:
-        """지운 메모를 되살린다(색인에 다시 들어간다). 완전히 지워졌으면 False."""
+    def restore(self, id: int, *, unpin: bool = False) -> bool:
+        """지운 메모를 되살린다(색인에 다시 들어간다). `unpin`이면 고정을 풀고 되살린다. 완전히 지워졌으면 False."""
+        pinned = "NULL" if unpin else "pinned_at"
         with transaction(self.conn):
-            cur = self.conn.execute("UPDATE memos SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL", (id,))
+            cur = self.conn.execute(
+                f"UPDATE memos SET deleted_at = NULL, pinned_at = {pinned} WHERE id = ? AND deleted_at IS NOT NULL", (id,)
+            )
         return cur.rowcount == 1
 
     def purge_deleted(self, older_than: datetime) -> int:

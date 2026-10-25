@@ -66,6 +66,7 @@ from my_planner.tools.activity import (
     SUPERSEDED,
     UNDO_HANDLERS,
     UNDO_KIND,
+    UndoRefused,
     habit_target,
     live_targets,
     priorities_target,
@@ -730,6 +731,8 @@ def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any], gain: XpGa
     except _Superseded:
         http, message = UNDO_ERRORS[SUPERSEDED]
         return _error("superseded", http, "superseded", message)
+    except UndoRefused as e:  # 상한(SP9 메모). 안쪽 SAVEPOINT가 그 쓰기를 되돌렸다
+        return _error("rejected", 422, e.code, e.message)
     summary = undo_summary(payload.get("summary", a.summary))  # 일부만 되돌렸으면 처리 함수가 좁힌 문구
     new_id = record_activity(
         deps.activity, ctx, kind=UNDO_KIND, target=a.target, summary=summary, risk="low", undo=None,

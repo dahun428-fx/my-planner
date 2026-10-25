@@ -324,6 +324,8 @@ def get_memos(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
             raise _bad(f"limit은 1~{MEMOS_MAX_LIMIT} 사이 정수여야 해요.")
         limit = int(raw)
     before = _memo_before(request.query.get("before"))
+    # 쪽을 넘기는 사이에 고정을 풀면 그 메모는 고정 아닌 묶음의 제자리(고친 시각)로 가서, 이미 지난 커서 앞이면 다음
+    # 쪽에 나오지 않는다(고정은 고친 시각을 바꾸지 않는다). 앱은 동작(고정·고정 풀기·지우기·고치기) 뒤에 첫 쪽부터 다시 읽는다
     rows = MemosRepo(conn, deps.clock).list(q=q, limit=limit + 1, before=before)
     pinned = [m for m in rows if m.pinned]
     rest = [m for m in rows if not m.pinned]

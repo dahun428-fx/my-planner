@@ -8,6 +8,7 @@ import sqlite3
 from datetime import UTC, datetime, time, timedelta
 
 import pytest
+from fakes import FakeTurn
 from test_dispatcher_messages import kst
 
 from my_planner.clock import FakeClock
@@ -223,12 +224,19 @@ def test_create_memo_origin_confirmation_and_run_turn(menv):
 
     ctx = menv.chat()
     out = menv.tools.create_memo(ctx, body="읽을 책\n- [ ] 사피엔스", area="learning")
-    assert out["origin"] == "chat" and out["title"] == "읽을 책" and out["area"] == "learning"
+    assert out == {"id": out["id"], "title": "읽을 책", "area": "learning"}  # 두뇌에는 본문을 돌려주지 않는다
+    assert menv.memos.get(out["id"]).origin == "chat"
     assert render_confirmations(ctx.events, menv.tools.today()) == "✓ 메모를 만들었어요: 읽을 책"
     (row,) = menv.rows()
     assert (row["kind"], row["target"], row["actor"]) == ("memo_created", f"memo:{out['id']}", "secretary")
     mine = menv.tools.create_memo(menv.button(), body="직접 쓴 메모")
-    assert mine["origin"] == "user"
+    assert set(mine) == {"id", "title", "area", "pinned", "updated_at"}  # `/actions` 결과에도 본문이 없다
+    assert menv.memos.get(mine["id"]).origin == "user"
+    long_ctx = menv.chat()
+    menv.tools.create_memo(long_ctx, body="가나다라마바사아자차카타파하 스물한 글자를 넘는 제목")
+    assert render_confirmations(long_ctx.events, menv.tools.today()) == (
+        "✓ 메모를 만들었어요: 가나다라마바사아자차카타파하 스물한 글"  # 원문 기록에도 제목 앞 20자만(6.1)
+    )
     run = RunContext(conversation_id=7, run_id=3, activity_channel="scheduler", channel="app")
     assert menv.tools.create_memo(run, body="비서가 먼저") == {"error": "사용자가 부탁한 메모만 만들 수 있어요."}
     assert menv.tools.create_memo(ctx, body="  \n ")["error"] == "메모가 비어 있어요."
@@ -258,7 +266,8 @@ def test_logs_and_activity_have_no_body(menv, caplog):
     caplog.set_level(logging.DEBUG)
     m = menv.tools.create_memo(menv.chat(), body=body)
     b = menv.button()
-    menv.tools.update_memo(b, id=m["id"], body=body + "\n셋째줄비밀QQQ", updated_at=m["updated_at"])
+    stamp = menv.memos.get(m["id"]).updated_at.isoformat()
+    menv.tools.update_memo(b, id=m["id"], body=body + "\n셋째줄비밀QQQ", updated_at=stamp)
     menv.tools.pin_memo(b, id=m["id"])
     menv.tools.unpin_memo(b, id=m["id"])
     menv.tools.search_memos(menv.chat(), query="비밀문장")
@@ -274,7 +283,11 @@ def test_logs_and_activity_have_no_body(menv, caplog):
     logs = " ".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
     for secret in ("둘째줄비밀문장XYZ", "셋째줄비밀QQQ", memo_title(body)[20:]):
         assert secret not in dumped and secret not in logs
-    assert menv.conn.execute("SELECT COUNT(*) FROM tool_events_log").fetchone()[0] == 0
+    logged = [tuple(r) for r in menv.conn.execute("SELECT kind, data_json FROM tool_events_log ORDER BY id")]
+    assert [k for k, _ in logged] == [r["kind"] for r in rows]  # 바꾼 것마다 호출 기록(다시 처리할 때 두뇌를 다시 부르지 않게)
+    for _, data in logged:
+        assert json.loads(data) == {"memo_id": m["id"], "title": title20}
+        assert body not in data and "둘째줄비밀문장XYZ" not in data and "셋째줄비밀QQQ" not in data
 
 
 def test_update_memo_conflict_and_already(menv):
@@ -282,7 +295,7 @@ def test_update_memo_conflict_and_already(menv):
     b = menv.button()
     menv.clock.advance(minutes=1)
     got = menv.tools.update_memo(b, id=m["id"], body="둘째", updated_at=m["updated_at"])
-    assert got["body"] == "둘째" and got["updated_at"] != m["updated_at"]
+    assert "body" not in got and menv.memos.get(m["id"]).body == "둘째" and got["updated_at"] != m["updated_at"]
     stale = menv.tools.update_memo(b, id=m["id"], body="셋째", updated_at=m["updated_at"])
     assert stale == {"error": "다른 곳에서 바뀌었어요. 새로 불러올게요.", "code": "memo_conflict"}
     same = menv.tools.update_memo(b, id=m["id"], body="둘째", updated_at=got["updated_at"])
@@ -291,6 +304,17 @@ def test_update_memo_conflict_and_already(menv):
     assert [r["kind"] for r in menv.rows()] == ["memo_created", "memo_updated"]
     (upd,) = [r for r in menv.rows() if r["kind"] == "memo_updated"]
     assert upd["undo_json"] is None  # 고치기는 되돌릴 수 없다(이전 본문을 활동에 두지 않는다)
+
+
+def test_update_memo_area_missing_keeps_null_clears(menv):
+    b = menv.button()
+    m = menv.tools.create_memo(b, body="운동 계획", area="health")
+    menv.clock.advance(minutes=1)
+    kept = menv.tools.update_memo(b, id=m["id"], body="운동 계획 고침", updated_at=m["updated_at"])
+    assert kept["area"] == "health" and menv.memos.get(m["id"]).area is Area.health
+    menv.clock.advance(minutes=1)
+    cleared = menv.tools.update_memo(b, id=m["id"], body="운동 계획 고침", area=None, updated_at=kept["updated_at"])
+    assert cleared["area"] is None and menv.memos.get(m["id"]).area is None
 
 
 def test_pin_cap_10(menv):
@@ -339,9 +363,9 @@ async def test_update_conflict_409(tmp_path):
         status2, second = await env.action("update_memo", {**args, "body": "읽을 책\n- 총균쇠"})  # 옛 값의 기기 B
         stored = env.parts.memos.get(m["id"]).body
 
-    assert made["confirmation"] == "✓ 메모를 만들었어요: 읽을 책" and m["origin"] == "user"
+    assert made["confirmation"] == "✓ 메모를 만들었어요: 읽을 책" and "body" not in m
     assert m["updated_at"].endswith("Z")  # API 경계에서 UTC
-    assert status == 200 and first["result"]["body"].endswith("- [x] 사피엔스") and "undo_id" not in first
+    assert status == 200 and "body" not in first["result"] and "undo_id" not in first
     assert status2 == 409
     _validate("Error", second)
     assert second == {"error": {"code": "memo_conflict", "message": "다른 곳에서 바뀌었어요. 새로 불러올게요."}}
@@ -425,3 +449,121 @@ async def test_daily_job_registered(tmp_path):
         text = (env.settings.paths.data_dir / "exports" / "memos.md").read_text(encoding="utf-8")
     assert "memos_daily" in jobs
     assert rows == [live] and f"### #{live} 남는 것" in text and "오래전에" not in text
+
+
+async def _undo(env, activity_id):
+    resp = await env.post(f"/activity/{activity_id}/undo", json={"client_msg_id": f"u-{activity_id}"})
+    return resp.status, await resp.json()
+
+
+async def _pin_new(env, n):
+    ids = [(await _create(env, f"고정용 {i}"))["result"]["id"] for i in range(n)]
+    for i in ids:
+        status, _ = await env.action("pin_memo", {"id": i})
+        assert status == 200
+    return ids
+
+
+async def test_undo_delete_of_pinned_memo_restores_unpinned_when_10_pinned(tmp_path):
+    from be_env import BeEnv
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        m = (await _create(env))["result"]["id"]
+        await env.action("pin_memo", {"id": m})
+        _, deleted = await env.action("delete_memo", {"id": m})
+        await _pin_new(env, 10)
+        status, body = await _undo(env, deleted["undo_id"])
+        back = env.parts.memos.get(m)
+        pinned = env.parts.memos.count_pinned()
+    assert status == 200 and body["status"] == "undone"
+    assert back is not None and back.pinned is False and pinned == 10
+
+
+async def test_undo_delete_of_pinned_memo_keeps_pin_when_room(tmp_path):
+    from be_env import BeEnv
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        m = (await _create(env))["result"]["id"]
+        await env.action("pin_memo", {"id": m})
+        _, deleted = await env.action("delete_memo", {"id": m})
+        status, _ = await _undo(env, deleted["undo_id"])
+        back = env.parts.memos.get(m)
+    assert status == 200 and back.pinned is True
+
+
+async def test_undo_unpin_refused_when_10_pinned(tmp_path):
+    from be_env import BeEnv
+    from test_api_actions import _validate
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        ids = await _pin_new(env, 10)
+        _, unpinned = await env.action("unpin_memo", {"id": ids[0]})
+        await _pin_new(env, 1)
+        status, body = await _undo(env, unpinned["undo_id"])
+        still = env.parts.memos.get(ids[0]).pinned
+        row = env.conn.execute("SELECT undone_at FROM activity WHERE id = ?", (unpinned["undo_id"],)).fetchone()
+    assert status == 422
+    _validate("Error", body)
+    assert body["error"] == {"code": "too_many_pinned", "message": "고정은 10개까지예요. 다른 메모의 고정을 풀면 더 고정할 수 있어요."}
+    assert still is False and row["undone_at"] is None
+
+
+async def test_undo_delete_refused_when_2000_alive(tmp_path):
+    from be_env import BeEnv
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        m = (await _create(env))["result"]["id"]
+        _, deleted = await env.action("delete_memo", {"id": m})
+        at = "2026-10-26T05:00:00.000000+00:00"
+        env.conn.executemany(
+            "INSERT INTO memos (body, origin, created_at, updated_at) VALUES (?, 'user', ?, ?)",
+            [(f"메모 {i}", at, at) for i in range(2000)],
+        )
+        env.conn.commit()
+        status, body = await _undo(env, deleted["undo_id"])
+        gone = env.parts.memos.get(m)
+    assert status == 422 and body["error"]["code"] == "too_many_memos"
+    assert body["error"]["message"] == "메모는 2,000개까지 둘 수 있어요. 안 쓰는 메모를 지우면 새로 만들 수 있어요."
+    assert gone is None
+
+
+async def test_reprocessing_same_inbound_leaves_one_memo(tmp_path, conn, state):
+    """두뇌 호출 도중 멈춘 뒤 다시 처리: 호출 기록이 있어 두뇌를 다시 부르지 않고 메모는 하나(스펙 5.4-3)."""
+    import asyncio
+
+    from test_dispatcher_messages import Env
+    from test_inbound_recovery import START, _kill, _receive
+
+    from my_planner.harness.dispatcher import FALLBACK_REPLY
+    from my_planner.loop.runner import resubmit_inbound
+
+    make = ("create_memo", {"body": "읽을 책\n- [ ] 사피엔스"})
+    first = Env(tmp_path, conn, state, script=[FakeTurn([make], "", hang=True)], start=START, with_tools=True)
+    first.tools.memos = MemosRepo(conn, first.clock)
+    first.dispatcher.start()
+    await _receive(first, state, 51, "읽을 책 사피엔스 메모해줘")
+    while not first.brain.calls:
+        await asyncio.sleep(0)
+    await _kill(first)
+
+    second = Env(tmp_path, conn, state, script=[], start=START + timedelta(minutes=5), with_tools=True)
+    second.tools.memos = MemosRepo(conn, second.clock)
+    assert resubmit_inbound(state, second.dispatcher) == 1
+    await second.process()
+
+    assert second.brain.calls == []
+    assert conn.execute("SELECT COUNT(*) FROM memos").fetchone()[0] == 1
+    assert [o.text for o in second.sender.sent] == [f"{FALLBACK_REPLY}\n\n✓ 메모를 만들었어요: 읽을 책"]
+
+
+def test_memo_copy_has_no_banned_words():
+    """10장 금지어 검사: 이 티켓이 쓴 메모 문구 전부(확인 문구, 상한, 오류)."""
+    from my_planner.store.repos.memos import UNTITLED
+    from my_planner.tools import memos as mt
+    from my_planner.tools.confirmations import _MEMO_LINES
+    from my_planner.tools.ui import banned_words
+
+    copy = [*_MEMO_LINES.values(), UNTITLED, *(v for k, v in vars(mt).items() if k.startswith("MSG_"))]
+    assert len(copy) == 5 + 1 + 12
+    words = banned_words()
+    assert [(c, w) for c in copy for w in words if w in c] == []

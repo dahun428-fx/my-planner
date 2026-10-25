@@ -6,7 +6,9 @@
 - 메모 본문은 로그, 활동(`summary`, `undo_json`), `tool_events_log`, 도구 이벤트에 넣지 않는다. 활동 `summary`의 제목은 앞
   20자만 쓴다. 로그에는 메모 id와 결과만 남긴다.
 - 활동 `memo_created`/`memo_updated`/`memo_pinned`/`memo_unpinned`/`memo_deleted`, 대상 `memo:<id>`. 고치기는 되돌릴 수
-  없다(이전 본문을 활동에 남기지 않는다). 만들기·고정·고정 풀기·지우기는 되돌릴 수 있다.
+  없다(이전 본문을 활동에 남기지 않는다). 만들기·고정·고정 풀기·지우기는 되돌릴 수 있다(상한은 지킨다).
+- 바꾸면 `tool_events_log`에도 `{"memo_id", "title"(앞 20자)}`를 쓴다(다시 처리할 때 두뇌를 다시 부르지 않게).
+- 두뇌의 `create_memo` 결과는 `{id, title, area}`, `/actions` 결과는 본문 없는 `memo_result`다.
 - 오류 코드(`code`): `memo_conflict`(409), `too_many_memos`, `too_many_pinned`(422). `tools/actions.py`가 HTTP로 바꾼다.
 """
 
@@ -28,11 +30,12 @@ from my_planner.store.repos.memos import (
     memo_title,
 )
 from my_planner.tools._base import _err, _tool
-from my_planner.tools.activity import SUPERSEDED, register_undo
+from my_planner.tools.activity import SUPERSEDED, UndoRefused, register_undo
 from my_planner.tools.confirmations import memo_line
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
+    from my_planner.store.repos.tasks import TasksRepo
     from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
@@ -55,7 +58,7 @@ MSG_NO_MEMOS = "메모를 다룰 수 없어요."
 MSG_NOT_FOUND = "없는 메모예요."
 MSG_EMPTY = "메모가 비어 있어요."
 MSG_LONG = "메모는 20,000자까지 쓸 수 있어요."
-MSG_TOO_MANY = "메모는 2,000개까지 둘 수 있어요. 안 쓰는 메모를 지우면 더 적을 수 있어요."
+MSG_TOO_MANY = "메모는 2,000개까지 둘 수 있어요. 안 쓰는 메모를 지우면 새로 만들 수 있어요."
 MSG_TOO_MANY_PINNED = "고정은 10개까지예요. 다른 메모의 고정을 풀면 더 고정할 수 있어요."
 MSG_CONFLICT = "다른 곳에서 바뀌었어요. 새로 불러올게요."  # 스펙 10장 "메모 충돌"
 MSG_RUN_TURN = "사용자가 부탁한 메모만 만들 수 있어요."
@@ -75,7 +78,7 @@ def summary_title(body: str) -> str:
 
 
 def memo_dict(m: Memo) -> dict[str, Any]:
-    """공통 `Memo` 모양(`GET /memos/{id}`, 동작 결과). 시각은 저장 형식 그대로, API 경계에서 UTC `Z`로 바뀐다."""
+    """`Memo` 모양(`GET /memos/{id}`, 본문 포함). 시각은 저장 형식 그대로, API 경계에서 UTC `Z`로 바뀐다."""
     return {
         "id": m.id,
         "title": memo_title(m.body),
@@ -84,6 +87,18 @@ def memo_dict(m: Memo) -> dict[str, Any]:
         "pinned": m.pinned,
         "origin": m.origin,
         "created_at": to_iso(m.created_at),
+        "updated_at": to_iso(m.updated_at),
+    }
+
+
+def memo_result(m: Memo) -> dict[str, Any]:
+    """`/actions` 결과(만들기·고치기·고정·고정 풀기). 본문은 없다: 중복 방지 기록(`api_idempotency`)에 본문이 남지
+    않게. 앱은 `updated_at`을 다음 `update_memo`에 쓰고, 본문은 자기가 보낸 것을 쓰거나 `GET /memos/{id}`로 읽는다."""
+    return {
+        "id": m.id,
+        "title": memo_title(m.body),
+        "area": m.area.value if m.area is not None else None,
+        "pinned": m.pinned,
         "updated_at": to_iso(m.updated_at),
     }
 
@@ -99,6 +114,9 @@ def memo_item(m: Memo) -> dict[str, Any]:
         "origin": m.origin,
         "updated_at": to_iso(m.updated_at),
     }
+
+
+_KEEP: Any = object()  # `update_memo`에서 `area`를 빼면 지금 영역 그대로(명시한 null은 영역 없음)
 
 
 def _code(msg: str, code: str) -> dict[str, Any]:
@@ -144,6 +162,7 @@ class MemoTools:
 
     if TYPE_CHECKING:
         clock: Clock
+        tasks: TasksRepo
 
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
@@ -156,9 +175,13 @@ class MemoTools:
         return m if m is not None else MSG_NOT_FOUND
 
     def _memo_change(self, ctx: RunContext, kind: str, m: Memo, undo: dict[str, Any] | None) -> None:
-        """트랜잭션 안에서 활동 한 행(제목 앞 20자만), 확인 문구용 이벤트. 본문은 넣지 않는다."""
-        self._record(ctx, kind, memo_target(m.id), memo_line(kind, summary_title(m.body)), undo)
-        ctx.events.append(ToolEvent(kind, None, {"memo_id": m.id, "title": memo_title(m.body)}))
+        """트랜잭션 안에서: 도구 호출 기록(`tool_events_log`), 활동 한 행, 확인 문구용 이벤트. 셋 다 제목 앞 20자만 쓰고
+        본문은 넣지 않는다(6.1). 호출 기록이 있어야 두뇌 호출 도중 멈춘 메시지를 다시 처리할 때 두뇌를 다시 부르지 않고
+        (같은 메모를 두 번 만들지 않고) 이 데이터로 확인 문구를 다시 만든다(`Dispatcher._finish_after_logged_tools`)."""
+        data = {"memo_id": m.id, "title": summary_title(m.body)}
+        self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
+        self._record(ctx, kind, memo_target(m.id), memo_line(kind, data["title"]), undo)
+        ctx.events.append(ToolEvent(kind, None, data))
 
     # --- 두뇌 도구 ---
 
@@ -217,15 +240,17 @@ class MemoTools:
             m = self.memos.create(text, a, origin, self.clock.now())
             self._memo_change(ctx, "memo_created", m, {"memo_id": m.id})
         log.info("memo_created", extra={"memo_id": m.id, "origin": origin})
-        return memo_dict(m)
+        if ctx.actor == "secretary":  # 두뇌에는 본문을 돌려주지 않는다(6.3)
+            return {"id": m.id, "title": memo_title(m.body), "area": a.value if a is not None else None}
+        return memo_result(m)
 
     # --- 즉시 갈래 동작(두뇌 도구 목록에 없다) ---
 
     @_tool
     def update_memo(
-        self, ctx: RunContext, id: Any = None, body: Any = None, area: Any = None, updated_at: Any = None,
+        self, ctx: RunContext, id: Any = None, body: Any = None, area: Any = _KEEP, updated_at: Any = None,
     ) -> dict[str, Any]:
-        """본문과 영역을 통째로 바꾼다(`area`를 빼면 영역 없음). `updated_at`이 지금 값과 다르면 `memo_conflict`(6.4).
+        """본문을 바꾼다. `area`를 빼면 지금 영역 그대로, null이면 영역 없음. `updated_at`이 지금 값과 다르면 `memo_conflict`(6.4).
         바뀌는 것이 없으면 쓰지 않고 `already`. 되돌릴 수 없다(이전 본문을 활동에 남기지 않는다)."""
         if self.memos is None:
             return _err(MSG_NO_MEMOS)
@@ -233,14 +258,15 @@ class MemoTools:
         if isinstance(m, str):
             return _err(m)
         try:
-            text, a, seen = _body(body), _area(area), _stamp(updated_at)
+            text, seen = _body(body), _stamp(updated_at)
+            a = m.area if area is _KEEP else _area(area)
         except ValueError as e:
             return _err(str(e))
         if to_iso(seen) != to_iso(m.updated_at):
             log.info("memo_conflict", extra={"memo_id": m.id})
             return _code(MSG_CONFLICT, CONFLICT)
         if text == m.body and a == m.area:
-            return {**memo_dict(m), "already": True}
+            return {**memo_result(m), "already": True}
         try:
             with transaction(self.memos.conn):
                 m = self.memos.update(m.id, text, a, seen, self.clock.now())
@@ -249,7 +275,7 @@ class MemoTools:
             log.info("memo_conflict", extra={"memo_id": m.id})
             return _code(MSG_CONFLICT, CONFLICT)
         log.info("memo_updated", extra={"memo_id": m.id})
-        return memo_dict(m)
+        return memo_result(m)
 
     @_tool
     def pin_memo(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
@@ -260,7 +286,7 @@ class MemoTools:
         if isinstance(m, str):
             return _err(m)
         if m.pinned:
-            return {**memo_dict(m), "already": True}
+            return {**memo_result(m), "already": True}
         if self.memos.count_pinned() >= PINNED_MAX:
             return _code(MSG_TOO_MANY_PINNED, TOO_MANY_PINNED)
         with transaction(self.memos.conn):
@@ -269,7 +295,7 @@ class MemoTools:
         log.info("memo_pinned", extra={"memo_id": m.id})
         got = self.memos.get(m.id)
         assert got is not None
-        return memo_dict(got)
+        return memo_result(got)
 
     @_tool
     def unpin_memo(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
@@ -280,7 +306,7 @@ class MemoTools:
         if isinstance(m, str):
             return _err(m)
         if not m.pinned:
-            return {**memo_dict(m), "already": True}
+            return {**memo_result(m), "already": True}
         prev = self.memos.pinned_at(m.id)
         assert prev is not None
         with transaction(self.memos.conn):
@@ -289,7 +315,7 @@ class MemoTools:
         log.info("memo_unpinned", extra={"memo_id": m.id})
         got = self.memos.get(m.id)
         assert got is not None
-        return memo_dict(got)
+        return memo_result(got)
 
     @_tool
     def delete_memo(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
@@ -306,7 +332,8 @@ class MemoTools:
         return {"id": m.id, "deleted": True}
 
 
-# --- 되돌리기. 상한(2,000개, 고정 10개)은 보지 않고 이전 상태로만 돌린다 ---
+# --- 되돌리기. 상한을 지킨다: 살아 있는 메모가 2,000개면 지우기를 되돌리지 않고(`too_many_memos`), 고정이 10개면
+# 고정 풀기를 되돌리지 않는다(`too_many_pinned`). 고정했던 메모의 지우기를 되돌릴 때 고정이 10개면 고정 없이 되살린다 ---
 
 
 def _undo_memo_created(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
@@ -330,14 +357,20 @@ def _undo_memo_unpinned(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> 
     assert tools.memos is not None
     if tools.memos.get(undo["memo_id"]) is None:
         return SUPERSEDED
+    if tools.memos.count_pinned() >= PINNED_MAX:
+        raise UndoRefused(TOO_MANY_PINNED, MSG_TOO_MANY_PINNED)
     tools.memos.pin(undo["memo_id"], from_iso(undo["pinned_at"]))
     return None
 
 
 def _undo_memo_deleted(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
-    """되살린다. 이미 완전히 지워졌으면 superseded."""
-    assert tools.memos is not None
-    return None if tools.memos.restore(undo["memo_id"]) else SUPERSEDED
+    """되살린다. 이미 완전히 지워졌으면 superseded. 고정 자리가 없으면 고정을 풀고 되살린다."""
+    memos = tools.memos
+    assert memos is not None
+    if memos.count_live() >= MEMOS_MAX:
+        raise UndoRefused(TOO_MANY_MEMOS, MSG_TOO_MANY)
+    unpin = memos.pinned_at(undo["memo_id"]) is not None and memos.count_pinned() >= PINNED_MAX
+    return None if memos.restore(undo["memo_id"], unpin=unpin) else SUPERSEDED
 
 
 for _kind, _handler in (
