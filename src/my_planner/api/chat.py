@@ -144,7 +144,7 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     inbound_id = d.state.next_app_inbound_id()
     d.state.add_pending_inbound(
         inbound_id, redact(text)[0], now, now, channel="app", client_msg_id=cmid, checkin_id=req.checkin_id,
-        conversation_id=conv.id,
+        conversation_id=conv.id, resume_conversation_id=req.resume_conversation_id,
     )
     writer = UiMessageWriter(sink, app_secretary_message_id(conv.id, inbound_id))
     writer.start({**d.chat_metadata(conv.id), "checkin_id": req.checkin_id})

@@ -161,6 +161,20 @@ def retry_summaries_daily(target: SummaryQueue) -> Callable[[date], None]:
     return job
 
 
+class DeletedEraser(Protocol):
+    def reerase_deleted(self) -> int: ...
+
+
+def reerase_deleted_daily(target: DeletedEraser) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 7.7): 최근 30일 안에 지운 대화의 원문 줄과 세션 파일을 다시 지운다(여러 번 해도 같다)."""
+
+    def job(today: date) -> None:
+        target.reerase_deleted()
+
+    job.__name__ = "reerase_deleted_conversations"
+    return job
+
+
 def prune_records_daily(target: ActionApplier) -> Callable[[date], None]:
     """하루 한 번 작업: 60일 지난 `status_moment_days` 행(SP8 6.4)과 56일 지난 `body_days` 행(7.1) 지우기(계획 결정 17).
     즉시 갈래로(4.3). 로그에는 개수만."""
@@ -344,7 +358,7 @@ def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
             m = Inbound(
                 text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
                 channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=None,
-                conversation_id=row.conversation_id,
+                conversation_id=row.conversation_id, resume_conversation_id=row.resume_conversation_id,
             )
         else:
             m = Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)

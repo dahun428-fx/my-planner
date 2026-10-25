@@ -673,6 +673,7 @@ def _py_args(args: dict[str, Any]) -> dict[str, Any]:
 
 # 앱 대화에만 붙이는 설명(텔레그램에는 일정 도구가 없다, SP9 5.4)
 _APP_NOTES = {
+    "read_transcript": " 앱에서는 이 대화의 지난 원문만 읽습니다. 다른 대화는 find_conversations로 요약만 봅니다.",
     "add_task": " 시간이 정해진 일(\"내일 14:00 치과\")은 create_event로 일정을 만듭니다.",
     "propose_tasks": " 시간이 정해진 일은 초안이 아니라 create_event로 일정을 만듭니다.",
     "update_task": " 시각을 붙이려면 create_event로 일정을 만듭니다.",

@@ -234,8 +234,9 @@ class ConversationRouter:
         - 이미 이어 갈 수 있으면(열린 `chat`은 30분과 상관없이, 2시간 안의 `plan`) 다시 열기 없이 그 대화.
         - `chat`: 열린 다른 앱 `chat`·`plan`을 닫고(요약 큐로) 그 대화를 다시 연다.
         - `run`: 그 회차가 답장 창 안이면 1번 규칙처럼 그 회차의 앱 쪽 회차 대화.
-        - 닫힌 `plan`, 창이 지난 `run`: 그 대화를 이어 가는 새 `chat`(`continued_from`, 첫 호출 앞머리에 그 대화의
-          요약). 앱은 그 화면을 떠날 때까지 같은 id를 실으므로, 그 대화를 이어 가는 열린 `chat`이 있으면 그것이다.
+        - 닫힌 `plan`, 창이 지난 `run`: 그 대화를 이어 가는 `chat`(`continued_from`, 첫 호출 앞머리에 그 대화의
+          요약). 앱은 그 화면을 떠날 때까지 같은 id를 실으므로, 그 대화를 이어 가는 가장 최근 `chat`(지우지 않은 것)이
+          있으면 그것이다. 닫혔으면 `chat` 갈래처럼 다시 연다(30분 규칙을 보지 않는다). 없을 때만 새로 연다.
         """
         conv = self.convs.get(conversation_id)
         if conv is None or conv.channel != "app" or conv.deleted_at is not None:
@@ -258,9 +259,9 @@ class ConversationRouter:
                 primary = self._primary(run)
                 if self.run_in_window(primary, at):
                     return self._run_side(primary, "app")
-        follow = self.convs.latest_open(ConversationKind.chat, "app")
-        if follow is not None and follow.continued_from == conv.id:
-            return follow
+        follow = self.convs.latest_follow(conv.id)
+        if follow is not None:
+            return self._resumed(follow.id, at)
         self._close_app_talks()
         tz, boundary = self.settings.timezone, self.settings.day_boundary
         return self.convs.open(

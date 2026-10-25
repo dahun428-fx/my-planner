@@ -286,6 +286,58 @@ async def test_resume_plan_opens_new_chat_with_summary(tmp_path):
     assert "## 이어 가는 지난 대화" not in env.brain.prompts[4]  # resume한 다음 호출에는 다시 붙이지 않는다
 
 
+async def test_resume_plan_after_idle_reopens_same_follow_chat(tmp_path):
+    """SP9 7.3 "30분 규칙을 보지 않는다": 고른 계획에서 이어 간 `chat`이 30분 쉬어 닫혀도, 같은 resume id의 다음
+    메시지는 새 `chat`을 또 열지 않고 그 `chat`을 다시 연다(그 세션으로 resume)."""
+    script = [
+        FakeTurn([], "계획을 세워 볼까요?", session_id="sP"), FakeTurn([], "좋아요", session_id="sP"),
+        summary_turn("다음 주 계획", "월요일에 포트폴리오를 하기로 했어요."),
+        FakeTurn([], "이어서 할게요", session_id="sC"), FakeTurn([], "또 이어서", session_id="sC"),
+        summary_turn("계획 이어 가기", "포트폴리오 얘기를 이어 갔어요."),
+        FakeTurn([], "다시 이어서", session_id="sC"),
+    ]
+    async with BeEnv.start(tmp_path, start=AFTERNOON, script=script) as env:
+        plan = await app_chat(env, "/plan 다음 주")
+        env.clock.advance(timedelta(minutes=5))
+        await app_chat(env, "포트폴리오 먼저")
+        env.clock.advance(timedelta(hours=2, minutes=1))
+        await env.tick()
+        new = await app_chat(env, "지난 계획 이어서", resume_conversation_id=plan)
+        await app_chat(env, "하나 더", resume_conversation_id=plan)
+        env.clock.advance(timedelta(minutes=45))
+        await env.tick()  # 이어 간 chat이 30분 규칙으로 닫힌다
+        assert env.parts.convs.get(new).closed_at is not None
+        later = await app_chat(env, "아까 그거 계속", resume_conversation_id=plan)
+        c = env.parts.convs.get(new)
+        follows = env.conn.execute("SELECT count(*) FROM conversations WHERE continued_from = ?", (plan,)).fetchone()[0]
+    assert later == new and c.closed_at is None and follows == 1
+    assert env.brain.session_ids[-1] == "sC"
+
+
+async def test_recovered_app_row_keeps_resume_conversation(tmp_path):
+    """SP9-09 리뷰: `resume_conversation_id`는 받은 메시지 행(`inbound_pending`)에 함께 남는다. 재시작하는 동안 그
+    대화가 닫혀도 다시 넣은 메시지는 0번 규칙으로 같은 대화로 간다(새 `chat`으로 가지 않는다)."""
+    from my_planner.loop.runner import resubmit_inbound
+
+    script = [FakeTurn([], "A 답", session_id="sA"), FakeTurn([], "다시 A", session_id="sA")]
+    async with BeEnv.start(tmp_path, start=AFTERNOON, script=script) as env:
+        p = env.parts
+        a = await closed_chat(env)
+        now = env.clock.now()
+        uid = p.state.next_app_inbound_id()
+        p.state.add_pending_inbound(  # 받아 저장했지만 처리 전에 꺼졌다. 그사이 대화는 닫혔다
+            uid, "치과 얘기 이어서", now, now, channel="app", client_msg_id="cm-resume", conversation_id=a,
+            resume_conversation_id=a,
+        )
+        row = p.state.get_pending_inbound(uid)
+        assert resubmit_inbound(p.state, p.dispatcher) == 1
+        await env.drain()
+        got = env.brain.calls[-1]["run_ctx"].conversation_id
+        ra = p.convs.get(a)
+    assert row.resume_conversation_id == a
+    assert got == a and ra.closed_at is None
+
+
 async def test_resume_run_inside_window_goes_to_run(tmp_path):
     script = [
         FakeTurn([], "꾸민 저녁 체크인", session_id="s-run"), FakeTurn([], "회차 답", session_id="s-fork"),
@@ -421,7 +473,9 @@ async def test_rollup_at_31st_message(tmp_path):
         add_lines(env, a, 10)
         set_user_messages(env, a, 30)
         env.clock.advance(timedelta(minutes=1))
-        got = await app_chat(env, "서른한 번째 말")
+        _, raw = await env.chat("서른한 번째 말")
+        got = conv_of(raw)
+        statuses = [c["data"]["state"] for c in parse_sse(raw) if c.get("type") == "data-status"]
         after = env.parts.convs.get(a)
         env.clock.advance(timedelta(minutes=1))
         await app_chat(env, "서른두 번째 말")
@@ -437,6 +491,8 @@ async def test_rollup_at_31st_message(tmp_path):
     assert all(f"원문 {i:02d}" in rolled for i in range(5, 11)) and "원문 04" not in rolled  # 최근 6줄
     assert rolled.index("원문 10") < rolled.index("## 메시지\n서른한 번째 말")
     assert (after.user_messages, after.session_id, after.title) == (1, "s2", "긴 대화")
+    assert after.summary_through == AFTERNOON  # 요약이 덮는 마지막 줄("원문 10", 14:00). 이번 메시지(14:01)가 아니다
+    assert statuses == ["queued", "thinking"]  # 요약 전에 "thinking"을 한 번 보낸다(두 번 보내지 않는다)
     assert later.user_messages == 2 and sessions == ["s1", "s2"]
 
 

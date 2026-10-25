@@ -57,6 +57,7 @@ class PendingInbound:
     channel: str = "telegram"  # 'telegram' | 'app'
     client_msg_id: str | None = None
     checkin_id: int | None = None
+    resume_conversation_id: int | None = None  # 앱 행: 목록에서 고른 대화(SP9 7.3 0번 규칙)
 
 
 def _pending(r: sqlite3.Row) -> PendingInbound:
@@ -73,6 +74,7 @@ def _pending(r: sqlite3.Row) -> PendingInbound:
         channel=r["channel"],
         client_msg_id=r["client_msg_id"],
         checkin_id=r["checkin_id"],
+        resume_conversation_id=r["resume_conversation_id"],
     )
 
 
@@ -164,15 +166,17 @@ class StateRepo:
         client_msg_id: str | None = None,
         checkin_id: int | None = None,
         conversation_id: int | None = None,
+        resume_conversation_id: int | None = None,
     ) -> None:
-        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`를 적는다(SP3-4 5.1)."""
+        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`와 앱이 실은 `resume_conversation_id`를
+        적는다(SP3-4 5.1, SP9 7.3)."""
         with transaction(self.conn):
             self.conn.execute(
                 "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
-                "client_msg_id, checkin_id, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "client_msg_id, checkin_id, conversation_id, resume_conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     update_id, text_redacted, to_iso(sent_at), to_iso(received_at), channel, client_msg_id,
-                    checkin_id, conversation_id,
+                    checkin_id, conversation_id, resume_conversation_id,
                 ),
             )
 

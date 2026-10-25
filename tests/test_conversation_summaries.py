@@ -170,6 +170,26 @@ async def test_daily_retry_summarizes_pending(tmp_path):
     assert done.title == "치과 예약 정리" and done.summary.startswith("토요일")
 
 
+async def test_reopened_then_closed_is_summarized_again_same_process(tmp_path):
+    """SP9-09 리뷰: 이 프로세스에서 한 번 요약한 대화도 다시 열어 말이 더 생기면 닫힐 때 tick이 다시 요약한다."""
+    script = [
+        FakeTurn([], "언제가 좋아요?"), FakeTurn([], "잡았어요."), summary_turn(),
+        FakeTurn([], "일요일로 바꿨어요."), summary_turn("치과 일요일로", "치과를 일요일로 옮겼어요. 다음에 할 일은 없어요."),
+    ]
+    async with BeEnv.start(tmp_path, start=AFTERNOON, script=script) as env:
+        cid = await chat_twice(env)
+        await close_by_idle(env)
+        first = conv_row(env, cid)
+        resp, _ = await env.chat("일요일로 바꿔 줘", resume_conversation_id=cid)
+        assert int(resp.headers["x-conversation-id"]) == cid
+        await close_by_idle(env)
+        again = conv_row(env, cid)
+        call = env.brain.calls[4]
+    assert first.title == "치과 예약 정리"
+    assert (again.title, again.summary_through) == ("치과 일요일로", again.last_message_at)
+    assert call["run_ctx"].kind == "summary" and "토요일 오전 10시 치과를 잡았어요" in call["prompt"]  # 이전 요약
+
+
 async def test_summary_saved_title_20_summary_600(tmp_path):
     long = "```json\n" + json.dumps({"title": "가" * 30, "summary": "나" * 700}) + "\n```"
     script = [FakeTurn([], "네"), FakeTurn([], "네"), FakeTurn([], long)]
@@ -290,6 +310,50 @@ async def test_delete_erases_lines_across_days(tmp_path):
     assert "텔레그램 말은 남는다" in d1 and "텔레그램 답" in d1
     assert [m.text for m in kept] == ["텔레그램 말은 남는다", "텔레그램 답"]  # 지운 자리가 다른 대화 본문에 붙지 않는다
     assert gone == []
+    assert not list((env.settings.paths.data_dir / "transcripts").rglob("*.tmp"))
+
+
+async def test_delete_erase_retries_per_file_and_daily_reerase(tmp_path, monkeypatch):
+    """SP9-09 리뷰: 원문 지우기는 날짜 파일마다 따로 짧게 다시 해 본다. 한 파일이 끝내 안 돼도 다른 날은 지운다.
+    못 지운 날은 하루 한 번 작업(최근 30일 안에 지운 대화)이 다시 지운다. 여러 번 해도 같다."""
+    import os
+
+    from my_planner.store import transcripts as tr_mod
+
+    monkeypatch.setattr(tr_mod, "ERASE_RETRY_DELAYS", (0, 0, 0))
+    script = [FakeTurn([], "A 첫날 답"), FakeTurn([], "A 둘째 날 답")]
+    async with BeEnv.start(tmp_path, start=AFTERNOON, script=script) as env:
+        resp, _ = await env.chat("A의 첫날 비밀 이야기")
+        a = int(resp.headers["x-conversation-id"])
+        env.clock.set(kst(2026, 10, 27, 14, 0))
+        await env.chat("A의 둘째 날 이야기", resume_conversation_id=a)
+        real, calls = os.replace, {"d1": 0, "d2": 0}
+
+        def flaky(src, dst):
+            key = "d1" if "2026-10-26" in str(dst) else "d2"
+            calls[key] += 1
+            if key == "d1" or calls["d2"] == 1:  # 첫날 파일은 계속 잡혀 있고, 둘째 날 파일은 한 번만
+                raise PermissionError(32, "in use")
+            return real(src, dst)
+
+        monkeypatch.setattr(tr_mod.os, "replace", flaky)
+        resp = await env.delete(f"/conversations/{a}")
+        monkeypatch.setattr(tr_mod.os, "replace", real)
+        d1_after, d2_after = day_text(env, "2026-10-26"), day_text(env, "2026-10-27")
+        names = [getattr(j, "__name__", "") for j in env.parts.runner._daily]
+        env.clock.set(kst(2026, 10, 28, 4, 30))
+        job = next(j for j in env.parts.runner._daily if j.__name__ == "reerase_deleted_conversations")
+        job(env.parts.dispatcher._today())
+        d1_next = day_text(env, "2026-10-26")
+        again = env.parts.dispatcher.reerase_deleted()
+        env.clock.advance(timedelta(days=31))
+        later = env.parts.convs.deleted_since(env.clock.now() - timedelta(days=30))
+    assert resp.status == 204 and calls == {"d1": 4, "d2": 2}  # 첫날은 처음 + 다시 3번, 둘째 날은 한 번 다시
+    assert "A의 첫날" in d1_after  # 못 바꾼 날은 그대로 남아 있다
+    assert "A의 둘째 날" not in d2_after and ERASED_LINE in d2_after  # 다른 날은 건너뛰지 않는다
+    assert "reerase_deleted_conversations" in names
+    assert "A의 첫날" not in d1_next and ERASED_LINE in d1_next
+    assert again == 0 and later == []
     assert not list((env.settings.paths.data_dir / "transcripts").rglob("*.tmp"))
 
 

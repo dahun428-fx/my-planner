@@ -165,6 +165,14 @@ class ConversationsRepo:
             )
         return cur.rowcount > 0
 
+    def deleted_since(self, since: datetime) -> list[Conversation]:
+        """`since` 뒤에 지운 대화, 지운 순(7.7 하루 한 번 원문 다시 지우기)."""
+        rows = self.conn.execute(
+            "SELECT * FROM conversations WHERE deleted_at IS NOT NULL AND deleted_at >= ? ORDER BY deleted_at, id",
+            (to_iso(since),),
+        ).fetchall()
+        return [_row(r) for r in rows]
+
     def summary_pending(self) -> list[int]:
         """요약할 닫힌 앱 대화(7.2), 닫힌 순: 아직 제목도 요약도 없는 것, 그리고 요약 뒤에 말이 더 있는 것(다시 연
         대화, 말아 넣기 뒤 이어진 대화. 스펙 7.2 "닫힐 때", 티켓 SP9-09 결정)."""
@@ -225,6 +233,15 @@ class ConversationsRepo:
             "SELECT * FROM conversations WHERE kind = ? AND channel = ? AND closed_at IS NULL "
             "ORDER BY last_message_at DESC, id DESC LIMIT 1",
             (ConversationKind(kind).value, channel),
+        ).fetchone()
+        return _row(r) if r is not None else None
+
+    def latest_follow(self, conversation_id: int) -> Conversation | None:
+        """그 대화를 이어 가는(`continued_from`) 앱 `chat` 가운데 가장 나중에 연 것. 열림·닫힘 상관없이, 지운 것은 빼고(SP9 7.3)."""
+        r = self.conn.execute(
+            "SELECT * FROM conversations WHERE kind = 'chat' AND channel = 'app' AND continued_from = ? "
+            "AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
+            (conversation_id,),
         ).fetchone()
         return _row(r) if r is not None else None
 

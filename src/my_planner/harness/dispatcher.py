@@ -277,6 +277,7 @@ MAX_RUN_ATTEMPTS = 2  # 회차당 두뇌 호출 최대 2회
 MESSAGE_RETRY_DELAYS_S = (2, 4, 8)  # 사용자 메시지 오류: 지수 백오프로 3회 더(스펙 5.3)
 
 HISTORY_LINES = 20  # 새 세션에 붙이는 최근 원문 수(SP1 resume 실패 대체 경로, S11)
+REERASE_DAYS = 30  # 하루 한 번 작업이 원문을 다시 지우는 지운 대화의 범위(SP9 7.7, SP9-09 리뷰)
 INBOUND_MAX_ATTEMPTS = 3  # 다시 넣기 상한(SP1 5.2-4, `loop.runner`와 같은 값)
 _DEFAULT_APP_SENDER = AppReplySender()
 
@@ -393,7 +394,8 @@ class Dispatcher:
         # 요약 큐(SP9 7.2): 큐에 든 대화, 이 프로세스에서 이미 해 본 대화(tick마다 다시 넣지 않는다. 하루 한 번 작업이
         # 비우고 최근 7일을 다시 넣는다). 메모리에만 둔다: 재시작 뒤 첫 tick이 남은 것을 다시 넣는다
         self._summary_queued: set[int] = set()
-        self._summary_tried: set[int] = set()
+        # 해 본 대화와 그때의 `last_message_at`: 다시 열어 말이 더 생기면 다시 해 본다(SP9-09 리뷰)
+        self._summary_tried: dict[int, datetime | None] = {}
         # 회고 단계(SP3-4 11.1): 곡선 저장소가 있을 때만. 텔레그램 버튼 처리기도 같은 것을 쓴다
         curve = tools.curve if tools is not None else None
         self.review_flow: ReviewFlow | None = (
@@ -617,6 +619,7 @@ class Dispatcher:
             text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
             channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=sink,
             conversation_id=row.conversation_id, message_id=message_id,
+            resume_conversation_id=row.resume_conversation_id,
         ))
         return True
 
@@ -911,7 +914,16 @@ class Dispatcher:
             fell_back = False
             self._log_user_lines(batch, conv.id, pending, lead)
             # 말아 넣기(SP9 7.4): 앱 대화의 사용자 메시지가 31번째면 이 호출 전에 요약하고 새 세션으로(요약 + 최근 6줄)
-            conv, rolled = await self._roll_up(conv, len(batch)) if app is not None else (conv, "")
+            thinking = False
+            if app is not None:
+                def _thinking(writer: UiMessageWriter = app.writer) -> None:
+                    nonlocal thinking
+                    writer.status("thinking")  # 요약 호출이 길 수 있어 먼저 알린다(SP9-09 리뷰)
+                    thinking = True
+
+                conv, rolled = await self._roll_up(conv, len(batch), on_summarize=_thinking)
+            else:
+                rolled = ""
             # 갈라 연 회차 대화의 첫 호출: 원래 대화의 세션을 `fork_session`으로 갈라 이어 간다(7.2, S11)
             session_id, fork = conv.session_id, False
             origin_text = self._fork_origin_text(conv)
@@ -946,7 +958,8 @@ class Dispatcher:
                 body,
             )
             if app is not None:
-                app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
+                if not thinking:
+                    app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
                 app.writer.start_step()
             result = await self._call_brain(prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork)
             # 가르기가 답을 냈는데 원래 세션 id를 그대로 돌려줬다: 갈라지지 않고 원래 세션을 이었다. 가르기 실패로
@@ -1142,23 +1155,32 @@ class Dispatcher:
         history = self._history(conv, skip_last)
         return f"## 최근 대화\n{history}" if history else ""
 
-    async def _roll_up(self, conv: Conversation, skip_last: int) -> tuple[Conversation, str]:
+    async def _roll_up(
+        self, conv: Conversation, skip_last: int, *, on_summarize: Callable[[], None] | None = None,
+    ) -> tuple[Conversation, str]:
         """말아 넣기(SP9 7.4). 앱 `chat`·`plan`의 사용자 메시지 수를 올리고, `rollup_user_messages + 1`(31) 이상이면
         이 메시지 전까지로 요약을 갱신하고 세션을 비운다(수는 1로). 돌려주는 글은 새 세션에 붙일 요약 + 최근 6줄.
 
         요약을 못 만들면(상한, 두뇌 오류) 미룬다: 지금 세션을 그대로 잇고 다음 메시지에서 다시 해 본다(옛 요약으로
         말아 넣지 않는다). 회차 대화는 세지 않는다(답장 창 안에서만 이어지고 가르기 규칙이 세션을 맡는다).
+        `on_summarize`: 요약을 부르기 직전에 한 번(앱 스트림에 "thinking"을 먼저 보낸다). `summary_through`는 요약이
+        덮는 마지막 줄(이번 메시지 바로 앞 줄)의 시각이다.
         """
         if conv.channel != "app" or conv.kind is ConversationKind.run:
             return conv, ""
         n = self.convs.bump_user_messages(conv.id)
         if n < self.settings.limits.rollup_user_messages + 1:
             return conv, ""
+        if on_summarize is not None:
+            on_summarize()
         got = await self._summarize(conv, skip_last=skip_last)
         if got is None:
             log.info("rollup_deferred", extra={"conversation_id": conv.id, "user_messages": n})
             return conv, ""
-        self.convs.set_summary(conv.id, got.title, got.summary, self.clock.now())
+        covered = self.transcripts.messages(conv.id)
+        covered = covered[:-skip_last] if skip_last else covered
+        through = covered[-1].at if covered else self.clock.now()
+        self.convs.set_summary(conv.id, got.title, got.summary, through)
         self.convs.reset_session(conv.id)
         rolled = self.convs.get(conv.id)
         assert rolled is not None
@@ -2012,12 +2034,12 @@ class Dispatcher:
             ids = self.convs.summary_retry(self.clock.now() - timedelta(days=summaries.RETRY_DAYS))
             ids += [i for i in self.convs.summary_pending() if i not in ids]
         else:
-            ids = [i for i in self.convs.summary_pending() if i not in self._summary_tried]
+            ids = [i for i in self.convs.summary_pending() if not self._tried(i)]
         now = self.clock.now()
         # 앱 쪽 회차 대화는 닫히지 않는다: 답장 창이 끝나면 닫힌 것처럼 요약한다(7.2 "앱에서 답한 회차")
         ids += [
             c.id for c in self.convs.open_app_runs_unsummarized()
-            if c.id not in self._summary_tried and c.id not in ids and not self.router.continues(c, now)
+            if not self._tried(c.id, c) and c.id not in ids and not self.router.continues(c, now)
         ]
         new = [i for i in ids if i not in self._summary_queued]
         for i in new:
@@ -2027,16 +2049,23 @@ class Dispatcher:
             log.info("summaries_queued", extra={"count": len(new), "retry": retry})
         return len(new)
 
+    def _tried(self, cid: int, conv: Conversation | None = None) -> bool:
+        """이 프로세스에서 지금의 마지막 말까지 이미 요약을 해 본 대화인가."""
+        if cid not in self._summary_tried:
+            return False
+        conv = conv or self.convs.get(cid)
+        return conv is None or self._summary_tried[cid] == conv.last_message_at
+
     async def _handle_summary(self, job: _SummaryJob) -> None:
         """닫힌 앱 대화 하나를 요약해 적는다. 안 되면 제목이 없을 때만 대체 제목(첫 사용자 메시지 앞 20자, 요약 NULL)."""
         cid = job.conversation_id
         self._summary_queued.discard(cid)
         if self._stopping:  # 멈추는 중: 다음 실행의 첫 tick이 다시 넣는다
             return
-        self._summary_tried.add(cid)
         conv = self.convs.get(cid)
         if conv is None or not self._summarizable(conv):
             return
+        self._summary_tried[cid] = conv.last_message_at
         got = await self._summarize(conv)
         conv = self.convs.get(cid)  # 요약하는 동안 지웠거나 다시 열었을 수 있다
         if conv is None or conv.deleted_at is not None:
@@ -2071,26 +2100,44 @@ class Dispatcher:
             return False
         out = res.body["result"]
         self._summary_queued.discard(conversation_id)
+        erased, failed, removed = self._erase_deleted(
+            conversation_id, datetime.fromisoformat(out["opened_at"]), datetime.fromisoformat(out["last_message_at"]),
+            out["sessions"],
+        )
+        log.info("conversation_deleted", extra={
+            "conversation_id": conversation_id, "erased": erased, "failed_days": failed,
+            "sessions": len(out["sessions"]), "removed": removed,
+        })
+        return True
+
+    def reerase_deleted(self, *, days: int = REERASE_DAYS) -> int:
+        """하루 한 번 작업(7.7): 최근 `days`일 안에 지운 대화의 원문 줄과 세션 파일을 다시 지운다. 지우던 때 파일이
+        잡혀 있었거나 커밋 뒤 프로세스가 멈췄어도 남지 않게. 여러 번 해도 결과가 같다. 새로 지운 항목 수."""
+        total = 0
+        for conv in self.convs.deleted_since(self.clock.now() - timedelta(days=days)):
+            erased, _, _ = self._erase_deleted(
+                conv.id, conv.opened_at, conv.last_message_at, self.convs.sessions(conv.id),
+            )
+            total += erased
+        log.info("conversations_reerased", extra={"erased": total})
+        return total
+
+    def _erase_deleted(
+        self, conversation_id: int, opened_at: datetime, last_message_at: datetime, sessions: list[str],
+    ) -> tuple[int, int, int]:
+        """원문 기록의 그 대화 줄을 `[지운 대화]`로, 그 대화의 두뇌 세션 파일을 모두 지운다. (지운 항목, 못 바꾼 날, 지운 파일)."""
         tz, boundary = self.settings.timezone, self.settings.day_boundary
-        start = logical_date(datetime.fromisoformat(out["opened_at"]), tz, boundary)
+        start = logical_date(opened_at, tz, boundary)
         # 답 줄은 `last_message_at`보다 조금 늦게 쓰일 수 있어 하루 더 본다(그 대화의 줄만 바꾼다)
-        end = logical_date(datetime.fromisoformat(out["last_message_at"]), tz, boundary) + timedelta(days=1)
-        erased = 0
-        try:
-            erased = erase_conversation(self.transcripts.root, conversation_id, start, end)
-        except OSError as e:
-            log.warning("conversation_erase_error", extra={"conversation_id": conversation_id,
-                                                           "error_type": type(e).__name__})
+        end = logical_date(last_message_at, tz, boundary) + timedelta(days=1)
+        result = erase_conversation(self.transcripts.root, conversation_id, start, end)
         removed = 0
         if self.claude_config_dir is not None:
-            for sid in out["sessions"]:
+            for sid in sessions:
                 removed += moments_job.remove_session_file(
                     sid, config_dir=self.claude_config_dir, event="conversation_session_cleanup",
                 )
-        log.info("conversation_deleted", extra={
-            "conversation_id": conversation_id, "erased": erased, "sessions": len(out["sessions"]), "removed": removed,
-        })
-        return True
+        return result.erased, len(result.failed), removed
 
     def _summarizable(self, conv: Conversation) -> bool:
         """앱 대화이고 지우지 않았고 끝났다(닫힘, 회차 대화는 답장 창이 끝남)."""
