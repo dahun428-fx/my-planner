@@ -40,7 +40,7 @@ function Level({ data }: { data: StatusData }) {
   );
 }
 
-function Stats({ stats }: { stats: StatusStat[] }) {
+function Stats({ stats, body }: { stats: StatusStat[]; body: StatusData["body"] }) {
   return (
     <Group heading={T.statsHeading}>
       <ul className={styles.list}>
@@ -54,6 +54,15 @@ function Stats({ stats }: { stats: StatusStat[] }) {
               {(s.score !== null || s.bonus > 0) && (
                 <span className={styles.meta}>{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
               )}
+              {s.area === "health" &&
+                (body === null ? (
+                  <span className={styles.meta}>{T.bodyConnect}</span>
+                ) : (
+                  <>
+                    <span className={styles.meta}>{T.bodyLine(body)}</span>
+                    <span className={styles.meta}>{T.bodyLast(body.last_date)}</span>
+                  </>
+                ))}
             </span>
             <span className={`${styles.value} ${s.score === null ? styles.none : ""}`}>{scoreText(s)}</span>
           </li>
@@ -110,7 +119,7 @@ export function Status() {
     body = (
       <>
         <Level data={result.data} />
-        <Stats stats={result.data.stats} />
+        <Stats stats={result.data.stats} body={result.data.body} />
         <Recent stats={result.data.stats} />
         <StatusMoments moments={result.data.moments} hiddenCount={result.data.moments_hidden} onChanged={() => void refresh()} />
       </>

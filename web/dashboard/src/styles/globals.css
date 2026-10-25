@@ -916,6 +916,10 @@ h2 {
   grid-column: 2 / -1;
   margin-top: var(--space-1);
 }
+.stat-body {
+  grid-column: 2 / -1;
+  margin-top: var(--space-1);
+}
 /* 요즘 손이 간 영역: a pictogram (in its area colour) with the name, the bonus at the right, counts below. */
 .with-icon {
   display: flex;

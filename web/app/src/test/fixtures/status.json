@@ -208,5 +208,5 @@
     }
   ],
   "moments_hidden": 1,
-  "body": null
+  "body": { "last_date": "2026-10-24", "days_7": 6, "steps_avg_7": 6800, "sleep_avg_7": 410 }
 }

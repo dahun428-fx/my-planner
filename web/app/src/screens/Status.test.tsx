@@ -138,4 +138,36 @@ describe("Status (spec 10.2)", () => {
     const all = document.body.textContent ?? "";
     for (const mark of ["−", "%", "줄었", "↓"]) expect(all).not.toContain(mark);
   });
+
+  // SP8-07 (spec 7.5, 10.2): the body record line under the health row.
+  const healthRow = () => within(sectionOf(copy.statusScreen.statsHeading)).getAllByRole("listitem")[2];
+
+  it("body_line_and_last_date", async () => {
+    serve({ ...body, body: { last_date: "2026-10-24", days_7: 6, steps_avg_7: 6800, sleep_avg_7: 410 } });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const health = healthRow();
+    expect(within(health).getByText("몸 기록 · 지난 7일 걸음 평균 6,800 · 잠 평균 6시간 50분")).toBeInTheDocument();
+    expect(within(health).getByText("마지막 기록 10/24")).toBeInTheDocument();
+    expect(screen.queryByText(/단축어/)).toBeNull();
+  });
+
+  it("body_line_omits_missing_values_and_never_warns", async () => {
+    serve({ ...body, body: { last_date: "2026-08-02", days_7: 0, steps_avg_7: null, sleep_avg_7: 420 } });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const health = healthRow();
+    expect(within(health).getByText("몸 기록 · 지난 7일 잠 평균 7시간 0분")).toBeInTheDocument();
+    expect(within(health).getByText("마지막 기록 8/2")).toBeInTheDocument();
+  });
+
+  it("connect_hint_when_null", async () => {
+    serve({ ...body, body: null });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    expect(
+      within(healthRow()).getByText("아이폰 단축어로 걸음과 잠을 보내면 건강 스탯의 근거가 돼요. 설정은 README의 'iPhone 단축어'를 봐 주세요."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/마지막 기록/)).toBeNull();
+  });
 });
