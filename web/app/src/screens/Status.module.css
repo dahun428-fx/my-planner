@@ -106,3 +106,104 @@
   font-weight: 400;
   color: var(--muted);
 }
+
+/* 10.2 moments block: continuous paper, a date head per day, a pictogram (area colour) and the text. */
+.day {
+  padding-top: 0.5rem;
+}
+.dayHead {
+  margin: 0;
+  padding: 0.25rem var(--row-pad-x);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  line-height: var(--lh-caption);
+  color: var(--muted);
+}
+/* A row folds away in 200ms: its height goes to 0 along with the grid track. */
+.collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 200ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 200ms linear;
+  --rule-inset: calc(var(--row-pad-x) + 20px + 0.75rem);
+}
+.collapse + .collapse {
+  border-top: 1px solid var(--rule);
+}
+.collapseInner {
+  min-height: 0;
+  overflow: hidden;
+}
+.closing {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapse {
+    transition: none;
+  }
+}
+.momentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-height: var(--row);
+  padding: 0.75rem var(--control-h) 0.75rem var(--row-pad-x);
+}
+.momentRow .face {
+  margin-top: 0.125rem;
+}
+.momentText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-body);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.textButton {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--row-pad-x);
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-align: left;
+  cursor: pointer;
+}
+.textButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.textButton:focus-visible,
+.inlineAction:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.hiddenItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem var(--row-pad-x);
+  color: var(--muted);
+}
+.hiddenItem + .hiddenItem {
+  border-top: 1px solid var(--rule);
+}
+.inlineAction {
+  flex: none;
+  min-height: var(--control-h);
+  margin: -0.75rem 0;
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  color: var(--hue);
+  cursor: pointer;
+}

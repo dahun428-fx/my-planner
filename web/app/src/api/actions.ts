@@ -31,7 +31,10 @@ export type ActionName =
   | "update_habit"
   | "set_habit_status"
   | "check_habit"
-  | "uncheck_habit";
+  | "uncheck_habit"
+  | "hide_moment"
+  | "unhide_moment"
+  | "delete_moment";
 
 export type ActionOutcome =
   | { kind: "applied"; activityId: number; undoId: number | null; confirmation: string; result: unknown }

@@ -24,6 +24,13 @@ const CORS = {
   "Access-Control-Expose-Headers": "x-conversation-id, x-vercel-ai-ui-message-stream",
 };
 
+/** `GET /moments` (SP8 6.5): the status fixture's moments, and with `include_hidden` the one it counts as hidden. */
+function momentsList(includeHidden: boolean): Record<string, unknown> {
+  const { moments } = fixture("status") as { moments: Record<string, unknown>[] };
+  const hidden = { id: 50, date: "2026-10-22", text: "조용히 숨긴 순간이에요", area: "learning", sources: ["task"], hidden: true };
+  return { from: "2026-10-12", to: "2026-10-25", items: includeHidden ? [...moments, hidden] : moments };
+}
+
 /** A 200-character todo title: rows must wrap, never scroll sideways (spec 9장). */
 export const LONG_TITLE = "아주 긴 할 일 제목 ".repeat(20).slice(0, 200);
 
@@ -135,6 +142,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") return json(route, today());
     if (get && path === "/status") return json(route, fixture("status"));
+    if (get && path === "/moments") return json(route, momentsList(q.has("include_hidden")));
+    if (get && path === "/moments") return json(route, momentsList(q.get("include_hidden") === "true"));
     if (get && path === "/week") return json(route, week());
     if (get && path === "/drafts") return json(route, fixture("drafts"));
     if (get && path === "/priorities") return json(route, fixture(`priorities-${q.get("cadence") ?? "month"}`));

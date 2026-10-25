@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { Status as StatusData } from "../api/types.gen";
@@ -77,6 +78,48 @@ describe("Status (spec 10.2)", () => {
     await screen.findByRole("heading", { name: "요즘 손이 간 영역" });
     const recent = sectionOf("요즘 손이 간 영역");
     expect(within(recent).getByText("4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.")).toBeInTheDocument();
+  });
+
+  it("shows_moments_block_and_refreshes_after_hide", async () => {
+    let hidden = false;
+    server.use(
+      http.get(`${BASE}/status`, () =>
+        HttpResponse.json(hidden ? { ...body, moments: body.moments.slice(1), moments_hidden: 2 } : body),
+      ),
+      http.post(`${BASE}/actions`, () => {
+        hidden = true;
+        return HttpResponse.json({ status: "applied", activity_id: 5, undo_id: 6, result: {}, confirmation: "x" });
+      }),
+    );
+    renderWithProviders(<Status />, { route: "/status/" });
+    expect(await screen.findByRole("heading", { level: 2, name: "이룬 순간" })).toBeInTheDocument();
+    const first = body.moments[0].text;
+    expect(screen.getByText(first)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "숨긴 순간 1개" })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByText(first).closest("li") as HTMLElement).getByRole("button", { name: "더 보기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "숨기기" }));
+    expect(await screen.findByRole("button", { name: "숨긴 순간 2개" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(first)).toBeNull());
+  });
+
+  it("shows_moments_block_and_refreshes_after_hide", async () => {
+    let hidden = false;
+    server.use(
+      http.get(`${BASE}/status`, () => HttpResponse.json(hidden ? { ...body, moments: body.moments.slice(1), moments_hidden: 2 } : body)),
+      http.post(`${BASE}/actions`, () => {
+        hidden = true;
+        return HttpResponse.json({ status: "applied", activity_id: 5, undo_id: 6, result: {}, confirmation: "x" });
+      }),
+    );
+    renderWithProviders(<Status />, { route: "/status/" });
+    expect(await screen.findByRole("heading", { level: 2, name: "이룬 순간" })).toBeInTheDocument();
+    const first = body.moments[0].text;
+    expect(screen.getByText(first)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "숨긴 순간 1개" })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByText(first).closest("li") as HTMLElement).getByRole("button", { name: "더 보기" }));
+    await userEvent.click(await screen.findByRole("button", { name: "숨기기" }));
+    expect(await screen.findByRole("button", { name: "숨긴 순간 2개" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(first)).toBeNull());
   });
 
   it("back_link_is_more", async () => {

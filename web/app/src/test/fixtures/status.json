@@ -175,6 +175,37 @@
       "amount": 10
     }
   ],
-  "moments": [],
-  "moments_hidden": 0
+  "moments": [
+    {
+      "id": 41,
+      "date": "2026-10-24",
+      "text": "포트폴리오 사례 하나를 끝까지 다듬었어요",
+      "area": "career",
+      "sources": [
+        "task"
+      ],
+      "hidden": false
+    },
+    {
+      "id": 42,
+      "date": "2026-10-24",
+      "text": "아침마다 물을 마셨어요",
+      "area": "health",
+      "sources": [
+        "habit"
+      ],
+      "hidden": false
+    },
+    {
+      "id": 37,
+      "date": "2026-10-23",
+      "text": "오래 미룬 전화를 걸었어요",
+      "area": null,
+      "sources": [
+        "chat"
+      ],
+      "hidden": false
+    }
+  ],
+  "moments_hidden": 1
 }

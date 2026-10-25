@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useId } from "react";
 import type { Status, StatusStat } from "../api/types.gen";
+import { MomentsPanel } from "../components/MomentsPanel";
 import { RecentAreas } from "../components/RecentAreas";
 import { StatBar, rampStep } from "../components/StatBar";
 import { StateNotice } from "../components/StateNotice";
@@ -88,6 +89,8 @@ export function StatusView({ status: s }: { status: Status }) {
       </section>
 
       <RecentAreas stats={s.stats} />
+
+      <MomentsPanel moments={s.moments} />
 
       <section className="panel" aria-labelledby={questsId}>
         <h2 id={questsId}>{T.mainQuests}</h2>

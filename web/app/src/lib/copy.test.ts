@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { copy, habitMeta } from "./copy";
+import { copy, habitMeta, momentDay } from "./copy";
 
 const repoRoot = join(__dirname, "../../../..");
 const srcRoot = join(__dirname, "..");
@@ -82,6 +82,15 @@ describe("copy", () => {
     expect(p.openTodos).toBe("할 일 화면에서 보기");
     expect(p.openActivity).toBe("기록에서 보기");
     expect(p.periodFailed).toBe("할 일을 불러오지 못했어요");
+  });
+
+  it("moments copy is SP8 appendix A verbatim", () => {
+    const c = copy.statusScreen;
+    expect([c.momentsHeading, c.hiddenGroup(2), c.older]).toEqual(["이룬 순간", "숨긴 순간 2개", "지난 순간 더 보기"]);
+    expect([c.hide, c.delete, c.unhide, c.more, c.hidden, c.unhidden]).toEqual(["숨기기", "지우기", "다시 보이기", "더 보기", "숨겼어요", "다시 보여요"]);
+    expect([c.deleteAsk, c.deleteGo, c.deleteKeep]).toEqual(["이 순간을 지울까요? 되돌릴 수 없어요.", "지우기", "그대로 두기"]);
+    expect(c.momentsEmpty).toBe("하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.");
+    expect(momentDay("2026-10-24")).toBe("10월 24일 (토)");
   });
 
   it("habit copy is appendix A verbatim", () => {
