@@ -24,6 +24,7 @@ EXPECTED_MODELS = {
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
     "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
+    "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
 }
 
 

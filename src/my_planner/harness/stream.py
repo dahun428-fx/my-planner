@@ -275,8 +275,9 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
     """하네스 화면 조각(6.4.1, 6.4.7). 텔레그램 버튼 줄과 같은 재료, 같은 순서(할 일 초안 → 사건 → 챕터 → 컨디션).
     단 SP7 텔레그램의 습관 줄은 일부러 스트림에 없다: 습관 카드는 체크인 상세 `cards`와 두뇌가 그리는 `ui_habit_check`에만 있다.
 
-    확인 카드 `ui_confirm`(`out.confirms`)은 여기서 만들지 않는다: 회차 차례에서만 생기고 앱은 체크인 상세 `cards`로
-    받는다(10.1 A5, `harness.checkins.checkin_cards`). `/chat`은 늘 사용자 차례라 확인 토큰이 없다.
+    회차 차례의 확인(`out.confirms`)은 여기서 만들지 않는다: 앱은 체크인 상세 `cards`로 받는다(10.1 A5,
+    `harness.checkins.checkin_cards`). 사용자 차례에서 두뇌가 물은 확인(SP9 8장 `set_checkin_time`,
+    `out.confirm_cards`)만 맨 뒤에 `ui_confirm`(출력 `{"ok": true}`)으로 붙인다.
 
     초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
     `out.draft_todos`), 사건·챕터 초안 카드는 `{"ok": true, "data": {"milestones": […]}}`·`{"data": {"chapters": […]}}`
@@ -298,6 +299,8 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
                       {"ok": True, "data": {"chapters": [chapters[i] for i in ids if i in chapters]}}))
     if out.ask_condition_for is not None:
         cards.append(("h_cond", "ui_condition_picker", {"date": out.ask_condition_for.isoformat()}, {"ok": True}))
+    for props in out.confirm_cards:
+        cards.append(("h_confirm", "ui_confirm", dict(props), {"ok": True}))
     return cards
 
 

@@ -274,6 +274,19 @@ export const copy = {
     loadFailed: "알림 설정을 불러오지 못했어요",
   },
 
+  // SP9 9.7, 10장 "체크인 시간" (그대로)
+  checkinTimes: {
+    heading: "체크인 시간",
+    weekdayMorning: "평일 아침",
+    weekdayEvening: "평일 저녁",
+    weekendMorning: "주말 아침",
+    weekendEvening: "주말 저녁",
+    fromToday: "오늘부터 적용돼요",
+    fromTomorrow: "내일부터 적용돼요",
+    wakeStale: "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요.",
+    reviewNote: "주말 저녁은 일요일 주간 회고 시각이기도 해요.",
+  },
+
   connect: {
     back: BACK_MORE,
     title: "노트북의 비서와 연결해요",

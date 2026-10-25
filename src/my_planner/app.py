@@ -270,6 +270,7 @@ def build_be(
         status=status,
         review_date_for=lambda ctx: review_date_for(convs, runs, settings, ctx),
         habits=habits,  # 습관 도구(SP7 5.4), `data/exports/habits.md`(5.8)
+        state=state, settings=settings, runs=runs,  # 체크인 시간 바꾸기(SP9 8장)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다

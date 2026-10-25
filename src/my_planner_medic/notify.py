@@ -19,7 +19,7 @@ from typing import Protocol
 from .clock import Clock
 from .config import MedicConfig
 from .http import Http
-from .schedule import next_slot
+from .schedule import load_overrides, next_slot
 from .store import MedicStore, iso_utc
 from .tz import logical_date
 
@@ -116,8 +116,9 @@ class Notifier:
 
     def _next_morning(self, now: datetime) -> datetime:
         at = now
+        overrides = load_overrides(self._cfg.root)  # 바꾼 체크인 시각(SP9 8장), 한 번만 읽는다
         for _ in range(16):  # 아침 회차는 매일 있으므로 두세 번 안에 나온다
-            at, loop = next_slot(self._cfg, at)
+            at, loop = next_slot(self._cfg, at, overrides)
             if loop == "morning_brief":
                 break
         return at

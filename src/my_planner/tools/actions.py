@@ -108,6 +108,7 @@ REST_DAY_CHECKED_KEY = "last_rest_day_checked"  # X9: 마지막으로 본 논리
 INSTALLED_KEY = "installed_at"
 
 STALE_TOKEN = "이미 정리된 제안이에요."  # 10.1 A6
+STALE_RESULT = "stale"  # 처리 함수가 `{"stale": True}`를 돌려주면 아무것도 바꾸지 않은 409 stale(토큰도 stale)
 TOKEN_MISMATCH = "확인한 제안과 요청이 달라요."
 UNKNOWN_ACTION = "알 수 없는 동작이에요."
 BAD_ARGS = "args 형식이 맞지 않아요."
@@ -254,6 +255,18 @@ def _priorities_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     current = [t.id for _, t in tasks.priority_ranks(c, p)]
     new = [i for i in ids if _int(i) is not None] if isinstance(ids, list) else []
     return [priorities_target(c, p), *(task_target(i) for i in dict.fromkeys([*current, *new]))]
+
+
+def _checkin_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """체크인 시간 한 칸(`checkin_time:<loop>:<day_type>`, SP9 8장). 토큰 뒤에 그 칸을 바꾸면 `stale`이다."""
+    from my_planner.tools.checkin_times import (
+        checkin_target,
+        parse_day_type,
+        parse_loop,
+    )
+
+    loop, day_type = parse_loop(args.get("loop")), parse_day_type(args.get("day_type"))
+    return [checkin_target(loop, day_type)] if loop is not None and day_type is not None else []
 
 
 def confirm_targets(tasks: TasksRepo, action: str, args: dict[str, Any]) -> list[str]:
@@ -437,6 +450,16 @@ def _notify_set(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict
     return {"primary": primary}
 
 
+def _wake_task_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """깨우기 작업 다시 등록의 결과(SP9 8장): 안 됐으면 `wake_task_stale`, 되면 지운다. 활동은 남기지 않는다."""
+    ok = args.get("ok")
+    if not isinstance(ok, bool):
+        return {"error": BAD_ARGS}
+    assert deps.state is not None
+    deps.state.set_wake_task_stale(not ok)
+    return {"wake_updated": ok}
+
+
 def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """`POST /push/test`의 결과 기록(구독마다 받음·못 받음). 활동은 남기지 않는다(바뀐 데이터가 없다)."""
     results = args.get("results")
@@ -484,6 +507,9 @@ ACTIONS: dict[str, ActionSpec] = {
     ),
     "check_habit": ActionSpec("check_habit"),
     "uncheck_habit": ActionSpec("uncheck_habit"),
+    # 체크인 시간(SP9 8장): 앱 설정(`PUT /settings/checkin-times`)과 두뇌 확인 카드(`/actions` + 토큰)가 같은 동작.
+    # 바로 적용하고 되돌릴 수 있다(이전 칸으로). 두뇌 도구 `set_checkin_time`은 확인 토큰만 만든다
+    "set_checkin_time": ActionSpec("apply_checkin_time", target=_checkin_target),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
@@ -504,6 +530,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "push_unsubscribe": ActionSpec(_push_unsubscribe, public=False, accepts=frozenset({"id"}), endpoint="push"),
     "notify_set": ActionSpec(_notify_set, public=False, accepts=frozenset({"primary"}), endpoint="push"),
     "push_test_result": ActionSpec(_push_test_result, public=False, accepts=frozenset({"results"}), endpoint="push"),
+    # 내부(`api/actions.refresh_wake`: 체크인 시간을 바꾼 뒤 깨우기 작업 결과, SP9 8장)
+    "wake_task_result": ActionSpec(_wake_task_result, public=False, accepts=frozenset({"ok"}), endpoint="push"),
 }
 
 
@@ -566,6 +594,8 @@ def _call(deps: ActionDeps, spec: ActionSpec, ctx: RunContext, args: dict[str, A
         out = spec.tool(deps, ctx, args)
     if "error" in out:
         return _rejected(str(out["error"]))
+    if out.get(STALE_RESULT) is True:  # 확인을 물은 뒤 상황이 바뀌어 다른 결과가 된다: 다시 물어야 한다(5.2)
+        return _error("conflict", 409, "conflict", STALE_TOKEN)
     if spec.reply:
         return ActionResult("applied", 200, {
             "status": "applied", "conversation_id": None, "reply_text": out["reply_text"], "confirmation": None,
@@ -614,6 +644,8 @@ def _with_token(
     res = _call(deps, spec, ctx, args)
     if res.status == "applied":
         deps.confirms.resolve(p.token, "applied")
+    elif res.status == "conflict":
+        deps.confirms.resolve(p.token, "stale")
     return res
 
 

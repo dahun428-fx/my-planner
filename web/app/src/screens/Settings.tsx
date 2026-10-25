@@ -27,10 +27,9 @@ import { applyPalette, applyTheme, DEFAULT_PALETTE, loadPalette, loadTheme, type
 import { formatKst, relativeChecked } from "../lib/time";
 import page from "../styles/page.module.css";
 import { useCatalog } from "../ui/CatalogProvider";
+import { CheckinTimes } from "./CheckinTimes";
 import styles from "./Settings.module.css";
 
-/** SP1 default check-in times (v1 app constants; spec 5.5.7, 12장 request 3 would move them to /health). */
-export const SP1_SCHEDULE = { weekdays: ["09:00", "17:30"], weekend: ["10:00", "18:00"] } as const;
 const PAUSE_DAYS = [1, 3, 7, 14] as const;
 const PUSH_TEST_TIMEOUT_MS = 30_000;
 
@@ -52,7 +51,7 @@ function shortHost(beUrl: string): string {
   return host.length > 28 ? `${host.slice(0, 14)}…${host.slice(-12)}` : host;
 }
 
-// Spec 5.5.7, F7: connection, check-in notifications, schedule, pause, this device (theme, colour
+// Spec 5.5.7, F7: connection, check-in notifications, check-in times (SP9 9.7, editable), pause, this device (theme, colour
 // preset), about. No chat launcher.
 export function Settings() {
   const toast = useToast();
@@ -341,10 +340,7 @@ export function Settings() {
         )}
       </Group>
 
-      <Group heading={copy.settings.schedule} footer={copy.settings.scheduleNote}>
-        <Row title={copy.settings.weekdays} trailing={<span className={styles.value}>{SP1_SCHEDULE.weekdays.join(" · ")}</span>} />
-        <Row title={copy.settings.weekend} trailing={<span className={styles.value}>{SP1_SCHEDULE.weekend.join(" · ")}</span>} />
-      </Group>
+      <CheckinTimes online={online} />
 
       <Group heading={copy.settings.pause}>
         {pausedUntil ? (

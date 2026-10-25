@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 ErrorCode = Literal[
     "invalid_request", "unauthorized", "not_found", "conflict", "superseded", "undo_expired", "too_large",
     "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal", "unavailable",
+    "checkin_time_invalid",
 ]
 
 
@@ -760,6 +761,47 @@ class NotifyPutBody(_Model):
     primary: Literal["telegram", "app"]
 
 
+CheckinLoop = Literal["morning_brief", "evening_checkin"]
+CheckinDayType = Literal["weekday", "weekend"]
+
+
+class CheckinTimeItem(_Model):
+    """체크인 시간 한 칸(SP9 8장). `time`은 앞으로의 값("HH:MM"), `from`은 그 값이 적용되는 첫 날(논리적 날짜,
+    바꾼 적이 없으면 null), `effective_today`는 오늘(논리적 날짜) 적용되는 값."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    loop: CheckinLoop
+    day_type: CheckinDayType
+    time: str
+    from_: str | None = Field(alias="from")
+    effective_today: str
+
+
+class CheckinTimes(_Model):
+    """`GET /settings/checkin-times`: 네 칸(평일 아침, 평일 저녁, 주말 아침, 주말 저녁)과, 마지막 깨우기 작업 다시
+    등록이 됐는지(`wake_updated`: PUT, 확인 카드, 되돌리기 어느 쪽에서 바꿨든 같은 값)."""
+
+    items: list[CheckinTimeItem]
+    wake_updated: bool  # 마지막 깨우기 작업 다시 등록이 됐는지(안 됐으면 설정 화면에 안내 줄)
+
+
+class CheckinTimePutBody(_Model):
+    """`PUT /settings/checkin-times`: 바꿀 칸 하나. 아침 05:00~11:30, 저녁 15:00~23:30, 10분 단위."""
+
+    loop: CheckinLoop
+    day_type: CheckinDayType
+    time: str
+
+
+class CheckinTimesUpdated(CheckinTimes):
+    """`PUT /settings/checkin-times`의 답: 지금 네 칸(과 `wake_updated`), 바꾼 칸의 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다)."""
+
+    applies: Literal["today", "tomorrow"]
+    activity_id: int | None
+    undo_id: int | None
+
+
 class ClientErrorBody(_Model):
     """`POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부)."""
 
@@ -827,6 +869,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "PushTestResult": PushTestResult,
     "NotifySettings": NotifySettings,
     "NotifyPutBody": NotifyPutBody,
+    "CheckinTimes": CheckinTimes,
+    "CheckinTimePutBody": CheckinTimePutBody,
+    "CheckinTimesUpdated": CheckinTimesUpdated,
     "Habit": Habit,
     "HabitsList": HabitsList,
     "HabitHistory": HabitHistory,

@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Literal
 
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
+from my_planner.loop.schedule import Overrides, dump_overrides, parse_overrides
 from my_planner.store.db import transaction
 
 # app_state 키 (티켓 10). 시각은 UTC ISO, 날짜는 논리적 날짜 ISO.
@@ -22,6 +23,10 @@ BRAIN_AUTH_STATE_KEY = "brain_auth_state"  # 디스패처가 두뇌 호출마다
 BRAIN_AUTH_CHECKED_AT_KEY = "brain_auth_checked_at"  # 그 기록 시각(UTC ISO)
 NOTIFY_PRIMARY_KEY = "notify_primary"  # 주 통로 telegram | app. 없으면 config의 notify.default_primary
 APP_INBOUND_SEQ_KEY = "app_inbound_seq"  # 앱 메시지의 마지막 inbound_id(음수, 5.1)
+# SP9 8장: 바꾼 체크인 시각(JSON, 칸마다 {"time", "from", "prev"}). 없는 칸은 config.toml 값
+SCHEDULE_OVERRIDE_KEY = "schedule_override"
+# 마지막 깨우기 작업 다시 등록이 안 됐으면 "true"(설정 화면 안내 줄). 되면 지운다
+WAKE_TASK_STALE_KEY = "wake_task_stale"
 
 UsageField = Literal["brain_calls", "proactive_messages"]
 _USAGE_FIELDS = ("brain_calls", "proactive_messages")
@@ -85,6 +90,22 @@ class StateRepo:
                 "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
                 (key, value),
             )
+
+    def get_schedule_override(self) -> Overrides:
+        return parse_overrides(self.get(SCHEDULE_OVERRIDE_KEY))
+
+    def set_schedule_override(self, overrides: Overrides) -> None:
+        self.set(SCHEDULE_OVERRIDE_KEY, dump_overrides(overrides))
+
+    def wake_task_stale(self) -> bool:
+        return self.get(WAKE_TASK_STALE_KEY) == "true"
+
+    def set_wake_task_stale(self, stale: bool) -> None:
+        if stale:
+            self.set(WAKE_TASK_STALE_KEY, "true")
+        else:
+            with transaction(self.conn):
+                self.conn.execute("DELETE FROM app_state WHERE key = ?", (WAKE_TASK_STALE_KEY,))
 
     # usage_state (논리적 날짜 기준)
     def incr_usage(self, d: date, field: UsageField) -> int:
