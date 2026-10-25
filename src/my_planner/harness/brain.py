@@ -224,6 +224,8 @@ class ClaudeBrain:
         exc: Exception | None = None
         try:
             async for message in query(prompt=prompt, options=options):
+                if run_ctx.brain_session_id is None:  # 끝나기 전에 끊겨도 디스패처가 그 세션을 알게(SP8 6.3)
+                    run_ctx.brain_session_id = _message_session_id(message)
                 if isinstance(message, StreamEvent):  # 부분 메시지는 분류와 답 글에 쓰지 않는다
                     if text_stream is not None and message.parent_tool_use_id is None:
                         text_stream.feed(message.event)
@@ -331,6 +333,15 @@ def _session_id(messages: list[object], result: ResultMessage | None) -> str | N
             if isinstance(sid, str):
                 return sid
     return None
+
+
+def _message_session_id(message: object) -> str | None:
+    """메시지 하나가 실은 세션 id(init `SystemMessage`, 스트림 조각, 결과). 없으면 None."""
+    if isinstance(message, SystemMessage) and message.subtype == "init":
+        sid = message.data.get("session_id")
+        return sid if isinstance(sid, str) and sid else None
+    sid = getattr(message, "session_id", None) if isinstance(message, (StreamEvent, ResultMessage)) else None
+    return sid if isinstance(sid, str) and sid else None
 
 
 def _log_rate_warnings(messages: list[object]) -> None:

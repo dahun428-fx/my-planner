@@ -1909,12 +1909,14 @@ class Dispatcher:
                 max_turns=moments_job.MOMENTS_MAX_TURNS, persist_session=False,
             )
         finally:
-            # 결과가 무엇이든 그 세션 파일을 지운다(플래그와 두 겹, 결정 18). 결과가 없으면 id를 모른다
+            # 결과가 무엇이든(시간 초과·취소 포함) 그 세션 파일을 지운다(플래그와 두 겹, 결정 18). 결과에 id가 없으면
+            # 두뇌가 호출 중에 본 id를 쓴다. 둘 다 없으면 id를 모른다
             if self.claude_config_dir is not None:
-                if result is None:
-                    log.info("moments_session_cleanup", extra={"removed": False, "reason": "no_result"})
+                sid = (result.session_id if result is not None else None) or run_ctx.brain_session_id
+                if sid is None:
+                    log.info("moments_session_cleanup", extra={"removed": False, "reason": "no_session_id"})
                 else:
-                    moments_job.remove_session_file(result.session_id, config_dir=self.claude_config_dir)
+                    moments_job.remove_session_file(sid, config_dir=self.claude_config_dir)
         if result.status == "rate_limited":
             self._set_limited(result.retry_at)
         state = moments_job.settle(repo, d, result, "save_moments" in run_ctx.tool_names, self.clock.now())

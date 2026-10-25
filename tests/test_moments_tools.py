@@ -132,7 +132,8 @@ def test_m1_other_date_error(env):
 
 def test_m2_more_than_3_error_saves_nothing(env):
     assert env.save([_m(), _m("둘째"), _m("셋째"), _m("넷째")]) == {"error": TOO_MANY}
-    assert env.save("하나") == {"error": TOO_MANY}  # 배열이 아니면
+    shape = {"error": "moments는 0~3개의 배열로 보내 주세요."}
+    assert env.save("하나") == shape and env.save(None) == shape  # 배열이 아니거나 없으면
     assert env.rows() == [] and env.day_row() is None and env.acts() == []
 
 

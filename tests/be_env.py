@@ -41,6 +41,7 @@ from my_planner.api.server import API_PREFIX, ApiDeps, build_app
 from my_planner.app import BeParts, build_be
 from my_planner.bot.telegram_io import handle_update
 from my_planner.clock import FakeClock, to_iso
+from my_planner.harness.moments import MOMENTS_PAUSED_KEY
 from my_planner.store.db import migrate, open_db, open_ro
 
 # 쓰기 경로 감시(SP3-4 16장, `tests/test_write_paths.py`): 주면 쓰기 연결의 데이터 쓰기마다 그 SQL로 부른다
@@ -117,8 +118,12 @@ class BeEnv:
         overrides: dict[str, Any] | None = None,
         api_sleep: Any = None,
         push: Any = None,
+        moments: bool = False,
     ) -> AsyncIterator[BeEnv]:
-        """`push`: 가짜 푸시 전송(`FakePushSender`). 주면 꾸며 낸 VAPID 값으로 푸시를 켠다."""
+        """`push`: 가짜 푸시 전송(`FakePushSender`). 주면 꾸며 낸 VAPID 값으로 푸시를 켠다.
+
+        `moments`: 하루 끝 이룬 순간 작업(SP8 6.2)을 켠다. 기본은 끔(`moments_paused = "1"`): 하루 tick이 두뇌
+        시나리오를 쓰지 않게. 순간 시험만 켠다."""
         base: dict[str, Any] = {"api_token": TEST_TOKEN}
         if push is not None:
             base["vapid"] = FAKE_VAPID
@@ -143,6 +148,8 @@ class BeEnv:
         before = to_iso(start - timedelta(minutes=1))
         parts.state.set("installed_at", before)
         parts.state.set("last_seen_at", before)
+        if not moments:
+            parts.state.set(MOMENTS_PAUSED_KEY, "1")
         deps = ApiDeps(
             settings=settings, clock=clock, token=TEST_TOKEN, read_conn=lambda: open_ro(db_path),
             dispatcher=parts.dispatcher, errors=ErrorCounter(clock),

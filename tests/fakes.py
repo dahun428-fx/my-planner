@@ -68,6 +68,8 @@ class FakeBrain:
         if not self.script:
             raise AssertionError("FakeBrain: 시나리오가 더 없다")
         turn = self.script.pop(0)
+        if turn.session_id is not None:  # 실제 두뇌처럼 시작하자마자 세션 id를 알린다(init 메시지)
+            run_ctx.brain_session_id = turn.session_id
         if turn.deltas and run_ctx.stream is not None:
             w = run_ctx.stream
             text_id = w.next_text_id()

@@ -624,7 +624,7 @@ async def test_end_of_day_moments(tmp_path):
     """하루 끝 이룬 순간(SP8 6.2~6.3, 1장 조건 3): 앱에서 말한 날 → 다음 날 04:01 tick → `save_moments` 하나로 저장."""
     moment = {"text": "포트폴리오 사례 하나를 끝까지 다듬었어요", "area": "career", "sources": ["chat"]}
     script = [FakeTurn([], "축하해요!"), FakeTurn([("save_moments", {"date": "2026-10-25", "moments": [moment]})], "")]
-    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 13, 0), script=script) as env:
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 13, 0), script=script, moments=True) as env:
         env.parts.runner.checkins = False  # 회차 없이 하루 한 번 작업만
         await env.chat("드디어 사례 하나 끝냈다")
         env.clock.set(kst(2026, 10, 26, 4, 1))

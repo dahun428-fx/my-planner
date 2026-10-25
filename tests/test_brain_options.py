@@ -489,3 +489,28 @@ async def test_claude_brain_uses_given_system_prompt_and_max_turns(tmp_path, mon
     system = seen[0]["system_prompt"]
     assert system.startswith(prompts.load("moments.md"))
     assert prompts.load("system.md").splitlines()[0] not in system
+
+
+async def test_claude_brain_records_session_id_before_result(tmp_path, monkeypatch):
+    """init 메시지의 세션 id는 호출이 끝나기 전에 `run_ctx`에 적는다: 시간 상한으로 끊겨도 디스패처가 안다."""
+    import asyncio
+
+    import anyio
+    import pytest
+    from claude_agent_sdk import SystemMessage
+
+    from my_planner.harness import brain as brain_mod
+
+    sid = "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+
+    async def hanging_query(*, prompt, options):
+        yield SystemMessage(subtype="init", data={"session_id": sid})
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(brain_mod, "query", hanging_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk", "name": "planner"})
+    brain = brain_mod.ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+    ctx = _moments_ctx()
+    with pytest.raises(TimeoutError), anyio.fail_after(0.05):
+        await brain.run("입력", session_id=None, run_ctx=ctx, max_turns=3, persist_session=False)
+    assert ctx.brain_session_id == sid

@@ -47,7 +47,7 @@ SECRET = "꾸며 낸 순간 글"
 
 @asynccontextmanager
 async def started(tmp_path, script=(), *, since=None, claude=False):
-    async with BeEnv.start(tmp_path, script=list(script), start=START) as env:
+    async with BeEnv.start(tmp_path, script=list(script), start=START, moments=True) as env:
         # 회차는 끈다: 며칠 건너 tick해도 복귀 인사가 두뇌 시나리오를 쓰지 않게(하루 한 번 작업은 그대로 돈다)
         env.parts.runner.checkins = False
         if since is not None:
@@ -521,17 +521,65 @@ async def test_session_file_removed_even_when_brain_errors(tmp_path):
         assert day_row(env, D[25]).attempts == 1
 
 
-async def test_session_cleanup_skipped_without_result(tmp_path, caplog):
+async def test_session_cleanup_without_any_session_id(tmp_path, caplog):
     caplog.set_level(logging.INFO)
-    async with started(tmp_path, [FakeTurn([], "", raises=RuntimeError("두뇌 구현 오류"))], claude=True) as env:
+    turn = FakeTurn([], "", session_id=None, raises=RuntimeError("두뇌 구현 오류"))
+    async with started(tmp_path, [turn], claude=True) as env:
         mine, _, _ = _session_files(tmp_path)
         say(env, kst(2026, 10, 25, 14, 0), "꾸민 말")
         await tick_at(env)
-        assert mine.exists()  # 세션 id를 모르면 지우지 않는다
+        assert mine.exists()  # 세션 id를 하나도 못 봤으면 지울 것을 모른다
         cleanup = [r for r in caplog.records if r.getMessage() == "moments_session_cleanup"]
-        assert [(r.removed, r.reason) for r in cleanup] == [(False, "no_result")]
+        assert [(r.removed, r.reason) for r in cleanup] == [(False, "no_session_id")]
         assert day_row(env, D[25]).state == "pending"
         assert env.parts.dispatcher.idle  # 작업자는 그대로 돈다
+
+
+async def test_session_file_removed_when_brain_raises_after_seeing_id(tmp_path):
+    turn = FakeTurn([], "", session_id=SID, raises=RuntimeError("두뇌 구현 오류"))
+    async with started(tmp_path, [turn], claude=True) as env:
+        mine, sub, other = _session_files(tmp_path)
+        say(env, kst(2026, 10, 25, 14, 0), "꾸민 말")
+        await tick_at(env)
+        assert not mine.exists() and not sub.exists() and other.exists()
+
+
+async def _until(cond, steps=400):
+    for _ in range(steps):
+        if cond():
+            return
+        await asyncio.sleep(0.005)
+    raise AssertionError("조건이 끝내 서지 않았다")
+
+
+async def test_session_file_removed_after_timeout(tmp_path):
+    """시간 상한에 걸려 결과에 id가 없어도, 두뇌가 호출 중에 본 id로 지운다(리뷰 SHOULD 1)."""
+    async with started(tmp_path, [FakeTurn([], "", session_id=SID, hang=True)], claude=True) as env:
+        mine, sub, other = _session_files(tmp_path)
+        d = env.parts.dispatcher
+        d.settings = env.settings.model_copy(
+            update={"limits": env.settings.limits.model_copy(update={"brain_timeout_s": 0.05})}
+        )
+        say(env, kst(2026, 10, 25, 14, 0), "꾸민 말")
+        env.clock.set(TICK)
+        env.parts.runner.tick()
+        await _until(lambda: len(env.brain.calls) == 1 and d.idle)
+        assert not mine.exists() and not sub.exists() and other.exists()
+        assert (day_row(env, D[25]).state, day_row(env, D[25]).attempts) == ("pending", 1)
+
+
+async def test_session_file_removed_when_stop_cancels_call(tmp_path):
+    """`stop()`이 상한에 걸려 작업자를 취소해도, 본 id의 세션 파일은 지운다."""
+    async with started(tmp_path, [FakeTurn([], "", session_id=SID, hang=True)], claude=True) as env:
+        mine, sub, other = _session_files(tmp_path)
+        say(env, kst(2026, 10, 25, 14, 0), "꾸민 말")
+        env.clock.set(TICK)
+        env.parts.runner.tick()
+        await _until(lambda: len(env.brain.calls) == 1)
+        await env.parts.dispatcher.stop(timeout=0.05)
+        assert not mine.exists() and not sub.exists() and other.exists()
+        row = day_row(env, D[25])
+        assert (row.state, row.attempts) == ("pending", 0)
 
 
 def test_session_cleanup_ignores_bad_id(tmp_path):
@@ -540,7 +588,7 @@ def test_session_cleanup_ignores_bad_id(tmp_path):
     victims = [base / "x.jsonl", base / "projects" / "x.jsonl", base / "projects" / "p" / "x.jsonl"]
     for v in victims:
         v.write_text("{}\n", encoding="utf-8")
-    for bad in ("../x", None, "x", "*", SID.upper(), f"{SID}/../../x", "", 12):
+    for bad in ("../x", None, "x", "*", "-" * 36, SID.upper(), SID.replace("-", "0"), f"{SID}/../../x", "", 12):
         assert remove_session_file(bad, config_dir=base) is False
     assert all(v.exists() for v in victims)
     assert remove_session_file(SID, config_dir=tmp_path / "없는 폴더") is False

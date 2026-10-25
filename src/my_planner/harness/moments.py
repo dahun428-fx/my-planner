@@ -43,7 +43,7 @@ MOMENT_DAYS_KEEP = 60  # `status_moment_days` 보관(6.4)
 MOMENTS_SINCE_KEY = "moments_since"  # 처음 작업이 돈 날의 전날(이보다 앞날은 고르지 않는다)
 MOMENTS_PAUSED_KEY = "moments_paused"  # "1"이면 고르지 않는다(16장 끄기)
 
-_UUID = re.compile(r"^[0-9a-f-]{36}$")
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _WEEKDAY = "월화수목금토일"
 _BANNED_START = "<!-- banned-words:start -->"
 _BANNED_END = "<!-- banned-words:end -->"

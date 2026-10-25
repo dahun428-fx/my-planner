@@ -37,6 +37,7 @@ MSG_SOURCES = "근거로 쓸 수 없는 항목이 있어요."
 MSG_AREA = "area는 career, finance, health, relationships, learning, quality_of_life 가운데 하나예요."
 # 부록 A 밖(SP8-03이 더함, H4 확인): 글 모양 오류
 MSG_TEXT = "이룬 순간은 앞뒤 공백을 뺀 1~60자 한 줄로 써 주세요."
+MSG_SHAPE = "moments는 0~3개의 배열로 보내 주세요."
 
 
 def moments_summary(n: int, d: date) -> str:
@@ -101,7 +102,9 @@ class MomentTools:
         current = self.moments.day(day)
         if current is not None and current.state == "done":
             return {"already": True}  # M4
-        if not isinstance(moments, list) or len(moments) > MOMENTS_PER_DAY:
+        if not isinstance(moments, list):
+            return _err(MSG_SHAPE)  # M2
+        if len(moments) > MOMENTS_PER_DAY:
             return _err(MSG_TOO_MANY)  # M2
         checked: list[tuple[str, str | None, list[str]]] = []
         for item in moments:
