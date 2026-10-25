@@ -151,12 +151,12 @@ def test_ui_and_card_tools_absent_from_telegram(uenv):
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
         "set_checkin_time",
     ]
-    assert tool_names_for("telegram") == TOOL_NAMES
-    assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
+    assert tool_names_for(RunContext(None, None, channel="telegram")) == TOOL_NAMES
+    assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
     for channel in ("telegram", "app"):
         ctx = RunContext(conversation_id=None, run_id=None, channel=channel)
         names = [t.name for t in build_planner_tools(uenv.tools, ctx)]
-        assert names == tool_names_for(channel)
+        assert names == tool_names_for(RunContext(None, None, channel=channel))
     tg = {t.name for t in build_planner_tools(uenv.tools, RunContext(conversation_id=None, run_id=None))}
     assert not tg & set(APP_ONLY_TOOLS)
 
@@ -288,8 +288,8 @@ def test_ui_habit_check_no_db_writes(uenv, tmp_path):
 
 
 def test_app_tool_count_35():
-    assert len(tool_names_for("app")) == 36 and len(tool_names_for("telegram")) == 28  # SP9-02 +1(앱에만)
-    assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for("telegram")
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 36 and len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28  # SP9-02 +1(앱에만)
+    assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for(RunContext(None, None, channel="telegram"))
     names = [t.name for t in build_planner_tools(Tools.__new__(Tools), RunContext(conversation_id=None, run_id=None, channel="app"))]
     assert "ui_habit_check" in names  # 도구 정의(설명, 스키마)가 있다
 

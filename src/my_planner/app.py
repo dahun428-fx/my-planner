@@ -44,6 +44,7 @@ from my_planner.harness.brain import Brain, ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.delivery import Delivery, PushSender, WebPushSender
 from my_planner.harness.dispatcher import Dispatcher, Outbound, Sender
+from my_planner.harness.moments import claude_config_dir as default_claude_config_dir
 from my_planner.harness.stream import AppReplySender
 from my_planner.logging_setup import setup_logging
 from my_planner.loop.runner import (
@@ -54,7 +55,9 @@ from my_planner.loop.runner import (
     expire_drafts,
     grant_rest_days_daily,
     prune_api_state_daily,
+    prune_records_daily,
     prune_updates_daily,
+    queue_moments_daily,
     recover_on_start,
     resubmit_inbound,
 )
@@ -72,6 +75,7 @@ from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.habits import HabitsRepo
+from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
@@ -212,6 +216,7 @@ class BeParts:
     curve: CurveRepo
     status: StatusRepo
     habits: HabitsRepo | None = None  # 습관(SP7)
+    moments: MomentsRepo | None = None  # 이룬 순간(SP8)
 
 
 def build_be(
@@ -225,10 +230,12 @@ def build_be(
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
     push_sender: PushSender | None = None,
+    claude_config_dir: Path | None = None,
 ) -> BeParts:
     """저장소, 도구, 두뇌, 디스패처, 러너, 버튼 처리기를 조립한다(텔레그램 앱과 API는 밖에서 붙인다).
 
     `push_sender`: 웹 푸시 전송(시험은 가짜). 없으면 VAPID가 있을 때 `WebPushSender`. VAPID가 없으면 푸시는 꺼진다.
+    `claude_config_dir`: 하루 끝 순간 호출 뒤 세션 파일을 지울 CLI 설정 폴더(SP8 6.3). None이면 지우지 않는다(시험).
     """
     paths = settings.paths
     state = StateRepo(conn, clock)
@@ -246,6 +253,7 @@ def build_be(
     curve = CurveRepo(conn, clock)
     status = StatusRepo(conn, clock)
     habits = HabitsRepo(conn, clock)
+    moments = MomentsRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -270,6 +278,7 @@ def build_be(
         status=status,
         review_date_for=lambda ctx: review_date_for(convs, runs, settings, ctx),
         habits=habits,  # 습관 도구(SP7 5.4), `data/exports/habits.md`(5.8)
+        moments=moments,  # 하루 끝 순간 호출의 `save_moments`(SP8 6.3). 내보내기는 없다
         state=state, settings=settings, runs=runs,  # 체크인 시간 바꾸기(SP9 8장)
     )
     brain = brain_factory(tools)
@@ -296,6 +305,7 @@ def build_be(
         confirms=confirms,
         app_sender=AppReplySender(),  # 앱 답(`POST /chat`의 스트림, SP3-4 7.5 M4)
         delivery=delivery,
+        claude_config_dir=claude_config_dir,
     )
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
@@ -307,6 +317,9 @@ def build_be(
     runner.register_daily(expire_curve_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
     runner.register_daily(grant_rest_days_daily(dispatcher))  # X9 쉬는 날(어제까지, 최대 14일)
     runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
+    runner.register_daily(prune_records_daily(dispatcher))  # 60일 지난 status_moment_days(SP8 6.4)
+    # 하루 끝 이룬 순간: 정리할 날을 골라 디스패처에 가장 낮은 차례로(SP8 6.2). 두뇌는 디스패처가 부른다
+    runner.register_daily(queue_moments_daily(dispatcher, moments, state))
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
     runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다
     runner.register_daily(cleanup_logs_daily(paths.state_dir / "logs", keep=settings.retention.log_days))
@@ -329,7 +342,7 @@ def build_be(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
-        pushes=pushes, curve=curve, status=status, habits=habits,
+        pushes=pushes, curve=curve, status=status, habits=habits, moments=moments,
     )
 
 
@@ -472,6 +485,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
             ),
             on_resume=None if bot is None else restart_polling,
             keep_awake=keep_awake,
+            claude_config_dir=default_claude_config_dir(),  # 순간 호출 뒤 세션 파일 지우기(SP8 6.3, 결정 18)
         )
         runner, dispatcher = parts.runner, parts.dispatcher
         # 4. 남은 회차 복구: queued/running → interrupted와 재실행 규칙, failed 회차는 전송만 한 번 더.

@@ -17,6 +17,7 @@ from my_planner.harness.dispatcher import (  # 다시 넣기 상한은 앱 재�
     MAX_RUN_ATTEMPTS,
     Inbound,
 )
+from my_planner.harness.moments import days_to_queue
 from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
 from my_planner.loop.schedule import (
@@ -37,6 +38,7 @@ from my_planner.tools.actions import ActionRequest, ActionResult
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
 
@@ -115,6 +117,34 @@ def grant_rest_days_daily(target: ActionApplier) -> Callable[[date], None]:
         log.info("rest_days_granted", extra={"count": len(granted)})
 
     job.__name__ = "grant_rest_days"
+    return job
+
+
+class MomentsSubmitter(Protocol):
+    def submit_moments(self, day: date) -> None: ...
+
+
+def queue_moments_daily(target: MomentsSubmitter, moments: MomentsRepo, state: StateRepo) -> Callable[[date], None]:
+    """하루 한 번 작업(SP8 6.2): 정리할 날을 골라 디스패처에 오래된 날부터 넣는다. 두뇌는 디스패처가 부른다."""
+
+    def job(today: date) -> None:
+        days = days_to_queue(moments, state, today)
+        for d in days:
+            target.submit_moments(d)
+        log.info("moments_queued", extra={"count": len(days)})
+
+    job.__name__ = "queue_moments"
+    return job
+
+
+def prune_records_daily(target: ActionApplier) -> Callable[[date], None]:
+    """하루 한 번 작업: 60일 지난 `status_moment_days` 행 지우기(SP8 6.4, 계획 결정 17). 즉시 갈래로(4.3)."""
+
+    def job(today: date) -> None:
+        res = target.apply_action(_scheduler("prune_records", {}))
+        log.info("records_pruned", extra=dict(res.body.get("result", {})))
+
+    job.__name__ = "prune_records"
     return job
 
 

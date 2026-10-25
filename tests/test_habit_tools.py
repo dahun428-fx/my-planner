@@ -494,8 +494,8 @@ def test_export_habits_skipped_without_repo(tmp_path, conn):
 async def test_telegram_tool_count_28(env):
     habit_tools = ["add_habit", "update_habit", "set_habit_status", "check_habit", "uncheck_habit", "list_habits"]
     assert TOOL_NAMES[22:] == habit_tools
-    assert len(tool_names_for("telegram")) == 28 == len(set(tool_names_for("telegram")))
-    assert len(tool_names_for("app")) == 36  # 화면 도구 `ui_habit_check`(SP7-06) +1, `set_checkin_time`(SP9-02) +1
+    assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28 == len(set(tool_names_for(RunContext(None, None, channel="telegram"))))
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 36  # 화면 도구 `ui_habit_check`(SP7-06) +1, `set_checkin_time`(SP9-02) +1
     ctx = env.user()
     handlers = {t.name: t for t in build_planner_tools(env.tools, ctx)}
     assert list(handlers) == TOOL_NAMES

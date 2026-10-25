@@ -7,7 +7,7 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server
 
-from my_planner.domain import Channel, RunContext
+from my_planner.domain import RunContext
 from my_planner.timefmt import to_api_times
 from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
 
@@ -440,9 +440,43 @@ _SPECS.update({
 })
 
 
-def tool_names_for(channel: Channel) -> list[str]:
-    """그 통로 대화에 주는 도구(SP3-4 10장). 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7)."""
-    return [*TOOL_NAMES, *APP_ONLY_TOOLS] if channel == "app" else list(TOOL_NAMES)
+# 하루 끝 순간 호출(`RunContext.kind == "moments"`, SP8 6.3)에만 주는 도구. 대화·회차 목록(`TOOL_NAMES`, `APP_ONLY_TOOLS`)에는 없다
+MOMENTS_TOOLS: list[str] = ["save_moments"]
+_SPECS["save_moments"] = (
+    (
+        "그날의 이룬 순간 0~3개를 저장하고 그날을 정리한 날로 적습니다. date는 입력의 날짜(YYYY-MM-DD)입니다. "
+        "text는 앞뒤 공백을 뺀 60자 안의 한 줄(줄바꿈 없음), area는 영역 하나 또는 null, sources는 입력에 나온 참조"
+        "(task:<번호>, habit:<번호>, condition, chat) 1~5개입니다. 쓸 거리가 없으면 moments를 빈 배열로 부릅니다."
+    ),
+    _schema(
+        {
+            "date": {"type": "string", "description": "정리하는 날 YYYY-MM-DD"},
+            "moments": {
+                "type": "array",
+                "maxItems": 3,
+                "items": _schema(
+                    {
+                        "text": {"type": "string", "maxLength": 60, "description": "해요체 과거형 한 줄"},
+                        "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+                        "sources": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5},
+                    },
+                    ["text", "sources"],
+                ),
+            },
+        },
+        ["date", "moments"],
+    ),
+)
+
+
+def tool_names_for(ctx: RunContext) -> list[str]:
+    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐이다.
+
+    그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
+    """
+    if ctx.kind == "moments":
+        return list(MOMENTS_TOOLS)
+    return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 
 def _stream_output(tools: Any, name: str, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -498,7 +532,7 @@ def _py_args(args: dict[str, Any]) -> dict[str, Any]:
 def build_planner_tools(tools: Any, ctx: RunContext) -> list[SdkMcpTool[Any]]:
     """도구마다 `ctx`를 클로저로 감싼 SDK 도구 정의. 테스트는 `.handler`를 직접 await한다."""
     out: list[SdkMcpTool[Any]] = []
-    for name in tool_names_for(ctx.channel):
+    for name in tool_names_for(ctx):
         description, schema = _SPECS[name]
         out.append(
             SdkMcpTool(name=name, description=description, input_schema=schema,

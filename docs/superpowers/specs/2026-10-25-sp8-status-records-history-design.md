@@ -186,8 +186,9 @@ CREATE TABLE status_moment_days (            -- 날마다 정리했는지(중복
 4. **차례**: 디스패처의 직렬 작업자가 처리하되, **가장 낮은 차례**다. 기다리는 사용자 메시지나 회차가 있으면 그것을 먼저 한다. 한 번에 한 날씩.
    - **실행 직전에 다시 읽는다**: `_MomentsJob`은 두뇌를 부르기 직전에 그날의 `status_moment_days.state`를 다시 읽고, `done`·`empty`·`failed`이면 아무것도 하지 않는다(대기열에 남은 작업이 다음 날 작업과 겹쳐도 두뇌 호출을 쓰지 않는다).
    - 대기열은 메모리에만 있다. 재시작으로 작업이 사라지면, 그날 하루 작업은 이미 돌았으므로(`last_daily_jobs_date`) 다음 날 작업이 `pending`이거나 행이 없는 날을 다시 고른다.
-5. **두뇌를 부르지 않고 멈추는 경우**(행은 `pending` 그대로, `attempts`도 그대로, 다음 날 작업이 다시 고른다): 그날 두뇌 호출 수 ≥ `daily_brain_calls − 10`(사용자 몫 10회를 남긴다), 로그인·결제 문제(`brain.auth`가 `ok`가 아님), 사용 한도 대기(`limited_until`), 안전 모드.
-6. **결과 판정**: 성공과 실패는 두뇌의 상태(`BrainResult.status`)가 아니라 **호출이 끝난 뒤 그날의 `status_moment_days.state`**로 정한다.
+   - **멈추는 중에는 건너뛴다**: `Dispatcher.stop`은 큐에 든 것까지 처리하지만, 순간 작업은 멈추는 중(`_stopping`)이면 두뇌를 부르지 않고 행을 `pending` 그대로 둔다(따라잡기 7일이 남은 채 노트북을 꺼도 종료가 두뇌 호출 7번을 기다리지 않게). 다음 날 작업이 다시 고른다. 고른 날에는 그때 `pending` 행을 만든다(SP8-03, 계획 결정 7).
+5. **두뇌를 부르지 않고 멈추는 경우**(행은 `pending` 그대로, `attempts`도 그대로, 다음 날 작업이 다시 고른다): 그날 두뇌 호출 수 ≥ `daily_brain_calls − 10`(사용자 몫 10회를 남긴다), 로그인·결제 문제(`brain.auth`가 `login`·`billing`. 설치 뒤 아직 두뇌를 부른 적이 없어 값이 없으면 막지 않는다), 사용 한도 대기(`limited_until`이 지금 뒤). 안전 모드는 따로 보지 않는다: 안전 모드에서는 러너·디스패처를 만들지 않아 작업이 돌 일이 없다(SP8-03, 계획 결정 5·6).
+6. **결과 판정**: 성공과 실패는 두뇌의 상태(`BrainResult.status`)가 아니라 **호출이 끝난 뒤 그날의 `status_moment_days.state`**로 정한다(`harness/moments.settle`). 디스패처는 날 행을 직접 쓰지 않고 `harness/moments.py`의 `mark_empty`와 `settle`만 부른다(쓰기 경로 감시가 그 모듈로 본다, SP8-03, 계획 결정 19).
    - `done`이면 성공이다(두뇌가 `max_turns`나 오류로 끝났어도). `attempts`는 그대로다.
    - 두뇌가 `rate_limited`나 `auth_error`로 끝나고 아직 `pending`이면, 지금 회차와 같이 `_set_limited`와 `brain.auth`를 기록하고, `attempts`는 그대로 두고, 그 패스의 남은 날을 멈춘다.
    - 그 밖에 아직 `pending`이면(오류, 시간 초과, `max_turns`, 모두 M1·M2 오류로 저장 못 함) `attempts + 1`. 2회가 되면 `failed`로 바꾼다. `failed`로는 `pending` 행만 바꾼다(`UPDATE … WHERE state = 'pending'`). 그래서 이미 `done`인 날이 덮이지 않는다.
@@ -197,7 +198,7 @@ CREATE TABLE status_moment_days (            -- 날마다 정리했는지(중복
 ### 6.3 두뇌 호출과 도구 계약
 
 - **호출 모양**: 새 세션(`session_id = None`, 이어 쓰지 않음), `RunContext(kind = "moments", run_id = None, inbound_id = None)`, 지시문은 `harness/prompts/moments.md` 하나(`system.md`의 대화 원칙은 싣지 않는다. 금지어 블록만 하네스가 붙인다), `max_turns = 3`(첫 `save_moments`가 M2 오류를 받아도 고쳐 다시 부르고 끝맺을 턴이 남게), 입력 중 표시는 보내지 않는다. 호출은 하루 두뇌 호출 수에 든다(`brain_calls`).
-- **세션 저장을 끈다**: 순간 호출은 이어 쓰지 않으므로 `ClaudeAgentOptions.extra_args = {"no-session-persistence": None}`로 CLI가 세션 jsonl(`~/.claude/projects/…`)을 쓰지 않게 한다. 설치된 판(`requirements.lock`의 `claude-agent-sdk==0.2.173`)에서 확인한 것: SDK는 `extra_args`의 값이 `None`인 열쇠를 `--<flag>`로 그대로 넘기고(`_internal/transport/subprocess_cli.py`), 함께 든 CLI는 `--no-session-persistence`("sessions will not be saved to disk and cannot be resumed")를 안다. 도움말은 "`--print`에서만"이라고 하지만, SDK가 쓰는 모양(`--output-format stream-json --input-format stream-json`, `--print` 없음)에 이 플래그를 붙여 띄워 보니 거절 없이 시작했다. 그래서 **플래그 방식을 고른다**(호출 뒤 파일 지우기는 쓰지 않는다). 실제로 파일이 안 생기는지는 로그인한 두뇌로만 볼 수 있으므로 SP8-03 첫 단계 스파이크 S-SP8-1과 노트북 수용(SP8-11)에서 "순간 호출 뒤 `~/.claude/projects` 아래에 새 파일이 없다"를 확인한다. 스파이크가 실패할 때만 "호출 뒤 그 `session_id`의 jsonl을 지운다"로 바꾸고 이 절을 고친다. 대화 호출은 지금처럼 세션을 저장한다(이어 쓰기 때문, SP1).
+- **세션 저장을 끈다**: 순간 호출은 이어 쓰지 않으므로 `ClaudeAgentOptions.extra_args = {"no-session-persistence": None}`로 CLI가 세션 jsonl(`~/.claude/projects/…`)을 쓰지 않게 한다. 설치된 판(`requirements.lock`의 `claude-agent-sdk==0.2.173`)에서 확인한 것: SDK는 `extra_args`의 값이 `None`인 열쇠를 `--<flag>`로 그대로 넘기고(`_internal/transport/subprocess_cli.py`), 함께 든 CLI는 `--no-session-persistence`("sessions will not be saved to disk and cannot be resumed")를 안다. 도움말은 "`--print`에서만"이라고 하지만, SDK가 쓰는 모양(`--output-format stream-json --input-format stream-json`, `--print` 없음)에 이 플래그를 붙여 띄워 보니 거절 없이 시작했다. 그래서 플래그를 쓰고, **그와 함께 호출 바로 뒤 결과의 `session_id`로 그 세션 파일이 있으면 지운다**(두 겹, SP8-03, 계획 결정 18): `harness/moments.remove_session_file`이 `<CLAUDE_CONFIG_DIR 또는 ~/.claude>/projects/*/<session_id>.jsonl`과 같은 id의 하위 폴더를 지운다. id가 정규 UUID 모양(8-4-4-4-12 소문자 16진)일 때만, 결과가 `ok`든 오류든 시간 초과든 작업자 취소든(`finally`), 오류는 삼키고 로그에는 지웠는지만(경로·id 없음). id는 결과의 `session_id`, 없으면 두뇌가 호출 중에 처음 본 id(`ClaudeBrain.run`이 init 메시지에서 `RunContext.brain_session_id`에 바로 적는다)다. 둘 다 없으면 지우지 않고 `reason: "no_session_id"`만 남긴다. 실제로 플래그가 먹는지는 로그인한 두뇌로만 볼 수 있으므로 노트북 스파이크 S-SP8-1(사람 관문 H1)과 노트북 수용(SP8-11)에서 "순간 호출 뒤 `~/.claude/projects` 아래에 새 파일이 없다"를 확인한다. 같은 session_id로 `projects/` 밖에 생기는 파일(예: `todos/<id>-*.json`, `history.jsonl`의 줄)도 함께 본다(지우기는 `projects/`만 본다). 스파이크는 플래그만 확인하고 SP8-03 머지를 막지 않는다(플래그가 안 먹어도 지우기가 파일을 남기지 않는다). 대화 호출은 지금처럼 세션을 저장한다(이어 쓰기 때문, SP1).
 - **도구**: 이 호출에는 `mcp__planner__save_moments` **하나만** 준다(ADR 0005 그대로: 파일·셸·웹 없음). `save_moments`는 대화 도구 목록에 없다(텔레그램 28개, 앱 35개 그대로, S12 재확인 불필요).
 - **입력**(하네스가 지시문 뒤에 붙인다):
 
@@ -219,7 +220,7 @@ CREATE TABLE status_moment_days (            -- 날마다 정리했는지(중복
 - 14:02 드디어 사례 하나 끝냈다
 ```
 
-  - 끝낸 할 일은 그날 논리적 날짜에 끝낸 것(초안·소프트 삭제 뺌) 최대 20개, 습관 체크는 그날 것 전부, 사용자 메시지는 그날 원문 기록(`TranscriptStore.read_range`, 이미 `redact()`를 거친 글)의 **사용자 줄만**, 합쳐 6,000자(넘으면 오래된 줄부터 뺀다). 비서의 말은 넣지 않는다(비서가 한 말이 사용자의 순간이 되지 않게).
+  - 끝낸 할 일은 그날 논리적 날짜에 끝낸 것(초안·소프트 삭제 뺌) 최대 20개, 습관 체크는 그날 것 전부, 사용자 메시지는 그날 원문 기록(`TranscriptStore.user_lines(day)`: 그날 파일의 `사용자` 줄 `(HH:MM, 본문)`, 이미 `redact()`를 거친 글. `read_range`는 머리글이 섞인 원문이라 쓰지 않는다, 계획 결정 8)의 **사용자 줄만**, 합쳐 6,000자(넘으면 오래된 줄부터 뺀다). 비서의 말은 넣지 않는다(비서가 한 말이 사용자의 순간이 되지 않게).
   - 대괄호 안의 참조(`task:<id>`, `habit:<id>`)와 `condition`, `chat`이 `sources`에 쓸 수 있는 값의 전부다.
   - **메모(SP9)는 입력이 아니다**: SP9 "앱 탭·메모·일정"의 메모는 Dahun이 직접 쓰는 글이고 이룬 순간과 따로다. 하루 끝 작업은 메모를 읽지 않고, 순간과 메모는 서로를 가리키지 않는다(열쇠도 `sources` 값도 없다).
 - **도구 입력**:
@@ -229,16 +230,16 @@ CREATE TABLE status_moment_days (            -- 날마다 정리했는지(중복
 | `save_moments` | `date`(YYYY-MM-DD), `moments`: 0~3개의 `{text, area?, sources}` | 그날의 이룬 순간을 저장하고 그날을 `done`으로 적는다. 0개도 된다 |
 
 - **인터페이스**(코드로 막는다. 프롬프트에 맡기지 않는다):
-  - `domain.RunContext`에 `kind: Literal["chat", "run", "moments"] = "chat"`을 더한다(회차 호출은 `"run"`). 순간 호출의 활동 통로는 `activity_channel = "scheduler"`다.
+  - `domain.RunContext`에 `kind: Literal["chat", "run", "moments"] = "chat"`을 더한다(회차 호출은 `"run"`). 순간 호출의 활동 통로는 `activity_channel = "scheduler"`다. 도구가 작업 날짜와 참조 목록을 받도록 `moments_date: date | None`(M1의 그 날)과 `moments_refs: frozenset[str]`(입력에 나온 참조, M2)도 더한다(계획 결정 3).
   - `Brain.run(prompt, *, session_id, run_ctx, fork_session=False, system_prompt=None, max_turns=None, persist_session=True)`: 앞의 넷은 지금 그대로이고, `ClaudeBrain`은 `system_prompt`가 있으면 `system.md` 대신, `max_turns`가 있으면 설정값 대신 쓰고, `persist_session=False`면 `extra_args`에 `no-session-persistence`를 넣는다. 시험용 두뇌(`tests/fakes.py`)도 같은 인자를 받는다.
-  - `mcp_adapter.tool_names_for`(지금은 `channel`을 받는다)를 `RunContext`를 받게 바꾸고, `ctx.kind == "moments"`이면 `["save_moments"]`만 돌려준다. 다른 `kind`에는 `save_moments`를 넣지 않는다. `build_planner_tools`가 이 목록만 서버에 싣는다. 그래서 순간 호출에서 다른 도구를 부르려 해도 서버에 없다.
+  - `mcp_adapter.tool_names_for`(전에는 `channel`을 받았다)를 `tool_names_for(ctx: RunContext)`로 바꾸고(그것을 부르던 시험 6개도 `RunContext(None, None, channel=…)`로, 계획 결정 2), `ctx.kind == "moments"`이면 `["save_moments"]`만 돌려준다. 다른 `kind`에는 `save_moments`를 넣지 않는다. `build_planner_tools`가 이 목록만 서버에 싣는다. 그래서 순간 호출에서 다른 도구를 부르려 해도 서버에 없다.
   - `Tools.save_moments(ctx, date, moments)`는 `ctx.kind != "moments"`이면 `{"error": "쓸 수 없는 도구예요."}`(두 번째 방어).
 - **검증**(하네스, 도구 안):
   - M1 `date`는 이 작업의 날짜와 같아야 한다. 아니면 `{"error": "이 날짜만 정리할 수 있어요."}`.
-  - M2 `moments`는 0~3개. `text`는 앞뒤 공백을 뺀 1~60자, 줄바꿈·제어 문자 없음. `area`는 6개 영역 중 하나이거나 없음. `sources`는 1~5개이고 모두 입력에 나온 참조여야 한다. 어기면 아무것도 저장하지 않고 오류를 돌려준다("이룬 순간은 하루 3개까지예요.", "근거로 쓸 수 없는 항목이 있어요."). 두뇌는 같은 호출 안에서 고쳐 다시 부를 수 있다(`max_turns = 3`). 끝까지 저장하지 못하면 그날은 `pending`으로 남고 6.2-6을 따른다.
+  - M2 `moments`는 0~3개. `text`는 앞뒤 공백을 뺀 1~60자, 줄바꿈·제어 문자 없음. `area`는 6개 영역 중 하나이거나 없음. `sources`는 1~5개이고 모두 입력에 나온 참조여야 한다. 어기면 아무것도 저장하지 않고 오류를 돌려준다("이룬 순간은 하루 3개까지예요.", "근거로 쓸 수 없는 항목이 있어요.", 글 모양이 틀리면 "이룬 순간은 앞뒤 공백을 뺀 1~60자 한 줄로 써 주세요.", `moments`가 없거나 배열이 아니면 "moments는 0~3개의 배열로 보내 주세요.", 영역이 틀리면 계획 문구 표의 영역 오류). 두뇌는 같은 호출 안에서 고쳐 다시 부를 수 있다(`max_turns = 3`). 끝까지 저장하지 못하면 그날은 `pending`으로 남고 6.2-6을 따른다.
   - M3 금지어(`ui.banned_words()`, SP5 10장 + 이번에 더하는 말, 9.4)가 든 항목은 그 항목만 버린다(오류로 돌려주지 않는다. 버린 수만 로그에).
   - M4 그날이 이미 `done`이면 바꾸지 않고 `{"already": true}`.
-  - M5 저장과 `status_moment_days(done, saved = n)`, 활동 한 줄(`moments_saved`)은 한 트랜잭션이다(SP3-4 4.3 단일 작성자: 두뇌 갈래의 도구 쓰기).
+  - M5 저장과 `status_moment_days(done, saved = n)`, 활동 한 줄(`moments_saved`, **n ≥ 1일 때만**: 0개면 활동을 쓰지 않아 피드에 "0개 정리"가 없다)은 한 트랜잭션이다(SP3-4 4.3 단일 작성자: 두뇌 갈래의 도구 쓰기).
 - **두뇌가 도구를 한 번도 부르지 않고 `ok`로 끝남**: 하네스가 `done`, `saved = 0`으로 적는다("쓸 거리가 없었다"로 본다). `save_moments`를 불렀지만 모두 M1·M2 오류였으면 `pending` 그대로다(6.2-6).
 - **`moments.md` 지시문의 규칙**(요지, 전문은 SP8-03에서 프롬프트 골든과 함께):
   1. 그날 사용자가 **한 일, 해낸 일, 이어 간 일, 즐긴 일**만 쓴다. 하지 않은 일, 못 한 일, 비교("지난주보다"), 횟수 세기("3일째")는 쓰지 않는다.
@@ -638,7 +639,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 | 픽토그램 | `cd web/app && npx vitest run scripts/sync-design.test.mjs` (대시보드도) | 사본 = 원본, id 목록 = 9.1 표, `style`·색 `fill`·`script` 없음 |
 | 문구 | `cd web/app && npx vitest run src/lib/copy.test.ts`, `python -m pytest tests/test_prompts.py -q` | 부록 A 전체, 정적 문구 검사의 새 금지 구("보너스가 줄", "스탯이 떨어"). `system.md` 금지어 블록과 순간 M3는 바뀌지 않음("지출이 줄었어요" 같은 순간이 버려지지 않음) |
 | 이야기 | `python -m pytest tests/test_sp8_story.py -q` | 꾸며 낸 4주: 습관·할 일 → 보너스, 하루 끝 순간 2개 → 앱에서 하나 숨김·하나 지움, 단축어 3일 → 건강 근거 줄, 사흘 꺼짐 → 따라잡기, 텔레그램 `/status` 출력이 SP8 전과 같음, 텔레그램 대화의 `get_status`에 순간 글 없음, 히스토리 응답 |
-| 노트북 수용 | SP8-11 체크리스트 | 실제 두뇌로 순간 호출 한 번 뒤 `~/.claude/projects` 아래에 새 jsonl이 없음(S-SP8-1), 실제 단축어 한 번 |
+| 노트북 수용 | SP8-11 체크리스트 | 실제 두뇌로 순간 호출 한 번 뒤 `~/.claude/projects` 아래에 새 jsonl이 없음, 같은 id로 `projects/` 밖(`todos/`, `history.jsonl`)에 생긴 것도 없음(S-SP8-1), 실제 단축어 한 번 |
 
 ## 14. 티켓 (구현 순서, 계획에서 더 쪼갠다)
 
@@ -647,7 +648,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 | SP8-00 | 1단계 BE: 스탯 보너스 | `status/activity.py`(공식, 상수), `StatusRepo.activity_rows`(몸 기록은 `[]`, 5.6), `status_snapshot` 새 필드, `get_status`, 스키마·타입 재생성, SP3-4 6.3.6 `GET /status` 모양에 새 필드 적기, 13장 보너스 묶음 |
 | SP8-01 | 픽토그램 | `web/shared/pictograms.svg` 28개, 두 앱 `sync-design` 확장(`pictograms.gen.tsx`), `_document` 스프라이트, `Pictogram` 부품, DESIGN.md "Pictograms" 절과 9.3-6 문장 고침 |
 | SP8-02 | 1단계 화면 | 대시보드 상태창 보너스 칸·"요즘 손이 간 영역"·내비게이션·홈 픽토그램, 앱 `/status/` 화면(레벨, 스탯, 요즘 손이 간 영역, 뒤로 링크 10.2), 정적 문구 검사의 새 금지 구("보너스가 줄", "스탯이 떨어") |
-| SP8-03 | 2단계 BE: 순간 만들기 | 스파이크 S-SP8-1(`no-session-persistence`로 세션 파일이 안 생기는지), `013_moments.sql`, `MomentsRepo`, `RunContext.kind`·`Brain.run` 새 인자·`tool_names_for(ctx)` 필터(6.3 인터페이스), `save_moments` 도구(M1~M5), `queue_moments` 하루 작업과 `_MomentsJob`(가장 낮은 차례, 상한 여유, 실행 직전 다시 읽기, 상태로 판정), `moments.md`(금지어 블록), ADR 0013 링크 |
+| SP8-03 | 2단계 BE: 순간 만들기 | `013_moments.sql`, `MomentsRepo`, `RunContext.kind`·`Brain.run` 새 인자·`tool_names_for(ctx)` 필터(6.3 인터페이스), `save_moments` 도구(M1~M5), `queue_moments` 하루 작업과 `_MomentsJob`(가장 낮은 차례, 상한 여유, 실행 직전 다시 읽기, 상태로 판정), `moments.md`(금지어 블록), 호출 뒤 세션 파일 지우기(플래그와 두 겹), ADR 0013 링크. 노트북 스파이크 S-SP8-1(`no-session-persistence`가 먹는지)은 사람 관문 H1이고 이 티켓의 머지를 막지 않는다(계획 결정 18) |
 | SP8-04 | 2단계 API | `/status.moments`, `GET /moments`, `/actions` 세 동작과 되돌리기, 통로별 `get_status.moments`(앱 글, 텔레그램 날짜·개수), 회고 앞머리 두 블록(통로별), `system.md` 원칙 15·16, `review_week.md` 한 줄, SP3-4 6.2 경로표·6.4.2 동작표·6.4.3 되돌리기 표에 새 줄 |
 | SP8-05 | 2단계 화면 | 앱 이룬 순간 블록(밀기, 더 보기 시트, 확인 시트, 숨긴 순간, 지난 순간), 대시보드 이룬 순간 패널 |
 | SP8-06 | 3단계 BE: 몸 기록 | `014_body.sql`, `POST /body`, 경로별 토큰 고르기·4KB 상한·CORS 건너뛰기(7.2), `_callable_from`로 `/actions`에서 막기, 검증(한국 달력 오늘), `record_body_days`, 56일 정리, `activity_rows`의 몸 기록 질의, `/status.body`, SP3-4 6.2 경로표에 `POST /body` |
@@ -698,7 +699,7 @@ Dahun이 고르지 않은 선택은 비서가 정했다. 아래 추천으로 구
 | 이룬 순간 | 머리 "이룬 순간", 날짜 머리 "{M}월 {D}일 ({요일})", 대시보드 끝 줄 "숨기거나 지우는 것은 운영 앱 상태창에서 할 수 있어요.", 빈 상태 "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.", "숨긴 순간 {n}개", "지난 순간 더 보기" |
 | 순간 동작 | 버튼 "숨기기", "지우기", "다시 보이기", "더 보기", 알림 줄 "숨겼어요" + "되돌리기", "다시 보여요", 확인 시트 "이 순간을 지울까요? 되돌릴 수 없어요." / "지우기" / "그대로 두기" |
 | 활동 기록 | "이룬 순간 {n}개 정리 ({M}/{D})", "이룬 순간 숨김 ({M}/{D})", "이룬 순간 다시 보임 ({M}/{D})", "이룬 순간 지움 ({M}/{D})" |
-| 도구 오류 | "이 날짜만 정리할 수 있어요.", "근거로 쓸 수 없는 항목이 있어요.", "이룬 순간은 하루 3개까지예요.", "쓸 수 없는 도구예요." |
+| 도구 오류 | "이 날짜만 정리할 수 있어요.", "근거로 쓸 수 없는 항목이 있어요.", "이룬 순간은 하루 3개까지예요.", "쓸 수 없는 도구예요.", "이룬 순간은 앞뒤 공백을 뺀 1~60자 한 줄로 써 주세요.", "moments는 0~3개의 배열로 보내 주세요." (뒤의 둘은 SP8-03이 더함. 두뇌만 보는 도구 오류다) |
 | 몸 기록 API 오류 | "걸음 수와 잠만 받아요.", "지난 14일 안의 날만 받아요.", "하루를 두 번 보냈어요.", "한 번에 7일까지 보낼 수 있어요.", "걸음 수는 0~100,000, 잠은 0~1,440분이에요.", "걸음 수나 잠 가운데 하나는 있어야 해요." |
 | 앱 상태창 | 큰 제목 "상태창", 더보기 화면 줄 "상태창", 뒤로 링크 "‹ 더보기"(SP9 전에는 "‹ 오늘"), 오프라인 "연결되면 상태창을 보여 드릴게요." |
 | 히스토리 탭 | 탭 "곡선", "히스토리", 부제 "지금까지 걸어온 길 · 챕터 {n}개 · 사건 {m}개 · {YYYY}년부터", 정렬 "최근부터 ▾" / "오래된 것부터 ▾", 거르기 "전체", "높은 때", "힘든 때", "전환점", 토글 "민감한 사건 가림" |
@@ -715,6 +716,8 @@ Dahun이 고르지 않은 선택은 비서가 정했다. 아래 추천으로 구
 
 ## 변경 기록
 
+- SP8-03 리뷰 1차 (2026-10-25): 6.3 세션 파일 지우기는 호출 중에 본 id로도(시간 초과·취소), UUID 모양을 정규형으로, M2 오류 문구 둘과 M5 "n ≥ 1일 때만 활동"을 적고 부록 A "도구 오류"에 더함, H1에 `projects/` 밖 파일 확인 한 줄.
+- SP8-03 (2026-10-25): 6.2-4 멈추는 중에는 순간 작업을 건너뜀(결정 7), 6.2-5 `login`·`billing`만 막고 안전 모드는 보지 않음(결정 5·6), 6.2-6 날 행 쓰기는 `harness/moments.py`에서만(결정 19), 6.3 `tool_names_for(ctx)`(결정 2)·`RunContext.moments_date`·`moments_refs`(결정 3)·`TranscriptStore.user_lines`(결정 8)·플래그와 함께 호출 뒤 세션 파일 지우기(결정 18), 14장 SP8-03 줄의 스파이크를 사람 관문 H1로(결정 18).
 - SP8-02 (2026-10-25): 10.1 홈 칸 머리 픽토그램·"히스토리 보기"는 홈 화면 티켓으로 미룸(결정 12), 10.2 "‹ 오늘" 단계 없이 처음부터 "‹ 더보기", 13장 대시보드 라이트·다크는 H3 눈 확인(결정 13).
 - SP8-00 (2026-10-25): 5.6 함수 모양을 계획 결정 4대로 고침(`area_points`·`activity_counts`의 `tz`·`boundary`, `area_bonus(points, today, counts)`, `activity_rows(from_utc, from_day, to_day)`). 공식·값은 그대로.
 - v3 (2026-10-25): Dahun "텔레그램은 궁극적으로 사용안하게 될거라 굳이 넣을 필요없을 것 같은데"(SP9 스레드). 텔레그램 `/status`는 SP8에서 바꾸지 않는다(보너스·순간·몸 기록 줄 없음). 텔레그램 통로 두뇌의 날짜·개수 규칙은 그대로.

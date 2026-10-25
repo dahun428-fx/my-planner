@@ -295,9 +295,9 @@ def test_curve_valid_rows_and_cascade(tmp_path):
         _ins(conn, "run_deliveries", run_id=rid, **_DELIVERY)
 
 
-def test_latest_version_is_012_no_chat_migration():
+def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 12 == _migration_count()
+    assert dbmod.LATEST_VERSION == 13 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -355,7 +355,7 @@ def test_012_keeps_ledger_rows_and_ids(tmp_path):
     for row in _LEDGER_ROWS:
         conn.execute(_LEDGER_INS, row)
     conn.commit()
-    assert migrate(conn) == 12
+    assert migrate(conn, upto=12) == 12
     got = conn.execute(
         "SELECT id, at, logical_date, source_kind, source_ref, amount, area, label "
         "FROM status_xp_ledger ORDER BY id"
@@ -404,10 +404,70 @@ def test_habits_daily_target_check(tmp_path):
     conn.execute(ins, ("weekly", 3))
 
 
-def test_schema_version_12(tmp_path):
+def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 12 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+    assert migrate(conn) == 13 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+
+
+# --- 013: 이룬 순간 (SP8 스펙 6.1) ---
+
+_MOMENT_INS = (
+    "INSERT INTO status_moments (date, slot, text, area, sources_json, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+)
+_AT = "2026-10-25T19:01:00+00:00"
+
+
+def test_013_moment_checks(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    ok = ("2026-10-24", 1, "포트폴리오 사례 하나를 끝까지 다듬었어요", "career", '["task:12"]', _AT)
+    conn.execute(_MOMENT_INS, ok)
+    conn.execute(_MOMENT_INS, ("2026-10-24", 2, "가" * 60, None, "[]", _AT))  # 60자, 영역 없음
+    for bad in (
+        ("2026-10-24", 3, "가" * 61, None, "[]", _AT),  # 61자
+        ("2026-10-24", 3, "", None, "[]", _AT),  # 0자
+        ("2026-10-24", 0, "글", None, "[]", _AT),  # slot 0
+        ("2026-10-24", 4, "글", None, "[]", _AT),  # slot 4
+        ("2026-10-24", 3, "글", "money", "[]", _AT),  # 틀린 영역
+        ("2026-1-1", 1, "글", None, "[]", _AT),  # 날짜 모양
+        ("2026-10-24", 1, "글", None, "[]", _AT),  # UNIQUE (date, slot)
+    ):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(_MOMENT_INS, bad)
+    assert conn.execute("SELECT COUNT(*) FROM status_moments").fetchone()[0] == 2
+    idx = {r["name"]: r["tbl_name"] for r in conn.execute("SELECT name, tbl_name FROM sqlite_master WHERE type='index'")}
+    assert idx["idx_moments_date"] == "status_moments"
+
+
+def test_013_day_state_check(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    ins = "INSERT INTO status_moment_days (date, state, updated_at) VALUES (?, ?, ?)"
+    for i, state in enumerate(("pending", "done", "empty", "failed")):
+        conn.execute(ins, (f"2026-10-2{i}", state, _AT))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(ins, ("2026-10-24", "skipped", _AT))
+    with pytest.raises(sqlite3.IntegrityError):  # 날짜가 PRIMARY KEY
+        conn.execute(ins, ("2026-10-20", "done", _AT))
+    row = conn.execute("SELECT saved, attempts FROM status_moment_days WHERE date = '2026-10-20'").fetchone()
+    assert (row["saved"], row["attempts"]) == (0, 0)
+
+
+def test_013_ledger_untouched(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=12) == 12
+    for row in _LEDGER_ROWS:
+        conn.execute(_LEDGER_INS, row)
+    conn.commit()
+    before = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'status_xp_ledger'").fetchone()[0]
+    assert migrate(conn) == 13
+    got = conn.execute(
+        "SELECT id, at, logical_date, source_kind, source_ref, amount, area, label "
+        "FROM status_xp_ledger ORDER BY id"
+    ).fetchall()
+    assert [tuple(r) for r in got] == _LEDGER_ROWS
+    assert conn.execute("SELECT sql FROM sqlite_master WHERE name = 'status_xp_ledger'").fetchone()[0] == before
 
 
 def _fake_dir(tmp_path, numbers):
