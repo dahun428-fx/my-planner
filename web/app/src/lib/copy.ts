@@ -149,7 +149,8 @@ export const copy = {
     statsHeading: "스탯",
     noScore: "—",
     statSub: (base: number, bonus: number) => (Number(bonus) > 0 ? `바탕 ${base} · 요즘 +${Number(bonus).toFixed(1)}` : `바탕 ${base}`),
-    statSubNoBase: (bonus: number) => `요즘 +${Number(bonus).toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요`,
+    statSubNoBase: (bonus: number) =>
+      Number(bonus) > 0 ? `요즘 +${Number(bonus).toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요` : "분기 회고에서 점수를 정하면 더해져요",
     recentHeading: "요즘 손이 간 영역",
     recentLine: (bonus: number) => `+${Number(bonus).toFixed(1)}`,
     recentCounts: (c: { tasks: number; habit_checks: number; body_days: number }) =>
@@ -177,6 +178,7 @@ export const copy = {
     momentsEmpty: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.",
     hiddenGroup: (n: number) => `숨긴 순간 ${n}개`,
     older: "지난 순간 더 보기",
+    olderNone: "더 없어요.", // H4 N5: an older page came back with nothing new
     hide: "숨기기",
     delete: "지우기",
     unhide: "다시 보이기",

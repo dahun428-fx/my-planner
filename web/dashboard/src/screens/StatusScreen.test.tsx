@@ -216,6 +216,14 @@ describe("StatusScreen bonus (SP8-02)", () => {
     expect(learning.querySelector("rect.stat-bonus")).toBeNull();
   });
 
+  it("no_base_and_no_bonus_still_shows_the_hint", async () => {
+    server.use(statusAnswers.ok({ ...body, stats: body.stats.map((s) => (s.area === "learning" ? { ...s, bonus: 0 } : s)) }));
+    renderScreen();
+    const learning = await rowOf("learning");
+    expect(within(learning).getByText("분기 회고에서 점수를 정하면 더해져요")).toBeInTheDocument();
+    expect(learning.textContent).not.toContain("요즘");
+  });
+
   it("recent_areas_sorted_and_counts", async () => {
     server.use(statusAnswers.ok(body));
     renderScreen();

@@ -288,6 +288,29 @@ describe("StatusMoments (SP8 10.2)", () => {
     expect(asked[1]).toBe("?before=2026-10-12&days=14");
   });
 
+  it("older_says_nothing_more_when_a_page_is_empty", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get(`${BASE}/moments`, ({ request }) => {
+        asked.push(new URL(request.url).search);
+        // First page: only a day already shown (comes back whole, nothing new). Second page: one new moment.
+        return HttpResponse.json(
+          asked.length === 1
+            ? { from: "2026-10-10", to: "2026-10-23", items: [THREE[2]] }
+            : { from: "2026-09-26", to: "2026-10-09", items: [moment(30, "2026-10-05", "더 이른 날의 순간이에요", "finance")] },
+        );
+      }),
+    );
+    renderMoments();
+    expect(screen.queryByText(T.olderNone)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    expect(await screen.findByText("더 없어요.")).toBeInTheDocument();
+    // The button stays, and a later page with something new takes the line away.
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    expect(await screen.findByText("더 이른 날의 순간이에요")).toBeInTheDocument();
+    expect(screen.queryByText("더 없어요.")).toBeNull();
+  });
+
   it("offline_read_only", async () => {
     renderMoments({ hiddenCount: 1 }, "offline");
     await act(async () => {});

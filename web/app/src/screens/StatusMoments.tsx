@@ -50,6 +50,7 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
   const [older, setOlder] = useState<Moment[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [noMore, setNoMore] = useState(false);
   const [open, setOpen] = useState(false);
   const [hiddenList, setHiddenList] = useState<Moment[] | null>(null);
   const [again, setAgain] = useState(0);
@@ -141,6 +142,9 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
     const r = await apiGet<MomentsList>(path, "MomentsList");
     setLoadingOlder(false);
     if (r.kind === "ok") {
+      // Nothing new (all already shown, or none): say so once, quietly, and keep the button.
+      const fresh = r.data.items.filter((m) => !older.some((x) => x.id === m.id) && !moments.some((x) => x.id === m.id));
+      setNoMore(fresh.length === 0);
       setOlder((o) => [...o, ...r.data.items.filter((m) => !o.some((x) => x.id === m.id))]);
       setCursor(r.data.from);
     } else toast.show({ text: failureText(r) });
@@ -191,6 +195,11 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
         <button type="button" className={styles.textButton} disabled={loadingOlder} onClick={() => void loadOlder()}>
           {T.older}
         </button>
+        {noMore && (
+          <p className={styles.empty} role="status">
+            {T.olderNone}
+          </p>
+        )}
         {hiddenCount > 0 && (
           <div className={styles.hiddenGroup}>
             <button type="button" className={styles.textButton} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
