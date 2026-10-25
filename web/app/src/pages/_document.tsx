@@ -1,4 +1,5 @@
 import { Head, Html, Main, NextScript } from "next/document";
+import { PictogramSprite } from "../components/pictograms.gen";
 
 const connectSrc = process.env.NEXT_PUBLIC_CONNECT_SRC ?? "";
 
@@ -20,6 +21,7 @@ export default function Document() {
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
       </Head>
       <body>
+        <PictogramSprite />
         <Main />
         <NextScript />
       </body>

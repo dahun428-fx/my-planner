@@ -10,8 +10,9 @@ const script = fileURLToPath(new URL("./check-csp.mjs", import.meta.url));
 const POLICY = "default-src &#x27;self&#x27;; script-src &#x27;self&#x27;; style-src &#x27;self&#x27;; connect-src &#x27;self&#x27; https://*.example.ts.net";
 const META = `<meta http-equiv="Content-Security-Policy" content="${POLICY}"/>`;
 const DATA = `<script id="__NEXT_DATA__" type="application/json">{"props":{}}</script>`;
-const page = (head, body = "") =>
-  `<!DOCTYPE html><html lang="ko"><head><meta charSet="utf-8"/>${head}</head><body><div id="__next">${body}</div>${DATA}</body></html>`;
+const SPRITE = `<svg class="pictogram-sprite" aria-hidden="true"><symbol id="p-home"></symbol></svg>`;
+const page = (head, body = "", sprite = SPRITE) =>
+  `<!DOCTYPE html><html lang="ko"><head><meta charSet="utf-8"/>${head}</head><body>${sprite}<div id="__next">${body}</div>${DATA}</body></html>`;
 
 let dirs = [];
 function exportDir(files) {
@@ -98,5 +99,31 @@ describe("check-csp", () => {
     const r = run(exportDir({ "index.html": bad }));
     expect(r.code).toBe(1);
     expect(r.out).toMatch(/CSP meta missing/);
+  });
+
+  it("sprite_once_first_in_body_passes", () => {
+    expect(run(exportDir({ "index.html": clean })).code).toBe(0);
+  });
+
+  it("sprite_missing_fails", () => {
+    const r = run(exportDir({ "index.html": page(`${META}<script src="/a.js"></script>`, "", "") }));
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("pictogram sprite: index.html has 0 sprites");
+  });
+
+  it("sprite_twice_fails", () => {
+    const r = run(exportDir({ "todos/index.html": page(`${META}<script src="/a.js"></script>`, SPRITE) }));
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("pictogram sprite: todos/index.html has 2 sprites");
+  });
+
+  it("sprite_not_first_fails", () => {
+    const html = page(`${META}<script src="/a.js"></script>`, "<main></main>", "").replace(
+      '<div id="__next">',
+      `<div id="__next">${SPRITE}`,
+    );
+    const r = run(exportDir({ "index.html": html }));
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("pictogram sprite: index.html is not the first child of <body>");
   });
 });

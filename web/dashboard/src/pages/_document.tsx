@@ -1,4 +1,5 @@
 import { Head, Html, Main, NextScript } from "next/document";
+import { PictogramSprite } from "../components/pictograms.gen";
 
 // Spec 14 / gap 3: the CSP is the first element of this <Head>, before any <script> or stylesheet. (Next
 // itself writes charset, viewport and title from next/head ahead of it; check-csp checks the order.) connect-src takes the
@@ -18,6 +19,7 @@ export default function Document() {
         <meta name="color-scheme" content="light dark" />
       </Head>
       <body>
+        <PictogramSprite />
         <Main />
         <NextScript />
       </body>
