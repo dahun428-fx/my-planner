@@ -304,11 +304,31 @@ describe("StatusMoments (SP8 10.2)", () => {
     renderMoments();
     expect(screen.queryByText(T.olderNone)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
-    expect(await screen.findByText("더 없어요.")).toBeInTheDocument();
-    // The button stays, and a later page with something new takes the line away.
+    await waitFor(() => expect(asked).toHaveLength(1));
+    // The overlap page alone never triggers the line.
+    await act(async () => {});
+    expect(screen.queryByText("더 없어요.")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
     expect(await screen.findByText("더 이른 날의 순간이에요")).toBeInTheDocument();
     expect(screen.queryByText("더 없어요.")).toBeNull();
+  });
+
+  it("older_says_nothing_more_after_two_empty_pages", async () => {
+    let n = 0;
+    server.use(
+      http.get(`${BASE}/moments`, () => {
+        n += 1;
+        return HttpResponse.json(n === 1 ? { from: "2026-10-10", to: "2026-10-23", items: [THREE[2]] } : { from: "2026-09-26", to: "2026-10-09", items: [] });
+      }),
+    );
+    renderMoments();
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    await waitFor(() => expect(n).toBe(1));
+    await act(async () => {});
+    expect(screen.queryByText("더 없어요.")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    expect(await screen.findByText("더 없어요.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "지난 순간 더 보기" })).toBeInTheDocument();
   });
 
   it("offline_read_only", async () => {
