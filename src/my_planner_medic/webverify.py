@@ -7,9 +7,9 @@
 4. 3시간 안에 `success`가 안 되면 `failed-N` +1. 둘 다 `merged`를 떼고 `open`으로 돌려 `repair.yml`이 다시 집게 한다.
    이슈가 닫혀 있으면(수리 PR의 닫기 낱말이나 손) 라벨 전에 다시 연다: 닫힌 이슈는 게이트·sweep이 건너뛴다(최종 리뷰 I-1).
 
-어느 상태를 보나(최종 리뷰 I-3, scripts/promote_check.py 5단계와 같은 생각):
+어느 상태를 보나(최종 리뷰 I-3):
 - 컨텍스트는 정확히 하나: `app` → `vercel_context_app`, `dashboard` → `vercel_context_dashboard`(설정, 기본값은
-  promote_check와 같다), `vercel:<컨텍스트>` → 그 컨텍스트. 만든 계정이 `vercel[bot]`인 상태만, 그중 가장 새 것.
+  config.medic.toml과 같다), `vercel:<컨텍스트>` → 그 컨텍스트. 만든 계정이 `vercel[bot]`인 상태만, 그중 가장 새 것.
 - 커밋 R은 업데이터가 `merged`로 둘 때 적은 `Repairs #N` 커밋(`detail["repair_sha"]`). 없으면(업그레이드 전) 처음
   본 `main` 머리.
 - 그 컨텍스트의 폴더(`web/app`·`web/dashboard`)를 알면, R과 그 뒤 `main` 커밋 중 그 폴더를 바꾼 가장 새 커밋 W를

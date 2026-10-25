@@ -1,0 +1,39 @@
+name: staging-deploy
+
+# develop 스테이징을 손으로 배포한다(배포 흐름 스펙 5.1). Vercel은 develop 푸시를 자동 배포하지 않는다:
+# 하루 배포 한도(무료 100회)를 머지마다 두 프로젝트가 쓰지 않게 하려고. Vercel 프로젝트마다
+# Settings → Git → Deploy Hooks에서 develop 훅을 만들어 저장소 시크릿에 둔다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "배포할 스테이징"
+        type: choice
+        options: [both, app, dashboard]
+        default: both
+
+permissions: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Deploy hooks
+        env:
+          TARGET: ${{ inputs.target }}
+          HOOK_APP: ${{ secrets.VERCEL_DEPLOY_HOOK_APP }}
+          HOOK_DASHBOARD: ${{ secrets.VERCEL_DEPLOY_HOOK_DASHBOARD }}
+        run: |
+          set -euo pipefail
+          fire() {
+            if [ -z "$2" ]; then echo "::error::$1 훅 시크릿이 없습니다"; return 1; fi
+            curl -fsS --max-time 30 --retry 2 -X POST "$2" -o /dev/null
+            echo "$1 develop 배포 요청" | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          case "$TARGET" in
+            app) fire app "$HOOK_APP" ;;
+            dashboard) fire dashboard "$HOOK_DASHBOARD" ;;
+            *) fire app "$HOOK_APP"; fire dashboard "$HOOK_DASHBOARD" ;;
+          esac

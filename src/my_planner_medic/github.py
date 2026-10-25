@@ -15,9 +15,9 @@ HEARTBEAT = "heartbeat"
 PART_LABELS = ("be", "app", "dashboard")  # 스펙 4.1 조각 라벨
 TITLE_PREFIX = "[incident] "
 _REPAIRS_RE = re.compile(r"\bRepairs #(\d+)\b")
-VERCEL_LOGIN = "vercel[bot]"
+VERCEL_LOGIN = "vercel[bot]"  # Vercel 상태를 올리는 계정
 COMPARE_PAGE = 100
-COMPARE_MAX_PAGES = 20  # 2000 커밋: 노트북이 오래 꺼져 있어도 `Repairs #N`을 놓치지 않게  # Vercel 상태를 올리는 계정(scripts/promote_check.py와 같다)
+COMPARE_MAX_PAGES = 20  # 2000 커밋: 노트북이 오래 꺼져 있어도 `Repairs #N`을 놓치지 않게
 
 Kind = Literal["network", "rate_limit", "auth", "server"]
 CiConclusion = Literal["success", "failure", "pending", "unknown"]
