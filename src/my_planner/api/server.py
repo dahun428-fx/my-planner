@@ -51,6 +51,7 @@ from my_planner.api.read import (
     get_week,
 )
 from my_planner.api.recovery import post_client_error, post_internal_notify
+from my_planner.probe import health_probe_fails
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
@@ -170,6 +171,8 @@ async def _health(request: web.Request) -> web.StreamResponse:
     deps = request.app[DEPS_KEY]
     if deps.safe_mode:
         return web.json_response(safe_mode_view(deps))
+    if await asyncio.to_thread(health_probe_fails):  # git을 부르므로 루프 밖에서  # 개발용 결함 주입(SP6 스펙 12장 4행, `my_planner.probe`)
+        return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
     return await _health_read(request)
 
 

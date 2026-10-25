@@ -57,7 +57,7 @@ async def call_json(
 ) -> web.StreamResponse:
     """처리기를 부르고, aiohttp 예외(없는 경로 등)와 예상 못 한 예외를 6.1 오류 모양으로 바꾼다.
 
-    예상 못 한 예외는 로그에 종류만 남긴다(본문, 경로 값, 토큰 없이).
+    예상 못 한 예외는 로그에 종류와 프레임만 남긴다(본문, 경로 값, 토큰, 예외 메시지 없이).
     """
     try:
         return await handler(request)
@@ -66,8 +66,9 @@ async def call_json(
             raise
         code, message = _HTTP_CODES.get(e.status, ("invalid_request", "요청을 처리할 수 없어요."))
         return error_response(e.status, code, message)
-    except Exception as e:  # noqa: BLE001 - 무엇이든 500으로. 예외 메시지는 남기지 않는다
-        log.error("api_internal_error", extra={"error_type": type(e).__name__})
+    except Exception as e:  # 무엇이든 500으로. 예외 메시지는 남기지 않는다
+        # 예외 종류와 프레임(파일:줄 함수)만 남는다(logging_setup). medic이 이것으로 장애 지문을 만든다
+        log.exception("api_internal_error", extra={"error_type": type(e).__name__})
         return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
 
 

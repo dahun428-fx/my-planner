@@ -17,6 +17,7 @@ from datetime import datetime as _datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
+from my_planner.probe import command_probe_on
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.views import WEEKDAY, today_view, week_view
@@ -45,7 +46,9 @@ HELP_TEXT = (
     "그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요."
 )
 
-COMMANDS = ("/today", "/week", "/status", "/habits", "/help", "/pause", "/unpause", "/plan", "/done")
+COMMANDS = ("/today", "/week", "/status", "/habits", "/help", "/pause", "/unpause", "/plan", "/done", "/medic_probe")
+
+PROBE_OFF_REPLY = "개발용 명령이에요. 지금은 꺼져 있어요."
 
 PAUSE_MIN_DAYS, PAUSE_MAX_DAYS = 1, 14
 PAUSE_USAGE = "쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3"
@@ -299,6 +302,10 @@ def run_command(
     now = deps.clock.now()
     if cmd == "/help":
         return HELP_TEXT
+    if cmd == "/medic_probe":  # 개발용 결함 주입(SP6 스펙 12장, `my_planner.probe`). 도움말에는 없다
+        if command_probe_on():
+            raise KeyError("probe")
+        return PROBE_OFF_REPLY
     if cmd in ("/today", "/week"):
         render = today_text if cmd == "/today" else week_text
         return render(deps.tasks, now, _tz(deps), _boundary(deps))
