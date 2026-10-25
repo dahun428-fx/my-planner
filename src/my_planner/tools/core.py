@@ -64,6 +64,7 @@ from my_planner.tools.activity import (
     task_target,
     tasks_target,
 )
+from my_planner.tools.body import BodyTools
 from my_planner.tools.checkin_times import CheckinTimeTools
 from my_planner.tools.confirmations import (
     area_scores_line,
@@ -96,6 +97,7 @@ from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.activity import ConfirmsRepo
+    from my_planner.store.repos.body import BodyRepo
     from my_planner.store.repos.memos import MemosRepo
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import RunsRepo
@@ -131,7 +133,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
+class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
     def __init__(
         self,
         *,
@@ -156,6 +158,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
         settings: Settings | None = None,
         runs: RunsRepo | None = None,
         memos: MemosRepo | None = None,
+        body: BodyRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -188,6 +191,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
         # 메모(SP9 6장). None이면 메모 도구·동작이 거절한다. 내보내기 `memos.md`는 하루 한 번 작업만 쓴다(6.1)
         self.memos = memos
         self.memos_export_path = self.export_path.parent / "memos.md"  # data/exports/memos.md
+        # 몸 기록(SP8 7장). None이면 `record_body_days`가 거절하고 상태창 `body`는 null. 내보내기는 없다(11장)
+        self.body = body
 
     # --- 공통 ---
 
@@ -1304,7 +1309,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
             return _err("상태창을 읽을 수 없어요.")
         snap = status_snapshot(
             now=self.clock.now(), tz=self.tz, boundary=self.boundary, status=self.status, curve=self.curve,
-            tasks=self.tasks, conditions=self.conditions,
+            tasks=self.tasks, conditions=self.conditions, body=self.body,
         )
         snap["moments"] = self._brain_moments(ctx)
         del snap["moments_hidden"]  # `GET /status`의 14일 수다. 두뇌에는 지난 7일의 보이는 순간만 준다

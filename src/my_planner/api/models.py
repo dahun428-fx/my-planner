@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from aiohttp import web
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 
 # 시각 변환의 정본은 `my_planner.timefmt`다. API 쪽 가져오기가 그대로 되도록 다시 내보낸다
 from my_planner.domain import SkipReason
@@ -601,8 +601,19 @@ class MomentsList(_Model):
     items: list[Moment]
 
 
+class StatusBody(_Model):
+    """`GET /status`의 `body` (SP8 7.5): 지난 7일 몸 기록. 지난 56일에 행이 없으면 `body`가 null이다.
+
+    `days_7`: 지난 7일 중 행이 있는 날 수. 평균은 그 값이 있는 날만의 정수 평균(없으면 null)."""
+
+    last_date: str
+    days_7: int
+    steps_avg_7: int | None
+    sleep_avg_7: int | None
+
+
 class Status(_Model):
-    """`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5."""
+    """`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5."""
 
     level: int
     xp_total: int
@@ -616,6 +627,7 @@ class Status(_Model):
     recent_xp: list[RecentXp]
     moments: list[Moment]
     moments_hidden: int
+    body: StatusBody | None
 
 
 class UiComponent(_Model):
@@ -646,6 +658,34 @@ class ActionRequestBody(_Model):
     args: dict[str, Any] = Field(default_factory=dict)
     client_msg_id: str = Field(min_length=1, max_length=200)
     confirm_token: str | None = None
+
+
+def _no_default(schema: dict[str, Any]) -> None:
+    schema.pop("default", None)
+
+
+class BodyDayIn(_Model):
+    """몸 기록 하루(SP8 7.3). `date`는 한국 달력의 오늘 이하, 오늘 − 13일 이상. 둘 중 하나는 있어야 하고 `null`은 받지
+    않는다(빼면 그 값은 그대로 둔다). 검증은 `api/body.parse_body_days`가 한다(이 모델은 스키마 문서다)."""
+
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    # 빠질 수 있지만 `null`은 아니다: 스키마에는 기본값을 적지 않는다(`steps?: number`)
+    steps: StrictInt = Field(default=None, ge=0, le=100_000, json_schema_extra=_no_default)  # type: ignore[assignment]
+    sleep_minutes: StrictInt = Field(  # type: ignore[assignment]
+        default=None, ge=0, le=1_440, json_schema_extra=_no_default,
+    )
+
+
+class BodyPostBody(_Model):
+    """`POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2)."""
+
+    days: list[BodyDayIn] = Field(min_length=1, max_length=7)
+
+
+class BodySaved(_Model):
+    """`POST /body` 응답: 저장한 날 수. 값은 돌려주지 않는다."""
+
+    saved: int
 
 
 class ChatMessage(BaseModel):
@@ -908,6 +948,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "Status": Status,
     "Moment": Moment,
     "MomentsList": MomentsList,
+    "BodyPostBody": BodyPostBody,
+    "BodySaved": BodySaved,
     "CheckinList": CheckinList,
     "CheckinSummary": CheckinSummary,
     "CheckinDetail": CheckinDetail,

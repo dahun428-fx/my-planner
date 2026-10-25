@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable, Iterable
 
 from aiohttp import web
 
+from my_planner.api.body import BODY_PATH
 from my_planner.api.models import call_json
 
 ALLOW_METHODS = "GET, POST, PUT, DELETE"
@@ -42,10 +43,13 @@ def cors_middleware(policy: CorsPolicy) -> Callable[[web.Request, Handler], Awai
     """사전 요청(`OPTIONS`)은 토큰 없이 여기서 `204`로 끝낸다. 그 밖의 응답에는 허용 출처일 때만 헤더를 붙인다.
 
     안쪽의 예외는 여기서 JSON 오류로 바꾼다(`call_json`): 오류 응답에도 CORS 헤더가 붙어야 브라우저가 401을 읽는다.
+    몸 기록 `/body`(SP8 7.2)는 브라우저가 부르는 경로가 아니다: 헤더를 붙이지 않고 사전 요청도 여기서 끝내지 않는다.
     """
 
     @web.middleware
     async def cors(request: web.Request, handler: Handler) -> web.StreamResponse:
+        if request.path == BODY_PATH:
+            return await call_json(handler, request)
         origin = request.headers.get("Origin")
         allowed = policy.allows(origin)
         if is_preflight(request):

@@ -13,6 +13,8 @@ export interface ApiModels {
   ActionRejected: ActionRejected;
   ActionRequestBody: ActionRequestBody;
   ActivityResponse: ActivityResponse;
+  BodyPostBody: BodyPostBody;
+  BodySaved: BodySaved;
   ChatRequestBody: ChatRequestBody;
   CheckinDetail: CheckinDetail;
   CheckinList: CheckinList;
@@ -170,6 +172,47 @@ export interface ActivityItem {
   summary: string;
   undo_id: number | null;
   undone_at: string | null;
+}
+/**
+ * `POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodyPostBody".
+ */
+export interface BodyPostBody {
+  /**
+   * @minItems 1
+   * @maxItems 7
+   */
+  days:
+    | [BodyDayIn]
+    | [BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn];
+}
+/**
+ * 몸 기록 하루(SP8 7.3). `date`는 한국 달력의 오늘 이하, 오늘 − 13일 이상. 둘 중 하나는 있어야 하고 `null`은 받지
+ * 않는다(빼면 그 값은 그대로 둔다). 검증은 `api/body.parse_body_days`가 한다(이 모델은 스키마 문서다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodyDayIn".
+ */
+export interface BodyDayIn {
+  date: string;
+  sleep_minutes?: number;
+  steps?: number;
+}
+/**
+ * `POST /body` 응답: 저장한 날 수. 값은 돌려주지 않는다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodySaved".
+ */
+export interface BodySaved {
+  saved: number;
 }
 /**
  * `POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).
@@ -879,12 +922,13 @@ export interface SchemaBundle {
   };
 }
 /**
- * `GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5.
+ * `GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Status".
  */
 export interface Status {
+  body: StatusBody | null;
   daily_quests: DailyQuest[];
   hp: StatusHp;
   level: number;
@@ -897,6 +941,20 @@ export interface Status {
   xp_for_next: number;
   xp_into_level: number;
   xp_total: number;
+}
+/**
+ * `GET /status`의 `body` (SP8 7.5): 지난 7일 몸 기록. 지난 56일에 행이 없으면 `body`가 null이다.
+ *
+ * `days_7`: 지난 7일 중 행이 있는 날 수. 평균은 그 값이 있는 날만의 정수 평균(없으면 null).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StatusBody".
+ */
+export interface StatusBody {
+  days_7: number;
+  last_date: string;
+  sleep_avg_7: number | null;
+  steps_avg_7: number | null;
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema

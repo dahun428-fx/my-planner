@@ -636,3 +636,24 @@ async def test_end_of_day_moments(tmp_path):
     assert kinds == ["chat", "moments"]
     assert [tuple(r) for r in rows] == [("2026-10-25", 1, moment["text"], "career")]
     assert tuple(day) == ("done", 1)
+
+
+async def test_body_from_shortcut(tmp_path):
+    """몸 기록(SP8 7장, 1장 조건 8): 단축어가 `BODY_TOKEN`으로 지난 3일을 보냄 → `body_days` → 건강 보너스와 `body`.
+    56일이 지난 행은 하루 한 번 작업이 지운다(`prune_records`). 숫자는 꾸며 낸 것이다."""
+    body_token = "body-token-" + "e" * 40
+    days = {"days": [{"date": "2026-10-23", "steps": 6500}, {"date": "2026-10-24", "steps": 4200, "sleep_minutes": 430},
+                     {"date": "2026-10-25", "sleep_minutes": 380}]}
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 9, 0), body_token=body_token) as env:
+        env.parts.runner.checkins = False
+        resp = await env.post("/body", token=body_token, json=days)
+        assert (resp.status, await resp.json()) == (200, {"saved": 3})
+        status = await (await env.get("/status")).json()
+        env.clock.set(kst(2026, 12, 20, 4, 1))  # 10/25 + 56일
+        await env.tick()
+        left = env.conn.execute("SELECT COUNT(*) FROM body_days").fetchone()[0]
+
+    health = next(s for s in status["stats"] if s["area"] == "health")
+    assert (health["bonus"], health["activity"]["body_days"]) == (0.2, 2)  # 0.5 × (27 + 26) / 28 / 5
+    assert status["body"] == {"last_date": "2026-10-25", "days_7": 3, "steps_avg_7": 5350, "sleep_avg_7": 405}
+    assert left == 1  # 10/23, 10/24는 지웠고 10/25(56일 전)는 남는다

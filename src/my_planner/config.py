@@ -169,6 +169,8 @@ class Settings(_Model):
     api: ApiConfig = ApiConfig()
     notify: NotifyConfig = NotifyConfig()
     api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
+    # .env의 BODY_TOKEN(SP8 7.2). `POST /body`만 된다. 없거나 짧거나 API_TOKEN과 같으면 그 경로만 열지 않는다
+    body_token: SecretStr | None = None
     vapid: VapidConfig | None = None  # .env의 VAPID_*. 없으면 푸시만 꺼진다(`/push/*`는 404, 실제 통로는 telegram)
     runtime: RuntimeConfig = RuntimeConfig()
 
@@ -187,6 +189,7 @@ class _Secrets(BaseSettings):
     telegram_bot_token: SecretStr = Field(validation_alias="TELEGRAM_BOT_TOKEN")
     owner_telegram_id: int = Field(validation_alias="OWNER_TELEGRAM_ID")
     api_token: SecretStr | None = Field(default=None, validation_alias="API_TOKEN")
+    body_token: SecretStr | None = Field(default=None, validation_alias="BODY_TOKEN")
     vapid_public_key: str | None = Field(default=None, validation_alias="VAPID_PUBLIC_KEY")
     vapid_private_key: SecretStr | None = Field(default=None, validation_alias="VAPID_PRIVATE_KEY")
     vapid_subject: str | None = Field(default=None, validation_alias="VAPID_SUBJECT")
@@ -219,7 +222,8 @@ def resolve_root() -> Path:
 def load_settings(root: Path) -> Settings:
     root = Path(root).resolve()
     data: dict[str, Any] = read_overlaid(root / "config.toml", root / "config.local.toml")
-    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "vapid", "paths"):  # 합친 결과에 건다
+    # 합친 결과에 건다
+    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "body_token", "vapid", "paths"):
         if key in data:
             raise ValueError(f"config.toml에 {key}를 두지 않는다")
     runtime = data.get("runtime")
@@ -229,6 +233,7 @@ def load_settings(root: Path) -> Settings:
         telegram_bot_token=secrets.telegram_bot_token,
         owner_telegram_id=secrets.owner_telegram_id,
         api_token=secrets.api_token,
+        body_token=secrets.body_token,
         vapid=secrets.vapid(),
         paths=PathsConfig.for_root(root),
         **data,

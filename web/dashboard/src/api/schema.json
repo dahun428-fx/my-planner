@@ -353,6 +353,71 @@
       "title": "ActivityResponse",
       "type": "object"
     },
+    "BodyPostBody": {
+      "$defs": {
+        "BodyDayIn": {
+          "additionalProperties": false,
+          "description": "몸 기록 하루(SP8 7.3). `date`는 한국 달력의 오늘 이하, 오늘 − 13일 이상. 둘 중 하나는 있어야 하고 `null`은 받지\n않는다(빼면 그 값은 그대로 둔다). 검증은 `api/body.parse_body_days`가 한다(이 모델은 스키마 문서다).",
+          "properties": {
+            "date": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "Date",
+              "type": "string"
+            },
+            "sleep_minutes": {
+              "maximum": 1440,
+              "minimum": 0,
+              "title": "Sleep Minutes",
+              "type": "integer"
+            },
+            "steps": {
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Steps",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date"
+          ],
+          "title": "BodyDayIn",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2).",
+      "properties": {
+        "days": {
+          "items": {
+            "$ref": "#/$defs/BodyDayIn"
+          },
+          "maxItems": 7,
+          "minItems": 1,
+          "title": "Days",
+          "type": "array"
+        }
+      },
+      "required": [
+        "days"
+      ],
+      "title": "BodyPostBody",
+      "type": "object"
+    },
+    "BodySaved": {
+      "additionalProperties": false,
+      "description": "`POST /body` 응답: 저장한 날 수. 값은 돌려주지 않는다.",
+      "properties": {
+        "saved": {
+          "title": "Saved",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "saved"
+      ],
+      "title": "BodySaved",
+      "type": "object"
+    },
     "ChatRequestBody": {
       "$defs": {
         "ChatMessage": {
@@ -3928,6 +3993,50 @@
           "title": "StatActivity",
           "type": "object"
         },
+        "StatusBody": {
+          "additionalProperties": false,
+          "description": "`GET /status`의 `body` (SP8 7.5): 지난 7일 몸 기록. 지난 56일에 행이 없으면 `body`가 null이다.\n\n`days_7`: 지난 7일 중 행이 있는 날 수. 평균은 그 값이 있는 날만의 정수 평균(없으면 null).",
+          "properties": {
+            "days_7": {
+              "title": "Days 7",
+              "type": "integer"
+            },
+            "last_date": {
+              "title": "Last Date",
+              "type": "string"
+            },
+            "sleep_avg_7": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sleep Avg 7"
+            },
+            "steps_avg_7": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps Avg 7"
+            }
+          },
+          "required": [
+            "last_date",
+            "days_7",
+            "steps_avg_7",
+            "sleep_avg_7"
+          ],
+          "title": "StatusBody",
+          "type": "object"
+        },
         "StatusHp": {
           "additionalProperties": false,
           "properties": {
@@ -4107,8 +4216,18 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5.",
+      "description": "`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5.",
       "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatusBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "daily_quests": {
           "items": {
             "$ref": "#/$defs/DailyQuest"
@@ -4187,7 +4306,8 @@
         "titles",
         "recent_xp",
         "moments",
-        "moments_hidden"
+        "moments_hidden",
+        "body"
       ],
       "title": "Status",
       "type": "object"

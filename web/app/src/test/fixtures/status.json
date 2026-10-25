@@ -207,5 +207,6 @@
       "hidden": false
     }
   ],
-  "moments_hidden": 1
+  "moments_hidden": 1,
+  "body": null
 }

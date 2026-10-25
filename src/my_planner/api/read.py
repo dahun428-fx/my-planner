@@ -42,6 +42,7 @@ from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
 from my_planner.status.snapshot import status_snapshot
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo
+from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
@@ -395,6 +396,7 @@ def get_status(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) ->
         now=deps.clock.now(), tz=s.timezone, boundary=s.day_boundary, status=StatusRepo(conn, deps.clock),
         curve=CurveRepo(conn, deps.clock), tasks=_tasks(conn, deps), conditions=ConditionsRepo(conn, deps.clock),
         include_sensitive=_include_sensitive(request), moments=MomentsRepo(conn, deps.clock),
+        body=BodyRepo(conn, deps.clock),
     )
     return dump(Status, body)
 

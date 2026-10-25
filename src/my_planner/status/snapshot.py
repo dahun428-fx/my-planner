@@ -26,6 +26,7 @@ from my_planner.status.xp import (
     progress,
     title_name,
 )
+from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.moments import MomentsRepo
@@ -128,6 +129,7 @@ def _quests(
 def status_snapshot(
     *, now: datetime, tz: str | tzinfo, boundary: time, status: StatusRepo, curve: CurveRepo, tasks: TasksRepo,
     conditions: ConditionsRepo, include_sensitive: bool = False, moments: MomentsRepo | None = None,
+    body: BodyRepo | None = None,
 ) -> dict[str, Any]:
     today = logical_date(now, tz, boundary)
     xp_total = status.total()
@@ -147,6 +149,7 @@ def status_snapshot(
         ],
         "recent_xp": [{"at": x.at, "label": x.label, "amount": x.amount} for x in status.recent(RECENT_XP)],
         **_moments(moments, today),
+        "body": body.summary(today) if body is not None else None,  # 지난 7일 몸 기록(SP8 7.5). 56일에 행이 없으면 None
     }
 
 

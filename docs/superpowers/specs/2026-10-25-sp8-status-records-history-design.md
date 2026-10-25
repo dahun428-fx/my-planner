@@ -322,7 +322,7 @@ CREATE TABLE body_days (
 );
 ```
 
-- 보관 56일(`BODY_KEEP_DAYS`): 보너스 창(28일)과 화면(지난 7일)에 넉넉하다. 몸 기록은 쓸 만큼만 둔다.
+- 보관 56일(`BODY_KEEP_DAYS`): 보너스 창(28일)과 화면(지난 7일)에 넉넉하다. 몸 기록은 쓸 만큼만 둔다. 지우기는 하루 한 번 작업의 내부 동작 `prune_records`(즉시 갈래, `public=False`)가 6.4의 60일 정리와 함께 한다: 논리적 오늘 − 56일보다 오래된 행(계획 결정 17).
 
 ### 7.2 경로와 토큰
 
@@ -333,11 +333,11 @@ CREATE TABLE body_days (
   - `BODY_TOKEN`이 없거나 43자 미만이거나 `API_TOKEN`과 같으면 이 경로를 열지 않는다(`404`, 경고 `body_token_missing` 한 줄). 다른 경로는 그대로다.
   - 인증 실패 세기(1분 10회 → `429`)는 다른 경로와 함께 센다. 비교는 `hmac.compare_digest`.
   - **구현 규칙**: 지금 `auth` 미들웨어(`api/server.py`)는 토큰 하나(`deps.token`)만 비교한다. 이것을 "경로 틀로 기대 토큰을 고른다"로 바꾼다: `route_template(request) == "/api/v1/body"`이면 `deps.body_token`, 그 밖은 `deps.token`. 다른 쪽 토큰은 맞는 값이어도 `401`이다. 경로가 꺼져 있으면(`body_token` 없음) 이 경로를 등록하지 않으므로, `API_TOKEN`을 보내면 `auth`를 지난 뒤 라우팅이 `404`를 주고 `BODY_TOKEN`만 보내면 먼저 `401`이다.
-  - `record_body_days`는 `ACTIONS`의 동작이지만 `/actions`에서 부를 수 없다: `_callable_from`이 이 동작을 `/body` 처리 함수가 만드는 요청(`channel = "body"`)에서만 받는다. 그래서 `API_TOKEN`으로 `/actions`를 거쳐 몸 기록을 쓸 수 없다(1장 완료 조건 8).
+  - `record_body_days`는 `ACTIONS`의 동작이지만 `/actions`에서 부를 수 없다: `_callable_from`이 이 동작을 `/body` 처리 함수가 만드는 요청(`endpoint = "body"`, `ActionSpec(endpoint="body")`)에서만 받는다. 요청의 `channel`은 `app`이다(`activity.channel`은 `app`·`telegram`·`scheduler`뿐이고, 경로 제한은 `endpoint`가 한다. 계획 결정 1). 그래서 `API_TOKEN`으로 `/actions`를 거쳐 몸 기록을 쓸 수 없다(1장 완료 조건 8).
 - **닿는 길**: 지금 경로들과 같다. 아이폰 Tailscale이 켜져 있을 때 `https://<노트북>.<tailnet>.ts.net/api/v1/body`. 브라우저가 아니라서 CORS 미들웨어는 이 경로를 건너뛴다(CORS 헤더를 붙이지 않고 사전 요청 `OPTIONS`도 받지 않는다).
 - **중복 방지**: `client_msg_id`를 받지 않는다(SP3-4 6.1의 쓰기 규칙의 예외). 같은 날짜를 다시 보내면 덮어쓰므로 결과가 같다. 단축어에는 UUID 만들기가 마땅치 않다.
 - **본문 상한** 4KB: 이 경로에만 둔다(`body_limit` 미들웨어가 경로 틀이 `/api/v1/body`이면 4KB, 그 밖은 지금의 `api.max_body_kb`).
-- **쓰기 길**: 즉시 갈래(`apply_action("record_body_days", …)`, `actor = user`, 요청 `channel = "body"`)로 단일 작성자를 지킨다. 활동 기록은 남기지 않는다(날마다 같은 줄이 쌓여 기록 화면을 덮는다. 고칠 수도 되돌릴 수도 없는 센서 값이다). 경험치도 주지 않는다(사용자가 한 행동이 아니라 자동 전송이다).
+- **쓰기 길**: 즉시 갈래(`apply_action("record_body_days", …)`, `actor = user`, `channel = "app"`, `endpoint = "body"`)로 단일 작성자를 지킨다. 활동 기록은 남기지 않는다(날마다 같은 줄이 쌓여 기록 화면을 덮는다. 고칠 수도 되돌릴 수도 없는 센서 값이다). 경험치도 주지 않는다(사용자가 한 행동이 아니라 자동 전송이다).
 
 ### 7.3 본문과 검증
 
@@ -718,6 +718,7 @@ Dahun이 고르지 않은 선택은 비서가 정했다. 아래 추천으로 구
 | 금지 구 추가 | "보너스가 줄", "스탯이 떨어"(앱·대시보드 정적 문구 검사만. `system.md` 금지어 블록과 순간 M3에는 넣지 않는다: "지출이 줄었어요" 같은 좋은 말을 막지 않게) |
 
 ## 변경 기록
+- SP8-06 (2026-10-25): 7.2 `record_body_days` 요청은 `channel = "app"`, `endpoint = "body"`(결정 1). 7.1 56일 정리는 하루 한 번 작업의 `prune_records`가 6.4 60일 정리와 함께(결정 17).
 
 - SP8-04 리뷰 2차 (2026-10-25): 11장 이룬 순간 줄에 텔레그램 통로 `read_transcript`가 앱 대화의 비서 항목을 빼고 준다는 것을 적음.
 - SP8-04 리뷰 1차 (2026-10-25): 1장 조건 7과 6.7·11장에 통로를 건너는 회차 대화 규칙(앱 → 텔레그램은 가르지 않고 앱 원문도 붙이지 않음). 6.7 첫 줄의 "또는 주간 회고"를 뺌(결정 10). 10.3에 두뇌 `get_status`의 `moments_hidden` 없음과 회고 앞머리 순서(오래된 날부터).
