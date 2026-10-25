@@ -55,6 +55,8 @@ APP_ONLY_TOOLS: list[str] = [
     *PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards", "set_checkin_time",
     # 메모(SP9 6.3): 찾기·읽기·만들기만. 고치기·지우기 도구는 없다(Q5)
     "search_memos", "read_memo", "create_memo",
+    # 지난 대화(SP9 7.5): 제목·요약만. 원문을 주는 도구가 아니다
+    "find_conversations",
     # 스케줄(SP9 5.5): 시간이 정해진 일. 고치기(시각류)·지우기는 확인을 거친다
     "list_events", "create_event", "update_event", "delete_event",
     "ui_events",  # 그날 일정 카드(9.8), 그리기만
@@ -464,6 +466,21 @@ _SPECS.update({
 
 
 _MEMO_ID = {"type": "integer", "description": "메모 번호"}
+_SPECS["find_conversations"] = (
+    (
+        "앱에서 나눈 지난 대화를 찾습니다. 사용자가 지난 대화를 언급하거나(\"어제 얘기한 거\") 앞머리와 다른 도구로 알 수 "
+        "없는 맥락이 필요할 때만 부릅니다. 결과는 대화마다 id, 날짜, 제목, 요약이고 원문은 없습니다. query가 없으면 "
+        "최근 대화입니다. days 기본 14(최대 90), limit 기본 5(최대 20)."
+    ),
+    _schema(
+        {
+            "query": {"type": ["string", "null"], "description": "제목·요약에서 찾을 말. 3글자 이상이면 더 정확합니다"},
+            "days": {"type": "integer", "minimum": 1, "maximum": 90},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+        },
+        [],
+    ),
+)
 _SPECS.update({
     "search_memos": (
         (
@@ -587,12 +604,14 @@ _SPECS["save_moments"] = (
 
 
 def tool_names_for(ctx: RunContext) -> list[str]:
-    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐이다.
+    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약은 없음(SP9 7.2).
 
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
         return list(MOMENTS_TOOLS)
+    if ctx.kind == "summary":  # 대화 요약(SP9 7.2): 도구 없음
+        return []
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 
@@ -654,6 +673,7 @@ def _py_args(args: dict[str, Any]) -> dict[str, Any]:
 
 # 앱 대화에만 붙이는 설명(텔레그램에는 일정 도구가 없다, SP9 5.4)
 _APP_NOTES = {
+    "read_transcript": " 앱에서는 이 대화의 지난 원문만 읽습니다. 다른 대화는 find_conversations로 요약만 봅니다.",
     "add_task": " 시간이 정해진 일(\"내일 14:00 치과\")은 create_event로 일정을 만듭니다.",
     "propose_tasks": " 시간이 정해진 일은 초안이 아니라 create_event로 일정을 만듭니다.",
     "update_task": " 시각을 붙이려면 create_event로 일정을 만듭니다.",

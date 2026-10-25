@@ -147,6 +147,34 @@ def queue_moments_daily(target: MomentsSubmitter, moments: MomentsRepo, state: S
     return job
 
 
+class SummaryQueue(Protocol):
+    def queue_summaries(self, *, retry: bool = False) -> int: ...
+
+
+def retry_summaries_daily(target: SummaryQueue) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 7.2): 요약이 안 된 최근 7일의 닫힌 앱 대화를 다시 큐에 넣는다. 두뇌는 디스패처가 부른다."""
+
+    def job(today: date) -> None:
+        target.queue_summaries(retry=True)
+
+    job.__name__ = "retry_summaries"
+    return job
+
+
+class DeletedEraser(Protocol):
+    def reerase_deleted(self) -> int: ...
+
+
+def reerase_deleted_daily(target: DeletedEraser) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 7.7): 최근 30일 안에 지운 대화의 원문 줄과 세션 파일을 다시 지운다(여러 번 해도 같다)."""
+
+    def job(today: date) -> None:
+        target.reerase_deleted()
+
+    job.__name__ = "reerase_deleted_conversations"
+    return job
+
+
 def prune_records_daily(target: ActionApplier) -> Callable[[date], None]:
     """하루 한 번 작업: 60일 지난 `status_moment_days` 행(SP8 6.4)과 56일 지난 `body_days` 행(7.1) 지우기(계획 결정 17).
     즉시 갈래로(4.3). 로그에는 개수만."""
@@ -330,7 +358,7 @@ def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
             m = Inbound(
                 text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
                 channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=None,
-                conversation_id=row.conversation_id,
+                conversation_id=row.conversation_id, resume_conversation_id=row.resume_conversation_id,
             )
         else:
             m = Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)
@@ -371,6 +399,7 @@ class Runner:
         checkins: bool = True,
         events: EventsRepo | None = None,
         reminder_delivery: Delivery | None = None,
+        summaries: SummaryQueue | None = None,
     ) -> None:
         """`checkins=False`(role = "dev", 릴리스 흐름 스펙 5.2): 회차를 만들지도 따라잡지도 않는다. 만료된 대화
         닫기, 하트비트, 하루 한 번 작업(초안 만료, 백업, 로그 정리 등)은 그대로 돈다."""
@@ -391,6 +420,8 @@ class Runner:
         self.reminder_delivery = reminder_delivery
         self.reminder_delays = RETRY_DELAYS_S  # 보내기 재시도 간격(시험이 바꾼다)
         self.reminder_tasks: set[asyncio.Task[None]] = set()  # 보내는 중인 알림 작업(끝나면 스스로 빠진다)
+        # 대화 요약 큐(SP9 7.2): 만료로 닫은 뒤 tick마다 닫힌 앱 대화를 넣는다. 없으면 건너뛴다
+        self.summaries = summaries
 
     @property
     def polling_down(self) -> bool:
@@ -496,6 +527,7 @@ class Runner:
         if not self.checkins:  # 회차 없이 정리만(2·3단계의 회차 부분을 건너뛴다)
             if self.router is not None:
                 self.router.close_expired()
+            self._queue_summaries()
             self.state.set("last_seen_at", to_iso(now))
             self._run_daily(logical_date(now, tz, boundary))
             return
@@ -508,6 +540,7 @@ class Runner:
         # 3. 만료된 대화를 닫고(chat 30분, plan 2시간), 따라잡기 판정과 적용
         if self.router is not None:
             self.router.close_expired()
+        self._queue_summaries()  # 닫힌 앱 대화(방금 닫은 것 포함)의 요약(SP9 7.2)
         by_due = {_due(r): r for r in self.runs.pending()}
         # 넘겨 받은 회고(R1)는 pending이지만 판정에서 빼고 따로 넘긴다
         carried = self._carried_review()
@@ -556,6 +589,14 @@ class Runner:
         # 4. 하트비트
         self.state.set("last_seen_at", to_iso(now))
         self._run_daily(logical_date(now, tz, boundary))
+
+    def _queue_summaries(self) -> None:
+        if self.summaries is None:
+            return
+        try:
+            self.summaries.queue_summaries()
+        except Exception:  # 요약을 못 넣어도 회차 판정은 돈다
+            log.exception("summary_queue_error")
 
     def _remind(self, last_seen: datetime | None, now: datetime) -> None:
         """일정 알림: 판정과 행 기록은 여기서 동기로, 보내기는 asyncio 작업으로 넘긴다. 안 돼도 tick은 그대로 간다."""

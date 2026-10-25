@@ -531,6 +531,18 @@
         },
         "message": {
           "$ref": "#/$defs/ChatMessage"
+        },
+        "resume_conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resume Conversation Id"
         }
       },
       "required": [
@@ -1409,6 +1421,7 @@
       "$defs": {
         "ConversationItem": {
           "additionalProperties": false,
+          "description": "대화 한 줄(6.4.6). SP9 7.6: 비서가 붙인 `title`(20자)과 `summary`(앞 120자). 앱 대화에만 있고 없으면 null.",
           "properties": {
             "channel": {
               "enum": [
@@ -1460,6 +1473,30 @@
                 }
               ],
               "title": "Run Id"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Summary"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
             }
           },
           "required": [
@@ -1476,6 +1513,7 @@
         }
       },
       "additionalProperties": false,
+      "description": "`GET /conversations?channel=&q=&before=&limit=`(SP9 7.6). 지운 대화는 없다. `next_before`: 다음 쪽 커서.",
       "properties": {
         "items": {
           "items": {
@@ -1483,12 +1521,42 @@
           },
           "title": "Items",
           "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Before"
         }
       },
       "required": [
         "items"
       ],
       "title": "Conversations",
+      "type": "object"
+    },
+    "ConversationsClosed": {
+      "additionalProperties": false,
+      "description": "`POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id.",
+      "properties": {
+        "closed": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Closed",
+          "type": "array"
+        }
+      },
+      "required": [
+        "closed"
+      ],
+      "title": "ConversationsClosed",
       "type": "object"
     },
     "Curve": {

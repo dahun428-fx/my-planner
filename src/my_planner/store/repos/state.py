@@ -30,14 +30,15 @@ WAKE_TASK_STALE_KEY = "wake_task_stale"
 # SP9 5.7: 아이폰 캘린더 구독 키(32바이트 무작위, 평문: 설정 화면이 주소를 다시 보여 줘야 한다). 없으면 구독 주소 없음
 CALENDAR_KEY_KEY = "calendar_key"
 
-UsageField = Literal["brain_calls", "proactive_messages"]
-_USAGE_FIELDS = ("brain_calls", "proactive_messages")
+UsageField = Literal["brain_calls", "proactive_messages", "summaries"]
+_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries")  # `summaries`: 하루 요약 호출(SP9 7.2, 018)
 
 
 @dataclass
 class Usage:
     brain_calls: int
     proactive_messages: int
+    summaries: int = 0
 
 
 @dataclass
@@ -56,6 +57,7 @@ class PendingInbound:
     channel: str = "telegram"  # 'telegram' | 'app'
     client_msg_id: str | None = None
     checkin_id: int | None = None
+    resume_conversation_id: int | None = None  # 앱 행: 목록에서 고른 대화(SP9 7.3 0번 규칙)
 
 
 def _pending(r: sqlite3.Row) -> PendingInbound:
@@ -72,6 +74,7 @@ def _pending(r: sqlite3.Row) -> PendingInbound:
         channel=r["channel"],
         client_msg_id=r["client_msg_id"],
         checkin_id=r["checkin_id"],
+        resume_conversation_id=r["resume_conversation_id"],
     )
 
 
@@ -123,12 +126,14 @@ class StateRepo:
 
     def usage(self, d: date) -> Usage:
         row = self.conn.execute(
-            "SELECT brain_calls, proactive_messages FROM usage_state WHERE date = ?",
+            "SELECT brain_calls, proactive_messages, summaries FROM usage_state WHERE date = ?",
             (d.isoformat(),),
         ).fetchone()
         if row is None:
             return Usage(brain_calls=0, proactive_messages=0)
-        return Usage(brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"])
+        return Usage(
+            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"]
+        )
 
     # telegram_updates (처리를 마친 update_id)
     def is_seen_update(self, update_id: int) -> bool:
@@ -161,15 +166,17 @@ class StateRepo:
         client_msg_id: str | None = None,
         checkin_id: int | None = None,
         conversation_id: int | None = None,
+        resume_conversation_id: int | None = None,
     ) -> None:
-        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`를 적는다(SP3-4 5.1)."""
+        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`와 앱이 실은 `resume_conversation_id`를
+        적는다(SP3-4 5.1, SP9 7.3)."""
         with transaction(self.conn):
             self.conn.execute(
                 "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
-                "client_msg_id, checkin_id, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "client_msg_id, checkin_id, conversation_id, resume_conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     update_id, text_redacted, to_iso(sent_at), to_iso(received_at), channel, client_msg_id,
-                    checkin_id, conversation_id,
+                    checkin_id, conversation_id, resume_conversation_id,
                 ),
             )
 

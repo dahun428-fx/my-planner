@@ -22,6 +22,7 @@ from my_planner.tools.mcp_adapter import (
     APP_ONLY_TOOLS,
     TOOL_NAMES,
     build_planner_tools,
+    tool_description,
     tool_names_for,
 )
 
@@ -101,7 +102,7 @@ def test_tool_names_moments_kind_only_save_moments(env):
 def test_chat_and_run_tool_lists_have_no_save_moments(env):
     assert "save_moments" not in TOOL_NAMES and "save_moments" not in APP_ONLY_TOOLS
     for kind in ("chat", "run"):
-        for channel, n in (("telegram", 28), ("app", 44)):  # SP9-03 메모 도구 3개, SP9-05 일정 도구 4개·`ui_events`(앱에만)
+        for channel, n in (("telegram", 28), ("app", 45)):  # SP9-03 메모 도구 3개, SP9-05 일정 도구 4개·`ui_events`, SP9-09 `find_conversations`(앱에만)
             ctx = RunContext(None, None, kind=kind, channel=channel)
             names = tool_names_for(ctx)
             assert len(names) == n and "save_moments" not in names
@@ -317,7 +318,7 @@ def test_get_status_body_numbers_app_only(env):
 
 def test_read_transcript_telegram_omits_app_secretary_lines(env):
     """SP8 1장 조건 7, 11장: 앱 대화의 비서 줄은 이룬 순간의 글을 옮겨 말했을 수 있다. 텔레그램 통로(회차 차례 포함)의
-    `read_transcript`에는 그 줄이 없다. 앱 사용자 줄과 텔레그램 줄은 그대로다. 앱 통로는 전부 받는다."""
+    `read_transcript`에는 그 줄이 없다. 앱 사용자 줄과 텔레그램 줄은 그대로다. 앱 통로는 그 대화의 줄을 모두 받는다."""
     tr = env.tools.transcripts
     tr.append(kst(2026, 10, 24, 9, 0), "사용자", 1, None, "꾸민 텔레그램 질문")
     tr.append(kst(2026, 10, 24, 9, 1), "비서", 1, None, "꾸민 텔레그램 답")
@@ -328,10 +329,35 @@ def test_read_transcript_telegram_omits_app_secretary_lines(env):
     args = {"from": "2026-10-24", "to": "2026-10-24"}
     tele = env.tools.read_transcript(RunContext(None, None, channel="telegram"), **args)["text"]
     run = env.tools.read_transcript(RunContext(None, None, kind="run", activity_channel="scheduler"), **args)["text"]
-    app = env.tools.read_transcript(RunContext(None, None, channel="app"), **args)["text"]
+    app = env.tools.read_transcript(RunContext(2, None, channel="app"), **args)["text"]  # SP9-09: 이 대화(2)의 줄만
 
     for text in (tele, run):
         assert SECRET_A not in text and "get_status" not in text
         for kept in ("꾸민 텔레그램 질문", "꾸민 텔레그램 답", "꾸민 앱 질문", "꾸민 텔레그램 둘째 질문"):
             assert kept in text, kept
     assert SECRET_A in app and "꾸민 앱 질문" in app
+
+
+def test_app_read_transcript_only_current_conversation(env):
+    """SP9 7.5, ADR 0014: 앱 통로의 `read_transcript`는 이 대화(`ctx.conversation_id`)의 줄만 준다. 다른 대화의
+    원문(앱이든 텔레그램이든)은 나가지 않는다. 대화가 없으면 빈 글. 텔레그램 통로는 그대로다."""
+    tr = env.tools.transcripts
+    tr.append(kst(2026, 10, 24, 9, 0), "사용자", 1, None, "A 대화 고유문자열-ALPHA", channel="app", message_id="a-1")
+    tr.append(kst(2026, 10, 24, 9, 1), "비서", 1, None, "A 답 ALPHA-REPLY", channel="app", message_id="a-2")
+    tr.append(kst(2026, 10, 24, 9, 30), "사용자", 3, None, "텔레그램 줄 TELE-ONLY")
+    tr.append(kst(2026, 10, 24, 10, 0), "사용자", 2, None, "B 대화 질문 BRAVO", channel="app", message_id="b-1")
+    tr.append(kst(2026, 10, 24, 10, 1), "비서", 2, None, "B 답 BRAVO-REPLY", channel="app", message_id="b-2")
+    args = {"from": "2026-10-24", "to": "2026-10-24"}
+    b = env.tools.read_transcript(RunContext(2, None, channel="app"), **args)["text"]
+    none = env.tools.read_transcript(RunContext(None, None, channel="app"), **args)["text"]
+    tele = env.tools.read_transcript(RunContext(3, None, channel="telegram"), **args)["text"]
+
+    assert "BRAVO" in b and "BRAVO-REPLY" in b
+    for other in ("ALPHA", "TELE-ONLY"):
+        assert other not in b and other not in none
+    assert "BRAVO" not in none
+    for kept in ("ALPHA", "TELE-ONLY", "BRAVO"):  # 텔레그램 통로는 SP8 그대로(앱 사용자 줄 포함)
+        assert kept in tele
+    assert "ALPHA-REPLY" not in tele and "BRAVO-REPLY" not in tele
+    assert "이 대화" in tool_description("read_transcript", RunContext(2, None, channel="app"))
+    assert "이 대화" not in tool_description("read_transcript", RunContext(3, None, channel="telegram"))

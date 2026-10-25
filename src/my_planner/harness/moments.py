@@ -173,13 +173,17 @@ def build_moments_input(
 # --- 지시문 (6.3) ---
 
 
-def moments_system_prompt() -> str:
-    """`moments.md` + 빈 줄 + `system.md`의 금지어 블록(과 그 앞 한 줄). 대화 원칙은 싣지 않는다."""
+def banned_words_block() -> str:
+    """`system.md`의 금지어 블록(과 그 앞 한 줄). 대화 요약 호출(SP9 7.2)도 쓴다."""
     lines = prompts.load("system.md").splitlines()
     start = next(i for i, line in enumerate(lines) if line.strip() == _BANNED_START)
     end = next(i for i, line in enumerate(lines) if line.strip() == _BANNED_END)
-    block = "\n".join(lines[max(start - 1, 0): end + 1])
-    return f"{prompts.load('moments.md')}\n\n{block}"
+    return "\n".join(lines[max(start - 1, 0): end + 1])
+
+
+def moments_system_prompt() -> str:
+    """`moments.md` + 빈 줄 + `system.md`의 금지어 블록(과 그 앞 한 줄). 대화 원칙은 싣지 않는다."""
+    return f"{prompts.load('moments.md')}\n\n{banned_words_block()}"
 
 
 # --- 판정 (6.2-6) ---
@@ -216,14 +220,14 @@ def claude_config_dir(environ: dict[str, str] | None = None) -> Path:
     return Path(env.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
 
 
-def remove_session_file(session_id: str | None, *, config_dir: Path) -> bool:
+def remove_session_file(session_id: str | None, *, config_dir: Path, event: str = "moments_session_cleanup") -> bool:
     """순간 호출의 세션 파일(`<config>/projects/*/<id>.jsonl`)과 같은 id의 하위 폴더를 지운다. UUID 모양만.
 
     `no-session-persistence` 플래그와 겹으로 둔다(플래그가 먹으면 지울 것이 없다). 오류는 삼킨다. 로그에는
     지웠는지만 남긴다(경로·id 없음).
     """
     if not isinstance(session_id, str) or not _UUID.fullmatch(session_id):
-        log.info("moments_session_cleanup", extra={"removed": False})
+        log.info(event, extra={"removed": False})
         return False
     removed = False
     try:
@@ -240,6 +244,6 @@ def remove_session_file(session_id: str | None, *, config_dir: Path) -> bool:
                 shutil.rmtree(path)
                 removed = True
     except OSError as e:
-        log.warning("moments_session_cleanup_error", extra={"error_type": type(e).__name__})
-    log.info("moments_session_cleanup", extra={"removed": removed})
+        log.warning(f"{event}_error", extra={"error_type": type(e).__name__})
+    log.info(event, extra={"removed": removed})
     return removed
