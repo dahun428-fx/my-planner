@@ -36,6 +36,9 @@ export function CalendarSubscribe({ online }: { online: boolean }) {
       if (r.kind === "ok") {
         setUrl(r.data.url);
         setConfirmOpen(false);
+        // A poll that started before this answer must not put the old address back: a new load
+        // makes the polling hook drop every older one still in flight.
+        void poll.refresh();
       } else toast.show({ text: failureText(r) });
     } finally {
       lock.current = false;

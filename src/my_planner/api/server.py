@@ -155,7 +155,10 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
     deps = request.app[DEPS_KEY]
     limiter = request.app[LIMITER_KEY]
     if limiter.blocked():
-        return error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
+        blocked = error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
+        if route_template(request) == CALENDAR_PATH:
+            blocked.headers["Cache-Control"] = "no-store"
+        return blocked
     if route_template(request) == CALENDAR_PATH:
         return await handler(request)  # 캘린더 구독: Bearer 대신 처리기가 `?key=`를 비교한다(SP9 5.7). 위에서 429는 거른 뒤
     # 경로 틀로 기대 토큰을 고른다(SP8 7.2): `/body`는 `BODY_TOKEN`만, 그 밖은 `API_TOKEN`만. 다른 쪽 토큰은 맞아도 401.
@@ -172,7 +175,10 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
 @web.middleware
 async def safe_mode(request: web.Request, handler: Handler) -> web.StreamResponse:
     if request.app[DEPS_KEY].safe_mode and request.path != HEALTH_PATH:
-        return error_response(503, "safe_mode", "데이터베이스 안전 모드예요. 상태 확인만 할 수 있어요.")
+        unavailable = error_response(503, "safe_mode", "데이터베이스 안전 모드예요. 상태 확인만 할 수 있어요.")
+        if route_template(request) == CALENDAR_PATH:
+            unavailable.headers["Cache-Control"] = "no-store"
+        return unavailable
     return await handler(request)
 
 

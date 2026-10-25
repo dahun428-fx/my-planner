@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear, get, set } from "idb-keyval";
 import { http, HttpResponse } from "msw";
@@ -374,9 +374,12 @@ describe("Settings", () => {
   it("calendar: make shows the address and a copy button that copies it", async () => {
     serve();
     const posts: unknown[] = [];
+    let made: string | null = null;
     server.use(
+      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: made })),
       http.post(`${BASE}/settings/calendar`, async ({ request }) => {
         posts.push(await request.json());
+        made = URL1;
         return HttpResponse.json({ url: URL1 });
       }),
     );
@@ -409,10 +412,12 @@ describe("Settings", () => {
   it("calendar: make again asks first; keeping changes nothing, confirming rotates", async () => {
     serve();
     const posts: unknown[] = [];
+    let current = URL1;
     server.use(
-      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: URL1 })),
+      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: current })),
       http.post(`${BASE}/settings/calendar`, async ({ request }) => {
         posts.push(await request.json());
+        current = URL2;
         return HttpResponse.json({ url: URL2 });
       }),
     );
@@ -431,6 +436,44 @@ describe("Settings", () => {
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.calendar.recreate }));
     expect(await within(group).findByText(URL2)).toBeInTheDocument();
     expect(posts).toEqual([{ rotate: true }]);
+    expect(within(group).queryByText(URL1)).toBeNull();
+  });
+
+  it("calendar: a slow read that started before the rotate cannot put the old address back", async () => {
+    serve();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let current = URL1;
+    let slow = false;
+    let stale = false;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, async () => {
+        const seen = current; // what the BE says when the read starts
+        if (slow) {
+          stale = true;
+          await gate;
+        }
+        return HttpResponse.json({ url: seen });
+      }),
+      http.post(`${BASE}/settings/calendar`, () => {
+        current = URL2;
+        return HttpResponse.json({ url: URL2 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await calendarGroup();
+    await within(group).findByText(URL1);
+    slow = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange"))); // a poll starts and hangs
+    await waitFor(() => expect(stale).toBe(true));
+    slow = false;
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.calendar.recreate }));
+    expect(await within(group).findByText(URL2)).toBeInTheDocument();
+    release(); // the old read answers now, after the rotate
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(group).getByText(URL2)).toBeInTheDocument();
     expect(within(group).queryByText(URL1)).toBeNull();
   });
 

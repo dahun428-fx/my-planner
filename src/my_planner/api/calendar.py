@@ -53,8 +53,9 @@ UNAUTHORIZED = "인증이 필요해요."
 
 
 def _escape(text: str) -> str:
-    """TEXT 값(RFC 5545 3.3.11): `\\ ; ,`와 줄바꿈."""
+    """TEXT 값(RFC 5545 3.3.11): `\\ ; ,`와 줄바꿈, 그 밖의 제어 문자는 공백."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = _CONTROL.sub(" ", text)  # 줄바꿈·탭 말고 제어 문자는 RFC TEXT에 못 쓴다: 엄격한 파서는 VEVENT를 버린다
     return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
@@ -83,9 +84,10 @@ def _vtimezone(tz: str) -> list[str]:
     sign = "+" if off >= timedelta(0) else "-"
     mins = abs(int(off.total_seconds())) // 60
     o = f"{sign}{mins // 60:02d}{mins % 60:02d}"
+    name = datetime(2026, 1, 1, tzinfo=ZoneInfo(tz)).tzname() or tz
     return [
         "BEGIN:VTIMEZONE", f"TZID:{tz}", "BEGIN:STANDARD", "DTSTART:19700101T000000",
-        f"TZOFFSETFROM:{o}", f"TZOFFSETTO:{o}", f"TZNAME:{tz}", "END:STANDARD", "END:VTIMEZONE",
+        f"TZOFFSETFROM:{o}", f"TZOFFSETTO:{o}", f"TZNAME:{name}", "END:STANDARD", "END:VTIMEZONE",
     ]
 
 
@@ -161,6 +163,7 @@ def key_ok(given: str | None, stored: str | None) -> bool:
     return hmac.compare_digest(given.encode("utf-8"), stored.encode("utf-8"))
 
 
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _TS_NET = re.compile(r"\.ts\.net(:\d+)?$")
 
 
@@ -209,8 +212,6 @@ async def get_calendar_ics(request: web.Request) -> web.StreamResponse:
 
     deps = request.app[DEPS_KEY]
     limiter = request.app[LIMITER_KEY]
-    if limiter.blocked():
-        return _no_store(error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요."))
     assert deps.read_conn is not None
     conn = deps.read_conn()
     try:

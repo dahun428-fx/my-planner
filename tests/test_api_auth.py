@@ -156,8 +156,15 @@ async def test_no_key_set_yet_401(env):
 
 async def test_calendar_key_not_accepted_elsewhere(env):
     key = await _calendar_key(env)
-    for path in ("/health", "/today", "/events?start=2026-10-24&end=2026-10-25", "/settings/calendar"):
-        assert (await env.get(path, token=key)).status == 401  # Bearer 자리
-        sep = "&" if "?" in path else "?"
-        assert (await env.get(f"{path}{sep}key={key}", token=None)).status == 401  # 쿼리 자리
-    assert (await env.post("/settings/calendar", token=key, json={"rotate": True})).status == 401
+    from my_planner.api.server import LIMITER_KEY
+
+    routes = sorted({
+        (r.method, r.resource.canonical) for r in env.client.app.router.routes()
+        if r.resource is not None and r.method != "HEAD" and r.resource.canonical != ICS
+    })
+    assert len(routes) > 20
+    for method, path in routes:
+        url = path.replace("{id}", "1")
+        assert (await env.request(method, url, token=key, json={})).status == 401, (method, path)  # Bearer 자리
+        assert (await env.request(method, f"{url}?key={key}", token=None, json={})).status == 401, (method, path)  # 쿼리 자리
+        env.client.app[LIMITER_KEY]._failures.clear()  # 실패 세기에 막히지 않게

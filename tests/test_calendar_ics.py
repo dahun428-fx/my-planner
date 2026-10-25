@@ -1,6 +1,6 @@
 """아이폰 캘린더 구독 `.ics` (SP9 스펙 5.7). 시험 날짜 2026-10-26(월)~, 매달 끝날 2027-01-31."""
 
-from datetime import UTC, date, datetime, time
+from datetime import date, time
 
 import pytest
 from be_env import BeEnv
@@ -89,7 +89,7 @@ def test_tzid_and_vtimezone():
     assert ls[:2] == ["BEGIN:VCALENDAR", "VERSION:2.0"]
     assert ls[-1] == "END:VCALENDAR"
     tz = ls[ls.index("BEGIN:VTIMEZONE"): ls.index("END:VTIMEZONE") + 1]
-    assert "TZID:Asia/Seoul" in tz and "TZOFFSETFROM:+0900" in tz and "TZOFFSETTO:+0900" in tz
+    assert "TZNAME:KST" in tz and "TZID:Asia/Seoul" in tz and "TZOFFSETFROM:+0900" in tz and "TZOFFSETTO:+0900" in tz
     assert ics.count("BEGIN:VTIMEZONE") == 1
     assert _render(_event(all_day=True, start_time=None, remind_min=0)).count("VTIMEZONE") == 0  # 시각 있는 일정이 없으면 생략
     assert _render(_event(), _event(id=2)).count("BEGIN:VTIMEZONE") == 1
@@ -102,6 +102,7 @@ def test_no_note_no_area_no_valarm():
     ics = _render(_event(note=secret, area=next(iter(Area)), remind_min=10))
     assert secret not in ics
     assert "VALARM" not in ics and "CATEGORIES" not in ics and "DESCRIPTION" not in ics
+    assert "career" not in ics.lower()  # 영역 값이 X- 속성 같은 데로 새지 않는다
     assert "SUMMARY:치과" in _vevent(ics)
     assert "UID:event-1@my-planner" in _vevent(ics)
     assert f"DTSTAMP:{NOW:%Y%m%dT%H%M%SZ}" in _vevent(ics)
@@ -122,7 +123,6 @@ def test_escape_and_fold_75_octets_crlf():
 def test_empty_calendar_is_valid():
     ls = _lines(_render())
     assert ls[0] == "BEGIN:VCALENDAR" and ls[-1] == "END:VCALENDAR" and "BEGIN:VEVENT" not in ls
-    assert datetime(2026, 1, 1, tzinfo=UTC)  # 사용 안 함 경고 방지
 
 
 # --- HTTP ---
@@ -167,3 +167,20 @@ async def test_rotate_breaks_old_url(tmp_path):
         assert new != old
         assert (await env.get(f"/api/v1/calendar.ics?key={old}", token=None)).status == 401
         assert (await env.get(f"/api/v1/calendar.ics?key={new}", token=None)).status == 200
+
+
+def test_control_characters_become_spaces():
+    ics = _render(_event(title="가\x00나\x07다\x1f라\x7f마\t바"))
+    assert "SUMMARY:가 나 다 라 마\t바" in _vevent(ics)
+    assert not any(ord(ch) < 32 and ch not in "\r\n\t" for ch in ics)
+
+
+async def test_blocked_and_safe_mode_answers_are_no_store(tmp_path):
+    from my_planner.api.server import LIMITER_KEY
+
+    async with BeEnv.start(tmp_path, start=START) as env:
+        for _ in range(10):
+            await env.get("/api/v1/calendar.ics?key=x", token=None)
+        assert env.client.app[LIMITER_KEY].blocked()
+        resp = await env.get("/api/v1/calendar.ics?key=x", token=None)
+        assert resp.status == 429 and resp.headers["Cache-Control"] == "no-store"
