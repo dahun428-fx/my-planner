@@ -27,6 +27,7 @@ export interface ApiModels {
   ClientErrorBody: ClientErrorBody;
   Conditions: Conditions;
   Conversations: Conversations;
+  ConversationsClosed: ConversationsClosed;
   Curve: Curve;
   CurveHistory: CurveHistory;
   Drafts: Drafts;
@@ -252,6 +253,7 @@ export interface ChatRequestBody {
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;
+  resume_conversation_id?: number | null;
 }
 /**
  * AI SDK `UIMessage`(마지막 사용자 메시지 하나). `parts`의 `text`만 읽는다(6.4.1). 모르는 필드는 버린다.
@@ -436,13 +438,18 @@ export interface ConditionItem {
   score: number;
 }
 /**
+ * `GET /conversations?channel=&q=&before=&limit=`(SP9 7.6). 지운 대화는 없다. `next_before`: 다음 쪽 커서.
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Conversations".
  */
 export interface Conversations {
   items: ConversationItem[];
+  next_before?: string | null;
 }
 /**
+ * 대화 한 줄(6.4.6). SP9 7.6: 비서가 붙인 `title`(20자)과 `summary`(앞 120자). 앱 대화에만 있고 없으면 null.
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "ConversationItem".
  */
@@ -454,6 +461,17 @@ export interface ConversationItem {
   last_message_at: string;
   opened_at: string;
   run_id: number | null;
+  summary?: string | null;
+  title?: string | null;
+}
+/**
+ * `POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ConversationsClosed".
+ */
+export interface ConversationsClosed {
+  closed: number[];
 }
 /**
  * `GET /curve` (6.3.5).

@@ -31,7 +31,7 @@ from my_planner.api.calendar import (
     get_calendar_settings,
     post_calendar_settings,
 )
-from my_planner.api.chat import post_chat
+from my_planner.api.chat import delete_conversation, post_chat, post_new_conversation
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
@@ -253,6 +253,7 @@ def write_handler(view: Callable[[web.Request, ApiDeps], Awaitable[web.StreamRes
 
 WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]], ...] = (
     ("/chat", post_chat),
+    ("/conversations/new", post_new_conversation),  # SP9 7.3
     ("/actions", post_actions),
     ("/activity/{id}/undo", post_undo),
     ("/push/subscriptions", post_subscription),
@@ -293,6 +294,7 @@ def build_app(deps: ApiDeps) -> web.Application:
     app.router.add_put(API_PREFIX + "/settings/notify", write_handler(put_notify))
     app.router.add_put(API_PREFIX + "/settings/checkin-times", write_handler(put_checkin_times))
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
+    app.router.add_delete(API_PREFIX + "/conversations/{id}", write_handler(delete_conversation))  # SP9 7.7
     if body_route_open(deps):  # 아이폰 단축어(SP8 7.2). 토큰이 없으면 경로도 없다
         app.router.add_post(BODY_PATH, write_handler(post_body))
     return app

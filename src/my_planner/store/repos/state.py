@@ -30,14 +30,15 @@ WAKE_TASK_STALE_KEY = "wake_task_stale"
 # SP9 5.7: 아이폰 캘린더 구독 키(32바이트 무작위, 평문: 설정 화면이 주소를 다시 보여 줘야 한다). 없으면 구독 주소 없음
 CALENDAR_KEY_KEY = "calendar_key"
 
-UsageField = Literal["brain_calls", "proactive_messages"]
-_USAGE_FIELDS = ("brain_calls", "proactive_messages")
+UsageField = Literal["brain_calls", "proactive_messages", "summaries"]
+_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries")  # `summaries`: 하루 요약 호출(SP9 7.2, 018)
 
 
 @dataclass
 class Usage:
     brain_calls: int
     proactive_messages: int
+    summaries: int = 0
 
 
 @dataclass
@@ -123,12 +124,14 @@ class StateRepo:
 
     def usage(self, d: date) -> Usage:
         row = self.conn.execute(
-            "SELECT brain_calls, proactive_messages FROM usage_state WHERE date = ?",
+            "SELECT brain_calls, proactive_messages, summaries FROM usage_state WHERE date = ?",
             (d.isoformat(),),
         ).fetchone()
         if row is None:
             return Usage(brain_calls=0, proactive_messages=0)
-        return Usage(brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"])
+        return Usage(
+            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"]
+        )
 
     # telegram_updates (처리를 마친 update_id)
     def is_seen_update(self, update_id: int) -> bool:

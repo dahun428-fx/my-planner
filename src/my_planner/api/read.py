@@ -44,6 +44,7 @@ from my_planner.curve.history import curve_history
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
+from my_planner.harness.summaries import LIST_SUMMARY_CHARS
 from my_planner.status.snapshot import status_snapshot
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo
 from my_planner.store.repos.body import BodyRepo
@@ -533,21 +534,34 @@ def get_conversations(conn: sqlite3.Connection, deps: ApiDeps, request: web.Requ
         if not _INT.match(raw) or not 1 <= int(raw) <= CONVERSATIONS_MAX_LIMIT:
             raise _bad(f"limit은 1~{CONVERSATIONS_MAX_LIMIT} 사이 정수여야 해요.")
         limit = int(raw)
-    convs = ConversationsRepo(conn, deps.clock).recent(channel=channel, limit=limit)
+    q = request.query.get("q")
+    if q is not None and len(q) > CONVERSATION_QUERY_MAX:
+        raise _bad(f"q는 {CONVERSATION_QUERY_MAX}자까지예요.")
+    before = _memo_before(request.query.get("before"))  # 메모와 같은 커서 모양(`last_message_at`, `id`)
+    convs = ConversationsRepo(conn, deps.clock).recent(channel=channel, limit=limit + 1, q=q, before=before)
+    more = len(convs) > limit
+    convs = convs[:limit]
     items = [
         {
             "id": c.id, "kind": c.kind.value, "channel": c.channel, "run_id": c.run_id,
             "opened_at": to_iso(c.opened_at), "last_message_at": to_iso(c.last_message_at),
             "closed_at": to_iso(c.closed_at) if c.closed_at else None,
+            # SP9 7.6: 요약은 앞 120자. 빈 요약(짧은 대화)은 null
+            "title": c.title, "summary": c.summary[:LIST_SUMMARY_CHARS] if c.summary else None,
         }
         for c in convs
     ]
-    return dump(Conversations, {"items": items})
+    next_before = memo_cursor(convs[-1].last_message_at, convs[-1].id) if more and convs else None
+    return dump(Conversations, {"items": items, "next_before": next_before})
+
+
+CONVERSATION_QUERY_MAX = 100
 
 
 def get_conversation_messages(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
     conversation_id = _path_id(request)
-    if ConversationsRepo(conn, deps.clock).get(conversation_id) is None or deps.transcripts is None:
+    conv = ConversationsRepo(conn, deps.clock).get(conversation_id)
+    if conv is None or conv.deleted_at is not None or deps.transcripts is None:  # 지운 대화는 404(SP9 7.6)
         raise ApiError(404, "not_found", "없는 대화예요.")
     items = [
         {

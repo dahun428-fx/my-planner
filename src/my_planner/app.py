@@ -62,6 +62,7 @@ from my_planner.loop.runner import (
     queue_moments_daily,
     recover_on_start,
     resubmit_inbound,
+    retry_summaries_daily,
 )
 from my_planner.platform.windows import (
     AlreadyRunning,
@@ -294,6 +295,7 @@ def build_be(
         memos=memos,  # 메모 도구·동작(SP9 6장). `memos.md`는 하루 한 번 작업이 쓴다
         body=body,  # 몸 기록(SP8 7장): `POST /body`의 `record_body_days`, 56일 정리(`prune_records`)
         events=events,  # 스케줄 도구·동작(SP9 5장), 앞머리 `## 오늘 일정`
+        conversations=convs,  # `find_conversations`(SP9 7.5): 제목·요약만
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -325,6 +327,7 @@ def build_be(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
         on_resume=on_resume, sleep=sleep, checkins=settings.runtime.role == "prod",  # dev는 회차·따라잡기 끔
         events=events, reminder_delivery=delivery,  # 일정 알림 1분 tick(SP9 5.3): 두뇌 없이 주 통로로
+        summaries=dispatcher,  # 닫힌 앱 대화의 요약 큐(SP9 7.2)
     )
     # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
@@ -336,6 +339,7 @@ def build_be(
     runner.register_daily(memos_daily(dispatcher))  # 30일 지난 지운 메모 완전 삭제, memos.md(SP9 6.1)
     # 하루 끝 이룬 순간: 정리할 날을 골라 디스패처에 가장 낮은 차례로(SP8 6.2). 두뇌는 디스패처가 부른다
     runner.register_daily(queue_moments_daily(dispatcher, moments, state))
+    runner.register_daily(retry_summaries_daily(dispatcher))  # 요약이 안 된 최근 7일의 앱 대화(SP9 7.2)
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
     runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다
     runner.register_daily(cleanup_logs_daily(paths.state_dir / "logs", keep=settings.retention.log_days))

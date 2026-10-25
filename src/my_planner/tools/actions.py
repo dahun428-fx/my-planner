@@ -125,8 +125,9 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
     "superseded": (409, "그 뒤에 바뀐 내용이 있어서 되돌릴 수 없어요."),
 }
 
-# `push`: `api/push.py`, `body`: `api/body.py`(둘 다 중복 방지 기록 없음)
-RequestEndpoint = Literal["chat", "actions", "undo", "push", "body"]
+# `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
+RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations"]
+NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
@@ -547,6 +548,28 @@ def _calendar_key_rotate(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]
     return {"key": key}
 
 
+CONVERSATION_DELETED = "대화를 지웠어요"  # 활동 한 줄(SP9 7.7). 제목·요약은 넣지 않는다
+NO_CONVERSATION = "없는 대화예요."
+
+
+def _conversation_delete(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """앱 대화를 지운다(SP9 7.7). 되돌릴 수 없다(활동에 되돌리기 없음). 원문 기록과 세션 파일은 커밋 뒤 디스패처가
+    지운다: 결과에 그 대화의 세션 id와 날짜 범위를 돌려준다(API 응답에는 넣지 않는다)."""
+    cid = _int(args.get("id"))
+    assert deps.router is not None
+    sessions = deps.router.convs.sessions(cid) if cid is not None else []
+    conv = deps.router.delete(cid) if cid is not None else None
+    if conv is None:
+        return {"error": NO_CONVERSATION}
+    record_activity(
+        deps.activity, ctx, kind="conversation_deleted", target=f"conversation:{conv.id}",
+        summary=CONVERSATION_DELETED, risk="low", undo=None,
+    )
+    if conv.session_id and conv.session_id not in sessions:
+        sessions.append(conv.session_id)
+    return {"id": conv.id, "sessions": sessions, "opened_at": conv.opened_at, "last_message_at": conv.last_message_at}
+
+
 def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """`POST /push/test`의 결과 기록(구독마다 받음·못 받음). 활동은 남기지 않는다(바뀐 데이터가 없다)."""
     results = args.get("results")
@@ -641,6 +664,10 @@ ACTIONS: dict[str, ActionSpec] = {
     # 내부(`api/calendar.py`: 아이폰 캘린더 구독 키, SP9 5.7). 활동·되돌리기 없음(키가 기록에 남지 않게)
     "calendar_key_create": ActionSpec(_calendar_key_create, public=False, accepts=frozenset(), endpoint="push"),
     "calendar_key_rotate": ActionSpec(_calendar_key_rotate, public=False, accepts=frozenset(), endpoint="push"),
+    # 내부(`DELETE /conversations/{id}`, SP9 7.7): 되돌릴 수 없다. 원문 기록·세션 파일은 디스패처가 커밋 뒤에 지운다
+    "conversation_delete": ActionSpec(
+        _conversation_delete, public=False, accepts=frozenset({"id"}), endpoint="conversations"
+    ),
     # 내부(`api/actions.refresh_wake`: 체크인 시간을 바꾼 뒤 깨우기 작업 결과, SP9 8장)
     "wake_task_result": ActionSpec(_wake_task_result, public=False, accepts=frozenset({"ok"}), endpoint="push"),
 }
@@ -902,7 +929,7 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     if spec is None or not _callable_from(spec, req):
         return _error("invalid", 400, "invalid_request", UNKNOWN_ACTION)
     # `push` 경로는 중복 방지 기록이 없다(`api_idempotency.endpoint`에 없는 값)
-    if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
+    if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
         stored = deps.idempotency.get(req.client_msg_id)
         if stored is not None:
             if stored.endpoint != req.endpoint:
@@ -925,7 +952,7 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
                 _answer_in_savepoint(deps, req, gain)
                 if "xp" in res.body:
                     _add_xp(res.body, gain)
-            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
+            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(
                     req.client_msg_id, req.endpoint, res.http_status, stored_body  # type: ignore[arg-type]

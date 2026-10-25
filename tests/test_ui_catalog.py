@@ -271,6 +271,7 @@ def test_app_tool_count_unchanged():
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
         "set_checkin_time",  # SP9-02(화면 조각이 아니다)
         "search_memos", "read_memo", "create_memo",  # SP9-03
+        "find_conversations",  # SP9-09
         "list_events", "create_event", "update_event", "delete_event", "ui_events",  # SP9-05
     }
     assert not set(NEW) & set(tool_names_for(RunContext(None, None, channel="app")))

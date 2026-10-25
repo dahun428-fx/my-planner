@@ -1,10 +1,12 @@
 """원문 기록 `data/transcripts/YYYY/MM/YYYY-MM-DD.md` (스펙 5.8). 덧붙이기만 한다.
 
-본문은 쓰기 전에 호출하는 쪽이 `redact()`를 거친다.
+본문은 쓰기 전에 호출하는 쪽이 `redact()`를 거친다. 유일한 예외는 대화 지우기(SP9 7.7, `erase_conversation`)다:
+그 대화의 줄을 `[지운 대화]` 한 줄로 바꿔 파일마다 다시 쓴다(임시 파일 + `os.replace`).
 """
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
@@ -183,6 +185,60 @@ class TranscriptStore:
         return list(reversed(found[skip_last:]))
 
 
+ERASED_LINE = "[지운 대화]"  # 지운 대화의 줄 자리(SP9 7.7). 이어진 줄은 한 줄로 합친다. 읽을 때는 항목의 끝이다
+
+
+def _day_path(root: Path, d: date) -> Path:
+    return root / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.isoformat()}.md"
+
+
+def _erase_text(text: str, conversation: str) -> tuple[str, int]:
+    """그 대화의 항목(머리글부터 다음 머리글 전까지)을 `[지운 대화]` 한 줄로. 이어진 것은 하나로. (새 글, 지운 항목 수)."""
+    out: list[str] = []
+    marker = ERASED_LINE + "\n\n"
+    skipping = False
+    count = 0
+    for line in text.splitlines(keepends=True):
+        bare = line.rstrip("\n")
+        m = _HEADER.match(bare)
+        if m is not None and m["conv"] == conversation:
+            count += 1
+            if not (out and out[-1] == marker):
+                out.append(marker)
+            skipping = True
+            continue
+        if m is not None or bare == ERASED_LINE:
+            skipping = False
+            if bare == ERASED_LINE and out and out[-1] == marker:
+                skipping = True  # 앞서 지운 자리와 붙었다: 한 줄로
+                continue
+        if not skipping:
+            out.append(line)
+    return "".join(out), count
+
+
+def erase_conversation(transcripts_dir: Path, conversation_id: int, from_day: date, to_day: date) -> int:
+    """논리적 날짜 `from_day`~`to_day`(포함) 파일에서 그 대화의 줄을 `[지운 대화]`로 바꾼다(SP9 7.7). 지운 항목 수.
+
+    파일마다 같은 폴더의 임시 파일에 쓰고 `os.replace`로 바꿔 넣는다(쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다).
+    """
+    root = Path(transcripts_dir)
+    total = 0
+    d = from_day
+    while d <= to_day:
+        path = _day_path(root, d)
+        if path.exists():
+            text, n = _erase_text(path.read_text(encoding="utf-8"), str(conversation_id))
+            if n:
+                tmp = path.with_name(path.name + ".tmp")
+                with tmp.open("w", encoding="utf-8", newline="\n") as f:
+                    f.write(text)
+                os.replace(tmp, path)
+                total += n
+        d += timedelta(days=1)
+    return total
+
+
 # 본문 줄이 `### `로 시작하면 머리글로 읽히지 않게 앞에 폭 없는 공백(U+200B)을 붙인다
 _HEADER_ESCAPE = "\u200b"
 
@@ -218,6 +274,8 @@ def _without_app_secretary(text: str) -> str:
         m = _HEADER.match(line.rstrip("\n"))
         if m:
             skip = m["speaker"] == "비서" and m["app"] is not None
+        elif line.rstrip("\n") == ERASED_LINE:
+            skip = False
         if not skip:
             out.append(line)
     return "".join(out)
@@ -231,6 +289,8 @@ def _parse(path: Path) -> list[_Entry]:
         if m:
             cur = _Entry(m["hhmm"], m["speaker"], m["conv"], m["id"], m["app"] is not None, [], [])
             out.append(cur)
+        elif line == ERASED_LINE:
+            cur = None  # 지운 대화 자리: 앞 항목의 본문에 붙지 않는다(SP9 7.7)
         elif cur is not None:
             if line.startswith(_TOOL_PREFIX):
                 cur.tools.append(line[len(_TOOL_PREFIX):].strip())

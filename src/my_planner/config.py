@@ -98,6 +98,9 @@ class LimitsConfig(_Model):
     stale_message_hours: int = 6
     input_max_chars: int = 8000
     brain_timeout_s: float = 300  # 두뇌 호출 한 번의 상한(초). 넘으면 status="error", error="timeout"
+    daily_summaries: int = 15  # 대화 요약 하루 상한(SP9 7.2). `daily_brain_calls`에도 센다
+    rollup_user_messages: int = 30  # 사용자 메시지가 이보다 많아지면 다음 호출 전에 말아 넣는다(SP9 7.4)
+    rollup_tail_lines: int = 6  # 말아 넣은 새 세션·resume 실패에 붙이는 최근 원문 줄 수(SP9 7.3, 7.4)
     reply_window: ReplyWindowConfig = ReplyWindowConfig()
     catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
 

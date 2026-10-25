@@ -85,6 +85,7 @@ from my_planner.tools.confirmations import (
     titles_summary,
     xp_granted_line,
 )
+from my_planner.tools.conversations import ConversationTools
 from my_planner.tools.events import (
     MSG_TIMED_TASK,
     EventTools,
@@ -100,6 +101,7 @@ if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.activity import ConfirmsRepo
     from my_planner.store.repos.body import BodyRepo
+    from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.memos import MemosRepo
     from my_planner.store.repos.moments import MomentsRepo
@@ -137,7 +139,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, EventTools):
+class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, EventTools, ConversationTools):
     def __init__(
         self,
         *,
@@ -164,6 +166,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, Eve
         memos: MemosRepo | None = None,
         body: BodyRepo | None = None,
         events: EventsRepo | None = None,
+        conversations: ConversationsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -200,6 +203,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, Eve
         self.body = body
         # 스케줄(SP9 5장). None이면 일정 도구·동작이 거절한다
         self.events = events
+        # 지난 대화 찾기(SP9 7.5, `find_conversations`). None이면 거절한다
+        self.conversations = conversations
 
     # --- 공통 ---
 

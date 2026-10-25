@@ -213,8 +213,11 @@ class BeEnv:
     def chat_body(
         self, text: str | None = None, *, client_msg_id: str | None = None, conversation_id: int | None = None,
         checkin_id: int | None = None, parts: list[dict[str, Any]] | None = None, message_id: str = "msg-1",
+        resume_conversation_id: int | None = None,
     ) -> dict[str, Any]:
+        extra = {"resume_conversation_id": resume_conversation_id} if resume_conversation_id is not None else {}
         return {
+            **extra,
             "client_msg_id": client_msg_id or f"cm-{next(self._ids)}",
             "conversation_id": conversation_id,
             "checkin_id": checkin_id,

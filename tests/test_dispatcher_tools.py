@@ -205,3 +205,15 @@ def test_telegram_tool_count_unchanged():
     assert "set_checkin_time" not in tool_names_for(RunContext(None, None, channel="telegram"))
     assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28
     assert "set_checkin_time" in APP_ONLY_TOOLS and "set_checkin_time" in tool_names_for(RunContext(None, None, channel="app"))
+
+
+def test_app_tools_plus_1():
+    """SP9-09: `find_conversations` 하나가 앱 대화에만 더해진다(45개). 텔레그램은 그대로 28개."""
+    from my_planner.domain import RunContext
+    from my_planner.tools.mcp_adapter import APP_ONLY_TOOLS, TOOL_NAMES, tool_names_for
+
+    app = tool_names_for(RunContext(None, None, channel="app"))
+    telegram = tool_names_for(RunContext(None, None, channel="telegram"))
+    assert len(app) == 45 and len(telegram) == 28
+    assert "find_conversations" in APP_ONLY_TOOLS and "find_conversations" not in TOOL_NAMES + telegram
+    assert tool_names_for(RunContext(None, None, channel="app", kind="summary")) == []  # 요약 호출은 도구 없음

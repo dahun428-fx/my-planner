@@ -492,6 +492,8 @@ class Drafts(_Model):
 
 
 class ConversationItem(_Model):
+    """대화 한 줄(6.4.6). SP9 7.6: 비서가 붙인 `title`(20자)과 `summary`(앞 120자). 앱 대화에만 있고 없으면 null."""
+
     id: int
     kind: Literal["run", "chat", "plan"]
     channel: ChannelName
@@ -499,10 +501,22 @@ class ConversationItem(_Model):
     opened_at: str
     last_message_at: str
     closed_at: str | None
+    # 늘 보내지만 스키마에서는 선택 칸이다: SP9 전의 BE 응답도 앱의 검사를 지난다(SP9 14장 관대한 읽기)
+    title: str | None = None
+    summary: str | None = None
 
 
 class Conversations(_Model):
+    """`GET /conversations?channel=&q=&before=&limit=`(SP9 7.6). 지운 대화는 없다. `next_before`: 다음 쪽 커서."""
+
     items: list[ConversationItem]
+    next_before: str | None = None
+
+
+class ConversationsClosed(_Model):
+    """`POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id."""
+
+    closed: list[int]
 
 
 class MessageItem(_Model):
@@ -871,6 +885,8 @@ class ChatRequestBody(_Model):
     client_msg_id: str = Field(min_length=1, max_length=200)
     conversation_id: int | None = None
     checkin_id: int | None = None
+    # 목록에서 골라 연 대화(SP9 7.3 0번 규칙). 앱은 그 화면을 떠나거나 "새 대화"를 누를 때까지 모든 메시지에 싣는다
+    resume_conversation_id: int | None = None
     message: ChatMessage
 
 
@@ -1132,6 +1148,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "CheckinSummary": CheckinSummary,
     "CheckinDetail": CheckinDetail,
     "Conversations": Conversations,
+    "ConversationsClosed": ConversationsClosed,
     "Messages": Messages,
     "UiCatalog": UiCatalog,
     "SchemaBundle": SchemaBundle,

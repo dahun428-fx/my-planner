@@ -391,7 +391,10 @@ async def test_conversations_list_and_messages(tmp_path):
         again = await get_json(env, f"/conversations/{cid}/messages")
 
     (conv,) = convs["items"]
-    assert set(conv) == {"id", "kind", "channel", "run_id", "opened_at", "last_message_at", "closed_at"}
+    assert set(conv) == {
+        "id", "kind", "channel", "run_id", "opened_at", "last_message_at", "closed_at", "title", "summary",
+    }
+    assert (conv["title"], conv["summary"], convs["next_before"]) == (None, None, None)  # 텔레그램 대화는 요약 없음
     assert conv["channel"] == "telegram" and conv["kind"] == "chat" and conv["closed_at"] is None
     assert conv["opened_at"].endswith("Z")
     assert tg["items"] == convs["items"] and app["items"] == []
@@ -674,3 +677,29 @@ async def test_api_event_detail_and_404(tmp_path):
     assert body["weekdays"] == ["mon", "wed"] and body["skipped_dates"] == ["2026-10-28"]
     assert body["note"] == "꾸민 메모" and body["time"] == "10:00" and body["created_at"].endswith("Z")
     assert missing["error"]["message"] == "없는 일정이에요."
+
+
+async def test_conversations_title_summary_search_and_pages(tmp_path):
+    """SP9 7.6: 앱 대화의 제목과 요약 앞 120자, `q`(제목·요약), `before`(쪽 넘기기). 지운 대화는 빠진다."""
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        convs = env.parts.convs
+        ids = []
+        for i, (title, summary) in enumerate([("치과 예약", "가" * 300), ("책 고르기", "사피엔스"), ("운동", "")]):
+            c = convs.open("chat", SAT.date(), channel="app")
+            env.clock.advance(timedelta(minutes=1))
+            convs.touch(c.id)
+            convs.close(c.id)
+            convs.set_summary(c.id, title, summary, env.clock.now())
+            ids.append(c.id)
+        page1 = await get_json(env, "/conversations?channel=app&limit=2")
+        page2 = await get_json(env, f"/conversations?channel=app&limit=2&before={page1['next_before']}")
+        found = await get_json(env, "/conversations?q=사피엔스")
+        short = await get_json(env, "/conversations?q=치과")
+        bad = [(await env.get(p)).status for p in ("/conversations?before=nope", "/conversations?q=" + "가" * 101)]
+    assert [i["id"] for i in page1["items"]] == [ids[2], ids[1]] and page1["next_before"]
+    assert [i["id"] for i in page2["items"]] == [ids[0]] and page2["next_before"] is None
+    first = page2["items"][0]
+    assert first["title"] == "치과 예약" and first["summary"] == "가" * 120
+    assert page1["items"][0]["summary"] is None  # 빈 요약(짧은 대화)은 null
+    assert [i["id"] for i in found["items"]] == [ids[1]] and [i["id"] for i in short["items"]] == [ids[0]]
+    assert bad == [400, 400]

@@ -93,6 +93,8 @@ ALLOWED: dict[str, set[str]] = {
     "inbound_pending": {"my_planner.api.chat", "my_planner.bot.telegram_io", DISPATCHER},
     # 4.3 10행: 앱 요청이 여는 대화는 `route_app_message`(디스패처 → 대화 라우터). 그 밖은 SP1 그대로
     "conversations": {"my_planner.harness.conversations", DISPATCHER},
+    # SP9 7.1: 대화의 세션 id(새 id를 받는 디스패처, 다시 연 대화는 라우터), 지우기는 디스패처
+    "conversation_sessions": {"my_planner.harness.conversations", DISPATCHER},
     # 4.3 마지막 행: 운영 상태(SP1처럼 루프와 디스패처가 직접)
     "usage_state": {LOOP, DISPATCHER},
     "telegram_updates": {LOOP, DISPATCHER, "my_planner.bot.telegram_io"},

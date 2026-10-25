@@ -26,7 +26,12 @@ from pydantic import ValidationError
 
 from my_planner.api.actions import BAD_BODY, read_json_object
 from my_planner.api.cors import CORS_HEADERS_KEY
-from my_planner.api.models import ChatRequestBody, error_response
+from my_planner.api.models import (
+    ChatRequestBody,
+    ConversationsClosed,
+    dump,
+    error_response,
+)
 from my_planner.bot.commands import (
     STATEFUL_COMMANDS,
     CommandDeps,
@@ -132,7 +137,10 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         text = plan_topic(text)
 
     # 4. 대화를 받을 때 고르고, 저장한 뒤 두뇌 갈래에 넣는다
-    conv = d.route_app_message(now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan)
+    conv = d.route_app_message(
+        now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan,
+        resume_conversation_id=req.resume_conversation_id,
+    )
     inbound_id = d.state.next_app_inbound_id()
     d.state.add_pending_inbound(
         inbound_id, redact(text)[0], now, now, channel="app", client_msg_id=cmid, checkin_id=req.checkin_id,
@@ -144,9 +152,33 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     d.submit_message(Inbound(
         text=text, at=now, sent_at=now, update_ids=[inbound_id], channel="app", client_msg_id=cmid,
         checkin_id=req.checkin_id, sink=sink, conversation_id=conv.id, message_id=req.message.id,
+        resume_conversation_id=req.resume_conversation_id,
     ))
     log.info("chat_queued", extra={"conversation_id": conv.id, "inbound_id": inbound_id})
     return await stream_sink(request, deps, sink, conv.id)
+
+
+# --- 대화 목록의 쓰기 (SP9 7.3, 7.7). 쓰기는 디스패처로만(ADR 0007) ---
+
+NO_CONVERSATION = "없는 대화예요."
+
+
+async def post_new_conversation(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """`POST /conversations/new`: 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화다. `{"closed": [id…]}`."""
+    assert deps.dispatcher is not None
+    closed = deps.dispatcher.new_conversation()
+    return web.json_response(dump(ConversationsClosed, {"closed": closed}))
+
+
+async def delete_conversation(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """`DELETE /conversations/{id}`: 앱 대화를 지운다(되돌릴 수 없다). 열린 대화면 먼저 닫는다. 없으면 404."""
+    raw = request.match_info["id"]
+    if not raw.isascii() or not raw.isdigit() or len(raw) > 18:
+        return error_response(404, "not_found", NO_CONVERSATION)
+    assert deps.dispatcher is not None
+    if not deps.dispatcher.delete_conversation(int(raw)):
+        return error_response(404, "not_found", NO_CONVERSATION)
+    return web.Response(status=204)
 
 
 def _message_id(conversation_id: int | None, inbound_id: int | None) -> str | None:

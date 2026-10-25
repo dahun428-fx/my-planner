@@ -461,6 +461,17 @@
         },
         "message": {
           "$ref": "#/$defs/ChatMessage"
+        },
+        "resume_conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1280,6 +1291,28 @@
                   "type": "null"
                 }
               ]
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             }
           },
           "required": [
@@ -1301,10 +1334,36 @@
             "$ref": "#/$defs/ConversationItem"
           },
           "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "items"
+      ],
+      "type": "object"
+    },
+    "ConversationsClosed": {
+      "additionalProperties": false,
+      "properties": {
+        "closed": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "closed"
       ],
       "type": "object"
     },
