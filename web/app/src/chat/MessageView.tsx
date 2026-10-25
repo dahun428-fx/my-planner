@@ -13,14 +13,14 @@ import styles from "./ChatSheet.module.css";
 registerChatParts();
 
 // SP9 9.6: a data-activity part (12장 R4b) is one line, "✓ …" in the secondary text colour, with
-// no button (a confirmation that does not start with "✓", e.g. "컨디션 7 기록했어요.", gets one): the undo is the toast's for 6 s, then the activity screen's. Before R4b no
+// no button (a confirmation that does not already start with a mark ✓ → ✗ ↩, e.g. "컨디션 7 기록했어요.", gets one): the undo is the toast's for 6 s, then the activity screen's. Before R4b no
 // confirmation comes, only undo ids: then a fixed line says something changed. Nothing came at all
 // (no confirmation, nothing to undo): no line.
 export function ActivityLine({ confirmation, undoable = false }: { confirmation: string | null; undoable?: boolean }) {
   if (confirmation === null && !undoable) return null;
   return (
     <p className={styles.activity} data-activity="">
-      {confirmation === null ? copy.chat.changed : confirmation.startsWith("✓") ? confirmation : `✓ ${confirmation}`}
+      {confirmation === null ? copy.chat.changed : /^[✓→✗↩]/.test(confirmation) ? confirmation : `✓ ${confirmation}`}
     </p>
   );
 }
