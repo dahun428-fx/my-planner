@@ -39,7 +39,7 @@ from my_planner.api.models import (
     dump,
     schema_bundle,
 )
-from my_planner.clock import logical_date, period_of, to_iso
+from my_planner.clock import logical_date, period_bounds, period_of, to_iso
 from my_planner.curve.history import curve_history
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
@@ -224,6 +224,7 @@ def get_week(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> d
             }
             for d in view.days
         ],
+        "undated": [todo_dict(t, tasks, today) for t in view.undated],
     }
     return dump(Week, body)
 
@@ -241,7 +242,15 @@ def get_priorities(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request
         raise _bad("period가 cadence와 맞지 않아요.")
     tasks = _tasks(conn, deps)
     items = [t for t in tasks.priorities(Cadence(cadence), period) if t.status is not TaskStatus.draft]
-    return dump(Priorities, {"cadence": cadence, "period": period, "items": [todo_dict(t, tasks, today) for t in items]})
+    try:
+        start, end = period_bounds(cadence, period)
+    except ValueError:  # 형식은 맞아도 없는 기간(53주가 없는 해의 W53, 0년)
+        raise _bad("period가 cadence와 맞지 않아요.") from None
+    planned = tasks.list(status=TaskStatus.open, from_=start, to=end)  # 그 기간에 하려는 열린 할 일, 날짜순
+    return dump(Priorities, {
+        "cadence": cadence, "period": period, "items": [todo_dict(t, tasks, today) for t in items],
+        "todos": [todo_dict(t, tasks, today) for t in planned],
+    })
 
 
 def get_drafts(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:

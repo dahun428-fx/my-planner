@@ -444,13 +444,15 @@ class WeekDay(_Model):
 
 
 class Week(_Model):
-    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다."""
+    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,
+    이번 주 우선순위는 뺀다)."""
 
     week: str
     start: str
     end: str
     priorities: list[Todo]
     days: list[WeekDay]
+    undated: list[Todo] = Field(default_factory=list)  # 기본값: 앞선 BE에는 없어서 앱이 required로 읽지 않게
 
 
 class Conditions(_Model):
@@ -466,11 +468,13 @@ class Conditions(_Model):
 
 
 class Priorities(_Model):
-    """`GET /priorities` (6.3.7)."""
+    """`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
+    날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다."""
 
     cadence: Literal["week", "month", "quarter", "year"]
     period: str
     items: list[Todo]
+    todos: list[Todo] = Field(default_factory=list)  # 기본값: 앞선 BE에는 없어서 앱이 required로 읽지 않게
 
 
 class DraftItem(_Model):

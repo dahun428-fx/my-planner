@@ -8,6 +8,7 @@ import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtim
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveConn } from "../lib/connection";
 import { copy } from "../lib/copy";
+import { onTodayRefresh } from "../lib/push";
 import { formatKst } from "../lib/time";
 import App from "../pages/_app";
 import { Activity } from "../screens/Activity";
@@ -141,6 +142,19 @@ describe("ChatSheet", () => {
     expect(seen.conversations).toBe(0);
     expect(seen.messages).toEqual([]);
     expect(within(screen.getByRole("log")).queryAllByText(/./)).toHaveLength(0);
+  });
+
+  it("a finished answer tells the screens to read again, the sheet still open", async () => {
+    serveHistory({ conversations: [] });
+    serveChat(() => sseResponse(golden("chat_add_task.sse")));
+    const changed = vi.fn();
+    const off = onTodayRefresh(changed);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
+    await ready();
+    await sendText(user, "치과 예약 추가해 줘");
+    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    off();
   });
 
   it("time divider rules", async () => {

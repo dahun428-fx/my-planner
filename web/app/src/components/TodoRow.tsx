@@ -15,14 +15,17 @@ export interface TodoRowProps {
   /** Menu-only actions of the to-dos screen (long press, "…" button). */
   onChangeDate?(): void;
   onEditTitle?(): void;
+  /** Shown first in the meta line: the day, where the list is not grouped by day. */
+  dateMeta?: string;
 }
 
 // One to-do on the Today and to-dos screens (spec 5.5.1 block 6, 5.5.5). A done row is grey with a strike-through and
 // the time it was done, never a count. The optimistic flip is the caller's: it passes a todo that
 // already looks done and takes it back if the write fails.
-export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPress, onChangeDate, onEditTitle }: TodoRowProps) {
+export function TodoRow({ todo, readOnly, onToggle, onTomorrow, onDrop, onLongPress, onChangeDate, onEditTitle, dateMeta }: TodoRowProps) {
   const done = todo.status === "done";
   const meta: string[] = [];
+  if (dateMeta) meta.push(dateMeta);
   if (todo.priority) meta.push(copy.today.priority);
   if (done && todo.completed_at) meta.push(copy.today.completedAt(formatKst(todo.completed_at, "HH:mm")));
   // A done row is not editable, so it has no swipe actions and no menu.

@@ -13,6 +13,7 @@ import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { useToast } from "../components/Toast";
+import { onTodayRefresh } from "../lib/push";
 import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
@@ -121,6 +122,7 @@ export function Activity() {
   const afterRef = useRef(afterPartAction);
   afterRef.current = afterPartAction;
   useEffect(() => chat.onClosed(() => afterRef.current()), [chat]);
+  useEffect(() => onTodayRefresh(() => afterRef.current()), []);
 
   const first = result?.kind === "ok" ? result.data : null;
   const items = useMemo(() => (first ? applyUndone(mergeById(first.items, older), undone) : []), [first, older, undone]);

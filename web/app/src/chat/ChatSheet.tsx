@@ -7,6 +7,7 @@ import { BlockError } from "../components/BlockError";
 import { Icon } from "../components/icons";
 import { Sheet } from "../components/Sheet";
 import { CHAT_ACTIVITY_MS, useToast } from "../components/Toast";
+import { notifyDataChanged } from "../lib/push";
 import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
@@ -141,6 +142,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       const parts = toViewParts(message);
       // SP9 9.6: the answer's changes get one toast with "되돌리기" for 6 s; the chat keeps one line.
       const changed = chatActivityToast(parts);
+      // An answer that wrote something (an activity line or a card) has the screens behind read again now.
+      if (parts.some((p) => p.kind !== "text")) notifyDataChanged();
       if (changed) toastRef.current.showFor(changed, CHAT_ACTIVITY_MS);
       void saveParts(message.id, parts, sentTo.current);
     },

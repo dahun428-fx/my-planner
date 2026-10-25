@@ -322,3 +322,15 @@ def test_pin_card_rejects_ui_habit_check(uenv):
     res = uenv.tools.pin_card(ctx, component="ui_habit_check", props={"date": "2026-10-24"})
     assert "error" in res
     assert uenv.tools.cards.active() == []
+
+
+async def test_add_task_without_date_streams_the_filled_day(tmp_path):
+    # 두뇌가 날짜를 빼면 하네스가 오늘로 채우고, 앱이 받는 도구 입력·결과에도 그 날짜가 있다
+    add = ("add_task", {"title": "꾸민 치과", "areas": ["health"]})
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([add], "넣었어요.")]) as env:
+        _, raw = await env.chat("치과 예약 추가해 줘")
+    chunks = parse_sse(raw)
+    inputs = [c for c in chunks if c.get("type") == "tool-input-available" and c.get("toolName") == "add_task"]
+    outputs = [c for c in chunks if c.get("type") == "tool-output-available" and c["toolCallId"] == inputs[0]["toolCallId"]]
+    assert inputs[0]["input"]["planned_for"] == "2026-10-24"
+    assert outputs[0]["output"]["planned_for"] == "2026-10-24"

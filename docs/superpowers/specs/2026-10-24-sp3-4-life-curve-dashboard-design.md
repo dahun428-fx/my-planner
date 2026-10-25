@@ -592,10 +592,12 @@ CREATE TABLE status_titles (
 ```json
 { "week": "2026-W43", "start": "2026-10-19", "end": "2026-10-25",
   "priorities": [ {…Todo} ],
-  "days": [ {"date": "2026-10-24", "weekday": "토", "is_today": true, "todos": [ {…Todo} ]} ] }
+  "days": [ {"date": "2026-10-24", "weekday": "토", "is_today": true, "todos": [ {…Todo} ]} ],
+  "undated": [ {…Todo} ] }
 ```
 
 할 일이 없는 날도 `days`에 넣는다(`todos: []`). 대시보드가 빈 날을 같은 칸으로 그리기 위해서다.
+`undated`(2026-10-25 추가)는 날짜 없는 열린 할 일이다(초안, 첫 걸음, 이번 주 우선순위는 뺀다. 앞선 BE에는 없으니 앱은 없으면 `[]`로 읽는다). 이것이 없을 때는 날짜 없이 들어간 할 일이 앱 어디에도 보이지 않았다. 텔레그램 `/week`는 그대로다.
 
 #### 6.3.4 `GET /conditions?from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -662,11 +664,14 @@ CREATE TABLE status_titles (
 
 ```json
 { "cadence": "quarter", "period": "2026-Q4",
-  "items": [ {…Todo}, {…Todo} ] }
+  "items": [ {…Todo}, {…Todo} ],
+  "todos": [ {…Todo} ] }
 ```
 
 - `cadence`는 필수이고 `week` | `month` | `quarter` | `year`다(오늘 우선순위는 `GET /today`의 `priority` 묶음). `period`는 선택이고, 없으면 지금 기간(`period_of(cadence, 오늘 논리적 날짜)`)이다. `period`는 `priorities.period` 형식(`2026-W43`, `2026-10`, `2026-Q4`, `2026`)이어야 하고, 주기와 맞지 않으면 `400 invalid_request`다.
 - `items`는 그 기간의 `priorities` 행을 `rank` 순서대로 `Todo`(6.3)로 준다. 초안과 소프트 삭제한 할 일을 가리키는 행은 뺀다. 우선순위가 없으면 `items: []`다.
+- 형식은 맞아도 없는 기간(53주가 없는 해의 `W53`)도 `400 invalid_request`다.
+- `todos`(2026-10-25 추가, 없으면 `[]`)는 그 기간(`period_bounds`, 첫날~마지막 날)에 하려는 열린 할 일을 날짜순으로 준다(초안 뺌). 앱은 탭에서 우선순위 아래 "{기간} 할 일"로 줄마다 날짜를 붙여 보인다. 이것이 없을 때는 이번 달 탭에 우선순위만 나와 "10월 28일 할 일"이 보이지 않았다.
 
 #### 6.3.8 `GET /drafts` (운영 앱용)
 

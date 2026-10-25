@@ -19,6 +19,7 @@ import { TodoRow } from "../components/TodoRow";
 import { useToast } from "../components/Toast";
 import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays } from "../lib/time";
 import page from "../styles/page.module.css";
@@ -122,6 +123,8 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const chat = useChatSheet();
   // What was said in the sheet may have changed the lists: read again when it closes.
   useEffect(() => chat.onClosed(() => void refreshAll()), [chat, refreshAll]);
+  // ...and as soon as an answer or a chat card changed something, without waiting for the close.
+  useEffect(() => onTodayRefresh(() => void refreshAll()), [refreshAll]);
 
   // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
   const todayDate = todayView.kind === "live" ? todayView.data.date : weekView.kind === "live" ? (weekView.data.days.find((d) => d.is_today)?.date ?? null) : null;
@@ -129,8 +132,8 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const shownPrio = prio && isRange(tab) && prio.cadence === tab ? prio : null;
   const liveTodos = useMemo(() => {
     if (tab === "day" && todayView.kind === "live") return todayView.data.todos.map((t) => t.todo);
-    if (tab === "week" && weekView.kind === "live") return [...weekView.data.priorities, ...weekView.data.days.flatMap((d) => d.todos)];
-    if (shownPrio) return shownPrio.items;
+    if (tab === "week" && weekView.kind === "live") return [...weekView.data.priorities, ...weekView.data.days.flatMap((d) => d.todos), ...(weekView.data.undated ?? [])];
+    if (shownPrio) return [...shownPrio.items, ...(shownPrio.todos ?? [])];
     return null;
   }, [tab, todayView, weekView, shownPrio]);
   const { show, toggle } = useOptimisticCheck(liveTodos, refreshAll);
@@ -171,11 +174,12 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     }
   };
 
-  const row = (todo: Todo, readOnly: boolean) => (
+  const row = (todo: Todo, readOnly: boolean, dateMeta?: string) => (
     <TodoRow
       key={todo.id}
       todo={show(todo)}
       readOnly={readOnly}
+      dateMeta={dateMeta}
       onToggle={() => void toggle(todo)}
       onTomorrow={() => void tomorrow(todo.id)}
       onDrop={() => void drop(todo.id)}
@@ -223,6 +227,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       body = null;
     } else {
       const w = weekView.data;
+      const undated = w.undated ?? [];
       const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
@@ -242,6 +247,8 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
               </Group>
             );
           })}
+          {/* An older BE (or a snapshot from before) has no `undated`. */}
+          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(undated, readOnly)}</Group>}
         </>
       );
     }
@@ -263,10 +270,19 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       );
     }
   } else if (shownPrio) {
+    const planned = shownPrio.todos ?? []; // an older BE has no `todos`
     body = (
-      <Group paper heading={copy.todos.periodPriorities(LABEL[tab])}>
-        {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
-      </Group>
+      <>
+        <Group paper heading={copy.todos.periodPriorities(LABEL[tab])}>
+          {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
+        </Group>
+        {planned.length > 0 && (
+          <Group paper heading={copy.todos.periodTodos(LABEL[tab])}>
+            {/* Not grouped by day, so each row says its day ("10월 28일"). */}
+            {planned.map((t) => row(t, !writable, copy.dateParts.monthDay(+t.planned_for!.slice(5, 7), +t.planned_for!.slice(8))))}
+          </Group>
+        )}
+      </>
     );
   } else if (prioErr) {
     body = (

@@ -307,6 +307,9 @@ export const copy = {
     change: "바꾸기",
     periodsLabel: "기간",
     weekPriorities: "이번 주 우선순위",
+    // A to-do the secretary added with no date, or one in a month/quarter/year tab (shown with its day).
+    undated: "날짜 없는 할 일",
+    periodTodos: (period: string) => `${period} 할 일`,
     periodPriorities: (period: string) => `${period} 우선순위`,
     noPriorities: "아직 정해진 우선순위가 없어요",
     noTodos: "잡힌 할 일이 없어요",

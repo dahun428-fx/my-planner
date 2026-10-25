@@ -90,7 +90,9 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "add_task": (
         (
             "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다. "
-            "할 일에는 시각을 붙이지 않습니다(시간이 정해진 일은 할 일이 아니라 일정입니다)."
+            "할 일에는 시각을 붙이지 않습니다(시간이 정해진 일은 할 일이 아니라 일정입니다). "
+            "planned_for는 꼭 넣습니다. 날짜가 분명하지 않으면 가장 그럴듯한 날(\"다음 주\"면 다음 주 월요일, 모르면 오늘)로 "
+            "넣습니다. 빼면 오늘로 들어갑니다(첫 걸음은 날짜 없이 둘 수 있습니다)."
         ),
         _NEW_TASK,
     ),
@@ -98,7 +100,7 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         (
             "비서가 제안하는 할 일을 초안(draft)으로 저장합니다. 브리핑, 체크인, 회고, 계획 의논에서 비서가 "
             "먼저 꺼낸 할 일에 씁니다. 하네스가 메시지 아래에 초안마다 추가·빼기 버튼을 붙이므로 "
-            "답에서 확정했다고 말하지 않습니다. 한 번에 최대 10개."
+            "답에서 확정했다고 말하지 않습니다. 한 번에 최대 10개. 하려는 날이 있으면 planned_for를 넣습니다."
         ),
         _schema(
             {
@@ -617,6 +619,10 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
     ui = name in BRAIN_COMPONENTS
     if name == "ui_habit_check" and args.get("date") is None:  # 날짜를 빼면 오늘: 조각 입력에도 채워 앱이 그릴 수 있게
         args = {**args, "date": tools.today().isoformat()}
+    # 사용자가 시킨 할 일은 늘 날짜가 있다: 빼면 오늘(날짜 없는 할 일이 목록에서 안 보였다). 첫 걸음과 초안
+    # (`propose_tasks`, 회고의 기간 목표 후보 등)은 날짜 없이 둘 수 있다.
+    if name == "add_task" and args.get("planned_for") is None and args.get("parent_id") is None:
+        args = {**args, "planned_for": tools.today().isoformat()}
     if name == "ui_events":  # `list_events` 항목 그대로 받는다: 조각 입력은 카탈로그 칸만(앱이 엄격히 읽는다)
         args = {**args, "items": ui_event_items(args.get("items"))}
     call_id = w.next_tool_call_id() if w is not None and not ui else None  # 화면 도구는 조각을 쓸 때 받는다

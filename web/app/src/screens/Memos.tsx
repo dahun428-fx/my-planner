@@ -15,6 +15,7 @@ import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { SwipeRow } from "../components/SwipeRow";
 import { useToast } from "../components/Toast";
+import { onTodayRefresh } from "../lib/push";
 import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { memoDay } from "../lib/memoText";
@@ -81,6 +82,7 @@ export function Memos() {
   const chat = useChatSheet();
   // The secretary may have made a memo while the sheet was open (create_memo, 6.3).
   useEffect(() => chat.onClosed(() => void refresh()), [chat, refresh]);
+  useEffect(() => onTodayRefresh(() => void refresh()), [refresh]);
 
   const offline = state?.kind === "offline" || result?.kind === "offline";
   const data = result?.kind === "ok" ? result.data : (last?.data ?? null);
