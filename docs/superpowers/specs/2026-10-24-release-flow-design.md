@@ -14,7 +14,7 @@ Dahun 요청: "개발서버(develop)에서 테스트 완료하고 최종 운영(
 
 **완료 조건**
 
-1. 기능 브랜치 푸시는 Vercel 배포를 만들지 않는다. Vercel 배포는 `develop`(스테이징)과 `main`(운영) 푸시에서만, 그 프로젝트 폴더가 바뀌었을 때만 생긴다.
+1. 기능 브랜치 푸시는 Vercel 배포를 만들지 않는다. Vercel 자동 배포는 `main`(운영) 푸시에서만, 그 프로젝트 폴더가 바뀌었을 때만 생긴다. `develop`(스테이징)은 손으로 배포한다(5.1, 2026-10-25 개정).
 2. 모든 스레드의 기능 PR은 `develop`을 대상으로 하고, Claude가 리뷰 후 자체 머지한다(지금 규칙 그대로, 대상만 바뀜).
 3. 노트북에 개발용 BE(`my-planner-dev`)가 `develop` 코드로 돈다. 운영 BE와 DB·포트·토큰을 공유하지 않고, 텔레그램과 회차 스케줄러는 끈다.
 4. 스테이징 웹앱(두 프로젝트의 `develop` 고정 주소)은 개발용 BE에만 붙는다.
@@ -36,7 +36,7 @@ Dahun 요청: "개발서버(develop)에서 테스트 완료하고 최종 운영(
 flowchart LR
   F[기능 브랜치<br/>claude/* 등] -- PR(base develop), 리뷰, 자체 머지 --> D[develop]
   D -- push CI<br/>ubuntu + windows(BE 변경 시) --> D
-  D -- Vercel 스테이징 배포<br/>(폴더 변경 시) --> SV[스테이징 앱·대시보드]
+  D -. 손으로 staging-deploy .-> SV[스테이징 앱·대시보드]
   D -- medic-dev가 끌어와 재시작 --> DB[(개발용 BE<br/>:8788)]
   SV --> DB
   DB -- 30분 정상 → commit status<br/>staging/be = success --> P{promote.yml<br/>main에 있는 파일}
@@ -52,7 +52,7 @@ flowchart LR
 | 브랜치 | 역할 | 누가 바꾸나 |
 |---|---|---|
 | `main` | 운영, **GitHub 기본 브랜치 그대로**. 노트북 운영 BE와 Vercel 운영 배포가 따른다 | `promote.yml`의 빨리감기, 자동 수리 PR(`auto-repair/*`) 머지만 |
-| `develop` | 스테이징. 개발용 BE와 Vercel 스테이징이 따른다 | 기능 PR 머지, `sync-develop.yml`의 `main` 합치기 |
+| `develop` | 스테이징. 개발용 BE가 따르고, Vercel 스테이징은 손으로 배포한다(5.1) | 기능 PR 머지, `sync-develop.yml`의 `main` 합치기 |
 | 그 밖 (`claude/*`, `auto-repair/*` 등) | 작업 브랜치 | 각 스레드 |
 
 - 기능 PR은 **`base: develop`을 명시해서** 연다. 기능 브랜치는 `origin/develop`에서 딴다. `main`을 대상으로 한 기능 PR은 머지하지 않고 대상을 `develop`으로 바꾼다.
@@ -68,10 +68,15 @@ flowchart LR
 각 `vercel.json`에 다음을 더한다.
 
 ```json
-"git": { "deploymentEnabled": { "**": false, "main": true, "develop": true } }
+"git": { "deploymentEnabled": { "**": false, "main": true } }
 ```
 
-Vercel 규칙: 여러 규칙에 맞으면 하나라도 `true`면 배포한다(minimatch, `**`는 `/`가 든 이름도 맞음). 그래서 `main`과 `develop`만 배포하고 나머지 브랜치는 배포 기록 자체를 만들지 않는다. 설정은 푸시한 커밋의 `vercel.json`에서 읽으므로, 이 변경 전에 딴 기능 브랜치는 `develop`에 다시 얹어야 미리보기가 멈춘다. 기존 `ignoreCommand`는 그대로 둔다.
+Vercel 규칙: 여러 규칙에 맞으면 하나라도 `true`면 배포한다(minimatch, `**`는 `/`가 든 이름도 맞음). 그래서 `main`만 자동 배포하고 나머지 브랜치는 배포 기록 자체를 만들지 않는다. 기존 `ignoreCommand`는 그대로 둔다.
+
+**develop 스테이징은 손으로 배포한다**(2026-10-25 개정, Dahun 결정). 처음에는 `develop`도 자동 배포했지만, 여러 스레드가 하루 40번 넘게 develop에 머지하자 머지마다 두 프로젝트가 배포를 만들어(`ignoreCommand`로 건너뛴 것도 배포 기록이 생긴다) 다시 하루 100회 한도에 걸렸다. 한도에 걸리면 운영 배포도 막힌다. 그래서 스테이징은 필요할 때 `staging-deploy.yml`(workflow_dispatch)이 Vercel Deploy Hook(프로젝트마다 develop 훅, 저장소 시크릿 `VERCEL_DEPLOY_HOOK_APP`, `VERCEL_DEPLOY_HOOK_DASHBOARD`)을 불러 배포한다. Claude 스레드나 Dahun이 돌린다. 승격 검사는 Vercel 스테이징 상태를 보지 않는다(6.2의 5). 대신 웹 폴더를 바꾼 마지막 커밋의 CI `web-app`·`web-dashboard` 작업이 통과해야 한다(6.2의 3). 머리 CI만 보면 뒤 커밋이 경로 필터로 그 작업을 건너뛰어 앞 커밋의 실패를 놓친다.
+
+- `staging-deploy.yml`은 workflow_dispatch라 기본 브랜치(`main`)에 있어야 돌릴 수 있다. 이 개정이 승격된 뒤부터 쓴다.
+- 훅 배포에도 `ignoreCommand`가 적용될 수 있다. 직전 develop 배포 뒤 폴더가 안 바뀌었으면 건너뛴 배포 1건이 생긴다. 첫 수동 실행에서 두 스테이징 별칭이 실제로 새 배포로 바뀌는지 확인한다(8장 D2).
 
 | 환경 | 브랜치 | 주소 | `NEXT_PUBLIC_CONNECT_SRC` |
 |---|---|---|---|
@@ -132,7 +137,7 @@ post_commit_status = true     # staging/be 올림
 | `MEDIC_GITHUB_TOKEN` (개발용, 새 PAT) | 노트북 `E:\my-planner-dev\.env` | Contents 읽기, Actions 읽기, Commit statuses 쓰기 | medic-dev: develop 끌어오기, `staging/be` 올리기 |
 
 - `GITHUB_TOKEN`으로는 승격할 수 없다: `.github/workflows/*`를 바꾼 커밋으로 ref를 옮기려면 Workflows 권한이 필요한데 `GITHUB_TOKEN`은 받을 수 없다. 그래서 `RELEASE_PAT`을 쓴다. PAT 푸시는 `main` push 워크플로(ci, Vercel)를 정상으로 깨운다.
-- 노트북에는 `main` 쓰기 권한을 주지 않는다(ADR 0010). 개발용 PAT의 상태 쓰기로 Vercel 컨텍스트를 위조하는 것을 막으려고, 승격 검사는 Vercel 상태를 만든 계정이 `vercel[bot]`인지 확인한다. `staging/be`의 만든 계정 검사(`DEV_STATUS_LOGIN`)는 **사실상 구별력이 없다**: fine-grained PAT은 만든 사람(Dahun) 계정으로 동작하고, `RELEASE_PAT`과 Claude 스레드도 같은 계정이다. 그래서 `staging/be`는 "Dahun 계정이 올렸다"까지만 보장한다. 1인 저장소에서 받아들이고, 필요해지면 상태 전용 GitHub App으로 바꾼다.
+- 노트북에는 `main` 쓰기 권한을 주지 않는다(ADR 0010). 개발용 PAT의 상태 쓰기로 Vercel 컨텍스트를 위조하는 것을 막으려고, medic의 웹 수리 확인(main)은 Vercel 상태를 만든 계정이 `vercel[bot]`인지 확인한다(승격 검사는 2026-10-25부터 Vercel 상태를 보지 않는다). `staging/be`의 만든 계정 검사(`DEV_STATUS_LOGIN`)는 **사실상 구별력이 없다**: fine-grained PAT은 만든 사람(Dahun) 계정으로 동작하고, `RELEASE_PAT`과 Claude 스레드도 같은 계정이다. 그래서 `staging/be`는 "Dahun 계정이 올렸다"까지만 보장한다. 1인 저장소에서 받아들이고, 필요해지면 상태 전용 GitHub App으로 바꾼다.
 - 만료 알림: `RELEASE_PAT`과 개발용 PAT의 만료일을 저장소 변수(`RELEASE_PAT_EXPIRES`, `DEV_PAT_EXPIRES`)로 두고 SP6 `watch.yml`이 함께 알린다.
 
 ### 5.5 CI (`.github/workflows/ci.yml`)
@@ -165,14 +170,14 @@ post_commit_status = true     # staging/be 올림
 
 1. `main`이 `S`의 조상이다(`compare main...S`의 `behind_by == 0`). 아니면 `release:blocked`(7장 동기화 필요).
 2. `S`의 develop push `ci` 실행이 `success`.
-3. `main..S`의 develop push 커밋 가운데 BE 파일을 바꾼 **마지막** 커밋의 `ci`에서 `be (windows-latest)` 작업이 `success`다(건너뜀이 아니라 실제 통과). 그런 커밋이 없으면 통과.
+3. `main..S`의 develop push 커밋 가운데 BE 파일을 바꾼 **마지막** 커밋의 `ci`에서 `be (windows-latest)` 작업이 `success`다(건너뜀이 아니라 실제 통과). 그런 커밋이 없으면 통과. 웹도 같다(2026-10-25): `web/app/`·`web/shared/`·`DESIGN.md`를 바꾼 마지막 커밋의 `web-app`, `web/dashboard/`·`web/shared/`·`DESIGN.md`를 바꾼 마지막 커밋의 `web-dashboard`. 묶음 푸시라 그 커밋에 실행이 없으면 같은 푸시의 뒤 커밋 실행을 본다.
 4. `REQUIRE_STAGING_BE == "true"`이면 `S`의 `staging/be`가 `success`이고 만든 계정이 개발용 PAT 계정(저장소 변수 `DEV_STATUS_LOGIN`). 아니면(임시) `S`의 커밋 시각이 30분 이상 지났다.
-5. 각 웹 프로젝트에 대해: `main..S`에서 `web/app/**`(또는 `web/dashboard/**`)를 바꾼 마지막 커밋 `W`가 있으면, `W`의 Vercel 상태(컨텍스트 `Vercel – my-planner` / `Vercel – <대시보드 프로젝트 이름>`, 만든 계정 `vercel[bot]`)가 `success`. `S`가 아니라 `W`를 보는 이유: 뒤 커밋이 그 폴더를 안 바꾸면 `ignoreCommand`로 건너뛰어 `S`에는 성공 상태가 없다. 프로젝트 이름은 저장소 변수 `VERCEL_CONTEXT_APP`, `VERCEL_CONTEXT_DASHBOARD`로 둔다.
+5. (2026-10-25 삭제) Vercel 스테이징 상태는 보지 않는다. develop은 자동 배포하지 않는다(5.1).
 6. `main..S`에서 BE 파일이 바뀌었으면, 지금이 회차 차단 구간이 아니다. 구간은 `S`의 `config.toml [schedule]`의 각 회차 시각 `t`에 대해 반열림 `[t−20분, t+40분)` (KST)이다(지금 값: 평일 `[08:40, 09:40)`·`[17:10, 18:10)`, 주말 `[09:40, 10:40)`·`[17:40, 18:40)`, 일요일 회고 18:00은 주말 저녁 구간과 같다). 운영 BE 재시작이 회차와 겹치지 않게 한다. 웹만(또는 테스트만) 바뀌었으면 보지 않는다. 6.1의 재확인 cron은 고정값이라, 회차 시각을 바꾸면 cron도 같이 바꾼다(`promote_check.py` 테스트가 `config.toml` 회차 시각 + 40분과 cron이 맞는지 검사한다).
 
 모두 통과하면 `RELEASE_PAT`으로 `PATCH /git/refs/heads/main {sha: S, force: false}`(빨리감기만). 실패하면(경합 등) 다음 트리거에 다시 본다. 결과는 작업 요약에 한 줄로 남긴다(승격한 SHA, 들어간 PR 번호들).
 
-**막힘 알림**: 검사 1, 2, 3, 5가 실패이거나(Vercel 빌드 실패는 저절로 풀리지 않는다) `staging/be`가 `failure`면, 또는 `main..S`가 250커밋을 넘어 compare가 다 주지 못하면 `release:blocked` 라벨 이슈를 연다. 열린 것이 있으면 새로 열지 않고, 원인이나 SHA가 지난 댓글과 다를 때만 댓글을 단다(원인 한 줄, SHA). 다음 승격이 성공하면 그 이슈를 닫는다. SP6 감시자는 이 라벨을 장애로 들이지 않는다(운영 장애가 아님). Claude 스레드가 이 이슈를 보고 고친다(다음 develop 머지가 `S`를 바꾼다). 대기 중(30분 안 됨, Vercel 빌드 중, 차단 구간)은 막힘이 아니다.
+**막힘 알림**: 검사 1, 2, 3이 실패이거나 `staging/be`가 `failure`면, 또는 `main..S`가 250커밋을 넘어 compare가 다 주지 못하면 `release:blocked` 라벨 이슈를 연다. 열린 것이 있으면 새로 열지 않고, 원인이나 SHA가 지난 댓글과 다를 때만 댓글을 단다(원인 한 줄, SHA). 다음 승격이 성공하면 그 이슈를 닫는다. SP6 감시자는 이 라벨을 장애로 들이지 않는다(운영 장애가 아님). Claude 스레드가 이 이슈를 보고 고친다(다음 develop 머지가 `S`를 바꾼다). 대기 중(30분 안 됨, 차단 구간)은 막힘이 아니다.
 
 ### 6.3 `staging/be` 신호 (SP6 후속, 들어옴: 티켓 12, medic-dev)
 
@@ -181,7 +186,7 @@ post_commit_status = true     # staging/be 올림
 - 30분 안에 develop 머리가 바뀌면 그 SHA에는 아무것도 올리지 않고 새 머리로 다시 시작한다. (구현: 재시작 없는 빨리감기 창은 그렇게 버린다. 재시작한 배포의 확인은 끝까지 가서 그 SHA에도 올리며, 승격은 머리 SHA의 상태만 보므로 해가 없다.)
 - BE 파일이 안 바뀐 develop 커밋(웹·문서만)도 재시작 없이 같은 방식으로 30분 뒤 `success`를 올린다. 그래서 승격 트리거가 하나로 통일된다.
 
-**SP6 후속(티켓 12)이 들어오기 전에는**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows·Vercel 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
+**SP6 후속(티켓 12)이 들어오기 전에는**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
 
 ### 6.4 노트북이 꺼져 있으면
 
@@ -201,7 +206,7 @@ post_commit_status = true     # staging/be 올림
 | # | 어디서 | 무엇 |
 |---|---|---|
 | D1 | GitHub → fine-grained PAT 만들기 → 저장소 시크릿 `RELEASE_PAT` | 5.4 권한. 만료일을 변수 `RELEASE_PAT_EXPIRES`에 |
-| D2 | Vercel 두 프로젝트 → Settings → Environment Variables | `NEXT_PUBLIC_CONNECT_SRC`를 Preview, 브랜치 `develop`에만 `https://*.<tailnet>.ts.net:8443`로 추가. Production 값은 그대로 |
+| D2 | Vercel 두 프로젝트 → Settings → Environment Variables, Git → Deploy Hooks | `NEXT_PUBLIC_CONNECT_SRC`를 Preview, 브랜치 `develop`에만 `https://*.<tailnet>.ts.net:8443`로 추가(Type Config). Production 값은 그대로. Deploy Hook(브랜치 develop)을 만들어 URL을 저장소 시크릿 `VERCEL_DEPLOY_HOOK_APP`, `VERCEL_DEPLOY_HOOK_DASHBOARD`에 |
 | D3 | Vercel 두 프로젝트 → Settings | Git: Production Branch가 `main`인지 확인. Deployment Protection: Preview 보호가 켜져 있으면 스테이징 별칭을 열 수 있는지 확인. 첫 develop 배포 뒤 별칭 주소 두 개를 Claude에게 알려 줌(개발용 CORS에 넣음) |
 | D4 | GitHub → 개발용 PAT | 5.4 권한. 노트북 개발용 `.env`에 넣고, 계정 이름을 변수 `DEV_STATUS_LOGIN`에 (SP6 후속, 티켓 12가 들어올 때) |
 | D5 | 노트북 | `E:\my-planner-dev` 클론과 `.env`, `config.local.toml`, `config.medic.local.toml`, 작업 두 개 등록, `tailscale serve --https=8443`. Claude가 스크립트(`scripts/setup_dev.ps1`)를 주고 원격 제어 세션으로 같이 돌린다 |
@@ -223,13 +228,13 @@ D1이 없으면 승격이 돌지 않는다(첫 승격부터 워크플로 파일�
 
 | 대상 | 방법 |
 |---|---|
-| 승격 검사 | 검사 로직을 `scripts/promote_check.py`(표준 라이브러리만, GitHub 응답을 입력으로 받는 순수 함수)로 빼고 pytest 표 테스트: 조상 아님, `S` CI 실패, Windows가 BE 커밋에서 건너뜀·실패, `staging/be` 없음·실패·다른 계정, 웹 변경 커밋 `W`의 Vercel 대기·실패·다른 계정, 뒤 커밋이 BE만 바꿔 `S`에 Vercel 상태 없음(통과해야 함), 차단 구간 경계(08:39 통과, 08:40 막힘, 09:39 막힘, 09:40 통과), 웹만 바뀐 차단 구간 통과, `skip_staging_be` + BE 변경 거부, 트리거 SHA ≠ 머리 |
+| 승격 검사 | 검사 로직을 `scripts/promote_check.py`(표준 라이브러리만, GitHub 응답을 입력으로 받는 순수 함수)로 빼고 pytest 표 테스트: 조상 아님, `S` CI 실패, Windows가 BE 커밋에서 건너뜀·실패, `staging/be` 없음·실패·다른 계정, Vercel 스테이징 상태가 없거나 실패여도 통과(2026-10-25), 차단 구간 경계(08:39 통과, 08:40 막힘, 09:39 막힘, 09:40 통과), 웹만 바뀐 차단 구간 통과, `skip_staging_be` + BE 변경 거부, 트리거 SHA ≠ 머리 |
 | `config.local.toml` | 깊은 병합(중첩 표, 목록 통째 바꿈), 비밀 키 거부, `role="dev"`에서 텔레그램 값 없이 읽힘, `"prod"`에서 여전히 필수, medic `load_config`가 덮어쓴 `[api] port`를 읽음 |
 | `role="dev"` | 앱 조립에서 텔레그램·스케줄러가 안 뜸, `internal/notify`가 로그만 남김 |
 | 대시보드 출처 검사 | `next.config.mjs` 검사: `https://*.t.ts.net:8443` 받음, `https:` 와 `*` 거부(지금처럼). 두 앱 `connection.test.ts`에 `:8443` 출처 ↔ `:8443` 주소 맞음, 포트 없는 주소 안 맞음 |
 | Vercel 설정 | 두 `vercel.json`이 JSON으로 읽히고 `git.deploymentEnabled`가 위 모양인지 보는 테스트(각 웹 CI) |
-| 수용 | 기능 브랜치 푸시에 Vercel 댓글이 안 생김. develop 머지 → 스테이징 배포 → (임시) 30분 뒤 `main` 빨리감기 → 운영 배포 1회, `main` push CI가 `already_green`으로 건너뜀 |
+| 수용 | 기능 브랜치 푸시에 Vercel 댓글이 안 생김. develop 머지(Vercel 배포 없음) → (임시) 30분 뒤 `main` 빨리감기 → 운영 배포 1회, `main` push CI가 `already_green`으로 건너뜀 |
 
 ## 11. 배포 수 어림
 
-한도는 계정 전체 하루 100회다. 웹 폴더를 바꾼 develop 머지가 하루 프로젝트마다 15번, 승격이 하루 8번이라면: 두 프로젝트 합쳐 스테이징 최대 30 + 운영 최대 16 + 핫픽스·동기화 몇 번 = 50회 안팎. 지금 하루 100회를 넘던 것이 절반 아래가 되고, 기능 브랜치 미리보기는 0이다. 더 줄여야 하면 승격 대기를 늘리거나 스테이징 빌드를 대시보드만 끄는 식으로 조정한다.
+한도는 계정 전체 하루 100회다. develop을 자동 배포하던 첫 판(2026-10-24)은 2026-10-25에 develop 머지가 하루 40번을 넘자 다시 한도에 걸렸다(`ignoreCommand`로 건너뛴 배포도 기록이 생긴다). 개정 뒤에는 운영(승격마다 두 프로젝트, `ignoreCommand`로 건너뛴 것 포함) + 손으로 돌린 스테이징 배포 × 프로젝트 수 + 핫픽스 몇 번이다. 승격이 하루 8번이면 운영 최대 16, 스테이징을 하루 몇 번 돌려도 30회 안팎이다.
