@@ -1,5 +1,6 @@
 // Screen words of the dashboard (spec 13.1, 13.2, appendix A). Kept here so one test can read them all.
 import type { HealthRun, SkipReason } from "../api/types.gen";
+import type { PictogramName } from "../components/pictograms.gen";
 
 // Appendix A push titles; an unknown loop reads as the notice title.
 export const LOOP_LABELS: Record<HealthRun["loop"], string> = {
@@ -226,7 +227,53 @@ export const STATUS_TEXT = {
   recentXp: "최근 경험치",
   xpGain: (amount: number, label: string) => `+${amount} ${label}`,
   recentEmpty: "할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.",
+  // SP8 10.1, appendix A. Numbers with one decimal; nothing here compares with an earlier bonus.
+  statSub: (base: number, bonus: number) => (bonus > 0 ? `바탕 ${base} · 요즘 +${bonus.toFixed(1)}` : `바탕 ${base}`),
+  statSubNoBase: (bonus: number) => `요즘 +${bonus.toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요`,
+  recentHeading: "요즘 손이 간 영역",
+  recentLine: (bonus: number) => `+${bonus.toFixed(1)}`,
+  recentCounts: (c: { tasks: number; habit_checks: number; body_days: number }) =>
+    `4주 동안 ${[
+      c.tasks > 0 ? `할 일 ${c.tasks}개` : "",
+      c.habit_checks > 0 ? `습관 ${c.habit_checks}번` : "",
+      c.body_days > 0 ? `몸 기록 ${c.body_days}일` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ")}`,
+  recentAreasEmpty: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.",
 } as const;
+
+/** The name of each pictogram (spec 9.1), for the places one stands without a word beside it. */
+export const PICTOGRAM_LABELS: Record<PictogramName, string> = {
+  career: "커리어",
+  finance: "경제",
+  health: "건강",
+  relationships: "관계",
+  learning: "배움",
+  quality_of_life: "삶의 질",
+  high: "높은 때",
+  low: "힘든 때",
+  turning_point: "전환점",
+  chapter: "챕터",
+  condition: "컨디션",
+  ladder: "사다리",
+  level: "레벨",
+  quest: "퀘스트",
+  review: "회고",
+  todo: "할 일",
+  habit: "습관",
+  memory: "기억",
+  future: "5년 뒤",
+  eye: "보임",
+  eyeoff: "가림",
+  assistant: "비서가 만듦",
+  home: "한눈에",
+  curve: "인생곡선",
+  status: "상태창",
+  list: "목록",
+  estimate: "추정",
+  settings: "설정",
+};
 
 // SP1 area order and names (the same as `/status` stat labels).
 export const AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"] as const;

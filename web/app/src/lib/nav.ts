@@ -6,6 +6,6 @@ export function hardReplace(path: string): void {
 
 /**
  * Whether the build has the `/status/` page (SP8 app status screen). The more screen lists
- * "상태창" only then (spec 9.1); the SP8 status-page ticket sets this to true with the page.
+ * "상태창" only then (spec 9.1); SP8-02 added the page and set this to true.
  */
-export const HAS_STATUS_PAGE = false;
+export const HAS_STATUS_PAGE = true;

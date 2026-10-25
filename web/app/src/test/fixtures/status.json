@@ -1,0 +1,178 @@
+{
+  "level": 6,
+  "xp_total": 1380,
+  "xp_into_level": 130,
+  "xp_for_next": 400,
+  "hp": {
+    "date": "2026-10-24",
+    "score": 4
+  },
+  "stats": [
+    {
+      "area": "career",
+      "label": "커리어",
+      "score": 6,
+      "period": "2026-Q4",
+      "prev_score": 6,
+      "prev_period": "2026-Q3",
+      "debuff": false,
+      "recovery_quest": null,
+      "bonus": 0.5,
+      "effective_score": 6.5,
+      "activity": {
+        "tasks": 6,
+        "habit_checks": 0,
+        "body_days": 0
+      }
+    },
+    {
+      "area": "finance",
+      "label": "경제",
+      "score": 5,
+      "period": "2026-Q4",
+      "prev_score": 5,
+      "prev_period": "2026-Q3",
+      "debuff": false,
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": 5.0,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
+    },
+    {
+      "area": "health",
+      "label": "건강",
+      "score": 4,
+      "period": "2026-Q4",
+      "prev_score": 6,
+      "prev_period": "2026-Q3",
+      "debuff": true,
+      "recovery_quest": "저녁에 20분 걷기",
+      "bonus": 1.0,
+      "effective_score": 5.0,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 21,
+        "body_days": 0
+      }
+    },
+    {
+      "area": "relationships",
+      "label": "관계",
+      "score": 7,
+      "period": "2026-Q4",
+      "prev_score": 7,
+      "prev_period": "2026-Q3",
+      "debuff": false,
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": 7.0,
+      "activity": {
+        "tasks": 1,
+        "habit_checks": 0,
+        "body_days": 0
+      }
+    },
+    {
+      "area": "learning",
+      "label": "배움",
+      "score": 6,
+      "period": "2026-Q4",
+      "prev_score": 6,
+      "prev_period": "2026-Q3",
+      "debuff": false,
+      "recovery_quest": null,
+      "bonus": 0.2,
+      "effective_score": 6.2,
+      "activity": {
+        "tasks": 2,
+        "habit_checks": 0,
+        "body_days": 0
+      }
+    },
+    {
+      "area": "quality_of_life",
+      "label": "삶의 질",
+      "score": 5,
+      "period": "2026-Q4",
+      "prev_score": 5,
+      "prev_period": "2026-Q3",
+      "debuff": false,
+      "recovery_quest": null,
+      "bonus": 0.1,
+      "effective_score": 5.1,
+      "activity": {
+        "tasks": 1,
+        "habit_checks": 0,
+        "body_days": 0
+      }
+    }
+  ],
+  "main_quests": [
+    {
+      "task_id": 9,
+      "title": "꾸민 작은 그림책 만들기",
+      "rank": 1,
+      "period": "2026-Q4",
+      "first_steps": {
+        "open": 2,
+        "done": 3
+      }
+    }
+  ],
+  "daily_quests": [
+    {
+      "task_id": 13,
+      "title": "첫 장면 색칠하기",
+      "parent_id": 9,
+      "parent_title": "꾸민 작은 그림책 만들기",
+      "planned_for": "2026-10-24"
+    }
+  ],
+  "titles": [
+    {
+      "milestone_id": 1,
+      "title": "「꾸민 첫 전시」의 순간",
+      "kind": "high",
+      "date": "2025-09",
+      "granted_at": "2026-09-24T03:00:00Z"
+    },
+    {
+      "milestone_id": 2,
+      "title": "「꾸민 이사 결정」을 지나온 사람",
+      "kind": "turning_point",
+      "date": "2026-02-14",
+      "granted_at": "2026-10-04T03:00:00Z"
+    }
+  ],
+  "recent_xp": [
+    {
+      "at": "2026-10-24T02:20:00Z",
+      "label": "할 일 완료",
+      "amount": 10
+    },
+    {
+      "at": "2026-10-24T01:12:00Z",
+      "label": "회차 답",
+      "amount": 5
+    },
+    {
+      "at": "2026-10-23T12:00:00Z",
+      "label": "컨디션 기록",
+      "amount": 5
+    },
+    {
+      "at": "2026-10-21T19:10:00Z",
+      "label": "쉬는 날",
+      "amount": 5
+    },
+    {
+      "at": "2026-10-21T08:00:00Z",
+      "label": "할 일 완료",
+      "amount": 10
+    }
+  ]
+}

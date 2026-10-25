@@ -565,7 +565,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 - **요즘 손이 간 영역**(패널, 픽토그램 `status`): `bonus > 0`인 영역을 큰 순서로(같으면 SP1 영역 순서). 줄마다 영역 픽토그램(영역색) + 영역 이름 + "+{b}", 둘째 줄 "4주 동안 할 일 {n}개 · 습관 {m}번 · 몸 기록 {k}일"(0인 항목은 뺀다). 빈 상태: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요."
 - **이룬 순간**(패널, 픽토그램 `memory`): `moments`를 날짜 머리("10월 24일 (토)")로 묶고, 줄마다 영역 픽토그램(영역이 없으면 `memory`) + 글. 아래 `caption` "숨기거나 지우는 것은 운영 앱 상태창에서 할 수 있어요." 빈 상태: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요."
 - 내려가는 표시, 지난 보너스와의 비교, 비율은 그리지 않는다(5.3).
-- 한눈에 홈(`index`, 캔버스 `HomePhone2`)과 내비게이션에 픽토그램을 더한다: 내비게이션 `home` `todo` `curve` `status`, 홈 칸 머리 `condition`, `ladder`, `level`, `todo`, `habit`, `chapter`, `review`. 홈 "지금 챕터" 칸의 링크 "히스토리 보기"는 `/curve?tab=history`로 간다. 홈의 숫자·배치는 바꾸지 않는다.
+- 내비게이션에 픽토그램을 더한다(SP8-02): 링크마다 `home`(`/`) `todo` `curve` `status` `settings`, 16px, `aria-hidden`(링크 이름은 글자 그대로). **홈(`index`, 캔버스 `HomePhone2`)의 칸 머리 픽토그램(`condition`, `ladder`, `level`, `todo`, `habit`, `chapter`, `review`)과 "지금 챕터" 칸의 "히스토리 보기" 링크(`/curve?tab=history`)는 이 티켓에서 미룬다**: 홈이 아직 그 칸들을 그리지 않는다. 홈 화면(컨디션·사다리·챕터 칸이 있고 `/`가 "한눈에"가 되는 화면)이 생기는 티켓에서 더한다(계획 결정 12). 알고 받아들이는 어긋남: `home`의 9.1 이름은 "한눈에"인데 지금 `/`의 이름은 "비서 상태"다. 픽토그램은 `aria-hidden`이고 글자는 그대로라 화면 읽기에는 영향이 없고, 홈 화면이 생기면 맞는다. 홈의 숫자·배치는 바꾸지 않는다.
 
 ### 10.2 운영 앱 상태창 (`/status/`, 새 화면, SP9 "더보기"의 한 줄, "‹ 더보기")
 
@@ -583,7 +583,7 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 
 - **숨기기**: `POST /actions hide_moment` → 줄이 접히고(200ms) 알림 줄 "숨겼어요"와 "되돌리기". **지우기**: BE가 `needs_confirm`을 주면 SP5의 확인 시트("이 순간을 지울까요? 되돌릴 수 없어요." / "지우기" / "그대로 두기").
 - 몸 기록 줄: `body`가 있으면 10.1과 같은 글, 아래 "마지막 기록 {M}/{D}". 없으면 "아이폰 단축어로 걸음과 잠을 보내면 건강 스탯의 근거가 돼요. 설정은 README의 'iPhone 단축어'를 봐 주세요."
-- **들어가는 길**(SP9 스레드와 합의): SP9가 만드는 "더보기" 화면의 한 줄 "상태창"(`status` 픽토그램)이고, 상태창의 뒤로 링크는 "‹ 더보기"다. 오늘 화면에서는 링크하지 않는다. SP9의 더보기 화면이 SP8-02보다 늦게 머지되면, 그 사이에는 주소 `/status/`로만 열리고 뒤로 링크는 "‹ 오늘"로 두었다가 SP9 머지 때 바꾼다.
+- **들어가는 길**(SP9 스레드와 합의): SP9가 만드는 "더보기" 화면의 한 줄 "상태창"(`status` 픽토그램)이고, 상태창의 뒤로 링크는 "‹ 더보기"다. 오늘 화면에서는 링크하지 않는다. (SP9-01의 더보기 화면이 SP8-02보다 먼저 머지돼, SP8-02는 처음부터 "‹ 더보기"(`/more/`)로 만들고 `HAS_STATUS_PAGE`를 `true`로 바꿔 더보기에 "상태창" 줄을 낸다. "‹ 오늘" 단계는 없었다.)
 - 오프라인: 상태창은 스냅샷에 넣지 않는다(SP5 스냅샷은 `GET /today`만). 오프라인이면 `OfflineNotice`와 "연결되면 상태창을 보여 드릴게요."
 - 화면 CSS 모듈은 `pages/_app.tsx`에서 불러온다(SP7 9장 규칙). 색은 역할 토큰과 영역 토큰만. 라이트·다크·프리셋 스냅샷.
 
@@ -633,8 +633,8 @@ ALTER TABLE curve_chapters ADD COLUMN ladder_remembered INTEGER NULL
 | 곡선 도구 | `python -m pytest tests/test_curve_tools.py tests/test_telegram_curve.py -q` | `add_milestone(area)`, `propose_chapter(ladder)` 검증, 확정 문구 "(2019, 높은 때, 삶의 질)" |
 | 로그·개인정보 | `python -m pytest tests/test_api_logging.py tests/test_write_paths.py -q` | 시험 순간 글·걸음 숫자·`BODY_TOKEN`이 로그 파일에 없음, `data/exports/`에 순간 파일 없음, 활동 `summary`에 순간 글 없음, 새 쓰기가 모두 단일 작성자 길 |
 | 프롬프트 | `python -m pytest tests/test_prompts.py -q` | `moments.md` 골든, 금지어 블록, 원칙 15·16, 회고 앞머리 두 블록(**텔레그램으로 가는 회고는 이룬 순간 블록에 날짜·개수만, 앱은 글**) |
-| 대시보드 | `cd web/dashboard && npm test && npm run build && npm run check:csp && npm run sync:design && git diff --exit-code` | 히스토리 탭(주소 `?tab=history`, 거르기, 정렬, 접힌 챕터, 민감 사건 보기·가리기, 빈 상태), 한눈에 띠와 표, 옆 요약, 상태창 보너스 칸·근거 줄·두 패널, 픽토그램 스프라이트 한 번, 라이트·다크 스냅샷 |
-| 앱 | `cd web/app && npm test && npm run build && npm run check:csp && npm run sync:design && git diff --exit-code` | 상태창 화면(밀기·더 보기 시트·확인 시트·되돌리기·숨긴 순간·지난 순간), 뒤로 링크("‹ 더보기", SP9 전에는 "‹ 오늘"), 오늘 화면에 상태창 링크 없음, 오프라인 안내, 프리셋 스냅샷 |
+| 대시보드 | `cd web/dashboard && npm test && npm run build && npm run check:csp && npm run sync:design && git diff --exit-code` | 히스토리 탭(주소 `?tab=history`, 거르기, 정렬, 접힌 챕터, 민감 사건 보기·가리기, 빈 상태), 한눈에 띠와 표, 옆 요약, 상태창 보너스 칸·근거 줄·두 패널, 픽토그램 스프라이트 한 번(라이트·다크는 시험이 아니라 사람 눈 확인 H3) |
+| 앱 | `cd web/app && npm test && npm run build && npm run check:csp && npm run sync:design && git diff --exit-code` | 상태창 화면(밀기·더 보기 시트·확인 시트·되돌리기·숨긴 순간·지난 순간), 뒤로 링크("‹ 더보기", `/more/`), 더보기에 "상태창" 줄, 오늘 화면에 상태창 링크 없음, 오프라인 안내, 프리셋 스냅샷 |
 | 픽토그램 | `cd web/app && npx vitest run scripts/sync-design.test.mjs` (대시보드도) | 사본 = 원본, id 목록 = 9.1 표, `style`·색 `fill`·`script` 없음 |
 | 문구 | `cd web/app && npx vitest run src/lib/copy.test.ts`, `python -m pytest tests/test_prompts.py -q` | 부록 A 전체, 정적 문구 검사의 새 금지 구("보너스가 줄", "스탯이 떨어"). `system.md` 금지어 블록과 순간 M3는 바뀌지 않음("지출이 줄었어요" 같은 순간이 버려지지 않음) |
 | 이야기 | `python -m pytest tests/test_sp8_story.py -q` | 꾸며 낸 4주: 습관·할 일 → 보너스, 하루 끝 순간 2개 → 앱에서 하나 숨김·하나 지움, 단축어 3일 → 건강 근거 줄, 사흘 꺼짐 → 따라잡기, 텔레그램 `/status` 출력이 SP8 전과 같음, 텔레그램 대화의 `get_status`에 순간 글 없음, 히스토리 응답 |
@@ -715,6 +715,7 @@ Dahun이 고르지 않은 선택은 비서가 정했다. 아래 추천으로 구
 
 ## 변경 기록
 
+- SP8-02 (2026-10-25): 10.1 홈 칸 머리 픽토그램·"히스토리 보기"는 홈 화면 티켓으로 미룸(결정 12), 10.2 "‹ 오늘" 단계 없이 처음부터 "‹ 더보기", 13장 대시보드 라이트·다크는 H3 눈 확인(결정 13).
 - SP8-00 (2026-10-25): 5.6 함수 모양을 계획 결정 4대로 고침(`area_points`·`activity_counts`의 `tz`·`boundary`, `area_bonus(points, today, counts)`, `activity_rows(from_utc, from_day, to_day)`). 공식·값은 그대로.
 - v3 (2026-10-25): Dahun "텔레그램은 궁극적으로 사용안하게 될거라 굳이 넣을 필요없을 것 같은데"(SP9 스레드). 텔레그램 `/status`는 SP8에서 바꾸지 않는다(보너스·순간·몸 기록 줄 없음). 텔레그램 통로 두뇌의 날짜·개수 규칙은 그대로.
 - v2 (2026-10-25): 검토 1차(BLOCKER 3, SHOULD 9, NIT 7) 반영. 텔레그램 통로는 순간의 날짜·개수만(D7), 순간 호출은 `no-session-persistence`(SDK 0.2.173 확인), `max_turns = 3`과 호출 뒤 상태로 판정, 몸 기록 경로별 토큰·`/actions` 막기·한국 달력 오늘, 6.3 인터페이스, 금지 구를 정적 검사로 좁힘, 티켓 SP8-11까지 다시 나눔. SP9와 합의: 마이그레이션 013~015(SP9는 016부터), 메모는 순간과 따로, 앱 상태창은 더보기 화면의 한 줄, 스프라이트가 SP9 탭 아이콘 셋을 받음.

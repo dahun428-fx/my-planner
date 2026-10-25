@@ -32,6 +32,32 @@ export const copy = {
     back: BACK_MORE,
   },
 
+  // SP8 10.2, appendix A (verbatim). Named apart from `status` above, the connection dot's words.
+  // The amounts take a number or anything `Number()` reads, so the sample calls of copy.test.ts do not throw.
+  statusScreen: {
+    heading: "상태창",
+    back: BACK_MORE,
+    offline: "연결되면 상태창을 보여 드릴게요.",
+    level: (n: number) => `Lv. ${n}`,
+    xp: (into: number, forNext: number) => `${into} / ${forNext} XP`,
+    xpBar: (into: number, forNext: number) => `경험치 ${into} / ${forNext}`,
+    statsHeading: "스탯",
+    noScore: "—",
+    statSub: (base: number, bonus: number) => (Number(bonus) > 0 ? `바탕 ${base} · 요즘 +${Number(bonus).toFixed(1)}` : `바탕 ${base}`),
+    statSubNoBase: (bonus: number) => `요즘 +${Number(bonus).toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요`,
+    recentHeading: "요즘 손이 간 영역",
+    recentLine: (bonus: number) => `+${Number(bonus).toFixed(1)}`,
+    recentCounts: (c: { tasks: number; habit_checks: number; body_days: number }) =>
+      `4주 동안 ${[
+        c.tasks > 0 ? `할 일 ${c.tasks}개` : "",
+        c.habit_checks > 0 ? `습관 ${c.habit_checks}번` : "",
+        c.body_days > 0 ? `몸 기록 ${c.body_days}일` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ")}`,
+    recentAreasEmpty: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.",
+  },
+
   status: {
     connected: "비서 연결됨",
     offline: "비서 오프라인",

@@ -104,6 +104,15 @@ const SCREENS: Screen[] = [
     },
   },
   {
+    name: "status",
+    seed: true,
+    open: async (page) => {
+      await page.goto("/status/");
+      await expect(heading(page, copy.statusScreen.heading)).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: copy.statusScreen.recentHeading })).toBeVisible();
+    },
+  },
+  {
     name: "connect",
     seed: false,
     open: async (page) => {

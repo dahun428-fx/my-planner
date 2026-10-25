@@ -21,6 +21,9 @@ const BANNED = [
   "\ub04a\uacbc",
   "\uba70\uce60\uc9f8",
   "\ub0a8\uc74c",
+  // SP8 appendix A (static copy checks only; the brain's banned-words block does not get these)
+  "\ubcf4\ub108\uc2a4\uac00 \uc904",
+  "\uc2a4\ud0ef\uc774 \ub5a8\uc5b4",
 ];
 
 const src = join(__dirname, "..");
@@ -35,9 +38,9 @@ function files(dir: string): string[] {
 const hitsIn = (text: string) => BANNED.filter((w) => text.includes(w));
 
 describe("banned words", () => {
-  it("are the twelve of SP5 10 and SP7 7", () => {
-    expect(BANNED).toHaveLength(12);
-    expect(new Set(BANNED).size).toBe(12);
+  it("are the fourteen of SP5 10, SP7 7 and SP8", () => {
+    expect(BANNED).toHaveLength(14);
+    expect(new Set(BANNED).size).toBe(14);
   });
 
   it("are caught in a planted line", () => {

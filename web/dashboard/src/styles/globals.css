@@ -65,6 +65,7 @@ body {
 .nav ul a {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
   min-height: var(--control-h);
   padding: 0 var(--space-3);
   border-radius: var(--radius-pill);
@@ -899,9 +900,63 @@ h2 {
   display: block;
   width: 100%;
   height: var(--stat-bar-h);
+  overflow: visible;
 }
 .stat-fill {
   fill: var(--bar-fill);
+}
+/* The recent bonus: empty cells after the base, a 1px ink outline (shape tells it from the fill, not colour). */
+.stat-bonus {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.stat-sub {
+  grid-column: 2 / -1;
+  margin-top: var(--space-1);
+}
+/* 요즘 손이 간 영역: a pictogram (in its area colour) with the name, the bonus at the right, counts below. */
+.with-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.recent-areas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recent-area {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--rule);
+}
+.recent-area:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.recent-area:last-child {
+  padding-bottom: 0;
+}
+.recent-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-callout);
+  font-weight: 600;
+}
+.recent-name .pictogram {
+  color: var(--area);
+}
+.recent-bonus {
+  font-weight: 600;
+}
+.recent-counts {
+  grid-column: 1 / -1;
 }
 /* The area score's ramp step: an 8px dot beside the number, ringed in ink so a light step still reads 3:1. */
 .stat-step {

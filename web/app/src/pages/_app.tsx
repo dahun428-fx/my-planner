@@ -23,6 +23,7 @@ import "../screens/Connect";
 import "../screens/Habits";
 import "../screens/More";
 import "../screens/Settings";
+import "../screens/Status";
 import "../screens/Today";
 import "../screens/Todos";
 import "../components/LargeTitle";

@@ -25,9 +25,14 @@ describe("More (spec 9.1)", () => {
     expect(screen.queryByRole("link", { name: copy.more.back })).toBeNull();
   });
 
-  it("no status row while /status/ is not in the build", () => {
-    expect(HAS_STATUS_PAGE).toBe(false);
+  it("lists the status row once /status/ is in the build (SP8-02)", () => {
+    expect(HAS_STATUS_PAGE).toBe(true);
     renderWithProviders(<More />, { route: "/more/" });
+    expect(rows().map(([t]) => t)).toEqual(["설정", "기록", "습관", "상태창", "기기 연결"]);
+  });
+
+  it("leaves the status row out when told the build has no /status/", () => {
+    renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
     expect(rows().map(([t]) => t)).toEqual(["설정", "기록", "습관", "기기 연결"]);
   });
 
