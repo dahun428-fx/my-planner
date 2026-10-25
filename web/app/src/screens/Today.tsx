@@ -7,6 +7,7 @@ import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { MoreButton } from "../components/MoreButton";
 import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
@@ -297,7 +298,16 @@ export function Today() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <LargeTitle title={copy.today.title} meta={data ? dateLine(data) : <Skeleton size="short" />} trailing={state ? <StatusDot state={state} /> : undefined} />
+      <LargeTitle
+        title={copy.today.title}
+        meta={data ? dateLine(data) : <Skeleton size="short" />}
+        trailing={
+          <>
+            {state && <StatusDot state={state} />}
+            <MoreButton />
+          </>
+        }
+      />
       {state?.kind === "online" && state.degraded && <p className={styles.line}>{state.degraded}</p>}
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}

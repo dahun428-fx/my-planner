@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { getHealth } from "../api/client";
 import { LargeTitle } from "../components/LargeTitle";
 import { useToast } from "../components/Toast";
+import { useConnection } from "../lib/ConnectionProvider";
 import { type Conn, normalizeBeUrl, normalizeToken, saveConn, saveLastHealthOk } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { isIos, isStandalone } from "../lib/platform";
@@ -21,6 +23,8 @@ const URL_REASON = {
 export function Connect() {
   const router = useRouter();
   const toast = useToast();
+  // SP9 9.1: reached from the more screen once connected; the first connect has nowhere to go back to.
+  const connected = useConnection().conn !== null;
   const [guideOnly, setGuideOnly] = useState<boolean | null>(null);
   // The iPhone home screen app offers "알림 허용하고 시작하기"; a computer browser just "시작하기".
   const [offerPush, setOfferPush] = useState(false);
@@ -130,6 +134,13 @@ export function Connect() {
 
   return (
     <main className={styles.main}>
+      {connected && (
+        <nav className={styles.bar}>
+          <Link href="/more/" className={styles.back}>
+            {copy.connect.back}
+          </Link>
+        </nav>
+      )}
       <LargeTitle title={copy.connect.title} />
       <p className={styles.intro}>{copy.connect.intro}</p>
       {guideOnly === true && <p className={styles.guide}>{copy.connect.homeScreenGuide}</p>}

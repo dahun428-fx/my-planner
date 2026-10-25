@@ -393,7 +393,7 @@ describe("ChatSheet", () => {
     expect(screen.getByRole("button", { name: copy.chat.send })).toBeDisabled();
   });
 
-  it("undo in the confirmation box", async () => {
+  it("a change is one line; its undo is on the toast (SP9 9.6)", async () => {
     serveHistory();
     serveChat(() => sseResponse(golden("chat_add_task.sse")));
     const undos: unknown[] = [];
@@ -406,33 +406,32 @@ describe("ChatSheet", () => {
     const user = userEvent.setup();
     renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await sendText(user, "내일 치과 추가해 줘");
-    const undo = await screen.findByRole("button", { name: copy.chat.undo });
+    const line = await within(screen.getByRole("log")).findByText("✓ 추가: 치과 → 내일"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    expect(line.closest("[data-activity]")).not.toBeNull();
+    expect(within(screen.getByRole("log")).queryByRole("button", { name: copy.chat.undo })).toBeNull();
+    const toast = screen.getAllByRole("status").find((s) => s.textContent?.includes("✓ 추가: 치과 → 내일"))!; // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    const undo = within(toast).getByRole("button", { name: copy.chat.undo });
     fireEvent.click(undo);
     fireEvent.click(undo);
-    expect(await screen.findByText(copy.chat.undone)).toBeInTheDocument();
-    expect(screen.getByText("↩︎ 되돌렸어요: 치과")).toBeInTheDocument(); // toast
+    expect(await screen.findByText("↩︎ 되돌렸어요: 치과")).toBeInTheDocument(); // toast
     expect(undos).toHaveLength(1);
     expect(undos[0]).toMatchObject({ id: "1" });
     expect(screen.queryByRole("button", { name: copy.chat.undo })).toBeNull();
   });
 
-  it("undo that is blocked or fails says so", async () => {
+  it("toast undo that is blocked or fails says so", async () => {
     serveHistory();
     serveChat(() => sseResponse(golden("chat_add_task.sse")));
-    let answer = () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) as Response;
-    server.use(http.post(`${BASE}/activity/:id/undo`, () => answer()));
+    server.use(http.post(`${BASE}/activity/:id/undo`, () => HttpResponse.json({ error: { code: "superseded", message: "x" } }, { status: 409 })));
     const user = userEvent.setup();
     renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
     await sendText(user, "내일 치과 추가해 줘");
     await user.click(await screen.findByRole("button", { name: copy.chat.undo }));
-    expect(await screen.findByText(copy.actions.undoFailed)).toBeInTheDocument();
-    answer = () => HttpResponse.json({ error: { code: "superseded", message: "x" } }, { status: 409 });
-    await user.click(screen.getByRole("button", { name: copy.chat.undo }));
     expect(await screen.findByText(copy.activity.undoBlocked.superseded)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: copy.chat.undo })).toBeNull();
   });
 
-  it("confirmation shows once: grey box while streaming, plain text after reopening", async () => {
+  it("confirmation shows once: one line while streaming, plain text after reopening", async () => {
     // Ruling with the BE thread: /messages keeps the confirmation line in the secretary text, and
     // localParts never keeps data-activity, so a reopened sheet shows it once, as text.
     const seen = serveHistory();
@@ -440,7 +439,7 @@ describe("ChatSheet", () => {
     const user = userEvent.setup();
     const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await sendText(user, "내일 치과 추가해 줘");
-    const box = await screen.findByText("✓ 추가: 치과 → 내일"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    const box = await within(screen.getByRole("log")).findByText("✓ 추가: 치과 → 내일"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(box.closest("[data-activity]")).not.toBeNull();
     rerender(<ChatSheet open={false} onClose={() => {}} />);
     history(1, [
@@ -449,7 +448,7 @@ describe("ChatSheet", () => {
     ]);
     rerender(<ChatSheet open onClose={() => {}} />);
     await waitFor(() => expect(document.querySelector("[data-activity]")).toBeNull());
-    expect(screen.getAllByText(/✓ 추가: 치과 → 내일/)).toHaveLength(1); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    expect(within(screen.getByRole("log")).getAllByText(/✓ 추가: 치과 → 내일/)).toHaveLength(1); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(seen.conversations).toBe(1);
   });
 });

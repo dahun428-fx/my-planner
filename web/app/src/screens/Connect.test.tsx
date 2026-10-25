@@ -36,6 +36,16 @@ function unauthorized() {
 }
 
 describe("Connect", () => {
+  it("back goes to more once this device is connected (spec 9.1)", async () => {
+    renderWithProviders(<Connect />, { route: "/connect/" });
+    expect(await screen.findByRole("link", { name: "‹ 더보기" })).toHaveAttribute("href", "/more/");
+  });
+
+  it("first connect has no back link (nothing to go back to)", () => {
+    renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    expect(screen.queryByRole("link", { name: "‹ 더보기" })).toBeNull();
+  });
+
   it("success saves and goes today", async () => {
     const { router } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
     const user = await fill("  https://GP76.example.ts.net/api/v1/ ", " good-token\n");

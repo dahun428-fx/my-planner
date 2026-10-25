@@ -51,7 +51,7 @@ const draftPart = (() => {
 })();
 
 describe("chat contract", () => {
-  it("add_task: text, status line, conversation id, confirmation and undo", async () => {
+  it("add_task: text, status line, conversation id, confirmation line and toast undo", async () => {
     // Stop after `queued`, then after `thinking`, so the status line can be seen on its way.
     const first = gatedResponse(addTask, [2, 3]);
     const bodies = serveChat(first.response, () => sseResponse(golden("chat_replay.sse")));
@@ -68,13 +68,17 @@ describe("chat contract", () => {
     expect(await screen.findByText(ADD_TASK_TEXT)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByLabelText(copy.chat.thinking)).toBeNull());
     expect(screen.queryByText(copy.chat.queued)).toBeNull();
-    // add_task itself is not drawn; the confirmation stands for it (R4b), with undo.
+    // add_task itself is not drawn; the confirmation stands for it (R4b) as one line, and the
+    // toast holds the undo (SP9 9.6).
     const undo = await screen.findByRole("button", { name: copy.chat.undo });
+    const log = screen.getByRole("log");
+    expect(within(log).queryByRole("button", { name: copy.chat.undo })).toBeNull();
     if (confirmation !== null) {
-      const box = screen.getByText(confirmation);
-      expect(box.closest("[data-activity]")).toContainElement(undo);
+      const line = within(log).getByText(confirmation);
+      expect(line.closest("[data-activity]")).not.toBeNull();
+      expect(undo.closest("[role=status]")).toHaveTextContent(confirmation);
     } else {
-      expect(screen.queryByText(/✓/)).toBeNull(); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      expect(within(log).getByText(copy.chat.changed)).toBeInTheDocument(); // before R4b: still one line
     }
     expect(screen.queryByText(copy.parts.unknown)).toBeNull();
     expect(bodies[0]).toMatchObject({ conversation_id: null, checkin_id: null });

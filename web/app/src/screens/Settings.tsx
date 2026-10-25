@@ -8,6 +8,7 @@ import { sendCommand } from "../chat/command";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { MoreButton } from "../components/MoreButton";
 import { PalettePicker } from "../components/PalettePicker";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
@@ -311,7 +312,7 @@ export function Settings() {
 
   return (
     <main className={page.main}>
-      <LargeTitle title={copy.settings.title} />
+      <LargeTitle title={copy.settings.title} trailing={<MoreButton />} />
 
       <Group heading={copy.settings.connection}>
         <Row title={status} />

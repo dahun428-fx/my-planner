@@ -5,8 +5,10 @@ import type { Habit, Todo } from "../api/types.gen";
 // Later tickets add entries to these groups.
 
 const CHAT_LATER = "비서가 다시 연결되면 말할 수 있어요";
-// The back link of a screen off the tabs (check-in detail, habits).
+// The back link of the check-in detail.
 const BACK_TODAY = "‹ 오늘";
+// SP9 9.1: the back link of every screen reached from the more screen.
+const BACK_MORE = "‹ 더보기";
 
 export const copy = {
   appName: "비서",
@@ -17,6 +19,17 @@ export const copy = {
     activity: "기록",
     settings: "설정",
     navLabel: "탭",
+  },
+
+  // SP9 9.1, 10장 "더보기" row (verbatim).
+  more: {
+    title: "더보기",
+    settings: "설정",
+    activity: "기록",
+    habits: "습관",
+    status: "상태창",
+    connect: "기기 연결",
+    back: BACK_MORE,
   },
 
   status: {
@@ -77,6 +90,10 @@ export const copy = {
     inputLabel: "비서에게 보낼 말",
     undo: "되돌리기",
     undone: "되돌렸어요",
+    // SP9 9.6: the one line of a change before R4b (no confirmation came, only undo ids).
+    changed: "✓ 바꿨어요",
+    changedMany: (n: number) => `✓ ${n}개를 바꿨어요`,
+    undonePartly: (k: number) => `${k}개만 되돌렸어요`,
     messages: "대화 내용",
     openFailed: "대화를 열지 못했어요. 다시 눌러 주세요.",
     launcherBlocked: {
@@ -232,6 +249,7 @@ export const copy = {
   },
 
   connect: {
+    back: BACK_MORE,
     title: "노트북의 비서와 연결해요",
     intro: "한 번만 하면 돼요. 주소와 열쇠는 이 폰에만 저장되고 어디에도 올라가지 않아요.",
     ok: "연결 확인됨 · 비서가 답했어요",
@@ -383,8 +401,8 @@ export const copy = {
     week: (n: number) => `이번 주 ${n}번`,
     lastWeek: (n: number) => `지난주 ${n}번`,
     weekOf: (m: number, d: number, n: number) => `${m}월 ${d}일 주 ${n}번`,
-    // 6.2 habits screen and its sheets.
-    back: BACK_TODAY,
+    // 6.2 habits screen and its sheets. Back is "‹ 더보기" since SP9 9.1.
+    back: BACK_MORE,
     add: "습관 추가",
     editTitle: "습관 고치기",
     active: "챙기는 습관",

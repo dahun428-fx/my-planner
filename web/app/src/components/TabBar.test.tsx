@@ -23,4 +23,15 @@ describe("TabBar", () => {
     const hrefs = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(hrefs).toEqual(["/", "/todos/", "/activity/", "/settings/"]);
   });
+
+  it("tabs stay today, todos, activity, settings (SP9-01 leaves the bar as it is)", () => {
+    renderWithProviders(<TabBar current="today" />);
+    const labels = within(screen.getByRole("navigation")).getAllByRole("link").map((a) => a.textContent);
+    expect(labels).toEqual([copy.tabs.today, copy.tabs.todos, copy.tabs.activity, copy.tabs.settings]);
+  });
+
+  it("without a current tab no tab is marked (spec 9.1: /more/ and the screens under it)", () => {
+    renderWithProviders(<TabBar />);
+    for (const a of screen.getAllByRole("link")) expect(a).not.toHaveAttribute("aria-current");
+  });
 });

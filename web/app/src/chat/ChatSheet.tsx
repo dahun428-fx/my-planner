@@ -6,6 +6,7 @@ import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEf
 import { BlockError } from "../components/BlockError";
 import { Icon } from "../components/icons";
 import { Sheet } from "../components/Sheet";
+import { CHAT_ACTIVITY_MS, useToast } from "../components/Toast";
 import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
@@ -14,6 +15,7 @@ import { formatKst } from "../lib/time";
 import { screenHref } from "../ui/openScreen";
 import type { OpenScreen } from "../ui/primitives/types";
 import styles from "./ChatSheet.module.css";
+import { chatActivityToast } from "./activityToast";
 import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
@@ -56,6 +58,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   connRef.current = conn;
   const onSentRef = useRef(onSent);
   onSentRef.current = onSent;
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const ctx = useRef<ChatCtx>({ conversationId: null, checkinId: checkinId ?? null });
   ctx.current.checkinId = checkinId ?? null;
 
@@ -133,7 +138,11 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       onSentRef.current?.();
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
-      void saveParts(message.id, toViewParts(message), sentTo.current);
+      const parts = toViewParts(message);
+      // SP9 9.6: the answer's changes get one toast with "되돌리기" for 6 s; the chat keeps one line.
+      const changed = chatActivityToast(parts);
+      if (changed) toastRef.current.showFor(changed, CHAT_ACTIVITY_MS);
+      void saveParts(message.id, parts, sentTo.current);
     },
   });
   regenerateRef.current = () => regenerate();

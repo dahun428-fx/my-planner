@@ -120,8 +120,8 @@ function open(item: ButtonItem, ctx: PartContext): boolean {
 /**
  * ui_period_list (SP6 6.4): one day or one week of to-dos as the BE read them, titled from
  * `data.today` (never the device calendar). Rows the secretary changed carry CheckRow's --hue bar.
- * A check completes (8장); there is no undo here, the confirmation box and the activity screen
- * have it. Opening a screen works read-only and restored too (6.5).
+ * A check completes (8장); there is no undo here (SP9 9.6): the chat toast and the activity
+ * screen have it. Opening a screen works read-only and restored too (6.5).
  */
 export function PeriodList({ props, data, ctx }: PartProps<Props>) {
   const act = usePartAction();

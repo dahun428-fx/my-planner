@@ -68,7 +68,7 @@
   outline-offset: 2px;
 }
 
-/* ui_result (6.3): one block per to-do, the change pill, a grey second line, "되돌리기" at the right. */
+/* ui_result (6.3): one block per to-do, the change pill, a grey second line (no undo, SP9 9.6). */
 .item {
   display: flex;
   align-items: flex-start;
@@ -113,42 +113,6 @@
 .before {
   color: var(--muted);
 }
-/* A 32px grey pill; its hit area is 44px (SP5 9장). */
-.undo {
-  position: relative;
-  flex: none;
-  min-height: 2rem;
-  padding: 0 0.75rem;
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--raised);
-  font: inherit;
-  font-size: var(--size-meta);
-  font-weight: 600;
-  color: var(--text);
-  cursor: pointer;
-}
-.undo::after {
-  content: "";
-  position: absolute;
-  inset: -0.375rem 0;
-}
-.undo:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-.undo:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
-.undoNote {
-  flex: none;
-  max-width: 45%;
-  font-size: var(--size-meta);
-  color: var(--muted);
-  text-align: right;
-}
-
 /* ui_period_list (6.4): a small 13/600 --muted head per day, CheckRow rows under it. */
 .period {
   display: flex;

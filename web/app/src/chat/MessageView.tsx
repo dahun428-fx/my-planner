@@ -1,7 +1,5 @@
 import { registerChatParts } from "../ui/chat/registerChatParts";
 import type { UIMessage } from "ai";
-import { useState } from "react";
-import { type UndoBlockReason, useUndo } from "../api/actions";
 import { Markdown } from "../components/Markdown";
 import { copy } from "../lib/copy";
 import type { OpenScreen } from "../ui/primitives/types";
@@ -14,38 +12,16 @@ import styles from "./ChatSheet.module.css";
 // SP6 11.2: the chat cards join the registry with the chat sheet's bundle, before anything draws.
 registerChatParts();
 
-type UndoState = { kind: "idle" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
-
-// The grey box of a data-activity part (12장 R4b) and its undo. Before R4b there is no
-// confirmation: then only the undo button shows. Read-only (offline, an answer coming) turns the
-// undo off like every other write.
-function ActivityBox({ confirmation, undoId, readOnly }: { confirmation: string | null; undoId: number | null; readOnly: boolean }) {
-  const { undo: send, busy } = useUndo();
-  const [undo, setUndo] = useState<UndoState>({ kind: "idle" });
-
-  const run = async (id: number) => {
-    if (readOnly) return;
-    const out = await send(id);
-    if (out?.kind === "undone" || out?.kind === "already_undone") setUndo({ kind: "done" });
-    else if (out?.kind === "blocked") setUndo({ kind: "blocked", reason: out.reason });
-  };
-
-  let trailing: React.ReactNode = null;
-  if (undo.kind === "done") trailing = <span className={styles.note}>{copy.chat.undone}</span>;
-  else if (undo.kind === "blocked") trailing = <span className={styles.note}>{copy.activity.undoBlocked[undo.reason]}</span>;
-  else if (undoId !== null) {
-    trailing = (
-      <button type="button" className={styles.undo} disabled={readOnly || busy.has(undoId)} onClick={() => void run(undoId)}>
-        {copy.chat.undo}
-      </button>
-    );
-  }
-  if (confirmation === null && trailing === null) return null;
+// SP9 9.6: a data-activity part (12장 R4b) is one line, "✓ …" in the secondary text colour, with
+// no button (a confirmation that does not already start with a mark ✓ → ✗ ↩, e.g. "컨디션 7 기록했어요.", gets one): the undo is the toast's for 6 s, then the activity screen's. Before R4b no
+// confirmation comes, only undo ids: then a fixed line says something changed. Nothing came at all
+// (no confirmation, nothing to undo): no line.
+export function ActivityLine({ confirmation, undoable = false }: { confirmation: string | null; undoable?: boolean }) {
+  if (confirmation === null && !undoable) return null;
   return (
-    <div className={confirmation !== null ? styles.activity : styles.activityBare} data-activity="">
-      {confirmation !== null && <span className={styles.activityText}>{confirmation}</span>}
-      {trailing}
-    </div>
+    <p className={styles.activity} data-activity="">
+      {confirmation === null ? copy.chat.changed : /^[✓→✗↩]/.test(confirmation) ? confirmation : `✓ ${confirmation}`}
+    </p>
   );
 }
 
@@ -79,8 +55,8 @@ export function MessageView({
       </div>
     );
   }
-  // 11.4: a box that ui_result already shows is left out, but never in a restored message.
-  // A ui_result hides the box only when it really draws (UiPart's own test: known name, props the catalog takes).
+  // 11.4 (SP9 9.6): a line that ui_result already shows is left out, but never in a restored message.
+  // A ui_result hides the line only when it really draws (UiPart's own test: known name, props the catalog takes).
   const restored = parts.some((p) => p.kind === "ui" && p.restored === true);
   const shown = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
   return (
@@ -96,7 +72,7 @@ export function MessageView({
             </div>
           );
         }
-        return <ActivityBox key={i} confirmation={p.confirmation} undoId={p.undoIds[0] ?? null} readOnly={readOnly} />;
+        return <ActivityLine key={i} confirmation={p.confirmation} undoable={p.undoIds.length > 0} />;
       })}
     </div>
   );

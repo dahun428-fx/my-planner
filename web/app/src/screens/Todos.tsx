@@ -9,6 +9,7 @@ import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
+import { MoreButton } from "../components/MoreButton";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
@@ -294,6 +295,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
             <button type="button" className={`${styles.add} pressable`} aria-label={copy.todos.add} disabled={!writable || !todayDate} onClick={() => setAdding(true)}>
               <Icon name="plus" />
             </button>
+            <MoreButton />
           </span>
         }
       />

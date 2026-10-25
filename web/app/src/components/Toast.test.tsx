@@ -7,7 +7,11 @@ import { saveConn } from "../lib/connection";
 import { TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
 import { ConnectionContext } from "../lib/ConnectionProvider";
-import { ToastProvider, useToast } from "./Toast";
+import { chatActivityToast } from "../chat/activityToast";
+import type { ViewPart } from "../chat/parts";
+import type { ConnState } from "../lib/connection";
+import health from "../test/fixtures/health.json";
+import { CHAT_ACTIVITY_MS, ToastProvider, useToast } from "./Toast";
 
 afterEach(() => vi.useRealTimers());
 
@@ -154,4 +158,155 @@ describe("Toast", () => {
     act(() => void vi.advanceTimersByTime(200));
     expect(screen.getByRole("status")).not.toHaveTextContent("다시 연결됐어요");
   });
+
+  describe("chat activity (SP9 9.6)", () => {
+    const ONLINE = { kind: "online", health, degraded: null } as unknown as ConnState;
+    // The chat's undo is off unless online, so these mount under a known connection state.
+    const mount = (ui: React.ReactElement, state: ConnState = ONLINE) => {
+      saveConn({ beUrl: TEST_BE_URL, token: TEST_TOKEN });
+      const value = { state, conn: null, ready: true, recheck: async () => {}, onReconnect: () => () => {} };
+      return render(
+        <ConnectionContext.Provider value={value}>
+          <ToastProvider>{ui}</ToastProvider>
+        </ConnectionContext.Provider>,
+      );
+    };
+    const change = (id: number, confirmation: string): ViewPart => ({ kind: "activity", confirmation, undoIds: [id], activityIds: [id] });
+    function Chat({ parts }: { parts: ViewPart[] }) {
+      const toast = useToast();
+      return (
+        <>
+          <button type="button" onClick={() => toast.showFor(chatActivityToast(parts)!, CHAT_ACTIVITY_MS)}>
+            chat
+          </button>
+          <button type="button" onClick={() => toast.show({ text: "→ 내일로: 책 읽기", undoId: 7 })}>
+            screen
+          </button>
+        </>
+      );
+    }
+
+    it("a chat activity toast stays 6 s with its undo; another toast keeps 4 s", async () => {
+      expect(CHAT_ACTIVITY_MS).toBe(6000);
+      vi.useFakeTimers();
+      mount(<Chat parts={[change(913, "✓ 할 일 3개를 내일로 옮겼어요")]} />); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      await press("chat");
+      expect(screen.getByRole("status")).toHaveTextContent("✓ 할 일 3개를 내일로 옮겼어요"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      act_(5900);
+      expect(screen.getByRole("button", { name: copy.chat.undo })).toBeInTheDocument();
+      act_(200);
+      expect(screen.queryByRole("button", { name: copy.chat.undo })).toBeNull();
+      await press("screen");
+      act_(3900);
+      expect(screen.getByRole("status")).toHaveTextContent("→ 내일로: 책 읽기");
+      act_(200);
+      expect(screen.getByRole("status")).not.toHaveTextContent("→ 내일로: 책 읽기");
+    });
+
+    it("three changes in one answer: one toast, the count", async () => {
+      mount(<Chat parts={[change(911, "✓ 추가: 치과"), change(912, "✓ 추가: 장보기"), change(913, "✓ 추가: 운동")]} />); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      await press("chat");
+      expect(screen.getByRole("status")).toHaveTextContent(/^✓ 3개를 바꿨어요되돌리기$/); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      expect(screen.getAllByRole("button", { name: copy.chat.undo })).toHaveLength(1);
+    });
+
+    function serveUndos(blocked: number | null) {
+      const hits: number[] = [];
+      server.use(
+        http.post(`${BASE}/activity/:id/undo`, ({ params }) => {
+          const id = Number(params.id);
+          hits.push(id);
+          if (id === blocked) return HttpResponse.json({ error: { code: "superseded", message: "x" } }, { status: 409 });
+          return HttpResponse.json({ status: "undone", activity_id: 990 + id, undone: id, confirmation: `↩ 되돌림 ${id}` });
+        }),
+      );
+      return hits;
+    }
+    const three = [change(911, "a"), change(912, "b"), change(913, "c")];
+
+    it("undo undoes all of them, newest first", async () => {
+      const hits = serveUndos(null);
+      const onUndone = vi.fn();
+      function WithSub() {
+        const toast = useToast();
+        return (
+          <>
+            <Chat parts={three} />
+            <button type="button" onClick={() => toast.onUndone(onUndone)}>
+              sub
+            </button>
+          </>
+        );
+      }
+      mount(<WithSub />);
+      await userEvent.click(screen.getByText("sub"));
+      await userEvent.click(screen.getByText("chat"));
+      await userEvent.click(screen.getByRole("button", { name: copy.chat.undo }));
+      expect(await screen.findByText(copy.chat.undone)).toBeInTheDocument();
+      expect(hits).toEqual([913, 912, 911]);
+      expect(screen.queryByRole("button", { name: copy.chat.undo })).toBeNull();
+      expect(onUndone).toHaveBeenCalledTimes(1);
+    });
+
+    it("the second refused: stops there and says how many", async () => {
+      const hits = serveUndos(912);
+      mount(<Chat parts={three} />);
+      await userEvent.click(screen.getByText("chat"));
+      await userEvent.click(screen.getByRole("button", { name: copy.chat.undo }));
+      expect(await screen.findByText("1개만 되돌렸어요")).toBeInTheDocument();
+      expect(hits).toEqual([913, 912]);
+    });
+
+    it("the first refused: the reason, as for one", async () => {
+      serveUndos(913);
+      mount(<Chat parts={three} />);
+      await userEvent.click(screen.getByText("chat"));
+      await userEvent.click(screen.getByRole("button", { name: copy.chat.undo }));
+      expect(await screen.findByText(copy.activity.undoBlocked.superseded)).toBeInTheDocument();
+    });
+
+    it("a second press while undoing sends nothing more", async () => {
+      const hits = serveUndos(null);
+      mount(<Chat parts={three} />);
+      await userEvent.click(screen.getByText("chat"));
+      const btn = screen.getByRole("button", { name: copy.chat.undo });
+      await act(async () => {
+        btn.click();
+        btn.click();
+      });
+      expect(await screen.findByText(copy.chat.undone)).toBeInTheDocument();
+      expect(hits).toEqual([913, 912, 911]);
+    });
+
+    it("offline: the chat undo is off; a screen toast's undo is not", async () => {
+      mount(<Chat parts={three} />, { kind: "offline", lastOk: null });
+      await userEvent.click(screen.getByText("chat"));
+      expect(screen.getByRole("button", { name: copy.chat.undo })).toBeDisabled();
+      await userEvent.click(screen.getByText("screen"));
+      expect(screen.getByRole("button", { name: copy.chat.undo })).toBeEnabled();
+    });
+
+    it("the second fails offline: stops there and says how many", async () => {
+      const hits: number[] = [];
+      server.use(
+        http.post(`${BASE}/activity/:id/undo`, ({ params }) => {
+          const id = Number(params.id);
+          hits.push(id);
+          if (id === 912) return HttpResponse.error();
+          return HttpResponse.json({ status: "undone", activity_id: 990 + id, undone: id, confirmation: `↩ 되돌림 ${id}` });
+        }),
+      );
+      mount(<Chat parts={three} />);
+      await userEvent.click(screen.getByText("chat"));
+      await userEvent.click(screen.getByRole("button", { name: copy.chat.undo }));
+      expect(await screen.findByText("1개만 되돌렸어요")).toBeInTheDocument();
+      expect(hits).toEqual([913, 912, 912]); // sendOnce tries a network error once more
+    });
+
+    it("nothing to undo: no toast", () => {
+      expect(chatActivityToast([{ kind: "activity", confirmation: "✓ 초안", undoIds: [], activityIds: [1] }])).toBeNull(); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      expect(chatActivityToast([{ kind: "activity", confirmation: null, undoIds: [5], activityIds: [5] }])).toEqual({ text: copy.chat.changed, undoIds: [5] });
+    });
+  });
 });
+const act_ = (ms: number) => act(() => void vi.advanceTimersByTime(ms));

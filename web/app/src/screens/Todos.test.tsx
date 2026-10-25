@@ -66,6 +66,11 @@ const needsConfirm = () =>
 const tabOf = (name: string) => screen.getByRole("radio", { name });
 
 describe("Todos", () => {
+  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+    renderWithProviders(<Todos />);
+    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+  });
+
   it("writes and the launcher go off together when the BE stops taking writes", async () => {
     serve();
     actions(() => HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 }));

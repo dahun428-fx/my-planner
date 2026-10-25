@@ -136,7 +136,7 @@ describe("PeriodList", () => {
     expect(screen.getByRole("checkbox", { name: copy.parts.checkLabel("운동") })).toBeChecked();
   });
 
-  it("no undo here", () => {
+  it("no undo here (SP9 9.6: the toast undoes)", () => {
     renderWithProviders(<PeriodList props={{ day: TODAY, highlight_task_ids: [1] }} data={dayData(TODAY, [todo(1, "운동")])} ctx={makeCtx({ onOpen: vi.fn() })} />);
     expect(screen.queryByRole("button", { name: copy.chat.undo })).toBeNull();
   });

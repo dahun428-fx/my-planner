@@ -21,10 +21,12 @@ import "../screens/Activity";
 import "../screens/Checkin";
 import "../screens/Connect";
 import "../screens/Habits";
+import "../screens/More";
 import "../screens/Settings";
 import "../screens/Today";
 import "../screens/Todos";
 import "../components/LargeTitle";
+import "../components/MoreButton";
 import "../components/TabBar";
 import "../styles/page.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
