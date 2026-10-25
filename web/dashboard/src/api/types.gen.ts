@@ -818,14 +818,28 @@ export interface RecentXp {
  * via the `definition` "StatusStat".
  */
 export interface StatusStat {
+  activity: StatActivity;
   area: "career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life";
+  bonus: number;
   debuff: boolean;
+  effective_score: number | null;
   label: string;
   period: string | null;
   prev_period: string | null;
   prev_score: number | null;
   recovery_quest: string | null;
   score: number | null;
+}
+/**
+ * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StatActivity".
+ */
+export interface StatActivity {
+  body_days: number;
+  habit_checks: number;
+  tasks: number;
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema

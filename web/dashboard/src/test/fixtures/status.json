@@ -16,7 +16,14 @@
       "prev_score": 6,
       "prev_period": "2026-Q3",
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.5,
+      "effective_score": 6.5,
+      "activity": {
+        "tasks": 6,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "finance",
@@ -26,7 +33,14 @@
       "prev_score": 5,
       "prev_period": "2026-Q3",
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": 5.0,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "health",
@@ -36,7 +50,14 @@
       "prev_score": 6,
       "prev_period": "2026-Q3",
       "debuff": true,
-      "recovery_quest": "저녁에 20분 걷기"
+      "recovery_quest": "저녁에 20분 걷기",
+      "bonus": 1.0,
+      "effective_score": 5.0,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 21,
+        "body_days": 0
+      }
     },
     {
       "area": "relationships",
@@ -46,7 +67,14 @@
       "prev_score": 7,
       "prev_period": "2026-Q3",
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": 7.0,
+      "activity": {
+        "tasks": 1,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "learning",
@@ -56,7 +84,14 @@
       "prev_score": 6,
       "prev_period": "2026-Q3",
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.2,
+      "effective_score": 6.2,
+      "activity": {
+        "tasks": 2,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "quality_of_life",
@@ -66,7 +101,14 @@
       "prev_score": 5,
       "prev_period": "2026-Q3",
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.1,
+      "effective_score": 5.1,
+      "activity": {
+        "tasks": 1,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     }
   ],
   "main_quests": [

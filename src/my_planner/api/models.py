@@ -487,6 +487,14 @@ class StatusHp(_Model):
     score: int | None
 
 
+class StatActivity(_Model):
+    """지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0."""
+
+    tasks: int
+    habit_checks: int
+    body_days: int
+
+
 class StatusStat(_Model):
     area: AreaName
     label: str
@@ -496,6 +504,9 @@ class StatusStat(_Model):
     prev_period: str | None
     debuff: bool
     recovery_quest: str | None
+    bonus: float  # 0.0~2.0, 소수 한 자리. 바탕(`score`) 위에 따로 얹는다(SP8 5.3)
+    effective_score: float | None  # min(10, score + bonus). `score`가 없으면 null
+    activity: StatActivity
 
 
 class FirstSteps(_Model):

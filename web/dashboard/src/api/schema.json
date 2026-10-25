@@ -3228,6 +3228,31 @@
           "title": "RecentXp",
           "type": "object"
         },
+        "StatActivity": {
+          "additionalProperties": false,
+          "description": "지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.",
+          "properties": {
+            "body_days": {
+              "title": "Body Days",
+              "type": "integer"
+            },
+            "habit_checks": {
+              "title": "Habit Checks",
+              "type": "integer"
+            },
+            "tasks": {
+              "title": "Tasks",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "tasks",
+            "habit_checks",
+            "body_days"
+          ],
+          "title": "StatActivity",
+          "type": "object"
+        },
         "StatusHp": {
           "additionalProperties": false,
           "properties": {
@@ -3257,6 +3282,9 @@
         "StatusStat": {
           "additionalProperties": false,
           "properties": {
+            "activity": {
+              "$ref": "#/$defs/StatActivity"
+            },
             "area": {
               "enum": [
                 "career",
@@ -3269,9 +3297,24 @@
               "title": "Area",
               "type": "string"
             },
+            "bonus": {
+              "title": "Bonus",
+              "type": "number"
+            },
             "debuff": {
               "title": "Debuff",
               "type": "boolean"
+            },
+            "effective_score": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Effective Score"
             },
             "label": {
               "title": "Label",
@@ -3341,7 +3384,10 @@
             "prev_score",
             "prev_period",
             "debuff",
-            "recovery_quest"
+            "recovery_quest",
+            "bonus",
+            "effective_score",
+            "activity"
           ],
           "title": "StatusStat",
           "type": "object"
