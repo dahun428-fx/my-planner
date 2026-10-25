@@ -137,11 +137,16 @@ def _migrations() -> list[tuple[int, Path]]:
     return found
 
 
-def migrate(conn: sqlite3.Connection, *, upto: int | None = None) -> int:
+def migrate(conn: sqlite3.Connection, *, upto: int | None = None, tz: str = "Asia/Seoul") -> int:
     """`user_version`보다 번호가 큰 마이그레이션만 번호순으로, 하나씩 트랜잭션 안에서 적용한다.
 
+    번호마다(SP9 11장): `BEGIN` + 그 번호의 SQL(COMMIT 없음) → 그 번호의 Python 훅(`migrations.hooks.HOOKS`, 있으면
+    `hook(conn, tz)`) → `PRAGMA user_version = N` → `COMMIT`. 하나라도 실패하면 `ROLLBACK`(SQL, 훅의 쓰기,
+    `user_version` 모두 그대로). `tz`는 훅이 UTC를 현지 날짜·시각으로 바꿀 때 쓴다(앱은 `settings.timezone`).
     `upto`를 주면 그 번호까지만 적용한다(옛 판 DB를 만드는 시험용).
     """
+    from my_planner.store.migrations.hooks import HOOKS
+
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     migrations = _migrations()
     for expected, (number, _) in enumerate(migrations, start=1):
@@ -154,8 +159,14 @@ def migrate(conn: sqlite3.Connection, *, upto: int | None = None) -> int:
             continue
         sql = path.read_text(encoding="utf-8")
         try:
-            # executescript는 열린 트랜잭션을 먼저 커밋하고, 그 밖의 트랜잭션 제어는 하지 않는다.
-            conn.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version = {number};\nCOMMIT;")
+            # executescript는 열린 트랜잭션을 먼저 커밋하고, 그 밖의 트랜잭션 제어는 하지 않는다: 스크립트의 BEGIN이
+            # 연 트랜잭션은 끝난 뒤에도 열려 있고, 훅과 user_version이 그 안에서 돈다
+            conn.executescript(f"BEGIN;\n{sql}")
+            hook = HOOKS.get(number)
+            if hook is not None:
+                hook(conn, tz)
+            conn.execute(f"PRAGMA user_version = {number}")
+            conn.execute("COMMIT")
         except Exception:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")

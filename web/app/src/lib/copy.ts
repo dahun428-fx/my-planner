@@ -270,7 +270,6 @@ export const copy = {
     dateTomorrow: "내일",
     datePick: "날짜 고르기",
     dateNone: "없음",
-    timeLabel: "시각",
     noteLabel: "메모",
     close: "닫기",
   },

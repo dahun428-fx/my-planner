@@ -3,8 +3,9 @@
 변경 도구는 데이터 변경, `tool_events_log`, `activity`(SP3-4 스펙 5.2)를 같은 트랜잭션에서 쓰고, `ctx.events`에
 이벤트를 쌓고, `tasks.md`를 다시 만든다. 로그에는 제목이나 인자를 남기지 않는다.
 
-회차 차례(`ctx.run_turn`, SP3-4 10.1 A1)에서는 `drop_task`, `set_priorities`, `scheduled_at`을 바꾸는 `update_task`,
-시각 있는 할 일의 `move_task`가 입력을 검증한 뒤 아무것도 바꾸지 않고 확인 토큰만 만든다(`_request_confirm`, A2).
+회차 차례(`ctx.run_turn`, SP3-4 10.1 A1)에서는 `drop_task`, `set_priorities`가 입력을 검증한 뒤 아무것도 바꾸지 않고
+확인 토큰만 만든다(`_request_confirm`, A2). SP9부터 할 일은 시각(`scheduled_at`)을 받지 않는다(5.4, ADR 0015: 시간이
+정해진 일은 `create_event`): `scheduled_at` 확인은 `update_event`로 옮겼다.
 사용자 메시지에 답하는 차례는 SP1 그대로 바로 적용한다(A3). `add_task`는 언제나 바로(A4).
 """
 
@@ -46,7 +47,6 @@ from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.store.views import habits_view, moment_counts, moment_dict, todo_refs
-from my_planner.timefmt import api_time
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import (
     CARDS_ORDER_TARGET,
@@ -72,14 +72,10 @@ from my_planner.tools.confirmations import (
     chapter_confirmed_line,
     condition_summary,
     confirm_button_drop,
-    confirm_button_move,
     confirm_button_priorities,
-    confirm_button_schedule,
     confirm_drop_summary,
-    confirm_move_summary,
     confirm_priorities_summary,
     confirm_requested_summary,
-    confirm_schedule_summary,
     confirmation_line,
     drafts_expired_summary,
     dropped_line,
@@ -88,6 +84,12 @@ from my_planner.tools.confirmations import (
     period_label,
     titles_summary,
     xp_granted_line,
+)
+from my_planner.tools.events import (
+    MSG_TIMED_TASK,
+    EventTools,
+    timed_task_message,
+    ui_event_items,
 )
 from my_planner.tools.habits import HabitTools
 from my_planner.tools.memos import MemoTools
@@ -98,6 +100,7 @@ if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.activity import ConfirmsRepo
     from my_planner.store.repos.body import BodyRepo
+    from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.memos import MemosRepo
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import RunsRepo
@@ -134,7 +137,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
+class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, EventTools):
     def __init__(
         self,
         *,
@@ -160,6 +163,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         runs: RunsRepo | None = None,
         memos: MemosRepo | None = None,
         body: BodyRepo | None = None,
+        events: EventsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -194,6 +198,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         self.memos_export_path = self.export_path.parent / "memos.md"  # data/exports/memos.md
         # 몸 기록(SP8 7장). None이면 `record_body_days`가 거절하고 상태창 `body`는 null. 내보내기는 없다(11장)
         self.body = body
+        # 스케줄(SP9 5장). None이면 일정 도구·동작이 거절한다
+        self.events = events
 
     # --- 공통 ---
 
@@ -210,19 +216,6 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             return date.fromisoformat(v)
         except ValueError:
             return f"{name}은(는) YYYY-MM-DD 형식으로 알려 주세요."
-
-    def _parse_dt(self, v: Any) -> datetime | None | str:
-        if v is None:
-            return None
-        if not isinstance(v, str):
-            return "scheduled_at은 날짜와 시각(예: 2026-10-25T14:00)으로 알려 주세요."
-        try:
-            dt = datetime.fromisoformat(v)
-        except ValueError:
-            return "scheduled_at은 날짜와 시각(예: 2026-10-25T14:00)으로 알려 주세요."
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=self.tz)
-        return dt
 
     def _check_title(self, v: Any) -> str | None:
         if not isinstance(v, str) or not v.strip():
@@ -378,6 +371,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         scheduled_at: Any = None,
         parent_id: Any = None,
         note: Any = None,
+        *,
+        timed_msg: str = MSG_TIMED_TASK,
     ) -> dict[str, Any] | str:
         """새 할 일 입력 검증(add_task, propose_tasks 공용). 맞으면 `TasksRepo.create` 인자, 아니면 오류 문구."""
         if (m := self._check_title(title)) is not None:
@@ -388,20 +383,17 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return pf
-        sa = self._parse_dt(scheduled_at)
-        if isinstance(sa, str):
-            return sa
+        if scheduled_at is not None:  # SP9 5.4: 시각이 있는 일은 일정이다
+            return timed_msg
         if parent_id is not None and (
             not isinstance(parent_id, int) or self.tasks.get(parent_id) is None
         ):
             return f"{parent_id}번 할 일이 없어서 첫 걸음으로 붙일 수 없어요."
-        if pf is None and sa is not None:  # 시각만 주면 그 날이 하려는 날이다
-            pf = logical_date(sa, self.tz, self.boundary)
         return {
             "title": title.strip(),
             "areas": checked_areas,
             "planned_for": pf,
-            "scheduled_at": sa,
+            "scheduled_at": None,
             "parent_id": parent_id,
             "note": note if isinstance(note, str) else "",
         }
@@ -411,7 +403,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         unknown = set(inputs) - _NEW_FIELDS
         if unknown:
             return _err(f"알 수 없는 항목이 있어요: {', '.join(sorted(unknown))}")
-        new = self._check_new(**inputs)
+        new = self._check_new(**inputs, timed_msg=timed_task_message(ctx))
         if isinstance(new, str):
             return _err(new)
         with self.tasks.transaction():
@@ -434,7 +426,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             unknown = set(item) - _NEW_FIELDS
             if unknown:
                 return _err(f"{i}번째 제안에 알 수 없는 항목이 있어요: {', '.join(sorted(unknown))}")
-            new = self._check_new(**item)
+            new = self._check_new(**item, timed_msg=timed_task_message(ctx))
             if isinstance(new, str):
                 return _err(f"{i}번째 제안: {new}")
             checked.append(new)
@@ -517,19 +509,9 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
                 return _err("메모는 글로 알려 주세요.")
             changes["note"] = fields["note"]
         if "scheduled_at" in fields:
-            sa = self._parse_dt(fields["scheduled_at"])
-            if isinstance(sa, str):
-                return _err(sa)
-            changes["scheduled_at"] = sa
-            if sa is not None:  # 시각을 바꾸면 하려는 날도 그 시각의 논리적 날짜로 다시 정한다
-                changes["planned_for"] = logical_date(sa, self.tz, self.boundary)
-        if self._confirm_first(ctx) and "scheduled_at" in changes and changes["scheduled_at"] != t.scheduled_at:
-            sa = changes["scheduled_at"]
-            args = {"id": t.id, **fields, "scheduled_at": api_time(sa) if sa is not None else None}
-            return self._request_confirm(
-                ctx, "update_task", args, confirm_schedule_summary(t.title, local(sa, self.tz) if sa else None),
-                confirm_button_schedule(t.title),
-            )
+            if fields["scheduled_at"] is not None:  # SP9 5.4: 시각을 붙이지 않는다. null(지우기)만 받는다
+                return _err(timed_task_message(ctx))
+            changes["scheduled_at"] = None
         prior = {**self._before(t), "title": t.title, "note": t.note, "areas": [a.value for a in t.areas]}
         before = {k: prior[k] for k in changes}  # 바뀐 필드의 이전 값만
         with self.tasks.transaction():
@@ -546,12 +528,6 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return _err(pf)
-        # 날짜를 옮기면 시각도 바뀐다(A2). 같은 날로 옮기면 바뀌는 것이 없어 바로 적용한다
-        if self._confirm_first(ctx) and t.scheduled_at is not None and pf != t.planned_for:
-            args = {"id": t.id, "planned_for": pf.isoformat() if pf is not None else None}
-            return self._request_confirm(
-                ctx, "move_task", args, confirm_move_summary(t.title, pf, self.today()), confirm_button_move(t.title)
-            )
         changes: dict[str, Any] = {"planned_for": pf}
         if pf is None:  # 날짜 없음: 시각도 함께 지운다
             changes["scheduled_at"] = None
@@ -586,6 +562,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             extra = [priorities_target(c, p) for c, p, _ in rows]  # 그 목록도 바뀐 대상이다
         with self.tasks.transaction():
             t = self.tasks.set_status(t.id, new)
+            t = _clear_time_if_open(self.tasks, t)  # 다시 열면 옛 시각은 버린다(SP9 5.4)
             out = self._finish(ctx, kind, t, undo=undo, extra=extra)
             if new is TaskStatus.done:  # 다시 완료해도 한 번만(`task:<id>`, U6)
                 self._grant(ctx, source_kind="task_done", source_ref=f"task:{t.id}",
@@ -1141,6 +1118,11 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools):
             return _err(f"화면 조각 형식이 맞지 않아요: {err}")
         return self._draw("ui_habit_check", {"date": day, **extra})
 
+    @_tool
+    def ui_events(self, ctx: RunContext, items: Any = None, **extra: Any) -> dict[str, Any]:
+        """그날 일정 카드(SP9 9.8): 그리기만 한다. `items`는 `list_events` 항목 그대로(1~10개)."""
+        return self._draw("ui_events", {"items": ui_event_items(items), **extra})
+
     def ui_habit_list(self, day: Any) -> list[dict[str, Any]]:
         """화면 조각의 `data.habits`(그 날짜 기준 활성 습관 `Habit`). 날짜가 틀리거나 습관 저장소가 없으면 빈 목록. 읽기만 한다."""
         if self.habits is None or not isinstance(day, str):
@@ -1402,6 +1384,19 @@ def _dt(v: Any) -> datetime | None:
     return from_iso(v) if v else None
 
 
+def _clear_time_if_open(tasks: TasksRepo, t: Task) -> Task:
+    """SP9 5.4: 열린 할 일은 시각을 갖지 않는다. 다시 열기와 되돌리기가 옛 `scheduled_at`을 되살리지 않게 지운다."""
+    if t.status is TaskStatus.open and t.scheduled_at is not None:
+        return tasks.update(t.id, scheduled_at=None)
+    return t
+
+
+def _open_time(tools: Tools, task_id: int, value: Any) -> datetime | None:
+    """되돌릴 `scheduled_at`: 할 일이 열려 있으면 언제나 None(옛 시각을 되살리지 않는다)."""
+    t = tools.tasks.get(task_id)
+    return None if t is not None and t.status is TaskStatus.open else _dt(value)
+
+
 def _undo_task_added(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
     """소프트 삭제(`deleted_at` = 지금). 상태와 완료 시각은 그대로 둔다."""
     t = tools.tasks.get(undo["task_id"])
@@ -1417,7 +1412,7 @@ def _undo_task_updated(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> s
     if "planned_for" in before:
         changes["planned_for"] = date.fromisoformat(before["planned_for"]) if before["planned_for"] else None
     if "scheduled_at" in before:
-        changes["scheduled_at"] = _dt(before["scheduled_at"])
+        changes["scheduled_at"] = _open_time(tools, undo["task_id"], before["scheduled_at"])
     tools.tasks.update(undo["task_id"], **changes)
     return None
 
@@ -1426,7 +1421,7 @@ def _undo_task_moved(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str
     pf = undo["planned_for"]
     tools.tasks.update(
         undo["task_id"], event_kind="moved", planned_for=date.fromisoformat(pf) if pf else None,
-        scheduled_at=_dt(undo["scheduled_at"]),
+        scheduled_at=_open_time(tools, undo["task_id"], undo["scheduled_at"]),
     )
     return None
 
@@ -1436,6 +1431,8 @@ def _undo_task_status(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> st
     때만 되살리고, 차 있으면 `superseded`(쓴 것은 바깥이 되돌린다)."""
     tid = undo["task_id"]
     tools.tasks.restore(tid, status=undo["status"], completed_at=_dt(undo["completed_at"]), deleted_at=None)
+    if (t := tools.tasks.get(tid)) is not None:
+        _clear_time_if_open(tools.tasks, t)
     for cadence, period, rank in undo.get("priorities", []):
         if not tools.tasks.restore_priority(cadence, period, rank, tid):
             return SUPERSEDED

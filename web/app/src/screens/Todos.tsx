@@ -356,7 +356,6 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
           open={adding}
           onClose={() => setAdding(false)}
           defaultDate={todayDate}
-          dayBoundary={todayView.kind === "live" ? todayView.data.day_boundary : undefined}
           onAdded={() => void refreshAll()}
         />
       )}

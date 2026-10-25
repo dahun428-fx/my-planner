@@ -27,6 +27,7 @@ ErrorCode = Literal[
     "invalid_request", "unauthorized", "not_found", "conflict", "superseded", "undo_expired", "too_large",
     "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal", "unavailable",
     "checkin_time_invalid", "memo_conflict", "too_many_memos", "too_many_pinned",
+    "remind_invalid", "start_not_in_weekdays", "too_many_events", "range_too_long",
 ]
 
 
@@ -228,7 +229,7 @@ class TodayBrief(_Model):
 
 
 class TodayTodo(_Model):
-    group: Literal["priority", "scheduled", "open"]
+    group: Literal["priority", "scheduled", "open"]  # "scheduled"는 SP9부터 죽은 갈래(열린 할 일에 시각이 없다)
     todo: Todo
 
 
@@ -354,8 +355,73 @@ class Memo(_Model):
     updated_at: str
 
 
+RemindMin = Literal[0, 10, 30, 60, 1440]
+WeekdayName = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+class EventItem(_Model):
+    """그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은
+    null, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,
+    null 알림 없음."""
+
+    event_id: int
+    date: str
+    start: str | None
+    end: str | None
+    all_day: bool
+    title: str
+    area: AreaName | None
+    remind_min: RemindMin | None
+    repeat: Literal["none", "daily", "weekly", "monthly"]
+    origin: Literal["user", "chat", "migrated"]
+
+
+class EventList(_Model):
+    """`GET /events?start=&end=` (SP9 5.6): 기간(현지 날짜, 포함, 최대 62일, 넘으면 422 `range_too_long`) 안의 그날
+    일정. 날짜, 하루 종일 먼저, 시작 시각순. 건너뛴 날은 없다."""
+
+    start: str
+    end: str
+    items: list[EventItem]
+
+
+class EventDetail(_Model):
+    """`GET /events/{id}` (SP9 5.6): 정의 하나. `date`는 첫 날(현지), `time`은 현지 `HH:MM`(하루 종일은 null),
+    `weekdays`는 매주 반복의 요일(그 밖에는 null), `repeat_until`은 마지막이 될 수 있는 날(포함, null이면 끝없음).
+    `skipped_dates`: 이번만 건너뛴 날. 동작(`create_event`, `update_event`)의 칸 이름과 같다."""
+
+    id: int
+    title: str
+    date: str
+    time: str | None
+    all_day: bool
+    duration_min: int | None
+    repeat: Literal["none", "daily", "weekly", "monthly"]
+    weekdays: list[WeekdayName] | None
+    repeat_until: str | None
+    remind_min: RemindMin | None
+    area: AreaName | None
+    note: str
+    origin: Literal["user", "chat", "migrated"]
+    skipped_dates: list[str]
+    created_at: str
+    updated_at: str
+
+
+class MissedReminder(_Model):
+    """오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`
+    (알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null). 채우기는 SP9-06."""
+
+    event_id: int
+    date: str
+    start: str | None
+    title: str
+    outcome: Literal["missed", "failed", "skipped"]
+
+
 class Today(_Model):
-    """`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`."""
+    """`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의
+    그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3(SP9-06이 채운다)."""
 
     date: str
     weekday: str
@@ -366,6 +432,8 @@ class Today(_Model):
     checkins: list[CheckinSummary]
     cards: list[AppCard]
     habits: list[Habit]
+    events: list[EventItem]
+    missed_reminders: list[MissedReminder]
 
 
 class WeekDay(_Model):
@@ -1076,6 +1144,10 @@ MODELS: dict[str, type[BaseModel]] = {
     "Memo": Memo,
     "MemoItem": MemoItem,
     "MemoList": MemoList,
+    "EventItem": EventItem,
+    "EventList": EventList,
+    "EventDetail": EventDetail,
+    "MissedReminder": MissedReminder,
     "ClientErrorBody": ClientErrorBody,
     "RecoveryNoticeBody": RecoveryNoticeBody,
     "RecoveryNoticeSent": RecoveryNoticeSent,

@@ -289,7 +289,7 @@ class CheckinTimeTools:
         return self._chat_confirm(ctx, args, summary, button)
 
     def _chat_confirm(
-        self: Tools, ctx: RunContext, args: dict[str, Any], summary: str, button: str
+        self: Tools, ctx: RunContext, args: dict[str, Any], summary: str, button: str, *, action: str = ACTION,
     ) -> dict[str, Any]:
         """사용자 차례의 확인 요청: 토큰(10분, `origin = actions`), 호출 기록, 활동 `confirm_requested`를 한 트랜잭션.
         ToolEvent의 `card`는 앱 답 스트림에 확인 카드(`ui_confirm`)를 붙이라는 표시다."""
@@ -298,10 +298,10 @@ class CheckinTimeTools:
         assert self.confirms is not None
         with self.tasks.transaction():
             p = self.confirms.create(
-                action=ACTION, args=args, summary=summary, origin="actions",
+                action=action, args=args, summary=summary, origin="actions",
                 expires_at=self.clock.now() + CHAT_CONFIRM_TTL, run_id=ctx.run_id, conversation_id=ctx.conversation_id,
             )
-            data = {"action": ACTION, "summary": summary, "button": button, "confirm_token": p.token}
+            data = {"action": action, "summary": summary, "button": button, "confirm_token": p.token}
             self.tasks.log_tool_event(
                 ctx.run_id, ctx.conversation_id, None, "confirm_requested", inbound_id=ctx.inbound_id, data=data
             )
@@ -309,7 +309,7 @@ class CheckinTimeTools:
         ctx.events.append(
             ToolEvent(kind="confirm_requested", task_id=None, data={**data, "args": args, "card": True})
         )
-        log.info("confirm_requested", extra={"action": ACTION, "run_id": ctx.run_id})
+        log.info("confirm_requested", extra={"action": action, "run_id": ctx.run_id})
         return {"status": "needs_confirm", "confirm_token": p.token, "summary": summary}
 
 

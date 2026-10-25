@@ -136,5 +136,7 @@
       "checked": false,
       "week_count": 4
     }
-  ]
+  ],
+  "events": [],
+  "missed_reminders": []
 }

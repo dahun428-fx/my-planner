@@ -1123,7 +1123,7 @@ SP1 5.8 머리글 끝에 통로를 붙이되, **앱 통로의 머리글에만** 
 
 | # | 규칙 |
 |---|---|
-| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다 |
+| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다. SP9(스펙 5.5, ADR 0015): 회차 차례의 `create_event`(그리고 시각류를 바꾸는 `update_event`, `delete_event`)는 `ui_confirm`이다. 할 일은 `scheduled_at`을 받지 않으므로 아래 A2의 `scheduled_at` 바꾸는 `update_task`·시각 있는 할 일의 `move_task` 확인은 없어졌다 |
 | A2 | 회차 차례에서 아래 도구는 **아무것도 바꾸지 않고** `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "<확인 문구 한 줄>"}`을 돌려준다. `pending_confirms`(`origin = run_turn`, 만료 = 그 회차 답장 창 끝)에 남기고 ToolEvent `confirm_requested`를 쌓는다: `drop_task`, `set_priorities`(모든 주기), `scheduled_at`을 바꾸는 `update_task`, `scheduled_at`이 있는 할 일의 `move_task`(날짜를 옮기면 `scheduled_at`도 바뀐다, SP1 5.5) |
 | A3 | **사용자 메시지에 답하는 차례**(`inbound_id`가 있음)에서는 위 도구가 SP1 그대로 바로 적용된다. 사용자의 요청이 곧 승인이다. 회차 대화에 사용자가 답한 차례도 여기다 |
 | A4 | `add_task`는 어느 차례에서든 바로 적용한다(SP1: 사용자가 직접 말한 할 일에만 쓴다). 비서의 제안은 SP1처럼 `propose_tasks` 초안이다 |

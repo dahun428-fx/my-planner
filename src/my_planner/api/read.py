@@ -22,6 +22,8 @@ from my_planner.api.models import (
     Curve,
     CurveHistory,
     Drafts,
+    EventDetail,
+    EventList,
     HabitHistory,
     HabitsList,
     Memo,
@@ -50,6 +52,7 @@ from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.events import EventsRepo, check_range
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
@@ -69,6 +72,7 @@ from my_planner.store.views import (
     todo_refs,
     week_view,
 )
+from my_planner.tools.events import event_dict, occurrence_item, today_events
 from my_planner.tools.memos import memo_dict, memo_item
 from my_planner.tools.ui import catalog
 
@@ -155,6 +159,9 @@ def get_today(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
         "cards": today_cards(CardsRepo(conn, deps.clock), tasks, view.date),
         # 활성 습관, `sort_order` 순(SP7 5.5). 없으면 []
         "habits": habits_view(HabitsRepo(conn, deps.clock), view.date, ("active",))["items"],
+        # 오늘(논리적 날짜)의 그날 일정(SP9 5.6, Review Focus 1). 놓친 알림은 SP9-06이 채운다
+        "events": [occurrence_item(o) for o in today_events(_events(conn, deps), view.date, s.day_boundary)],
+        "missed_reminders": [],
     }
     return dump(Today, body)
 
@@ -292,6 +299,39 @@ def get_habit(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     if h is None:
         raise ApiError(404, "not_found", "없는 습관이에요.")
     return dump(HabitHistory, habit_history(habits, h, _today(deps), weeks))
+
+
+# --- 스케줄 (SP9 5.6) ---
+
+
+def _events(conn: sqlite3.Connection, deps: ApiDeps) -> EventsRepo:
+    return EventsRepo(conn, deps.clock, deps.settings.timezone)
+
+
+def get_events(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """`start`·`end`(현지 날짜, 포함, 둘 다 필요). 62일을 넘으면 422 `range_too_long`."""
+    start, end = _query_date(request, "start"), _query_date(request, "end")
+    if start is None or end is None:
+        raise _bad("start와 end를 YYYY-MM-DD로 알려 주세요.")
+    try:
+        check_range(start, end)
+    except ValueError as e:
+        if str(e) == "range_too_long":
+            raise ApiError(422, "range_too_long", "기간은 62일까지 볼 수 있어요.") from None
+        raise _bad("end는 start와 같거나 뒤여야 해요.") from None
+    items = _events(conn, deps).occurrences(start, end)
+    return dump(EventList, {
+        "start": start.isoformat(), "end": end.isoformat(), "items": [occurrence_item(o) for o in items],
+    })
+
+
+def get_event(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """정의 하나(반복 규칙, 건너뛴 날). 없는·지운 일정은 404."""
+    repo = _events(conn, deps)
+    e = repo.get(_path_id(request))
+    if e is None:
+        raise ApiError(404, "not_found", "없는 일정이에요.")
+    return dump(EventDetail, event_dict(e, repo.skipped_dates(e.id)))
 
 
 # --- 메모 (SP9 6.4) ---

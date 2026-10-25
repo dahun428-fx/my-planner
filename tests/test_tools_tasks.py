@@ -46,7 +46,7 @@ def env(tmp_path, conn):
 
 def test_add_task_creates_open_task_and_exports(env):
     ctx = env.ctx()
-    out = env.tools.add_task(ctx, title="치과", areas=["health"], scheduled_at="2026-10-25T14:00")
+    out = env.tools.add_task(ctx, title="치과", areas=["health"])
 
     assert isinstance(out["id"], int) and "error" not in out
     assert out["status"] == "open"
@@ -213,37 +213,49 @@ def test_tasks_md_reflects_complete_and_move_and_skips_drafts(env):
     assert "초안일" not in env.export_path.read_text(encoding="utf-8")
 
 
-def test_add_task_early_morning_schedule_belongs_to_previous_logical_day(env):
-    out = env.tools.add_task(env.ctx(), title="새벽", areas=["health"], scheduled_at="2026-10-25T01:30")
-    assert out["planned_for"] == "2026-10-24"
+def test_add_and_update_task_reject_scheduled_at(env):
+    """SP9 5.4: 할 일에는 시각을 붙이지 않는다(일정은 스케줄). `update_task`의 null은 시각 지우기다. 텔레그램
+    대화에는 도구 이름 없이(앱 대화의 두뇌 문구는 `test_event_tools`)."""
+    msg = "시간이 정해진 일은 앱의 스케줄에서 만들어요."
+    assert env.tools.add_task(env.ctx(), title="새벽", areas=["health"], scheduled_at="2026-10-25T01:30") == {"error": msg}
+    out = env.tools.propose_tasks(env.ctx(), tasks=[{"title": "치과", "areas": ["health"], "scheduled_at": "2026-10-25T14:00"}])
+    assert out == {"error": f"1번째 제안: {msg}"}
+    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], planned_for="2026-10-25")
+    assert env.tools.update_task(env.ctx(), id=t["id"], scheduled_at="2026-10-27T09:00") == {"error": msg}
+    assert env.repo.list() and all(x.scheduled_at is None for x in env.repo.list())
+
+
+def _timed(env, title, at):
+    """SP9 전에 만든 시각 있는 할 일(017 훅이 옮기지 않은 끝낸 할 일 등). 도구로는 더 만들 수 없다."""
+    from my_planner.clock import logical_date
+
+    return env.repo.create(title, ["health"], planned_for=logical_date(at, TZ, BOUNDARY), scheduled_at=at).id
 
 
 def test_move_task_keeps_local_time_of_scheduled_task(env):
-    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], scheduled_at="2026-10-25T14:00")
-    out = env.tools.move_task(env.ctx(), id=t["id"], planned_for="2026-10-28")
+    tid = _timed(env, "치과", kst(2026, 10, 25, 14, 0))
+    out = env.tools.move_task(env.ctx(), id=tid, planned_for="2026-10-28")
     assert out["planned_for"] == "2026-10-28"
     assert out["scheduled_at"] == "2026-10-28T14:00+09:00"
-    assert _event_kinds(env, t["id"])[-1] == "moved"
+    assert _event_kinds(env, tid)[-1] == "moved"
 
 
 def test_move_task_to_no_date_clears_schedule(env):
-    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], scheduled_at="2026-10-25T14:00")
-    out = env.tools.move_task(env.ctx(), id=t["id"], planned_for=None)
+    tid = _timed(env, "치과", kst(2026, 10, 25, 14, 0))
+    out = env.tools.move_task(env.ctx(), id=tid, planned_for=None)
     assert out["planned_for"] is None and out["scheduled_at"] is None
 
 
-def test_update_scheduled_at_rederives_planned_for(env):
-    t = env.tools.add_task(env.ctx(), title="치과", areas=["health"], planned_for="2026-10-25", scheduled_at="2026-10-25T14:00")
-    out = env.tools.update_task(env.ctx(), id=t["id"], scheduled_at="2026-10-27T09:00")
-    assert out["planned_for"] == "2026-10-27"
-    out = env.tools.update_task(env.ctx(), id=t["id"], scheduled_at="2026-10-29T02:00")
-    assert out["planned_for"] == "2026-10-28"
+def test_update_task_null_scheduled_at_clears_time(env):
+    tid = _timed(env, "치과", kst(2026, 10, 25, 14, 0))
+    out = env.tools.update_task(env.ctx(), id=tid, scheduled_at=None)
+    assert out["scheduled_at"] is None and out["planned_for"] == "2026-10-25"
 
 
 def test_move_early_morning_schedule_keeps_logical_date(env):
-    t = env.tools.add_task(env.ctx(), title="새벽 운동", areas=["health"], scheduled_at="2026-10-25T01:30")
-    assert t["planned_for"] == "2026-10-24"
-    out = env.tools.move_task(env.ctx(), id=t["id"], planned_for="2026-10-27")
+    tid = _timed(env, "새벽 운동", kst(2026, 10, 25, 1, 30))
+    assert env.repo.get(tid).planned_for.isoformat() == "2026-10-24"
+    out = env.tools.move_task(env.ctx(), id=tid, planned_for="2026-10-27")
     assert out["planned_for"] == "2026-10-27"
     assert out["scheduled_at"] == "2026-10-28T01:30+09:00"  # 논리적 날짜 10/27의 새벽 1시 30분
 

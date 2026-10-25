@@ -6,6 +6,7 @@ from my_planner.clock import FakeClock
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.dispatcher import Dispatcher, Inbound
 from my_planner.store.repos.conversations import ConversationsRepo
+from my_planner.store.repos.events import EventsRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
@@ -47,6 +48,7 @@ class Env:
                 tz=self.settings.timezone,
                 boundary=self.settings.day_boundary,
                 conditions=self.conditions,
+                events=EventsRepo(conn, self.clock, self.settings.timezone),
             )
         self.brain = FakeBrain(script, tools=self.tools, clock=self.clock)
         self.dispatcher = Dispatcher(

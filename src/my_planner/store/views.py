@@ -27,7 +27,7 @@ AREA_ORDER = {a: i for i, a in enumerate(Area)}
 
 @dataclass
 class TodoGroup:
-    name: str  # priority | scheduled | open
+    name: str  # priority | scheduled(SP9부터 죽은 갈래) | open
     tasks: list[Task]
 
 
@@ -59,7 +59,11 @@ class WeekView:
 def today_view(
     tasks: TasksRepo, conditions: ConditionsRepo | None, now: datetime, tz: str | tzinfo, boundary: time
 ) -> TodayView:
-    """묶음 순서: 우선순위 → 일정 → 열린 할 일(이미 나온 것은 뺀다, 전에 잡은 일 포함)."""
+    """묶음 순서: 우선순위 → 일정 → 열린 할 일(이미 나온 것은 뺀다, 전에 잡은 일 포함).
+
+    SP9 5.4: "일정" 묶음(`group = "scheduled"`)은 이제 죽은 갈래다. 017 훅이 시각 있는 열린 할 일을 일정으로 옮겼고,
+    도구·다시 열기·되돌리기는 열린 할 일에 `scheduled_at`을 두지 않는다. 대시보드가 이 묶음을 읽어 남겨 둔다.
+    그날 일정은 스케줄(`/today.events`)에 있다."""
     today = logical_date(now, tz, boundary)
     groups: list[TodoGroup] = []
 
@@ -69,7 +73,7 @@ def today_view(
         groups.append(TodoGroup("priority", prios))
 
     open_tasks = tasks.list(status=TaskStatus.open)
-    scheduled = sorted(
+    scheduled = sorted(  # 죽은 갈래(위 설명)
         (t for t in open_tasks if t.scheduled_at and logical_date(t.scheduled_at, tz, boundary) == today),
         key=lambda t: t.scheduled_at,  # type: ignore[arg-type,return-value]
     )

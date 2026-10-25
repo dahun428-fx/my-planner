@@ -30,6 +30,8 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
     title = e.data.get("title", "")
     if e.kind in MEMO_KINDS:
         return memo_line(e.kind, title)
+    if e.kind in EVENT_KINDS:
+        return event_line(e.kind, e.data)
     if e.kind in HABIT_KINDS:
         day = e.data.get("date")
         return habit_line(
@@ -78,6 +80,67 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         # 비서가 준 경험치(X10, SP3-4 10장)
         "xp_granted_by_secretary": xp_granted_line(e.data.get("amount", 0), e.data.get("reason", "")),
     }.get(e.kind)
+
+
+# --- 스케줄 (SP9 5.5). 10장에 없는 문구라 같은 꼴로 지었다(SP9-05 판단, SP9-12에서 Dahun 확인) ---
+
+_WEEKDAY_KO = {"mon": "월", "tue": "화", "wed": "수", "thu": "목", "fri": "금", "sat": "토", "sun": "일"}
+REMIND_LABELS = {0: "정시", 10: "10분 전", 30: "30분 전", 60: "1시간 전", 1440: "하루 전", None: "알림 없음"}  # 10장
+_EVENT_LINES = {
+    "event_created": "✓ 일정 추가: {title} ({when})",
+    "event_updated": "✓ 일정 바꿈: {title}",
+    "event_skipped": "✓ 이번만 건너뜀: {title} ({day})",
+    "event_repeat_ended": "✓ 반복 끝냄: {title} ({day}부터)",
+    "event_deleted": "✓ 일정 지움: {title}",
+}
+EVENT_KINDS = frozenset(_EVENT_LINES)
+
+
+def when_label(args: dict[str, Any]) -> str:
+    """일정의 때(API 칸 모양 `date`, `time`, `all_day`, `repeat`, `weekdays`): `10/27 14:00`, `10/31 하루 종일`,
+    `매일 07:00`, `매주 월·수 10:00`, `매달 31일 하루 종일`."""
+    d = date.fromisoformat(args["date"])
+    at = "하루 종일" if args.get("all_day") else str(args.get("time"))
+    repeat = args.get("repeat", "none")
+    if repeat == "daily":
+        return f"매일 {at}"
+    if repeat == "weekly":
+        days = "·".join(_WEEKDAY_KO[w] for w in args.get("weekdays") or [])
+        return f"매주 {days} {at}"
+    if repeat == "monthly":
+        return f"매달 {d.day}일 {at}"
+    return f"{_md(d)} {at}"
+
+
+def event_line(kind: str, data: dict[str, Any]) -> str:
+    """일정 확인 문구 한 줄(활동 `summary`도). 메모(`note`)는 넣지 않는다."""
+    day = data.get("date")
+    return _EVENT_LINES[kind].format(
+        title=data.get("title", ""), when=data.get("when", ""), day=_md(date.fromisoformat(day)) if day else ""
+    )
+
+
+def confirm_event_create_summary(title: str, when: str) -> str:
+    """회차 차례의 `create_event`(5.5): `일정을 만들어요: 치과 (10/27 14:00)`."""
+    return f"일정을 만들어요: {title} ({when})"
+
+
+def confirm_event_update_summary(title: str, when: str, new: dict[str, Any], current: dict[str, Any]) -> str:
+    """시각류를 바꾸는 `update_event`(5.5): `일정을 바꿔요: {title} → {새 때}`. 알림이 바뀌면 ` · 알림 30분 전`을 붙인다."""
+    out = f"일정을 바꿔요: {title} → {when}"
+    if new.get("remind_min") != current.get("remind_min"):
+        remind = new.get("remind_min")
+        out += " · 알림 없음" if remind is None else f" · 알림 {REMIND_LABELS.get(remind, '')}"
+    return out
+
+
+def confirm_event_delete_summary(scope: str, title: str, day: date | None) -> str:
+    """`delete_event`(5.5 언제나 확인). `scope`는 한 번짜리면 `all`로 바뀐 값이다."""
+    if scope == "one" and day is not None:
+        return f"이번만 건너뛰어요: {title} ({_md(day)})"
+    if scope == "following" and day is not None:
+        return f"이후 반복을 끝내요: {title} ({_md(day)}부터)"
+    return f"일정을 지워요: {title}"
 
 
 # --- 습관 (SP7 스펙 5.4 규칙 H4, 부록 A) ---
@@ -238,19 +301,6 @@ def confirm_priorities_summary(label: str, titles: list[str]) -> str:
     return f"{label} 우선순위를 바꿔요: " + " ".join(f"{i}. {t}" for i, t in enumerate(titles, start=1))
 
 
-def confirm_schedule_summary(title: str, at: datetime | None) -> str:
-    """`scheduled_at`을 바꾸는 `update_task`. `at`은 현지 시각."""
-    if at is None:
-        return f"시각을 지워요: {title}"
-    return f"시각을 바꿔요: {title} → {_md(at.date())} {at:%H:%M}"
-
-
-def confirm_move_summary(title: str, planned_for: date | None, today: date) -> str:
-    """시각 있는 할 일의 `move_task`."""
-    label = _day_label(planned_for, today) if planned_for is not None else "날짜 없음"
-    return f"날짜를 옮겨요: {title} → {label}"
-
-
 # 텔레그램 확인 버튼(`✓ {아래} 16자`): 짧은 동작 이름과 대상. 확인 문구 전부는 메시지 글과 앱 카드에 있다
 
 
@@ -260,14 +310,6 @@ def confirm_button_drop(title: str) -> str:
 
 def confirm_button_priorities(label: str) -> str:
     return f"우선순위: {label}"
-
-
-def confirm_button_schedule(title: str) -> str:
-    return f"일정 변경: {title}"
-
-
-def confirm_button_move(title: str) -> str:
-    return f"옮기기: {title}"
 
 
 def _ro(word: str) -> str:
@@ -320,6 +362,9 @@ _UNDO_VERB = {"되돌림": "다시 열기"}  # `✓ 되돌림: 운동`(다시 �
 # `confirmation_line`이 `추가`·`옮김` 뒤에 붙이는 날짜 꼬리. 제목 안의 "→ X"는 건드리지 않는다
 _DATE_TAIL = re.compile(r"( → (오늘|내일|날짜 없음|\d{1,2}/\d{1,2})| \(\d{1,2}/\d{1,2} \d{2}:\d{2}\))$")
 _DATE_TAIL_VERBS = frozenset({"추가", "옮김"})
+# 일정 확인 문구의 때 꼬리(`(10/27 14:00)`, `(10/27)`, `(10/27부터)`, 이름에 괄호가 없는 끝 한 덩어리)
+_EVENT_TAIL = re.compile(r" \([^()]*\)$")
+_EVENT_TAIL_VERBS = frozenset({"일정 추가", "이번만 건너뜀", "반복 끝냄"})
 _SUMMARY = re.compile(r"^✓ (?P<verb>[^:]+): (?P<rest>.*)$")
 _BARE = re.compile(r"^✓ (?P<verb>[^:]+)$")  # 대상 이름이 없는 한 줄(`✓ 카드 순서 바꿈`)
 _CONDITION = re.compile(r"^(?P<what>컨디션 \d+) 기록했어요\.$")
@@ -366,6 +411,8 @@ def undo_summary(summary: str) -> str:
         else:
             if verb in _DATE_TAIL_VERBS:
                 rest = _DATE_TAIL.sub("", rest)
+            elif verb in _EVENT_TAIL_VERBS:
+                rest = _EVENT_TAIL.sub("", rest)
             gist = f"{rest} {_UNDO_VERB.get(verb, verb)}"
     elif (b := _BARE.match(summary)) is not None:
         gist = b["verb"]

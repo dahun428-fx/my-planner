@@ -23,11 +23,11 @@ import test_api_e2e
 from my_planner.store.db import is_write, open_db
 
 # 도구 함수(`tools/core.py`, 습관 `tools/habits.py`, 이룬 순간 `tools/moments.py`, 메모 `tools/memos.py`, 몸 기록
-# `tools/body.py`), 즉시 갈래(`tools/actions.py`),
+# `tools/body.py`, 스케줄 `tools/events.py`), 즉시 갈래(`tools/actions.py`),
 # 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
-    "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body",
+    "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body", "my_planner.tools.events",
 })
 MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
 DISPATCHER = "my_planner.harness.dispatcher"
@@ -58,6 +58,10 @@ ALLOWED: dict[str, set[str]] = {
     "habit_checks": set(TOOLS),
     # SP9 6.1: 메모는 도구 함수(두뇌 `create_memo`, 즉시 갈래 동작)와 하루 한 번 정리(`memos_daily`, 즉시 갈래)만
     "memos": set(TOOLS),
+    # SP9 5.2: 일정은 도구 함수(두뇌 도구, 즉시 갈래 동작)만. 017 훅의 옮기기는 `migrate` 안이라 세지 않는다
+    "events": set(TOOLS),
+    "event_skips": set(TOOLS),
+    "event_reminders": set(TOOLS),  # 앞으로의 알림 행 지우기(고치기), 놓친 알림 닫기. 알림 tick은 SP9-06
     "curve_chapters": {*TOOLS, SEED},
     "curve_milestones": {*TOOLS, SEED},
     "curve_ladder_scores": {*TOOLS, SEED},

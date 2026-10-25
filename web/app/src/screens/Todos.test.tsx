@@ -252,31 +252,19 @@ describe("Todos", () => {
     expect(bodies).toHaveLength(3);
   });
 
-  it("change date on scheduled todo opens confirm sheet", async () => {
-    // EditTodoSheet's "날짜 바꾸기" goes through the same sheet.
-    const SUMMARY = "날짜를 옮겨요: 장보기 → 10월 28일 (수)";
+  it("change date never asks first", async () => {
+    // SP9 5.4: to-dos have no time, so EditTodoSheet's "날짜 바꾸기" sends move_task once, with no confirm token.
     serve();
-    const bodies = actions((b) => (b.confirm_token ? applied() : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: SUMMARY, expires_at: "2026-10-24T09:00:00Z" })));
+    const bodies = actions(() => applied());
     renderWithProviders(<Todos tab="week" />);
     const user = userEvent.setup();
     fireEvent.contextMenu(await screen.findByText("장보기"));
     await user.click(screen.getByRole("button", { name: copy.todos.changeDate }));
-    const input = await screen.findByLabelText(copy.todos.dateLabel);
-    fireEvent.change(input, { target: { value: "2026-10-28" } });
+    fireEvent.change(await screen.findByLabelText(copy.todos.dateLabel), { target: { value: "2026-10-28" } });
     await user.click(screen.getByRole("button", { name: copy.todos.save }));
-    expect(await screen.findByText(SUMMARY)).toBeInTheDocument();
-    expect(screen.queryByText(copy.actions.failed)).toBeNull();
-    // Escape (as "그대로 두기") closes only the confirm sheet: nothing is sent and the date sheet
-    // is still there for another try.
-    fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByText(SUMMARY)).toBeNull());
-    expect(bodies).toHaveLength(1);
-    expect(screen.getByLabelText(copy.todos.dateLabel)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: copy.todos.save }));
-    await user.click(await screen.findByRole("button", { name: copy.todos.change }));
-    await waitFor(() => expect(bodies).toHaveLength(3));
-    expect(bodies[2]).toMatchObject({ action: "move_task", args: { id: 34, planned_for: "2026-10-28" }, confirm_token: "ct-9" });
-    expect(bodies[2].client_msg_id).not.toBe(bodies[1].client_msg_id);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ action: "move_task", args: { id: 34, planned_for: "2026-10-28" } });
+    expect(bodies[0].confirm_token ?? null).toBeNull();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

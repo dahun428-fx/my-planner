@@ -150,6 +150,7 @@ def test_ui_and_card_tools_absent_from_telegram(uenv):
     assert APP_ONLY_TOOLS == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
         "set_checkin_time", "search_memos", "read_memo", "create_memo",
+        "list_events", "create_event", "update_event", "delete_event", "ui_events",
     ]
     assert tool_names_for(RunContext(None, None, channel="telegram")) == TOOL_NAMES
     assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
@@ -220,8 +221,8 @@ async def test_todo_ref_has_dates_in_utc(tmp_path):
     async with BeEnv.start(tmp_path, start=START) as env:
         tools = env.parts.tools
         ctx = _app_ctx()
-        a = tools.add_task(ctx, title="꾸민 치과", areas=["health"], planned_for="2026-10-25",
-                           scheduled_at="2026-10-25T14:00")["id"]
+        a = tools.tasks.create("꾸민 치과", ["health"], planned_for=date(2026, 10, 25),
+                               scheduled_at=kst(2026, 10, 25, 14, 0)).id  # SP9 전 시각 있는 할 일(도구로는 못 만든다)
         b = tools.add_task(ctx, title="꾸민 날짜 없음", areas=["learning"])["id"]
         tools.pin_card(ctx, component="ui_todo_list", props={"title": "꾸민 목록", "task_ids": [a, b]})
         ref = todo_ref(tools.tasks.get(a), tools.tasks, tools.today())
@@ -260,7 +261,7 @@ def test_catalog_has_ui_habit_check_brain_origin():
     assert UI_COMPONENTS["ui_habit_check"]["origin"] == "brain"
     assert "ui_habit_check" in BRAIN_COMPONENTS
     assert "ui_habit_check" not in PINNABLE_COMPONENTS
-    assert UI_CATALOG_VERSION == "2026-10-24.4"
+    assert UI_CATALOG_VERSION == "2026-10-24.5"
     schema = UI_COMPONENTS["ui_habit_check"]["schema"]
     assert schema["required"] == ["date"] and schema["additionalProperties"] is False
 
@@ -288,7 +289,7 @@ def test_ui_habit_check_no_db_writes(uenv, tmp_path):
 
 
 def test_app_tool_count_35():
-    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 39 and len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28  # SP9-02 +1, SP9-03 +3(앱에만)
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 44 and len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28  # SP9-02 +1, SP9-03 +3, SP9-05 +5(앱에만)
     assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for(RunContext(None, None, channel="telegram"))
     names = [t.name for t in build_planner_tools(Tools.__new__(Tools), RunContext(conversation_id=None, run_id=None, channel="app"))]
     assert "ui_habit_check" in names  # 도구 정의(설명, 스키마)가 있다
