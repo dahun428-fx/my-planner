@@ -127,6 +127,8 @@ class Outbound:
     # 확인 문구 전부는 메시지 글(`확인을 기다려요: …` 줄)에 있다.
     # 앱은 체크인 상세 `cards`의 `ui_confirm`으로 받는다(6.4.5). `/chat` 스트림에는 없다(사용자 차례뿐이라 생기지 않는다)
     confirms: list[tuple[str, str]] = field(default_factory=list)
+    # 앱 대화(사용자 차례)의 확인 카드 `ui_confirm` props(SP9 8장 `set_checkin_time`): `/chat` 스트림의 하네스 조각
+    confirm_cards: list[dict[str, Any]] = field(default_factory=list)
     # 앱 답(SP3-4 7.5 M4): 확인 문구는 글에 붙이지 않고 `data-activity.confirmation`으로 간다(6.4.1)
     channel: Channel = "telegram"
     confirmation: str | None = None
@@ -2027,7 +2029,14 @@ def _outbound(text: str, run_ctx: RunContext) -> Outbound:
         draft_chapter_ids=chapters,
         # 회차 차례에서만 생긴다(10.1 A2). 사용자 차례의 답에는 늘 비어 있다
         confirms=[
-            (e.data["confirm_token"], e.data["button"]) for e in run_ctx.events if e.kind == "confirm_requested"
+            (e.data["confirm_token"], e.data["button"]) for e in run_ctx.events
+            if e.kind == "confirm_requested" and not e.data.get("card")
+        ],
+        # 앱 대화의 사용자 차례에서 두뇌가 물은 확인(SP9 8장): 답 스트림에 확인 카드로 붙는다
+        confirm_cards=[
+            {"summary": e.data["summary"], "confirm_token": e.data["confirm_token"], "action": e.data["action"],
+             "args": e.data["args"]}
+            for e in run_ctx.events if e.kind == "confirm_requested" and e.data.get("card")
         ],
     )
 

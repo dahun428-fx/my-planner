@@ -137,7 +137,7 @@ def test_scripts_do_not_use_psscriptroot_in_param_defaults():
     import re
     from pathlib import Path
 
-    for name in ("register_task.ps1", "check_tasks.ps1"):
+    for name in ("register_task.ps1", "check_tasks.ps1", "update_wake_task.ps1"):
         text = (Path(__file__).parent.parent / "scripts" / name).read_text(encoding="utf-8-sig")
         param_block = re.search(r"param\((.*?)\n\)", text, re.DOTALL).group(1)
         assert "$PSScriptRoot" not in param_block, name

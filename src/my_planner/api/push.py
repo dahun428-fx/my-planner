@@ -1,4 +1,5 @@
-"""웹 푸시와 알림 설정: `/push/*` (SP3-4 스펙 6.4.8), `/settings/notify` (6.4.9).
+"""웹 푸시와 알림 설정: `/push/*` (SP3-4 스펙 6.4.8), `/settings/notify` (6.4.9), 체크인 시간
+`/settings/checkin-times` (SP9 8장).
 
 - VAPID 값이 없으면 `/push/*`는 모두 `404`이고 실제 통로는 늘 `telegram`이다(15장). `/settings/notify`는 그대로 답한다.
 - 쓰기(구독 추가·삭제, 주 통로)는 즉시 갈래 `Dispatcher.apply_action`의 내부 동작(`endpoint="push"`)으로만 한다.
@@ -16,9 +17,17 @@ from typing import TYPE_CHECKING, Any
 from aiohttp import web
 from pydantic import ValidationError
 
-from my_planner.api.actions import BAD_BODY, read_json_object
+from my_planner.api.actions import (
+    BAD_BODY,
+    action_response,
+    read_json_object,
+    refresh_wake,
+)
 from my_planner.api.models import (
     ApiError,
+    CheckinTimePutBody,
+    CheckinTimes,
+    CheckinTimesUpdated,
     NotifyPutBody,
     NotifySettings,
     PushSubscribeBody,
@@ -28,10 +37,17 @@ from my_planner.api.models import (
     dump,
     error_response,
 )
+from my_planner.clock import logical_date
 from my_planner.harness.delivery import effective_channel
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.state import NOTIFY_PRIMARY_KEY, StateRepo
 from my_planner.tools.actions import ActionRequest
+from my_planner.tools.checkin_times import (
+    MSG_INVALID,
+    checkin_items,
+    parse_loop,
+    validate_checkin_time,
+)
 
 if TYPE_CHECKING:
     from my_planner.api.server import ApiDeps
@@ -135,3 +151,50 @@ async def put_notify(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         return web.json_response(notify_view(conn, deps))
     finally:
         conn.close()
+
+
+# --- 체크인 시간 (SP9 8장) ---
+
+
+def checkin_times_view(conn: sqlite3.Connection, deps: ApiDeps) -> dict[str, Any]:
+    s = deps.settings
+    today = logical_date(deps.clock.now(), s.timezone, s.day_boundary)
+    state = StateRepo(conn, deps.clock)
+    return {
+        "items": checkin_items(s, state.get_schedule_override(), today), "wake_updated": not state.wake_task_stale(),
+    }
+
+
+def get_checkin_times(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    return dump(CheckinTimes, checkin_times_view(conn, deps))
+
+
+async def put_checkin_times(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """한 칸을 바로 바꾸고(즉시 갈래 `set_checkin_time`, 되돌릴 수 있음), 깨우기 작업을 다시 등록한다(최대 20초).
+    범위 밖이면 `422 checkin_time_invalid`. 깨우기 작업이 안 되면 `wake_updated: false`(바꾼 시각은 그대로 적용)."""
+    body = await read_json_object(request)
+    if body is None:
+        return error_response(400, "invalid_request", BAD_BODY)
+    try:
+        req = CheckinTimePutBody.model_validate(body)
+    except ValidationError:
+        return error_response(400, "invalid_request", BAD_BODY)
+    loop = parse_loop(req.loop)
+    if loop is None or validate_checkin_time(loop, req.time) is None:
+        return error_response(422, "checkin_time_invalid", MSG_INVALID)
+    assert deps.dispatcher is not None and deps.read_conn is not None
+    res = deps.dispatcher.apply_action(ActionRequest(
+        "set_checkin_time", {"loop": req.loop, "day_type": req.day_type, "time": req.time}, actor="user", channel="app",
+    ))
+    if res.status != "applied":  # 그대로 넘긴다(검증은 위에서 했다: 여기는 거절·충돌 같은 다른 결과)
+        return action_response(res)
+    await refresh_wake(deps)
+    conn = deps.read_conn()
+    try:
+        view = checkin_times_view(conn, deps)
+    finally:
+        conn.close()
+    return web.json_response(dump(CheckinTimesUpdated, {
+        **view, "applies": res.body["result"]["applies"],
+        "activity_id": res.body.get("activity_id"), "undo_id": res.body.get("undo_id"),
+    }))

@@ -64,6 +64,7 @@ from my_planner.tools.activity import (
     task_target,
     tasks_target,
 )
+from my_planner.tools.checkin_times import CheckinTimeTools
 from my_planner.tools.confirmations import (
     area_scores_line,
     card_label,
@@ -92,8 +93,11 @@ from my_planner.tools.moments import MomentTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
+    from my_planner.config import Settings
     from my_planner.store.repos.activity import ConfirmsRepo
     from my_planner.store.repos.moments import MomentsRepo
+    from my_planner.store.repos.runs import RunsRepo
+    from my_planner.store.repos.state import StateRepo
 
 log = logging.getLogger(__name__)
 
@@ -124,7 +128,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-class Tools(MomentTools, HabitTools):
+class Tools(MomentTools, HabitTools, CheckinTimeTools):
     def __init__(
         self,
         *,
@@ -145,6 +149,9 @@ class Tools(MomentTools, HabitTools):
         curve_export_path: Path | None = None,
         habits: HabitsRepo | None = None,
         moments: MomentsRepo | None = None,
+        state: StateRepo | None = None,
+        settings: Settings | None = None,
+        runs: RunsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -170,6 +177,10 @@ class Tools(MomentTools, HabitTools):
         self.habits = habits  # 습관(SP7 5.4). None이면 습관 도구가 거절한다
         self.habits_export_path = self.export_path.parent / "habits.md"  # data/exports/habits.md (5.8)
         self.moments = moments  # 이룬 순간(SP8 6.1). None이면 `save_moments`가 거절한다. 내보내기는 없다(6.4)
+        # 체크인 시간 바꾸기(SP9 8장): 바꾼 칸(`app_state`), config 기본값, 오늘 회차. 하나라도 None이면 거절한다
+        self.state = state
+        self.settings = settings
+        self.runs = runs
 
     # --- 공통 ---
 

@@ -190,3 +190,13 @@ async def test_preamble_priorities_skip_tasks_no_longer_open(tmp_path, conn, sta
     prompt = env.brain.prompts[0]
     assert "- 이번 주: 1. B (#2)" in prompt
     assert "- 오늘" not in prompt and "A (#1) 1." not in prompt
+
+
+def test_telegram_tool_count_unchanged():
+    """SP9 Q14: 새 도구는 앱 대화에만. 텔레그램 목록은 그대로 28개."""
+    from my_planner.domain import RunContext
+    from my_planner.tools.mcp_adapter import APP_ONLY_TOOLS, tool_names_for
+
+    assert "set_checkin_time" not in tool_names_for(RunContext(None, None, channel="telegram"))
+    assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28
+    assert "set_checkin_time" in APP_ONLY_TOOLS and "set_checkin_time" in tool_names_for(RunContext(None, None, channel="app"))

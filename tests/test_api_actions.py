@@ -80,6 +80,8 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "set_habit_status": {"id": hb, "status": "paused"},
         "check_habit": {"id": hb},
         "uncheck_habit": {"id": hc},
+        # 체크인 시간(SP9 8장): 앱에서는 바로 적용
+        "set_checkin_time": {"loop": "evening_checkin", "day_type": "weekend", "time": "19:00"},
     }
 
 

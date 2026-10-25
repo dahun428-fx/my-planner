@@ -156,3 +156,27 @@
 .confirmDanger {
   flex: 1;
 }
+
+/* SP9 9.7 check-in time: a native picker (a wheel on iOS) that looks like the row's value. */
+.timeSelect {
+  min-height: var(--control-h);
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--hue);
+  text-align: right;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.timeSelect:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.timeSelect:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}

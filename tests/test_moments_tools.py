@@ -101,7 +101,7 @@ def test_tool_names_moments_kind_only_save_moments(env):
 def test_chat_and_run_tool_lists_have_no_save_moments(env):
     assert "save_moments" not in TOOL_NAMES and "save_moments" not in APP_ONLY_TOOLS
     for kind in ("chat", "run"):
-        for channel, n in (("telegram", 28), ("app", 35)):
+        for channel, n in (("telegram", 28), ("app", 36)):
             ctx = RunContext(None, None, kind=kind, channel=channel)
             names = tool_names_for(ctx)
             assert len(names) == n and "save_moments" not in names

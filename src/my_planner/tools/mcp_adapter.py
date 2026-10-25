@@ -49,7 +49,10 @@ TOOL_NAMES: list[str] = [
 
 # 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 화면 도구 셋(그리기만), 카드 도구 셋. 텔레그램 대화에는 없다.
 # 카탈로그의 두뇌 조각(`BRAIN_COMPONENTS`)을 그대로 쓰지 않는다: SP6의 새 넷은 앱이 그릴 수 있게 된 뒤 G-BE2가 더한다
-APP_ONLY_TOOLS: list[str] = [*PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"]
+# SP9: 새 도구는 여기에만 더한다(텔레그램 목록은 그대로, Q14)
+APP_ONLY_TOOLS: list[str] = [
+    *PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards", "set_checkin_time",
+]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
@@ -412,6 +415,27 @@ _SPECS.update({
     "reorder_cards": (
         "고정 카드의 순서를 바꿉니다. ids에는 고정한 카드 번호를 모두 새 순서로 넣습니다.",
         _schema({"ids": {"type": "array", "items": _CARD_ID, "minItems": 1}}, ["ids"]),
+    ),
+})
+
+
+_SPECS.update({
+    "set_checkin_time": (
+        (
+            "아침 브리핑·저녁 체크인 시각을 바꾸자고 확인을 묻습니다(언제나 확인, 바로 바꾸지 않습니다). loop는 "
+            "morning_brief(아침) 또는 evening_checkin(저녁), day_type은 weekday(평일) 또는 weekend(주말)입니다. "
+            "time은 HH:MM, 아침 05:00~11:30, 저녁 15:00~23:30, 10분 단위입니다. 주말 저녁은 일요일 주간 회고 "
+            "시각이기도 합니다. 결과는 needs_confirm이고 앱에 확인 카드가 붙습니다: 바꿨다고 말하지 않습니다. "
+            "사용자가 바꿔 달라고 할 때만 부릅니다."
+        ),
+        _schema(
+            {
+                "loop": {"enum": ["morning_brief", "evening_checkin"]},
+                "day_type": {"enum": ["weekday", "weekend"]},
+                "time": {"type": "string", "description": "HH:MM, 10분 단위"},
+            },
+            ["loop", "day_type", "time"],
+        ),
     ),
 })
 

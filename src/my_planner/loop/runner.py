@@ -468,8 +468,10 @@ class Runner:
             self._run_daily(logical_date(now, tz, boundary))
             return
         judged_from = self._after_started_return(last_seen, now)
+        # 바꾼 체크인 시각(SP9 8장)은 tick마다 다시 읽는다: 재시작 없이 다음 회차부터 새 시각
+        overrides = self.state.get_schedule_override()
         # 2. 창 안의 예정 회차를 runs에 만든다(이미 있으면 그대로)
-        for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops):
+        for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops, overrides):
             self.runs.ensure(due.loop, due.scheduled_for, due.cadence)
         # 3. 만료된 대화를 닫고(chat 30분, plan 2시간), 따라잡기 판정과 적용
         if self.router is not None:
@@ -486,7 +488,7 @@ class Runner:
             brain_calls_today=usage.brain_calls,
             proactive_today=usage.proactive_messages,
             plan_open=self.router is not None and self.router.plan_open(),
-            cfg=s, tz=tz, boundary=boundary,
+            cfg=s, tz=tz, boundary=boundary, overrides=overrides,
         )
         if decision.clock_backwards and last_seen is not None:  # 공백은 0으로 봤다. 차이만 남긴다
             log.warning("clock_went_backwards", extra={"gap_seconds": int((last_seen - now).total_seconds())})
