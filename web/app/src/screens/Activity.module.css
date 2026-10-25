@@ -2,6 +2,20 @@
   /* Room for the tab bar and the launcher above it (5.3). */
   padding-bottom: calc(var(--row) + 3.5rem + env(safe-area-inset-bottom) + var(--gap));
 }
+/* SP9 9.1: off the tabs, the "‹ 더보기" back link above the title (as Habits). */
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
 .line {
   margin: 0 var(--gutter) var(--gap);
   font-size: var(--size-meta);
@@ -57,6 +71,7 @@
   opacity: 0.4;
   cursor: default;
 }
+.back:focus-visible,
 .undo:focus-visible,
 .more:focus-visible,
 .noticeAction:focus-visible {

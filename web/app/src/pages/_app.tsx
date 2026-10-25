@@ -30,6 +30,10 @@ import "../components/LargeTitle";
 import "../components/MoreButton";
 import "../components/TabBar";
 import "../styles/page.module.css";
+// SP9 9.4: the memo screens' stylesheets only (CSP, as above). Their code stays in the page chunks,
+// out of the first screen's 180KB.
+import "../screens/Memos.module.css";
+import "../screens/MemoEditor.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
 import "../ui/chat/cards.module.css";
