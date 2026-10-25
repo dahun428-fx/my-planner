@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-24.4",
+  "version": "2026-10-24.5",
   "components": {
     "ui_todo_list": {
       "origin": "brain",
@@ -897,6 +897,150 @@
           "date"
         ],
         "title": "HabitCheckProps",
+        "type": "object"
+      }
+    },
+    "ui_events": {
+      "origin": "brain",
+      "schema": {
+        "$defs": {
+          "EventsItem": {
+            "additionalProperties": false,
+            "description": "그날 일정 한 줄(SP9 9.8): BE `EventItem`(5.6)과 같은 모양. `start`·`end`는 시간대 붙은 ISO 8601(하루 종일은 null).",
+            "properties": {
+              "event_id": {
+                "title": "Event Id",
+                "type": "integer"
+              },
+              "date": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "title": "Date",
+                "type": "string"
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,6})?)?(Z|[+-]\\d{2}:\\d{2})$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Start"
+              },
+              "end": {
+                "anyOf": [
+                  {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,6})?)?(Z|[+-]\\d{2}:\\d{2})$",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "End"
+              },
+              "all_day": {
+                "title": "All Day",
+                "type": "boolean"
+              },
+              "title": {
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "area": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "career",
+                      "finance",
+                      "health",
+                      "relationships",
+                      "learning",
+                      "quality_of_life"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Area"
+              },
+              "remind_min": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      0,
+                      10,
+                      30,
+                      60,
+                      1440
+                    ],
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Remind Min"
+              },
+              "repeat": {
+                "enum": [
+                  "none",
+                  "daily",
+                  "weekly",
+                  "monthly"
+                ],
+                "title": "Repeat",
+                "type": "string"
+              },
+              "origin": {
+                "enum": [
+                  "user",
+                  "chat",
+                  "migrated"
+                ],
+                "title": "Origin",
+                "type": "string"
+              }
+            },
+            "required": [
+              "event_id",
+              "date",
+              "all_day",
+              "title",
+              "repeat",
+              "origin"
+            ],
+            "title": "EventsItem",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "완성 카드 `ui_events`(SP9 9.8): 그날 일정 1~10개(시각, 제목, 영역 점, 반복 표시). 누르면 스케줄 탭 그날로.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/EventsItem"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EventsProps",
         "type": "object"
       }
     },

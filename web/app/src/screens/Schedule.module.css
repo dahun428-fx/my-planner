@@ -1,0 +1,200 @@
+/* SP9 9.2 스케줄 탭: 테마 토큰만, 영역색은 작은 점으로만(DESIGN.md). */
+.main {
+  /* 탭 막대와 그 위 런처 자리(5.3). */
+  padding-bottom: calc(var(--row) + 3.5rem + env(safe-area-inset-bottom) + var(--gap));
+}
+.trailing {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+}
+.add:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* 큰 제목 자리의 달 버튼: 제목 글자 그대로, 누를 수 있다는 것은 작은 꺾쇠로. */
+.monthToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: var(--control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.monthToggle::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: -0.25rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+}
+.monthToggle[aria-expanded="true"]::after {
+  margin-top: 0.25rem;
+  transform: rotate(-135deg);
+}
+/* 한 주 띠: 월~일 일곱 칸. 세로 스크롤은 그대로, 가로 밀기는 화면이 받는다. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.25rem;
+  margin: 0 var(--gutter) var(--gap);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 4.25rem;
+  padding: 0.375rem 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.weekday {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--size-body);
+  font-weight: 600;
+}
+/* 고른 날은 테두리, 오늘은 잉크 원(둘 다면 잉크 원). */
+.day[aria-pressed="true"] .date {
+  border-color: var(--text);
+}
+.day[aria-current="date"] .date {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+/* 일정이 있는 날만 점 하나(개수 없음). 자리는 늘 두어 칸 높이가 같다. */
+.dot {
+  width: 0.3125rem;
+  height: 0.3125rem;
+  border-radius: var(--radius-pill);
+}
+.day[data-events="true"] .dot {
+  background: var(--muted);
+}
+.day:focus-visible,
+.add:focus-visible,
+.monthToggle:focus-visible,
+.row:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  --rule-inset: var(--gutter);
+}
+.item {
+  position: relative;
+  display: block;
+}
+/* SwipeRow의 선은 이웃한 줄끼리만 그어지므로 <li>마다 여기서 긋는다. */
+.item + .item::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--gutter);
+  border-top: 1px solid var(--rule);
+  pointer-events: none;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--row);
+  padding: 0.5rem var(--row-pad-x, var(--pad));
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.row:active {
+  background: var(--raised);
+}
+.clock {
+  flex: none;
+  min-width: 4.5rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--size-body);
+  line-height: var(--lh-headline);
+}
+.repeat {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted);
+}
+/* SP6: 비서가 만든 것은 작은 --hue 표시. */
+.secretary {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  padding: 0 0.4375rem;
+  border: 1.5px solid var(--hue);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--hue);
+}
+.line {
+  margin: 0 var(--gutter) var(--gap);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}

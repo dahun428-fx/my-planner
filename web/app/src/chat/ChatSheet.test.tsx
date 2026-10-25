@@ -347,6 +347,26 @@ describe("ChatSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("a ui_events row opens the schedule tab on that day and closes the sheet (SP9 9.8)", async () => {
+    serveHistory();
+    const item = { event_id: 4, date: "2026-10-28", start: "2026-10-28T05:00:00Z", end: null, all_day: false, title: "치과", area: null, remind_min: 10, repeat: "none", origin: "user" };
+    serveChat(() =>
+      sseResponse(
+        textAnswer("m-1-1", 1, "수요일 일정이에요.", [
+          { type: "tool-input-available", toolCallId: "tc_1", toolName: "ui_events", input: { items: [item] } },
+          { type: "tool-output-available", toolCallId: "tc_1", output: { ok: true, data: {} } },
+        ]),
+      ),
+    );
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { router } = renderWithProviders(<ChatSheet open onClose={onClose} conversationId={null} />);
+    await sendText(user, "수요일 일정");
+    await user.click(await screen.findByRole("button", { name: /치과/ }));
+    expect(router.push).toHaveBeenCalledWith("/schedule/?date=2026-10-28");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("send disabled while streaming", async () => {
     serveHistory();
     const gate = gatedResponse(golden("chat_add_task.sse"), [2]);

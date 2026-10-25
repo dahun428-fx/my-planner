@@ -137,3 +137,52 @@
   flex-direction: column;
   gap: 0.75rem;
 }
+
+/* ui_events (SP9 9.8): one line per event under its day head; the area colour only as the dot. */
+.events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eventRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0.25rem 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+}
+.eventButton {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.eventButton:active {
+  background: var(--raised);
+}
+.eventButton:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.eventAt {
+  flex: none;
+  min-width: 4.5rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.eventTitle {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--size-section);
+}
+.eventRepeat {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted);
+}

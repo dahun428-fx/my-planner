@@ -6,6 +6,7 @@ import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
+import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
 import { MoreButton } from "../components/MoreButton";
 import { Markdown } from "../components/Markdown";
@@ -30,6 +31,10 @@ import { useConfirms } from "./useConfirms";
 import { useConfirmedAction, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 const SCORES = [1, 2, 3, 4, 5];
+// SP9 9.3: today's events show at most five rows, the rest behind "스케줄에서 {n}개 더 보기".
+const EVENT_ROWS = 5;
+// An event's start (UTC) as Seoul "HH:MM"; all-day has none.
+const clock = (start: string | null) => (start === null ? copy.schedule.allDay : formatKst(start, "HH:mm"));
 const FOLD_LINES = 3;
 const FOLD_CHARS = 140;
 
@@ -97,6 +102,11 @@ export function Today() {
     else await notAllowed(out);
   };
 
+  // SP9 9.3: closing a missed-reminder line has no activity and no undo; the line goes on the next read.
+  const dismiss = async (event_id: number, day: string) => {
+    if (await run("dismiss_missed_reminder", { event_id, date: day })) await refresh();
+  };
+
   const record = async (score: number) => {
     const out = await run("record_condition", { date, score });
     if (out?.kind === "applied") {
@@ -159,6 +169,9 @@ export function Today() {
     const pinned = [...t.cards].sort((a, b) => a.order - b.order);
     const pinnedIds = pinned.map((c) => c.id);
     const habits = t.habits ?? [];
+    // A BE (or a snapshot) from before the schedule has neither field: no block (SP9 14장).
+    const events = t.events ?? [];
+    const missed = t.missed_reminders ?? [];
 
     body = (
       <>
@@ -237,6 +250,43 @@ export function Today() {
             {readOnly && <p className={styles.reason}>{copy.offline.writeLater}</p>}
           </div>
         </Group>
+        {/* SP9 9.3: one line per missed reminder (facts only, no count), then today's events. */}
+        {missed.length > 0 && (
+          <ul className={styles.missed}>
+            {missed.map((r) => (
+              <li key={`${r.event_id}:${r.date}`} className={styles.missedLine}>
+                <span className={styles.missedText}>{(r.outcome === "missed" ? copy.today.missed : copy.today.unsent)(clock(r.start), r.title)}</span>
+                <button type="button" className={styles.dismiss} aria-label={copy.common.close} disabled={readOnly} onClick={() => void dismiss(r.event_id, r.date)}>
+                  <Icon name="close" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {events.length > 0 && (
+          <Group paper
+            heading={copy.today.events}
+            footer={
+              events.length > EVENT_ROWS ? (
+                <Link href={`/schedule/?date=${t.date}`} className={styles.seeAll}>
+                  {copy.today.moreEvents(events.length - EVENT_ROWS)}
+                </Link>
+              ) : undefined
+            }
+          >
+            {events.slice(0, EVENT_ROWS).map((e) => (
+              <Link key={`${e.event_id}:${e.date}`} href={`/schedule/?date=${e.date}`} className={styles.event}>
+                <span className={`${styles.eventAt} tnum`}>{clock(e.start)}</span>
+                <span className={styles.eventTitle}>{e.title}</span>
+                {e.area && (
+                  <span className="area-dot" data-area={e.area}>
+                    <span className="visually-hidden">{copy.areas[e.area]}</span>
+                  </span>
+                )}
+              </Link>
+            ))}
+          </Group>
+        )}
         {/* SP7 6.1: between the condition and the to-dos. A snapshot from before habits has no field. */}
         {habits.length > 0 ? (
           <Group paper

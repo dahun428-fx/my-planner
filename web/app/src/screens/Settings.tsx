@@ -8,7 +8,6 @@ import { sendCommand } from "../chat/command";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
-import { MoreButton } from "../components/MoreButton";
 import { PalettePicker } from "../components/PalettePicker";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
@@ -51,7 +50,7 @@ function shortHost(beUrl: string): string {
   return host.length > 28 ? `${host.slice(0, 14)}…${host.slice(-12)}` : host;
 }
 
-// Spec 5.5.7, F7: connection, check-in notifications, check-in times (SP9 9.7, editable), pause, this device (theme, colour
+// Spec 5.5.7, F7 (off the tabs since SP9-07, "‹ 더보기" back): connection, check-in notifications, check-in times (SP9 9.7, editable), pause, this device (theme, colour
 // preset), about. No chat launcher.
 export function Settings() {
   const toast = useToast();
@@ -311,7 +310,13 @@ export function Settings() {
 
   return (
     <main className={page.main}>
-      <LargeTitle title={copy.settings.title} trailing={<MoreButton />} />
+      {/* SP9-07: off the tabs, "‹ 더보기" back above the title (as Activity). */}
+      <nav className={styles.bar}>
+        <Link href="/more/" className={styles.back}>
+          {copy.settings.back}
+        </Link>
+      </nav>
+      <LargeTitle title={copy.settings.title} />
 
       <Group heading={copy.settings.connection}>
         <Row title={status} />

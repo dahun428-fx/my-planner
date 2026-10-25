@@ -180,3 +180,17 @@
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
+/* SP9-07: off the tabs, the "‹ 더보기" back link above the title (as Activity). */
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}

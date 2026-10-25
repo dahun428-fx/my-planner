@@ -13,11 +13,12 @@ const BACK_MORE = "‹ 더보기";
 export const copy = {
   appName: "비서",
 
+  // SP9 9.1, 10장 "탭" (verbatim).
   tabs: {
     today: "오늘",
     todos: "할 일",
+    schedule: "스케줄",
     memos: "메모",
-    settings: "설정",
     navLabel: "탭",
   },
 
@@ -84,6 +85,55 @@ export const copy = {
       limit: "limit은 1~20 사이 정수예요.",
       unavailable: "메모를 다룰 수 없어요.",
     },
+  },
+
+  // SP9 9.2 스케줄 탭과 추가·상세 시트. 10장 "스케줄 빈 날", "알림 고르기", "반복", "일정 때", "일정 확인 요청"은 그대로.
+  // (9.2)는 스펙 9.2의 말, (new)는 스펙에 없는 말이라 SP9-12에서 Dahun에게 묻는다.
+  schedule: {
+    title: "스케줄",
+    month: (m: number) => `${m}월`, // (9.2) 큰 제목 = 보고 있는 달
+    monthOf: (y: number, m: number) => `${y}년 ${m}월`, // (new) 펼친 달력의 머리
+    prevMonth: "이전 달", // (new)
+    nextMonth: "다음 달", // (new)
+    week: "한 주", // (new) 한 주 띠의 이름
+    add: "일정 추가", // 10장 퀵 칩 "일정 추가"와 같은 말
+    empty: "이날은 일정이 없어요.",
+    allDay: "하루 종일", // (9.2)
+    repeating: "반복", // (new) 반복 표시의 읽는 이름
+    bySecretary: "비서", // (9.2) SP6 비서 표시
+    addTitle: "일정 추가",
+    editTitle: "일정 고치기", // (new)
+    titleLabel: "제목",
+    dateLabel: "날짜",
+    timeLabel: "시각",
+    repeatLabel: "반복",
+    weekdaysLabel: "요일", // (new)
+    remindLabel: "알림",
+    areaLabel: "영역",
+    noteLabel: "메모",
+    addSubmit: "추가",
+    save: "저장",
+    close: "닫기",
+    repeat: { none: "반복 없음", daily: "매일", weekly: "매주", monthly: "매달" },
+    remind: { 0: "정시", 10: "10분 전", 30: "30분 전", 60: "1시간 전", 1440: "하루 전", none: "알림 없음" },
+    remindLine: (label: string) => `알림 ${label}`, // 10장 "· 알림 {알림 고르기}"
+    edit: "고치기", // (9.2)
+    skipOne: "이번만 건너뛰기",
+    endFollowing: "이후 반복 끝내기",
+    deleteAll: "모두 지우기",
+    delete: "지우기", // (9.2) 한 번짜리
+    skip: "건너뛰기", // (9.2) 반복 일정 줄을 밀었을 때
+    keep: "그대로 두기",
+    // 10장 "일정 확인 요청"
+    askOne: (title: string, md: string) => `이번만 건너뛰어요: ${title} (${md})`,
+    askFollowing: (title: string, md: string) => `이후 반복을 끝내요: ${title} (${md}부터)`,
+    askAll: (title: string) => `일정을 지워요: ${title}`,
+    // 10장 "일정 때": {M/D} {HH:MM} · {M/D} 하루 종일 · 매일 {HH:MM} · 매주 {월·수} {HH:MM} · 매달 {D}일 {HH:MM}
+    md: (m: number, d: number) => `${m}/${d}`,
+    everyDay: (at: string) => `매일 ${at}`,
+    everyWeek: (days: string, at: string) => `매주 ${days} ${at}`,
+    everyMonth: (d: number, at: string) => `매달 ${d}일 ${at}`,
+    weekdays: ["월", "화", "수", "목", "금", "토", "일"],
   },
 
   // SP8 10.2, appendix A (verbatim). Named apart from `status` above, the connection dot's words.
@@ -177,6 +227,11 @@ export const copy = {
     doneLabel: (title: string) => `${title} 완료됨, 다시 열기`,
     menu: "이 할 일에 할 수 있는 일",
     moreActions: (title: string) => `${title} 더 보기`,
+    // SP9 9.3, 10장 "놓친 알림"·"못 보낸 알림" (그대로). "오늘 일정"은 9.3의 블록 이름.
+    events: "오늘 일정",
+    moreEvents: (n: number) => `스케줄에서 ${n}개 더 보기`,
+    missed: (hhmm: string, title: string) => `놓친 알림 · ${hhmm} ${title}`,
+    unsent: (hhmm: string, title: string) => `알림을 못 보냈어요 · ${hhmm} ${title}`,
   },
 
   chat: {
@@ -297,6 +352,8 @@ export const copy = {
 
   settings: {
     title: "설정",
+    // Off the tabs since SP9-07 (spec 9.1).
+    back: BACK_MORE,
     connection: "비서 연결",
     notify: "체크인 알림",
     schedule: "체크인 시간",

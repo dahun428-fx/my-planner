@@ -110,10 +110,10 @@ describe("catalog", () => {
   });
 
   it("catalog names match registry", () => {
-    // The chat bundle's four (SP6 11.2) join the first screen's eleven once the sheet has loaded.
+    // The chat bundle's four (SP6 11.2) and ui_events (SP9 9.8) join the first screen's eleven once the sheet has loaded.
     registerChatParts();
     expect(Object.keys(catalog.components).sort()).toEqual([...registryNames()].sort());
-    expect(registryNames()).toHaveLength(15);
+    expect(registryNames()).toHaveLength(16);
   });
 
   it("catalog version has the BE's form", () => {

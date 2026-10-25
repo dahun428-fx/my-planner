@@ -22,7 +22,6 @@ import "../screens/Checkin";
 import "../screens/Connect";
 import "../screens/Habits";
 import "../screens/More";
-import "../screens/Settings";
 import "../screens/Status";
 import "../screens/Today";
 import "../screens/Todos";
@@ -34,6 +33,14 @@ import "../styles/page.module.css";
 // out of the first screen's 180KB.
 import "../screens/Memos.module.css";
 import "../screens/MemoEditor.module.css";
+// SP9 9.2: the schedule tab's stylesheets only, for the same reason (its code stays in /schedule/'s chunk).
+import "../screens/Schedule.module.css";
+import "../screens/MonthCalendar.module.css";
+import "../screens/EventSheet.module.css";
+// SP9-07: settings left the tabs, so like the memo and schedule screens only its stylesheets come with
+// _app (its own and the palette picker's, which no other screen uses); its code is /settings/'s chunk.
+import "../components/PalettePicker.module.css";
+import "../screens/Settings.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
 import "../ui/chat/cards.module.css";

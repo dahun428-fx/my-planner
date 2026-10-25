@@ -127,10 +127,11 @@ test("screens keep their styles after moving between tabs", async ({ page }) => 
   await mockBe(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: copy.today.title })).toBeVisible();
-  const tabs: [string, string][] = [
+  // SP9 9.2: the schedule tab's large title is the month it shows ("10월").
+  const tabs: [string, string | RegExp][] = [
     [copy.tabs.todos, copy.todos.title],
+    [copy.tabs.schedule, new RegExp(`^${copy.schedule.month(0).replace("0", "\\d+")}$`)],
     [copy.tabs.memos, copy.memos.title],
-    [copy.tabs.settings, copy.settings.title],
     [copy.tabs.today, copy.today.title],
   ];
   for (const [tab, title] of tabs) {
