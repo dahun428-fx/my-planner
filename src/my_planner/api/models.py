@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 ErrorCode = Literal[
     "invalid_request", "unauthorized", "not_found", "conflict", "superseded", "undo_expired", "too_large",
     "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal", "unavailable",
-    "checkin_time_invalid",
+    "checkin_time_invalid", "memo_conflict", "too_many_memos", "too_many_pinned",
 ]
 
 
@@ -317,6 +317,41 @@ class HabitHistory(_Model):
     to: str
     checked_dates: list[str]
     weeks: list[HabitWeek]
+
+
+class MemoItem(_Model):
+    """`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 "제목 없는 메모"). `preview`: 제목 줄 다음부터
+    서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다."""
+
+    id: int
+    title: str
+    preview: str
+    area: AreaName | None
+    pinned: bool
+    origin: Literal["user", "chat"]
+    updated_at: str
+
+
+class MemoList(_Model):
+    """`GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모가 고친 시각
+    최근순. `limit`(1~100, 기본 50)은 고정 아닌 메모만 센다(고정 10개까지는 첫 쪽에 더 붙는다). `next_before`는 고정
+    아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null."""
+
+    items: list[MemoItem]
+    next_before: str | None
+
+
+class Memo(_Model):
+    """`GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`)."""
+
+    id: int
+    title: str
+    body: str
+    area: AreaName | None
+    pinned: bool
+    origin: Literal["user", "chat"]
+    created_at: str
+    updated_at: str
 
 
 class Today(_Model):
@@ -900,6 +935,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "Habit": Habit,
     "HabitsList": HabitsList,
     "HabitHistory": HabitHistory,
+    "Memo": Memo,
+    "MemoItem": MemoItem,
+    "MemoList": MemoList,
     "ClientErrorBody": ClientErrorBody,
     "RecoveryNoticeBody": RecoveryNoticeBody,
     "RecoveryNoticeSent": RecoveryNoticeSent,

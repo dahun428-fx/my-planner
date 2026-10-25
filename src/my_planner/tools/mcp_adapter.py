@@ -52,6 +52,8 @@ TOOL_NAMES: list[str] = [
 # SP9: 새 도구는 여기에만 더한다(텔레그램 목록은 그대로, Q14)
 APP_ONLY_TOOLS: list[str] = [
     *PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards", "set_checkin_time",
+    # 메모(SP9 6.3): 찾기·읽기·만들기만. 고치기·지우기 도구는 없다(Q5)
+    "search_memos", "read_memo", "create_memo",
 ]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
@@ -435,6 +437,43 @@ _SPECS.update({
                 "time": {"type": "string", "description": "HH:MM, 10분 단위"},
             },
             ["loop", "day_type", "time"],
+        ),
+    ),
+})
+
+
+_MEMO_ID = {"type": "integer", "description": "메모 번호"}
+_SPECS.update({
+    "search_memos": (
+        (
+            "사용자가 적어 둔 메모에서 찾습니다. 사용자가 메모 내용을 물어볼 때만 부릅니다(\"지난번에 적은 책 이름 뭐였지?\"). "
+            "결과는 메모마다 id, 제목, 앞 200자 미리보기, 고친 시각이고 가릴 정보는 [가림]으로 바뀌어 있습니다. "
+            "본문 전체가 필요하면 read_memo를 부릅니다. limit 기본 5, 최대 20."
+        ),
+        _schema(
+            {
+                "query": {"type": "string", "description": "찾을 말. 3글자 이상이면 더 정확합니다"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            ["query"],
+        ),
+    ),
+    "read_memo": (
+        "메모 하나의 본문을 읽습니다(8,000자까지, 가릴 정보는 [가림]). 사용자가 메모 내용을 물어볼 때만 부릅니다.",
+        _schema({"id": _MEMO_ID}, ["id"]),
+    ),
+    "create_memo": (
+        (
+            "사용자가 \"메모해줘\", \"적어둬\"처럼 부탁할 때만 메모를 만듭니다. body는 1~20,000자이고 첫 줄이 제목입니다. "
+            "쓸 수 있는 서식은 목록 \"- \", 번호 \"1. \", 체크박스 \"- [ ]\", 굵게 \"**\"입니다. area는 영역 하나 또는 null. "
+            "만든 메모는 고치거나 지울 수 없습니다(사용자가 앱에서 합니다)."
+        ),
+        _schema(
+            {
+                "body": {"type": "string", "description": "1~20,000자, 첫 줄이 제목"},
+                "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+            },
+            ["body"],
         ),
     ),
 })

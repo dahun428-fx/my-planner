@@ -125,6 +125,16 @@ SUPERSEDED = "superseded"
 # `summary`(원래 활동 모양의 확인 문구)를 넣어, 되돌림 확인이 되돌린 것만 적게 한다.
 # 처리 함수는 바깥 트랜잭션 안에서 불리고, `"superseded"`를 돌려주면 그 쓰기는 모두 되돌려진다.
 UndoHandler = Callable[["Tools", dict[str, Any], RunContext], str | None]
+
+
+class UndoRefused(Exception):
+    """되돌리기 처리 함수가 상한 때문에 거절한다(SP9 메모: `too_many_memos`, `too_many_pinned`). 그 안의 쓰기는
+    되돌려지고 `422`와 그 코드·문구로 답한다."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(code)
+        self.code = code
+        self.message = message
 UNDO_HANDLERS: dict[str, UndoHandler] = {}
 
 # (종류, 대상 접두): 그 종류 행의 그 대상은 "지켜보는" 대상이다. 확인 토큰 stale 판정(티켓 04)에는 쓰지만

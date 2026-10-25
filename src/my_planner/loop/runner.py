@@ -148,6 +148,18 @@ def prune_records_daily(target: ActionApplier) -> Callable[[date], None]:
     return job
 
 
+def memos_daily(target: ActionApplier) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고 `data/exports/memos.md`를 다시 쓴다. 즉시 갈래로(4.3).
+    로그에는 개수만 남긴다(본문, 제목 없이)."""
+
+    def job(today: date) -> None:
+        res = target.apply_action(_scheduler("memos_daily", {}))
+        log.info("memos_daily", extra=dict(res.body.get("result", {})))
+
+    job.__name__ = "memos_daily"
+    return job
+
+
 def backup_daily(conn: sqlite3.Connection, backups_dir: Path, *, keep: int) -> Callable[[date], None]:
     """하루 한 번 작업: DB 백업(스펙 7). 백업이 안 돼도 예외 종류만 남기고 tick은 그대로 간다."""
 
