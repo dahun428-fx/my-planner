@@ -57,7 +57,7 @@ export function frontChip(today: Today, now: Date): Chip | null {
   if (run) return chip("checkin", "check", run.id);
   const review = sunday ? open.find(isWeeklyReview) : undefined;
   if (review) return chip("review", "activity", review.id);
-  const soon = today.events.some((e) => {
+  const soon = (today.events ?? []).some((e) => {
     if (e.all_day || e.start === null) return false;
     const ahead = Date.parse(e.start) - t;
     return ahead > 0 && ahead <= NEXT_EVENT_MS;

@@ -350,7 +350,7 @@ _COMPONENTS: dict[str, tuple[Origin, type[_Props]]] = {
     "ui_period_list": ("brain", PeriodListProps),
     "ui_block": ("brain", BlockProps),
     "ui_habit_check": ("brain", HabitCheckProps),
-    "ui_events": ("brain", EventsProps),  # SP9 9.8. 두뇌 도구 목록(`APP_ONLY_TOOLS`)에는 아직 없다
+    "ui_events": ("brain", EventsProps),  # SP9 9.8. 앱 통로 두뇌 도구(`APP_ONLY_TOOLS`)
     "ui_todo_draft": ("harness", TodoDraftProps),
     "ui_condition_picker": ("harness", ConditionPickerProps),
     "ui_ladder_picker": ("harness", LadderPickerProps),

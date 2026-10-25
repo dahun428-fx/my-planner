@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 // public/sw.js is a classic script with no imports; run it against a fake worker scope.
@@ -80,5 +80,28 @@ describe("sw.js reminder notifications", () => {
     const sw = boot();
     await sw.run("push", { data: { json: () => ({ type: "reminder", title: "x", url: "https://evil.invalid/a" }) } });
     expect(sw.shown[0].options.data.url).toBe("/");
+  });
+});
+
+// Every page of the static export must be in the install-time SHELL: a full page load (a push tap
+// with the app closed, weak signal) falls back to the cached shell, and a missing page lands on "/".
+describe("sw.js shell", () => {
+  const pagesDir = join(import.meta.dirname, "../pages");
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      return statSync(path).isDirectory() ? walk(path) : [path];
+    });
+  const routes = walk(pagesDir)
+    .map((p) => relative(pagesDir, p).split("\\").join("/").replace(/\.tsx$/, ""))
+    .filter((r) => !r.startsWith("_") && r !== "404")
+    .map((r) => (r === "index" ? "/" : `/${r.replace(/\/index$/, "")}/`))
+    .sort();
+  const shell = JSON.parse(SRC.match(/^const SHELL = (\[[^\]]*\]);$/m)![1].replace(/,\s*\]$/, "]")) as string[];
+
+  it("lists every page route", () => {
+    expect(routes).toContain("/schedule/");
+    expect(routes).toContain("/memos/view/");
+    expect([...shell].sort()).toEqual(routes);
   });
 });

@@ -650,6 +650,16 @@ describe("Today offline and refused", () => {
       expect(screen.queryByRole("status", { name: /./ })).toBeNull(); // no toast: nothing to undo
     });
 
+    it("a live /today from a BE before the schedule (no fields) still shows the screen, with no block (spec 14)", async () => {
+      const old = { ...today } as Partial<TodayData>;
+      delete old.events;
+      delete old.missed_reminders;
+      serve(old as TodayData);
+      renderWithProviders(<Today />);
+      await screen.findByRole("heading", { name: copy.today.condition });
+      expect(screen.queryByRole("heading", { name: copy.today.events })).not.toBeInTheDocument();
+    });
+
     it("a saved copy from before the schedule (no fields) shows no block", async () => {
       const old = { ...today } as Partial<TodayData>;
       delete old.events;

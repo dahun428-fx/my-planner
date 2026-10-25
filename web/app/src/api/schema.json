@@ -5403,9 +5403,7 @@
         "todos",
         "checkins",
         "cards",
-        "habits",
-        "events",
-        "missed_reminders"
+        "habits"
       ],
       "type": "object"
     },
