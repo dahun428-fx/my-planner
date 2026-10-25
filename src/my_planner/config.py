@@ -17,6 +17,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -65,10 +66,33 @@ class ReviewSchedule(_Model):
         return v
 
 
+class DigestConfig(_Model):
+    """일정 정리 알림(SP9b 4장)의 기본값. `app_state.digest_settings`에 없는 칸은 이 값을 쓴다.
+
+    시각은 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(SP9b 1장). 벗어나면 config 로드 오류다.
+    """
+
+    morning: time = time(7, 30)
+    night: time = time(21, 30)
+    morning_on: bool = True
+    night_on: bool = True
+
+    @field_validator("morning", "night")
+    @classmethod
+    def _in_range(cls, v: time, info: ValidationInfo) -> time:
+        # 범위는 판정 모듈 한 곳에서 정한다. 그 모듈은 config를 실행 중에 가져오지 않는다(순환 없음)
+        from my_planner.loop.digests import validate_digest_time
+
+        if validate_digest_time(info.field_name, v) is None:  # type: ignore[arg-type]
+            raise ValueError(f"schedule.digest.{info.field_name}는 범위 안 10분 단위여야 한다")
+        return v
+
+
 class ScheduleConfig(_Model):
     morning_brief: DailyTimes = DailyTimes(weekday=time(9, 0), weekend=time(10, 0))
     evening_checkin: DailyTimes = DailyTimes(weekday=time(17, 30), weekend=time(18, 0))
     review: ReviewSchedule = ReviewSchedule()
+    digest: DigestConfig = DigestConfig()  # 일정 정리 알림(SP9b 4장)
 
 
 class ReplyWindowConfig(_Model):

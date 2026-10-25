@@ -543,3 +543,66 @@ async def test_telegram_reply_to_app_review_has_no_moment_text(tmp_path):
     for c in tele:
         assert secret not in c["prompt"] and "꾸며 낸" not in c["prompt"]
     assert all("꾸며 낸" not in o.text for o in env.sender.sent)
+
+
+# --- 일정 정리 알림 (SP9b 2.1) ---
+
+
+def _digest_delivery(tmp_path, conn, *, push=None, telegram=None, primary="app", subs=(EP_A,)):
+    clock = FakeClock(kst(2026, 10, 26, 7, 30))
+    state = StateRepo(conn, clock)
+    pushes = PushRepo(conn, clock)
+    for ep in subs:
+        pushes.upsert(ep, FAKE_P256DH, FAKE_AUTH, None)
+    state.set(NOTIFY_PRIMARY_KEY, primary)
+    tg = telegram or FakeSender()
+
+    async def inline(fn, *a, **k):
+        return fn(*a, **k)
+
+    d = Delivery(telegram=tg, push=push or FakePushSender(), pushes=pushes, state=state, clock=clock,
+                 settings=make_settings(tmp_path, vapid=FAKE_VAPID), to_thread=inline, sleep=fake_sleep(clock))
+    return d, tg
+
+
+DIGEST_BODY = "하루 종일 휴가\n09:00 팀 회의\n14:00 치과"
+
+
+def test_digest_payload_keeps_newlines_and_tag():
+    from my_planner.harness.delivery import digest_payload
+
+    p = digest_payload("morning", date(2026, 10, 27), "오늘 일정 3개", DIGEST_BODY, "/schedule/?date=2026-10-27")
+    assert p == {"type": "digest", "checkin_id": None, "title": "오늘 일정 3개", "body": DIGEST_BODY,
+                 "url": "/schedule/?date=2026-10-27", "tag": "digest:morning:2026-10-27"}
+    long = "\n".join(["09:00 " + "가" * 20 + "…"] * 3 + ["외 9개"])
+    assert digest_payload("night", date(2026, 10, 28), "내일 일정 12개", long, "/x")["body"] == long  # 자르지 않는다
+    assert digest_payload("night", date(2026, 10, 28), "t", "b", "/x")["tag"] == "digest:night:2026-10-28"
+
+
+async def test_deliver_digest_push_each_subscription_with_ttl(tmp_path, conn):
+    push = FakePushSender()
+    d, tg = _digest_delivery(tmp_path, conn, push=push, subs=(EP_A, EP_B))
+    ch = await d.deliver_digest("morning", date(2026, 10, 26), "오늘 일정 3개", DIGEST_BODY,
+                                "/schedule/?date=2026-10-26", ttl_s=5000)
+    assert ch == "app" and tg.sent == []
+    assert [(c.endpoint, c.ttl, c.topic, c.payload["type"]) for c in push.sent] == [
+        (EP_A, 5000, None, "digest"), (EP_B, 5000, None, "digest"),
+    ]
+
+
+async def test_deliver_digest_falls_back_to_telegram_multiline(tmp_path, conn):
+    push = FakePushSender()
+    push.always(EP_A, 500)
+    d, tg = _digest_delivery(tmp_path, conn, push=push)
+    ch = await d.deliver_digest("morning", date(2026, 10, 26), "오늘 일정 3개", DIGEST_BODY, "/x", ttl_s=3600)
+    assert ch == "telegram" and len(push.sent) == 1  # 구독마다 한 번
+    assert [o.text for o in tg.sent] == ["오늘 일정 3개\n" + DIGEST_BODY]
+
+
+async def test_deliver_digest_primary_telegram_and_nowhere(tmp_path, conn):
+    push = FakePushSender()
+    d, tg = _digest_delivery(tmp_path, conn, push=push, primary="telegram")
+    assert await d.deliver_digest("night", date(2026, 10, 27), "내일 일정 1개", "10:00 치과", "/x", ttl_s=3600) == "telegram"
+    assert push.sent == [] and [o.text for o in tg.sent] == ["내일 일정 1개\n10:00 치과"]
+    d, _ = _digest_delivery(tmp_path, conn, primary="telegram", telegram=FakeSender(fail=True))
+    assert await d.deliver_digest("night", date(2026, 10, 27), "내일 일정 1개", "10:00 치과", "/x", ttl_s=3600) is None
