@@ -123,6 +123,10 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
     _run_after(stack[0])
 
 
+class MigrationGapError(RuntimeError):
+    """마이그레이션 파일 번호가 1부터 빈칸 없이 이어지지 않는다(스펙 SP9 11장). 적용 전에 거부한다."""
+
+
 def _migrations() -> list[tuple[int, Path]]:
     found: list[tuple[int, Path]] = []
     for p in MIGRATIONS_DIR.iterdir():
@@ -139,7 +143,13 @@ def migrate(conn: sqlite3.Connection, *, upto: int | None = None) -> int:
     `upto`를 주면 그 번호까지만 적용한다(옛 판 DB를 만드는 시험용).
     """
     current = conn.execute("PRAGMA user_version").fetchone()[0]
-    for number, path in _migrations():
+    migrations = _migrations()
+    for expected, (number, _) in enumerate(migrations, start=1):
+        if number == expected - 1:
+            raise MigrationGapError(f"duplicate migration {number:03d}")
+        if number != expected:
+            raise MigrationGapError(f"missing migration {expected:03d}")
+    for number, path in migrations:
         if number <= current or (upto is not None and number > upto):
             continue
         sql = path.read_text(encoding="utf-8")

@@ -408,3 +408,35 @@ def test_schema_version_12(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
     assert migrate(conn) == 12 == dbmod.LATEST_VERSION
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
+
+
+def _fake_dir(tmp_path, numbers):
+    folder = tmp_path / "mig"
+    folder.mkdir()
+    for n in numbers:
+        (folder / f"{n:03d}_x.sql").write_text(f"CREATE TABLE t{n} (a INTEGER);", encoding="utf-8")
+    return folder
+
+
+def test_gap_in_migration_numbers_refuses(tmp_path, monkeypatch):
+    monkeypatch.setattr(dbmod, "MIGRATIONS_DIR", _fake_dir(tmp_path, [*range(1, 13), 16]))
+    conn = open_db(tmp_path / "state" / "planner.db")
+    with pytest.raises(dbmod.MigrationGapError, match="missing migration 013"):
+        migrate(conn)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 0
+
+
+def test_contiguous_numbers_apply(tmp_path, monkeypatch):
+    monkeypatch.setattr(dbmod, "MIGRATIONS_DIR", _fake_dir(tmp_path, range(1, 14)))
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn) == 13
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+
+
+def test_duplicate_migration_number_refuses(tmp_path, monkeypatch):
+    folder = _fake_dir(tmp_path, range(1, 14))
+    (folder / "013_y.sql").write_text("CREATE TABLE dup (a INTEGER);", encoding="utf-8")
+    monkeypatch.setattr(dbmod, "MIGRATIONS_DIR", folder)
+    conn = open_db(tmp_path / "state" / "planner.db")
+    with pytest.raises(dbmod.MigrationGapError, match="duplicate migration 013"):
+        migrate(conn)
