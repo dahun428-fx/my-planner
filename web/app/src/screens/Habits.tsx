@@ -33,7 +33,7 @@ interface PendingConfirm {
   summary: string;
 }
 
-// SP7 6.2: which habits am I keeping, and are they settling in? Off the tabs, "‹ 오늘" back.
+// SP7 6.2: which habits am I keeping, and are they settling in? Off the tabs, "‹ 더보기" back (SP9 9.1).
 // One read of every status (`status=all`) draws the three sections from the same moment.
 export function Habits() {
   const { state, recheck } = useConnection();
@@ -181,7 +181,7 @@ export function Habits() {
   return (
     <main className={`${page.main} ${styles.main}`}>
       <nav className={styles.bar}>
-        <Link href="/" className={styles.back}>
+        <Link href="/more/" className={styles.back}>
           {copy.habits.back}
         </Link>
       </nav>

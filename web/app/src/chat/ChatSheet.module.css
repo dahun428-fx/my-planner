@@ -97,25 +97,15 @@
 .part {
   min-width: 0;
 }
-.activity,
-.activityBare {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--size-meta);
-}
+/* SP9 9.6: a change is one line of secondary text, no box and no button. */
 .activity {
-  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
-  border-radius: var(--radius-field);
-  background: var(--raised);
+  margin: 0;
+  font-size: var(--size-meta);
+  line-height: 1.4;
   color: var(--text-2);
-}
-.activityText {
-  flex: 1;
   overflow-wrap: anywhere;
   white-space: pre-line; /* a confirmation can end with "\n레벨 N이 됐어요." */
 }
-.undo,
 .retry {
   min-height: 2.75rem;
   padding: 0 0.5rem;
@@ -126,13 +116,9 @@
   font-weight: 600;
   cursor: pointer;
 }
-.undo:disabled,
 .retry:disabled {
   color: var(--muted);
   cursor: default;
-}
-.note {
-  color: var(--muted);
 }
 .status,
 .reason {
@@ -251,7 +237,6 @@
   background: var(--raised);
 }
 .close:focus-visible,
-.undo:focus-visible,
 .retry:focus-visible,
 .send:focus-visible {
   outline: 2px solid var(--text);

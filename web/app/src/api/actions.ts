@@ -132,6 +132,13 @@ export function failureText(result: ApiResult<unknown>): string {
   }
 }
 
+/** The sentence for an undo that did not go through: the 5.4 text when known, else a plain retry line. */
+export function undoFailureText(result: ApiResult<unknown>): string {
+  const k = result.kind;
+  const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
+  return known ? failureText(result) : copy.actions.undoFailed;
+}
+
 const keyOf = (action: ActionName, args: object) => `${action}:${JSON.stringify(args)}`;
 
 export interface UseAction {
@@ -200,11 +207,7 @@ export function useUndo(show?: (t: ToastContent) => void): UseUndo {
     try {
       const out = await undoActivity(id);
       if (out.kind === "undone") say.current({ text: out.confirmation });
-      else if (out.kind === "failed") {
-        const k = out.result.kind;
-        const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
-        say.current({ text: known ? failureText(out.result) : copy.actions.undoFailed });
-      }
+      else if (out.kind === "failed") say.current({ text: undoFailureText(out.result) });
       return out;
     } finally {
       inFlight.current.delete(id);

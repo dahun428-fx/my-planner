@@ -1,13 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { copy } from "../../lib/copy";
 import { makeCtx } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
-import { BASE, server } from "../../test/server";
 import type { PartTodo, ResultChange, ResultItem, TodoSnap } from "../types";
 import { Result } from "./Result";
 
@@ -26,17 +23,6 @@ function item(change: ResultChange, over: Partial<ResultItem> = {}): ResultItem 
   };
 }
 const card = () => within(document.querySelector("section")!);
-
-function serveUndo(answer: () => Response) {
-  const hits: string[] = [];
-  server.use(
-    http.post(`${BASE}/activity/:id/undo`, ({ params }) => {
-      hits.push(String(params.id));
-      return answer();
-    }),
-  );
-  return hits;
-}
 
 describe("Result", () => {
   it("change rows per kind", () => {
@@ -76,46 +62,19 @@ describe("Result", () => {
     expect(document.querySelectorAll("hr")).toHaveLength(items.length - 1);
   });
 
-  it("undo only with undo_id", () => {
+  it("no undo button, even with an undo_id (SP9 9.6: the toast undoes)", () => {
     const items = [item("moved", { undo_id: 931 }), item("moved", { todo: todo(54, "장보기"), activity_ids: [932, 933] })];
     renderWithProviders(<Result props={{ task_ids: [53, 54] }} data={{ today: "2026-10-24", items }} ctx={makeCtx()} />);
-    expect(card().getAllByRole("button", { name: copy.chat.undo })).toHaveLength(1);
+    expect(card().queryByRole("button")).toBeNull();
+    expect(screen.getByText("치과 예약")).toBeInTheDocument();
+    expect(screen.getByText("장보기")).toBeInTheDocument();
   });
 
-  it("undo sends and shows done", async () => {
-    const hits = serveUndo(() => HttpResponse.json({ status: "undone", activity_id: 940, undone: 931, confirmation: "되돌렸어요: 치과 예약" }));
-    const ctx = makeCtx();
-    renderWithProviders(<Result props={{ task_ids: [53] }} data={{ today: "2026-10-24", items: [item("moved", { undo_id: 931 })] }} ctx={ctx} />);
-    await userEvent.click(card().getByRole("button", { name: copy.chat.undo }));
-    await waitFor(() => expect(card().getByText(copy.chat.undone)).toBeInTheDocument());
-    expect(hits).toEqual(["931"]);
-    expect(card().queryByRole("button", { name: copy.chat.undo })).toBeNull();
-    expect(ctx.onAfterAction).toHaveBeenCalledTimes(1);
-  });
-
-  it("already undone shows done", async () => {
-    serveUndo(() => HttpResponse.json({ status: "already_undone" }));
-    renderWithProviders(<Result props={{ task_ids: [53] }} data={{ today: "2026-10-24", items: [item("moved", { undo_id: 931 })] }} ctx={makeCtx()} />);
-    await userEvent.click(card().getByRole("button", { name: copy.chat.undo }));
-    expect(await card().findByText(copy.chat.undone)).toBeInTheDocument();
-  });
-
-  it("undo blocked shows reason", async () => {
-    serveUndo(() => HttpResponse.json({ error: { code: "superseded", message: "x" } }, { status: 409 }));
-    const { unmount } = renderWithProviders(<Result props={{ task_ids: [53] }} data={{ today: "2026-10-24", items: [item("moved", { undo_id: 931 })] }} ctx={makeCtx()} />);
-    await userEvent.click(card().getByRole("button", { name: copy.chat.undo }));
-    expect(await card().findByText(copy.activity.undoBlocked.superseded)).toBeInTheDocument();
-    unmount();
-    serveUndo(() => HttpResponse.json({ error: { code: "not_undoable", message: "x" } }, { status: 422 }));
-    renderWithProviders(<Result props={{ task_ids: [53] }} data={{ today: "2026-10-24", items: [item("moved", { undo_id: 931 })] }} ctx={makeCtx()} />);
-    await userEvent.click(card().getByRole("button", { name: copy.chat.undo }));
-    expect(await card().findByText(copy.activity.undoBlocked.not_undoable)).toBeInTheDocument();
-  });
-
-  it("read only disables undo", () => {
+  it("read only shows the same card without the offline reason (nothing to press)", () => {
     renderWithProviders(<Result props={{ task_ids: [53] }} data={{ today: "2026-10-24", items: [item("moved", { undo_id: 931 })] }} ctx={makeCtx({ readOnly: true })} />);
-    expect(card().getByRole("button", { name: copy.chat.undo })).toBeDisabled();
-    expect(card().getByText(copy.offline.writeLater)).toBeInTheDocument();
+    expect(card().queryByRole("button")).toBeNull();
+    expect(card().queryByText(copy.offline.writeLater)).toBeNull();
+    expect(screen.getByText("치과 예약")).toBeInTheDocument();
   });
 
   it("restored has no undo", () => {

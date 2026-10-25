@@ -307,7 +307,7 @@ web/app/                         # Vercel 루트 디렉터리
 - 화면 위 50px을 남기고 올라오는 시트(반지름 16, 위 손잡이). 위에 "닫기" · "비서" · "앱 대화". 아래로 끌거나 "닫기"로 닫는다.
 - 메시지: 내 글은 오른쪽 검정 말풍선, 비서 글은 왼쪽 말풍선 없는 본문(15px). 시각은 대화가 바뀔 때와 10분 넘게 비었을 때만 가운데 회색으로.
 - **다른 곳에서 바뀐 것**: 시트를 열 때 이 대화의 마지막 메시지 뒤에 `channel != app`인 활동이 있으면(`GET /activity?since=`), 맨 아래에 회색 칸 한 줄 "다른 곳에서 바뀐 것: " 뒤에 `GET /activity` 항목의 `summary` 한 줄을 그대로 붙인다(항목에는 `summary`뿐이라 틀로 할 일 제목을 쓰지 않는다). 최대 3줄. 두뇌도 같은 알림을 받는다(SP3-4 7.1).
-- **확인 문구**: `data-activity.confirmation`(예: "✓ 추가: 치과 → 10월 25일", 12장 R4b)을 회색 칸으로 그리고, 같은 조각의 `undo_ids`가 있으면 칸 오른쪽에 "되돌리기".
+- **확인 문구** (SP9 9.6에서 바뀜): `data-activity.confirmation`(예: "✓ 추가: 치과 → 10월 25일", 12장 R4b)을 한 줄 보조 글자로 그린다(회색 칸·버튼 없음). 같은 답의 `undo_ids`는 모아 토스트 하나로 6초 "되돌리기"(여럿이면 "✓ {n}개를 바꿨어요", 모두 새것부터 되돌림). 그 뒤의 되돌리기는 기록 화면.
 - **상태**: `data-status`가 `queued`면 "비서가 앞의 일을 끝내는 중이에요", `thinking`이면 점 세 개(움직임 줄이기 설정이면 멈춘 점). 15초 핑은 보이지 않는다.
 - **조각**: `ui_*` 도구 조각은 7장 부품으로, 비서 글 사이 제자리에 그린다. 그 밖의 도구 조각(`add_task` 등)은 그리지 않는다(확인 문구가 대신한다).
 - 입력: 아래 고정, 한 줄 입력 + 보내기(40px). 보내는 동안 보내기 버튼은 "멈춤"이 아니라 꺼진다(BE는 중간에 멈추지 않는다, 6.4.1 끊김 규칙). `/`로 시작하는 글은 그대로 보낸다(BE가 명령으로 처리).
@@ -444,7 +444,7 @@ web/app/                         # Vercel 루트 디렉터리
 ### F4. 대화
 
 - `useChat({ transport, onData, resume: false })`, `transport = new DefaultChatTransport({ api: <BE>/api/v1/chat, headers: () => ({ Authorization }), prepareSendMessagesRequest })`. `prepareSendMessagesRequest`는 `{client_msg_id: 마지막 사용자 메시지.id, conversation_id, checkin_id, message: 마지막 사용자 메시지}`만 본문으로 만든다(SP3-4 6.4.1). 사용자 메시지 id는 `generateId` 대신 UUID v4로 만든다.
-- 메시지 조각 처리(`chat/parts.ts`): `text` → 본문, `tool-ui_*`(또는 `dynamic-tool`의 `toolName`이 `ui_`로 시작) + 상태 `input-available` 이상 → 부품, 그 밖의 `tool-*` → 그리지 않음, `data-activity` → 확인 칸(`confirmation`)과 되돌리기 id(12장 R4b). 일시 조각 `data-status`는 `message.parts`에 남지 않으므로 `onData`에서 받아 상태 줄로 쓴다.
+- 메시지 조각 처리(`chat/parts.ts`): `text` → 본문, `tool-ui_*`(또는 `dynamic-tool`의 `toolName`이 `ui_`로 시작) + 상태 `input-available` 이상 → 부품, 그 밖의 `tool-*` → 그리지 않음, `data-activity` → 활동 한 줄(`confirmation`)과 되돌리기 id(12장 R4b. 되돌리기는 채팅 토스트, SP9 9.6). 일시 조각 `data-status`는 `message.parts`에 남지 않으므로 `onData`에서 받아 상태 줄로 쓴다.
 - `ui_*` 조각을 받으면 `localParts`에 `{messageId, parts}`로 저장.
 - 재요청: 스트림 오류(네트워크)면 `regenerate()`로 한 번(같은 사용자 메시지 id = 같은 `client_msg_id`). 두 번째도 안 되면 "다시 받기" 버튼(같은 방법).
 - 13장 계약 테스트: BE 티켓 06이 만드는 기준 SSE는 앱으로 복사하지 않는다. 저장소의 `tests/fixtures/app_golden/`을 시험이 바로 읽어 이 파서로 화면 결과를 확인한다. 두 쪽이 늘 같은 파일을 본다.
@@ -475,7 +475,7 @@ web/app/                         # Vercel 루트 디렉터리
 
 - 읽기: `GET /activity?order=desc&limit=50`, 이어 받기 `before=<next_before>`(12장 R4a). R4a가 들어오기 전에는 `since=<7일 전>&limit=200`을 `next_since`로 끝까지 받아 기기에서 뒤집는다(1인 사용이라 7일치가 수백 줄 안쪽). 대기 체크인의 `ui_confirm`도.
 - 되돌리기: `POST /activity/{id}/undo`. `200 undone` → 알림 줄 + 다시 읽기. `already_undone` → 다시 읽기만. 그 줄의 오른쪽 글을 바꾼다(오류 줄 없음): `409 superseded` → "뒤에 또 바뀌어서 못 되돌려요", `409 undo_expired` → "24시간이 지났어요", `422 not_undoable` → "되돌릴 수 없는 변경이에요".
-- **알림 줄**(모든 화면 공통): 쓰기 응답의 `confirmation`을 4초 보이고, `undo_id`가 있으면 "되돌리기". 줄이 떠 있는 동안 다른 쓰기가 오면 새 것으로 바뀐다.
+- **알림 줄**(모든 화면 공통): 쓰기 응답의 `confirmation`을 4초 보이고, `undo_id`가 있으면 "되돌리기". 줄이 떠 있는 동안 다른 쓰기가 오면 새 것으로 바뀐다. 채팅 답의 활동만 6초다(SP9 9.6, `showFor(t, 6000)`).
 
 ### F9. 오프라인 읽기
 
@@ -552,3 +552,4 @@ R1, R2, R4a가 들어오기 전에는: 해당 경로가 `404`면 그 탭과 묶�
 | 2026-10-24 | v3 | 14장 미결 사항 다섯 가지를 추천대로 확정, R4a~d를 SP3-4가 받음 | Dahun |
 | 2026-10-24 | v4 | 구현 계획의 결정(빈 곳 1~14) 반영 | 운영 앱 스레드 |
 | 2026-10-24 | v5 | SP6 G-A2: 앱의 `move_task`도 시각 있는 할 일이면 확인 시트를 거친다(5.5.5, F6. SP6 8장) | 운영 앱 스레드 |
+| 2026-10-25 | v6 | SP9 9.6(SP9-01): 대화의 확인 문구는 한 줄, 되돌리기는 채팅 토스트 6초(5.5.2, F4, F8) | 운영 앱 스레드 |

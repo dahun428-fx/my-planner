@@ -3,7 +3,8 @@ import type { ResultItem } from "../ui/types";
 import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
 
-// SP6 11.4, Review Focus 4.
+// SP6 11.4 as SP9 9.6 changed it: the change is one line and the toast undoes, so a drawn ui_result
+// item covers every activity it lists, with or without an undo_id. Review Focus 4.
 const activity = (...ids: number[]): ViewPart => ({ kind: "activity", confirmation: "옮겼어요", undoIds: ids.slice(0, 1), activityIds: ids });
 function item(id: number, undo_id: number | null, activity_ids: number[]): ResultItem {
   return {
@@ -31,11 +32,16 @@ describe("hideCoveredActivity", () => {
     expect(hide(parts)).toEqual(parts);
   });
 
-  it("null undo item keeps", () => {
+  it("an item without undo_id still covers its activities (the card shows them; undo is the toast's)", () => {
     const parts = [result("c1", item(53, null, [931, 932])), activity(931, 932)];
-    expect(hide(parts)).toEqual(parts);
+    expect(hide(parts)).toEqual([parts[0]]);
     const one = [result("c1", item(53, null, [931])), activity(931)];
-    expect(hide(one)).toEqual(one);
+    expect(hide(one)).toEqual([one[0]]);
+  });
+
+  it("an activity no item lists keeps the line", () => {
+    const parts = [result("c1", item(53, null, [931])), activity(931, 940)];
+    expect(hide(parts)).toEqual(parts);
   });
 
   it("period list only keeps", () => {

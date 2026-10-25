@@ -56,7 +56,7 @@ describe("Habits", () => {
     const reads = serveList(() => [water, run, read, piano]);
     renderWithProviders(<Habits />, { route: "/habits/" });
     expect(screen.getByRole("heading", { level: 1, name: copy.habits.heading })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: copy.habits.back })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "‹ 더보기" })).toHaveAttribute("href", "/more/");
     expect(await screen.findByRole("heading", { name: copy.habits.active })).toBeInTheDocument();
     expect(new Set(reads)).toEqual(new Set(["status=all"]));
     // active rows with their meta

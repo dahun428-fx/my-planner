@@ -1,5 +1,4 @@
-import { Fragment, useState } from "react";
-import { type UndoBlockReason, useUndo } from "../../api/actions";
+import { Fragment } from "react";
 import { copy } from "../../lib/copy";
 import { formatKst } from "../../lib/time";
 import { Part } from "../components/Part";
@@ -8,8 +7,6 @@ import { Divider } from "../primitives/Divider";
 import primitives from "../primitives/primitives.module.css";
 import type { PartProps, ResultItem, TodoSnap } from "../types";
 import styles from "./cards.module.css";
-
-type UndoState = { kind: "idle" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
 
 const time = (iso: string) => formatKst(iso, "HH:mm");
 /** A day as on the card: "10월 27일 (화)", with its time when it has one; "날짜 없음" without a day. */
@@ -49,32 +46,8 @@ function secondLine(it: ResultItem) {
   }
 }
 
-function Item({ it, readOnly, restored, onUndone }: { it: ResultItem; readOnly: boolean; restored: boolean; onUndone(): void }) {
-  const { undo, busy } = useUndo();
-  const [state, setState] = useState<UndoState>({ kind: "idle" });
+function Item({ it }: { it: ResultItem }) {
   const struck = it.change === "completed" || it.change === "dropped";
-
-  const run = async (id: number) => {
-    if (readOnly) return;
-    const out = await undo(id);
-    if (out?.kind === "undone" || out?.kind === "already_undone") {
-      setState({ kind: "done" });
-      onUndone();
-    } else if (out?.kind === "blocked") setState({ kind: "blocked", reason: out.reason });
-  };
-
-  let trailing: React.ReactNode = null;
-  if (state.kind === "done") trailing = <span className={styles.undoNote}>{copy.chat.undone}</span>;
-  else if (state.kind === "blocked") trailing = <span className={styles.undoNote}>{copy.activity.undoBlocked[state.reason]}</span>;
-  else if (it.undo_id !== null && !restored) {
-    const id = it.undo_id;
-    trailing = (
-      <button type="button" className={styles.undo} disabled={readOnly || busy.has(id)} onClick={() => void run(id)}>
-        {copy.chat.undo}
-      </button>
-    );
-  }
-
   return (
     <div className={styles.item}>
       <div className={styles.itemBody}>
@@ -84,15 +57,14 @@ function Item({ it, readOnly, restored, onUndone }: { it: ResultItem; readOnly: 
         </p>
         {secondLine(it)}
       </div>
-      {trailing}
     </div>
   );
 }
 
 /**
  * ui_result (SP6 6.3): what the secretary changed in this answer, one block per to-do, divided.
- * "되돌리기" only where the BE gave an `undo_id` (one activity on that one to-do); a restored card has
- * none. The confirmation of an undo is the toast's (useUndo).
+ * The card shows results only (SP9 9.6): the undo is the chat toast's, then the activity screen's.
+ * So it has nothing to press, and no offline reason either.
  */
 export function Result({ props, data, ctx }: PartProps<{ task_ids: number[] }>) {
   const items = data?.items;
@@ -104,11 +76,11 @@ export function Result({ props, data, ctx }: PartProps<{ task_ids: number[] }>) 
     );
   }
   return (
-    <Part readOnly={ctx.readOnly} restored={ctx.restored}>
+    <Part restored={ctx.restored}>
       {items.map((it, i) => (
         <Fragment key={it.todo.id}>
           {i > 0 && <Divider />}
-          <Item it={it} readOnly={ctx.readOnly} restored={ctx.restored === true} onUndone={ctx.onAfterAction} />
+          <Item it={it} />
         </Fragment>
       ))}
     </Part>

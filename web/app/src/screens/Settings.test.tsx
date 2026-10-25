@@ -73,6 +73,11 @@ function serve(opts: { notifyAnswer?: object; vapid?: boolean; hold?: boolean } 
 const pushRow = () => screen.findByTestId("device-push");
 
 describe("Settings", () => {
+  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+    renderWithProviders(<Settings />);
+    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+  });
+
   it("primary channel change shows effective telegram", async () => {
     const calls = serve({ notifyAnswer: notifyTelegram });
     renderWithProviders(<Settings />, { route: "/settings/" });

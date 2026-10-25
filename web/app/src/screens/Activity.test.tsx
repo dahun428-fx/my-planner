@@ -61,6 +61,11 @@ function undoes(answer: () => Response) {
 const rowOf = (text: string) => screen.getByText(text).closest("div[class*=row]") as HTMLElement;
 
 describe("Activity", () => {
+  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+    renderWithProviders(<Activity />);
+    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+  });
+
   it("chat launcher: on when connected, off with the reason when not", async () => {
     serve();
     const { unmount } = renderWithProviders(<Activity />);

@@ -94,8 +94,9 @@ describe("copy", () => {
   });
 
   it("habit screen copy is spec 6.2 verbatim", () => {
-    expect(copy.habits.back).toBe("‹ 오늘");
-    expect(copy.habits.back).toBe(copy.checkin.back);
+    // SP9 9.1 moved the habits screen under more: "‹ 더보기".
+    expect(copy.habits.back).toBe("‹ 더보기");
+    expect(copy.checkin.back).toBe("‹ 오늘");
     expect(copy.habits.active).toBe("챙기는 습관");
     expect(copy.habits.paused).toBe("쉬는 습관");
     expect(copy.habits.archived).toBe("그만둔 습관");
@@ -126,6 +127,20 @@ describe("copy", () => {
     expect(habitMeta({ kind: "weekly", target_per_week: 3, week_count: 3 })).toBe("이번 주 목표만큼 했어요");
     // Over the target is still "met", never a count above it.
     expect(habitMeta({ kind: "weekly", target_per_week: 2, week_count: 5 })).toBe("이번 주 목표만큼 했어요");
+  });
+
+  it("more copy is SP9 10장 verbatim", () => {
+    const m = copy.more;
+    expect([m.title, m.settings, m.activity, m.habits, m.status, m.connect].join(" · ")).toBe("더보기 · 설정 · 기록 · 습관 · 상태창 · 기기 연결");
+    expect(m.back).toBe("‹ 더보기");
+    expect(copy.habits.back).toBe(m.back);
+    expect(copy.connect.back).toBe(m.back);
+    for (const t of texts(m)) expect(banned.filter((w) => t.includes(w))).toEqual([]);
+  });
+
+  it("SP9 9.6 chat activity copy", () => {
+    expect(copy.chat.changedMany(3)).toBe("✓ 3개를 바꿨어요"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    expect(copy.chat.undonePartly(1)).toBe("1개만 되돌렸어요");
   });
 
   it("areas are glossary names", () => {

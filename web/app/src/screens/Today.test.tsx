@@ -62,6 +62,11 @@ const withHabits: TodayData = { ...today, habits };
 const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
 describe("Today", () => {
+  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+    renderWithProviders(<Today />);
+    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+  });
+
   it("reads again when a push arrives while open", async () => {
     const env = installPush();
     try {

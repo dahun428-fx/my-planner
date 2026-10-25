@@ -9,6 +9,7 @@ import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { MoreButton } from "../components/MoreButton";
 import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
@@ -280,7 +281,16 @@ export function Activity() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <LargeTitle title={copy.activity.title} sub={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
+      <LargeTitle
+        title={copy.activity.title}
+        sub={copy.activity.intro}
+        trailing={
+          <>
+            {state && <StatusDot state={state} />}
+            <MoreButton />
+          </>
+        }
+      />
       {body}
       <ChatLauncher disabled={!canChat} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />
     </main>
