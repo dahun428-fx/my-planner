@@ -22,7 +22,7 @@ export function LadderPicker({ props, ctx }: PartProps<{ period: string; field: 
   const row = (nums: number[]) => (
     <div className={styles.pills}>
       {nums.map((n) => (
-        <button key={n} type="button" className={styles.pill} aria-label={copy.parts.ladderScore(n)} aria-pressed={score === n} disabled={ctx.readOnly} onClick={() => void record(n)}>
+        <button key={n} type="button" className={`${styles.pill} pressable`} aria-label={copy.parts.ladderScore(n)} aria-pressed={score === n} disabled={ctx.readOnly} onClick={() => void record(n)}>
           {n}
         </button>
       ))}

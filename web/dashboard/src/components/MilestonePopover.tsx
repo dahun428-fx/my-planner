@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef } from "react";
-import type { CurveMilestone } from "../api/types.gen";
+import type { HistoryEvent } from "../api/types.gen";
 import { CURVE_TEXT as T } from "../lib/labels";
 
 /** `2019년`, `2025년 9월`, `2026년 2월 14일`: only as precise as remembered (5.4 `precision`). */
-export function formatMilestoneDate(date: string, precision: CurveMilestone["precision"]): string {
+export function formatMilestoneDate(date: string, precision: HistoryEvent["precision"]): string {
   const [y, m, d] = date.split("-").map(Number);
   if (precision === "year" || !m) return `${y}년`;
   if (precision === "month" || !d) return `${y}년 ${m}월`;
@@ -14,7 +14,7 @@ export function formatMilestoneDate(date: string, precision: CurveMilestone["pre
  * What a tapped milestone shows (13.4): date, kind, title, note. Opening moves focus to its title, so a
  * screen reader reads what opened; Escape or 닫기 closes it (the screen puts focus back on the marker).
  */
-export function MilestonePopover({ milestone: m, onClose }: { milestone: CurveMilestone; onClose: () => void }) {
+export function MilestonePopover({ milestone: m, onClose }: { milestone: HistoryEvent; onClose: () => void }) {
   const titleId = useId();
   const title = useRef<HTMLHeadingElement>(null);
   useEffect(() => {

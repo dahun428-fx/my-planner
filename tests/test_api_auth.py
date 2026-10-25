@@ -90,3 +90,81 @@ async def test_options_preflight_without_token(env):
         headers={"Origin": "https://dash.example", "Access-Control-Request-Method": "GET"},
     )
     assert resp.status == 204
+
+
+# --- SP8 7.2: 경로 틀로 기대 토큰을 고른다(`BODY_TOKEN`은 `/body`만) ---
+
+BODY = "body-token-" + "q" * 40  # 꾸며 낸 값(51자)
+
+
+async def test_body_token_rejected_on_every_other_route(tmp_path):
+    """등록된 모든 경로(틀의 `{id}`는 숫자로)에 `BODY_TOKEN`을 보내면 401. `/body`에 `API_TOKEN`도 401."""
+    from my_planner.api.body import BODY_PATH
+    from my_planner.api.server import LIMITER_KEY
+
+    async with BeEnv.start(tmp_path, start=START, body_token=BODY) as env:
+        routes = sorted({
+            (r.method, r.resource.canonical) for r in env.client.app.router.routes()
+            if r.resource is not None and r.method != "HEAD"
+        })
+        assert ("POST", BODY_PATH) in routes and len(routes) > 20
+        for method, path in routes:
+            url = path.replace("{id}", "1")
+            resp = await env.request(method, url, token=BODY if path != BODY_PATH else TEST_TOKEN, json={})
+            assert resp.status == 401, (method, path)
+            env.client.app[LIMITER_KEY]._failures.clear()  # 실패 세기에 막히지 않게(세기는 다른 시험이 본다)
+        resp = await env.request("POST", BODY_PATH, token=BODY, json={"days": [{"date": "2026-10-24", "steps": 1}]})
+        assert resp.status == 200
+
+
+# --- SP9 5.7: 캘린더 구독 경로만 Bearer 없이 `?key=`로 열린다 ---
+
+ICS = "/api/v1/calendar.ics"
+
+
+async def _calendar_key(env) -> str:
+    return (await (await env.post("/settings/calendar", json={"rotate": False})).json())["url"].split("key=")[1]
+
+
+async def test_api_token_not_needed_for_ics(env):
+    key = await _calendar_key(env)
+    assert (await env.get(f"{ICS}?key={key}", token=None)).status == 200
+    # 키 없이 API 토큰만으로는 안 된다(토큰이 키 자리를 대신하지 않는다)
+    assert (await env.get(ICS)).status == 401
+    assert (await env.get(f"{ICS}?key={TEST_TOKEN}")).status == 401
+
+
+async def test_wrong_key_401_counts_limiter(env):
+    await _calendar_key(env)
+    for _ in range(9):
+        resp = await env.get(f"{ICS}?key=wrong", token=None)
+        assert resp.status == 401
+        assert resp.headers["Cache-Control"] == "no-store"
+        assert (await resp.json())["error"]["code"] == "unauthorized"
+    assert (await env.get(f"{ICS}", token=None)).status == 401  # 키 없음도 센다: 10번째
+    # 10번 채웠으니 1분 동안 모든 요청이 429(맞는 API 토큰도)
+    assert (await env.get("/health")).status == 429
+    assert (await env.get(f"{ICS}?key=wrong", token=None)).status == 429
+    env.clock.advance(timedelta(seconds=61))
+    assert (await env.get("/health")).status == 200
+
+
+async def test_no_key_set_yet_401(env):
+    assert (await env.get(f"{ICS}?key=", token=None)).status == 401
+    assert (await env.get(f"{ICS}?key=anything", token=None)).status == 401
+
+
+async def test_calendar_key_not_accepted_elsewhere(env):
+    key = await _calendar_key(env)
+    from my_planner.api.server import LIMITER_KEY
+
+    routes = sorted({
+        (r.method, r.resource.canonical) for r in env.client.app.router.routes()
+        if r.resource is not None and r.method != "HEAD" and r.resource.canonical != ICS
+    })
+    assert len(routes) > 20
+    for method, path in routes:
+        url = path.replace("{id}", "1")
+        assert (await env.request(method, url, token=key, json={})).status == 401, (method, path)  # Bearer 자리
+        assert (await env.request(method, f"{url}?key={key}", token=None, json={})).status == 401, (method, path)  # 쿼리 자리
+        env.client.app[LIMITER_KEY]._failures.clear()  # 실패 세기에 막히지 않게

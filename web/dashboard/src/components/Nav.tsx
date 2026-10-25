@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { NAV_TEXT } from "../lib/labels";
+import { Pictogram, type PictogramName } from "./pictograms.gen";
 
-const LINKS = [
-  { href: "/", label: NAV_TEXT.status },
-  { href: "/tasks/", label: NAV_TEXT.tasks },
-  { href: "/curve/", label: NAV_TEXT.curve },
-  { href: "/status/", label: NAV_TEXT.window },
-  { href: "/settings/", label: NAV_TEXT.settings },
-] as const;
+const LINKS: readonly { href: string; label: string; icon: PictogramName }[] = [
+  { href: "/", label: NAV_TEXT.status, icon: "home" },
+  { href: "/tasks/", label: NAV_TEXT.tasks, icon: "todo" },
+  { href: "/curve/", label: NAV_TEXT.curve, icon: "curve" },
+  { href: "/status/", label: NAV_TEXT.window, icon: "status" },
+  { href: "/settings/", label: NAV_TEXT.settings, icon: "settings" },
+];
 
 const same = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
@@ -29,6 +30,7 @@ export function Nav() {
         {LINKS.map((l) => (
           <li key={l.href}>
             <Link href={l.href} aria-current={same(path, l.href) ? "page" : undefined}>
+              <Pictogram name={l.icon} size={16} />
               {l.label}
             </Link>
           </li>

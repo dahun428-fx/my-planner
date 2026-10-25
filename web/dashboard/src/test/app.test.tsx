@@ -59,4 +59,24 @@ describe("shell", () => {
     expect(screen.getByRole("link", { name: "할 일" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "상태창" })).not.toHaveAttribute("aria-current");
   });
+
+  it("nav_links_have_pictograms_hidden_from_screen_readers", async () => {
+    localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
+    renderShell("/tasks/");
+    await screen.findByText("화면 내용");
+    const nav = screen.getByRole("navigation", { name: "화면" });
+    const icons = Array.from(nav.querySelectorAll("ul a")).map((a) => {
+      const svg = a.querySelector("svg.pictogram");
+      return [a.getAttribute("href"), svg?.querySelector("use")?.getAttribute("href"), svg?.getAttribute("aria-hidden")];
+    });
+    expect(icons).toEqual([
+      ["/", "#p-home", "true"],
+      ["/tasks/", "#p-todo", "true"],
+      ["/curve/", "#p-curve", "true"],
+      ["/status/", "#p-status", "true"],
+      ["/settings/", "#p-settings", "true"],
+    ]);
+    // The names stay words: a link's accessible name is its label alone.
+    expect(screen.getByRole("link", { name: "상태창" })).toBeInTheDocument();
+  });
 });

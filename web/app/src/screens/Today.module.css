@@ -2,12 +2,12 @@
   padding-bottom: calc(var(--row) + 3.5rem + env(safe-area-inset-bottom) + var(--gap));
 }
 .line {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   font-size: var(--size-meta);
   color: var(--muted);
 }
 .notice {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   padding: 0.75rem var(--pad);
   background: var(--notice-bg);
   border: 1px solid var(--notice-border);
@@ -27,9 +27,10 @@
   font-weight: 600;
   color: var(--notice-ink);
 }
-/* The brief is the secretary's words, not something it changed: no --hue here (5.1). */
+/* The brief is the secretary's words, not something it changed: no --hue here (5.1). DESIGN.md:
+   open body text on the paper, 17/1.6. */
 .brief {
-  padding: 0.75rem var(--pad);
+  padding: 0.5rem var(--row-pad-x) 0;
 }
 .briefAt {
   float: right;
@@ -39,17 +40,22 @@
   font-variant-numeric: tabular-nums;
 }
 .briefText {
-  margin: 0;
   font-size: var(--size-body);
-  line-height: 1.5;
-  white-space: pre-line;
+  line-height: var(--lh-body);
 }
+/* The brief is Markdown (several blocks): the clamp counts lines across them, and the height cap
+   keeps three lines where a browser clamps only one block. */
 .folded {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
   -webkit-box-orient: vertical;
+  max-height: 4.8em;
   overflow: hidden;
+}
+/* No space between blocks while folded, so the third line is whole, not half cut. */
+.briefText.folded > * + * {
+  margin-top: 0;
 }
 .more {
   position: relative;
@@ -77,7 +83,7 @@
   outline: 2px solid var(--text);
 }
 .condition {
-  padding: 0.5rem var(--pad);
+  padding: 0.75rem var(--row-pad-x) 0;
 }
 .pills {
   display: flex;
@@ -90,10 +96,11 @@
   font-size: var(--size-meta);
   color: var(--muted);
 }
+/* DESIGN.md 알약 선택: 44px, 1px --border, the chosen one --primary. */
 .pill {
   flex: 1;
   min-height: var(--control-h);
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
@@ -142,22 +149,26 @@
   display: inline-flex;
   align-items: center;
   min-height: var(--control-h);
+  font-size: var(--fs-callout);
 }
 .block {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--section-gap);
 }
+/* A section head as in a paper group (DESIGN.md 섹션 머리). */
 .blockHeading {
-  margin: 0 0 0.5rem;
-  padding: 0 0.25rem;
-  font-size: var(--size-section);
+  margin: 0 0 0.75rem;
+  padding: 0 0 0.375rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-label);
   font-weight: 600;
-  color: var(--text);
+  line-height: var(--lh-label);
+  color: var(--muted);
 }
 .blockItem + .blockItem {
-  margin-top: 0.5rem;
+  margin-top: var(--panel-gap);
 }
 .pinned {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--section-gap);
 }
 .pinnedMark {
   margin: 0 0.25rem 0.25rem;
@@ -166,6 +177,112 @@
   color: var(--hue);
 }
 .pinnedBody {
-  border-radius: var(--radius-group);
+  border-radius: var(--radius-container);
   overflow: hidden;
+}
+/* SP7 6.1: the habit rows inside the group, their circles on the paper's text edge like the to-do
+   rows below. */
+.habits {
+  padding: 0 var(--row-pad-x) 0 calc(var(--row-pad-x) - (var(--control-h) - var(--check)) / 2);
+}
+.habitsEmpty {
+  margin: 0 var(--gutter) var(--gap);
+  padding: 0 0.25rem;
+}
+/* A 20px line in the section head; its hit area is the 44px control height. */
+.manage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.manage::after {
+  content: "";
+  position: absolute;
+  inset: calc((1.25rem - var(--control-h)) / 2) -0.75rem;
+}
+.manage:focus-visible {
+  outline: 2px solid var(--text);
+}
+/* SP9 9.3: missed-reminder lines (facts only) above today's events. */
+.missed {
+  margin: 0 var(--gutter) var(--gap);
+  padding: 0;
+  list-style: none;
+}
+.missedLine {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--control-h);
+  border-bottom: 1px solid var(--rule);
+}
+.missedText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-callout);
+  color: var(--text-2);
+}
+.dismiss {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  margin-right: -0.625rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dismiss:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Today's events: time, title, area dot; a row opens the schedule tab on that day. */
+.event {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--row);
+  padding: 0.5rem var(--row-pad-x);
+  color: var(--text);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.event + .event::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--row-pad-x);
+  border-top: 1px solid var(--rule);
+}
+.event:active {
+  background: var(--raised);
+}
+.eventAt {
+  flex: none;
+  min-width: 4.5rem;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.eventTitle {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--size-body);
+}
+.dismiss:focus-visible,
+.event:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }

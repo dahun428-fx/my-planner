@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -69,6 +70,8 @@ Channel = Literal["telegram", "app"]  # 대화 통로 (SP3-4 스펙 5.1)
 ActivityChannel = Literal["app", "telegram", "scheduler"]  # 활동 통로 (5.2)
 Actor = Literal["secretary", "user"]  # 활동 행위자 (5.2)
 Risk = Literal["low", "confirm"]  # 활동 위험 (5.2, 6.4.2)
+# 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음)
+RunKind = Literal["chat", "run", "moments", "summary"]
 
 
 @dataclass
@@ -100,6 +103,13 @@ class RunContext:
     ui_drawn: int = 0
     # 이 묶음의 도구가 쌓은 경험치와 넘긴 레벨(`status.xp.XpGain`, SP3-4 9.2). 레벨 오름 한 줄은 이것으로만 정한다
     xp: XpGain = field(default_factory=XpGain)
+    # 두뇌 호출의 종류(SP8 6.3). `moments`면 도구는 `save_moments` 하나뿐이다(`mcp_adapter.tool_names_for`)
+    kind: RunKind = "chat"
+    moments_date: date | None = None  # 하루 끝 작업이 정리하는 그 날(M1)
+    moments_refs: frozenset[str] = frozenset()  # 그 입력에 나온 참조(`task:<id>`, `habit:<id>`, `condition`, `chat`, M2)
+    # 두뇌가 호출 중에 처음 본 세션 id(두뇌 구현이 적는다). 시간 초과·취소로 결과가 없어도 순간 호출 뒤
+    # 세션 파일을 지울 수 있게(SP8 6.3, 계획 결정 18)
+    brain_session_id: str | None = None
 
     @property
     def run_turn(self) -> bool:

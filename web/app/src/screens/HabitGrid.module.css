@@ -1,0 +1,53 @@
+/* SP7 6.2 four-week grid: theme tokens only. A checked day is a dot in ink; nothing marks a day
+   without a check. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  padding: 0.25rem 0;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--control-h);
+  padding: 6px 0;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  font: inherit;
+  color: var(--muted);
+}
+.pressable {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pressable:active {
+  background: var(--ground);
+}
+.pressable:disabled {
+  cursor: default;
+}
+.pressable:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.num {
+  font-size: var(--size-meta);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.today .num {
+  font-weight: 700;
+  color: var(--text);
+}
+.future {
+  opacity: 0.4;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--text);
+}

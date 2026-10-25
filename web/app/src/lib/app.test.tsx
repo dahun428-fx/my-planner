@@ -45,11 +45,13 @@ describe("_app", () => {
     await waitFor(async () => expect(await get("snap:today")).toBeUndefined());
   });
 
-  it("applies the saved theme and follows a notification tap", async () => {
+  it("applies the saved theme and palette and follows a notification tap", async () => {
     env = installPush();
     localStorage.setItem("mp.theme", "dark");
+    localStorage.setItem("mp.palette", "sunset");
     const router = mount("/connect/");
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
+    expect(document.documentElement.dataset.palette).toBe("sunset");
     await waitFor(() => expect(env?.register).toHaveBeenCalledWith("/sw.js", { scope: "/" }));
     env.emit({ navigate: "/checkin/?id=341" });
     expect(router.push).toHaveBeenCalledWith("/checkin/?id=341");
@@ -61,4 +63,5 @@ afterEach(() => {
   env?.restore();
   env = null;
   delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.palette;
 });

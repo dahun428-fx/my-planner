@@ -3,7 +3,8 @@ import styles from "./LargeTitle.module.css";
 
 // Spec 5.1/5.5.1: grey meta line (13) above a 30/700 title, optional trailing control, and an
 // optional grey line under the title across the whole width (5.5.3 sent line, 5.5.6 intro).
-export function LargeTitle({ title, meta, sub, trailing }: { title: string; meta?: ReactNode; sub?: ReactNode; trailing?: ReactNode }) {
+// SP9 9.2: the schedule tab's title is its month toggle button, so `title` takes a node.
+export function LargeTitle({ title, meta, sub, trailing }: { title: ReactNode; meta?: ReactNode; sub?: ReactNode; trailing?: ReactNode }) {
   return (
     <header className={styles.header}>
       <div className={styles.row}>

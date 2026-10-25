@@ -86,7 +86,7 @@
   position: relative;
   min-height: var(--small-control-h);
   padding: 0 0.875rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
@@ -155,4 +155,50 @@
 .keep,
 .confirmDanger {
   flex: 1;
+}
+
+/* SP9 9.7 check-in time: a native picker (a wheel on iOS) that looks like the row's value. */
+.timeSelect {
+  min-height: var(--control-h);
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--hue);
+  text-align: right;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.timeSelect:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.timeSelect:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+/* SP9-07: off the tabs, the "‹ 더보기" back link above the title (as Activity). */
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
+
+/* SP9 9.7: the subscription address, long and unbroken; selectable so it can be copied by hand too. */
+.url {
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  user-select: all;
 }

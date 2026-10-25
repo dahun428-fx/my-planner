@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Drafts, Priorities, Today as TodayData, Week } from "../api/types.gen";
 import { copy } from "../lib/copy";
+import { notifyDataChanged } from "../lib/push";
 import draftsJson from "../test/fixtures/drafts.json";
 import monthJson from "../test/fixtures/priorities-month.json";
 import quarterJson from "../test/fixtures/priorities-quarter.json";
@@ -66,6 +67,11 @@ const needsConfirm = () =>
 const tabOf = (name: string) => screen.getByRole("radio", { name });
 
 describe("Todos", () => {
+  it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+    renderWithProviders(<Todos />);
+    expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
+  });
+
   it("writes and the launcher go off together when the BE stops taking writes", async () => {
     serve();
     actions(() => HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 }));
@@ -74,7 +80,7 @@ describe("Todos", () => {
     await waitFor(() => expect(add).toBeEnabled());
     await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
     fireEvent.click(screen.getByRole("checkbox", { name: copy.today.checkLabel("장보기") }));
-    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled(), { timeout: 3000 }); // CI 부하에서 429 → 쓰기 멈춤 전파가 1초를 넘은 적이 있다
     expect(add).toBeDisabled();
     expect(screen.queryByRole("checkbox", { name: copy.today.checkLabel("장보기") })).toBeNull(); // a read-only row has no check
   });
@@ -119,6 +125,37 @@ describe("Todos", () => {
     for (const box of screen.getAllByRole("checkbox", { name: copy.today.doneLabel("주간 계획 세우기") })) expect(box).toHaveAttribute("aria-checked", "true");
     expect(container.textContent).not.toMatch(/\d\s*\/\s*\d/);
     expect(container.textContent).not.toContain("%");
+  });
+
+  it("week lists the to-dos with no date under their own heading", async () => {
+    serve();
+    renderWithProviders(<Todos tab="week" />);
+    const heading = await screen.findByRole("heading", { name: copy.todos.undated });
+    const group = heading.closest("section") ?? heading.parentElement!.parentElement!;
+    expect(within(group).getByText("언젠가 읽을 책 고르기")).toBeInTheDocument();
+  });
+
+  it("month shows the to-dos planned in it with their day (10/28 is not only a priority)", async () => {
+    serve();
+    renderWithProviders(<Todos tab="month" />);
+    const heading = await screen.findByRole("heading", { name: copy.todos.periodTodos(copy.todos.periods.month) });
+    const group = heading.closest("section") ?? heading.parentElement!.parentElement!;
+    expect(within(group).getByText("분기 보고서 초안")).toBeInTheDocument();
+    expect(within(group).getByText(copy.dateParts.monthDay(10, 28))).toBeInTheDocument();
+  });
+
+  it("an answer that changed something reads the lists again at once, sheet still open", async () => {
+    let weekHits = 0;
+    serve();
+    server.use(http.get(`${BASE}/week`, () => {
+      weekHits += 1;
+      return HttpResponse.json(week);
+    }));
+    renderWithProviders(<Todos tab="week" />);
+    await screen.findByText("장보기");
+    const before = weekHits;
+    notifyDataChanged();
+    await waitFor(() => expect(weekHits).toBe(before + 1));
   });
 
   it("empty day collapsed", async () => {
@@ -219,6 +256,48 @@ describe("Todos", () => {
     fireEvent.contextMenu(await screen.findByText("장보기"));
     fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
     expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+  });
+
+  it("tomorrow on scheduled todo opens confirm sheet", async () => {
+    // SP6 8 (BE-2): Todos' "내일로" asks first for a to-do with a time.
+    const SUMMARY = "날짜를 옮겨요: 장보기 → 10월 25일 (일)";
+    serve();
+    const bodies = actions((b) => (b.confirm_token ? applied() : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: SUMMARY, expires_at: "2026-10-24T09:00:00Z" })));
+    renderWithProviders(<Todos tab="week" />);
+    const user = userEvent.setup();
+    fireEvent.contextMenu(await screen.findByText("장보기"));
+    fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText(SUMMARY)).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.change }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ action: "move_task", args: { id: 34, planned_for: "2026-10-25" }, confirm_token: "ct-9" });
+    expect(bodies[1].client_msg_id).not.toBe(bodies[0].client_msg_id);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.contextMenu(screen.getByText("장보기"));
+    fireEvent.click(screen.getByRole("button", { name: copy.todos.tomorrow }));
+    const again = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(again).getByText(SUMMARY)).toBeInTheDocument());
+    await user.click(within(again).getByRole("button", { name: copy.todos.keep }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(bodies).toHaveLength(3);
+  });
+
+  it("change date never asks first", async () => {
+    // SP9 5.4: to-dos have no time, so EditTodoSheet's "날짜 바꾸기" sends move_task once, with no confirm token.
+    serve();
+    const bodies = actions(() => applied());
+    renderWithProviders(<Todos tab="week" />);
+    const user = userEvent.setup();
+    fireEvent.contextMenu(await screen.findByText("장보기"));
+    await user.click(screen.getByRole("button", { name: copy.todos.changeDate }));
+    fireEvent.change(await screen.findByLabelText(copy.todos.dateLabel), { target: { value: "2026-10-28" } });
+    await user.click(screen.getByRole("button", { name: copy.todos.save }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ action: "move_task", args: { id: 34, planned_for: "2026-10-28" } });
+    expect(bodies[0].confirm_token ?? null).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("long press edit title and date", async () => {

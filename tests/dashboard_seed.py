@@ -2,7 +2,8 @@
 
 `seed_dashboard_db(conn, clock)`이 SQL로 바로 넣는다(쓰기 도구를 거치지 않는다): 할 일·우선순위·일정·전에 잡은 일,
 분기 메인 퀘스트와 첫 걸음, 컨디션 30일 중 21일(과 그 앞 두 달), 오늘 회차와 전달, 챕터·사건·사다리·영역 점수(지난 분기와 이번 분기),
-경험치 원장(합계 1380 = 레벨 6, 130 / 400)·칭호. 시각은 `clock.now()`를 기준으로 잡는다.
+경험치 원장(합계 1380 = 레벨 6, 130 / 400)·칭호, 지난 4주의 끝낸 할 일과 건강 습관 체크(SP8 스탯 보너스).
+시각은 `clock.now()`를 기준으로 잡는다.
 `tests/test_dashboard_fixtures.py`가 이 DB의 `GET` 응답을 `web/dashboard/src/test/fixtures/`와 비교한다.
 티켓 17·18은 그 표에 행만 더한다.
 """
@@ -46,6 +47,19 @@ FIRST_STEPS = (
     ("첫 장면 색칠하기", "open", 0),
     ("인쇄소 견적 묻기", "open", None),
 )
+# 지난 4주에 끝낸 할 일(SP8 보너스): (제목, 오늘에서 며칠 전, 영역). 모두 이번 주 앞이라 `/week`에는 없다.
+PAST_DONE = (
+    ("포트폴리오 사진 고르기", 8, ("career",)),
+    ("이력서 경력 칸 다듬기", 10, ("career",)),
+    ("면접 질문 목록 쓰기", 13, ("career",)),
+    ("업계 모임 신청", 15, ("career", "relationships")),
+    ("자격증 교재 1장 읽기", 17, ("learning", "career")),
+    ("작업물 정리 폴더 만들기", 22, ("career",)),
+    ("스케치북 새로 사기", 9, ("quality_of_life",)),
+)
+# 건강 습관 하나: 지난 27일 중 체크하지 않은 날(오늘은 아직 체크 전)
+HABIT = "저녁에 걷기"
+HABIT_GAPS = frozenset({3, 6, 11, 18, 20, 25})
 BRIEF_TEXT = "좋은 아침이에요. 오늘은 수채화 밑그림과 저녁 산책이 우선이에요.\n14:00에 치과 정기 검진이 있어요."
 # 이번 분기 영역 점수(지난 분기보다 건강만 낮다: 디버프 하나)
 THIS_QUARTER = {"career": 6, "finance": 5, "health": 4, "relationships": 7, "learning": 6, "quality_of_life": 5}
@@ -125,6 +139,26 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
             (name, status, planned, quest, ts, ts, ts if status == "done" else None),
         )
 
+    # --- 지난 4주 활동(SP8 5장 보너스): 이번 주 앞의 끝낸 할 일, 건강 습관 체크 ---
+    for name, back, areas in PAST_DONE:
+        d = midnight - timedelta(days=back)
+        cur = conn.execute(
+            "INSERT INTO tasks (title, status, created_at, updated_at, completed_at) VALUES (?, 'done', ?, ?, ?)",
+            (name, ts, ts, to_iso(_kst(d, 19, 30))),
+        )
+        conn.executemany("INSERT INTO task_areas (task_id, area) VALUES (?, ?)",
+                         [(int(cur.lastrowid or 0), a) for a in areas])
+    cur = conn.execute(
+        "INSERT INTO habits (title, area, kind, status, sort_order, created_at, updated_at) "
+        "VALUES (?, 'health', 'daily', 'active', 1, ?, ?)", (HABIT, ts, ts),
+    )
+    habit_id = int(cur.lastrowid or 0)
+    conn.executemany(
+        "INSERT INTO habit_checks (habit_id, date, checked_at) VALUES (?, ?, ?)",
+        [(habit_id, (today - timedelta(days=back)).isoformat(), ts) for back in range(1, 28)
+         if back not in HABIT_GAPS],
+    )
+
     # --- 컨디션: 30일 중 21일 ---
     for back in range(30):
         if back in CONDITION_GAPS:
@@ -174,10 +208,13 @@ def seed_dashboard_db(conn: sqlite3.Connection, clock: Clock) -> None:
 
     # --- 인생 곡선: 챕터·사건·사다리·영역 점수 ---
     ch = chapter(conn, "꾸민 새 출발", "2025-03", sketch="↗", certainty="estimate")
-    chapter(conn, "꾸민 배움의 해", "2023-01", "2025-02")
-    m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch, note="꾸민 메모: 작은 카페 벽에 세 점")
-    m2 = milestone(conn, "꾸민 이사 결정", "2026-02-14", kind="turning_point", chapter_id=ch)
-    milestone(conn, "꾸민 긴 감기", "2026-06", kind="low")
+    # 기억한 사다리(SP8 8.1): 히스토리의 "그때 사다리 6". 새 출발은 월별 사다리 평균으로 그린다
+    chapter(conn, "꾸민 배움의 해", "2023-01", "2025-02", ladder_remembered=6)
+    m1 = milestone(conn, "꾸민 첫 전시", "2025-09", kind="high", chapter_id=ch, note="꾸민 메모: 작은 카페 벽에 세 점",
+                   area="learning")
+    m2 = milestone(conn, "꾸민 이사 결정", "2026-02-14", kind="turning_point", chapter_id=ch, area="quality_of_life",
+                   origin="chat")
+    milestone(conn, "꾸민 긴 감기", "2026-06", kind="low", area="health", kind_certainty="estimate")
     milestone(conn, "꾸민 첫 자전거", "2019", kind="high")  # 가장 이른 챕터보다 앞선 사건(년 확대가 `from`을 준다)
     milestone(conn, "꾸민 조용한 겨울", "2025-12", kind="low", sensitive=1, note="꾸민 메모: 민감 표시 확인용")
     for period, n, f in CURVE_LADDER:

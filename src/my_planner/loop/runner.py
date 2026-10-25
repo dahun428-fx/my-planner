@@ -17,8 +17,16 @@ from my_planner.harness.dispatcher import (  # 다시 넣기 상한은 앱 재�
     MAX_RUN_ATTEMPTS,
     Inbound,
 )
+from my_planner.harness.moments import days_to_queue
 from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
+from my_planner.loop.reminders import (
+    RESUME_GAP,
+    RETRY_DELAYS_S,
+    PendingReminder,
+    remind_events,
+    send_reminders,
+)
 from my_planner.loop.schedule import (
     ENABLED_LOOPS,
     Due,
@@ -37,13 +45,17 @@ from my_planner.tools.actions import ActionRequest, ActionResult
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.harness.delivery import Delivery
+    from my_planner.store.repos.events import EventsRepo
+    from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
 
 log = logging.getLogger(__name__)
 
 DRAFT_EXPIRE_DAYS = 3
-RESUME_GAP = timedelta(minutes=3)  # 직전 tick과 이보다 멀면 절전에서 깨어난 것으로 본다(스펙 7, S5)
+# RESUME_GAP(3분): 직전 tick과 이보다 멀면 절전에서 깨어난 것으로 본다(스펙 7, S5). 일정 알림 판정(SP9 5.3)이 같이 써서
+# `loop/reminders.py`에 두고 여기서 가져온다
 
 
 def _due(run: Run) -> Due:
@@ -115,6 +127,75 @@ def grant_rest_days_daily(target: ActionApplier) -> Callable[[date], None]:
         log.info("rest_days_granted", extra={"count": len(granted)})
 
     job.__name__ = "grant_rest_days"
+    return job
+
+
+class MomentsSubmitter(Protocol):
+    def submit_moments(self, day: date) -> None: ...
+
+
+def queue_moments_daily(target: MomentsSubmitter, moments: MomentsRepo, state: StateRepo) -> Callable[[date], None]:
+    """하루 한 번 작업(SP8 6.2): 정리할 날을 골라 디스패처에 오래된 날부터 넣는다. 두뇌는 디스패처가 부른다."""
+
+    def job(today: date) -> None:
+        days = days_to_queue(moments, state, today)
+        for d in days:
+            target.submit_moments(d)
+        log.info("moments_queued", extra={"count": len(days)})
+
+    job.__name__ = "queue_moments"
+    return job
+
+
+class SummaryQueue(Protocol):
+    def queue_summaries(self, *, retry: bool = False) -> int: ...
+
+
+def retry_summaries_daily(target: SummaryQueue) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 7.2): 요약이 안 된 최근 7일의 닫힌 앱 대화를 다시 큐에 넣는다. 두뇌는 디스패처가 부른다."""
+
+    def job(today: date) -> None:
+        target.queue_summaries(retry=True)
+
+    job.__name__ = "retry_summaries"
+    return job
+
+
+class DeletedEraser(Protocol):
+    def reerase_deleted(self) -> int: ...
+
+
+def reerase_deleted_daily(target: DeletedEraser) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 7.7): 최근 30일 안에 지운 대화의 원문 줄과 세션 파일을 다시 지운다(여러 번 해도 같다)."""
+
+    def job(today: date) -> None:
+        target.reerase_deleted()
+
+    job.__name__ = "reerase_deleted_conversations"
+    return job
+
+
+def prune_records_daily(target: ActionApplier) -> Callable[[date], None]:
+    """하루 한 번 작업: 60일 지난 `status_moment_days` 행(SP8 6.4)과 56일 지난 `body_days` 행(7.1) 지우기(계획 결정 17).
+    즉시 갈래로(4.3). 로그에는 개수만."""
+
+    def job(today: date) -> None:
+        res = target.apply_action(_scheduler("prune_records", {}))
+        log.info("records_pruned", extra=dict(res.body.get("result", {})))
+
+    job.__name__ = "prune_records"
+    return job
+
+
+def memos_daily(target: ActionApplier) -> Callable[[date], None]:
+    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고 `data/exports/memos.md`를 다시 쓴다. 즉시 갈래로(4.3).
+    로그에는 개수만 남긴다(본문, 제목 없이)."""
+
+    def job(today: date) -> None:
+        res = target.apply_action(_scheduler("memos_daily", {}))
+        log.info("memos_daily", extra=dict(res.body.get("result", {})))
+
+    job.__name__ = "memos_daily"
     return job
 
 
@@ -277,7 +358,7 @@ def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
             m = Inbound(
                 text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
                 channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=None,
-                conversation_id=row.conversation_id,
+                conversation_id=row.conversation_id, resume_conversation_id=row.resume_conversation_id,
             )
         else:
             m = Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)
@@ -315,8 +396,15 @@ class Runner:
         loops: frozenset[LoopKey] = ENABLED_LOOPS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         on_resume: Callable[[], Awaitable[None]] | None = None,
+        checkins: bool = True,
+        events: EventsRepo | None = None,
+        reminder_delivery: Delivery | None = None,
+        summaries: SummaryQueue | None = None,
     ) -> None:
+        """`checkins=False`(role = "dev", 릴리스 흐름 스펙 5.2): 회차를 만들지도 따라잡지도 않는다. 만료된 대화
+        닫기, 하트비트, 하루 한 번 작업(초안 만료, 백업, 로그 정리 등)은 그대로 돈다."""
         self.clock = clock
+        self.checkins = checkins
         self.router = router
         self.settings = settings
         self.runs = runs
@@ -328,6 +416,12 @@ class Runner:
         self._on_resume = on_resume
         self._ticked = False  # 이 프로세스에서 tick을 한 번이라도 했는가
         self._polling_down = False  # 폴링 재시작이 안 됐다: tick마다 다시 해 본다
+        self.events = events  # 일정 알림(SP9 5.3). 없으면 알림 판정을 건너뛴다
+        self.reminder_delivery = reminder_delivery
+        self.reminder_delays = RETRY_DELAYS_S  # 보내기 재시도 간격(시험이 바꾼다)
+        self.reminder_tasks: set[asyncio.Task[None]] = set()  # 보내는 중인 알림 작업(끝나면 스스로 빠진다)
+        # 대화 요약 큐(SP9 7.2): 만료로 닫은 뒤 tick마다 닫힌 앱 대화를 넣는다. 없으면 건너뛴다
+        self.summaries = summaries
 
     @property
     def polling_down(self) -> bool:
@@ -427,13 +521,26 @@ class Runner:
         self.ensure_installed()
         last_seen = self._get_time("last_seen_at")
         installed = self._get_time("installed_at")
+        # 회차가 없어도, 멈춤 중에도, 하트비트 기록보다 앞에서(SP9 5.3). 하트비트는 tick 끝에서만 적으니, 뒷부분이 매번
+        # 예외(`tick_error`)면 공백이 커져 알림이 `late_sent`·`missed`로 바뀐다(스펙이 정한 순서)
+        self._remind(last_seen, now)
+        if not self.checkins:  # 회차 없이 정리만(2·3단계의 회차 부분을 건너뛴다)
+            if self.router is not None:
+                self.router.close_expired()
+            self._queue_summaries()
+            self.state.set("last_seen_at", to_iso(now))
+            self._run_daily(logical_date(now, tz, boundary))
+            return
         judged_from = self._after_started_return(last_seen, now)
+        # 바꾼 체크인 시각(SP9 8장)은 tick마다 다시 읽는다: 재시작 없이 다음 회차부터 새 시각
+        overrides = self.state.get_schedule_override()
         # 2. 창 안의 예정 회차를 runs에 만든다(이미 있으면 그대로)
-        for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops):
+        for due in due_between(window_start(now, last_seen, installed), now, s, tz, self.loops, overrides):
             self.runs.ensure(due.loop, due.scheduled_for, due.cadence)
         # 3. 만료된 대화를 닫고(chat 30분, plan 2시간), 따라잡기 판정과 적용
         if self.router is not None:
             self.router.close_expired()
+        self._queue_summaries()  # 닫힌 앱 대화(방금 닫은 것 포함)의 요약(SP9 7.2)
         by_due = {_due(r): r for r in self.runs.pending()}
         # 넘겨 받은 회고(R1)는 pending이지만 판정에서 빼고 따로 넘긴다
         carried = self._carried_review()
@@ -446,7 +553,7 @@ class Runner:
             brain_calls_today=usage.brain_calls,
             proactive_today=usage.proactive_messages,
             plan_open=self.router is not None and self.router.plan_open(),
-            cfg=s, tz=tz, boundary=boundary,
+            cfg=s, tz=tz, boundary=boundary, overrides=overrides,
         )
         if decision.clock_backwards and last_seen is not None:  # 공백은 0으로 봤다. 차이만 남긴다
             log.warning("clock_went_backwards", extra={"gap_seconds": int((last_seen - now).total_seconds())})
@@ -482,6 +589,55 @@ class Runner:
         # 4. 하트비트
         self.state.set("last_seen_at", to_iso(now))
         self._run_daily(logical_date(now, tz, boundary))
+
+    def _queue_summaries(self) -> None:
+        if self.summaries is None:
+            return
+        try:
+            self.summaries.queue_summaries()
+        except Exception:  # 요약을 못 넣어도 회차 판정은 돈다
+            log.exception("summary_queue_error")
+
+    def _remind(self, last_seen: datetime | None, now: datetime) -> None:
+        """일정 알림: 판정과 행 기록은 여기서 동기로, 보내기는 asyncio 작업으로 넘긴다. 안 돼도 tick은 그대로 간다."""
+        if self.events is None or last_seen is None:  # 첫 실행은 공백을 알 수 없다
+            return
+        try:
+            pending = remind_events(last_seen_at=last_seen, now=now, events=self.events, limits=self.settings.limits,
+                day_boundary=self.settings.day_boundary,
+            )
+        except Exception:  # 알림 판정이 안 돼도 회차 판정은 돈다
+            log.exception("remind_error")
+            return
+        if pending:
+            self._send_in_background(pending)
+
+    async def drain_reminders(self, timeout: float = 10) -> None:
+        """종료 때: 보내는 중인 알림을 잠깐 기다리고, 남은 것은 취소한다(취소된 알림의 행은 `failed`가 된다)."""
+        tasks = list(self.reminder_tasks)
+        if not tasks:
+            return
+        _, left = await asyncio.wait(tasks, timeout=timeout)
+        for t in left:
+            t.cancel()
+        await asyncio.gather(*left, return_exceptions=True)
+
+    def _send_in_background(self, pending: list[PendingReminder]) -> None:
+        assert self.events is not None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 이벤트 루프 밖(동기 호출): 보낼 수 없으니 못 보냈다고 적는다
+            for p in pending:
+                self.events.mark_reminder_failed(p.outcome.event_id, p.outcome.date)
+            log.warning("reminders_no_loop", extra={"count": len(pending)})
+            return
+        if self.reminder_delivery is None:
+            for p in pending:
+                self.events.mark_reminder_failed(p.outcome.event_id, p.outcome.date)
+            return
+        task = loop.create_task(send_reminders(pending, self.reminder_delivery, self.events, delays=self.reminder_delays))
+        self.reminder_tasks.add(task)
+        task.add_done_callback(self.reminder_tasks.discard)
 
     def _run_daily(self, today: date) -> None:
         if self.state.get("last_daily_jobs_date") == today.isoformat():

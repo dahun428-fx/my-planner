@@ -290,3 +290,17 @@ async def test_daily_cap_shared_by_channels(tmp_path):
     assert text(capped) == DAILY_CAP_REPLY
     assert sent == ["텔레그램 답", DAILY_CAP_REPLY]
     assert health["brain"]["calls_today"] == 2
+
+
+async def test_health_inbound_pending_oldest_at(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        assert (await _health(env))["inbound_pending_oldest_at"] is None
+        for uid, at, done in ((1, kst(2026, 10, 24, 10, 5), 0), (2, kst(2026, 10, 24, 10, 0), 0),
+                              (3, kst(2026, 10, 24, 9, 0), 1)):
+            env.conn.execute(
+                "INSERT INTO inbound_pending (update_id, text_redacted, sent_at, received_at, brain_done) "
+                "VALUES (?, 'x', ?, ?, ?)", (uid, to_iso(at), to_iso(at), done),
+            )
+        env.conn.commit()
+        body = await _health(env)
+    assert body["inbound_pending_oldest_at"] == "2026-10-24T01:00:00Z"

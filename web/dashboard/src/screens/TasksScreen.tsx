@@ -153,7 +153,7 @@ function Skeleton({ tall = false }: { tall?: boolean }) {
 
 /** (b) 할 일 + 컨디션, spec 13.3: `/today` or `/week` by tab, `/conditions` under both. Read only. */
 export function TasksScreen() {
-  const { ready, conn } = useConnection();
+  const { ready, conn, backOnline } = useConnection();
   const [tab, setTab] = useState<Tab>("today");
   const panelId = useId();
   const key = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
@@ -166,8 +166,8 @@ export function TasksScreen() {
     async (): Promise<ApiResult<Conditions>> => (conn ? fetchApi(conn, "/conditions", isConditions) : NONE),
     [conn],
   );
-  const todos = usePolling(loadTodos, 60_000, `${key}\n${tab}`).result;
-  const conditions = usePolling(loadConditions, 60_000, key).result;
+  const todos = usePolling(loadTodos, 60_000, `${key}\n${tab}`, { wake: backOnline }).result;
+  const conditions = usePolling(loadConditions, 60_000, key, { wake: backOnline }).result;
 
   // One notice for the screen when the BE as a whole is unusable (either GET says so), or both GETs failed alike.
   const wholeNotice =
@@ -191,35 +191,37 @@ export function TasksScreen() {
         <StateNotice result={wholeNotice} />
       ) : (
         <>
-          <div id={panelId} role="tabpanel" aria-labelledby={tabId(panelId, tab)}>
-            {todos !== null && todos.kind !== "ok" ? (
-              <section className="panel" aria-label={T.tabs[tab]}>
-                <StateNotice result={todos} />
-              </section>
-            ) : todayData ? (
-              <TodayPanel today={todayData} />
-            ) : weekData ? (
-              <WeekPanel week={weekData} />
+          <div className="panels">
+            <div id={panelId} role="tabpanel" aria-labelledby={tabId(panelId, tab)}>
+              {todos !== null && todos.kind !== "ok" ? (
+                <section className="panel" aria-label={T.tabs[tab]}>
+                  <StateNotice result={todos} />
+                </section>
+              ) : todayData ? (
+                <TodayPanel today={todayData} />
+              ) : weekData ? (
+                <WeekPanel week={weekData} />
+              ) : (
+                <Skeleton tall />
+              )}
+            </div>
+            {conditions === null ? (
+              <Skeleton />
+            ) : conditions.kind === "ok" ? (
+              <ConditionDots
+                items={conditions.data.items}
+                from={conditions.data.from}
+                to={conditions.data.to}
+                average={conditions.data.average}
+                daysLogged={conditions.data.days_logged}
+              />
             ) : (
-              <Skeleton tall />
+              <section className="panel" aria-label={CONDITION_TEXT.title(30)}>
+                <h2>{CONDITION_TEXT.title(30)}</h2>
+                <StateNotice result={conditions} />
+              </section>
             )}
           </div>
-          {conditions === null ? (
-            <Skeleton />
-          ) : conditions.kind === "ok" ? (
-            <ConditionDots
-              items={conditions.data.items}
-              from={conditions.data.from}
-              to={conditions.data.to}
-              average={conditions.data.average}
-              daysLogged={conditions.data.days_logged}
-            />
-          ) : (
-            <section className="panel" aria-label={CONDITION_TEXT.title(30)}>
-              <h2>{CONDITION_TEXT.title(30)}</h2>
-              <StateNotice result={conditions} />
-            </section>
-          )}
           <p className="hint meta">{T.hint}</p>
         </>
       )}

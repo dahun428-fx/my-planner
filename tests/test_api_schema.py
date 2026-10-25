@@ -19,11 +19,18 @@ MON_EVENING = kst(2026, 10, 26, 17, 30) + timedelta(seconds=30)
 
 EXPECTED_MODELS = {
     "Error", "Health", "SafeModeHealth", "Todo", "TodoRef", "TodoRefs", "Today", "Week", "Conditions",
-    "Priorities", "Drafts", "Curve", "Status", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "Messages",
+    "Priorities", "Drafts", "Curve", "Status", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "ConversationsClosed", "Messages",
     "UiCatalog", "SchemaBundle", "ActionRequestBody", "ActionApplied", "ActionNeedsConfirm", "ActionRejected",
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
-    "Habit", "HabitsList", "HabitHistory",
+    "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
+    "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
+    "Memo", "MemoItem", "MemoList",  # SP9 6.4
+    "Moment", "MomentsList",  # SP8 6.5
+    "BodyPostBody", "BodySaved",  # SP8 7.3
+    "CurveHistory",  # SP8 8.2
+    "EventItem", "EventList", "EventDetail", "MissedReminder",  # SP9 5.6
+    "CalendarSettings", "CalendarPutBody",  # SP9 5.7
 }
 
 
@@ -107,6 +114,20 @@ def test_schema_includes_habit_models():
     assert models["Today"]["properties"]["habits"]["items"] == {"$ref": "#/$defs/Habit"}
 
 
+def test_today_sp9_fields_not_required():
+    """스펙 14: 앱이 BE보다 먼저 배포되거나 BE가 되돌아가도 `/today`가 모양 검사를 넘도록 SP9 칸은 required가 아니다."""
+    from my_planner.api.models import Today
+
+    today = schema_bundle()["models"]["Today"]
+    assert {"events", "missed_reminders"} <= set(today["properties"])
+    assert not {"events", "missed_reminders"} & set(today["required"])
+    old = Today.model_validate({
+        "date": "2026-10-26", "weekday": "월", "day_boundary": "04:00", "brief": None, "condition": None,
+        "todos": [], "checkins": [], "cards": [], "habits": [],
+    })
+    assert (old.events, old.missed_reminders) == ([], [])
+
+
 def test_cli_schema_prints_bundle(capsys):
     assert cli.main(["schema"]) == 0
     out = capsys.readouterr().out
@@ -119,17 +140,18 @@ async def test_ui_catalog_version_and_components(tmp_path):
     async with BeEnv.start(tmp_path, start=MON_EVENING) as env:
         body = await get_json(env, "/ui/catalog")
         health = await get_json(env, "/health")
-    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.4"
+    assert body["version"] == UI_CATALOG_VERSION == "2026-10-24.5"
     assert health["version"]["ui_catalog"] == body["version"]
     assert list(body["components"]) == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
-        "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
+        "ui_events", "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
         "ui_chapter_draft", "ui_confirm",
     ]
-    assert len(body["components"]) == 15 == len(UI_COMPONENTS)
+    assert len(body["components"]) == 16 == len(UI_COMPONENTS)
     origins = {name: c["origin"] for name, c in body["components"].items()}
     assert [n for n, o in origins.items() if o == "brain"] == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
+        "ui_events",
     ]
     for name, c in body["components"].items():
         jsonschema.Draft202012Validator.check_schema(c["schema"])

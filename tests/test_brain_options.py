@@ -406,10 +406,11 @@ def test_options_with_habit_tools_28_and_35(tmp_path):
 
     for channel, extra, expected in (
         ("telegram", FAKE_HABIT_TOOLS, 28),
-        ("app", [*FAKE_HABIT_TOOLS, "ui_habit_check"], 39),  # SP6 G-BE2 화면 도구 넷 +4
+        ("app", [*FAKE_HABIT_TOOLS, "ui_habit_check"], 49),  # SP6 G-BE2 화면 도구 넷 +4, SP9-02 `set_checkin_time` +1, SP9-03 메모 +3, SP9-05 일정 +4·`ui_events` +1, SP9-09 `find_conversations` +1
     ):
-        # SP7-02부터 습관 도구는 실제 도구다: 이미 있는 이름은 다시 더하지 않는다(수는 그대로 28, 39)
-        names = [*tool_names_for(channel), *(n for n in extra if n not in tool_names_for(channel))]
+        # SP7-02부터 습관 도구는 실제 도구다: 이미 있는 이름은 다시 더하지 않는다(수는 그대로 28, 49)
+        base = tool_names_for(RunContext(None, None, channel=channel))
+        names = [*base, *(n for n in extra if n not in base)]
         assert len(names) == expected == len(set(names))
         tools = [
             SdkMcpTool(name=n, description=n, input_schema={"type": "object", "properties": {}}, handler=_ok)
@@ -426,3 +427,90 @@ def test_options_with_habit_tools_28_and_35(tmp_path):
         for n in names:
             full = f"mcp__{SERVER_NAME}__{n}"
             assert any(fnmatch(full, p) for p in patterns), full
+
+
+# --- SP8-03: 순간 호출 (SP8 스펙 6.3) ---
+
+
+def _capture_build(monkeypatch, tmp_path):
+    """`ClaudeBrain.run`이 `build_options`에 넘긴 인자와 만든 옵션을 모은다(두뇌는 부르지 않는다)."""
+    from my_planner.harness import brain as brain_mod
+
+    real_build = brain_mod.build_options
+    seen: list[dict] = []
+    built: list = []
+
+    def capture(**kw):
+        seen.append(kw)
+        built.append(real_build(**kw))
+        return built[-1]
+
+    async def fake_query(*, prompt, options):
+        yield _result(result="ok")
+
+    monkeypatch.setattr(brain_mod, "query", fake_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk", "name": "planner"})
+    monkeypatch.setattr(brain_mod, "build_options", capture)
+    return brain_mod.ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10), seen, built
+
+
+def _moments_ctx():
+    from datetime import date
+
+    return RunContext(None, None, kind="moments", activity_channel="scheduler", moments_date=date(2026, 10, 24))
+
+
+async def test_moments_options_disable_session_persistence(tmp_path, monkeypatch):
+    brain, _, built = _capture_build(monkeypatch, tmp_path)
+    await brain.run("입력", session_id=None, run_ctx=_moments_ctx(), max_turns=3, persist_session=False)
+    assert built[0].extra_args == {"no-session-persistence": None}
+    assert built[0].resume is None
+
+
+async def test_chat_options_keep_session(tmp_path, monkeypatch):
+    brain, _, built = _capture_build(monkeypatch, tmp_path)
+    await brain.run("안녕", session_id="s1", run_ctx=RunContext(conversation_id=1, run_id=None, events=[]))
+    assert built[0].extra_args == {}
+    assert built[0].max_turns == 10
+    opts, _, _ = _options(tmp_path)
+    assert opts.extra_args == {}
+
+
+async def test_claude_brain_uses_given_system_prompt_and_max_turns(tmp_path, monkeypatch):
+    from my_planner.harness import prompts
+    from my_planner.harness.moments import moments_system_prompt
+
+    brain, seen, _ = _capture_build(monkeypatch, tmp_path)
+    await brain.run(
+        "입력", session_id=None, run_ctx=_moments_ctx(), system_prompt=moments_system_prompt(), max_turns=3,
+        persist_session=False,
+    )
+    assert seen[0]["max_turns"] == 3
+    system = seen[0]["system_prompt"]
+    assert system.startswith(prompts.load("moments.md"))
+    assert prompts.load("system.md").splitlines()[0] not in system
+
+
+async def test_claude_brain_records_session_id_before_result(tmp_path, monkeypatch):
+    """init 메시지의 세션 id는 호출이 끝나기 전에 `run_ctx`에 적는다: 시간 상한으로 끊겨도 디스패처가 안다."""
+    import asyncio
+
+    import anyio
+    import pytest
+    from claude_agent_sdk import SystemMessage
+
+    from my_planner.harness import brain as brain_mod
+
+    sid = "1b4e28ba-2fa1-11d2-883f-0016d3cca427"
+
+    async def hanging_query(*, prompt, options):
+        yield SystemMessage(subtype="init", data={"session_id": sid})
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(brain_mod, "query", hanging_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk", "name": "planner"})
+    brain = brain_mod.ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+    ctx = _moments_ctx()
+    with pytest.raises(TimeoutError), anyio.fail_after(0.05):
+        await brain.run("입력", session_id=None, run_ctx=ctx, max_turns=3, persist_session=False)
+    assert ctx.brain_session_id == sid

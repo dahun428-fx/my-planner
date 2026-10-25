@@ -2,15 +2,23 @@ import "fake-indexeddb/auto";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
-import { afterEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { copy } from "../lib/copy";
 import { events, gatedResponse, golden, serveChat, sse, sseResponse } from "../test/chat";
+import todayJson from "../test/fixtures/today.json";
 import { renderWithProviders } from "../test/render";
+import { BASE, server } from "../test/server";
 import { ChatSheet } from "./ChatSheet";
 import { loadParts } from "./localParts";
 
 // Spec 13장 "대화 계약", 1장 완료 조건 4: the BE's golden SSE files, read from the repo, through
 // useChat + parts.ts to what the sheet shows.
+
+// SP9 9.5: the sheet reads /today for its quick chips.
+beforeEach(() => {
+  server.use(http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)));
+});
 
 afterEach(async () => {
   await clear();
@@ -51,7 +59,7 @@ const draftPart = (() => {
 })();
 
 describe("chat contract", () => {
-  it("add_task: text, status line, conversation id, confirmation and undo", async () => {
+  it("add_task: text, status line, conversation id, confirmation line and toast undo", async () => {
     // Stop after `queued`, then after `thinking`, so the status line can be seen on its way.
     const first = gatedResponse(addTask, [2, 3]);
     const bodies = serveChat(first.response, () => sseResponse(golden("chat_replay.sse")));
@@ -68,13 +76,17 @@ describe("chat contract", () => {
     expect(await screen.findByText(ADD_TASK_TEXT)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByLabelText(copy.chat.thinking)).toBeNull());
     expect(screen.queryByText(copy.chat.queued)).toBeNull();
-    // add_task itself is not drawn; the confirmation stands for it (R4b), with undo.
+    // add_task itself is not drawn; the confirmation stands for it (R4b) as one line, and the
+    // toast holds the undo (SP9 9.6).
     const undo = await screen.findByRole("button", { name: copy.chat.undo });
+    const log = screen.getByRole("log");
+    expect(within(log).queryByRole("button", { name: copy.chat.undo })).toBeNull();
     if (confirmation !== null) {
-      const box = screen.getByText(confirmation);
-      expect(box.closest("[data-activity]")).toContainElement(undo);
+      const line = within(log).getByText(confirmation);
+      expect(line.closest("[data-activity]")).not.toBeNull();
+      expect(undo.closest("[role=status]")).toHaveTextContent(confirmation);
     } else {
-      expect(screen.queryByText(/✓/)).toBeNull(); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+      expect(within(log).getByText(copy.chat.changed)).toBeInTheDocument(); // before R4b: still one line
     }
     expect(screen.queryByText(copy.parts.unknown)).toBeNull();
     expect(bodies[0]).toMatchObject({ conversation_id: null, checkin_id: null });

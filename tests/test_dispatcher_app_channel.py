@@ -147,11 +147,11 @@ async def test_recovered_app_row_accepts_new_stream(tmp_path):
 
 
 def test_app_tool_set_is_channel_specific():
-    assert tool_names_for("telegram") == TOOL_NAMES
-    assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
+    assert tool_names_for(RunContext(None, None, channel="telegram")) == TOOL_NAMES
+    assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
     # 화면 도구와 카드 도구는 텔레그램 대화에 주지 않는다(10장, 티켓 09)
     banned = {"pin_card", "unpin_card", "reorder_cards"}
-    assert not [n for n in tool_names_for("telegram") if n.startswith("ui_") or n in banned]
+    assert not [n for n in tool_names_for(RunContext(None, None, channel="telegram")) if n.startswith("ui_") or n in banned]
 
     class _Tools:
         def __getattr__(self, name):
@@ -159,7 +159,7 @@ def test_app_tool_set_is_channel_specific():
 
     for channel in ("telegram", "app"):
         ctx = RunContext(conversation_id=None, run_id=None, channel=channel)
-        assert [t.name for t in build_planner_tools(_Tools(), ctx)] == tool_names_for(channel)
+        assert [t.name for t in build_planner_tools(_Tools(), ctx)] == tool_names_for(RunContext(None, None, channel=channel))
 
 
 async def test_reply_without_app_sender_is_not_fallback(tmp_path):

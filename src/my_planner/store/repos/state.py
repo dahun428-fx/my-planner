@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Literal
 
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
+from my_planner.loop.schedule import Overrides, dump_overrides, parse_overrides
 from my_planner.store.db import transaction
 
 # app_state 키 (티켓 10). 시각은 UTC ISO, 날짜는 논리적 날짜 ISO.
@@ -22,15 +23,22 @@ BRAIN_AUTH_STATE_KEY = "brain_auth_state"  # 디스패처가 두뇌 호출마다
 BRAIN_AUTH_CHECKED_AT_KEY = "brain_auth_checked_at"  # 그 기록 시각(UTC ISO)
 NOTIFY_PRIMARY_KEY = "notify_primary"  # 주 통로 telegram | app. 없으면 config의 notify.default_primary
 APP_INBOUND_SEQ_KEY = "app_inbound_seq"  # 앱 메시지의 마지막 inbound_id(음수, 5.1)
+# SP9 8장: 바꾼 체크인 시각(JSON, 칸마다 {"time", "from", "prev"}). 없는 칸은 config.toml 값
+SCHEDULE_OVERRIDE_KEY = "schedule_override"
+# 마지막 깨우기 작업 다시 등록이 안 됐으면 "true"(설정 화면 안내 줄). 되면 지운다
+WAKE_TASK_STALE_KEY = "wake_task_stale"
+# SP9 5.7: 아이폰 캘린더 구독 키(32바이트 무작위, 평문: 설정 화면이 주소를 다시 보여 줘야 한다). 없으면 구독 주소 없음
+CALENDAR_KEY_KEY = "calendar_key"
 
-UsageField = Literal["brain_calls", "proactive_messages"]
-_USAGE_FIELDS = ("brain_calls", "proactive_messages")
+UsageField = Literal["brain_calls", "proactive_messages", "summaries"]
+_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries")  # `summaries`: 하루 요약 호출(SP9 7.2, 018)
 
 
 @dataclass
 class Usage:
     brain_calls: int
     proactive_messages: int
+    summaries: int = 0
 
 
 @dataclass
@@ -49,6 +57,7 @@ class PendingInbound:
     channel: str = "telegram"  # 'telegram' | 'app'
     client_msg_id: str | None = None
     checkin_id: int | None = None
+    resume_conversation_id: int | None = None  # 앱 행: 목록에서 고른 대화(SP9 7.3 0번 규칙)
 
 
 def _pending(r: sqlite3.Row) -> PendingInbound:
@@ -65,6 +74,7 @@ def _pending(r: sqlite3.Row) -> PendingInbound:
         channel=r["channel"],
         client_msg_id=r["client_msg_id"],
         checkin_id=r["checkin_id"],
+        resume_conversation_id=r["resume_conversation_id"],
     )
 
 
@@ -86,6 +96,22 @@ class StateRepo:
                 (key, value),
             )
 
+    def get_schedule_override(self) -> Overrides:
+        return parse_overrides(self.get(SCHEDULE_OVERRIDE_KEY))
+
+    def set_schedule_override(self, overrides: Overrides) -> None:
+        self.set(SCHEDULE_OVERRIDE_KEY, dump_overrides(overrides))
+
+    def wake_task_stale(self) -> bool:
+        return self.get(WAKE_TASK_STALE_KEY) == "true"
+
+    def set_wake_task_stale(self, stale: bool) -> None:
+        if stale:
+            self.set(WAKE_TASK_STALE_KEY, "true")
+        else:
+            with transaction(self.conn):
+                self.conn.execute("DELETE FROM app_state WHERE key = ?", (WAKE_TASK_STALE_KEY,))
+
     # usage_state (논리적 날짜 기준)
     def incr_usage(self, d: date, field: UsageField) -> int:
         if field not in _USAGE_FIELDS:
@@ -100,12 +126,14 @@ class StateRepo:
 
     def usage(self, d: date) -> Usage:
         row = self.conn.execute(
-            "SELECT brain_calls, proactive_messages FROM usage_state WHERE date = ?",
+            "SELECT brain_calls, proactive_messages, summaries FROM usage_state WHERE date = ?",
             (d.isoformat(),),
         ).fetchone()
         if row is None:
             return Usage(brain_calls=0, proactive_messages=0)
-        return Usage(brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"])
+        return Usage(
+            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"]
+        )
 
     # telegram_updates (처리를 마친 update_id)
     def is_seen_update(self, update_id: int) -> bool:
@@ -138,15 +166,17 @@ class StateRepo:
         client_msg_id: str | None = None,
         checkin_id: int | None = None,
         conversation_id: int | None = None,
+        resume_conversation_id: int | None = None,
     ) -> None:
-        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`를 적는다(SP3-4 5.1)."""
+        """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`와 앱이 실은 `resume_conversation_id`를
+        적는다(SP3-4 5.1, SP9 7.3)."""
         with transaction(self.conn):
             self.conn.execute(
                 "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
-                "client_msg_id, checkin_id, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "client_msg_id, checkin_id, conversation_id, resume_conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     update_id, text_redacted, to_iso(sent_at), to_iso(received_at), channel, client_msg_id,
-                    checkin_id, conversation_id,
+                    checkin_id, conversation_id, resume_conversation_id,
                 ),
             )
 

@@ -187,7 +187,7 @@ async def _answer_command(
     deps = CommandDeps(
         tasks=tools.tasks, conditions=tools.conditions, state=state, router=router, clock=clock,
         settings=LocalTime(tools.tz, tools.boundary), apply=apply, status=tools.status, curve=tools.curve,
-        habits=tools.habits,
+        habits=tools.habits, events=getattr(tools, "events", None),
     )
     reply = run_command(cmd, text, deps, channel="telegram")
     markup = _habits_markup(tools) if cmd == "/habits" else None
@@ -422,6 +422,22 @@ def message_keyboard(
         *(ladder_keyboard(*out.ladder) if out.ladder is not None else condition_keyboard(out.ask_condition_for)),
     ]
     return InlineKeyboardMarkup(rows) if rows else None
+
+
+class DisabledTelegramSender:
+    """role = "dev"의 Sender(릴리스 흐름 스펙 5.2): 텔레그램에 보내지 않고 로그 한 줄만 남긴다(본문 없이).
+
+    메시지 id를 돌려주지 않으므로 버튼 거두기도 불리지 않는다.
+    """
+
+    async def send(self, out: Outbound) -> None:
+        log.info("telegram_disabled_dev", extra={"chars": len(out.text)})
+
+    async def clear_buttons(self, message_id: int) -> None:
+        return None
+
+    async def typing(self) -> None:
+        return None
 
 
 class TelegramSender:

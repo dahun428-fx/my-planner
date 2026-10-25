@@ -9,6 +9,7 @@ import { chatSheetChunk } from "../chat/loadChatSheet";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Skeleton } from "../components/Skeleton";
 import { useConnection } from "../lib/ConnectionProvider";
@@ -19,7 +20,7 @@ import page from "../styles/page.module.css";
 import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
 import styles from "./Checkin.module.css";
-import { useNotAllowed } from "./todoActions";
+import { useConfirmedAction, useNotAllowed } from "./todoActions";
 
 const POLL_MS = 15_000;
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -103,6 +104,8 @@ function Remaining({ readOnly: parentReadOnly, reloadToken }: { readOnly: boolea
   const { run } = useAction();
   const readOnly = parentReadOnly || result?.kind === "offline";
   const notAllowed = useNotAllowed(refresh);
+  // "내일로" on a to-do that has a time asks first (SP6 8, BE-2).
+  const { run: confirmed, sheet: confirmSheet } = useConfirmedAction(refresh);
   const [acting, setActing] = useState<ReadonlySet<number>>(new Set());
   const busy = useRef(new Set<number>());
 
@@ -128,8 +131,12 @@ function Remaining({ readOnly: parentReadOnly, reloadToken }: { readOnly: boolea
     busy.current.add(id);
     setActing(new Set(busy.current));
     try {
-      // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
-      const out = await run(action, action === "move_task" ? { id, planned_for: addDays(date, 1) } : { id });
+      if (action === "move_task") {
+        // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
+        await confirmed("move_task", { id, planned_for: addDays(date, 1) });
+        return;
+      }
+      const out = await run(action, { id });
       if (out === null) return;
       if (out.kind === "applied") await refresh();
       else await notAllowed(out);
@@ -187,7 +194,12 @@ function Remaining({ readOnly: parentReadOnly, reloadToken }: { readOnly: boolea
   } else {
     body = <BlockError code={result.kind === "error" ? result.code : result.kind} onRetry={() => void refresh()} />;
   }
-  return <Group heading={copy.checkin.todosHeading}>{body}</Group>;
+  return (
+    <Group heading={copy.checkin.todosHeading}>
+      {body}
+      {confirmSheet}
+    </Group>
+  );
 }
 
 function deliveredLine(c: CheckinDetail): string | null {
@@ -255,7 +267,7 @@ function CheckinBody({ id }: { id: number }) {
     body = (
       <>
         <Group>
-          <p className={styles.text}>{data.text}</p>
+          <Markdown text={data.text} className={styles.text} />
         </Group>
         {cards.map((card) => (
           <section key={card.toolCallId} className={styles.card}>

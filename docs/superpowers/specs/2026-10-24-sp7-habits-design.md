@@ -1,6 +1,6 @@
 # SP7 습관 체크 상세 설계 (추가 기능)
 
-- 상태: 확정 v3 (Dahun 확인 2026-10-24)
+- 상태: 확정 v3.1 (Dahun 확인 2026-10-24. 클라우드 수용 시험 통과, 노트북 확인 남음)
 - 작성일: 2026-10-24
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP1 비서 코어](2026-10-23-sp1-secretary-core-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP5 운영 앱](2026-10-24-sp5-ops-app-design.md)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "습관", "습관 체크" 추가), 결정 기록: [ADR 0011](../../adr/0011-habits-are-not-recurring-tasks.md) 추가
@@ -363,6 +363,7 @@ SP5 5장의 토큰, 부품, 문구 규칙을 그대로 쓴다. 운영 앱 스레
 
 ## 변경 기록
 
+- v3.1 (2026-10-24): SP7-09 클라우드 수용 통과(`test_habit_story`, `test_habit_copy_has_no_banned_words`, BE·앱 전체 검증). 노트북 확인(실제 텔레그램·폰 앱)은 남음.
 - v3 (2026-10-24): Dahun "추천대로" — 15장 미결 5건, 부록 A, 계획 문구 표 그대로 확정.
 - v1 (2026-10-24): 첫 초안. Q1~Q3 Dahun 결정, 나머지는 비서 추천.
 - v2.1 (2026-10-24): 습관 ADR 번호를 0011로(자동 복구 ADR 0010과 겹쳐서).

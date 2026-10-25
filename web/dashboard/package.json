@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "gen:types": "node scripts/gen-types.mjs",
-    "check:csp": "node scripts/check-csp.mjs"
+    "check:csp": "node scripts/check-csp.mjs",
+    "sync:design": "node scripts/sync-design.mjs"
   },
   "dependencies": {
     "next": "15.5.28",

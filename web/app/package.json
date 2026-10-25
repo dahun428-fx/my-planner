@@ -8,19 +8,21 @@
     "build": "next build && node scripts/sw-manifest.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test": "vitest run",
-    "test:tz": "TZ=America/Los_Angeles vitest run src/lib/time.test.ts",
+    "test:tz": "TZ=America/Los_Angeles vitest run src/lib/time.test.ts src/ui/primitives/dates.test.ts src/lib/schedule.test.ts src/screens/Schedule.test.tsx src/chat/quickChips.test.ts src/chat/ConversationList.test.tsx",
     "typecheck": "tsc --noEmit",
     "gen:types": "node scripts/gen-types.mjs",
     "check:csp": "node scripts/check-csp.mjs",
     "lint:copy": "node scripts/lint-copy.mjs",
     "e2e": "NEXT_PUBLIC_CONNECT_SRC='https://*.example.ts.net' npm run build && playwright test",
-    "size": "node scripts/size.mjs"
+    "size": "node scripts/size.mjs",
+    "sync:design": "node scripts/sync-design.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.284",
     "@cfworker/json-schema": "^4.1.1",
     "ai": "^5.0.281",
     "idb-keyval": "^6.3.0",
+    "markdown-to-jsx": "9.10.3",
     "next": "^15.5.28",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

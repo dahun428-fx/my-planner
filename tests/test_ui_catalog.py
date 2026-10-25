@@ -267,11 +267,18 @@ def test_group_layout_errors():
 
 
 def test_app_tool_count_g_be1_base_plus_new_four():
-    """G-BE1은 앱 대화 도구 수를 바꾸지 않았고(아래 일곱), G-BE2가 새 넷을 두뇌에게 준다(+4, 스펙 9.3)."""
+    """G-BE1은 앱 대화 도구 수를 바꾸지 않았고(아래 일곱), G-BE2가 새 넷을 두뇌에게 준다(+4, 스펙 9.3). SP9 도구는 따로."""
     g_be1 = {"ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"}
-    assert set(tool_names_for("app")) - set(TOOL_NAMES) == g_be1 | set(NEW)
-    assert len(set(tool_names_for("app")) - set(TOOL_NAMES)) == len(g_be1) + 4
-    assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 8
+    sp9 = {
+        "set_checkin_time",  # SP9-02(화면 조각이 아니다)
+        "search_memos", "read_memo", "create_memo",  # SP9-03
+        "find_conversations",  # SP9-09
+        "list_events", "create_event", "update_event", "delete_event", "ui_events",  # SP9-05
+    }
+    app_only = set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES)
+    assert app_only == g_be1 | sp9 | set(NEW)
+    assert len(app_only) == len(g_be1) + len(sp9) + 4
+    assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 9  # SP9-05 `ui_events`
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 
 
@@ -338,3 +345,21 @@ def test_catalog_schema_uses_nested_oneof():
     # 바깥 oneOf는 부품 열 가지(group은 안쪽 oneOf 하나)
     outer = schema["properties"]["children"]["items"]["oneOf"]
     assert len(outer) == 10 and groups[0] in [m.get("oneOf") for m in outer]
+
+
+def test_ui_events_catalog_entry():
+    """SP9-05: `ui_events`(그날 일정 카드)는 두뇌 화면 조각이고 앱 대화의 그리기 도구다. 고정 카드는 아니다."""
+    from my_planner.tools.ui import UI_CATALOG_VERSION, UI_COMPONENTS
+
+    entry = UI_COMPONENTS["ui_events"]
+    assert entry["origin"] == "brain" and UI_CATALOG_VERSION == "2026-10-24.5"
+    assert "ui_events" in BRAIN_COMPONENTS and "ui_events" not in PINNABLE_COMPONENTS
+    assert "ui_events" in tool_names_for(RunContext(None, None, channel="app"))  # 9.8: 두뇌가 그린다(앱에만)
+    assert "ui_events" not in tool_names_for(RunContext(None, None, channel="telegram"))
+    schema = entry["schema"]
+    assert schema["additionalProperties"] is False and "items" in schema["required"]
+    item = {"event_id": 1, "date": "2026-10-28", "start": "2026-10-28T05:00:00Z", "end": None, "all_day": False,
+            "title": "치과", "area": None, "repeat": "none", "origin": "chat"}
+    assert validate_props("ui_events", {"items": [item]}) is None
+    assert validate_props("ui_events", {"items": []}) is not None
+    assert validate_props("ui_events", {"items": [item] * 11}) is not None

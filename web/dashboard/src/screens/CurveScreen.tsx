@@ -1,15 +1,22 @@
+import { useRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Curve, CurveMilestone } from "../api/types.gen";
+import type { Curve, CurveHistory, CurveMilestone } from "../api/types.gen";
 import { AreaRadar } from "../components/AreaRadar";
 import { CurveChart } from "../components/CurveChart";
 import { MilestonePopover } from "../components/MilestonePopover";
 import { Reassurance } from "../components/Reassurance";
 import { StateNotice } from "../components/StateNotice";
-import { type ApiResult, fetchApi, isCurve } from "../lib/api";
+import { Pictogram } from "../components/pictograms.gen";
+import { Upcoming, type UpcomingMark } from "../components/Upcoming";
+import { type ApiResult, fetchApi, isCurve, isCurveHistory } from "../lib/api";
 import { useConnection } from "../lib/ConnectionProvider";
 import type { Zoom } from "../lib/curveLayout";
-import { CURVE_TEXT as T } from "../lib/labels";
+import { memory, resetMemory } from "../lib/curveMemory";
+import { CURVE_TEXT as T, HISTORY_TEXT as H } from "../lib/labels";
+import { useIsPhone } from "../lib/useIsPhone";
+import { HistoryView } from "./HistoryView";
 import { usePolling } from "../lib/polling";
+import { nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulLogicalToday } from "../lib/reviews";
 
 const NONE = { kind: "broken", code: "no_connection" } as const;
 const ZOOMS: Zoom[] = ["day", "week", "month", "quarter", "year"];
@@ -27,14 +34,9 @@ export function curvePath(zoom: Zoom, sensitive: boolean): string {
   return `/curve?${q.toString()}`;
 }
 
-// "민감한 사건 보기" lasts only while this tab has the dashboard open (13.4): module memory, never storage.
-// Leaving for another screen and coming back keeps it; a reload or a new tab starts with it off.
-const memory: { zoom: Zoom; sensitive: boolean } = { zoom: "month", sensitive: false };
-
 /** For tests: start again as a fresh tab would. */
 export function resetCurveMemory() {
-  memory.zoom = "month";
-  memory.sensitive = false;
+  resetMemory();
 }
 
 function Loading() {
@@ -46,11 +48,16 @@ function Loading() {
   );
 }
 
+const hasLadder = (c: Curve) => c.ladder.some((l) => l.now !== null); // five-years-ahead alone draws no "now" line
+
 /**
- * `wideAreas` are the area scores of the wide (year, from 1900) request: the radar compares the latest scored
- * quarter with the one before it whatever zoom is shown (13.4). Until that answer is in, the zoom's own `areas`.
+ * `wide` is the answer to the wide (year, from 1900) request. The radar compares the latest scored quarter with
+ * the one before it, and 안심 보기 lists every compared month, whatever zoom is shown (13.4, B2). It also says
+ * whether a ladder score exists at all, so an empty zoom does not call the next one the first. Until that
+ * answer is in, the zoom's own answer stands in for it.
+ * The empty curve shows the next review days (DU-05), worked out from the logical date in Korea (04:00 turn).
  */
-export function CurveView({ curve: c, wideAreas = null }: { curve: Curve; wideAreas?: Curve["areas"] | null }) {
+export function CurveView({ curve: c, wide = null }: { curve: Curve; wide?: Curve | null }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = c.milestones.find((m) => m.id === selectedId) ?? null;
   const close = useCallback(() => {
@@ -62,25 +69,45 @@ export function CurveView({ curve: c, wideAreas = null }: { curve: Curve; wideAr
   const select = useCallback((m: CurveMilestone) => setSelectedId((id) => (id === m.id ? null : m.id)), []);
 
   const noEvents = c.chapters.length === 0 && c.milestones.length === 0;
-  const noLadder = c.ladder.every((l) => l.now === null); // five-years-ahead alone draws no "now" line
+  const noLadder = !hasLadder(c);
   const noCondition = c.condition.every((b) => b.average === null);
   const drawn = !(noEvents && noLadder && noCondition);
+
+  const all = wide ?? c;
+  const areas = all.areas;
+  const firstLadder = !hasLadder(all);
+  const today = seoulLogicalToday();
+  const ladderDay = nextMonthlyReview(today);
+  const areasDay = nextQuarterReview(today);
+  // The month the next review asks for is already scored (11.1 skips step 1 then): nothing to promise.
+  const asked = ladderDay.slice(0, 7);
+  const alreadyScored = all.ladder.some((l) => l.period === asked && l.now !== null);
+  const askLadder = noLadder && !alreadyScored;
+  const marks: UpcomingMark[] = [];
+  if (askLadder) marks.push({ day: ladderDay, what: firstLadder ? T.upcoming.firstLadderMark : T.upcoming.ladderMark });
+  if (askLadder && areas.length === 0) marks.push({ day: areasDay, what: T.upcoming.areasMark });
+  const ladderLine = (firstLadder ? T.upcoming.firstLadder : T.upcoming.ladder)(reviewDayLabel(ladderDay));
 
   return (
     <>
       <section className="panel curve-panel" aria-label={T.title}>
         {drawn && <CurveChart curve={c} selected={selected?.id ?? null} onSelect={select} />}
         {selected && <MilestonePopover milestone={selected} onClose={close} />}
-        {(noEvents || noLadder) && (
+        {(noEvents || askLadder) && (
           <div className="curve-empty">
             {noEvents && <p className="empty">{T.empty.events}</p>}
-            {noLadder && <p className="empty">{T.empty.ladder}</p>}
+            {askLadder && (
+              <>
+                <Upcoming marks={marks} />
+                <p className="empty">{ladderLine}</p>
+              </>
+            )}
           </div>
         )}
       </section>
       <div className="curve-pair">
-        <AreaRadar areas={wideAreas ?? c.areas} />
-        <Reassurance items={c.reassurance} />
+        <AreaRadar areas={areas} emptyText={T.upcoming.areas(reviewDayLabel(areasDay))} />
+        <Reassurance items={all.reassurance} />
       </div>
     </>
   );
@@ -101,15 +128,15 @@ const WIDE_PATH = curvePath("year", false);
  * radar reads its quarters from. When the chosen zoom is that same request, the wide answer is reused.
  * Read only.
  */
-export function CurveScreen() {
-  const { ready, conn } = useConnection();
+function CurvePane() {
+  const { ready, conn, backOnline } = useConnection();
   const [zoom, setZoomState] = useState<Zoom>(memory.zoom);
   const [sensitive, setSensitiveState] = useState(memory.sensitive);
   const path = curvePath(zoom, sensitive);
   const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
 
   const wideLoad = useCallback(async (): Promise<ApiResult<Curve>> => (conn ? fetchApi(conn, WIDE_PATH, isCurve) : NONE), [conn]);
-  const wide = usePolling(wideLoad, 60_000, auth);
+  const wide = usePolling(wideLoad, 60_000, auth, { wake: backOnline });
   const wideRef = useRef(wide.result);
   wideRef.current = wide.result;
 
@@ -119,7 +146,7 @@ export function CurveScreen() {
     if (path === WIDE_PATH && cached?.kind === "ok") return isLoaded(cached, path);
     return isLoaded(await fetchApi(conn, path, isCurve), path);
   }, [conn, path]);
-  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "");
+  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "", { wake: backOnline });
 
   useEffect(() => {
     memory.zoom = zoom;
@@ -128,11 +155,10 @@ export function CurveScreen() {
 
   // Only the answer to the request the controls show is drawn (not an older zoom or sensitive setting).
   const shown = result?.kind === "ok" && result.data.path !== path ? null : result;
-  const wideAreas = wide.result?.kind === "ok" ? wide.result.data.areas : null;
+  const wideCurve = wide.result?.kind === "ok" ? wide.result.data : null;
 
   return (
     <>
-      <h1>{T.title}</h1>
       <div className="curve-controls">
         <div className="zoom-row">
           <span className="zoom-label meta" aria-hidden="true">
@@ -151,7 +177,78 @@ export function CurveScreen() {
           <span>{T.sensitive}</span>
         </label>
       </div>
-      {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data.curve} wideAreas={wideAreas} /> : <StateNotice result={shown} />}
+      {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data.curve} wide={wideCurve} /> : <StateNotice result={shown} />}
+    </>
+  );
+}
+
+type Tab = "curve" | "history";
+const tabFrom = (q: unknown): Tab => (q === "history" ? "history" : "curve");
+
+/**
+ * 히스토리 탭 (SP8 8.3, 8.5): `GET /curve/history`, and once `include_sensitive=true` when the view needs the hidden
+ * events (a chapter's "보기", or "민감한 사건 보기" already on). Read only.
+ */
+function HistoryPane() {
+  const { ready, conn, backOnline } = useConnection();
+  // Sensitive events are asked for once, when "민감한 사건 보기" is already on, or when the view needs them
+  // ("보기" on a chapter, or the toggle turned off). The answer stays; the view decides what it shows of it.
+  const [withSensitive, setWithSensitive] = useState(memory.sensitive);
+  const path = withSensitive ? "/curve/history?include_sensitive=true" : "/curve/history";
+  const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
+  const load = useCallback(async (): Promise<ApiResult<CurveHistory>> => (conn ? fetchApi(conn, path, isCurveHistory) : NONE), [conn, path]);
+  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "", { wake: backOnline });
+  // The request changes, the polling starts over with no answer: keep the last good one on screen meanwhile.
+  const lastOk = useRef<CurveHistory | null>(null);
+  if (result?.kind === "ok") lastOk.current = result.data;
+  const needSensitive = useCallback(() => setWithSensitive(true), []);
+  // Nothing is open and everything is hidden again: ask for the plain answer and let go of the raw one.
+  const dropSensitive = useCallback(() => {
+    lastOk.current = null;
+    setWithSensitive(false);
+  }, []);
+  const isPhone = useIsPhone();
+  const shown = result ?? (lastOk.current ? ({ kind: "ok", data: lastOk.current } as const) : null);
+  return (
+    <div>
+      {!ready || !conn || shown === null ? (
+        <Loading />
+      ) : shown.kind === "ok" ? (
+        <HistoryView history={shown.data} isPhone={isPhone} onNeedSensitive={needSensitive} onDropSensitive={dropSensitive} />
+      ) : (
+        <StateNotice result={shown} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * (c) 인생곡선 with its two tabs `곡선 | 히스토리`. The chosen tab is kept in the address (`?tab=history`), so a
+ * reload shows the same tab; the curve is the default.
+ */
+export function CurveScreen() {
+  const router = useRouter();
+  const queryTab = router.isReady ? tabFrom(router.query.tab) : null;
+  const [tab, setTab] = useState<Tab>(queryTab ?? "curve");
+  useEffect(() => {
+    if (queryTab !== null) setTab(queryTab);
+  }, [queryTab]);
+  const choose = (next: Tab) => {
+    setTab(next);
+    void router.replace({ query: { tab: next } }, undefined, { shallow: true });
+  };
+  return (
+    <>
+      <h1>{T.title}</h1>
+      <div className="tabs curve-tabs" role="group" aria-label={H.tabsLabel}>
+        {(["curve", "history"] as const).map((id) => (
+          <button key={id} type="button" className="tab with-icon" aria-pressed={id === tab} onClick={() => choose(id)}>
+            <Pictogram name={id === "curve" ? "curve" : "list"} size={16} />
+            {H.tabs[id]}
+          </button>
+        ))}
+      </div>
+      {!router.isReady ? <Loading /> : tab === "history" ? <HistoryPane /> : <CurvePane />}
     </>
   );
 }

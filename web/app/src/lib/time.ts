@@ -64,11 +64,3 @@ export function logicalDateOf(iso: string, boundary: string | undefined): string
   const date = formatKst(iso, "date");
   return formatKst(iso, "HH:mm") < b ? addDays(date, -1) : date;
 }
-
-/**
- * The instant of "HH:mm" on a logical date (the other way round): from 00:00 up to before `boundary`
- * that day's wall clock is on the next calendar day ("2026-10-24" + "01:30" -> 10-25 01:30 Seoul).
- */
-export function scheduledAtOf(date: string, hhmm: string, boundary: string | undefined): string {
-  return kstToUtcIso(hhmm < boundaryOf(boundary) ? addDays(date, 1) : date, hhmm);
-}

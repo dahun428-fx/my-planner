@@ -1,20 +1,23 @@
-/* One stylesheet for the screen parts (spec 7장): they look the same in chat, on Today and in a check-in. */
+/* One stylesheet for the screen parts (spec 7장): they look the same in chat, on Today and in a check-in.
+   DESIGN.md 비서 카드: --surface, 1px --rule, radius 16, 16px inside. */
 .card {
   background: var(--surface);
-  border-radius: var(--radius-group);
-  padding: 0.75rem var(--pad);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-container);
+  padding: var(--pad);
   text-align: left;
 }
 .outlined {
-  border: 1px solid var(--border);
+  border-color: var(--rule);
 }
 .confirm {
   border: 1.5px solid var(--hue);
 }
 .title {
   margin: 0 0 0.25rem;
-  font-size: var(--size-section);
+  font-size: var(--fs-headline);
   font-weight: 600;
+  line-height: var(--lh-headline);
   color: var(--text);
 }
 .hint,
@@ -30,95 +33,33 @@
   margin: 0;
   font-size: var(--size-body);
   color: var(--text);
-  line-height: 1.45;
-}
-.lines {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: var(--size-section);
+  line-height: var(--lh-body);
 }
 .rows {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.row {
+/* SP7 6.1: habit rows are 52px tall; the check keeps its 44px hit area. The rows are
+   primitives/CheckRow <li>s (their own stylesheet), so they are reached by element. */
+.habitRows > li {
+  min-height: var(--row);
+}
+.habitAdd {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   min-height: var(--control-h);
-  border-top: 1px solid var(--rule);
-}
-.row:first-child {
-  border-top: 0;
-}
-.check {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-h);
-  height: var(--control-h);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-.check:disabled {
-  cursor: default;
-}
-.circle {
-  position: relative;
-  box-sizing: border-box;
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: var(--radius-pill);
-  border: 1.5px solid var(--control);
-  background: transparent;
-}
-/* 5.5.4: square while it can be pressed, the round drawn mark when the part is read-only. */
-.check .circle {
-  border-radius: 0.375rem;
-}
-.readOnly .check .circle {
-  border-radius: var(--radius-pill);
-}
-.check[aria-checked="true"] .circle {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-/* The tick, so a checked row does not read as a plain dot (not color alone, 9장). */
-.check[aria-checked="true"] .circle::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 45%;
-  width: 0.3125rem;
-  height: 0.625rem;
-  border: solid var(--on-primary);
-  border-width: 0 2px 2px 0;
-  transform: translate(-50%, -50%) rotate(45deg);
-}
-.rowText {
-  flex: 1;
-  min-width: 0;
   font-size: var(--size-body);
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.rowText.done {
   color: var(--muted);
-  text-decoration: line-through;
+  text-decoration: none;
 }
-.rowMeta {
-  display: block;
-  font-size: var(--size-meta);
-  color: var(--muted);
+.habitAdd:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* ui_choice: the buttons part under the question (SP6 6.1). */
+.choiceButtons {
+  margin-top: 0.5rem;
 }
 .pills {
   display: flex;
@@ -126,12 +67,13 @@
   gap: 0.5rem;
   margin: 0.5rem 0 0;
 }
+/* DESIGN.md 알약 선택 (컨디션, 점수): 44px, 1px --border, the chosen one --primary. */
 .pill {
   position: relative;
   min-width: 2.75rem;
-  min-height: 2.25rem;
+  min-height: var(--control-h);
   padding: 0 0.875rem;
-  border: 1px solid var(--control);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: transparent;
   font: inherit;
@@ -139,12 +81,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--text);
   cursor: pointer;
-}
-/* 9장: looks 36px, hit area 44px. */
-.pill::after {
-  content: "";
-  position: absolute;
-  inset: -0.25rem 0;
 }
 .pill[aria-pressed="true"] {
   background: var(--primary);
@@ -270,8 +206,8 @@
   color: var(--muted);
 }
 .unknown {
-  padding: 0.75rem var(--pad);
-  border-radius: var(--radius-group);
+  padding: var(--pad);
+  border-radius: var(--radius-container);
   background: var(--raised);
   color: var(--text-2);
   font-size: var(--size-meta);
@@ -286,7 +222,6 @@
   font-size: var(--size-body);
   color: var(--text-2);
 }
-.check:focus-visible,
 .pill:focus-visible,
 .button:focus-visible,
 .more:focus-visible,

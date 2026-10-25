@@ -3,8 +3,9 @@
 변경 도구는 데이터 변경, `tool_events_log`, `activity`(SP3-4 스펙 5.2)를 같은 트랜잭션에서 쓰고, `ctx.events`에
 이벤트를 쌓고, `tasks.md`를 다시 만든다. 로그에는 제목이나 인자를 남기지 않는다.
 
-회차 차례(`ctx.run_turn`, SP3-4 10.1 A1)에서는 `drop_task`, `set_priorities`, `scheduled_at`을 바꾸는 `update_task`,
-시각 있는 할 일의 `move_task`가 입력을 검증한 뒤 아무것도 바꾸지 않고 확인 토큰만 만든다(`_request_confirm`, A2).
+회차 차례(`ctx.run_turn`, SP3-4 10.1 A1)에서는 `drop_task`, `set_priorities`가 입력을 검증한 뒤 아무것도 바꾸지 않고
+확인 토큰만 만든다(`_request_confirm`, A2). SP9부터 할 일은 시각(`scheduled_at`)을 받지 않는다(5.4, ADR 0015: 시간이
+정해진 일은 `create_event`): `scheduled_at` 확인은 `update_event`로 옮겼다.
 사용자 메시지에 답하는 차례는 SP1 그대로 바로 적용한다(A3). `add_task`는 언제나 바로(A4).
 """
 
@@ -47,12 +48,13 @@ from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.store.views import (
     habits_view,
+    moment_counts,
+    moment_dict,
     period_outside,
     period_view,
     todo_ref,
     todo_refs,
 )
-from my_planner.timefmt import api_time
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import (
     CARDS_ORDER_TARGET,
@@ -71,20 +73,18 @@ from my_planner.tools.activity import (
     tasks_target,
     undoable_now,
 )
+from my_planner.tools.body import BodyTools
+from my_planner.tools.checkin_times import CheckinTimeTools
 from my_planner.tools.confirmations import (
     area_scores_line,
     card_label,
     chapter_confirmed_line,
     condition_summary,
     confirm_button_drop,
-    confirm_button_move,
     confirm_button_priorities,
-    confirm_button_schedule,
     confirm_drop_summary,
-    confirm_move_summary,
     confirm_priorities_summary,
     confirm_requested_summary,
-    confirm_schedule_summary,
     confirmation_line,
     drafts_expired_summary,
     dropped_line,
@@ -94,11 +94,28 @@ from my_planner.tools.confirmations import (
     titles_summary,
     xp_granted_line,
 )
+from my_planner.tools.conversations import ConversationTools
+from my_planner.tools.events import (
+    MSG_TIMED_TASK,
+    EventTools,
+    timed_task_message,
+    ui_event_items,
+)
 from my_planner.tools.habits import HabitTools
+from my_planner.tools.memos import MemoTools
+from my_planner.tools.moments import MomentTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
+    from my_planner.config import Settings
     from my_planner.store.repos.activity import Activity, ConfirmsRepo
+    from my_planner.store.repos.body import BodyRepo
+    from my_planner.store.repos.conversations import ConversationsRepo
+    from my_planner.store.repos.events import EventsRepo
+    from my_planner.store.repos.memos import MemosRepo
+    from my_planner.store.repos.moments import MomentsRepo
+    from my_planner.store.repos.runs import RunsRepo
+    from my_planner.store.repos.state import StateRepo
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +124,7 @@ LIST_LIMIT_MAX = 50
 LIST_LIMIT_DEFAULT = 20
 TRANSCRIPT_MAX_DAYS = 7
 PRIORITY_MAX = 3
+BRAIN_MOMENTS_DAYS = 7  # 두뇌 `get_status`의 이룬 순간(SP8 10.3)
 SCORE_MIN, SCORE_MAX = 1, 5  # 컨디션 점수
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")  # fromisoformat은 20261023, 2026-W43-5도 받는다
 LADDER_MIN, LADDER_MAX = 0, 10  # 사다리(5.4)
@@ -115,7 +133,8 @@ RECOVERY_QUEST_MAX = 80
 MILESTONE_KINDS = ("high", "low", "turning_point")  # 5.4 `curve_milestones.kind`
 CURVE_TITLE_MAX = 100  # 사건·챕터 제목(5.4 CHECK)
 _MONTH = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
-TITLE_KINDS = frozenset({"high", "turning_point"})  # 칭호를 주는 사건 종류(9.4). 저점에는 주지 않는다
+TITLE_KINDS = frozenset({"high", "turning_point"})  # 칭호를 주는 사건 종류(9.4). 힘든 때에는 주지 않는다
+AREA_CODES = tuple(a.value for a in Area)  # 사건의 대표 영역(SP8 8.1)
 PROPOSE_MAX = 10  # 한 번에 제안하는 초안 수. 버튼 줄이 너무 길어지지 않게
 _NEW_FIELDS = {"title", "areas", "planned_for", "scheduled_at", "parent_id", "note"}
 # 확인 저장소는 있는데 답장 창을 알 수 없을 때(조립하지 않은 시험)의 회차 토큰 만료. `/actions` 토큰과 같다
@@ -181,7 +200,7 @@ def _result_before(a: Activity) -> dict[str, Any]:
     return out
 
 
-class Tools(HabitTools):
+class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, EventTools, ConversationTools):
     def __init__(
         self,
         *,
@@ -201,6 +220,14 @@ class Tools(HabitTools):
         review_date_for: Callable[[RunContext], date | None] | None = None,
         curve_export_path: Path | None = None,
         habits: HabitsRepo | None = None,
+        moments: MomentsRepo | None = None,
+        state: StateRepo | None = None,
+        settings: Settings | None = None,
+        runs: RunsRepo | None = None,
+        memos: MemosRepo | None = None,
+        body: BodyRepo | None = None,
+        events: EventsRepo | None = None,
+        conversations: ConversationsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -225,6 +252,20 @@ class Tools(HabitTools):
         )
         self.habits = habits  # 습관(SP7 5.4). None이면 습관 도구가 거절한다
         self.habits_export_path = self.export_path.parent / "habits.md"  # data/exports/habits.md (5.8)
+        self.moments = moments  # 이룬 순간(SP8 6.1). None이면 `save_moments`가 거절한다. 내보내기는 없다(6.4)
+        # 체크인 시간 바꾸기(SP9 8장): 바꾼 칸(`app_state`), config 기본값, 오늘 회차. 하나라도 None이면 거절한다
+        self.state = state
+        self.settings = settings
+        self.runs = runs
+        # 메모(SP9 6장). None이면 메모 도구·동작이 거절한다. 내보내기 `memos.md`는 하루 한 번 작업만 쓴다(6.1)
+        self.memos = memos
+        self.memos_export_path = self.export_path.parent / "memos.md"  # data/exports/memos.md
+        # 몸 기록(SP8 7장). None이면 `record_body_days`가 거절하고 상태창 `body`는 null. 내보내기는 없다(11장)
+        self.body = body
+        # 스케줄(SP9 5장). None이면 일정 도구·동작이 거절한다
+        self.events = events
+        # 지난 대화 찾기(SP9 7.5, `find_conversations`). None이면 거절한다
+        self.conversations = conversations
 
     # --- 공통 ---
 
@@ -241,19 +282,6 @@ class Tools(HabitTools):
             return date.fromisoformat(v)
         except ValueError:
             return f"{name}은(는) YYYY-MM-DD 형식으로 알려 주세요."
-
-    def _parse_dt(self, v: Any) -> datetime | None | str:
-        if v is None:
-            return None
-        if not isinstance(v, str):
-            return "scheduled_at은 날짜와 시각(예: 2026-10-25T14:00)으로 알려 주세요."
-        try:
-            dt = datetime.fromisoformat(v)
-        except ValueError:
-            return "scheduled_at은 날짜와 시각(예: 2026-10-25T14:00)으로 알려 주세요."
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=self.tz)
-        return dt
 
     def _check_title(self, v: Any) -> str | None:
         if not isinstance(v, str) or not v.strip():
@@ -409,6 +437,8 @@ class Tools(HabitTools):
         scheduled_at: Any = None,
         parent_id: Any = None,
         note: Any = None,
+        *,
+        timed_msg: str = MSG_TIMED_TASK,
     ) -> dict[str, Any] | str:
         """새 할 일 입력 검증(add_task, propose_tasks 공용). 맞으면 `TasksRepo.create` 인자, 아니면 오류 문구."""
         if (m := self._check_title(title)) is not None:
@@ -419,20 +449,17 @@ class Tools(HabitTools):
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return pf
-        sa = self._parse_dt(scheduled_at)
-        if isinstance(sa, str):
-            return sa
+        if scheduled_at is not None:  # SP9 5.4: 시각이 있는 일은 일정이다
+            return timed_msg
         if parent_id is not None and (
             not isinstance(parent_id, int) or self.tasks.get(parent_id) is None
         ):
             return f"{parent_id}번 할 일이 없어서 첫 걸음으로 붙일 수 없어요."
-        if pf is None and sa is not None:  # 시각만 주면 그 날이 하려는 날이다
-            pf = logical_date(sa, self.tz, self.boundary)
         return {
             "title": title.strip(),
             "areas": checked_areas,
             "planned_for": pf,
-            "scheduled_at": sa,
+            "scheduled_at": None,
             "parent_id": parent_id,
             "note": note if isinstance(note, str) else "",
         }
@@ -442,7 +469,7 @@ class Tools(HabitTools):
         unknown = set(inputs) - _NEW_FIELDS
         if unknown:
             return _err(f"알 수 없는 항목이 있어요: {', '.join(sorted(unknown))}")
-        new = self._check_new(**inputs)
+        new = self._check_new(**inputs, timed_msg=timed_task_message(ctx))
         if isinstance(new, str):
             return _err(new)
         with self.tasks.transaction():
@@ -465,7 +492,7 @@ class Tools(HabitTools):
             unknown = set(item) - _NEW_FIELDS
             if unknown:
                 return _err(f"{i}번째 제안에 알 수 없는 항목이 있어요: {', '.join(sorted(unknown))}")
-            new = self._check_new(**item)
+            new = self._check_new(**item, timed_msg=timed_task_message(ctx))
             if isinstance(new, str):
                 return _err(f"{i}번째 제안: {new}")
             checked.append(new)
@@ -548,19 +575,9 @@ class Tools(HabitTools):
                 return _err("메모는 글로 알려 주세요.")
             changes["note"] = fields["note"]
         if "scheduled_at" in fields:
-            sa = self._parse_dt(fields["scheduled_at"])
-            if isinstance(sa, str):
-                return _err(sa)
-            changes["scheduled_at"] = sa
-            if sa is not None:  # 시각을 바꾸면 하려는 날도 그 시각의 논리적 날짜로 다시 정한다
-                changes["planned_for"] = logical_date(sa, self.tz, self.boundary)
-        if self._confirm_first(ctx) and "scheduled_at" in changes and changes["scheduled_at"] != t.scheduled_at:
-            sa = changes["scheduled_at"]
-            args = {"id": t.id, **fields, "scheduled_at": api_time(sa) if sa is not None else None}
-            return self._request_confirm(
-                ctx, "update_task", args, confirm_schedule_summary(t.title, local(sa, self.tz) if sa else None),
-                confirm_button_schedule(t.title),
-            )
+            if fields["scheduled_at"] is not None:  # SP9 5.4: 시각을 붙이지 않는다. null(지우기)만 받는다
+                return _err(timed_task_message(ctx))
+            changes["scheduled_at"] = None
         prior = {**self._before(t), "title": t.title, "note": t.note, "areas": [a.value for a in t.areas]}
         before = {k: prior[k] for k in changes}  # 바뀐 필드의 이전 값만
         with self.tasks.transaction():
@@ -579,12 +596,6 @@ class Tools(HabitTools):
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return _err(pf)
-        # 날짜를 옮기면 시각도 바뀐다(A2). 같은 날로 옮기면 바뀌는 것이 없어 바로 적용한다
-        if self._confirm_first(ctx) and t.scheduled_at is not None and pf != t.planned_for:
-            args = {"id": t.id, "planned_for": pf.isoformat() if pf is not None else None}
-            return self._request_confirm(
-                ctx, "move_task", args, confirm_move_summary(t.title, pf, self.today()), confirm_button_move(t.title)
-            )
         changes: dict[str, Any] = {"planned_for": pf}
         if pf is None:  # 날짜 없음: 시각도 함께 지운다
             changes["scheduled_at"] = None
@@ -619,6 +630,7 @@ class Tools(HabitTools):
             extra = [priorities_target(c, p) for c, p, _ in rows]  # 그 목록도 바뀐 대상이다
         with self.tasks.transaction():
             t = self.tasks.set_status(t.id, new)
+            t = _clear_time_if_open(self.tasks, t)  # 다시 열면 옛 시각은 버린다(SP9 5.4)
             out = self._finish(ctx, kind, t, undo=undo, extra=extra)
             if new is TaskStatus.done:  # 다시 완료해도 한 번만(`task:<id>`, U6)
                 self._grant(ctx, source_kind="task_done", source_ref=f"task:{t.id}",
@@ -956,10 +968,11 @@ class Tools(HabitTools):
     @_tool
     def add_milestone(
         self, ctx: RunContext, date: Any = None, kind: Any = None, title: Any = None, note: Any = None,
-        chapter_id: Any = None, sensitive: Any = False,
+        chapter_id: Any = None, sensitive: Any = False, area: Any = None,
     ) -> dict[str, Any]:
         """사건 **초안**(11.3). 하네스가 답 아래에 `✓ 저장` `✗ 빼기` 버튼(앱은 `ui_milestone_draft`)을 붙인다.
-        `sensitive`는 사용자가 민감하다고 말했을 때만 true다(기본 false)."""
+        `sensitive`는 사용자가 민감하다고 말했을 때만 true다(기본 false). `area`는 대표 영역 하나(SP8 8.1),
+        사용자의 말에서 분명할 때만 넣는다."""
         if self.curve is None:
             return _err("사건을 남길 수 없어요.")
         try:
@@ -969,13 +982,15 @@ class Tools(HabitTools):
         if not ok:
             return _err("date는 기억하는 만큼 YYYY, YYYY-MM, YYYY-MM-DD 가운데 하나로 알려 주세요. 예: 2019, 2019-05")
         if kind not in MILESTONE_KINDS:
-            return _err("kind는 high(고점), low(저점), turning_point(전환점) 가운데 하나예요.")
+            return _err("kind는 high(높은 때), low(힘든 때), turning_point(전환점) 가운데 하나예요.")
         if (m := self._check_curve_title(title)) is not None:
             return _err(m)
         if note is not None and not isinstance(note, str):
             return _err("메모는 글로 알려 주세요.")
         if not isinstance(sensitive, bool):
             return _err("sensitive는 true나 false예요.")
+        if area is not None and area not in AREA_CODES:
+            return _err("area는 career, finance, health, relationships, learning, quality_of_life 가운데 하나예요.")
         if chapter_id is not None and (
             not isinstance(chapter_id, int) or isinstance(chapter_id, bool) or self.curve.get_chapter(chapter_id) is None
         ):
@@ -985,6 +1000,7 @@ class Tools(HabitTools):
             m = self.curve.add_milestone(
                 date_text=date, kind=kind, title=title.strip(), status="draft", origin=self._curve_origin(ctx),
                 note=note, chapter_id=chapter_id, sensitive=sensitive, conversation_id=ctx.conversation_id,
+                area=area,
             )
             # 메모는 넣지 않는다. 버튼과 확인 문구를 다시 만들 재료만
             data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind, "sensitive": m.sensitive}
@@ -998,9 +1014,11 @@ class Tools(HabitTools):
 
     @_tool
     def propose_chapter(
-        self, ctx: RunContext, title: Any = None, start: Any = None, theme: Any = None, end: Any = None
+        self, ctx: RunContext, title: Any = None, start: Any = None, theme: Any = None, end: Any = None,
+        ladder: Any = None,
     ) -> dict[str, Any]:
-        """챕터 **초안**(연말 회고). `start`, `end`는 `YYYY-MM`이고 `end`가 없으면 지금까지다."""
+        """챕터 **초안**(연말 회고). `start`, `end`는 `YYYY-MM`이고 `end`가 없으면 지금까지다.
+        `ladder`는 그 시기를 돌아보며 사용자가 **말한** 사다리 칸(정수 0~10, SP8 8.1)."""
         if self.curve is None:
             return _err("챕터를 남길 수 없어요.")
         if (m := self._check_curve_title(title)) is not None:
@@ -1014,10 +1032,14 @@ class Tools(HabitTools):
             return _err("end는 start와 같거나 뒤여야 해요.")
         if theme is not None and not isinstance(theme, str):
             return _err("theme은 글로 알려 주세요.")
+        if ladder is not None and (
+            not isinstance(ladder, int) or isinstance(ladder, bool) or not LADDER_MIN <= ladder <= LADDER_MAX
+        ):
+            return _err("ladder는 0~10 사이의 정수예요.")
         assert isinstance(title, str) and isinstance(start, str)
         with transaction(self.curve.conn):
             c = self.curve.add_chapter(title=title.strip(), start_month=start, end_month=end, theme=theme,
-                                       status="draft", origin=self._curve_origin(ctx))
+                                       status="draft", origin=self._curve_origin(ctx), ladder_remembered=ladder)
             data = {"id": c.id, "title": c.title, "start_month": c.start_month, "end_month": c.end_month}
             event = self._curve_event(ctx, "chapter_proposed", data)
             self._record(ctx, "chapter_proposed", chapter_target(c.id), titles_summary("제안", [c.title]), None)
@@ -1027,7 +1049,7 @@ class Tools(HabitTools):
 
     @_tool
     def confirm_milestones(self, ctx: RunContext, ids: Any = None) -> dict[str, Any]:
-        """사건 초안을 확정한다. 고점·전환점이면 칭호(9.4). 초안이 아니거나 없는 번호는 `skipped_ids`."""
+        """사건 초안을 확정한다. 높은 때·전환점이면 칭호(9.4). 초안이 아니거나 없는 번호는 `skipped_ids`."""
         if self.curve is None or self.status is None:
             return _err("사건을 저장할 수 없어요.")
         if (wanted := self._ids(ids)) is None:
@@ -1037,7 +1059,7 @@ class Tools(HabitTools):
             done = self.curve.confirm_milestones(wanted)
             now = self.clock.now()
             for m in done:
-                data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind}
+                data = {"id": m.id, "title": m.title, "date_text": m.date_text, "kind": m.kind, "area": m.area}
                 events.append(self._curve_event(ctx, "milestones_confirmed", data))
                 if m.kind in TITLE_KINDS:
                     self.status.add_title(m.id, now)
@@ -1046,8 +1068,9 @@ class Tools(HabitTools):
             if done:
                 target, targets = many_target([milestone_target(m.id) for m in done])
                 # 활동 요약(`GET /activity`)에서는 민감 사건 제목을 가린다(`chapters.md`와 같은 "(민감)")
-                lines = [milestone_confirmed_line(SENSITIVE_MASK if m.sensitive else m.title, m.date_text, m.kind)
-                         for m in done]
+                # 민감 사건은 영역도 붙이지 않는다(제목처럼 가린다)
+                lines = [milestone_confirmed_line(SENSITIVE_MASK if m.sensitive else m.title, m.date_text, m.kind,
+                                                  None if m.sensitive else m.area) for m in done]
                 summary = lines[0] if len(lines) == 1 else "✓ 저장: " + ", ".join(ln.removeprefix("✓ 저장: ") for ln in lines)
                 self._record(ctx, "milestones_confirmed", target, summary, {"milestone_ids": [m.id for m in done]},
                              targets=targets)
@@ -1162,6 +1185,11 @@ class Tools(HabitTools):
         if isinstance(err, str):
             return _err(f"화면 조각 형식이 맞지 않아요: {err}")
         return self._draw("ui_habit_check", {"date": day, **extra})
+
+    @_tool
+    def ui_events(self, ctx: RunContext, items: Any = None, **extra: Any) -> dict[str, Any]:
+        """그날 일정 카드(SP9 9.8): 그리기만 한다. `items`는 `list_events` 항목 그대로(1~10개)."""
+        return self._draw("ui_events", {"items": ui_event_items(items), **extra})
 
     def ui_habit_list(self, day: Any) -> list[dict[str, Any]]:
         """화면 조각의 `data.habits`(그 날짜 기준 활성 습관 `Habit`). 날짜가 틀리거나 습관 저장소가 없으면 빈 목록. 읽기만 한다."""
@@ -1499,20 +1527,40 @@ class Tools(HabitTools):
             m.pop("note", None)
             if m["sensitive"]:
                 m["title"] = SENSITIVE_MASK
+                m["area"] = None  # 영역도 가린다(SP8 8.1)
         for x in body["ladder"]:
             x.pop("note", None)
         return body
 
     @_tool
     def get_status(self, ctx: RunContext) -> dict[str, Any]:
-        """6.3.6과 같은 데이터(`status_snapshot`, 민감 사건 칭호는 뺀다). 시각은 현지 시각(두뇌가 받는 도구 결과)."""
+        """6.3.6과 같은 데이터(`status_snapshot`, 민감 사건 칭호는 뺀다). 시각은 현지 시각(두뇌가 받는 도구 결과).
+
+        이룬 순간은 지난 7일(숨긴 것 빼고)만, 통로를 하네스가 고른다(SP8 10.3, D7): 앱 통로(`ctx.channel == "app"`)는
+        글이 있는 `Moment`, 그 밖(텔레그램 대화, 회차 차례)은 `[{"date", "count"}]`(날짜와 개수만). 두뇌에게 고르게
+        하지 않는다.
+
+        몸 기록 요약(`body`, 걸음·잠 7일 평균)도 앱 통로만 받는다. 그 밖은 `null`이고, 건강 `activity.body_days`(날 수)만
+        남는다(SP8 10.3, 11장: 숫자가 텔레그램 메시지와 원문 기록으로 나가지 않게).
+        """
         if self.curve is None or self.status is None or self.conditions is None:
             return _err("상태창을 읽을 수 없어요.")
         snap = status_snapshot(
             now=self.clock.now(), tz=self.tz, boundary=self.boundary, status=self.status, curve=self.curve,
-            tasks=self.tasks, conditions=self.conditions,
+            tasks=self.tasks, conditions=self.conditions, body=self.body,
         )
+        if ctx.channel != "app":
+            snap["body"] = None
+        snap["moments"] = self._brain_moments(ctx)
+        del snap["moments_hidden"]  # `GET /status`의 14일 수다. 두뇌에는 지난 7일의 보이는 순간만 준다
         return self._local_times(snap)
+
+    def _brain_moments(self, ctx: RunContext) -> list[dict[str, Any]]:
+        if self.moments is None:
+            return []
+        today = self.today()
+        week = self.moments.between(today - timedelta(days=BRAIN_MOMENTS_DAYS - 1), today, include_hidden=False)
+        return [moment_dict(m) for m in week] if ctx.channel == "app" else moment_counts(week)
 
     def _local_times(self, v: Any) -> Any:
         if isinstance(v, dict):
@@ -1542,7 +1590,14 @@ class Tools(HabitTools):
             return _err("to는 from보다 같거나 뒤여야 해요.")
         if (end - start) + timedelta(days=1) > timedelta(days=TRANSCRIPT_MAX_DAYS):
             return _err(f"원문 기록은 최대 {TRANSCRIPT_MAX_DAYS}일까지 읽을 수 있어요.")
-        text = self.transcripts.read_range(start, end)
+        if ctx.channel == "app":
+            # 앱 통로는 이 대화의 줄만: 다른 대화의 원문은 두뇌에 주지 않는다(SP9 7.5, ADR 0014). 대화가 없으면 빈 글
+            if ctx.conversation_id is None:
+                return {"from": start.isoformat(), "to": end.isoformat(), "text": ""}
+            text = self.transcripts.read_range(start, end, only_conversation=ctx.conversation_id)
+            return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
+        # 텔레그램 통로(회차 차례 포함)는 앱 대화의 비서 줄을 받지 않는다: 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 11장)
+        text = self.transcripts.read_range(start, end, drop_app_secretary=True)
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
 
 
@@ -1580,6 +1635,19 @@ def _dt(v: Any) -> datetime | None:
     return from_iso(v) if v else None
 
 
+def _clear_time_if_open(tasks: TasksRepo, t: Task) -> Task:
+    """SP9 5.4: 열린 할 일은 시각을 갖지 않는다. 다시 열기와 되돌리기가 옛 `scheduled_at`을 되살리지 않게 지운다."""
+    if t.status is TaskStatus.open and t.scheduled_at is not None:
+        return tasks.update(t.id, scheduled_at=None)
+    return t
+
+
+def _open_time(tools: Tools, task_id: int, value: Any) -> datetime | None:
+    """되돌릴 `scheduled_at`: 할 일이 열려 있으면 언제나 None(옛 시각을 되살리지 않는다)."""
+    t = tools.tasks.get(task_id)
+    return None if t is not None and t.status is TaskStatus.open else _dt(value)
+
+
 def _undo_task_added(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
     """소프트 삭제(`deleted_at` = 지금). 상태와 완료 시각은 그대로 둔다."""
     t = tools.tasks.get(undo["task_id"])
@@ -1595,7 +1663,7 @@ def _undo_task_updated(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> s
     if "planned_for" in before:
         changes["planned_for"] = date.fromisoformat(before["planned_for"]) if before["planned_for"] else None
     if "scheduled_at" in before:
-        changes["scheduled_at"] = _dt(before["scheduled_at"])
+        changes["scheduled_at"] = _open_time(tools, undo["task_id"], before["scheduled_at"])
     tools.tasks.update(undo["task_id"], **changes)
     return None
 
@@ -1604,7 +1672,7 @@ def _undo_task_moved(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str
     pf = undo["planned_for"]
     tools.tasks.update(
         undo["task_id"], event_kind="moved", planned_for=date.fromisoformat(pf) if pf else None,
-        scheduled_at=_dt(undo["scheduled_at"]),
+        scheduled_at=_open_time(tools, undo["task_id"], undo["scheduled_at"]),
     )
     return None
 
@@ -1614,6 +1682,8 @@ def _undo_task_status(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> st
     때만 되살리고, 차 있으면 `superseded`(쓴 것은 바깥이 되돌린다)."""
     tid = undo["task_id"]
     tools.tasks.restore(tid, status=undo["status"], completed_at=_dt(undo["completed_at"]), deleted_at=None)
+    if (t := tools.tasks.get(tid)) is not None:
+        _clear_time_if_open(tools.tasks, t)
     for cadence, period, rank in undo.get("priorities", []):
         if not tools.tasks.restore_priority(cadence, period, rank, tid):
             return SUPERSEDED

@@ -1,6 +1,8 @@
 """aiohttp 앱 조립과 수명: `build_app()`, `start_api()`, `stop_api()` (SP3-4 스펙 4.2, 6.1, 14, 15).
 
 미들웨어(바깥 → 안): 접근 로그 → CORS(사전 요청, 오류를 JSON으로) → 본문 상한 → 인증 → 안전 모드.
+- 몸 기록 `POST /body`(SP8 7.2)는 경로 틀로 기대 토큰을 `BODY_TOKEN`으로 바꾸고(다른 경로는 `API_TOKEN`), 본문 상한
+  4KB, CORS 없음이다. `BODY_TOKEN`이 없으면 이 경로를 등록하지 않는다.
 - 접근 로그는 aiohttp 기본 것을 끄고(`access_log=None`) 요청마다 `method`, 경로 틀, 상태, 소요 시간만 남긴다.
   쿼리 문자열, 헤더, 본문, 토큰, 푸시 구독 주소는 남기지 않는다.
 - `GET` 처리기는 요청마다 따로 연 읽기 전용 연결(`mode=ro`)만 받는다. 쓰기는 디스패처 경로뿐이다(ADR 0007).
@@ -9,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import sqlite3
 import time
@@ -21,16 +24,25 @@ from aiohttp import web
 
 from my_planner.api.actions import get_activity, post_actions, post_undo
 from my_planner.api.auth import AuthLimiter, bearer_ok
-from my_planner.api.chat import post_chat
+from my_planner.api.body import BODY_MAX_BYTES, BODY_PATH, post_body
+from my_planner.api.calendar import (
+    CALENDAR_PATH,
+    get_calendar_ics,
+    get_calendar_settings,
+    post_calendar_settings,
+)
+from my_planner.api.chat import delete_conversation, post_chat, post_new_conversation
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
 from my_planner.api.push import (
     delete_subscription,
+    get_checkin_times,
     get_notify,
     get_vapid_public_key,
     post_push_test,
     post_subscription,
+    put_checkin_times,
     put_notify,
 )
 from my_planner.api.read import (
@@ -40,9 +52,15 @@ from my_planner.api.read import (
     get_conversation_messages,
     get_conversations,
     get_curve,
+    get_curve_history,
     get_drafts,
+    get_event,
+    get_events,
     get_habit,
     get_habits,
+    get_memo,
+    get_memos,
+    get_moments,
     get_priorities,
     get_schema,
     get_status,
@@ -50,6 +68,8 @@ from my_planner.api.read import (
     get_ui_catalog,
     get_week,
 )
+from my_planner.api.recovery import post_client_error, post_internal_notify
+from my_planner.probe import health_probe_fails
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
@@ -62,6 +82,7 @@ log = logging.getLogger(__name__)
 API_PREFIX = "/api/v1"
 HEALTH_PATH = f"{API_PREFIX}/health"
 UNMATCHED_ROUTE = "(unmatched)"
+MASKED_QUERY = "?key=***"
 
 Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 
@@ -79,6 +100,7 @@ class ApiDeps:
     transcripts: TranscriptStore | None = None
     safe_mode: bool = False
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep  # `/chat`의 15초 `: ping`(시험이 바꾼다)
+    body_token: str | None = None  # `POST /body`만 받는 토큰(SP8 7.2). None이면 그 경로를 등록하지 않는다
 
 
 DEPS_KEY = web.AppKey("deps", ApiDeps)
@@ -103,23 +125,25 @@ async def access_log(request: web.Request, handler: Handler) -> web.StreamRespon
         status = e.status
         raise
     finally:
-        log.info(
-            "api_request",
-            extra={
-                "method": request.method,
-                "route": route_template(request),
-                "status": status,
-                "duration_ms": round((time.monotonic() - started) * 1000),
-            },
-        )
+        extra: dict[str, Any] = {
+            "method": request.method,
+            "route": route_template(request),
+            "status": status,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+        }
+        if extra["route"] == CALENDAR_PATH and request.query_string:
+            extra["query"] = MASKED_QUERY  # 키가 든 쿼리는 통째로 가린다(SP9 5.7)
+        log.info("api_request", extra=extra)
 
 
 def body_limit_middleware(limit_bytes: int) -> Callable[[web.Request, Handler], Awaitable[web.StreamResponse]]:
-    """`Content-Length`가 상한을 넘으면 읽지 않고 `413`. 길이가 없는 본문은 `client_max_size`가 막는다."""
+    """`Content-Length`가 상한을 넘으면 읽지 않고 `413`. 길이가 없는 본문은 `client_max_size`가 막는다.
+    `POST /body`는 4KB(SP8 7.2, 길이 없는 본문은 처리기가 읽으며 막는다)."""
 
     @web.middleware
     async def body_limit(request: web.Request, handler: Handler) -> web.StreamResponse:
-        if request.content_length is not None and request.content_length > limit_bytes:
+        limit = BODY_MAX_BYTES if route_template(request) == BODY_PATH else limit_bytes
+        if request.content_length is not None and request.content_length > limit:
             return error_response(413, "too_large", "요청 본문이 너무 커요.")
         return await handler(request)
 
@@ -131,8 +155,16 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
     deps = request.app[DEPS_KEY]
     limiter = request.app[LIMITER_KEY]
     if limiter.blocked():
-        return error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
-    if not bearer_ok(request.headers.get("Authorization"), deps.token):
+        blocked = error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
+        if route_template(request) == CALENDAR_PATH:
+            blocked.headers["Cache-Control"] = "no-store"
+        return blocked
+    if route_template(request) == CALENDAR_PATH:
+        return await handler(request)  # 캘린더 구독: Bearer 대신 처리기가 `?key=`를 비교한다(SP9 5.7). 위에서 429는 거른 뒤
+    # 경로 틀로 기대 토큰을 고른다(SP8 7.2): `/body`는 `BODY_TOKEN`만, 그 밖은 `API_TOKEN`만. 다른 쪽 토큰은 맞아도 401.
+    # `/body`가 등록되지 않았으면(토큰 없음) 틀이 `(unmatched)`라 `API_TOKEN`을 기대하고, 지나면 라우팅이 404다
+    expected = (deps.body_token or "") if route_template(request) == BODY_PATH else deps.token
+    if not bearer_ok(request.headers.get("Authorization"), expected):
         if limiter.record_failure():
             log.warning("api_auth_blocked")
         log.info("api_auth_failed", extra={"route": route_template(request)})
@@ -143,7 +175,10 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
 @web.middleware
 async def safe_mode(request: web.Request, handler: Handler) -> web.StreamResponse:
     if request.app[DEPS_KEY].safe_mode and request.path != HEALTH_PATH:
-        return error_response(503, "safe_mode", "데이터베이스 안전 모드예요. 상태 확인만 할 수 있어요.")
+        unavailable = error_response(503, "safe_mode", "데이터베이스 안전 모드예요. 상태 확인만 할 수 있어요.")
+        if route_template(request) == CALENDAR_PATH:
+            unavailable.headers["Cache-Control"] = "no-store"
+        return unavailable
     return await handler(request)
 
 
@@ -169,6 +204,8 @@ async def _health(request: web.Request) -> web.StreamResponse:
     deps = request.app[DEPS_KEY]
     if deps.safe_mode:
         return web.json_response(safe_mode_view(deps))
+    if await asyncio.to_thread(health_probe_fails):  # git을 부르므로 루프 밖에서  # 개발용 결함 주입(SP6 스펙 12장 4행, `my_planner.probe`)
+        return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
     return await _health_read(request)
 
 
@@ -182,11 +219,17 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/priorities", get_priorities),
     ("/drafts", get_drafts),
     ("/curve", get_curve),
+    ("/curve/history", get_curve_history),
     ("/status", get_status),
+    ("/moments", get_moments),
     ("/checkins", get_checkins),
     ("/checkins/{id}", get_checkin),
     ("/habits", get_habits),
     ("/habits/{id}", get_habit),
+    ("/events", get_events),
+    ("/events/{id}", get_event),
+    ("/memos", get_memos),
+    ("/memos/{id}", get_memo),
     ("/conversations", get_conversations),
     ("/conversations/{id}/messages", get_conversation_messages),
     ("/ui/catalog", get_ui_catalog),
@@ -194,6 +237,8 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/activity", get_activity),
     ("/push/vapid-public-key", get_vapid_public_key),
     ("/settings/notify", get_notify),
+    ("/settings/checkin-times", get_checkin_times),
+    ("/settings/calendar", get_calendar_settings),
 )
 
 
@@ -208,11 +253,22 @@ def write_handler(view: Callable[[web.Request, ApiDeps], Awaitable[web.StreamRes
 
 WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]], ...] = (
     ("/chat", post_chat),
+    ("/conversations/new", post_new_conversation),  # SP9 7.3
     ("/actions", post_actions),
     ("/activity/{id}/undo", post_undo),
     ("/push/subscriptions", post_subscription),
     ("/push/test", post_push_test),
+    ("/settings/calendar", post_calendar_settings),
+    ("/client-errors", post_client_error),
+    ("/internal/notify", post_internal_notify),
 )
+
+
+def body_route_open(deps: ApiDeps) -> bool:
+    """`POST /body`를 등록하나. `BODY_TOKEN`이 있고 `API_TOKEN`과 다를 때만(`app._body_token`이 먼저 거르지만 한 번 더)."""
+    if not deps.body_token:
+        return False
+    return not hmac.compare_digest(deps.body_token.encode("utf-8"), deps.token.encode("utf-8"))
 
 
 def build_app(deps: ApiDeps) -> web.Application:
@@ -230,12 +286,17 @@ def build_app(deps: ApiDeps) -> web.Application:
     app[DEPS_KEY] = deps
     app[LIMITER_KEY] = AuthLimiter(deps.clock)
     app.router.add_get(HEALTH_PATH, _health)
+    app.router.add_get(CALENDAR_PATH, get_calendar_ics)
     for path, view in READ_ROUTES:
         app.router.add_get(API_PREFIX + path, read_handler(view))
     for path, write in WRITE_ROUTES:
         app.router.add_post(API_PREFIX + path, write_handler(write))
     app.router.add_put(API_PREFIX + "/settings/notify", write_handler(put_notify))
+    app.router.add_put(API_PREFIX + "/settings/checkin-times", write_handler(put_checkin_times))
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
+    app.router.add_delete(API_PREFIX + "/conversations/{id}", write_handler(delete_conversation))  # SP9 7.7
+    if body_route_open(deps):  # 아이폰 단축어(SP8 7.2). 토큰이 없으면 경로도 없다
+        app.router.add_post(BODY_PATH, write_handler(post_body))
     return app
 
 

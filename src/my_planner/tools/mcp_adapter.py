@@ -7,8 +7,9 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server
 
-from my_planner.domain import Channel, RunContext
+from my_planner.domain import RunContext
 from my_planner.timefmt import to_api_times
+from my_planner.tools.events import ui_event_items
 from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
 
 SERVER_NAME = "planner"
@@ -49,7 +50,18 @@ TOOL_NAMES: list[str] = [
 
 # 앱 대화에만 주는 도구(SP3-4 6.4.7, 10장): 카탈로그의 두뇌 화면 도구(그리기만, 카탈로그 순서), 카드 도구 셋.
 # 텔레그램 대화에는 없다. SP6의 새 넷은 앱(G-A2)이 그릴 수 있게 된 뒤 G-BE2가 더했다
-APP_ONLY_TOOLS: list[str] = [*BRAIN_COMPONENTS, "pin_card", "unpin_card", "reorder_cards"]
+# SP9: 새 도구는 여기에만 더한다(텔레그램 목록은 그대로, Q14)
+APP_ONLY_TOOLS: list[str] = [
+    *(n for n in BRAIN_COMPONENTS if n != "ui_events"), "pin_card", "unpin_card", "reorder_cards", "set_checkin_time",
+    # 메모(SP9 6.3): 찾기·읽기·만들기만. 고치기·지우기 도구는 없다(Q5)
+    "search_memos", "read_memo", "create_memo",
+    # 지난 대화(SP9 7.5): 제목·요약만. 원문을 주는 도구가 아니다
+    "find_conversations",
+    # 스케줄(SP9 5.5): 시간이 정해진 일. 고치기(시각류)·지우기는 확인을 거친다
+    "list_events", "create_event", "update_event", "delete_event",
+    "ui_events",  # 그날 일정 카드(9.8), 그리기만
+]
+assert set(BRAIN_COMPONENTS) <= set(APP_ONLY_TOOLS)
 
 # 한 답에 두뇌 화면 도구가 쓰는 조각 수 상한(SP6 10.4). 하네스 조각과 `pin_card`는 세지 않는다
 UI_PARTS_PER_REPLY = 2
@@ -57,10 +69,6 @@ UI_CAP_ERROR = "한 답에 화면 조각은 2개까지예요."
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
-_DATETIME = {
-    "type": ["string", "null"],
-    "description": "시각이 있는 일의 날짜와 시각. 한국 시간 기준 ISO 8601, 예: 2026-10-25T14:00",
-}
 _ID = {"type": "integer", "description": "할 일 번호"}
 
 
@@ -93,7 +101,6 @@ _NEW_TASK = _schema(
             "description": "영역 하나 이상",
         },
         "planned_for": _DATE,
-        "scheduled_at": _DATETIME,
         "parent_id": {"type": ["integer", "null"], "description": "첫 걸음이면 부모 할 일 번호"},
         "note": {"type": ["string", "null"]},
     },
@@ -103,14 +110,19 @@ _NEW_TASK = _schema(
 # (이름, 설명, 입력 스키마). JSON 스키마의 "from"은 부르기 전에 파이썬 이름 `from_`으로 바꾼다(`_py_args`).
 _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "add_task": (
-        "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다.",
+        (
+            "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다. "
+            "할 일에는 시각을 붙이지 않습니다(시간이 정해진 일은 할 일이 아니라 일정입니다). "
+            "planned_for는 꼭 넣습니다. 날짜가 분명하지 않으면 가장 그럴듯한 날(\"다음 주\"면 다음 주 월요일, 모르면 오늘)로 "
+            "넣습니다. 빼면 오늘로 들어갑니다(첫 걸음은 날짜 없이 둘 수 있습니다)."
+        ),
         _NEW_TASK,
     ),
     "propose_tasks": (
         (
             "비서가 제안하는 할 일을 초안(draft)으로 저장합니다. 브리핑, 체크인, 회고, 계획 의논에서 비서가 "
             "먼저 꺼낸 할 일에 씁니다. 하네스가 메시지 아래에 초안마다 추가·빼기 버튼을 붙이므로 "
-            "답에서 확정했다고 말하지 않습니다. 한 번에 최대 10개."
+            "답에서 확정했다고 말하지 않습니다. 한 번에 최대 10개. 하려는 날이 있으면 planned_for를 넣습니다."
         ),
         _schema(
             {
@@ -132,14 +144,16 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         _schema({"ids": {"type": "array", "items": _ID, "minItems": 1}}, ["ids"]),
     ),
     "update_task": (
-        "할 일의 제목, 영역, 메모, 시각을 바꿉니다. 날짜는 move_task로 바꿉니다.",
+        (
+            "할 일의 제목, 영역, 메모를 바꿉니다. 날짜는 move_task로 바꿉니다. 할 일에는 시각을 붙이지 않습니다"
+            "(시간이 정해진 일은 할 일이 아니라 일정입니다)."
+        ),
         _schema(
             {
                 "id": _ID,
                 "title": {"type": "string"},
                 "areas": {"type": "array", "items": {"enum": _AREAS}, "minItems": 1},
                 "note": {"type": "string"},
-                "scheduled_at": _DATETIME,
             },
             ["id"],
         ),
@@ -257,23 +271,28 @@ _SPECS.update({
         (
             "사용자가 이야기한 과거의 일을 인생 곡선의 사건 **초안**으로 남깁니다. 추측해서 만들지 않고, \"곡선에 남길까요?\"와 "
             "함께 냅니다. 하네스가 답 아래에 저장·빼기 버튼을 붙이므로 저장했다고 말하지 않습니다. date는 기억하는 만큼 "
-            "YYYY, YYYY-MM, YYYY-MM-DD로 씁니다. sensitive는 사용자가 민감하다고 말했을 때만 true입니다."
+            "YYYY, YYYY-MM, YYYY-MM-DD로 씁니다. sensitive는 사용자가 민감하다고 말했을 때만 true입니다. area는 "
+            "사용자의 말에서 그 일의 대표 영역이 분명할 때만 넣고, 애매하면 비워 둡니다."
         ),
         _schema(
             {
                 "date": {"type": "string", "description": "YYYY | YYYY-MM | YYYY-MM-DD"},
-                "kind": {"enum": ["high", "low", "turning_point"], "description": "고점, 저점, 전환점"},
+                "kind": {"enum": ["high", "low", "turning_point"], "description": "높은 때, 힘든 때, 전환점"},
                 "title": {"type": "string", "description": "1~100자"},
                 "note": {"type": ["string", "null"]},
                 "chapter_id": {"type": ["integer", "null"], "description": "속한 챕터 번호"},
                 "sensitive": {"type": "boolean"},
+                "area": {
+                    "type": ["string", "null"], "enum": [*_AREAS, None],
+                    "description": "대표 영역 하나(분명할 때만)",
+                },
             },
             ["date", "kind", "title"],
         ),
     ),
     "confirm_milestones": (
         (
-            "사건 초안을 확정합니다. 사용자가 글로 \"응 저장해\"처럼 동의했을 때 부릅니다. 고점과 전환점은 칭호가 생깁니다. "
+            "사건 초안을 확정합니다. 사용자가 글로 \"응 저장해\"처럼 동의했을 때 부릅니다. 높은 때와 전환점은 칭호가 생깁니다. "
             "초안이 아닌 번호는 바꾸지 않고 skipped_ids로 돌려줍니다."
         ),
         _schema({"ids": _CURVE_IDS}, ["ids"]),
@@ -281,7 +300,8 @@ _SPECS.update({
     "propose_chapter": (
         (
             "인생의 한 시기를 챕터 **초안**으로 남깁니다(연말 회고). start, end는 YYYY-MM이고 end가 없으면 지금까지입니다. "
-            "하네스가 저장·빼기 버튼을 붙입니다."
+            "하네스가 저장·빼기 버튼을 붙입니다. ladder는 그 시기를 돌아보며 사용자가 직접 말한 사다리 칸(0~10)만 넣고, "
+            "추측하지 않습니다."
         ),
         _schema(
             {
@@ -289,6 +309,8 @@ _SPECS.update({
                 "theme": {"type": ["string", "null"], "description": "주제 한 줄"},
                 "start": _MONTH,
                 "end": {**_MONTH, "type": ["string", "null"]},
+                "ladder": {"type": ["integer", "null"], "minimum": 0, "maximum": 10,
+                           "description": "사용자가 말한 그 시기의 사다리 칸"},
             },
             ["title", "start"],
         ),
@@ -449,6 +471,12 @@ _SPECS.update({
         ),
         UI_COMPONENTS["ui_habit_check"]["schema"],
     ),
+    "ui_events": (
+        (
+            "앱 화면에 그날 일정 카드를 그립니다(그리기만 합니다). items는 list_events 결과 항목을 그대로 1~10개 넘깁니다."
+        ),
+        UI_COMPONENTS["ui_events"]["schema"],
+    ),
     "pin_card": (
         (
             "화면 조각(ui_todo_list, ui_choice, ui_summary_card)을 앱의 고정 카드로 맨 뒤에 둡니다. "
@@ -467,9 +495,175 @@ _SPECS.update({
 })
 
 
-def tool_names_for(channel: Channel) -> list[str]:
-    """그 통로 대화에 주는 도구(SP3-4 10장). 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7)."""
-    return [*TOOL_NAMES, *APP_ONLY_TOOLS] if channel == "app" else list(TOOL_NAMES)
+_SPECS.update({
+    "set_checkin_time": (
+        (
+            "아침 브리핑·저녁 체크인 시각을 바꾸자고 확인을 묻습니다(언제나 확인, 바로 바꾸지 않습니다). loop는 "
+            "morning_brief(아침) 또는 evening_checkin(저녁), day_type은 weekday(평일) 또는 weekend(주말)입니다. "
+            "time은 HH:MM, 아침 05:00~11:30, 저녁 15:00~23:30, 10분 단위입니다. 주말 저녁은 일요일 주간 회고 "
+            "시각이기도 합니다. 결과는 needs_confirm이고 앱에 확인 카드가 붙습니다: 바꿨다고 말하지 않습니다. "
+            "사용자가 바꿔 달라고 할 때만 부릅니다."
+        ),
+        _schema(
+            {
+                "loop": {"enum": ["morning_brief", "evening_checkin"]},
+                "day_type": {"enum": ["weekday", "weekend"]},
+                "time": {"type": "string", "description": "HH:MM, 10분 단위"},
+            },
+            ["loop", "day_type", "time"],
+        ),
+    ),
+})
+
+
+_MEMO_ID = {"type": "integer", "description": "메모 번호"}
+_SPECS["find_conversations"] = (
+    (
+        "앱에서 나눈 지난 대화를 찾습니다. 사용자가 지난 대화를 언급하거나(\"어제 얘기한 거\") 앞머리와 다른 도구로 알 수 "
+        "없는 맥락이 필요할 때만 부릅니다. 결과는 대화마다 id, 날짜, 제목, 요약이고 원문은 없습니다. query가 없으면 "
+        "최근 대화입니다. days 기본 14(최대 90), limit 기본 5(최대 20)."
+    ),
+    _schema(
+        {
+            "query": {"type": ["string", "null"], "description": "제목·요약에서 찾을 말. 3글자 이상이면 더 정확합니다"},
+            "days": {"type": "integer", "minimum": 1, "maximum": 90},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+        },
+        [],
+    ),
+)
+_SPECS.update({
+    "search_memos": (
+        (
+            "사용자가 적어 둔 메모에서 찾습니다. 사용자가 메모 내용을 물어볼 때만 부릅니다(\"지난번에 적은 책 이름 뭐였지?\"). "
+            "결과는 메모마다 id, 제목, 앞 200자 미리보기, 고친 시각이고 가릴 정보는 [가림]으로 바뀌어 있습니다. "
+            "본문 전체가 필요하면 read_memo를 부릅니다. limit 기본 5, 최대 20."
+        ),
+        _schema(
+            {
+                "query": {"type": "string", "description": "찾을 말. 3글자 이상이면 더 정확합니다"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            ["query"],
+        ),
+    ),
+    "read_memo": (
+        "메모 하나의 본문을 읽습니다(8,000자까지, 가릴 정보는 [가림]). 사용자가 메모 내용을 물어볼 때만 부릅니다.",
+        _schema({"id": _MEMO_ID}, ["id"]),
+    ),
+    "create_memo": (
+        (
+            "사용자가 \"메모해줘\", \"적어둬\"처럼 부탁할 때만 메모를 만듭니다. body는 1~20,000자이고 첫 줄이 제목입니다. "
+            "쓸 수 있는 서식은 목록 \"- \", 번호 \"1. \", 체크박스 \"- [ ]\", 굵게 \"**\"입니다. area는 영역 하나 또는 null. "
+            "만든 메모는 고치거나 지울 수 없습니다(사용자가 앱에서 합니다)."
+        ),
+        _schema(
+            {
+                "body": {"type": "string", "description": "1~20,000자, 첫 줄이 제목"},
+                "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+            },
+            ["body"],
+        ),
+    ),
+})
+
+
+_EVENT_ID = {"type": "integer", "description": "일정 번호(앞머리의 #e12는 12)"}
+_LOCAL_DATE = {"type": "string", "description": "현지 날짜 YYYY-MM-DD(논리적 날짜가 아니다: 새벽 1시 일정은 그 달력 날)"}
+_EVENT_FIELDS: dict[str, Any] = {
+    "title": {"type": "string", "description": "1~100자"},
+    "date": {**_LOCAL_DATE, "description": "첫 날의 현지 날짜 YYYY-MM-DD"},
+    "time": {"type": ["string", "null"], "description": "현지 시각 HH:MM. 하루 종일이면 null"},
+    "all_day": {"type": "boolean", "description": "하루 종일 일정(기본 false)"},
+    "duration_min": {"type": ["integer", "null"], "minimum": 5, "maximum": 1440, "description": "길이(분)"},
+    "repeat": {"enum": ["none", "daily", "weekly", "monthly"], "description": "반복 없음, 매일, 매주(요일), 매달(같은 날짜)"},
+    "weekdays": {
+        "type": ["array", "null"], "items": {"enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+        "description": "매주 반복의 요일. 첫 날(date)의 요일이 들어 있어야 합니다",
+    },
+    "repeat_until": {"type": ["string", "null"], "description": "반복의 마지막이 될 수 있는 날 YYYY-MM-DD(포함)"},
+    "remind_min": {
+        "type": ["integer", "null"], "enum": [0, 10, 30, 60, 1440, None],
+        "description": "알림: 0 정시, 10·30·60분 전, 1440 하루 전, null 없음. 하루 종일은 0(그날 09:00)이나 1440만",
+    },
+    "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+    "note": {"type": ["string", "null"], "description": "1,000자까지"},
+}
+_SPECS.update({
+    "list_events": (
+        "스케줄에서 기간(현지 날짜, 포함, 62일까지)의 일정을 날짜·시각순으로 읽습니다. 건너뛴 날은 빠져 있습니다.",
+        _schema({"start": _LOCAL_DATE, "end": _LOCAL_DATE}, ["start", "end"]),
+    ),
+    "create_event": (
+        (
+            "시간이 정해진 일을 스케줄에 일정으로 만듭니다(\"내일 14:00 치과\", \"매주 월 10:00 팀 회의\"). 할 일과 다릅니다: "
+            "끝내기·밀림이 없습니다. 사용자가 말한 일정만 만듭니다. remind_min을 빼면 10분 전(하루 종일은 그날 09:00) "
+            "알림입니다. 매주 반복은 weekdays에 요일을 넣고, 매달 반복은 첫 날의 날짜(없는 달은 그 달 마지막 날)입니다. "
+            "비서가 먼저 꺼낸 차례(회차)에서는 needs_confirm이 오고 사용자가 확인해야 만들어집니다."
+        ),
+        _schema(_EVENT_FIELDS, ["title", "date"]),
+    ),
+    "update_event": (
+        (
+            "일정을 고칩니다. 바꿀 칸만 넣습니다. 제목·메모·영역은 바로 바뀝니다. 날짜·시각·하루 종일·길이·반복·알림을 "
+            "바꾸면 결과가 needs_confirm이고 앱에 확인 카드가 붙습니다: 바꿨다고 말하지 않습니다. 반복 중 하루만 시각을 "
+            "바꾸는 것은 없습니다(그날을 건너뛰고 한 번짜리를 새로 만듭니다)."
+        ),
+        _schema({"id": _EVENT_ID, **_EVENT_FIELDS}, ["id"]),
+    ),
+    "delete_event": (
+        (
+            "일정을 지웁니다. 언제나 needs_confirm이고 앱에 확인 카드가 붙습니다: 지웠다고 말하지 않습니다. scope는 "
+            "one(그날만 건너뛰기, date 필요), following(date부터 반복 끝내기, date 필요), all(모두 지우기)입니다. "
+            "한 번짜리 일정은 scope와 상관없이 지웁니다."
+        ),
+        _schema(
+            {"id": _EVENT_ID, "scope": {"enum": ["one", "following", "all"]}, "date": _LOCAL_DATE},
+            ["id", "scope"],
+        ),
+    ),
+})
+
+
+# 하루 끝 순간 호출(`RunContext.kind == "moments"`, SP8 6.3)에만 주는 도구. 대화·회차 목록(`TOOL_NAMES`, `APP_ONLY_TOOLS`)에는 없다
+MOMENTS_TOOLS: list[str] = ["save_moments"]
+_SPECS["save_moments"] = (
+    (
+        "그날의 이룬 순간 0~3개를 저장하고 그날을 정리한 날로 적습니다. date는 입력의 날짜(YYYY-MM-DD)입니다. "
+        "text는 앞뒤 공백을 뺀 60자 안의 한 줄(줄바꿈 없음), area는 영역 하나 또는 null, sources는 입력에 나온 참조"
+        "(task:<번호>, habit:<번호>, condition, chat) 1~5개입니다. 쓸 거리가 없으면 moments를 빈 배열로 부릅니다."
+    ),
+    _schema(
+        {
+            "date": {"type": "string", "description": "정리하는 날 YYYY-MM-DD"},
+            "moments": {
+                "type": "array",
+                "maxItems": 3,
+                "items": _schema(
+                    {
+                        "text": {"type": "string", "maxLength": 60, "description": "해요체 과거형 한 줄"},
+                        "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+                        "sources": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5},
+                    },
+                    ["text", "sources"],
+                ),
+            },
+        },
+        ["date", "moments"],
+    ),
+)
+
+
+def tool_names_for(ctx: RunContext) -> list[str]:
+    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약은 없음(SP9 7.2).
+
+    그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
+    """
+    if ctx.kind == "moments":
+        return list(MOMENTS_TOOLS)
+    if ctx.kind == "summary":  # 대화 요약(SP9 7.2): 도구 없음
+        return []
+    return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 
 def _stream_output(
@@ -509,6 +703,12 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
         return {"error": UI_CAP_ERROR}
     if name == "ui_habit_check" and args.get("date") is None:  # 날짜를 빼면 오늘: 조각 입력에도 채워 앱이 그릴 수 있게
         args = {**args, "date": tools.today().isoformat()}
+    # 사용자가 시킨 할 일은 늘 날짜가 있다: 빼면 오늘(날짜 없는 할 일이 목록에서 안 보였다). 첫 걸음과 초안
+    # (`propose_tasks`, 회고의 기간 목표 후보 등)은 날짜 없이 둘 수 있다.
+    if name == "add_task" and args.get("planned_for") is None and args.get("parent_id") is None:
+        args = {**args, "planned_for": tools.today().isoformat()}
+    if name == "ui_events":  # `list_events` 항목 그대로 받는다: 조각 입력은 카탈로그 칸만(앱이 엄격히 읽는다)
+        args = {**args, "items": ui_event_items(args.get("items"))}
     call_id = w.next_tool_call_id() if w is not None and not ui else None  # 화면 도구는 조각을 쓸 때 받는다
     if w is not None and not ui:
         w.tool_input(call_id, name, args)
@@ -537,11 +737,27 @@ def _py_args(args: dict[str, Any]) -> dict[str, Any]:
     return {("from_" if k == "from" else k): v for k, v in args.items()}
 
 
+# 앱 대화에만 붙이는 설명(텔레그램에는 일정 도구가 없다, SP9 5.4)
+_APP_NOTES = {
+    "read_transcript": " 앱에서는 이 대화의 지난 원문만 읽습니다. 다른 대화는 find_conversations로 요약만 봅니다.",
+    "add_task": " 시간이 정해진 일(\"내일 14:00 치과\")은 create_event로 일정을 만듭니다.",
+    "propose_tasks": " 시간이 정해진 일은 초안이 아니라 create_event로 일정을 만듭니다.",
+    "update_task": " 시각을 붙이려면 create_event로 일정을 만듭니다.",
+}
+
+
+def tool_description(name: str, ctx: RunContext) -> str:
+    """도구 설명. 앱 대화면 `_APP_NOTES`를 덧붙인다."""
+    description = _SPECS[name][0]
+    return description + _APP_NOTES.get(name, "") if ctx.channel == "app" else description
+
+
 def build_planner_tools(tools: Any, ctx: RunContext) -> list[SdkMcpTool[Any]]:
     """도구마다 `ctx`를 클로저로 감싼 SDK 도구 정의. 테스트는 `.handler`를 직접 await한다."""
     out: list[SdkMcpTool[Any]] = []
-    for name in tool_names_for(ctx.channel):
-        description, schema = _SPECS[name]
+    for name in tool_names_for(ctx):
+        _, schema = _SPECS[name]
+        description = tool_description(name, ctx)
         out.append(
             SdkMcpTool(name=name, description=description, input_schema=schema,
                        handler=_handler(tools, ctx, name))

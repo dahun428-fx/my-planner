@@ -119,7 +119,7 @@ def progress(xp_total: int) -> tuple[int, int, int]:
 
 
 def title_name(kind: str, title: str, title_label: str | None) -> str:
-    """칭호 이름: `title_label`이 있으면 그것, 없으면 틀(9.4, 부록 A). 저점에는 칭호가 없다."""
+    """칭호 이름: `title_label`이 있으면 그것, 없으면 틀(9.4, 부록 A). 힘든 때에는 칭호가 없다."""
     if title_label:
         return title_label
     if kind == "high":

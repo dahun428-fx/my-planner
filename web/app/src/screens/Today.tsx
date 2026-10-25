@@ -6,7 +6,10 @@ import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
+import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
+import { MoreButton } from "../components/MoreButton";
+import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
@@ -19,14 +22,19 @@ import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays, formatKst } from "../lib/time";
 import page from "../styles/page.module.css";
+import { HabitList } from "../ui/components/HabitList";
 import { UiPart } from "../ui/registry";
 import type { PartData } from "../ui/types";
 import { PinnedCard } from "./PinnedCard";
 import styles from "./Today.module.css";
 import { useConfirms } from "./useConfirms";
-import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
+import { useConfirmedAction, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 const SCORES = [1, 2, 3, 4, 5];
+// SP9 9.3: today's events show at most five rows, the rest behind "스케줄에서 {n}개 더 보기".
+const EVENT_ROWS = 5;
+// An event's start (UTC) as Seoul "HH:MM"; all-day has none.
+const clock = (start: string | null) => (start === null ? copy.schedule.allDay : formatKst(start, "HH:mm"));
 const FOLD_LINES = 3;
 const FOLD_CHARS = 140;
 
@@ -35,7 +43,7 @@ function dateLine(data: TodayData): string {
   return copy.today.dateLine(m, d, data.weekday);
 }
 
-// Spec 5.5.1 blocks 1-7, 5.5.4 offline, F3, F9.
+// Spec 5.5.1 blocks 1-7 (and SP7 6.1 habits after the condition), 5.5.4 offline, F3, F9.
 export function Today() {
   const { state, recheck } = useConnection();
   const { view, refresh } = useSnapshotted<TodayData>("today", "/today", "Today");
@@ -50,7 +58,7 @@ export function Today() {
   useEffect(() => toast.onUndone(() => void refresh()), [toast, refresh]);
   // What was said in the sheet may have changed today (F4): read again when it closes.
   useEffect(() => chat.onClosed(() => void refresh()), [chat, refresh]);
-  // A push came while the app is open (F7): the service worker asks for a fresh read.
+  // A push came while the app is open (F7), or a chat answer finished: read again now.
   useEffect(() => onTodayRefresh(() => void refresh()), [refresh]);
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;
@@ -65,20 +73,20 @@ export function Today() {
     reread();
   }, [refresh, reread]);
 
+  const afterHabit = useCallback(() => void refresh(), [refresh]);
+
   const offline = view.kind === "snapshot" || view.kind === "none";
   const date = data?.date ?? "";
 
   const liveTodos = useMemo(() => (view.kind === "live" ? view.data.todos.map((t) => t.todo) : null), [view]);
   const { show, toggle } = useOptimisticCheck(liveTodos, refresh);
-  const { drop, sheet: dropSheet } = useConfirmedDrop(refresh);
+  // Dropping, and moving a to-do that has a time (SP6 8), may ask first.
+  const { run: confirmed, sheet: confirmSheet } = useConfirmedAction(refresh);
+  const drop = (id: number) => confirmed("drop_task", { id });
   const notAllowed = useNotAllowed(refresh);
 
-  const tomorrow = async (id: number) => {
-    // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
-    const out = await run("move_task", { id, planned_for: addDays(date, 1) });
-    if (out?.kind === "applied") await refresh();
-    else await notAllowed(out);
-  };
+  // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
+  const tomorrow = (id: number) => confirmed("move_task", { id, planned_for: addDays(date, 1) });
 
   const unpin = async (id: number) => {
     const out = await run("unpin_card", { id });
@@ -94,6 +102,11 @@ export function Today() {
     else await notAllowed(out);
   };
 
+  // SP9 9.3: closing a missed-reminder line has no activity and no undo; the line goes on the next read.
+  const dismiss = async (event_id: number, day: string) => {
+    if (await run("dismiss_missed_reminder", { event_id, date: day })) await refresh();
+  };
+
   const record = async (score: number) => {
     const out = await run("record_condition", { date, score });
     if (out?.kind === "applied") {
@@ -106,10 +119,10 @@ export function Today() {
   if (view.kind === "loading") {
     body = (
       <>
-        <Group>
+        <Group paper>
           <Row title={<Skeleton size="line" />} />
         </Group>
-        <Group>
+        <Group paper>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} size="row" />
           ))}
@@ -133,7 +146,7 @@ export function Today() {
       body = <p className={styles.line}>{copy.status.safeMode}</p>;
     } else {
       body = (
-        <Group>
+        <Group paper>
           <BlockError code={r.kind === "error" ? r.code : r.kind} onRetry={() => void refresh()} />
         </Group>
       );
@@ -155,11 +168,15 @@ export function Today() {
     const readOnly = !writable;
     const pinned = [...t.cards].sort((a, b) => a.order - b.order);
     const pinnedIds = pinned.map((c) => c.id);
+    const habits = t.habits ?? [];
+    // A BE (or a snapshot) from before the schedule has neither field: no block (SP9 14장).
+    const events = t.events ?? [];
+    const missed = t.missed_reminders ?? [];
 
     body = (
       <>
         {pending.length > 0 && (
-          <Group>
+          <Group paper>
             {pending.map((c) => (
               <Row key={c.id} href={`/checkin/?id=${c.id}`} title={copy.today.checkinLine(copy.loops[c.loop])} />
             ))}
@@ -176,7 +193,7 @@ export function Today() {
           </section>
         )}
         {brief ? (
-          <Group
+          <Group paper
             heading={
               <>
                 {copy.loops[brief.loop]}
@@ -186,7 +203,7 @@ export function Today() {
             }
           >
             <div className={styles.brief}>
-              <p className={`${styles.briefText} ${folded ? styles.folded : ""}`}>{brief.text}</p>
+              <Markdown text={brief.text} className={`${styles.briefText} ${folded ? styles.folded : ""}`} />
               {longBrief && (
                 <button type="button" className={styles.more} aria-expanded={briefOpen} onClick={() => setBriefOpen((o) => !o)}>
                   {briefOpen ? copy.today.lessPlain : copy.today.morePlain}
@@ -197,7 +214,7 @@ export function Today() {
         ) : (
           offline && <p className={styles.line}>{copy.offline.catchUp}</p>
         )}
-        <Group heading={copy.today.condition}>
+        <Group paper heading={copy.today.condition}>
           <div className={styles.condition}>
             {showPills ? (
               <>
@@ -206,7 +223,7 @@ export function Today() {
                     <button
                       key={n}
                       type="button"
-                      className={`${styles.pill} ${score === n ? styles.picked : ""}`}
+                      className={`${styles.pill} ${score === n ? styles.picked : ""} pressable`}
                       aria-label={copy.today.conditionScore(n)}
                       aria-pressed={score === n}
                       disabled={readOnly}
@@ -233,7 +250,63 @@ export function Today() {
             {readOnly && <p className={styles.reason}>{copy.offline.writeLater}</p>}
           </div>
         </Group>
-        <Group
+        {/* SP9 9.3: one line per missed reminder (facts only, no count), then today's events. */}
+        {missed.length > 0 && (
+          <ul className={styles.missed}>
+            {missed.map((r) => (
+              <li key={`${r.event_id}:${r.date}`} className={styles.missedLine}>
+                <span className={styles.missedText}>{(r.outcome === "missed" ? copy.today.missed : copy.today.unsent)(clock(r.start), r.title)}</span>
+                <button type="button" className={styles.dismiss} aria-label={copy.today.dismissMissed(r.title)} disabled={readOnly} onClick={() => void dismiss(r.event_id, r.date)}>
+                  <Icon name="close" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {events.length > 0 && (
+          <Group paper
+            heading={copy.today.events}
+            footer={
+              events.length > EVENT_ROWS ? (
+                <Link href={`/schedule/?date=${t.date}`} className={styles.seeAll}>
+                  {copy.today.moreEvents(events.length - EVENT_ROWS)}
+                </Link>
+              ) : undefined
+            }
+          >
+            {events.slice(0, EVENT_ROWS).map((e) => (
+              <Link key={`${e.event_id}:${e.date}`} href={`/schedule/?date=${e.date}`} className={styles.event}>
+                <span className={`${styles.eventAt} tnum`}>{clock(e.start)}</span>
+                <span className={styles.eventTitle}>{e.title}</span>
+                {e.area && (
+                  <span className="area-dot" data-area={e.area}>
+                    <span className="visually-hidden">{copy.areas[e.area]}</span>
+                  </span>
+                )}
+              </Link>
+            ))}
+          </Group>
+        )}
+        {/* SP7 6.1: between the condition and the to-dos. A snapshot from before habits has no field. */}
+        {habits.length > 0 ? (
+          <Group paper
+            heading={copy.habits.heading}
+            action={
+              <Link href="/habits/" className={styles.manage}>
+                {copy.habits.manage}
+              </Link>
+            }
+          >
+            <div className={styles.habits}>
+              <HabitList habits={habits} date={t.date} readOnly={readOnly} onChanged={afterHabit} />
+            </div>
+          </Group>
+        ) : (
+          <div className={styles.habitsEmpty}>
+            <HabitList habits={habits} date={t.date} readOnly={readOnly} onChanged={afterHabit} />
+          </div>
+        )}
+        <Group paper
           heading={copy.today.todosHeading(openCount)}
           footer={
             <Link href="/todos/" className={styles.seeAll}>
@@ -275,11 +348,20 @@ export function Today() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <LargeTitle title={copy.today.title} meta={data ? dateLine(data) : <Skeleton size="short" />} trailing={state ? <StatusDot state={state} /> : undefined} />
+      <LargeTitle
+        title={copy.today.title}
+        meta={data ? dateLine(data) : <Skeleton size="short" />}
+        trailing={
+          <>
+            {state && <StatusDot state={state} />}
+            <MoreButton />
+          </>
+        }
+      />
       {state?.kind === "online" && state.degraded && <p className={styles.line}>{state.degraded}</p>}
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
-      {dropSheet}
+      {confirmSheet}
       <ChatLauncher disabled={!canChat} offline={offline} reason={launcherReason(view.kind === "blocked" ? view.result.kind : state?.kind)} onOpen={chat.open} />
     </main>
   );

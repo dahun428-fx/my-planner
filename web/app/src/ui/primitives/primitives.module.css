@@ -1,0 +1,339 @@
+/* SP6 spec 5: the ten parts and CheckRow. Semantic tokens only (5.1): no hex colours, no colour per
+   area, nothing tied to a palette's name. --hue marks only what the secretary changed. */
+.text {
+  margin: 0;
+  font-size: var(--size-body);
+  font-weight: 400;
+  line-height: var(--lh-body);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.text strong {
+  font-weight: 600;
+}
+
+/* CheckRow (5.3.5, DESIGN.md ListRow): a 22px round check in a 44px mark, title 17 --text, grey line
+   13 --muted at the right, an inset hairline (from the title) between rows. */
+.checkRows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.checkRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--control-h);
+}
+.checkRow + .checkRow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: calc(var(--control-h) + 0.5rem);
+  border-top: 1px solid var(--rule);
+  pointer-events: none;
+}
+/* Only what the secretary changed carries --hue (5.1): a 3px bar at the left of the row. */
+.highlight {
+  box-shadow: inset 3px 0 0 var(--hue);
+}
+.check,
+.mark {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+}
+.check {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.check:disabled {
+  cursor: default;
+}
+.check:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.circle {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--check);
+  height: var(--check);
+  border: 1.5px solid var(--control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+/* SP5 5.5.4: a read-only card draws the same circle dashed (shape, not colour alone). */
+[data-read-only] .circle {
+  border-radius: var(--radius-pill);
+  border-style: dashed;
+}
+.check[aria-checked="true"] .circle {
+  background: var(--primary);
+  border-color: var(--primary);
+  border-style: solid;
+}
+/* The tick, so a checked row does not read as a plain dot (not colour alone, SP5 9장). */
+.check[aria-checked="true"] .circle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 0.3125rem;
+  height: 0.625rem;
+  border: solid var(--on-primary);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+.rowTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--size-body);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.struck {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.rowMeta {
+  flex: none;
+  max-width: 45%;
+  padding-right: 0.25rem;
+  text-align: right;
+  font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* heading (5.3.1, DESIGN.md headline): 17/600 --text, 12px above and 4px below; none above when it
+   comes first. */
+.heading {
+  margin: 0.75rem 0 0.25rem;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.heading.first {
+  margin-top: 0;
+}
+
+/* stat (5.3.3): name 13 --muted, value 30/600, change 13 --text-2 whatever its direction. */
+.stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.statLabel {
+  font-size: var(--size-meta);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.statValue {
+  font-size: var(--size-title);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.delta {
+  font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+/* progress (5.3.4): name 15 --text at the left, "n/m" 13 --text-2 at the right, a 6px bar under. */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.progressHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.progressLabel {
+  min-width: 0;
+  font-size: var(--size-section);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.progressCount {
+  flex: none;
+  font-size: var(--size-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+/* The bar is a <progress> drawn by its pseudo-elements (11.3): track --raised, fill --primary. */
+.bar {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--raised);
+  color: var(--primary);
+  overflow: hidden;
+}
+.bar::-webkit-progress-bar {
+  border-radius: var(--radius-pill);
+  background-color: var(--raised);
+}
+.bar::-webkit-progress-value {
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
+}
+.bar::-moz-progress-bar {
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
+}
+
+/* tags (5.3.6, DESIGN.md 태그): 24px pills, 13/600 --text-2, a --border outline and no fill. */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* bullets (5.3.7): a 4px --muted dot before each line, 6px between lines. */
+.bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--size-section);
+  color: var(--text);
+}
+.bullets li {
+  position: relative;
+  padding-left: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.bullets li::before {
+  content: "";
+  position: absolute;
+  left: 0.125rem;
+  top: 0.55em;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+}
+
+/* divider (5.3.9): 1px --rule, 8px above and below. */
+.divider {
+  margin: 0.5rem 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* group (5.3.10). `row` makes equal columns however many children it has, so no count is written. */
+.row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rule);
+}
+
+/* buttons (5.3.8, DESIGN.md 알약 선택 and 추천 질문): 44px pills on --surface, --border outline,
+   10×18 inside, 15/600 --text. None is filled: every choice weighs the same. The pressed one stays
+   dark. Long labels wrap to the next line of pills. */
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pill {
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  max-width: 100%;
+  padding: 0.625rem 1.125rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--size-section);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.pill[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.pill:disabled {
+  cursor: default;
+}
+.pill:disabled:not([aria-pressed="true"]) {
+  opacity: 0.45;
+}
+.pill:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+/* A card under ~300px inside (5.3.10): one child per line, without container queries. */
+@media (max-width: 340px) {
+  .row {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr;
+  }
+}

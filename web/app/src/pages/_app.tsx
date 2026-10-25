@@ -8,32 +8,55 @@ import { type ChatSheetApi, ChatSheetContext } from "../chat/sheetContext";
 import { ToastProvider, useToast } from "../components/Toast";
 import { ConnectionProvider, useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { reportBrowserError } from "../lib/errorReport";
 import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
 import { pruneDeviceData } from "../lib/snapshot";
-import { applyTheme, loadTheme } from "../lib/theme";
+import { applyPalette, applyTheme, loadPalette, loadTheme } from "../lib/theme";
 import { CatalogProvider } from "../ui/CatalogProvider";
-import "../styles/tokens.css";
-import "../styles/globals.css";
+// The design system (DESIGN.md): the generated copy of web/shared/global.css (`npm run sync:design`).
+import "../styles/global.css";
 // Every screen's styles go out with _app as one stylesheet. Otherwise Next's pages router carries a
 // page's CSS as inline <style> tags when the app moves between tabs, which style-src 'self' blocks.
 import "../screens/Activity";
 import "../screens/Checkin";
 import "../screens/Connect";
-import "../screens/Settings";
+import "../screens/Habits";
+import "../screens/More";
+import "../screens/Status";
 import "../screens/Today";
 import "../screens/Todos";
 import "../components/LargeTitle";
+import "../components/MoreButton";
 import "../components/TabBar";
 import "../styles/page.module.css";
+// SP9 9.4: the memo screens' stylesheets only (CSP, as above). Their code stays in the page chunks,
+// out of the first screen's 180KB.
+import "../screens/Memos.module.css";
+import "../screens/MemoEditor.module.css";
+// SP9 9.2: the schedule tab's stylesheets only, for the same reason (its code stays in /schedule/'s chunk).
+import "../screens/Schedule.module.css";
+import "../screens/MonthCalendar.module.css";
+import "../screens/EventSheet.module.css";
+// SP9-07: settings left the tabs, so like the memo and schedule screens only its stylesheets come with
+// _app (its own and the palette picker's, which no other screen uses); its code is /settings/'s chunk.
+import "../components/PalettePicker.module.css";
+import "../screens/Settings.module.css";
+// SP9 9.5: the chat sheet's list and quick chip stylesheets only (CSP, as above); their code stays in the
+// chat sheet's chunk, out of the first screen's 180KB.
+import "../chat/ConversationList.module.css";
+import "../chat/QuickChips.module.css";
+// SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
+import "../ui/primitives/primitives.module.css";
+import "../ui/chat/cards.module.css";
 
 // A crash inside the chat sheet takes down only the sheet, never the screen behind it.
-class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode }, { failed: boolean }> {
+class ChatBoundary extends ReactComponent<{ onError(error: unknown): void; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
-  componentDidCatch() {
-    this.props.onError();
+  componentDidCatch(error: unknown) {
+    this.props.onError(error);
   }
   render() {
     return this.state.failed ? null : this.props.children;
@@ -46,6 +69,9 @@ class ChatBoundary extends ReactComponent<{ onError(): void; children: ReactNode
 // there to read offline (F9).
 function ChatHost({ children }: { children: ReactNode }) {
   const toast = useToast();
+  const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   // Another BE address (re-entered on /connect/) gets a fresh sheet: the old conversation, its id
   // and any stream still coming must never reach the new BE.
   const beUrl = useConnection().conn?.beUrl ?? "";
@@ -100,7 +126,13 @@ function ChatHost({ children }: { children: ReactNode }) {
     <ChatSheetContext.Provider value={api}>
       {children}
       {Sheet && (
-        <ChatBoundary key={`${generation}|${beUrl}`} onError={fail}>
+        <ChatBoundary
+          key={`${generation}|${beUrl}`}
+          onError={(error) => {
+            reportBrowserError(error, routerRef.current.pathname);
+            fail();
+          }}
+        >
           <Sheet open={open} onClose={close} />
         </ChatBoundary>
       )}
@@ -108,17 +140,29 @@ function ChatHost({ children }: { children: ReactNode }) {
   );
 }
 
-// First effect (no inline script under the CSP): the saved theme, then the service worker; a
-// notification tap posts {navigate} to the app router. iOS may have dropped this device's push
-// subscription since the last open: make it again (F7). Then the 7-day sweep of device data (4.7).
+// First effect (no inline script under the CSP): the saved theme and colour preset, then the
+// service worker; a notification tap posts {navigate} to the app router. iOS may have dropped this
+// device's push subscription since the last open: make it again (F7). Then the 7-day sweep of
+// device data (4.7).
 function useAppShell() {
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
   useEffect(() => {
     applyTheme(loadTheme());
+    // Like the theme, the palette comes in this effect: the first paint is ink, then the choice.
+    applyPalette(loadPalette());
     void registerServiceWorker((url) => void routerRef.current.push(url)).then(() => ensurePushSubscription());
     void pruneDeviceData();
+    // Uncaught errors and rejected promises go to the BE as name + place, never the message (spec 3.3).
+    const onError = (e: ErrorEvent) => reportBrowserError(e.error, routerRef.current.pathname);
+    const onRejection = (e: PromiseRejectionEvent) => reportBrowserError(e.reason, routerRef.current.pathname);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
   }, []);
 }
 

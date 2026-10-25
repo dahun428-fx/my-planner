@@ -29,6 +29,9 @@
 U1~U3에 걸리면 `422 not_undoable`·`409 undo_expired`·`409 superseded`. 되돌리면 대상 복원, 새 활동(`kind="undo"`,
 `undo_json = NULL`), 원래 행의 `undone_at`·`undone_by`를 한 트랜잭션에 쓴다(U5). 경험치 원장은 건드리지 않는다(U6).
 
+몸 기록 `record_body_days`(SP8 7.2)는 `POST /body`만 부르는 내부 동작이다(`endpoint="body"`, 계획 결정 1). 활동 기록,
+경험치, `api_idempotency`가 없다(단축어는 `client_msg_id`를 보내지 않는다).
+
 로그에는 동작 이름과 결과만 남긴다(제목, 인자, 토큰 없이).
 """
 
@@ -66,8 +69,10 @@ from my_planner.tools.activity import (
     SUPERSEDED,
     UNDO_HANDLERS,
     UNDO_KIND,
+    UndoRefused,
     habit_target,
     live_targets,
+    moment_target,
     priorities_target,
     record_activity,
     task_target,
@@ -77,7 +82,6 @@ from my_planner.tools.activity import (
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
     confirm_habit_archive_summary,
-    confirm_move_summary,
     period_label,
     render_confirmations,
     rest_days_summary,
@@ -109,6 +113,7 @@ REST_DAY_CHECKED_KEY = "last_rest_day_checked"  # X9: 마지막으로 본 논리
 INSTALLED_KEY = "installed_at"
 
 STALE_TOKEN = "이미 정리된 제안이에요."  # 10.1 A6
+STALE_RESULT = "stale"  # 처리 함수가 `{"stale": True}`를 돌려주면 아무것도 바꾸지 않은 409 stale(토큰도 stale)
 TOKEN_MISMATCH = "확인한 제안과 요청이 달라요."
 UNKNOWN_ACTION = "알 수 없는 동작이에요."
 BAD_ARGS = "args 형식이 맞지 않아요."
@@ -120,7 +125,9 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
     "superseded": (409, "그 뒤에 바뀐 내용이 있어서 되돌릴 수 없어요."),
 }
 
-RequestEndpoint = Literal["chat", "actions", "undo", "push"]  # `push`: `api/push.py`(중복 방지 기록 없음)
+# `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
+RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations"]
+NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
@@ -209,29 +216,6 @@ def drop_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str |
     return None
 
 
-def move_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
-    """시각이 있는 열린 할 일의 날짜를 바꿀 때(SP6 8장, G-BE2): 날짜를 옮기면 시각도 옮겨진다(시각 다시 잡기). 문구는
-    회차 차례(`Tools.move_task`의 `_request_confirm`)와 같다. 날짜가 같거나, 없는·열리지 않은 할 일, 틀린 날짜는
-    묻지 않는다(도구가 그대로 두거나 거절한다)."""
-    i = _int(args.get("id"))
-    t = tools.tasks.get(i) if i is not None else None
-    if t is None or t.status is not TaskStatus.open or t.scheduled_at is None:
-        return None
-    raw = args.get("planned_for")
-    if raw is None:
-        pf = None
-    elif isinstance(raw, str):
-        try:
-            pf = date.fromisoformat(raw)
-        except ValueError:
-            return None
-    else:
-        return None
-    if pf == t.planned_for:
-        return None
-    return confirm_move_summary(t.title, pf, today)
-
-
 def priorities_need_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
     """`quarter`·`year`이면서 이미 비어 있지 않은 목록을 다른 목록으로 바꿀 때."""
     cadence, period, ids = args.get("cadence"), args.get("period"), args.get("task_ids")
@@ -256,6 +240,23 @@ def habit_archive_needs_confirm(tools: Tools, args: dict[str, Any], today: date)
     return confirm_habit_archive_summary(h.title)
 
 
+MOMENT_DELETE_CONFIRM = "이 순간을 지울까요? 되돌릴 수 없어요."  # 부록 A 확인 시트
+
+
+def moment_delete_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
+    """앱의 지우기(SP8 6.4): 순간이 있으면 늘 묻는다. 없는 순간은 묻지 않는다(도구가 `404 not_found`)."""
+    i = _int(args.get("id"))
+    if tools.moments is None or i is None or tools.moments.get(i) is None:
+        return None
+    return MOMENT_DELETE_CONFIRM
+
+
+def _moment_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """순간 하나(`moment:<id>`). 토큰 뒤에 그 순간을 숨기거나 지우면 `stale`이다."""
+    i = _int(args.get("id"))
+    return [moment_target(i)] if i is not None else []
+
+
 def _habit_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     """습관 하나(`habit:<id>`). 토큰 뒤에 그 습관을 고치거나 상태를 바꾸면 `stale`이다. 체크(`habit:<id>:<날짜>`)는 막지 않는다."""
     i = _int(args.get("id"))
@@ -278,6 +279,25 @@ def _priorities_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     current = [t.id for _, t in tasks.priority_ranks(c, p)]
     new = [i for i in ids if _int(i) is not None] if isinstance(ids, list) else []
     return [priorities_target(c, p), *(task_target(i) for i in dict.fromkeys([*current, *new]))]
+
+
+def _checkin_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """체크인 시간 한 칸(`checkin_time:<loop>:<day_type>`, SP9 8장). 토큰 뒤에 그 칸을 바꾸면 `stale`이다."""
+    from my_planner.tools.checkin_times import (
+        checkin_target,
+        parse_day_type,
+        parse_loop,
+    )
+
+    loop, day_type = parse_loop(args.get("loop")), parse_day_type(args.get("day_type"))
+    return [checkin_target(loop, day_type)] if loop is not None and day_type is not None else []
+
+
+def _event_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """일정 하나(`event:<id>`, SP9 5.5). 토큰 뒤에 그 일정을 고치거나 지우면 `stale`이다. 건너뛰기(`event:<id>:<날짜>`)는
+    막지 않는다."""
+    i = _int(args.get("id"))
+    return [f"event:{i}"] if i is not None else []
 
 
 def confirm_targets(tasks: TasksRepo, action: str, args: dict[str, Any]) -> list[str]:
@@ -383,6 +403,39 @@ def _prune_api_state(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) ->
     return out
 
 
+def _prune_records(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """하루 한 번 작업: 60일 지난 `status_moment_days` 행(순간 행은 그대로, SP8 6.4)과 56일 지난 `body_days` 행(7.1)을
+    지운다(계획 결정 17). 활동은 없다. 결과는 개수만."""
+    from my_planner.harness.moments import MOMENT_DAYS_KEEP
+    from my_planner.store.repos.body import BODY_KEEP_DAYS
+
+    today = deps.tools.today()
+    moments, body = deps.tools.moments, deps.tools.body
+    return {
+        "moment_days_pruned": moments.prune_days(today - timedelta(days=MOMENT_DAYS_KEEP)) if moments else 0,
+        "body_days_pruned": body.prune(today - timedelta(days=BODY_KEEP_DAYS)) if body else 0,
+    }
+
+
+def _memos_daily(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고 `data/exports/memos.md`를 다시 쓴다. 활동은 없다.
+    내보내기가 안 돼도 지우기는 그대로다(다음 날 다시 쓴다)."""
+    from my_planner.store.exports import export_memos
+    from my_planner.tools.memos import DELETED_KEEP
+
+    tools = deps.tools
+    if tools.memos is None:
+        return {"purged": 0, "exported": False}
+    purged = tools.memos.purge_deleted(deps.clock.now() - DELETED_KEEP)
+    try:
+        export_memos(tools.memos, tools.memos_export_path)
+        exported = True
+    except OSError as e:
+        log.warning("memos_export_failed", extra={"error_type": type(e).__name__})
+        exported = False
+    return {"purged": purged, "exported": exported}
+
+
 def _cmd_pause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     from my_planner.bot.commands import cmd_pause
 
@@ -461,6 +514,62 @@ def _notify_set(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict
     return {"primary": primary}
 
 
+def _wake_task_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """깨우기 작업 다시 등록의 결과(SP9 8장): 안 됐으면 `wake_task_stale`, 되면 지운다. 활동은 남기지 않는다."""
+    ok = args.get("ok")
+    if not isinstance(ok, bool):
+        return {"error": BAD_ARGS}
+    assert deps.state is not None
+    deps.state.set_wake_task_stale(not ok)
+    return {"wake_updated": ok}
+
+
+def _calendar_key_create(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """구독 키가 없으면 만든다(있으면 그대로). 키는 활동, 로그에 넣지 않는다: 활동을 남기지 않는다(5.7)."""
+    from my_planner.api.calendar import new_key
+    from my_planner.store.repos.state import CALENDAR_KEY_KEY
+
+    assert deps.state is not None
+    key = deps.state.get(CALENDAR_KEY_KEY)
+    if not key:
+        key = new_key()
+        deps.state.set(CALENDAR_KEY_KEY, key)
+    return {"key": key}
+
+
+def _calendar_key_rotate(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """새 키로 바꾼다. 이전 주소는 바로 끊긴다."""
+    from my_planner.api.calendar import new_key
+    from my_planner.store.repos.state import CALENDAR_KEY_KEY
+
+    assert deps.state is not None
+    key = new_key()
+    deps.state.set(CALENDAR_KEY_KEY, key)
+    return {"key": key}
+
+
+CONVERSATION_DELETED = "대화를 지웠어요"  # 활동 한 줄(SP9 7.7). 제목·요약은 넣지 않는다
+NO_CONVERSATION = "없는 대화예요."
+
+
+def _conversation_delete(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """앱 대화를 지운다(SP9 7.7). 되돌릴 수 없다(활동에 되돌리기 없음). 원문 기록과 세션 파일은 커밋 뒤 디스패처가
+    지운다: 결과에 그 대화의 세션 id와 날짜 범위를 돌려준다(API 응답에는 넣지 않는다)."""
+    cid = _int(args.get("id"))
+    assert deps.router is not None
+    sessions = deps.router.convs.sessions(cid) if cid is not None else []
+    conv = deps.router.delete(cid) if cid is not None else None
+    if conv is None:
+        return {"error": NO_CONVERSATION}
+    record_activity(
+        deps.activity, ctx, kind="conversation_deleted", target=f"conversation:{conv.id}",
+        summary=CONVERSATION_DELETED, risk="low", undo=None,
+    )
+    if conv.session_id and conv.session_id not in sessions:
+        sessions.append(conv.session_id)
+    return {"id": conv.id, "sessions": sessions, "opened_at": conv.opened_at, "last_message_at": conv.last_message_at}
+
+
 def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """`POST /push/test`의 결과 기록(구독마다 받음·못 받음). 활동은 남기지 않는다(바뀐 데이터가 없다)."""
     results = args.get("results")
@@ -482,8 +591,8 @@ def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
 ACTIONS: dict[str, ActionSpec] = {
     "add_task": ActionSpec("add_task"),
     "update_task": ActionSpec("update_task", target=_task_target),
-    # 앱 통로에서 시각 있는 할 일의 날짜를 바꾸면 확인(SP6 8장). 텔레그램 버튼은 지금처럼 바로
-    "move_task": ActionSpec("move_task", needs_confirm=move_needs_confirm, target=_task_target),
+    # SP6 8장의 "시각 있는 할 일 옮기기 확인"은 SP9-05에서 할 일이 시각을 받지 않게 되며 없어졌다(ADR 0015)
+    "move_task": ActionSpec("move_task", target=_task_target),
     "complete_task": ActionSpec("complete_task", target=_task_target),
     "reopen_task": ActionSpec("reopen_task", target=_task_target),
     "drop_task": ActionSpec("drop_task", needs_confirm=drop_needs_confirm, target=_task_target),
@@ -509,12 +618,34 @@ ACTIONS: dict[str, ActionSpec] = {
     ),
     "check_habit": ActionSpec("check_habit"),
     "uncheck_habit": ActionSpec("uncheck_habit"),
+    # 체크인 시간(SP9 8장): 앱 설정(`PUT /settings/checkin-times`)과 두뇌 확인 카드(`/actions` + 토큰)가 같은 동작.
+    # 바로 적용하고 되돌릴 수 있다(이전 칸으로). 두뇌 도구 `set_checkin_time`은 확인 토큰만 만든다
+    "set_checkin_time": ActionSpec("apply_checkin_time", target=_checkin_target),
+    # 메모(SP9 6.2·6.4). 확인 없음. 만들기·고정·고정 풀기·지우기는 되돌릴 수 있고 고치기는 되돌릴 수 없다.
+    # 고치기·고정·지우기는 두뇌 도구가 아니다(`mcp_adapter` 목록에 없다, Q5)
+    "create_memo": ActionSpec("create_memo"),
+    "update_memo": ActionSpec("update_memo"),
+    "pin_memo": ActionSpec("pin_memo"),
+    "unpin_memo": ActionSpec("unpin_memo"),
+    "delete_memo": ActionSpec("delete_memo"),
+    # 이룬 순간(SP8 6.4): 앱 상태창. 숨기기·다시 보이기는 low(되돌리기), 지우기는 앱에서 확인 뒤(되돌릴 수 없다)
+    "hide_moment": ActionSpec("hide_moment", target=_moment_target),
+    "unhide_moment": ActionSpec("unhide_moment", target=_moment_target),
+    "delete_moment": ActionSpec("delete_moment", needs_confirm=moment_delete_needs_confirm, target=_moment_target),
+    # 스케줄(SP9 5.5·5.6). 앱에서 사용자가 누른 것은 확인 없이 적용하고 되돌리기를 준다. 두뇌의 고치기(시각류)·지우기
+    # 확인 카드와 회차 차례의 만들기 확인도 이 동작(+ 토큰)으로 적용한다
+    "create_event": ActionSpec("create_event"),
+    "update_event": ActionSpec("update_event", target=_event_target),
+    "delete_event": ActionSpec("delete_event", target=_event_target),
+    "dismiss_missed_reminder": ActionSpec("dismiss_missed_reminder"),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
     "expire_curve_drafts": ActionSpec(_expire_curve_drafts, public=False, accepts=frozenset({"older_than"})),
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
+    "prune_records": ActionSpec(_prune_records, public=False),  # SP8 6.4 순간 날 행 60일, 7.1 몸 기록 56일
     "grant_rest_days": ActionSpec(_grant_rest_days, public=False),  # X9
+    "memos_daily": ActionSpec(_memos_daily, public=False),  # SP9 6.1: 30일 지난 지운 메모, memos.md
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),
     # 내부(상태를 바꾸는 명령 `/pause`, `/unpause`, `/done`: `bot.commands.run_command`, 6.4.1). 중복 방지는
@@ -529,6 +660,17 @@ ACTIONS: dict[str, ActionSpec] = {
     "push_unsubscribe": ActionSpec(_push_unsubscribe, public=False, accepts=frozenset({"id"}), endpoint="push"),
     "notify_set": ActionSpec(_notify_set, public=False, accepts=frozenset({"primary"}), endpoint="push"),
     "push_test_result": ActionSpec(_push_test_result, public=False, accepts=frozenset({"results"}), endpoint="push"),
+    # 내부(`POST /body`, SP8 7.2): 아이폰 단축어. 활동·경험치·중복 방지 기록 없음. `/actions`에서는 `400`(계획 결정 1)
+    "record_body_days": ActionSpec("record_body_days", public=False, endpoint="body"),
+    # 내부(`api/calendar.py`: 아이폰 캘린더 구독 키, SP9 5.7). 활동·되돌리기 없음(키가 기록에 남지 않게)
+    "calendar_key_create": ActionSpec(_calendar_key_create, public=False, accepts=frozenset(), endpoint="push"),
+    "calendar_key_rotate": ActionSpec(_calendar_key_rotate, public=False, accepts=frozenset(), endpoint="push"),
+    # 내부(`DELETE /conversations/{id}`, SP9 7.7): 되돌릴 수 없다. 원문 기록·세션 파일은 디스패처가 커밋 뒤에 지운다
+    "conversation_delete": ActionSpec(
+        _conversation_delete, public=False, accepts=frozenset({"id"}), endpoint="conversations"
+    ),
+    # 내부(`api/actions.refresh_wake`: 체크인 시간을 바꾼 뒤 깨우기 작업 결과, SP9 8장)
+    "wake_task_result": ActionSpec(_wake_task_result, public=False, accepts=frozenset({"ok"}), endpoint="push"),
 }
 
 
@@ -539,10 +681,24 @@ def _error(status: ActionStatus, http: int, code: str, message: str) -> ActionRe
     return ActionResult(status, http, {"error": {"code": code, "message": message}})
 
 
-def _rejected(message: str) -> ActionResult:
+def _rejected(message: str, code: str = "rejected") -> ActionResult:
     return ActionResult(
-        "rejected", 422, {"status": "rejected", "activity_id": None, "error": {"code": "rejected", "message": message}}
+        "rejected", 422, {"status": "rejected", "activity_id": None, "error": {"code": code, "message": message}}
     )
+
+
+# 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모, 5.1 스케줄). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
+CONFLICT_CODES = frozenset({"memo_conflict"})
+REJECT_CODES = frozenset({
+    "too_many_memos", "too_many_pinned", "remind_invalid", "start_not_in_weekdays", "too_many_events",
+})
+
+
+def _tool_error(out: dict[str, Any]) -> ActionResult:
+    code, message = out.get("code"), str(out["error"])
+    if code in CONFLICT_CODES:
+        return _error("conflict", 409, code, message)
+    return _rejected(message, code if code in REJECT_CODES else "rejected")
 
 
 def _applied(deps: ActionDeps, ctx: RunContext, result: dict[str, Any]) -> ActionResult:
@@ -590,7 +746,11 @@ def _call(deps: ActionDeps, spec: ActionSpec, ctx: RunContext, args: dict[str, A
     else:
         out = spec.tool(deps, ctx, args)
     if "error" in out:
-        return _rejected(str(out["error"]))
+        if out.get("error_code") == "not_found":  # 없는 대상(이미 지운 순간, SP8 6.4): 계획 결정 9
+            return _error("not_found", 404, "not_found", str(out["error"]))
+        return _tool_error(out)
+    if out.get(STALE_RESULT) is True:  # 확인을 물은 뒤 상황이 바뀌어 다른 결과가 된다: 다시 물어야 한다(5.2)
+        return _error("conflict", 409, "conflict", STALE_TOKEN)
     if spec.reply:
         return ActionResult("applied", 200, {
             "status": "applied", "conversation_id": None, "reply_text": out["reply_text"], "confirmation": None,
@@ -639,6 +799,8 @@ def _with_token(
     res = _call(deps, spec, ctx, args)
     if res.status == "applied":
         deps.confirms.resolve(p.token, "applied")
+    elif res.status == "conflict":
+        deps.confirms.resolve(p.token, "stale")
     return res
 
 
@@ -673,6 +835,8 @@ def _undo(deps: ActionDeps, req: ActionRequest, args: dict[str, Any], gain: XpGa
     except _Superseded:
         http, message = UNDO_ERRORS[SUPERSEDED]
         return _error("superseded", http, "superseded", message)
+    except UndoRefused as e:  # 상한(SP9 메모). 안쪽 SAVEPOINT가 그 쓰기를 되돌렸다
+        return _error("rejected", 422, e.code, e.message)
     summary = undo_summary(payload.get("summary", a.summary))  # 일부만 되돌렸으면 처리 함수가 좁힌 문구
     new_id = record_activity(
         deps.activity, ctx, kind=UNDO_KIND, target=a.target, summary=summary, risk="low", undo=None,
@@ -766,7 +930,7 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     if spec is None or not _callable_from(spec, req):
         return _error("invalid", 400, "invalid_request", UNKNOWN_ACTION)
     # `push` 경로는 중복 방지 기록이 없다(`api_idempotency.endpoint`에 없는 값)
-    if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
+    if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
         stored = deps.idempotency.get(req.client_msg_id)
         if stored is not None:
             if stored.endpoint != req.endpoint:
@@ -789,7 +953,7 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
                 _answer_in_savepoint(deps, req, gain)
                 if "xp" in res.body:
                     _add_xp(res.body, gain)
-            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint != "push":
+            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(
                     req.client_msg_id, req.endpoint, res.http_status, stored_body  # type: ignore[arg-type]

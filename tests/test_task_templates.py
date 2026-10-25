@@ -137,7 +137,28 @@ def test_scripts_do_not_use_psscriptroot_in_param_defaults():
     import re
     from pathlib import Path
 
-    for name in ("register_task.ps1", "check_tasks.ps1"):
+    for name in ("register_task.ps1", "check_tasks.ps1", "update_wake_task.ps1"):
         text = (Path(__file__).parent.parent / "scripts" / name).read_text(encoding="utf-8-sig")
         param_block = re.search(r"param\((.*?)\n\)", text, re.DOTALL).group(1)
         assert "$PSScriptRoot" not in param_block, name
+
+
+def test_medic_task_runs_boot_script_forever_with_5_minute_watchdog():
+    task = render("task_my-planner-medic.xml.tmpl")
+    s = find(task, "t:Settings")
+    assert text(s, "t:MultipleInstancesPolicy") == "IgnoreNew"
+    assert text(s, "t:ExecutionTimeLimit") == "PT0S"
+    assert text(s, "t:DisallowStartIfOnBatteries") == "false"
+    assert text(s, "t:StopIfGoingOnBatteries") == "false"
+    assert text(s, "t:Enabled") == "true"
+    p = find(task, "t:Principals/t:Principal")
+    assert text(p, "t:UserId") == USER and text(p, "t:LogonType") == "InteractiveToken"
+    triggers = find(task, "t:Triggers")
+    assert sorted(t.tag.split("}")[1] for t in triggers) == ["LogonTrigger", "TimeTrigger"]
+    assert text(find(triggers, "t:TimeTrigger"), "t:Repetition/t:Interval") == "PT5M"
+    assert find(triggers, "t:TimeTrigger").find("t:Repetition/t:Duration", NS) is None
+    execs = find(task, "t:Actions").findall("t:Exec", NS)
+    assert len(execs) == 1
+    assert text(execs[0], "t:Command") == PYTHONW
+    assert text(execs[0], "t:Arguments") == r"scripts\medic_boot.py"
+    assert text(execs[0], "t:WorkingDirectory") == ROOT

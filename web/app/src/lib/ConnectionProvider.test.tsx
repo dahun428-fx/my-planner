@@ -65,7 +65,7 @@ describe("ConnectionProvider", () => {
   });
 
   it("health 200 safe_mode is safe_mode", async () => {
-    server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ status: "safe_mode", now: "2026-10-24T08:00:05Z", version: { app: "0.2.0", api: "v1", schema: 10, ui_catalog: "2026-10-24.2" } })));
+    server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ status: "safe_mode", now: "2026-10-24T08:00:05Z", version: { app: "0.2.0", api: "v1", schema: 10, ui_catalog: "2026-10-24.4" } })));
     mount();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("safe_mode"));
   });

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
-import type { Todo } from "../api/types.gen";
+import type { Habit, Todo } from "../api/types.gen";
 import type { PartContext } from "../ui/types";
 import { BASE, server } from "./server";
 
@@ -35,4 +35,16 @@ export const makeTodo = (id: number, title: string, status: Todo["status"] = "op
   note: "",
   priority: null,
   completed_at: null,
+});
+
+export const makeHabit = (id: number, title: string, over: Partial<Habit> = {}): Habit => ({
+  id,
+  title,
+  area: "health",
+  kind: "daily",
+  target_per_week: null,
+  status: "active",
+  checked: false,
+  week_count: 0,
+  ...over,
 });

@@ -145,15 +145,15 @@ async def test_confirm_high_and_turning_grant_titles_low_does_not(tmp_path):
     assert status == 200 and body["result"]["skipped_ids"] == [999]
     assert [m["id"] for m in body["result"]["confirmed"]] == [hi, turn, low]
     assert body["confirmation"].split("\n") == [
-        "✓ 저장: 꾸민 고점 (2019, 고점)", "칭호: 「꾸민 고점」의 순간",
+        "✓ 저장: 꾸민 고점 (2019, 높은 때)", "칭호: 「꾸민 고점」의 순간",
         "✓ 저장: 꾸민 전환 (2021-03, 전환점)", "칭호: 「꾸민 전환」을 지나온 사람",
-        "✓ 저장: 꾸민 저점 (2020-05-02, 저점)",
+        "✓ 저장: 꾸민 저점 (2020-05-02, 힘든 때)",
     ]
     assert titles == [hi, turn]
     assert all(r["status"] == "confirmed" and r["draft_since"] is None and r["confirmed_at"] for r in rows)
     assert [t["title"] for t in snapshot["titles"]] == ["「꾸민 고점」의 순간", "「꾸민 전환」을 지나온 사람"]
     assert act["target"] is None and targets == sorted(f"milestone:{i}" for i in (hi, turn, low))
-    assert act["summary"] == "✓ 저장: 꾸민 고점 (2019, 고점), 꾸민 전환 (2021-03, 전환점), 꾸민 저점 (2020-05-02, 저점)"
+    assert act["summary"] == "✓ 저장: 꾸민 고점 (2019, 높은 때), 꾸민 전환 (2021-03, 전환점), 꾸민 저점 (2020-05-02, 힘든 때)"
     assert again == {"confirmed": [], "skipped_ids": [hi]}  # 이미 확정한 것은 건너뛴다
 
 
@@ -367,6 +367,6 @@ async def test_sensitive_milestone_title_masked_in_activity_summary(tmp_path):
         summaries = [r["summary"] for r in env.activity()]
 
     assert [i["summary"] for i in listing["items"]][::-1] == [
-        "✓ 저장: (민감) (2020-03, 저점)", "✓ 저장: 꾸민 여행 (2019, 고점)"]
+        "✓ 저장: (민감) (2020-03, 힘든 때)", "✓ 저장: 꾸민 여행 (2019, 높은 때)"]
     assert status == 200 and undone["confirmation"] == "↩ 되돌림: (민감) 저장"
     assert not any("꾸민 비밀" in s for s in summaries)

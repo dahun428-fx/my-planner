@@ -27,6 +27,21 @@ const FOCUSABLE =
 const CLOSE_DRAG_PX = 120;
 const EXIT_MS = 280;
 
+// The open panels, the top one last. Every sheet listens on `document`, so only the top one acts on
+// a key: Escape in a ConfirmSheet over the chat or the date sheet closes the ConfirmSheet alone,
+// and Tab stays inside it. A panel that holds another (a sheet drawn inside a sheet's body) stays
+// under it, whichever effect ran first.
+const openPanels: HTMLElement[] = [];
+function pushPanel(el: HTMLElement) {
+  const inner = openPanels.findIndex((p) => el.contains(p));
+  if (inner < 0) openPanels.push(el);
+  else openPanels.splice(inner, 0, el);
+}
+function dropPanel(el: HTMLElement) {
+  const at = openPanels.indexOf(el);
+  if (at >= 0) openPanels.splice(at, 1);
+}
+
 // No animation where motion is reduced (or cannot be asked about): the sheet just goes.
 const motionOk = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -82,9 +97,12 @@ export function Sheet({ open, onClose, title, ariaLabel, tall = false, children,
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const el = panel.current;
-    (el?.querySelector<HTMLElement>(FOCUSABLE) ?? el)?.focus();
+    if (el) pushPanel(el);
+    // A sheet that opened under another (its inner one's effect ran first) leaves the focus there.
+    if (!el || openPanels[openPanels.length - 1] === el) (el?.querySelector<HTMLElement>(FOCUSABLE) ?? el)?.focus();
 
     const onKey = (e: KeyboardEvent) => {
+      if (el && openPanels[openPanels.length - 1] !== el) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onCloseRef.current();
@@ -108,6 +126,7 @@ export function Sheet({ open, onClose, title, ariaLabel, tall = false, children,
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      if (el) dropPanel(el);
       (returnFocusTo?.current ?? opener)?.focus();
     };
   }, [open, returnFocusTo]);

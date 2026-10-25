@@ -270,7 +270,15 @@ function onMessage(e: MessageEvent): void {
   if (data.refresh === "today") window.dispatchEvent(new Event(TODAY_REFRESH));
 }
 
-/** A push came while the app was open: the today screen reads again. Returns an unsubscribe function. */
+/**
+ * Something changed on the BE while the app is open: a push came, or a chat answer finished (it may
+ * have added or moved to-dos while the sheet is still open). Screens on show read again.
+ */
+export function notifyDataChanged(): void {
+  window.dispatchEvent(new Event(TODAY_REFRESH));
+}
+
+/** See notifyDataChanged. Returns an unsubscribe function. */
 export function onTodayRefresh(cb: () => void): () => void {
   window.addEventListener(TODAY_REFRESH, cb);
   return () => window.removeEventListener(TODAY_REFRESH, cb);

@@ -34,5 +34,19 @@
       },
       "completed_at": "2026-10-20T01:00:00Z"
     }
+  ],
+  "todos": [
+    {
+      "id": 38,
+      "title": "분기 보고서 초안",
+      "status": "open",
+      "planned_for": "2026-10-28",
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [],
+      "note": "",
+      "priority": null,
+      "completed_at": null
+    }
   ]
 }

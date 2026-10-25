@@ -1,5 +1,7 @@
 """`GET /curve`, `GET /status` (SP3-4 스펙 6.3.5, 6.3.6). 고정 자료는 SQL, 내용은 모두 꾸며 낸 것이다."""
 
+import json
+
 import jsonschema
 import pytest
 from be_env import BeEnv
@@ -37,12 +39,13 @@ async def test_curve_excludes_drafts_and_sensitive_by_default(tmp_path):
     assert [x["title"] for x in body["chapters"]] == ["꾸민 챕터"]
     assert body["chapters"][0] == {
         "id": ch, "title": "꾸민 챕터", "theme": "꾸민 주제", "start": "2025-01", "end": None, "sketch": "↑",
-        "certainty": "estimate",
+        "certainty": "estimate", "ladder_remembered": None,
     }
     assert [m["title"] for m in body["milestones"]] == ["연 단위 사건", "보이는 사건"]
     assert body["milestones"][1] == {
         "id": body["milestones"][1]["id"], "date": "2026-03", "precision": "month", "kind": "turning_point",
         "title": "보이는 사건", "note": "꾸민 메모", "chapter_id": ch, "sensitive": False, "certainty": "fact",
+        "kind_certainty": "fact", "area": None, "origin": "seed",
     }
     assert body["ladder"] == [
         {"period": "2026-09", "now": 5, "future": 7, "note": None},
@@ -154,3 +157,46 @@ async def test_curve_and_status_validate_against_schema(tmp_path):
         jsonschema.Draft202012Validator(schemas[model.rstrip("2")]).validate(body)
     assert bodies["Curve"]["reassurance"][0]["condition_average"] == 3.5
     assert bodies["Status"]["titles"][0]["title"] == "「꾸민 고점」의 순간"
+
+
+# --- SP8 8.2: 히스토리 칸과 `GET /curve/history` ---
+
+
+async def test_curve_has_area_origin_kind_certainty_and_ladder_remembered(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        c = env.conn
+        ch = chapter(c, "꾸민 챕터", "2025-01", ladder_remembered=6)
+        milestone(c, "꾸민 일", "2026-03", kind="turning_point", chapter_id=ch, area="quality_of_life",
+                  origin="chat", kind_certainty="estimate")
+        milestone(c, "영역 없는 일", "2026-04")
+        c.commit()
+        body = await get_json(env, "/curve")
+    assert body["chapters"][0]["ladder_remembered"] == 6
+    got = [(m["title"], m["area"], m["origin"], m["kind_certainty"]) for m in body["milestones"]]
+    assert got == [("꾸민 일", "quality_of_life", "chat", "estimate"), ("영역 없는 일", None, "seed", "fact")]
+    jsonschema.Draft202012Validator(schema_bundle()["models"]["Curve"]).validate(body)
+
+
+async def test_curve_history_route_and_schema(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        c = env.conn
+        ch = chapter(c, "꾸민 챕터", "2025-01", ladder_remembered=6)
+        milestone(c, "꾸민 일", "2026-03", chapter_id=ch, area="career")
+        milestone(c, "꾸민 비밀 일", "2025-05", kind="low", chapter_id=ch, sensitive=1, note="꾸민 비밀 메모")
+        milestone(c, "시기 없는 일", "2019")
+        c.commit()
+        off = await env.get("/curve/history")
+        off_text = await off.text()
+        on = await get_json(env, "/curve/history?include_sensitive=true")
+        bad = await env.get("/curve/history?include_sensitive=yes")
+        unauth = await env.get("/curve/history", token=None)
+    assert off.status == 200
+    body = json.loads(off_text)
+    schema = schema_bundle()["models"]["CurveHistory"]
+    for b in (body, on):
+        jsonschema.Draft202012Validator(schema).validate(b)
+    assert "꾸민 비밀" not in off_text
+    assert body["chapters"][0]["hidden_sensitive"] == {"count": 1, "years": [2025]}
+    assert [e["title"] for e in on["chapters"][0]["events"]] == ["꾸민 일", "꾸민 비밀 일"]
+    assert [e["title"] for e in body["unassigned"]["events"]] == ["시기 없는 일"]
+    assert bad.status == 400 and unauth.status == 401

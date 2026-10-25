@@ -13,6 +13,7 @@ import briefJson from "../test/fixtures/checkin-340-brief.json";
 import missedJson from "../test/fixtures/checkin-341-missed.json";
 import pendingJson from "../test/fixtures/checkin-341.json";
 import todayJson from "../test/fixtures/today.json";
+import { makeHabit } from "../test/parts";
 import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Checkin } from "./Checkin";
@@ -100,10 +101,58 @@ describe("Checkin", () => {
     expect(text).not.toMatch(/\d+\s*(분|시간)\s*(뒤|남)|남은 시간|마감/);
   });
 
+  it("the check-in text is Markdown", async () => {
+    serve({ ...pending, text: "오늘 **운동**은 했나요?" });
+    renderWithProviders(<Checkin id={341} />);
+    expect(await screen.findByText("운동", { selector: "strong" })).toBeInTheDocument();
+  });
+
   it("cards render as parts", async () => {
     serve();
     renderWithProviders(<Checkin id={341} />);
     expect(await screen.findByText("‘장보기’를 할 일에서 뺄까요?")).toBeInTheDocument();
+  });
+
+  it("habit_card_before_condition_picker", async () => {
+    // SP7 6.3: after ui_confirm, before the condition picker (the Telegram button order).
+    const habitCard = {
+      toolCallId: "h_habit_1",
+      component: "ui_habit_check",
+      props: { date: "2026-10-24" },
+      data: { habits: [makeHabit(1, "물 마시기", { checked: true, week_count: 4 }), makeHabit(2, "운동", { kind: "weekly", target_per_week: 3, week_count: 1 })] },
+    };
+    const condCard = { toolCallId: "h_cond_1", component: "ui_condition_picker", props: { date: "2026-10-24" }, data: null };
+    const hits = serve({ ...pending, cards: [...pending.cards, habitCard, condCard] } as CheckinDetail);
+    const bodies = actions(() => applied());
+    renderWithProviders(<Checkin id={341} />);
+    const confirm = await screen.findByText("‘장보기’를 할 일에서 뺄까요?");
+    const water = await screen.findByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") });
+    const pill = screen.getByRole("button", { name: copy.today.conditionScore(3) });
+    const before = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(confirm, water)).toBe(true);
+    expect(before(water, pill)).toBe(true);
+    // Already checked stays on the card so it can be taken back.
+    expect(water).toBeChecked();
+    expect(screen.getByText("이번 주 1번 · 목표 3번")).toBeInTheDocument();
+
+    const reads = hits.checkin;
+    await userEvent.click(water);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ action: "uncheck_habit", args: { id: 1, date: "2026-10-24" } });
+    await waitFor(() => expect(hits.checkin).toBeGreaterThan(reads));
+
+    // "되돌리기" on the toast: the card reads its habits again for its date and shows what the BE says.
+    const habitReads: string[] = [];
+    server.use(
+      http.post(`${BASE}/activity/900/undo`, () => HttpResponse.json({ status: "undone", confirmation: "↩ 습관 체크 취소: 물 마시기" })),
+      http.get(`${BASE}/habits`, ({ request }) => {
+        habitReads.push(new URL(request.url).searchParams.toString());
+        return HttpResponse.json({ date: "2026-10-24", week: "2026-W43", items: habitCard.data.habits });
+      }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: copy.activity.undo }));
+    await waitFor(() => expect(habitReads).toEqual(["date=2026-10-24&status=active"]));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") })).toBeChecked());
   });
 
   it("evening shows open todos with tomorrow and done", async () => {
@@ -126,6 +175,45 @@ describe("Checkin", () => {
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({ action: "complete_task", args: { id: 13 } });
     expect(bodies[0].client_msg_id).not.toBe(bodies[1].client_msg_id);
+  });
+
+  it("tomorrow on scheduled todo opens confirm sheet", async () => {
+    // SP6 8 (BE-2): the evening list's "내일로" asks first for a to-do with a time.
+    const SUMMARY = "날짜를 옮겨요: 장보기 → 10월 25일 (일)";
+    serve();
+    const bodies = actions((b) => (b.confirm_token ? applied() : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: SUMMARY, expires_at: "2026-10-24T09:00:00Z" })));
+    const user = userEvent.setup();
+    renderWithProviders(<Checkin id={341} />);
+    await user.click(await screen.findByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText(SUMMARY)).toBeInTheDocument();
+    expect(screen.queryByText(copy.actions.failed)).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.keep }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(bodies).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const again = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(again).getByText(SUMMARY)).toBeInTheDocument());
+    await user.click(within(again).getByRole("button", { name: copy.todos.change }));
+    await waitFor(() => expect(bodies).toHaveLength(3));
+    expect(bodies[2]).toMatchObject({ action: "move_task", args: { id: 13, planned_for: "2026-10-25" }, confirm_token: "ct-9" });
+    expect(bodies[2].client_msg_id).not.toBe(bodies[1].client_msg_id);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("confirm then rejected says why and reads again", async () => {
+    const hits = serve();
+    actions((b) => (b.confirm_token ? HttpResponse.json({ error: { code: "rejected", message: "열린 할 일만 날짜를 옮길 수 있어요." } }, { status: 422 }) : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: "날짜를 옮겨요: 운동 30분 → 10월 25일 (일)", expires_at: "2026-10-24T09:00:00Z" })));
+    const user = userEvent.setup();
+    renderWithProviders(<Checkin id={341} />);
+    await user.click(await screen.findByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const sheet = await screen.findByRole("dialog");
+    const before = hits.today;
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.change }));
+    expect(await screen.findByText("열린 할 일만 날짜를 옮길 수 있어요.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(hits.today).toBeGreaterThan(before));
   });
 
   it("double tap sends one request and reads again after the answer", async () => {

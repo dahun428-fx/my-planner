@@ -470,7 +470,9 @@ CREATE TABLE status_titles (
 | GET | `/week` | 대시보드, 운영 앱 | 없음 | 6.3.3 |
 | GET | `/conditions?from&to` | 대시보드, 운영 앱 | 없음 | 6.3.4 |
 | GET | `/curve?zoom&from&to&include_sensitive` | 대시보드, 운영 앱 | 없음 | 6.3.5 |
+| GET | `/curve/history?include_sensitive` | 대시보드 | 없음 | SP8 8.2 |
 | GET | `/status` | 대시보드, 운영 앱 | 없음 | 6.3.6 |
+| GET | `/moments?before&days&include_hidden` | 운영 앱용 | 없음 | SP8 6.5 |
 | GET | `/priorities?cadence&period` | 운영 앱용 | 없음 | 6.3.7 |
 | GET | `/drafts` | 운영 앱용 | 없음 | 6.3.8 |
 | GET | `/schema` | 운영 앱(빌드 때) | 없음 | 6.4 |
@@ -486,8 +488,11 @@ CREATE TABLE status_titles (
 | DELETE | `/push/subscriptions/{id}` | 운영 앱용 | 즉시 갈래 | 6.4.8 |
 | POST | `/push/test` | 운영 앱용 | 즉시 갈래(결과 기록) | 6.4.8 |
 | GET, PUT | `/settings/notify` | 운영 앱용 | PUT은 즉시 갈래 | 6.4.9 |
+| POST | `/client-errors` | 운영 앱·대시보드용 | 없음(로그 `client_error`만) | SP6 3.3 |
+| POST | `/internal/notify` | 자동 복구 감시자용 | 없음(고정 안내 길, 푸시 결과만 기록) | SP6 6장 |
+| POST | `/body` | 아이폰 단축어(`BODY_TOKEN`만, `API_TOKEN`은 401) | 즉시 갈래(`record_body_days`, `endpoint = body`) | SP8 7.2 |
 
-대시보드는 표의 `GET` 여섯 개만 쓴다.
+대시보드는 표의 `GET` 일곱 개(SP8에서 `/curve/history`를 더함)와 `POST /client-errors`만 쓴다.
 
 ### 6.3 읽기 (대시보드와 운영 앱 공통)
 
@@ -587,10 +592,12 @@ CREATE TABLE status_titles (
 ```json
 { "week": "2026-W43", "start": "2026-10-19", "end": "2026-10-25",
   "priorities": [ {…Todo} ],
-  "days": [ {"date": "2026-10-24", "weekday": "토", "is_today": true, "todos": [ {…Todo} ]} ] }
+  "days": [ {"date": "2026-10-24", "weekday": "토", "is_today": true, "todos": [ {…Todo} ]} ],
+  "undated": [ {…Todo} ] }
 ```
 
 할 일이 없는 날도 `days`에 넣는다(`todos: []`). 대시보드가 빈 날을 같은 칸으로 그리기 위해서다.
+`undated`(2026-10-25 추가)는 날짜 없는 열린 할 일이다(초안, 첫 걸음, 이번 주 우선순위는 뺀다. 앞선 BE에는 없으니 앱은 없으면 `[]`로 읽는다). 이것이 없을 때는 날짜 없이 들어간 할 일이 앱 어디에도 보이지 않았다. 텔레그램 `/week`는 그대로다.
 
 #### 6.3.4 `GET /conditions?from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -608,9 +615,10 @@ CREATE TABLE status_titles (
 {
   "zoom": "month", "from": "2024-11-01", "to": "2026-10-31",
   "chapters": [ {"id": 1, "title": "…", "theme": "…", "start": "2019-03", "end": null,
-                 "sketch": "↑", "certainty": "estimate"} ],
+                 "sketch": "↑", "certainty": "estimate", "ladder_remembered": null} ],
   "milestones": [ {"id": 7, "date": "2023-05", "precision": "month", "kind": "turning_point",
-                   "title": "…", "note": null, "chapter_id": 1, "sensitive": false, "certainty": "fact"} ],
+                   "title": "…", "note": null, "chapter_id": 1, "sensitive": false, "certainty": "fact",
+                   "kind_certainty": "fact", "area": "career", "origin": "chat"} ],
   "ladder": [ {"period": "2026-10", "now": 6, "future": 8, "note": null} ],
   "areas": [ {"period": "2026-Q4", "scores": {"career": 6, "finance": 5, "health": 4,
               "relationships": 7, "learning": 6, "quality_of_life": 5}} ],
@@ -624,6 +632,7 @@ CREATE TABLE status_titles (
 - `chapters`, `milestones`는 범위와 겹치는 **확정** 행만. `include_sensitive=false`(기본)면 `sensitive=1` 사건을 뺀다. `true`면 넣고 `sensitive: true`로 표시한다.
 - `ladder`는 달마다 하나. `areas`는 분기마다 하나(빠진 영역은 `scores`에 키가 없다). 묶음과 상관없이 원래 주기로 준다. FE가 x축 위치를 정한다.
 - `condition`은 `zoom` 단위로 묶은 평균이다(`curve/model.py bucket_conditions`, 기록 있는 날만 평균). `bucket` 이름은 `period_of(cadence, d)`의 형식이고, `day`는 날짜다.
+- SP8에서 더한 필드(필드 추가라 `/api/v1` 그대로): 챕터 `ladder_remembered`(기억한 사다리 0~10 또는 `null`), 사건 `kind_certainty`, `area`(대표 영역 하나 또는 `null`), `origin`(`seed` | `chat` | `review`). [SP8 스펙](2026-10-25-sp8-status-records-history-design.md) 8.1·8.2. 히스토리 탭의 모양은 `GET /curve/history`(SP8 8.2)다.
 - `reassurance`: 사다리 `now`가 있는 달마다(5년 뒤만 있는 달은 뺀다), 그 달의 컨디션 평균을 0~10으로 옮긴 값(`condition_scaled = (average − 1) × 2.5`)과 차이(`gap = condition_scaled − ladder_now`, 소수 한 자리). 그 달 컨디션 기록이 7일 미만이면 `condition_*`과 `gap`은 `null`이다(근거가 적다). 8.3 참고.
 
 #### 6.3.6 `GET /status`
@@ -636,7 +645,9 @@ CREATE TABLE status_titles (
   "hp": {"date": "2026-10-24", "score": 4},
   "stats": [ {"area": "health", "label": "건강", "score": 4, "period": "2026-Q4",
               "prev_score": 6, "prev_period": "2026-Q3", "debuff": true,
-              "recovery_quest": "저녁에 20분 걷기"} ],
+              "recovery_quest": "저녁에 20분 걷기",
+              "bonus": 1.5, "effective_score": 5.5,
+              "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0}} ],
   "main_quests": [ {"task_id": 31, "title": "…", "rank": 1, "period": "2026-Q4",
                     "first_steps": {"open": 2, "done": 3}} ],
   "daily_quests": [ {"task_id": 52, "title": "…", "parent_id": 31, "parent_title": "…", "planned_for": "2026-10-24"} ],
@@ -645,7 +656,7 @@ CREATE TABLE status_titles (
 }
 ```
 
-필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
+필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `bonus`·`effective_score`·`activity`는 SP8에서 더한 필드다(필드 추가라 `/api/v1` 그대로, `score`·`debuff`의 뜻은 바뀌지 않는다): 지난 28일 영역 활동에서 읽을 때마다 계산하는 보너스(0.0~2.0), `min(10, score + bonus)`(`score`가 없으면 `null`), 가중하지 않은 개수다. 계산은 [SP8 스펙](2026-10-25-sp8-status-records-history-design.md) 5장. 텔레그램 `/status` 글은 이 세 필드를 쓰지 않는다(SP8 D7). `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
 
 #### 6.3.7 `GET /priorities?cadence=week|month|quarter|year&period=…` (운영 앱용)
 
@@ -653,11 +664,14 @@ CREATE TABLE status_titles (
 
 ```json
 { "cadence": "quarter", "period": "2026-Q4",
-  "items": [ {…Todo}, {…Todo} ] }
+  "items": [ {…Todo}, {…Todo} ],
+  "todos": [ {…Todo} ] }
 ```
 
 - `cadence`는 필수이고 `week` | `month` | `quarter` | `year`다(오늘 우선순위는 `GET /today`의 `priority` 묶음). `period`는 선택이고, 없으면 지금 기간(`period_of(cadence, 오늘 논리적 날짜)`)이다. `period`는 `priorities.period` 형식(`2026-W43`, `2026-10`, `2026-Q4`, `2026`)이어야 하고, 주기와 맞지 않으면 `400 invalid_request`다.
 - `items`는 그 기간의 `priorities` 행을 `rank` 순서대로 `Todo`(6.3)로 준다. 초안과 소프트 삭제한 할 일을 가리키는 행은 뺀다. 우선순위가 없으면 `items: []`다.
+- 형식은 맞아도 없는 기간(53주가 없는 해의 `W53`)도 `400 invalid_request`다.
+- `todos`(2026-10-25 추가, 없으면 `[]`)는 그 기간(`period_bounds`, 첫날~마지막 날)에 하려는 열린 할 일을 날짜순으로 준다(초안 뺌). 앱은 탭에서 우선순위 아래 "{기간} 할 일"로 줄마다 날짜를 붙여 보인다. 이것이 없을 때는 이번 달 탭에 우선순위만 나와 "10월 28일 할 일"이 보이지 않았다.
 
 #### 6.3.8 `GET /drafts` (운영 앱용)
 
@@ -759,6 +773,9 @@ data: [DONE]
 | `unpin_card` | id | low |
 | `reorder_cards` | ids (새 순서) | low |
 | `decline_confirm` | confirm_token | low, 되돌릴 수 없음. 확인 카드의 "그대로 두기". 아무것도 바꾸지 않고 토큰을 `declined`로 닫는다 |
+| `hide_moment` | id (이룬 순간, SP8 6.4) | low. 이미 숨겼으면 `{"already": true}`. 없는 순간은 `404 not_found`(정수가 아닌 `id`도 같은 `404`, 세 순간 동작 모두) |
+| `unhide_moment` | id | low. 숨기지 않은 순간은 `{"already": true}`. 없는 순간은 `404 not_found` |
+| `delete_moment` | id | `confirm`(앱: "이 순간을 지울까요? 되돌릴 수 없어요."), 되돌릴 수 없음(행을 지운다). 없는 순간은 `404 not_found` |
 
 `propose_tasks`, `add_milestone`, `propose_chapter`, `grant_xp`는 없다. 제안과 경험치 부여는 비서(두뇌)의 일이다.
 
@@ -769,6 +786,7 @@ data: [DONE]
 | 적용 | 200 | `{"status": "applied", "activity_id": 913, "undo_id": 913, "result": {…도구 결과}, "confirmation": "✓ 완료: 운동", "xp": {"gained": 10, "level_up": null}}` |
 | 확인 필요 | 200 | `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "이번 분기 우선순위 3개를 바꿔요", "expires_at": "…"}`. 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다. 토큰은 `pending_confirms`에 두고 10분 유효하다. 회차 차례에서 생긴 토큰(10.1)도 같은 길로 확인한다: `{"action": <토큰의 action>, "args": <토큰의 args>, "confirm_token": …}`. 이미 쓰였거나 만료된 토큰은 `409 conflict` |
 | 거절 | 422 | `{"status": "rejected", "activity_id": null, "error": {"code": "rejected", "message": "<도구 오류 문구>"}}` |
+| 없는 대상 | 404 | `{"error": {"code": "not_found", "message": "없는 순간이에요."}}`. 도구 결과에 `error_code: "not_found"`가 있을 때만(SP8 6.4, 이룬 순간 동작). 그 밖의 도구 오류는 위의 422 |
 
 - `needs_confirm`은 `/actions`에서 **앱 통로 요청에만** 적용한다. 텔레그램 버튼과 `scheduler`는 SP1처럼 바로 적용한다(누름이 곧 승인이다).
 - `undo_id`는 되돌릴 수 있을 때만 있고, 값은 `activity_id`와 같다(따로 만들지 않는다). `risk = confirm`으로 적용한 변경은 `undo_id`가 없다.
@@ -806,6 +824,10 @@ data: [DONE]
 | `condition_recorded`, `ladder_recorded`, `area_scores_recorded` | 이전 행으로, 없었으면 행 삭제 |
 | `milestones_confirmed`, `chapters_confirmed` | `draft`로, `draft_since` = 되돌린 시각(3일을 다시 센다. 오래된 사건의 확정을 되돌려도 다음 날 사라지지 않는다). 칭호도 지운다(칭호는 원장이 아니다) |
 | `card_pinned`, `card_unpinned`, `cards_reordered` | 반대로 |
+| `moment_hidden` | `hidden_at = NULL`(다시 보임). 그 뒤 같은 순간(`moment:<id>`)을 다시 보이거나 지웠으면 U3 `409 superseded`(SP8 6.5) |
+| `moment_unhidden` | 이전 `hidden_at`으로(다시 숨김). U3은 위와 같다 |
+| `moment_deleted` | 되돌릴 수 없음(`422 not_undoable`, 행을 지웠다) |
+| `moments_saved` | 되돌릴 수 없음(`422 not_undoable`, 하루 끝 작업. 숨기기·지우기로 고친다) |
 
 응답: `200 {"status": "undone", "activity_id": 920, "undone": 913, "confirmation": "↩ 되돌림: 운동 완료"}`.
 
@@ -946,13 +968,14 @@ data: [DONE]
 
 SP1 5.3 표에 통로를 더한 것이다. 위에서부터 처음 맞는 규칙을 쓴다.
 
+0. **앱이 `resume_conversation_id`를 보냄**(SP9 스펙 7.3, 목록에서 고른 대화): 그 대화가 앱 통로이고 지우지 않았으면 1~5번보다 먼저 그 대화 쪽으로 간다. `checkin_id`가 함께 와도 0번이 먼저다(앱은 체크인 칩·체크인 화면의 메시지에 `checkin_id`만 싣는다). 이미 이어 갈 수 있으면(열린 `chat`은 30분과 상관없이, 2시간 안의 `plan`) 다시 열기 없이 그 대화. 닫힌 `chat`은 열린 다른 앱 `chat`·`plan`을 닫고 다시 연다. `run`은 답장 창 안이면 1번처럼 그 회차의 앱 쪽 회차 대화, 창이 지났으면(또는 닫힌 `plan`이면) 그 대화를 잇는 새 `chat`(`continued_from`, 첫 호출 앞머리에 그 대화의 요약)이고, 그 새 `chat`이 열려 있는 동안 같은 id는 그리로 간다. 텔레그램 대화, 없는 대화, 지운 대화면 1번부터.
 1. **앱이 `checkin_id`를 보냄**: 그 회차가 보낸 시각 기준 답장 창 안이면 그 회차의 **앱 쪽 회차 대화**로. 없으면 아래 "가르기"로 만든다. 창 밖이면 2번부터.
 2. 같은 통로에 열린 `plan` 대화(2시간)가 있으면 그것.
 3. **회차 대화**: 보낸 시각 이전에 열린 가장 최근 `run` 대화를 **통로와 상관없이** 하나 본다(SP1 스펙 갭 7 규칙 1~4: 전달이 끝났고 답장 창 안). 맞으면 그 회차의 **이 통로 쪽** 회차 대화로 간다. 이 통로 쪽이 없으면 가르기로 만든다.
 4. 같은 통로의 30분 이내 `chat` 대화.
 5. 새 `chat` 대화(이 통로).
 
-**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다.
+**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다. **예외(SP8 6.7)**: 원래 대화가 앱 쪽이고 새 대화가 텔레그램 쪽이면 가르지 않고 원래 대화의 원문도 붙이지 않는다(회차 본문과 이 대화의 원문만). 앱 대화의 `get_status`가 준 이룬 순간의 글이 텔레그램 통로 두뇌로 넘어가지 않게 한다.
 
 ### 7.3 회차 전달과 하루 3회 상한
 
@@ -1106,7 +1129,7 @@ SP1 5.8 머리글 끝에 통로를 붙이되, **앱 통로의 머리글에만** 
 
 | # | 규칙 |
 |---|---|
-| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다 |
+| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다. SP9(스펙 5.5, ADR 0015): 회차 차례의 `create_event`(그리고 시각류를 바꾸는 `update_event`, `delete_event`)는 `ui_confirm`이다. 할 일은 `scheduled_at`을 받지 않으므로 아래 A2의 `scheduled_at` 바꾸는 `update_task`·시각 있는 할 일의 `move_task` 확인은 없어졌다 |
 | A2 | 회차 차례에서 아래 도구는 **아무것도 바꾸지 않고** `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "<확인 문구 한 줄>"}`을 돌려준다. `pending_confirms`(`origin = run_turn`, 만료 = 그 회차 답장 창 끝)에 남기고 ToolEvent `confirm_requested`를 쌓는다: `drop_task`, `set_priorities`(모든 주기), `scheduled_at`을 바꾸는 `update_task`, `scheduled_at`이 있는 할 일의 `move_task`(날짜를 옮기면 `scheduled_at`도 바뀐다, SP1 5.5) |
 | A3 | **사용자 메시지에 답하는 차례**(`inbound_id`가 있음)에서는 위 도구가 SP1 그대로 바로 적용된다. 사용자의 요청이 곧 승인이다. 회차 대화에 사용자가 답한 차례도 여기다 |
 | A4 | `add_task`는 어느 차례에서든 바로 적용한다(SP1: 사용자가 직접 말한 할 일에만 쓴다). 비서의 제안은 SP1처럼 `propose_tasks` 초안이다 |
@@ -1235,7 +1258,7 @@ python -m my_planner seed-life <파일> [--dry-run]
 | 상태 | 표시 |
 |---|---|
 | 연결 설정 없음 | 설정 화면으로 보낸다 |
-| 꺼짐(네트워크 오류, 10초 초과) | 위 꺼짐 표시. 화면 내용 자리에는 "BE가 켜지면 다시 보여 드릴게요." |
+| 꺼짐(네트워크 오류, 10초 초과) | 위 꺼짐 표시. 화면 내용 자리에는 꺼짐 카드(대시보드 v1.1 DU-02): 확인 세 가지, 마지막 응답 `M/D HH:MM`(상대 시각), 자동 재확인 간격, 끝 줄 "BE가 켜지면 다시 보여 드릴게요." 연결된 적 없는 브라우저와 연결된 적 있는 브라우저의 문구가 다르다(부록 A "대시보드 v1.1 문구"). 꺼진 동안 `/health`는 10초, 20초, 40초, 그 뒤 60초마다 확인하고("연결 확인"을 누르면 10초부터 다시), 다시 켜지면 모든 화면이 바로 새로 받는다(DU-03) |
 | `401` | "토큰이 맞지 않아요. 설정에서 다시 넣어 주세요." |
 | `429` | "잠시 뒤에 다시 시도해 주세요." |
 | `503 safe_mode` | "데이터베이스 점검이 필요해요. PC에서 README의 복구 절차를 따라 주세요." |
@@ -1326,7 +1349,7 @@ python -m my_planner seed-life <파일> [--dry-run]
 
 - 사건 점을 누르면 날짜, 종류, 제목, 메모가 뜬다. "민감한 사건 보기"는 켜면 `include_sensitive=true`로 다시 부르고, 그 탭에서만 유지한다(저장하지 않음).
 - 레이더는 가장 최근 분기(실선)와 바로 앞 분기(점선). 내려간 꼭짓점에 ↓ 표시.
-- 빈 상태: 챕터·사건이 없으면 "시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요." 사다리 점수가 없으면 선 대신 "첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요." 영역 점수가 없으면 "영역 점수는 분기 마지막 주 회고에서 함께 정해요." 안심 보기에 비교할 달이 없으면 "사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요."
+- 빈 상태: 챕터·사건이 없으면 "시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요." 사다리 점수가 없으면 선 대신 다음 회고 날짜 표식과 "{11월 29일(일)} 월말 회고에서 첫 사다리 점수를 여쭤볼게요." 영역 점수가 없으면 "{12월 27일(일)} 분기 회고에서 영역 점수를 함께 정해요." 날짜는 브라우저가 한국 시각의 논리적 날짜(04:00 기준)로 계산한다: 월말은 그 달 마지막 일요일(첫 회는 11.2의 11/29), 분기는 분기 마지막 달의 마지막 일요일. 퍼센트, D-n, 남은 날 수는 쓰지 않는다(대시보드 v1.1 DU-05, 문구는 부록 A "대시보드 v1.1 문구"). 안심 보기에 비교할 달이 없으면 "사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요."
 
 ### 13.5 (d) 게임형 상태창 — `GET /status`
 
@@ -1565,6 +1588,29 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | `grant_xp` 거절 | amount는 5 또는 10이에요. / reason에 경험치를 주는 까닭을 짧게 적어 주세요. / reason은 60자까지 쓸 수 있어요. / 비서가 주는 경험치는 하루 3번까지예요. 오늘은 이미 다 줬어요. |
 | `system.md` 데이터와 도구 절 (모델용 지시문, 합니다체) | 회차 메시지를 쓰는 동안 도구가 `"status": "needs_confirm"`을 돌려주면 오류가 아닙니다. 아직 아무것도 바뀌지 않았고, 메시지 아래에 확인 버튼이 붙습니다. 확인이 필요한 변경은 제안으로 말하고, 적용했다고 말하지 않습니다. 같은 변경을 다시 부르지 않습니다. |
 
+### 대시보드 v1.1 문구 (DU-02, DU-04, DU-05, Dahun 확인 필요)
+
+13.1 꺼짐 줄과 13.4 빈 상태의 사다리·영역 줄을 대신한다. 코드는 `web/dashboard/src/lib/labels.ts` 한 곳에 있다. `{날짜}`는 "11월 29일(일)" 꼴이다.
+
+| 상황 | 문구 |
+|---|---|
+| 꺼짐 카드 제목: 연결된 적 없는 브라우저 | 이 브라우저는 아직 노트북의 비서와 연결되지 않았어요. |
+| 꺼짐 카드 제목: 연결된 적 있는 브라우저 | 노트북의 비서가 지금 응답하지 않아요. |
+| 꺼짐 카드 마지막 응답 | 마지막 응답 {M/D HH:MM} ({방금 / N분 전 / N시간 전 / N일 전}) / 기록이 없으면 "이 브라우저에는 아직 응답 기록이 없어요." |
+| 꺼짐 카드 안내 | 처음 연결할 때는 이 세 가지를 확인해 주세요. / 잠시 쉬고 있을 수 있어요. 이 세 가지를 확인해 주세요. |
+| 꺼짐 카드 확인 세 가지 | 노트북이 켜져 있고 절전 상태가 아닌지 / 이 기기에서 Tailscale이 켜져 있는지 / Chrome이라면 로컬 네트워크 접근을 허용했는지 |
+| 꺼짐 카드, 연결된 적 없을 때 | 주소와 토큰도 설정에서 한 번 더 봐 주세요. (+ "설정 열기" 링크) |
+| 꺼짐 카드 자동 재확인 | {10초 / 20초 / 40초 / 1분}마다 자동으로 다시 확인하고 있어요. |
+| 설정 도움말 (접힘) | 주소와 토큰은 어디서 찾나요? |
+| 설정 도움말: BE 주소 | 노트북에서 이 명령을 실행하면 나오는 주소예요. `tailscale serve status` / `https://<기계>.<tailnet>.ts.net` 이런 모양이에요. 뒤에 /api/v1은 붙여도 되고 빼도 돼요. |
+| 설정 도움말: API 토큰 | 노트북에서 이 명령으로 새로 만들 수 있어요. `python -m my_planner gen-token` / 이미 만들어 두었다면 노트북 .env 파일의 API_TOKEN 줄에 있어요. |
+| 인생곡선 빈 상태 표식 (목록 이름 "곧 그려질 것") | {날짜} 첫 사다리 / {날짜} 사다리 / {날짜} 영역 점수 |
+| 인생곡선 빈 상태: 첫 사다리 | {날짜} 월말 회고에서 첫 사다리 점수를 여쭤볼게요. |
+| 인생곡선 빈 상태: 사다리가 전에 있었고 이 확대 범위만 빔 | {날짜} 월말 회고에서 사다리 점수를 여쭤볼게요. (이번 달 점수가 이미 있으면 아무 날짜도 보이지 않는다, 11.1) |
+| 인생곡선 빈 상태: 영역 | {날짜} 분기 회고에서 영역 점수를 함께 정해요. |
+
+설정에서 연결에 성공하면 알림 없이 홈 `/`으로 간다. 그래서 "연결했어요.", "비서 상태 보기"는 지웠다.
+
 ## 변경 기록
 
 | 날짜 | 판 | 바뀐 것 | 근거 |
@@ -1578,6 +1624,7 @@ SP1 8장의 방식(FakeClock, FakeBrain, 임시 SQLite, 가짜 봇)을 그대로
 | 2026-10-24 | v4 | 운영 앱 스레드 요청(SP5 스펙 12장) R1 `GET /priorities`(6.3.7), R2 `GET /drafts`(6.3.8, 6.3 초안 규칙 고침), R4a `GET /activity`의 `order=desc`·`before`·`next_before`(6.4.4), R4b 확인 문구를 `data-activity.confirmation`으로, 앱 통로의 `h-confirm` 글 조각 없앰(6.4.1, 7.5 M4·M5, 5.2), R4c `TodoRef`와 `data.todos`(6.3, 6.4.1, 6.4.5, 6.4.7), R4d 메시지 `id`(6.4.6, 7.4). 확인을 기다리는 `ui_confirm`은 `GET /checkins/{id}`의 `cards`로 읽는다(새 경로 없음) | 운영 앱 스레드(SP5 스펙 PR #67 12장) |
 | 2026-10-24 | v5 | SP3-4 구현 중 결정 반영(문구 C1~C4, 21b 목록) | SP3-4 구현 계획 문구 표와 빈 곳 8·10·12·14, 티켓 02~10 판정 |
 | 2026-10-24 | v6 | SP6 G-BE1: `TodoRef`에 `planned_for`, `scheduled_at`(6.3, 깨지지 않는 변경) | SP6 스펙 10.2 |
+| 2026-10-24 | v7 | 대시보드 v1.1: 13.1 꺼짐 줄을 꺼짐 카드와 재확인 간격으로, 13.4 빈 상태의 사다리·영역 줄을 날짜 문구로 바꿈. 부록 A에 "대시보드 v1.1 문구" 추가(Dahun 확인 필요). 문서만 바꿈 | 대시보드 업그레이드 제안 DU-02~05, v1.1 리뷰 SHOULD 4 |
 
 **마스터 설계와 ADR에 반영할 것** (이 스펙이 승인되면 고친다)
 

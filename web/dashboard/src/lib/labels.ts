@@ -1,5 +1,6 @@
 // Screen words of the dashboard (spec 13.1, 13.2, appendix A). Kept here so one test can read them all.
 import type { HealthRun, SkipReason } from "../api/types.gen";
+import type { PictogramName } from "../components/pictograms.gen";
 
 // Appendix A push titles; an unknown loop reads as the notice title.
 export const LOOP_LABELS: Record<HealthRun["loop"], string> = {
@@ -67,6 +68,39 @@ export const STATE_TEXT = {
   rate_limited: "잠시 뒤에 다시 시도해 주세요.",
   safe_mode: "데이터베이스 점검이 필요해요. PC에서 README의 복구 절차를 따라 주세요.",
   broken: (code: string) => `BE가 응답했지만 이 화면을 그리지 못했어요 (${code}).`,
+  openSettings: "설정 열기",
+} as const;
+
+// DU-02: the card in place of a screen while the BE does not answer. What to check, when this browser last
+// heard from it, and that it keeps checking. "never" is a browser with no good answer on record.
+export const OFFLINE_TEXT = {
+  title: {
+    never: "이 브라우저는 아직 노트북의 비서와 연결되지 않았어요.",
+    before: "노트북의 비서가 지금 응답하지 않아요.",
+  },
+  lastSeen: (when: string, ago: string) => `마지막 응답 ${when} (${ago})`,
+  lastNone: "이 브라우저에는 아직 응답 기록이 없어요.",
+  lead: {
+    never: "처음 연결할 때는 이 세 가지를 확인해 주세요.",
+    before: "잠시 쉬고 있을 수 있어요. 이 세 가지를 확인해 주세요.",
+  },
+  checks: [
+    "노트북이 켜져 있고 절전 상태가 아닌지",
+    "이 기기에서 Tailscale이 켜져 있는지",
+    "Chrome이라면 로컬 네트워크 접근을 허용했는지",
+  ],
+  checksLabel: "확인할 것",
+  neverHint: "주소와 토큰도 설정에서 한 번 더 봐 주세요.",
+  retry: (every: string) => `${every}마다 자동으로 다시 확인하고 있어요.`,
+  every: (ms: number) => (ms >= 60_000 ? `${Math.round(ms / 60_000)}분` : `${Math.round(ms / 1000)}초`),
+} as const;
+
+// Relative time beside the last answer (DU-02).
+export const TIME_TEXT = {
+  justNow: "방금",
+  minutesAgo: (n: number) => `${n}분 전`,
+  hoursAgo: (n: number) => `${n}시간 전`,
+  daysAgo: (n: number) => `${n}일 전`,
 } as const;
 
 export const BAND_TEXT = {
@@ -75,6 +109,8 @@ export const BAND_TEXT = {
   off: (when: string | null) => `BE 꺼짐 · 마지막 응답 ${when ?? "기록 없음"}`,
   checking: "연결 확인 중",
   check: "연결 확인",
+  none: "BE 연결 전",
+  offShort: "BE 꺼짐",
 } as const;
 
 export const HEALTH_TEXT = {
@@ -105,9 +141,7 @@ export const SETTINGS_TEXT = {
   token: "API 토큰",
   check: "연결 확인",
   checking: "확인 중",
-  ok: "연결했어요.",
   saved: "저장했어요.",
-  home: "비서 상태 보기",
   urlErrors: {
     not_https: "https 주소만 넣을 수 있어요.",
     out_of_range: "이 대시보드가 허용한 tailnet 주소가 아니에요.",
@@ -115,6 +149,19 @@ export const SETTINGS_TEXT = {
   },
   tokenMissing: "토큰을 넣어 주세요.",
   tokenInvalid: "토큰에는 영문, 숫자, 기호만 들어가요.",
+  // DU-04: where the two values come from. The address shape is a pattern, never a real machine name.
+  help: {
+    summary: "주소와 토큰은 어디서 찾나요?",
+    urlTitle: "BE 주소",
+    urlBody: "노트북에서 이 명령을 실행하면 나오는 주소예요.",
+    urlCommand: "tailscale serve status",
+    urlShape: "https://<기계>.<tailnet>.ts.net",
+    urlShapeNote: "이런 모양이에요. 뒤에 /api/v1은 붙여도 되고 빼도 돼요.",
+    tokenTitle: "API 토큰",
+    tokenBody: "노트북에서 이 명령으로 새로 만들 수 있어요.",
+    tokenCommand: "python -m my_planner gen-token",
+    tokenEnv: "이미 만들어 두었다면 노트북 .env 파일의 API_TOKEN 줄에 있어요.",
+  },
 } as const;
 
 export const NAV_TEXT = {
@@ -176,11 +223,78 @@ export const STATUS_TEXT = {
   dailyEmpty: "오늘의 퀘스트는 첫 걸음이 생기면 나타나요.",
   take: "텔레그램이나 운영 앱에서 '그 퀘스트 할게'라고 말씀해 주세요.",
   titles: "칭호",
-  titlesEmpty: "고점이나 전환점을 곡선에 남기면 칭호가 생겨요.",
+  titlesEmpty: "높은 때나 전환점을 곡선에 남기면 칭호가 생겨요.",
   recentXp: "최근 경험치",
   xpGain: (amount: number, label: string) => `+${amount} ${label}`,
   recentEmpty: "할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.",
+  // SP8 10.1, appendix A. Numbers with one decimal; nothing here compares with an earlier bonus.
+  statSub: (base: number, bonus: number) => (bonus > 0 ? `바탕 ${base} · 요즘 +${bonus.toFixed(1)}` : `바탕 ${base}`),
+  statSubNoBase: (bonus: number) => `요즘 +${bonus.toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요`,
+  recentHeading: "요즘 손이 간 영역",
+  recentLine: (bonus: number) => `+${bonus.toFixed(1)}`,
+  recentCounts: (c: { tasks: number; habit_checks: number; body_days: number }) =>
+    `4주 동안 ${[
+      c.tasks > 0 ? `할 일 ${c.tasks}개` : "",
+      c.habit_checks > 0 ? `습관 ${c.habit_checks}번` : "",
+      c.body_days > 0 ? `몸 기록 ${c.body_days}일` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ")}`,
+  recentAreasEmpty: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.",
+  // SP8 10.1, appendix A: the moments panel is read only.
+  momentsHeading: "이룬 순간",
+  momentsFooter: "숨기거나 지우는 것은 운영 앱 상태창에서 할 수 있어요.",
+  momentsEmpty: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.",
+  // SP8 10.1, appendix A: the body record line under health. A part with no value is left out; no warning when old.
+  bodyLine: (b: { steps_avg_7: number | null; sleep_avg_7: number | null }) => {
+    const parts: string[] = [];
+    if (typeof b.steps_avg_7 === "number") parts.push(`지난 7일 걸음 평균 ${b.steps_avg_7.toLocaleString("ko-KR")}`);
+    if (typeof b.sleep_avg_7 === "number")
+      parts.push(`${typeof b.steps_avg_7 === "number" ? "" : "지난 7일 "}잠 평균 ${Math.floor(b.sleep_avg_7 / 60)}시간 ${b.sleep_avg_7 % 60}분`);
+    // Nothing to say when neither average exists (a record older than a week): no line, no warning.
+    return parts.length > 0 ? ["몸 기록", ...parts].join(" · ") : "";
+  },
 } as const;
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+
+/** "10월 24일 (토)": the date head over a day's moments (SP8 appendix A). `date` is a calendar day, "YYYY-MM-DD". */
+export function momentDay(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return `${m}월 ${d}일 (${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+}
+
+/** The name of each pictogram (spec 9.1), for the places one stands without a word beside it. */
+export const PICTOGRAM_LABELS: Record<PictogramName, string> = {
+  career: "커리어",
+  finance: "경제",
+  health: "건강",
+  relationships: "관계",
+  learning: "배움",
+  quality_of_life: "삶의 질",
+  high: "높은 때",
+  low: "힘든 때",
+  turning_point: "전환점",
+  chapter: "챕터",
+  condition: "컨디션",
+  ladder: "사다리",
+  level: "레벨",
+  quest: "퀘스트",
+  review: "회고",
+  todo: "할 일",
+  habit: "습관",
+  memory: "기억",
+  future: "5년 뒤",
+  eye: "보임",
+  eyeoff: "가림",
+  assistant: "비서가 만듦",
+  home: "한눈에",
+  curve: "인생곡선",
+  status: "상태창",
+  list: "목록",
+  estimate: "추정",
+  settings: "설정",
+};
 
 // SP1 area order and names (the same as `/status` stat labels).
 export const AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"] as const;
@@ -209,7 +323,7 @@ export const CURVE_TEXT = {
     [`사다리 ${period}`, now !== null ? `지금 ${now}` : null, future !== null ? `5년 뒤 ${future}` : null].filter(Boolean).join(" · "),
   conditionRow: (bucket: string, average: number, days: number) => `컨디션 ${bucket} 평균 ${average.toFixed(1)} · ${days}일 기록`,
   chapterRow: (title: string, start: string, end: string | null) => `챕터 ${title} (${start}~${end ?? "지금"})`,
-  kinds: { high: "고점", low: "저점", turning_point: "전환점" },
+  kinds: { high: "높은 때", low: "힘든 때", turning_point: "전환점" },
   glyphs: { high: "▲", low: "▼", turning_point: "◆" },
   milestoneButton: (kind: string, date: string, title: string) => `${kind} ${date} ${title}`,
   estimate: "(추정)",
@@ -236,8 +350,70 @@ export const CURVE_TEXT = {
   moreMonths: (n: number) => `지난 달 ${n}개 더 보기`,
   empty: {
     events: "시드를 가져오거나 대화에서 사건을 남기면 여기에 그려져요.",
-    ladder: "첫 사다리 점수는 이번 달 마지막 일요일 회고에서 여쭤볼게요.",
-    areas: "영역 점수는 분기 마지막 주 회고에서 함께 정해요.",
     reassurance: "사다리 점수와 컨디션 기록이 한 달 쌓이면 비교해 드릴게요.",
+  },
+  // DU-05: what comes next and on which day, in place of the 13.4 ladder and area lines. No counts of days.
+  upcoming: {
+    label: "곧 그려질 것",
+    firstLadderMark: "첫 사다리",
+    ladderMark: "사다리",
+    areasMark: "영역 점수",
+    firstLadder: (day: string) => `${day} 월말 회고에서 첫 사다리 점수를 여쭤볼게요.`,
+    ladder: (day: string) => `${day} 월말 회고에서 사다리 점수를 여쭤볼게요.`,
+    areas: (day: string) => `${day} 분기 회고에서 영역 점수를 함께 정해요.`,
+  },
+} as const;
+
+// Review days (DU-05), for example "11월 29일(일)".
+export const REVIEW_TEXT = {
+  weekdays: ["일", "월", "화", "수", "목", "금", "토"],
+  day: (m: number, d: number, weekday: string) => `${m}월 ${d}일(${weekday})`,
+} as const;
+
+// SP8 8.3, 8.4 and appendix A: the history tab of the life curve. Nothing here ranks or compares a chapter.
+export const HISTORY_TEXT = {
+  tabsLabel: "보기",
+  tabs: { curve: "곡선", history: "히스토리" },
+  subtitle: (chapters: number, events: number, sinceYear: number | null) =>
+    `지금까지 걸어온 길 · 챕터 ${chapters}개 · 사건 ${events}개${sinceYear === null ? "" : ` · ${sinceYear}년부터`}`,
+  filterLabel: "거르기",
+  filters: { all: "전체", high: "높은 때", low: "힘든 때", turning_point: "전환점" },
+  sort: { recent: "최근부터 ▾", oldest: "오래된 것부터 ▾" },
+  ladderRemembered: (n: string) => `그때 사다리 ${n}`,
+  ladderRecorded: (n: string) => `사다리 평균 ${n}`,
+  eventCount: (n: number) => `사건 ${n}개`,
+  estimate: "추정",
+  estimateSketch: "기억으로 그린 시기예요.",
+  assistantMade: "비서가 만듦",
+  sensitive: "민감",
+  more: (title: string, years: string) => `${title} · ${years} 더 보기`,
+  noneOfKind: "이 시기에는 고른 종류의 사건이 없어요.",
+  unassigned: "시기를 정하지 않은 사건",
+  empty: "시드를 가져오거나 대화에서 사건을 남기면 여기에 쌓여요.",
+  kindEstimate: (kind: string) => `${kind} · 추정`,
+  hideSensitive: "민감한 사건 가림",
+  hidden: (n: number, years: number[]) => `가려 둔 사건 ${n}개${years.length > 0 ? ` · ${years.map((y) => `${y}년`).join(", ")}` : ""}`,
+  showHidden: "보기",
+  hideAgain: "가리기",
+  glance: {
+    title: "한눈에 보는 지난 길",
+    subtitle: "챕터마다 기억한 사다리 점수와 사건이에요. 점선은 기억으로 그린 시기예요.",
+    tableCaption: "한눈에 보는 지난 길을 표로 본 것",
+    chapter: "챕터",
+    years: "해",
+    ladder: "사다리",
+    events: "사건",
+    noLadder: "없음",
+    noYears: "—",
+  },
+  summary: {
+    label: "옆 요약",
+    asideLabel: "한눈에 띠와 옆 요약",
+    highest: { head: "가장 높았던 챕터", value: (title: string, ladder: string) => `${title} · 사다리 ${ladder}` },
+    turningPoints: { head: "전환점", value: (n: number, years: number[]) => `${n}번${years.length > 0 ? ` · ${years.map((y) => `${y}년`).join(", ")}` : ""}` },
+    longest: { head: "가장 길었던 챕터", value: (title: string, years: number) => `${title} · ${years}년` },
+    since: { head: "기억과 기록", value: (year: number) => `${year}년부터는 매일 기록으로 그려요` },
+    helpTitle: "비서가 정리를 돕는 법",
+    help: "대화에서 나온 일을 사건 초안으로 만들어 두면, 확인 버튼을 눌러야 여기에 올라와요. 지난 챕터도 '이 시기 같이 정리하자'라고 말하면 돼요.",
   },
 } as const;

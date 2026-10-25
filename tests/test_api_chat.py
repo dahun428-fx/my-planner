@@ -170,18 +170,17 @@ async def test_retry_after_partial_deltas_gets_own_step_and_ids(tmp_path):
 
 
 async def test_tool_chunk_name_has_no_prefix_and_output_is_utc(tmp_path):
-    timed = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-25",
-                          "scheduled_at": "2026-10-25T14:00:00+09:00"})
+    timed = ("create_event", {"title": "치과", "date": "2026-10-25", "time": "14:00"})
     async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([timed], "넣었어요.")]) as env:
         _, raw = await env.chat("내일 2시 치과")
         brain_ctx = env.brain.calls[0]["run_ctx"]
 
     tool_in = _one(parse_sse(raw), "tool-input-available")
     tool_out = _one(parse_sse(raw), "tool-output-available")
-    assert tool_in["toolName"] == "add_task"
+    assert tool_in["toolName"] == "create_event"
     assert tool_in["input"] == timed[1]
     assert tool_out["toolCallId"] == tool_in["toolCallId"]
-    assert tool_out["output"]["scheduled_at"] == "2026-10-25T05:00:00Z"
+    assert tool_out["output"]["updated_at"].endswith("Z") and "+" not in tool_out["output"]["updated_at"]
     assert brain_ctx.channel == "app"
     # 쓰개는 MCP 이름의 앞머리를 뗀다
     from fakes import ListSink
@@ -544,3 +543,32 @@ async def test_direct_reply_ignores_idle_client_conversation(tmp_path):
         assert parse_sse(raw)[0]["messageMetadata"]["conversation_id"] is None
         assert "x-conversation-id" not in resp.headers
     assert count == 1  # 새 대화를 열지 않는다
+
+
+# --- SP9 7.3, 7.7: 새 대화, 대화 지우기 ---
+
+
+async def test_delete_open_conversation_closes_it_first(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네"), FakeTurn([], "새로")]) as env:
+        resp, _ = await env.chat("열린 대화")
+        a = int(resp.headers["x-conversation-id"])
+        assert (await env.delete(f"/conversations/{a}")).status == 204
+        c = env.parts.convs.get(a)
+        resp, _ = await env.chat("다음 말", conversation_id=a)
+        b = int(resp.headers["x-conversation-id"])
+        bad = [(await env.delete(p)).status for p in ("/conversations/abc", "/conversations/999")]
+    assert c.closed_at is not None and c.deleted_at is not None and b != a
+    assert bad == [404, 404]
+
+
+async def test_new_conversation_endpoint(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네"), FakeTurn([], "새로")]) as env:
+        resp, _ = await env.chat("열린 대화")
+        a = int(resp.headers["x-conversation-id"])
+        first = await env.post("/conversations/new")
+        body = await first.json()
+        empty = await (await env.post("/conversations/new")).json()
+        resp, _ = await env.chat("다음 말", conversation_id=a)
+        b = int(resp.headers["x-conversation-id"])
+    assert first.status == 200 and body == {"closed": [a]} and empty == {"closed": []}
+    assert b != a

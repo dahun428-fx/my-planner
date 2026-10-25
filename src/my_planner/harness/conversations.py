@@ -206,18 +206,90 @@ class ConversationRouter:
             forked_from=origin.id if origin is not None else None,
         )
 
-    def for_app_message(self, at: datetime, *, conversation_id: int | None, checkin_id: int | None) -> Conversation:
+    def for_app_message(
+        self, at: datetime, *, conversation_id: int | None, checkin_id: int | None,
+        resume_conversation_id: int | None = None,
+    ) -> Conversation:
         """앱 메시지의 대화(SP3-4 7.2, 6.4.1). 받을 때 고른다(`for_user_message`의 규칙, 앱의 보낸 시각은 받은 시각).
+
+        **0번 규칙**(SP9 7.3): `resume_conversation_id`가 앱 통로의 지우지 않은 대화면 1~5번보다 먼저 그 대화
+        쪽으로 간다(`_resumed`). `checkin_id`가 함께 와도 0번이 먼저다(스펙 7.3, 계획 Review Focus 5: 앱은 둘을 함께
+        싣지 않는다). 고른 대화가 없거나 지웠거나 텔레그램 대화면 1~5번 그대로.
 
         고른 대화는 활동으로 기록해 큐에서 기다리는 동안 tick이 닫지 않게 한다.
         """
-        conv = self.for_user_message(
-            at, sent_at=at, channel="app", checkin_id=checkin_id, asked_id=conversation_id
-        )
+        conv = self._resumed(resume_conversation_id, at) if resume_conversation_id is not None else None
+        if conv is None:
+            conv = self.for_user_message(
+                at, sent_at=at, channel="app", checkin_id=checkin_id, asked_id=conversation_id
+            )
         self._touch(conv)
         touched = self.convs.get(conv.id)
         assert touched is not None
         return touched
+
+    def _resumed(self, conversation_id: int, at: datetime) -> Conversation | None:
+        """0번 규칙(SP9 7.3): 목록에서 고른 대화 쪽. 앱 통로가 아니거나 지운 대화면 None(1~5번으로).
+
+        - 이미 이어 갈 수 있으면(열린 `chat`은 30분과 상관없이, 2시간 안의 `plan`) 다시 열기 없이 그 대화.
+        - `chat`: 열린 다른 앱 `chat`·`plan`을 닫고(요약 큐로) 그 대화를 다시 연다.
+        - `run`: 그 회차가 답장 창 안이면 1번 규칙처럼 그 회차의 앱 쪽 회차 대화.
+        - 닫힌 `plan`, 창이 지난 `run`: 그 대화를 이어 가는 `chat`(`continued_from`, 첫 호출 앞머리에 그 대화의
+          요약). 앱은 그 화면을 떠날 때까지 같은 id를 실으므로, 그 대화를 이어 가는 가장 최근 `chat`(지우지 않은 것)이
+          있으면 그것이다. 닫혔으면 `chat` 갈래처럼 다시 연다(30분 규칙을 보지 않는다). 없을 때만 새로 연다.
+        """
+        conv = self.convs.get(conversation_id)
+        if conv is None or conv.channel != "app" or conv.deleted_at is not None:
+            return None
+        if conv.kind is ConversationKind.chat:
+            if conv.closed_at is None:
+                return conv
+            self._close_app_talks()
+            self.convs.reopen(conv.id, at)
+            got = self.convs.get(conv.id)
+            assert got is not None
+            return got
+        if conv.kind is ConversationKind.plan:
+            plan = self._open_plan(at, "app")
+            if plan is not None and plan.id == conv.id:
+                return plan
+        elif self.runs is not None and conv.run_id is not None:
+            run = self.runs.get(conv.run_id)
+            if run is not None:
+                primary = self._primary(run)
+                if self.run_in_window(primary, at):
+                    return self._run_side(primary, "app")
+        follow = self.convs.latest_follow(conv.id)
+        if follow is not None:
+            return self._resumed(follow.id, at)
+        self._close_app_talks()
+        tz, boundary = self.settings.timezone, self.settings.day_boundary
+        return self.convs.open(
+            ConversationKind.chat, logical_date(at, tz, boundary), channel="app", continued_from=conv.id,
+        )
+
+    def _close_app_talks(self) -> list[int]:
+        """열린 앱 `chat`·`plan` 대화를 닫는다. 닫은 id(요약은 다음 tick이 큐에 넣는다)."""
+        closed: list[int] = []
+        for kind in (ConversationKind.chat, ConversationKind.plan):
+            while (cur := self.convs.latest_open(kind, "app")) is not None:
+                self.convs.close(cur.id)
+                closed.append(cur.id)
+        return closed
+
+    def delete(self, conversation_id: int) -> Conversation | None:
+        """앱 대화를 지운다(SP9 7.7, 즉시 갈래 `conversation_delete`가 부른다): 열려 있으면 닫고 `deleted_at`, 제목·요약
+        비움. 지운 대화(지우기 전 값)를 돌려준다. 없거나 이미 지웠거나 텔레그램 대화면 None."""
+        conv = self.convs.get(conversation_id)
+        if conv is None or conv.channel != "app" or conv.deleted_at is not None:
+            return None
+        if not self.convs.delete(conv.id, self.clock.now()):
+            return None
+        return conv
+
+    def new_app_conversation(self) -> list[int]:
+        """`POST /conversations/new`(SP9 7.3): 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화가 된다."""
+        return self._close_app_talks()
 
     def continues(self, conv: Conversation, at: datetime) -> bool:
         """그 대화가 지금 메시지를 이을 수 있다(열려 있고, 그 종류의 규칙 안: 계획 2시간, chat 30분, 회차 답장 창)."""

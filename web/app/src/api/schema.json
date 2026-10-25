@@ -5,10 +5,8 @@
       "$defs": {
         "ActionXp": {
           "additionalProperties": false,
-          "description": "이 요청에서 쌓인 경험치(9.1)와, 레벨이 올랐으면 새 레벨(9.2). 오르지 않았으면 `level_up`은 null.",
           "properties": {
             "gained": {
-              "title": "Gained",
               "type": "integer"
             },
             "level_up": {
@@ -19,20 +17,17 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Level Up"
+              ]
             }
           },
           "required": [
             "gained",
             "level_up"
           ],
-          "title": "ActionXp",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "적용(200). `undo_id`는 되돌릴 수 있을 때만 있고 값은 `activity_id`와 같다.",
       "properties": {
         "activity_id": {
           "anyOf": [
@@ -42,8 +37,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Activity Id"
+          ]
         },
         "confirmation": {
           "anyOf": [
@@ -53,17 +47,14 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Confirmation"
+          ]
         },
         "result": {
           "additionalProperties": true,
-          "title": "Result",
           "type": "object"
         },
         "status": {
           "const": "applied",
-          "title": "Status",
           "type": "string"
         },
         "undo_id": {
@@ -75,8 +66,7 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Undo Id"
+          "default": null
         },
         "xp": {
           "$ref": "#/$defs/ActionXp"
@@ -89,28 +79,22 @@
         "confirmation",
         "xp"
       ],
-      "title": "ActionApplied",
       "type": "object"
     },
     "ActionNeedsConfirm": {
       "additionalProperties": false,
-      "description": "확인 필요(200). 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다(10분).",
       "properties": {
         "confirm_token": {
-          "title": "Confirm Token",
           "type": "string"
         },
         "expires_at": {
-          "title": "Expires At",
           "type": "string"
         },
         "status": {
           "const": "needs_confirm",
-          "title": "Status",
           "type": "string"
         },
         "summary": {
-          "title": "Summary",
           "type": "string"
         }
       },
@@ -120,7 +104,6 @@
         "summary",
         "expires_at"
       ],
-      "title": "ActionNeedsConfirm",
       "type": "object"
     },
     "ActionRejected": {
@@ -141,13 +124,20 @@
                 "not_undoable",
                 "too_many_auth_failures",
                 "safe_mode",
-                "internal"
+                "internal",
+                "unavailable",
+                "checkin_time_invalid",
+                "memo_conflict",
+                "too_many_memos",
+                "too_many_pinned",
+                "remind_invalid",
+                "start_not_in_weekdays",
+                "too_many_events",
+                "range_too_long"
               ],
-              "title": "Code",
               "type": "string"
             },
             "message": {
-              "title": "Message",
               "type": "string"
             }
           },
@@ -155,15 +145,12 @@
             "code",
             "message"
           ],
-          "title": "ErrorDetail",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "거절(422). `error.message`는 도구의 오류 문구다.",
       "properties": {
         "activity_id": {
-          "title": "Activity Id",
           "type": "null"
         },
         "error": {
@@ -171,7 +158,6 @@
         },
         "status": {
           "const": "rejected",
-          "title": "Status",
           "type": "string"
         }
       },
@@ -180,27 +166,22 @@
         "activity_id",
         "error"
       ],
-      "title": "ActionRejected",
       "type": "object"
     },
     "ActionRequestBody": {
       "additionalProperties": false,
-      "description": "`POST /actions` 요청 (6.4.2). `client_msg_id`는 필수다(6.1 중복 방지).",
       "properties": {
         "action": {
           "minLength": 1,
-          "title": "Action",
           "type": "string"
         },
         "args": {
           "additionalProperties": true,
-          "title": "Args",
           "type": "object"
         },
         "client_msg_id": {
           "maxLength": 200,
           "minLength": 1,
-          "title": "Client Msg Id",
           "type": "string"
         },
         "confirm_token": {
@@ -212,15 +193,13 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Confirm Token"
+          "default": null
         }
       },
       "required": [
         "action",
         "client_msg_id"
       ],
-      "title": "ActionRequestBody",
       "type": "object"
     },
     "ActivityResponse": {
@@ -233,11 +212,9 @@
                 "secretary",
                 "user"
               ],
-              "title": "Actor",
               "type": "string"
             },
             "at": {
-              "title": "At",
               "type": "string"
             },
             "channel": {
@@ -246,15 +223,12 @@
                 "telegram",
                 "scheduler"
               ],
-              "title": "Channel",
               "type": "string"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "kind": {
-              "title": "Kind",
               "type": "string"
             },
             "risk": {
@@ -262,11 +236,9 @@
                 "low",
                 "confirm"
               ],
-              "title": "Risk",
               "type": "string"
             },
             "summary": {
-              "title": "Summary",
               "type": "string"
             },
             "undo_id": {
@@ -277,8 +249,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Undo Id"
+              ]
             },
             "undone_at": {
               "anyOf": [
@@ -288,8 +259,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Undone At"
+              ]
             }
           },
           "required": [
@@ -303,18 +273,15 @@
             "undo_id",
             "undone_at"
           ],
-          "title": "ActivityItem",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /activity` (6.4.4). `next_before`는 `desc`이고 더 앞선 행이 남았을 때만, 아니면 null.",
       "properties": {
         "items": {
           "items": {
             "$ref": "#/$defs/ActivityItem"
           },
-          "title": "Items",
           "type": "array"
         },
         "next_before": {
@@ -325,8 +292,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Next Before"
+          ]
         },
         "next_since": {
           "anyOf": [
@@ -336,8 +302,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Next Since"
+          ]
         }
       },
       "required": [
@@ -345,13 +310,94 @@
         "next_since",
         "next_before"
       ],
-      "title": "ActivityResponse",
+      "type": "object"
+    },
+    "BodyPostBody": {
+      "$defs": {
+        "BodyDayIn": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            },
+            "sleep_minutes": {
+              "maximum": 1440,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "steps": {
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "items": {
+            "$ref": "#/$defs/BodyDayIn"
+          },
+          "maxItems": 7,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "days"
+      ],
+      "type": "object"
+    },
+    "BodySaved": {
+      "additionalProperties": false,
+      "properties": {
+        "saved": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "saved"
+      ],
+      "type": "object"
+    },
+    "CalendarPutBody": {
+      "additionalProperties": false,
+      "properties": {
+        "rotate": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "CalendarSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ],
       "type": "object"
     },
     "ChatRequestBody": {
       "$defs": {
         "ChatMessage": {
-          "description": "AI SDK `UIMessage`(마지막 사용자 메시지 하나). `parts`의 `text`만 읽는다(6.4.1). 모르는 필드는 버린다.",
           "properties": {
             "id": {
               "anyOf": [
@@ -363,8 +409,7 @@
                   "type": "null"
                 }
               ],
-              "default": null,
-              "title": "Id"
+              "default": null
             },
             "parts": {
               "items": {
@@ -372,24 +417,20 @@
                 "type": "object"
               },
               "maxItems": 100,
-              "title": "Parts",
               "type": "array"
             },
             "role": {
               "const": "user",
-              "title": "Role",
               "type": "string"
             }
           },
           "required": [
             "role"
           ],
-          "title": "ChatMessage",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).",
       "properties": {
         "checkin_id": {
           "anyOf": [
@@ -400,13 +441,11 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Checkin Id"
+          "default": null
         },
         "client_msg_id": {
           "maxLength": 200,
           "minLength": 1,
-          "title": "Client Msg Id",
           "type": "string"
         },
         "conversation_id": {
@@ -418,18 +457,27 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Conversation Id"
+          "default": null
         },
         "message": {
           "$ref": "#/$defs/ChatMessage"
+        },
+        "resume_conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "client_msg_id",
         "message"
       ],
-      "title": "ChatRequestBody",
       "type": "object"
     },
     "CheckinDetail": {
@@ -438,7 +486,6 @@
           "additionalProperties": false,
           "properties": {
             "component": {
-              "title": "Component",
               "type": "string"
             },
             "data": {
@@ -451,16 +498,13 @@
                   "type": "null"
                 }
               ],
-              "default": null,
-              "title": "Data"
+              "default": null
             },
             "props": {
               "additionalProperties": true,
-              "title": "Props",
               "type": "object"
             },
             "toolCallId": {
-              "title": "Toolcallid",
               "type": "string"
             }
           },
@@ -469,7 +513,6 @@
             "component",
             "props"
           ],
-          "title": "CheckinCard",
           "type": "object"
         },
         "CheckinConversationIds": {
@@ -483,8 +526,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "App"
+              ]
             },
             "telegram": {
               "anyOf": [
@@ -494,15 +536,13 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Telegram"
+              ]
             }
           },
           "required": [
             "app",
             "telegram"
           ],
-          "title": "CheckinConversationIds",
           "type": "object"
         }
       },
@@ -516,8 +556,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Answered At"
+          ]
         },
         "answered_via": {
           "anyOf": [
@@ -531,8 +570,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Answered Via"
+          ]
         },
         "cadence": {
           "enum": [
@@ -542,14 +580,12 @@
             "quarter",
             "year"
           ],
-          "title": "Cadence",
           "type": "string"
         },
         "cards": {
           "items": {
             "$ref": "#/$defs/CheckinCard"
           },
-          "title": "Cards",
           "type": "array"
         },
         "conversation_ids": {
@@ -563,11 +599,9 @@
             ],
             "type": "string"
           },
-          "title": "Delivered Via",
           "type": "array"
         },
         "id": {
-          "title": "Id",
           "type": "integer"
         },
         "loop": {
@@ -577,15 +611,12 @@
             "review",
             "return"
           ],
-          "title": "Loop",
           "type": "string"
         },
         "reply_until": {
-          "title": "Reply Until",
           "type": "string"
         },
         "scheduled_for": {
-          "title": "Scheduled For",
           "type": "string"
         },
         "sent_at": {
@@ -596,8 +627,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Sent At"
+          ]
         },
         "state": {
           "enum": [
@@ -605,11 +635,9 @@
             "answered",
             "missed"
           ],
-          "title": "State",
           "type": "string"
         },
         "text": {
-          "title": "Text",
           "type": "string"
         }
       },
@@ -628,7 +656,6 @@
         "text",
         "cards"
       ],
-      "title": "CheckinDetail",
       "type": "object"
     },
     "CheckinList": {
@@ -644,8 +671,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "App"
+              ]
             },
             "telegram": {
               "anyOf": [
@@ -655,20 +681,17 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Telegram"
+              ]
             }
           },
           "required": [
             "app",
             "telegram"
           ],
-          "title": "CheckinConversationIds",
           "type": "object"
         },
         "CheckinSummary": {
           "additionalProperties": false,
-          "description": "답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 \"지나감\"이다.",
           "properties": {
             "answered_at": {
               "anyOf": [
@@ -678,8 +701,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Answered At"
+              ]
             },
             "answered_via": {
               "anyOf": [
@@ -693,8 +715,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Answered Via"
+              ]
             },
             "cadence": {
               "enum": [
@@ -704,7 +725,6 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "conversation_ids": {
@@ -718,11 +738,9 @@
                 ],
                 "type": "string"
               },
-              "title": "Delivered Via",
               "type": "array"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "loop": {
@@ -732,15 +750,12 @@
                 "review",
                 "return"
               ],
-              "title": "Loop",
               "type": "string"
             },
             "reply_until": {
-              "title": "Reply Until",
               "type": "string"
             },
             "scheduled_for": {
-              "title": "Scheduled For",
               "type": "string"
             },
             "sent_at": {
@@ -751,8 +766,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Sent At"
+              ]
             },
             "state": {
               "enum": [
@@ -760,7 +774,6 @@
                 "answered",
                 "missed"
               ],
-              "title": "State",
               "type": "string"
             }
           },
@@ -777,7 +790,6 @@
             "reply_until",
             "conversation_ids"
           ],
-          "title": "CheckinSummary",
           "type": "object"
         }
       },
@@ -787,14 +799,12 @@
           "items": {
             "$ref": "#/$defs/CheckinSummary"
           },
-          "title": "Items",
           "type": "array"
         }
       },
       "required": [
         "items"
       ],
-      "title": "CheckinList",
       "type": "object"
     },
     "CheckinSummary": {
@@ -810,8 +820,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "App"
+              ]
             },
             "telegram": {
               "anyOf": [
@@ -821,20 +830,17 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Telegram"
+              ]
             }
           },
           "required": [
             "app",
             "telegram"
           ],
-          "title": "CheckinConversationIds",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 \"지나감\"이다.",
       "properties": {
         "answered_at": {
           "anyOf": [
@@ -844,8 +850,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Answered At"
+          ]
         },
         "answered_via": {
           "anyOf": [
@@ -859,8 +864,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Answered Via"
+          ]
         },
         "cadence": {
           "enum": [
@@ -870,7 +874,6 @@
             "quarter",
             "year"
           ],
-          "title": "Cadence",
           "type": "string"
         },
         "conversation_ids": {
@@ -884,11 +887,9 @@
             ],
             "type": "string"
           },
-          "title": "Delivered Via",
           "type": "array"
         },
         "id": {
-          "title": "Id",
           "type": "integer"
         },
         "loop": {
@@ -898,15 +899,12 @@
             "review",
             "return"
           ],
-          "title": "Loop",
           "type": "string"
         },
         "reply_until": {
-          "title": "Reply Until",
           "type": "string"
         },
         "scheduled_for": {
-          "title": "Scheduled For",
           "type": "string"
         },
         "sent_at": {
@@ -917,8 +915,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Sent At"
+          ]
         },
         "state": {
           "enum": [
@@ -926,7 +923,6 @@
             "answered",
             "missed"
           ],
-          "title": "State",
           "type": "string"
         }
       },
@@ -943,7 +939,241 @@
         "reply_until",
         "conversation_ids"
       ],
-      "title": "CheckinSummary",
+      "type": "object"
+    },
+    "CheckinTimePutBody": {
+      "additionalProperties": false,
+      "properties": {
+        "day_type": {
+          "enum": [
+            "weekday",
+            "weekend"
+          ],
+          "type": "string"
+        },
+        "loop": {
+          "enum": [
+            "morning_brief",
+            "evening_checkin"
+          ],
+          "type": "string"
+        },
+        "time": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loop",
+        "day_type",
+        "time"
+      ],
+      "type": "object"
+    },
+    "CheckinTimes": {
+      "$defs": {
+        "CheckinTimeItem": {
+          "additionalProperties": false,
+          "properties": {
+            "day_type": {
+              "enum": [
+                "weekday",
+                "weekend"
+              ],
+              "type": "string"
+            },
+            "effective_today": {
+              "type": "string"
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin"
+              ],
+              "type": "string"
+            },
+            "time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "loop",
+            "day_type",
+            "time",
+            "from",
+            "effective_today"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CheckinTimeItem"
+          },
+          "type": "array"
+        },
+        "wake_updated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "wake_updated"
+      ],
+      "type": "object"
+    },
+    "CheckinTimesUpdated": {
+      "$defs": {
+        "CheckinTimeItem": {
+          "additionalProperties": false,
+          "properties": {
+            "day_type": {
+              "enum": [
+                "weekday",
+                "weekend"
+              ],
+              "type": "string"
+            },
+            "effective_today": {
+              "type": "string"
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin"
+              ],
+              "type": "string"
+            },
+            "time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "loop",
+            "day_type",
+            "time",
+            "from",
+            "effective_today"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applies": {
+          "enum": [
+            "today",
+            "tomorrow"
+          ],
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CheckinTimeItem"
+          },
+          "type": "array"
+        },
+        "undo_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake_updated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "wake_updated",
+        "applies",
+        "activity_id",
+        "undo_id"
+      ],
+      "type": "object"
+    },
+    "ClientErrorBody": {
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "enum": [
+            "app",
+            "dashboard"
+          ],
+          "type": "string"
+        },
+        "at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "frames": {
+          "items": {
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_.\\-/\\[\\]]*\\.js:\\d+:\\d+$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 80,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+          "type": "string"
+        },
+        "route": {
+          "maxLength": 120,
+          "pattern": "^/[A-Za-z0-9_\\-/\\[\\]]*$",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 40,
+          "pattern": "^[A-Za-z0-9._+\\-]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "version",
+        "route",
+        "name",
+        "frames",
+        "at"
+      ],
       "type": "object"
     },
     "Conditions": {
@@ -952,7 +1182,6 @@
           "additionalProperties": false,
           "properties": {
             "date": {
-              "title": "Date",
               "type": "string"
             },
             "note": {
@@ -963,11 +1192,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Note"
+              ]
             },
             "score": {
-              "title": "Score",
               "type": "integer"
             }
           },
@@ -976,12 +1203,10 @@
             "score",
             "note"
           ],
-          "title": "ConditionItem",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /conditions` (6.3.4).",
       "properties": {
         "average": {
           "anyOf": [
@@ -991,26 +1216,21 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Average"
+          ]
         },
         "days_logged": {
-          "title": "Days Logged",
           "type": "integer"
         },
         "from": {
-          "title": "From",
           "type": "string"
         },
         "items": {
           "items": {
             "$ref": "#/$defs/ConditionItem"
           },
-          "title": "Items",
           "type": "array"
         },
         "to": {
-          "title": "To",
           "type": "string"
         }
       },
@@ -1021,7 +1241,6 @@
         "days_logged",
         "average"
       ],
-      "title": "Conditions",
       "type": "object"
     },
     "Conversations": {
@@ -1034,7 +1253,6 @@
                 "telegram",
                 "app"
               ],
-              "title": "Channel",
               "type": "string"
             },
             "closed_at": {
@@ -1045,11 +1263,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Closed At"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "kind": {
@@ -1058,15 +1274,12 @@
                 "chat",
                 "plan"
               ],
-              "title": "Kind",
               "type": "string"
             },
             "last_message_at": {
-              "title": "Last Message At",
               "type": "string"
             },
             "opened_at": {
-              "title": "Opened At",
               "type": "string"
             },
             "run_id": {
@@ -1077,8 +1290,29 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "title": "Run Id"
+              "default": null
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             }
           },
           "required": [
@@ -1090,7 +1324,6 @@
             "last_message_at",
             "closed_at"
           ],
-          "title": "ConversationItem",
           "type": "object"
         }
       },
@@ -1100,14 +1333,38 @@
           "items": {
             "$ref": "#/$defs/ConversationItem"
           },
-          "title": "Items",
           "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "items"
       ],
-      "title": "Conversations",
+      "type": "object"
+    },
+    "ConversationsClosed": {
+      "additionalProperties": false,
+      "properties": {
+        "closed": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "closed"
+      ],
       "type": "object"
     },
     "Curve": {
@@ -1116,7 +1373,6 @@
           "additionalProperties": false,
           "properties": {
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "scores": {
@@ -1133,7 +1389,6 @@
                   "quality_of_life"
                 ]
               },
-              "title": "Scores",
               "type": "object"
             }
           },
@@ -1141,7 +1396,6 @@
             "period",
             "scores"
           ],
-          "title": "CurveAreas",
           "type": "object"
         },
         "CurveChapter": {
@@ -1152,7 +1406,6 @@
                 "fact",
                 "estimate"
               ],
-              "title": "Certainty",
               "type": "string"
             },
             "end": {
@@ -1163,12 +1416,20 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "End"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
+            },
+            "ladder_remembered": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "sketch": {
               "anyOf": [
@@ -1178,11 +1439,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Sketch"
+              ]
             },
             "start": {
-              "title": "Start",
               "type": "string"
             },
             "theme": {
@@ -1193,11 +1452,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Theme"
+              ]
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -1208,9 +1465,9 @@
             "start",
             "end",
             "sketch",
-            "certainty"
+            "certainty",
+            "ladder_remembered"
           ],
-          "title": "CurveChapter",
           "type": "object"
         },
         "CurveCondition": {
@@ -1224,23 +1481,18 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Average"
+              ]
             },
             "bucket": {
-              "title": "Bucket",
               "type": "string"
             },
             "days_logged": {
-              "title": "Days Logged",
               "type": "integer"
             },
             "end": {
-              "title": "End",
               "type": "string"
             },
             "start": {
-              "title": "Start",
               "type": "string"
             }
           },
@@ -1251,7 +1503,6 @@
             "average",
             "days_logged"
           ],
-          "title": "CurveCondition",
           "type": "object"
         },
         "CurveLadder": {
@@ -1265,8 +1516,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Future"
+              ]
             },
             "note": {
               "anyOf": [
@@ -1276,8 +1526,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Note"
+              ]
             },
             "now": {
               "anyOf": [
@@ -1287,11 +1536,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Now"
+              ]
             },
             "period": {
-              "title": "Period",
               "type": "string"
             }
           },
@@ -1301,18 +1548,34 @@
             "future",
             "note"
           ],
-          "title": "CurveLadder",
           "type": "object"
         },
         "CurveMilestone": {
           "additionalProperties": false,
           "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "certainty": {
               "enum": [
                 "fact",
                 "estimate"
               ],
-              "title": "Certainty",
               "type": "string"
             },
             "chapter_id": {
@@ -1323,15 +1586,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Chapter Id"
+              ]
             },
             "date": {
-              "title": "Date",
               "type": "string"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "kind": {
@@ -1340,7 +1600,13 @@
                 "low",
                 "turning_point"
               ],
-              "title": "Kind",
+              "type": "string"
+            },
+            "kind_certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
               "type": "string"
             },
             "note": {
@@ -1351,8 +1617,15 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "origin": {
+              "enum": [
+                "seed",
+                "chat",
+                "review"
               ],
-              "title": "Note"
+              "type": "string"
             },
             "precision": {
               "enum": [
@@ -1360,15 +1633,12 @@
                 "month",
                 "day"
               ],
-              "title": "Precision",
               "type": "string"
             },
             "sensitive": {
-              "title": "Sensitive",
               "type": "boolean"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -1381,9 +1651,11 @@
             "note",
             "chapter_id",
             "sensitive",
-            "certainty"
+            "certainty",
+            "kind_certainty",
+            "area",
+            "origin"
           ],
-          "title": "CurveMilestone",
           "type": "object"
         },
         "CurveReassurance": {
@@ -1397,8 +1669,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Condition Average"
+              ]
             },
             "condition_scaled": {
               "anyOf": [
@@ -1408,11 +1679,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Condition Scaled"
+              ]
             },
             "days_logged": {
-              "title": "Days Logged",
               "type": "integer"
             },
             "gap": {
@@ -1423,15 +1692,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Gap"
+              ]
             },
             "ladder_now": {
-              "title": "Ladder Now",
               "type": "integer"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             }
           },
@@ -1443,61 +1709,51 @@
             "days_logged",
             "gap"
           ],
-          "title": "CurveReassurance",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /curve` (6.3.5).",
       "properties": {
         "areas": {
           "items": {
             "$ref": "#/$defs/CurveAreas"
           },
-          "title": "Areas",
           "type": "array"
         },
         "chapters": {
           "items": {
             "$ref": "#/$defs/CurveChapter"
           },
-          "title": "Chapters",
           "type": "array"
         },
         "condition": {
           "items": {
             "$ref": "#/$defs/CurveCondition"
           },
-          "title": "Condition",
           "type": "array"
         },
         "from": {
-          "title": "From",
           "type": "string"
         },
         "ladder": {
           "items": {
             "$ref": "#/$defs/CurveLadder"
           },
-          "title": "Ladder",
           "type": "array"
         },
         "milestones": {
           "items": {
             "$ref": "#/$defs/CurveMilestone"
           },
-          "title": "Milestones",
           "type": "array"
         },
         "reassurance": {
           "items": {
             "$ref": "#/$defs/CurveReassurance"
           },
-          "title": "Reassurance",
           "type": "array"
         },
         "to": {
-          "title": "To",
           "type": "string"
         },
         "zoom": {
@@ -1508,7 +1764,6 @@
             "quarter",
             "year"
           ],
-          "title": "Zoom",
           "type": "string"
         }
       },
@@ -1523,7 +1778,392 @@
         "condition",
         "reassurance"
       ],
-      "title": "Curve",
+      "type": "object"
+    },
+    "CurveHistory": {
+      "$defs": {
+        "HiddenSensitive": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "type": "integer"
+            },
+            "years": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "count",
+            "years"
+          ],
+          "type": "object"
+        },
+        "HistoryChapter": {
+          "additionalProperties": false,
+          "properties": {
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "events": {
+              "items": {
+                "$ref": "#/$defs/HistoryEvent"
+              },
+              "type": "array"
+            },
+            "hidden_sensitive": {
+              "$ref": "#/$defs/HiddenSensitive"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "ladder": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryLadder"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sketch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "start": {
+              "type": "string"
+            },
+            "theme": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "theme",
+            "start",
+            "end",
+            "sketch",
+            "certainty",
+            "ladder",
+            "events",
+            "hidden_sensitive"
+          ],
+          "type": "object"
+        },
+        "HistoryEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "high",
+                "low",
+                "turning_point"
+              ],
+              "type": "string"
+            },
+            "kind_certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "origin": {
+              "enum": [
+                "seed",
+                "chat",
+                "review"
+              ],
+              "type": "string"
+            },
+            "precision": {
+              "enum": [
+                "year",
+                "month",
+                "day"
+              ],
+              "type": "string"
+            },
+            "sensitive": {
+              "type": "boolean"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "precision",
+            "kind",
+            "kind_certainty",
+            "title",
+            "note",
+            "area",
+            "origin",
+            "certainty",
+            "sensitive"
+          ],
+          "type": "object"
+        },
+        "HistoryHighest": {
+          "additionalProperties": false,
+          "properties": {
+            "chapter_id": {
+              "type": "integer"
+            },
+            "ladder": {
+              "type": "number"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "chapter_id",
+            "title",
+            "ladder"
+          ],
+          "type": "object"
+        },
+        "HistoryLadder": {
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "enum": [
+                "remembered",
+                "recorded"
+              ],
+              "type": "string"
+            },
+            "value": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "value",
+            "source"
+          ],
+          "type": "object"
+        },
+        "HistoryLongest": {
+          "additionalProperties": false,
+          "properties": {
+            "chapter_id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "years": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "chapter_id",
+            "title",
+            "years"
+          ],
+          "type": "object"
+        },
+        "HistorySummary": {
+          "additionalProperties": false,
+          "properties": {
+            "chapters": {
+              "type": "integer"
+            },
+            "events": {
+              "type": "integer"
+            },
+            "highest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryHighest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "longest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryLongest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "records_since": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "turning_points": {
+              "$ref": "#/$defs/HistoryTurningPoints"
+            }
+          },
+          "required": [
+            "chapters",
+            "events",
+            "highest",
+            "turning_points",
+            "longest",
+            "records_since"
+          ],
+          "type": "object"
+        },
+        "HistoryTurningPoints": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "type": "integer"
+            },
+            "years": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "count",
+            "years"
+          ],
+          "type": "object"
+        },
+        "HistoryUnassigned": {
+          "additionalProperties": false,
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/$defs/HistoryEvent"
+              },
+              "type": "array"
+            },
+            "hidden_sensitive": {
+              "$ref": "#/$defs/HiddenSensitive"
+            }
+          },
+          "required": [
+            "events",
+            "hidden_sensitive"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "chapters": {
+          "items": {
+            "$ref": "#/$defs/HistoryChapter"
+          },
+          "type": "array"
+        },
+        "since_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/HistorySummary"
+        },
+        "unassigned": {
+          "$ref": "#/$defs/HistoryUnassigned"
+        }
+      },
+      "required": [
+        "since_year",
+        "chapters",
+        "unassigned",
+        "summary"
+      ],
       "type": "object"
     },
     "Drafts": {
@@ -1539,15 +2179,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Conversation Id"
+              ]
             },
             "expires_at": {
-              "title": "Expires At",
               "type": "string"
             },
             "proposed_at": {
-              "title": "Proposed At",
               "type": "string"
             },
             "run_id": {
@@ -1558,8 +2195,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Run Id"
+              ]
             },
             "todo": {
               "$ref": "#/$defs/Todo"
@@ -1572,12 +2208,10 @@
             "run_id",
             "conversation_id"
           ],
-          "title": "DraftItem",
           "type": "object"
         },
         "Todo": {
           "additionalProperties": false,
-          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
           "properties": {
             "areas": {
               "items": {
@@ -1591,7 +2225,6 @@
                 ],
                 "type": "string"
               },
-              "title": "Areas",
               "type": "array"
             },
             "completed_at": {
@@ -1602,15 +2235,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Completed At"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "note": {
-              "title": "Note",
               "type": "string"
             },
             "parent_id": {
@@ -1621,8 +2251,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Parent Id"
+              ]
             },
             "planned_for": {
               "anyOf": [
@@ -1632,8 +2261,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Planned For"
+              ]
             },
             "priority": {
               "anyOf": [
@@ -1653,8 +2281,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Scheduled At"
+              ]
             },
             "status": {
               "enum": [
@@ -1663,11 +2290,9 @@
                 "done",
                 "dropped"
               ],
-              "title": "Status",
               "type": "string"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -1683,7 +2308,6 @@
             "priority",
             "completed_at"
           ],
-          "title": "Todo",
           "type": "object"
         },
         "TodoPriority": {
@@ -1697,15 +2321,12 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "rank": {
-              "title": "Rank",
               "type": "integer"
             }
           },
@@ -1714,25 +2335,21 @@
             "period",
             "rank"
           ],
-          "title": "TodoPriority",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /drafts` (6.3.8): 만료 전 초안만.",
       "properties": {
         "items": {
           "items": {
             "$ref": "#/$defs/DraftItem"
           },
-          "title": "Items",
           "type": "array"
         }
       },
       "required": [
         "items"
       ],
-      "title": "Drafts",
       "type": "object"
     },
     "Error": {
@@ -1753,13 +2370,20 @@
                 "not_undoable",
                 "too_many_auth_failures",
                 "safe_mode",
-                "internal"
+                "internal",
+                "unavailable",
+                "checkin_time_invalid",
+                "memo_conflict",
+                "too_many_memos",
+                "too_many_pinned",
+                "remind_invalid",
+                "start_not_in_weekdays",
+                "too_many_events",
+                "range_too_long"
               ],
-              "title": "Code",
               "type": "string"
             },
             "message": {
-              "title": "Message",
               "type": "string"
             }
           },
@@ -1767,7 +2391,6 @@
             "code",
             "message"
           ],
-          "title": "ErrorDetail",
           "type": "object"
         }
       },
@@ -1780,12 +2403,394 @@
       "required": [
         "error"
       ],
-      "title": "ErrorBody",
+      "type": "object"
+    },
+    "EventDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "all_day": {
+          "type": "boolean"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "duration_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "integer"
+        },
+        "note": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat",
+            "migrated"
+          ],
+          "type": "string"
+        },
+        "remind_min": {
+          "anyOf": [
+            {
+              "enum": [
+                0,
+                10,
+                30,
+                60,
+                1440
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repeat": {
+          "enum": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "type": "string"
+        },
+        "repeat_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skipped_dates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "weekdays": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "date",
+        "time",
+        "all_day",
+        "duration_min",
+        "repeat",
+        "weekdays",
+        "repeat_until",
+        "remind_min",
+        "area",
+        "note",
+        "origin",
+        "skipped_dates",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "EventItem": {
+      "additionalProperties": false,
+      "properties": {
+        "all_day": {
+          "type": "boolean"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date": {
+          "type": "string"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "event_id": {
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat",
+            "migrated"
+          ],
+          "type": "string"
+        },
+        "remind_min": {
+          "anyOf": [
+            {
+              "enum": [
+                0,
+                10,
+                30,
+                60,
+                1440
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repeat": {
+          "enum": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "date",
+        "start",
+        "end",
+        "all_day",
+        "title",
+        "area",
+        "remind_min",
+        "repeat",
+        "origin"
+      ],
+      "type": "object"
+    },
+    "EventList": {
+      "$defs": {
+        "EventItem": {
+          "additionalProperties": false,
+          "properties": {
+            "all_day": {
+              "type": "boolean"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "date": {
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "event_id": {
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat",
+                "migrated"
+              ],
+              "type": "string"
+            },
+            "remind_min": {
+              "anyOf": [
+                {
+                  "enum": [
+                    0,
+                    10,
+                    30,
+                    60,
+                    1440
+                  ],
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "repeat": {
+              "enum": [
+                "none",
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "end",
+            "all_day",
+            "title",
+            "area",
+            "remind_min",
+            "repeat",
+            "origin"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EventItem"
+          },
+          "type": "array"
+        },
+        "start": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "items"
+      ],
       "type": "object"
     },
     "Habit": {
       "additionalProperties": false,
-      "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
       "properties": {
         "area": {
           "enum": [
@@ -1796,15 +2801,12 @@
             "learning",
             "quality_of_life"
           ],
-          "title": "Area",
           "type": "string"
         },
         "checked": {
-          "title": "Checked",
           "type": "boolean"
         },
         "id": {
-          "title": "Id",
           "type": "integer"
         },
         "kind": {
@@ -1812,7 +2814,6 @@
             "daily",
             "weekly"
           ],
-          "title": "Kind",
           "type": "string"
         },
         "status": {
@@ -1821,7 +2822,6 @@
             "paused",
             "archived"
           ],
-          "title": "Status",
           "type": "string"
         },
         "target_per_week": {
@@ -1832,15 +2832,12 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Target Per Week"
+          ]
         },
         "title": {
-          "title": "Title",
           "type": "string"
         },
         "week_count": {
-          "title": "Week Count",
           "type": "integer"
         }
       },
@@ -1854,14 +2851,12 @@
         "checked",
         "week_count"
       ],
-      "title": "Habit",
       "type": "object"
     },
     "HabitHistory": {
       "$defs": {
         "Habit": {
           "additionalProperties": false,
-          "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
           "properties": {
             "area": {
               "enum": [
@@ -1872,15 +2867,12 @@
                 "learning",
                 "quality_of_life"
               ],
-              "title": "Area",
               "type": "string"
             },
             "checked": {
-              "title": "Checked",
               "type": "boolean"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "kind": {
@@ -1888,7 +2880,6 @@
                 "daily",
                 "weekly"
               ],
-              "title": "Kind",
               "type": "string"
             },
             "status": {
@@ -1897,7 +2888,6 @@
                 "paused",
                 "archived"
               ],
-              "title": "Status",
               "type": "string"
             },
             "target_per_week": {
@@ -1908,15 +2898,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Target Per Week"
+              ]
             },
             "title": {
-              "title": "Title",
               "type": "string"
             },
             "week_count": {
-              "title": "Week Count",
               "type": "integer"
             }
           },
@@ -1930,18 +2917,15 @@
             "checked",
             "week_count"
           ],
-          "title": "Habit",
           "type": "object"
         },
         "HabitWeek": {
           "additionalProperties": false,
           "properties": {
             "count": {
-              "title": "Count",
               "type": "integer"
             },
             "week": {
-              "title": "Week",
               "type": "string"
             }
           },
@@ -1949,36 +2933,30 @@
             "week",
             "count"
           ],
-          "title": "HabitWeek",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /habits/{id}?weeks=` (SP7 5.5). 체크한 날, 체크가 있는 주만(빈 날·빈 주는 0이 아니라 없음).",
       "properties": {
         "checked_dates": {
           "items": {
             "type": "string"
           },
-          "title": "Checked Dates",
           "type": "array"
         },
         "from": {
-          "title": "From",
           "type": "string"
         },
         "habit": {
           "$ref": "#/$defs/Habit"
         },
         "to": {
-          "title": "To",
           "type": "string"
         },
         "weeks": {
           "items": {
             "$ref": "#/$defs/HabitWeek"
           },
-          "title": "Weeks",
           "type": "array"
         }
       },
@@ -1989,14 +2967,12 @@
         "checked_dates",
         "weeks"
       ],
-      "title": "HabitHistory",
       "type": "object"
     },
     "HabitsList": {
       "$defs": {
         "Habit": {
           "additionalProperties": false,
-          "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
           "properties": {
             "area": {
               "enum": [
@@ -2007,15 +2983,12 @@
                 "learning",
                 "quality_of_life"
               ],
-              "title": "Area",
               "type": "string"
             },
             "checked": {
-              "title": "Checked",
               "type": "boolean"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "kind": {
@@ -2023,7 +2996,6 @@
                 "daily",
                 "weekly"
               ],
-              "title": "Kind",
               "type": "string"
             },
             "status": {
@@ -2032,7 +3004,6 @@
                 "paused",
                 "archived"
               ],
-              "title": "Status",
               "type": "string"
             },
             "target_per_week": {
@@ -2043,15 +3014,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Target Per Week"
+              ]
             },
             "title": {
-              "title": "Title",
               "type": "string"
             },
             "week_count": {
-              "title": "Week Count",
               "type": "integer"
             }
           },
@@ -2065,26 +3033,21 @@
             "checked",
             "week_count"
           ],
-          "title": "Habit",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /habits?date=&status=` (SP7 5.5). `week`는 `date`가 든 ISO 주.",
       "properties": {
         "date": {
-          "title": "Date",
           "type": "string"
         },
         "items": {
           "items": {
             "$ref": "#/$defs/Habit"
           },
-          "title": "Items",
           "type": "array"
         },
         "week": {
-          "title": "Week",
           "type": "string"
         }
       },
@@ -2093,7 +3056,6 @@
         "week",
         "items"
       ],
-      "title": "HabitsList",
       "type": "object"
     },
     "Health": {
@@ -2108,15 +3070,12 @@
                 "billing",
                 "unknown"
               ],
-              "title": "Auth",
               "type": "string"
             },
             "calls_cap": {
-              "title": "Calls Cap",
               "type": "integer"
             },
             "calls_today": {
-              "title": "Calls Today",
               "type": "integer"
             },
             "checked_at": {
@@ -2127,8 +3086,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Checked At"
+              ]
             },
             "limited_until": {
               "anyOf": [
@@ -2138,8 +3096,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Limited Until"
+              ]
             }
           },
           "required": [
@@ -2149,7 +3106,6 @@
             "calls_today",
             "calls_cap"
           ],
-          "title": "HealthBrain",
           "type": "object"
         },
         "HealthErrors": {
@@ -2159,19 +3115,15 @@
               "additionalProperties": {
                 "type": "integer"
               },
-              "title": "By Event",
               "type": "object"
             },
             "since": {
-              "title": "Since",
               "type": "string"
             },
             "total": {
-              "title": "Total",
               "type": "integer"
             },
             "window_hours": {
-              "title": "Window Hours",
               "type": "integer"
             }
           },
@@ -2181,7 +3133,6 @@
             "total",
             "by_event"
           ],
-          "title": "HealthErrors",
           "type": "object"
         },
         "HealthNotify": {
@@ -2192,7 +3143,6 @@
                 "telegram",
                 "app"
               ],
-              "title": "Effective",
               "type": "string"
             },
             "primary": {
@@ -2200,7 +3150,6 @@
                 "telegram",
                 "app"
               ],
-              "title": "Primary",
               "type": "string"
             }
           },
@@ -2208,18 +3157,15 @@
             "primary",
             "effective"
           ],
-          "title": "HealthNotify",
           "type": "object"
         },
         "HealthProactive": {
           "additionalProperties": false,
           "properties": {
             "cap": {
-              "title": "Cap",
               "type": "integer"
             },
             "sent_today": {
-              "title": "Sent Today",
               "type": "integer"
             }
           },
@@ -2227,7 +3173,6 @@
             "sent_today",
             "cap"
           ],
-          "title": "HealthProactive",
           "type": "object"
         },
         "HealthPush": {
@@ -2241,11 +3186,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Last Success At"
+              ]
             },
             "subscriptions": {
-              "title": "Subscriptions",
               "type": "integer"
             }
           },
@@ -2253,7 +3196,6 @@
             "subscriptions",
             "last_success_at"
           ],
-          "title": "HealthPush",
           "type": "object"
         },
         "HealthRun": {
@@ -2267,7 +3209,6 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "checkin_state": {
@@ -2283,8 +3224,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Checkin State"
+              ]
             },
             "delivered_via": {
               "items": {
@@ -2294,11 +3234,9 @@
                 ],
                 "type": "string"
               },
-              "title": "Delivered Via",
               "type": "array"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "loop": {
@@ -2308,11 +3246,9 @@
                 "review",
                 "return"
               ],
-              "title": "Loop",
               "type": "string"
             },
             "scheduled_for": {
-              "title": "Scheduled For",
               "type": "string"
             },
             "skip_reason": {
@@ -2326,7 +3262,6 @@
               ]
             },
             "status": {
-              "title": "Status",
               "type": "string"
             }
           },
@@ -2340,7 +3275,6 @@
             "delivered_via",
             "checkin_state"
           ],
-          "title": "HealthRun",
           "type": "object"
         },
         "HealthVersion": {
@@ -2348,11 +3282,9 @@
           "properties": {
             "api": {
               "const": "v1",
-              "title": "Api",
               "type": "string"
             },
             "app": {
-              "title": "App",
               "type": "string"
             },
             "schema": {
@@ -2363,11 +3295,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Schema"
+              ]
             },
             "ui_catalog": {
-              "title": "Ui Catalog",
               "type": "string"
             }
           },
@@ -2377,7 +3307,6 @@
             "schema",
             "ui_catalog"
           ],
-          "title": "HealthVersion",
           "type": "object"
         },
         "SkipReason": {
@@ -2389,18 +3318,26 @@
             "rate_limit",
             "daily_cap"
           ],
-          "title": "SkipReason",
           "type": "string"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /health` (6.3.1).",
       "properties": {
         "brain": {
           "$ref": "#/$defs/HealthBrain"
         },
         "errors": {
           "$ref": "#/$defs/HealthErrors"
+        },
+        "inbound_pending_oldest_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "last_tick_at": {
           "anyOf": [
@@ -2410,14 +3347,12 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Last Tick At"
+          ]
         },
         "notify": {
           "$ref": "#/$defs/HealthNotify"
         },
         "now": {
-          "title": "Now",
           "type": "string"
         },
         "paused_until": {
@@ -2428,11 +3363,9 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Paused Until"
+          ]
         },
         "plan_open": {
-          "title": "Plan Open",
           "type": "boolean"
         },
         "polling": {
@@ -2441,7 +3374,6 @@
             "down",
             "stopped"
           ],
-          "title": "Polling",
           "type": "string"
         },
         "proactive": {
@@ -2454,11 +3386,9 @@
           "items": {
             "$ref": "#/$defs/HealthRun"
           },
-          "title": "Runs Today",
           "type": "array"
         },
         "started_at": {
-          "title": "Started At",
           "type": "string"
         },
         "status": {
@@ -2466,7 +3396,6 @@
             "ok",
             "degraded"
           ],
-          "title": "Status",
           "type": "string"
         },
         "version": {
@@ -2485,21 +3414,216 @@
         "paused_until",
         "plan_open",
         "notify",
+        "inbound_pending_oldest_at",
         "runs_today",
         "errors",
         "push"
       ],
-      "title": "Health",
+      "type": "object"
+    },
+    "Memo": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat"
+          ],
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "body",
+        "area",
+        "pinned",
+        "origin",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "MemoItem": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat"
+          ],
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "preview",
+        "area",
+        "pinned",
+        "origin",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "MemoList": {
+      "$defs": {
+        "MemoItem": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat"
+              ],
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "preview": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "preview",
+            "area",
+            "pinned",
+            "origin",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MemoItem"
+          },
+          "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "next_before"
+      ],
       "type": "object"
     },
     "Messages": {
       "$defs": {
         "MessageItem": {
           "additionalProperties": false,
-          "description": "대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.",
           "properties": {
             "at": {
-              "title": "At",
               "type": "string"
             },
             "channel": {
@@ -2507,11 +3631,9 @@
                 "telegram",
                 "app"
               ],
-              "title": "Channel",
               "type": "string"
             },
             "id": {
-              "title": "Id",
               "type": "string"
             },
             "speaker": {
@@ -2519,18 +3641,15 @@
                 "user",
                 "secretary"
               ],
-              "title": "Speaker",
               "type": "string"
             },
             "text": {
-              "title": "Text",
               "type": "string"
             },
             "tools": {
               "items": {
                 "type": "string"
               },
-              "title": "Tools",
               "type": "array"
             }
           },
@@ -2542,7 +3661,6 @@
             "tools",
             "channel"
           ],
-          "title": "MessageItem",
           "type": "object"
         }
       },
@@ -2552,14 +3670,189 @@
           "items": {
             "$ref": "#/$defs/MessageItem"
           },
-          "title": "Items",
           "type": "array"
         }
       },
       "required": [
         "items"
       ],
-      "title": "Messages",
+      "type": "object"
+    },
+    "MissedReminder": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "event_id": {
+          "type": "integer"
+        },
+        "outcome": {
+          "enum": [
+            "missed",
+            "failed",
+            "skipped"
+          ],
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "date",
+        "start",
+        "title",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "Moment": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "date": {
+          "type": "string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "sources": {
+          "items": {
+            "enum": [
+              "task",
+              "habit",
+              "condition",
+              "chat"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "text",
+        "area",
+        "sources",
+        "hidden"
+      ],
+      "type": "object"
+    },
+    "MomentsList": {
+      "$defs": {
+        "Moment": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "date": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "sources": {
+              "items": {
+                "enum": [
+                  "task",
+                  "habit",
+                  "condition",
+                  "chat"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "text",
+            "area",
+            "sources",
+            "hidden"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Moment"
+          },
+          "type": "array"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "items"
+      ],
       "type": "object"
     },
     "NotifyPutBody": {
@@ -2570,26 +3863,22 @@
             "telegram",
             "app"
           ],
-          "title": "Primary",
           "type": "string"
         }
       },
       "required": [
         "primary"
       ],
-      "title": "NotifyPutBody",
       "type": "object"
     },
     "NotifySettings": {
       "additionalProperties": false,
-      "description": "`GET`/`PUT /settings/notify` (6.4.9). `effective`는 7.3 D1a.",
       "properties": {
         "effective": {
           "enum": [
             "telegram",
             "app"
           ],
-          "title": "Effective",
           "type": "string"
         },
         "primary": {
@@ -2597,11 +3886,9 @@
             "telegram",
             "app"
           ],
-          "title": "Primary",
           "type": "string"
         },
         "push_subscriptions": {
-          "title": "Push Subscriptions",
           "type": "integer"
         }
       },
@@ -2610,14 +3897,12 @@
         "effective",
         "push_subscriptions"
       ],
-      "title": "NotifySettings",
       "type": "object"
     },
     "Priorities": {
       "$defs": {
         "Todo": {
           "additionalProperties": false,
-          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
           "properties": {
             "areas": {
               "items": {
@@ -2631,7 +3916,6 @@
                 ],
                 "type": "string"
               },
-              "title": "Areas",
               "type": "array"
             },
             "completed_at": {
@@ -2642,15 +3926,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Completed At"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "note": {
-              "title": "Note",
               "type": "string"
             },
             "parent_id": {
@@ -2661,8 +3942,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Parent Id"
+              ]
             },
             "planned_for": {
               "anyOf": [
@@ -2672,8 +3952,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Planned For"
+              ]
             },
             "priority": {
               "anyOf": [
@@ -2693,8 +3972,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Scheduled At"
+              ]
             },
             "status": {
               "enum": [
@@ -2703,11 +3981,9 @@
                 "done",
                 "dropped"
               ],
-              "title": "Status",
               "type": "string"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -2723,7 +3999,6 @@
             "priority",
             "completed_at"
           ],
-          "title": "Todo",
           "type": "object"
         },
         "TodoPriority": {
@@ -2737,15 +4012,12 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "rank": {
-              "title": "Rank",
               "type": "integer"
             }
           },
@@ -2754,12 +4026,10 @@
             "period",
             "rank"
           ],
-          "title": "TodoPriority",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /priorities` (6.3.7).",
       "properties": {
         "cadence": {
           "enum": [
@@ -2768,19 +4038,22 @@
             "quarter",
             "year"
           ],
-          "title": "Cadence",
           "type": "string"
         },
         "items": {
           "items": {
             "$ref": "#/$defs/Todo"
           },
-          "title": "Items",
           "type": "array"
         },
         "period": {
-          "title": "Period",
           "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "type": "array"
         }
       },
       "required": [
@@ -2788,24 +4061,20 @@
         "period",
         "items"
       ],
-      "title": "Priorities",
       "type": "object"
     },
     "PushSubscribeBody": {
       "$defs": {
         "PushKeys": {
-          "description": "구독 키. `p256dh`는 비압축 P-256 공개점 65바이트, `auth`는 16바이트(둘 다 base64url). repr에 나오지 않는다.\n\n오류 문구에 값이 들어가지 않게 처리기는 `ValidationError`를 고정 문구 400으로 바꾼다(`api/push.py`).",
           "properties": {
             "auth": {
               "maxLength": 512,
               "minLength": 1,
-              "title": "Auth",
               "type": "string"
             },
             "p256dh": {
               "maxLength": 512,
               "minLength": 1,
-              "title": "P256Dh",
               "type": "string"
             }
           },
@@ -2813,17 +4082,14 @@
             "p256dh",
             "auth"
           ],
-          "title": "PushKeys",
           "type": "object"
         }
       },
-      "description": "`POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다.\n\n`endpoint`와 키는 비밀값처럼 다룬다: repr과 검증 오류에 넣지 않는다.",
       "properties": {
         "endpoint": {
           "maxLength": 2048,
           "minLength": 1,
           "pattern": "^https://",
-          "title": "Endpoint",
           "type": "string"
         },
         "expirationTime": {
@@ -2838,8 +4104,7 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Expirationtime"
+          "default": null
         },
         "keys": {
           "$ref": "#/$defs/PushKeys"
@@ -2854,42 +4119,34 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Label"
+          "default": null
         }
       },
       "required": [
         "endpoint",
         "keys"
       ],
-      "title": "PushSubscribeBody",
       "type": "object"
     },
     "PushSubscribed": {
       "additionalProperties": false,
-      "description": "`201` 구독 id. 같은 `endpoint`면 같은 id.",
       "properties": {
         "id": {
-          "title": "Id",
           "type": "integer"
         }
       },
       "required": [
         "id"
       ],
-      "title": "PushSubscribed",
       "type": "object"
     },
     "PushTestResult": {
       "additionalProperties": false,
-      "description": "`POST /push/test`: 받은 구독 수, 못 받은 구독 수.",
       "properties": {
         "failed": {
-          "title": "Failed",
           "type": "integer"
         },
         "ok": {
-          "title": "Ok",
           "type": "integer"
         }
       },
@@ -2897,7 +4154,41 @@
         "ok",
         "failed"
       ],
-      "title": "PushTestResult",
+      "type": "object"
+    },
+    "RecoveryNoticeBody": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "recovery",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "RecoveryNoticeSent": {
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "enum": [
+            "telegram",
+            "app"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel"
+      ],
       "type": "object"
     },
     "SafeModeHealth": {
@@ -2907,11 +4198,9 @@
           "properties": {
             "api": {
               "const": "v1",
-              "title": "Api",
               "type": "string"
             },
             "app": {
-              "title": "App",
               "type": "string"
             },
             "schema": {
@@ -2922,11 +4211,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Schema"
+              ]
             },
             "ui_catalog": {
-              "title": "Ui Catalog",
               "type": "string"
             }
           },
@@ -2936,20 +4223,16 @@
             "schema",
             "ui_catalog"
           ],
-          "title": "HealthVersion",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "안전 모드의 `GET /health`: 상태, 판, 지금만.",
       "properties": {
         "now": {
-          "title": "Now",
           "type": "string"
         },
         "status": {
           "const": "safe_mode",
-          "title": "Status",
           "type": "string"
         },
         "version": {
@@ -2961,16 +4244,13 @@
         "version",
         "now"
       ],
-      "title": "SafeModeHealth",
       "type": "object"
     },
     "SchemaBundle": {
       "additionalProperties": false,
-      "description": "`GET /schema` (6.4): 모든 모델의 JSON 스키마.",
       "properties": {
         "api": {
           "const": "v1",
-          "title": "Api",
           "type": "string"
         },
         "models": {
@@ -2978,7 +4258,6 @@
             "additionalProperties": true,
             "type": "object"
           },
-          "title": "Models",
           "type": "object"
         }
       },
@@ -2986,7 +4265,6 @@
         "api",
         "models"
       ],
-      "title": "SchemaBundle",
       "type": "object"
     },
     "Status": {
@@ -2995,7 +4273,6 @@
           "additionalProperties": false,
           "properties": {
             "parent_id": {
-              "title": "Parent Id",
               "type": "integer"
             },
             "parent_title": {
@@ -3006,8 +4283,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Parent Title"
+              ]
             },
             "planned_for": {
               "anyOf": [
@@ -3017,15 +4293,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Planned For"
+              ]
             },
             "task_id": {
-              "title": "Task Id",
               "type": "integer"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -3036,18 +4309,15 @@
             "parent_title",
             "planned_for"
           ],
-          "title": "DailyQuest",
           "type": "object"
         },
         "FirstSteps": {
           "additionalProperties": false,
           "properties": {
             "done": {
-              "title": "Done",
               "type": "integer"
             },
             "open": {
-              "title": "Open",
               "type": "integer"
             }
           },
@@ -3055,7 +4325,6 @@
             "open",
             "done"
           ],
-          "title": "FirstSteps",
           "type": "object"
         },
         "MainQuest": {
@@ -3065,19 +4334,15 @@
               "$ref": "#/$defs/FirstSteps"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "rank": {
-              "title": "Rank",
               "type": "integer"
             },
             "task_id": {
-              "title": "Task Id",
               "type": "integer"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -3088,22 +4353,74 @@
             "period",
             "first_steps"
           ],
-          "title": "MainQuest",
+          "type": "object"
+        },
+        "Moment": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "date": {
+              "type": "string"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "sources": {
+              "items": {
+                "enum": [
+                  "task",
+                  "habit",
+                  "condition",
+                  "chat"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "text",
+            "area",
+            "sources",
+            "hidden"
+          ],
           "type": "object"
         },
         "RecentXp": {
           "additionalProperties": false,
           "properties": {
             "amount": {
-              "title": "Amount",
               "type": "integer"
             },
             "at": {
-              "title": "At",
               "type": "string"
             },
             "label": {
-              "title": "Label",
               "type": "string"
             }
           },
@@ -3112,14 +4429,70 @@
             "label",
             "amount"
           ],
-          "title": "RecentXp",
+          "type": "object"
+        },
+        "StatActivity": {
+          "additionalProperties": false,
+          "properties": {
+            "body_days": {
+              "type": "integer"
+            },
+            "habit_checks": {
+              "type": "integer"
+            },
+            "tasks": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "tasks",
+            "habit_checks",
+            "body_days"
+          ],
+          "type": "object"
+        },
+        "StatusBody": {
+          "additionalProperties": false,
+          "properties": {
+            "days_7": {
+              "type": "integer"
+            },
+            "last_date": {
+              "type": "string"
+            },
+            "sleep_avg_7": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "steps_avg_7": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "last_date",
+            "days_7",
+            "steps_avg_7",
+            "sleep_avg_7"
+          ],
           "type": "object"
         },
         "StatusHp": {
           "additionalProperties": false,
           "properties": {
             "date": {
-              "title": "Date",
               "type": "string"
             },
             "score": {
@@ -3130,20 +4503,21 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Score"
+              ]
             }
           },
           "required": [
             "date",
             "score"
           ],
-          "title": "StatusHp",
           "type": "object"
         },
         "StatusStat": {
           "additionalProperties": false,
           "properties": {
+            "activity": {
+              "$ref": "#/$defs/StatActivity"
+            },
             "area": {
               "enum": [
                 "career",
@@ -3153,15 +4527,25 @@
                 "learning",
                 "quality_of_life"
               ],
-              "title": "Area",
               "type": "string"
             },
+            "bonus": {
+              "type": "number"
+            },
             "debuff": {
-              "title": "Debuff",
               "type": "boolean"
             },
+            "effective_score": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "label": {
-              "title": "Label",
               "type": "string"
             },
             "period": {
@@ -3172,8 +4556,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Period"
+              ]
             },
             "prev_period": {
               "anyOf": [
@@ -3183,8 +4566,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Prev Period"
+              ]
             },
             "prev_score": {
               "anyOf": [
@@ -3194,8 +4576,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Prev Score"
+              ]
             },
             "recovery_quest": {
               "anyOf": [
@@ -3205,8 +4586,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Recovery Quest"
+              ]
             },
             "score": {
               "anyOf": [
@@ -3216,8 +4596,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Score"
+              ]
             }
           },
           "required": [
@@ -3228,20 +4607,20 @@
             "prev_score",
             "prev_period",
             "debuff",
-            "recovery_quest"
+            "recovery_quest",
+            "bonus",
+            "effective_score",
+            "activity"
           ],
-          "title": "StatusStat",
           "type": "object"
         },
         "StatusTitle": {
           "additionalProperties": false,
           "properties": {
             "date": {
-              "title": "Date",
               "type": "string"
             },
             "granted_at": {
-              "title": "Granted At",
               "type": "string"
             },
             "kind": {
@@ -3249,15 +4628,12 @@
                 "high",
                 "turning_point"
               ],
-              "title": "Kind",
               "type": "string"
             },
             "milestone_id": {
-              "title": "Milestone Id",
               "type": "integer"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -3268,65 +4644,73 @@
             "date",
             "granted_at"
           ],
-          "title": "StatusTitle",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /status` (6.3.6).",
       "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatusBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "daily_quests": {
           "items": {
             "$ref": "#/$defs/DailyQuest"
           },
-          "title": "Daily Quests",
           "type": "array"
         },
         "hp": {
           "$ref": "#/$defs/StatusHp"
         },
         "level": {
-          "title": "Level",
           "type": "integer"
         },
         "main_quests": {
           "items": {
             "$ref": "#/$defs/MainQuest"
           },
-          "title": "Main Quests",
           "type": "array"
+        },
+        "moments": {
+          "items": {
+            "$ref": "#/$defs/Moment"
+          },
+          "type": "array"
+        },
+        "moments_hidden": {
+          "type": "integer"
         },
         "recent_xp": {
           "items": {
             "$ref": "#/$defs/RecentXp"
           },
-          "title": "Recent Xp",
           "type": "array"
         },
         "stats": {
           "items": {
             "$ref": "#/$defs/StatusStat"
           },
-          "title": "Stats",
           "type": "array"
         },
         "titles": {
           "items": {
             "$ref": "#/$defs/StatusTitle"
           },
-          "title": "Titles",
           "type": "array"
         },
         "xp_for_next": {
-          "title": "Xp For Next",
           "type": "integer"
         },
         "xp_into_level": {
-          "title": "Xp Into Level",
           "type": "integer"
         },
         "xp_total": {
-          "title": "Xp Total",
           "type": "integer"
         }
       },
@@ -3340,19 +4724,19 @@
         "main_quests",
         "daily_quests",
         "titles",
-        "recent_xp"
+        "recent_xp",
+        "moments",
+        "moments_hidden",
+        "body"
       ],
-      "title": "Status",
       "type": "object"
     },
     "Today": {
       "$defs": {
         "AppCard": {
           "additionalProperties": false,
-          "description": "고정 카드 (6.3.2 `cards`, 운영 앱용). `data`는 props에 `task_ids`가 있을 때만(`TodoRefs`, 초안·삭제 뺌).",
           "properties": {
             "component": {
-              "title": "Component",
               "type": "string"
             },
             "data": {
@@ -3365,24 +4749,19 @@
                   "type": "null"
                 }
               ],
-              "default": null,
-              "title": "Data"
+              "default": null
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "order": {
-              "title": "Order",
               "type": "integer"
             },
             "pinned_at": {
-              "title": "Pinned At",
               "type": "string"
             },
             "props": {
               "additionalProperties": true,
-              "title": "Props",
               "type": "object"
             }
           },
@@ -3393,7 +4772,6 @@
             "pinned_at",
             "props"
           ],
-          "title": "AppCard",
           "type": "object"
         },
         "CheckinConversationIds": {
@@ -3407,8 +4785,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "App"
+              ]
             },
             "telegram": {
               "anyOf": [
@@ -3418,20 +4795,17 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Telegram"
+              ]
             }
           },
           "required": [
             "app",
             "telegram"
           ],
-          "title": "CheckinConversationIds",
           "type": "object"
         },
         "CheckinSummary": {
           "additionalProperties": false,
-          "description": "답할 회차 요약 (6.4.5). `state`의 `missed` 화면 문구는 \"지나감\"이다.",
           "properties": {
             "answered_at": {
               "anyOf": [
@@ -3441,8 +4815,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Answered At"
+              ]
             },
             "answered_via": {
               "anyOf": [
@@ -3456,8 +4829,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Answered Via"
+              ]
             },
             "cadence": {
               "enum": [
@@ -3467,7 +4839,6 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "conversation_ids": {
@@ -3481,11 +4852,9 @@
                 ],
                 "type": "string"
               },
-              "title": "Delivered Via",
               "type": "array"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "loop": {
@@ -3495,15 +4864,12 @@
                 "review",
                 "return"
               ],
-              "title": "Loop",
               "type": "string"
             },
             "reply_until": {
-              "title": "Reply Until",
               "type": "string"
             },
             "scheduled_for": {
-              "title": "Scheduled For",
               "type": "string"
             },
             "sent_at": {
@@ -3514,8 +4880,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Sent At"
+              ]
             },
             "state": {
               "enum": [
@@ -3523,7 +4888,6 @@
                 "answered",
                 "missed"
               ],
-              "title": "State",
               "type": "string"
             }
           },
@@ -3540,14 +4904,12 @@
             "reply_until",
             "conversation_ids"
           ],
-          "title": "CheckinSummary",
           "type": "object"
         },
         "ConditionItem": {
           "additionalProperties": false,
           "properties": {
             "date": {
-              "title": "Date",
               "type": "string"
             },
             "note": {
@@ -3558,11 +4920,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Note"
+              ]
             },
             "score": {
-              "title": "Score",
               "type": "integer"
             }
           },
@@ -3571,12 +4931,112 @@
             "score",
             "note"
           ],
-          "title": "ConditionItem",
+          "type": "object"
+        },
+        "EventItem": {
+          "additionalProperties": false,
+          "properties": {
+            "all_day": {
+              "type": "boolean"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "date": {
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "event_id": {
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat",
+                "migrated"
+              ],
+              "type": "string"
+            },
+            "remind_min": {
+              "anyOf": [
+                {
+                  "enum": [
+                    0,
+                    10,
+                    30,
+                    60,
+                    1440
+                  ],
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "repeat": {
+              "enum": [
+                "none",
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "end",
+            "all_day",
+            "title",
+            "area",
+            "remind_min",
+            "repeat",
+            "origin"
+          ],
           "type": "object"
         },
         "Habit": {
           "additionalProperties": false,
-          "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
           "properties": {
             "area": {
               "enum": [
@@ -3587,15 +5047,12 @@
                 "learning",
                 "quality_of_life"
               ],
-              "title": "Area",
               "type": "string"
             },
             "checked": {
-              "title": "Checked",
               "type": "boolean"
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "kind": {
@@ -3603,7 +5060,6 @@
                 "daily",
                 "weekly"
               ],
-              "title": "Kind",
               "type": "string"
             },
             "status": {
@@ -3612,7 +5068,6 @@
                 "paused",
                 "archived"
               ],
-              "title": "Status",
               "type": "string"
             },
             "target_per_week": {
@@ -3623,15 +5078,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Target Per Week"
+              ]
             },
             "title": {
-              "title": "Title",
               "type": "string"
             },
             "week_count": {
-              "title": "Week Count",
               "type": "integer"
             }
           },
@@ -3645,7 +5097,46 @@
             "checked",
             "week_count"
           ],
-          "title": "Habit",
+          "type": "object"
+        },
+        "MissedReminder": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "type": "string"
+            },
+            "event_id": {
+              "type": "integer"
+            },
+            "outcome": {
+              "enum": [
+                "missed",
+                "failed",
+                "skipped"
+              ],
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "title",
+            "outcome"
+          ],
           "type": "object"
         },
         "TodayBrief": {
@@ -3658,11 +5149,9 @@
                 "review",
                 "return"
               ],
-              "title": "Loop",
               "type": "string"
             },
             "run_id": {
-              "title": "Run Id",
               "type": "integer"
             },
             "sent_at": {
@@ -3673,11 +5162,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Sent At"
+              ]
             },
             "text": {
-              "title": "Text",
               "type": "string"
             }
           },
@@ -3687,7 +5174,6 @@
             "text",
             "sent_at"
           ],
-          "title": "TodayBrief",
           "type": "object"
         },
         "TodayTodo": {
@@ -3699,7 +5185,6 @@
                 "scheduled",
                 "open"
               ],
-              "title": "Group",
               "type": "string"
             },
             "todo": {
@@ -3710,12 +5195,10 @@
             "group",
             "todo"
           ],
-          "title": "TodayTodo",
           "type": "object"
         },
         "Todo": {
           "additionalProperties": false,
-          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
           "properties": {
             "areas": {
               "items": {
@@ -3729,7 +5212,6 @@
                 ],
                 "type": "string"
               },
-              "title": "Areas",
               "type": "array"
             },
             "completed_at": {
@@ -3740,15 +5222,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Completed At"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "note": {
-              "title": "Note",
               "type": "string"
             },
             "parent_id": {
@@ -3759,8 +5238,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Parent Id"
+              ]
             },
             "planned_for": {
               "anyOf": [
@@ -3770,8 +5248,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Planned For"
+              ]
             },
             "priority": {
               "anyOf": [
@@ -3791,8 +5268,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Scheduled At"
+              ]
             },
             "status": {
               "enum": [
@@ -3801,11 +5277,9 @@
                 "done",
                 "dropped"
               ],
-              "title": "Status",
               "type": "string"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -3821,7 +5295,6 @@
             "priority",
             "completed_at"
           ],
-          "title": "Todo",
           "type": "object"
         },
         "TodoPriority": {
@@ -3835,15 +5308,12 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "rank": {
-              "title": "Rank",
               "type": "integer"
             }
           },
@@ -3852,12 +5322,10 @@
             "period",
             "rank"
           ],
-          "title": "TodoPriority",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.",
       "properties": {
         "brief": {
           "anyOf": [
@@ -3873,14 +5341,12 @@
           "items": {
             "$ref": "#/$defs/AppCard"
           },
-          "title": "Cards",
           "type": "array"
         },
         "checkins": {
           "items": {
             "$ref": "#/$defs/CheckinSummary"
           },
-          "title": "Checkins",
           "type": "array"
         },
         "condition": {
@@ -3894,30 +5360,37 @@
           ]
         },
         "date": {
-          "title": "Date",
           "type": "string"
         },
         "day_boundary": {
           "pattern": "^\\d{2}:\\d{2}$",
-          "title": "Day Boundary",
           "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/EventItem"
+          },
+          "type": "array"
         },
         "habits": {
           "items": {
             "$ref": "#/$defs/Habit"
           },
-          "title": "Habits",
+          "type": "array"
+        },
+        "missed_reminders": {
+          "items": {
+            "$ref": "#/$defs/MissedReminder"
+          },
           "type": "array"
         },
         "todos": {
           "items": {
             "$ref": "#/$defs/TodayTodo"
           },
-          "title": "Todos",
           "type": "array"
         },
         "weekday": {
-          "title": "Weekday",
           "type": "string"
         }
       },
@@ -3932,7 +5405,6 @@
         "cards",
         "habits"
       ],
-      "title": "Today",
       "type": "object"
     },
     "Todo": {
@@ -3948,15 +5420,12 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "rank": {
-              "title": "Rank",
               "type": "integer"
             }
           },
@@ -3965,12 +5434,10 @@
             "period",
             "rank"
           ],
-          "title": "TodoPriority",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
       "properties": {
         "areas": {
           "items": {
@@ -3984,7 +5451,6 @@
             ],
             "type": "string"
           },
-          "title": "Areas",
           "type": "array"
         },
         "completed_at": {
@@ -3995,15 +5461,12 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Completed At"
+          ]
         },
         "id": {
-          "title": "Id",
           "type": "integer"
         },
         "note": {
-          "title": "Note",
           "type": "string"
         },
         "parent_id": {
@@ -4014,8 +5477,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Parent Id"
+          ]
         },
         "planned_for": {
           "anyOf": [
@@ -4025,8 +5487,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Planned For"
+          ]
         },
         "priority": {
           "anyOf": [
@@ -4046,8 +5507,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Scheduled At"
+          ]
         },
         "status": {
           "enum": [
@@ -4056,11 +5516,9 @@
             "done",
             "dropped"
           ],
-          "title": "Status",
           "type": "string"
         },
         "title": {
-          "title": "Title",
           "type": "string"
         }
       },
@@ -4076,12 +5534,10 @@
         "priority",
         "completed_at"
       ],
-      "title": "Todo",
       "type": "object"
     },
     "TodoRef": {
       "additionalProperties": false,
-      "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.\n\n`planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).",
       "properties": {
         "area": {
           "anyOf": [
@@ -4099,8 +5555,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Area"
+          ]
         },
         "cadence": {
           "anyOf": [
@@ -4117,11 +5572,9 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Cadence"
+          ]
         },
         "id": {
-          "title": "Id",
           "type": "integer"
         },
         "planned_for": {
@@ -4132,8 +5585,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Planned For"
+          ]
         },
         "scheduled_at": {
           "anyOf": [
@@ -4143,8 +5595,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Scheduled At"
+          ]
         },
         "status": {
           "enum": [
@@ -4153,11 +5604,9 @@
             "done",
             "dropped"
           ],
-          "title": "Status",
           "type": "string"
         },
         "title": {
-          "title": "Title",
           "type": "string"
         }
       },
@@ -4170,14 +5619,12 @@
         "planned_for",
         "scheduled_at"
       ],
-      "title": "TodoRef",
       "type": "object"
     },
     "TodoRefs": {
       "$defs": {
         "TodoRef": {
           "additionalProperties": false,
-          "description": "화면 조각이 붙이는 할 일 요약 (6.3): `ui_todo_list`·`ui_todo_draft`의 `data.todos`, 체크인 `cards[].data.todos`.\n\n`planned_for`는 논리적 날짜, `scheduled_at`은 UTC 시각이다(없으면 `null`, SP6 10.2).",
           "properties": {
             "area": {
               "anyOf": [
@@ -4195,8 +5642,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Area"
+              ]
             },
             "cadence": {
               "anyOf": [
@@ -4213,11 +5659,9 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Cadence"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "planned_for": {
@@ -4228,8 +5672,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Planned For"
+              ]
             },
             "scheduled_at": {
               "anyOf": [
@@ -4239,8 +5682,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Scheduled At"
+              ]
             },
             "status": {
               "enum": [
@@ -4249,11 +5691,9 @@
                 "done",
                 "dropped"
               ],
-              "title": "Status",
               "type": "string"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -4266,25 +5706,21 @@
             "planned_for",
             "scheduled_at"
           ],
-          "title": "TodoRef",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "화면 조각 `data`의 모양 `{\"todos\": [TodoRef]}` (6.4.1 도구 출력, 6.4.5).",
       "properties": {
         "todos": {
           "items": {
             "$ref": "#/$defs/TodoRef"
           },
-          "title": "Todos",
           "type": "array"
         }
       },
       "required": [
         "todos"
       ],
-      "title": "TodoRefs",
       "type": "object"
     },
     "UiCatalog": {
@@ -4297,12 +5733,10 @@
                 "brain",
                 "harness"
               ],
-              "title": "Origin",
               "type": "string"
             },
             "schema": {
               "additionalProperties": true,
-              "title": "Schema",
               "type": "object"
             }
           },
@@ -4310,22 +5744,18 @@
             "origin",
             "schema"
           ],
-          "title": "UiComponent",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /ui/catalog` (6.4.7).",
       "properties": {
         "components": {
           "additionalProperties": {
             "$ref": "#/$defs/UiComponent"
           },
-          "title": "Components",
           "type": "object"
         },
         "version": {
-          "title": "Version",
           "type": "string"
         }
       },
@@ -4333,29 +5763,24 @@
         "version",
         "components"
       ],
-      "title": "UiCatalog",
       "type": "object"
     },
     "UndoRequestBody": {
       "additionalProperties": false,
-      "description": "`POST /activity/{id}/undo` 요청 (6.4.3). `client_msg_id`는 필수다(6.1 중복 방지).",
       "properties": {
         "client_msg_id": {
           "maxLength": 200,
           "minLength": 1,
-          "title": "Client Msg Id",
           "type": "string"
         }
       },
       "required": [
         "client_msg_id"
       ],
-      "title": "UndoRequestBody",
       "type": "object"
     },
     "UndoResponse": {
       "additionalProperties": false,
-      "description": "되돌림(200). `undone`: 되돌린 활동 id. `already_undone`(U4)이면 `activity_id`는 앞선 되돌리기 활동이고\n`undone`, `confirmation`은 없다.",
       "properties": {
         "activity_id": {
           "anyOf": [
@@ -4365,8 +5790,7 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Activity Id"
+          ]
         },
         "confirmation": {
           "anyOf": [
@@ -4377,15 +5801,13 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Confirmation"
+          "default": null
         },
         "status": {
           "enum": [
             "undone",
             "already_undone"
           ],
-          "title": "Status",
           "type": "string"
         },
         "undone": {
@@ -4397,37 +5819,31 @@
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Undone"
+          "default": null
         }
       },
       "required": [
         "status",
         "activity_id"
       ],
-      "title": "UndoResponse",
       "type": "object"
     },
     "VapidPublicKey": {
       "additionalProperties": false,
-      "description": "`GET /push/vapid-public-key` (6.4.8).",
       "properties": {
         "public_key": {
-          "title": "Public Key",
           "type": "string"
         }
       },
       "required": [
         "public_key"
       ],
-      "title": "VapidPublicKey",
       "type": "object"
     },
     "Week": {
       "$defs": {
         "Todo": {
           "additionalProperties": false,
-          "description": "공통 할 일 모양 (6.3). 초안은 `GET /drafts`에서만 `status: \"draft\"`로 나온다.",
           "properties": {
             "areas": {
               "items": {
@@ -4441,7 +5857,6 @@
                 ],
                 "type": "string"
               },
-              "title": "Areas",
               "type": "array"
             },
             "completed_at": {
@@ -4452,15 +5867,12 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Completed At"
+              ]
             },
             "id": {
-              "title": "Id",
               "type": "integer"
             },
             "note": {
-              "title": "Note",
               "type": "string"
             },
             "parent_id": {
@@ -4471,8 +5883,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Parent Id"
+              ]
             },
             "planned_for": {
               "anyOf": [
@@ -4482,8 +5893,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Planned For"
+              ]
             },
             "priority": {
               "anyOf": [
@@ -4503,8 +5913,7 @@
                 {
                   "type": "null"
                 }
-              ],
-              "title": "Scheduled At"
+              ]
             },
             "status": {
               "enum": [
@@ -4513,11 +5922,9 @@
                 "done",
                 "dropped"
               ],
-              "title": "Status",
               "type": "string"
             },
             "title": {
-              "title": "Title",
               "type": "string"
             }
           },
@@ -4533,7 +5940,6 @@
             "priority",
             "completed_at"
           ],
-          "title": "Todo",
           "type": "object"
         },
         "TodoPriority": {
@@ -4547,15 +5953,12 @@
                 "quarter",
                 "year"
               ],
-              "title": "Cadence",
               "type": "string"
             },
             "period": {
-              "title": "Period",
               "type": "string"
             },
             "rank": {
-              "title": "Rank",
               "type": "integer"
             }
           },
@@ -4564,29 +5967,24 @@
             "period",
             "rank"
           ],
-          "title": "TodoPriority",
           "type": "object"
         },
         "WeekDay": {
           "additionalProperties": false,
           "properties": {
             "date": {
-              "title": "Date",
               "type": "string"
             },
             "is_today": {
-              "title": "Is Today",
               "type": "boolean"
             },
             "todos": {
               "items": {
                 "$ref": "#/$defs/Todo"
               },
-              "title": "Todos",
               "type": "array"
             },
             "weekday": {
-              "title": "Weekday",
               "type": "string"
             }
           },
@@ -4596,37 +5994,36 @@
             "is_today",
             "todos"
           ],
-          "title": "WeekDay",
           "type": "object"
         }
       },
       "additionalProperties": false,
-      "description": "`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다.",
       "properties": {
         "days": {
           "items": {
             "$ref": "#/$defs/WeekDay"
           },
-          "title": "Days",
           "type": "array"
         },
         "end": {
-          "title": "End",
           "type": "string"
         },
         "priorities": {
           "items": {
             "$ref": "#/$defs/Todo"
           },
-          "title": "Priorities",
           "type": "array"
         },
         "start": {
-          "title": "Start",
           "type": "string"
         },
+        "undated": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "type": "array"
+        },
         "week": {
-          "title": "Week",
           "type": "string"
         }
       },
@@ -4637,7 +6034,6 @@
         "priorities",
         "days"
       ],
-      "title": "Week",
       "type": "object"
     }
   }

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, tzinfo
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import local, logical_date, period_of
@@ -13,11 +13,14 @@ from my_planner.store.exports import format_task
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.habits import Habit, HabitsRepo
+    from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import Task, TasksRepo
 
 OPEN_TASKS_MAX = 30
+TODAY_EVENTS_MAX = 8  # `## 오늘 일정` 줄 수(SP9 5.5)
 NO_CONDITION = "기록 없음"
 _WEEKDAY = "월화수목금토일"
 
@@ -59,8 +62,12 @@ def build_preamble(
     habits: HabitsRepo | None = None,
     include_habits: bool = False,
     habit_day: date | None = None,
+    events: EventsRepo | None = None,
 ) -> str:
     """새 세션의 앞머리. 빈 섹션은 뺀다. `paused_until`이 지금 뒤면 `## 멈춤`(한국 시간)을 붙인다.
+
+    `## 오늘 일정`(SP9 5.5)은 스케줄(`events`)의 오늘(논리적 날짜) 그날 일정, 최대 8줄: `14:00 치과 (#e12)`,
+    하루 종일은 `하루 종일 카드 결제일 (#e3)`. 아침 브리핑에도 들어간다.
 
     `include_habits`가 참이고 활성 습관이 있으면 `## 오늘 습관`을 붙인다(SP7 5.7, 아침 브리핑과 복귀 인사는 거짓).
     """
@@ -95,15 +102,12 @@ def build_preamble(
             lines.append(f"- … 외 {len(ordered) - OPEN_TASKS_MAX}개")
         sections.append("## 열린 할 일\n" + "\n".join(lines))
 
-    scheduled = sorted(
-        (t for t in open_tasks if t.scheduled_at and logical_date(t.scheduled_at, tz, boundary) == today),
-        key=lambda t: t.scheduled_at,  # type: ignore[arg-type,return-value]
-    )
-    if scheduled:
-        sections.append(
-            "## 오늘 일정\n"
-            + "\n".join(f"- {local(t.scheduled_at, tz):%H:%M} {t.title} (#{t.id})" for t in scheduled)  # type: ignore[arg-type]
-        )
+    todays = events.on_logical_date(today, boundary) if events is not None else []
+    if todays:
+        sections.append("## 오늘 일정\n" + "\n".join(
+            f"- {'하루 종일' if o.all_day else format(local(o.start, tz), '%H:%M')} {o.title} (#e{o.event_id})"  # type: ignore[arg-type]
+            for o in todays[:TODAY_EVENTS_MAX]
+        ))
 
     if conditions is not None:
         y = conditions.get(today - timedelta(days=1))
@@ -159,6 +163,30 @@ def habit_week_block(habits: HabitsRepo, review_day: date) -> str:
         for h in active
     ]
     return "## 이번 주 습관\n" + "\n".join(lines)
+
+
+def moments_week_block(moments: MomentsRepo, review_day: date) -> str:
+    """주간 회고 회차의 `## 이번 주 이룬 순간`(SP8 10.3): 회고 주(월~회고 날)의 보이는 순간을 날마다 `- 10/24 2개`, 오래된 날부터.
+
+    **어느 통로든 날짜와 개수만** 준다(계획 결정 10): 회고 답은 푸시가 안 되면 본문 전체가 텔레그램으로 가므로
+    (`delivery.deliver_run` 대체 경로) 앞머리에 순간의 글을 두지 않는다. 글은 앱 대화의 `get_status`에서만 본다.
+    없으면 빈 문자열.
+    """
+    from my_planner.store.views import moment_counts
+
+    monday = review_day - timedelta(days=review_day.weekday())
+    counts = moment_counts(moments.between(monday, review_day, include_hidden=False))
+    if not counts:
+        return ""
+    # 회고는 월요일부터 돌아보므로 오래된 날부터(`moment_counts`는 최근부터)
+    lines = [f"- {(d := date.fromisoformat(c['date'])).month}/{d.day} {c['count']}개" for c in reversed(counts)]
+    return "## 이번 주 이룬 순간\n" + "\n".join(lines)
+
+
+def recent_areas_block(stats: list[dict[str, Any]]) -> str:
+    """주간 회고 회차의 `## 요즘 손이 간 영역`(SP8 10.3): 상태창 `stats[]`에서 `bonus > 0`인 영역과 값. 없으면 빈 문자열."""
+    lines = [f"- {s['label']} +{s['bonus']:.1f}" for s in stats if s.get("bonus", 0) > 0]
+    return "## 요즘 손이 간 영역\n" + "\n".join(lines) if lines else ""
 
 
 def evening_done(d: date, *, runs: RunsRepo, settings: Settings) -> bool:

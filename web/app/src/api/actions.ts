@@ -26,10 +26,46 @@ export type ActionName =
   | "pin_card"
   | "unpin_card"
   | "reorder_cards"
-  | "decline_confirm";
+  | "decline_confirm"
+  | "add_habit"
+  | "update_habit"
+  | "set_habit_status"
+  | "check_habit"
+  | "uncheck_habit"
+  // SP9 6.4: the memos tab's writes. update_memo has no undo; the others do.
+  | "create_memo"
+  | "update_memo"
+  | "pin_memo"
+  | "unpin_memo"
+  | "delete_memo"
+  // SP9 5.6: the schedule tab's writes (applied at once, with undo) and closing a missed-reminder line (no activity).
+  | "create_event"
+  | "update_event"
+  | "delete_event"
+  | "dismiss_missed_reminder"
+  | "hide_moment"
+  | "unhide_moment"
+  | "delete_moment";
+
+// SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
+// message), and two devices editing one memo answer 409 memo_conflict (conflict shape). SP9 5.1: the
+// schedule's own 422 codes come the same way.
+const REJECT_CODES = new Set([
+  "rejected",
+  "too_many_memos",
+  "too_many_pinned",
+  "remind_invalid",
+  "start_not_in_weekdays",
+  "too_many_events",
+]);
+const CONFLICT_CODES = new Set(["conflict", "memo_conflict"]);
 
 export type ActionOutcome =
-  | { kind: "applied"; activityId: number; undoId: number | null; confirmation: string; result: unknown }
+  /**
+   * `activityId` null: the BE found it already so (SP9 6.4 `already`) and wrote nothing; there is
+   * no activity, no undo and no confirmation (""). Callers show no toast and read again.
+   */
+  | { kind: "applied"; activityId: number | null; undoId: number | null; confirmation: string; result: unknown }
   | { kind: "needs_confirm"; confirmToken: string; summary: string; expiresAt: string }
   | { kind: "rejected"; message: string }
   | { kind: "conflict" }
@@ -72,8 +108,8 @@ export async function runAction(action: ActionName, args: object, opts: { confir
     confirm_token: opts.confirmToken ?? null,
   });
   if (r.kind === "error") {
-    if (r.status === 422 && r.code === "rejected") return { kind: "rejected", message: r.message ?? "" };
-    if (r.status === 409 && r.code === "conflict") return { kind: "conflict" };
+    if (r.status === 422 && REJECT_CODES.has(r.code)) return { kind: "rejected", message: r.message ?? "" };
+    if (r.status === 409 && CONFLICT_CODES.has(r.code)) return { kind: "conflict" };
   }
   if (r.kind !== "ok") return { kind: "failed", result: asFailure(r) };
   const d = r.data ?? {};
@@ -93,6 +129,9 @@ export async function runAction(action: ActionName, args: object, opts: { confir
       summary: d.summary,
       expiresAt: typeof d.expires_at === "string" ? d.expires_at : "",
     };
+  }
+  if (d.status === "applied" && d.activity_id === null) {
+    return { kind: "applied", activityId: null, undoId: null, confirmation: "", result: d.result };
   }
   return { kind: "failed", result: SHAPE };
 }
@@ -127,6 +166,13 @@ export function failureText(result: ApiResult<unknown>): string {
   }
 }
 
+/** The sentence for an undo that did not go through: the 5.4 text when known, else a plain retry line. */
+export function undoFailureText(result: ApiResult<unknown>): string {
+  const k = result.kind;
+  const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
+  return known ? failureText(result) : copy.actions.undoFailed;
+}
+
 const keyOf = (action: ActionName, args: object) => `${action}:${JSON.stringify(args)}`;
 
 export interface UseAction {
@@ -135,7 +181,7 @@ export interface UseAction {
    * Shows a toast for applied, rejected and failed only: callers must handle `conflict` and
    * `needs_confirm` themselves.
    */
-  run(action: ActionName, args: object, opts?: { confirmToken?: string }): Promise<ActionOutcome | null>;
+  run(action: ActionName, args: object, opts?: { confirmToken?: string; quiet?: boolean }): Promise<ActionOutcome | null>;
   isPending(action: ActionName, args: object): boolean;
 }
 
@@ -147,14 +193,14 @@ export function useAction(): UseAction {
   const inFlight = useRef(new Set<string>());
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
-  const run = useCallback(async (action: ActionName, args: object, opts?: { confirmToken?: string }) => {
+  const run = useCallback(async (action: ActionName, args: object, opts?: { confirmToken?: string; quiet?: boolean }) => {
     const key = keyOf(action, args);
     if (inFlight.current.has(key)) return null;
     inFlight.current.add(key);
     setPending(new Set(inFlight.current));
     try {
       const out = await runAction(action, args, opts);
-      if (out.kind === "applied") toastRef.current.show({ text: out.confirmation, undoId: out.undoId });
+      if (out.kind === "applied" && out.activityId !== null && !opts?.quiet) toastRef.current.show({ text: out.confirmation, undoId: out.undoId });
       else if (out.kind === "rejected" && out.message) toastRef.current.show({ text: out.message });
       else if (out.kind === "failed") toastRef.current.show({ text: failureText(out.result) });
       return out;
@@ -195,11 +241,7 @@ export function useUndo(show?: (t: ToastContent) => void): UseUndo {
     try {
       const out = await undoActivity(id);
       if (out.kind === "undone") say.current({ text: out.confirmation });
-      else if (out.kind === "failed") {
-        const k = out.result.kind;
-        const known = k === "offline" || k === "unauthorized" || k === "rate_limited" || k === "safe_mode";
-        say.current({ text: known ? failureText(out.result) : copy.actions.undoFailed });
-      }
+      else if (out.kind === "failed") say.current({ text: undoFailureText(out.result) });
       return out;
     } finally {
       inFlight.current.delete(id);

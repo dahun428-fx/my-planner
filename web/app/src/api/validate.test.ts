@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import health from "../test/fixtures/health.json";
+import today from "../test/fixtures/today.json";
 import { validateModel } from "./validate";
 
 const realFunction = globalThis.Function;
@@ -16,6 +17,13 @@ describe("validateModel", () => {
     const copy: Record<string, unknown> = structuredClone(health);
     delete copy.status;
     expect(validateModel("Health", copy)).toBe(false);
+  });
+
+  it("accepts a /today from a BE before the schedule (no events, missed_reminders; spec 14)", () => {
+    const old: Record<string, unknown> = structuredClone(today);
+    delete old.events;
+    delete old.missed_reminders;
+    expect(validateModel("Today", old)).toBe(true);
   });
 
   it("rejects unknown model shape", () => {

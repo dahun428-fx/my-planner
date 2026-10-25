@@ -6,7 +6,8 @@ SP6의 `ui_date_choice`, `ui_result`, `ui_period_list`, `ui_block`(뜻 검사, �
 
 import hashlib
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from be_env import BeEnv
@@ -150,16 +151,18 @@ def test_ui_todo_list_stream_output_has_current_todos(uenv):
 
 
 def test_ui_and_card_tools_absent_from_telegram(uenv):
-    assert APP_ONLY_TOOLS == [  # 카탈로그의 두뇌 조각 순서(SP6 G-BE2) + 카드 도구 셋
+    assert APP_ONLY_TOOLS == [  # 카탈로그의 두뇌 조각 순서(SP6 G-BE2) + 카드 도구 셋 + SP9(`ui_events`는 맨 끝)
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block",
         "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
+        "set_checkin_time", "search_memos", "read_memo", "create_memo", "find_conversations",
+        "list_events", "create_event", "update_event", "delete_event", "ui_events",
     ]
-    assert tool_names_for("telegram") == TOOL_NAMES
-    assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
+    assert tool_names_for(RunContext(None, None, channel="telegram")) == TOOL_NAMES
+    assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
     for channel in ("telegram", "app"):
         ctx = RunContext(conversation_id=None, run_id=None, channel=channel)
         names = [t.name for t in build_planner_tools(uenv.tools, ctx)]
-        assert names == tool_names_for(channel)
+        assert names == tool_names_for(RunContext(None, None, channel=channel))
     tg = {t.name for t in build_planner_tools(uenv.tools, RunContext(conversation_id=None, run_id=None))}
     assert not tg & set(APP_ONLY_TOOLS)
 
@@ -223,8 +226,8 @@ async def test_todo_ref_has_dates_in_utc(tmp_path):
     async with BeEnv.start(tmp_path, start=START) as env:
         tools = env.parts.tools
         ctx = _app_ctx()
-        a = tools.add_task(ctx, title="꾸민 치과", areas=["health"], planned_for="2026-10-25",
-                           scheduled_at="2026-10-25T14:00")["id"]
+        a = tools.tasks.create("꾸민 치과", ["health"], planned_for=date(2026, 10, 25),
+                               scheduled_at=kst(2026, 10, 25, 14, 0)).id  # SP9 전 시각 있는 할 일(도구로는 못 만든다)
         b = tools.add_task(ctx, title="꾸민 날짜 없음", areas=["learning"])["id"]
         tools.pin_card(ctx, component="ui_todo_list", props={"title": "꾸민 목록", "task_ids": [a, b]})
         ref = todo_ref(tools.tasks.get(a), tools.tasks, tools.today())
@@ -263,7 +266,7 @@ def test_catalog_has_ui_habit_check_brain_origin():
     assert UI_COMPONENTS["ui_habit_check"]["origin"] == "brain"
     assert "ui_habit_check" in BRAIN_COMPONENTS
     assert "ui_habit_check" not in PINNABLE_COMPONENTS
-    assert UI_CATALOG_VERSION == "2026-10-24.4"
+    assert UI_CATALOG_VERSION == "2026-10-24.5"
     schema = UI_COMPONENTS["ui_habit_check"]["schema"]
     assert schema["required"] == ["date"] and schema["additionalProperties"] is False
 
@@ -290,9 +293,9 @@ def test_ui_habit_check_no_db_writes(uenv, tmp_path):
     assert ctx.events == [] and ctx.activity_ids == [] and ctx.undo_ids == []
 
 
-def test_app_tool_count_39():
-    assert len(tool_names_for("app")) == 39 and len(tool_names_for("telegram")) == 28  # SP7 35 + SP6 G-BE2 넷
-    assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for("telegram")
+def test_app_tool_count_49():
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 49 and len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28  # SP6 G-BE2 +4, SP9-02 +1, SP9-03 +3, SP9-05 +5, SP9-09 +1(앱에만)
+    assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for(RunContext(None, None, channel="telegram"))
     names = [t.name for t in build_planner_tools(Tools.__new__(Tools), RunContext(conversation_id=None, run_id=None, channel="app"))]
     assert "ui_habit_check" in names  # 도구 정의(설명, 스키마)가 있다
 
@@ -350,6 +353,11 @@ def _cands(*days):
 
 
 def _add(tools, title="꾸민 할 일", **kw):
+    if "scheduled_at" in kw:  # SP9 전 시각 있는 할 일(도구로는 못 만든다, SP9 5.4): 저장소로 바로 만든다
+        pf, at = kw.pop("planned_for", None), kw.pop("scheduled_at")
+        assert not kw
+        return tools.tasks.create(title, ["health"], planned_for=date.fromisoformat(pf) if pf else None,
+                                  scheduled_at=datetime.fromisoformat(at).replace(tzinfo=ZoneInfo("Asia/Seoul"))).id
     return tools.add_task(_app_ctx(), title=title, areas=["health"], **kw)["id"]
 
 
@@ -524,16 +532,18 @@ def test_reply_cap_error_text_and_no_method_call(uenv, monkeypatch):
 
 def test_new_tools_absent_from_telegram(uenv):
     for name in NEW_TOOLS:
-        assert name in tool_names_for("app") and name not in tool_names_for("telegram")
+        assert name in tool_names_for(RunContext(None, None, channel="app")) and name not in tool_names_for(RunContext(None, None, channel="telegram"))
     app_ctx = RunContext(conversation_id=None, run_id=None, channel="app")
     assert set(NEW_TOOLS) <= {t.name for t in build_planner_tools(uenv.tools, app_ctx)}
 
 
 def test_app_tool_count_plus_four():
-    """도구 수는 절대 수가 아니라 G-BE1 전후 차이로 쓴다(9.3): 앱 전용은 G-BE1 때의 일곱(SP7 `ui_habit_check` 포함)
-    + 새 넷."""
-    before = {"ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"}
-    app_only = set(tool_names_for("app")) - set(TOOL_NAMES)
+    """도구 수는 절대 수가 아니라 G-BE1 전후 차이로 쓴다(9.3): 앱 전용은 G-BE1 때의 일곱(SP7 `ui_habit_check` 포함)과
+    SP9의 열 + 새 넷."""
+    before = {"ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
+              "set_checkin_time", "search_memos", "read_memo", "create_memo", "find_conversations",  # SP9
+              "list_events", "create_event", "update_event", "delete_event", "ui_events"}
+    app_only = set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES)
     assert app_only == before | set(NEW_TOOLS)
     assert len(app_only) == len(before) + 4
 
@@ -621,7 +631,7 @@ def test_result_before_per_activity_kind(uenv, kind):
     ctx = _app_ctx()
     pre = {"planned_for": "2026-10-25", "scheduled_at": "2026-10-25T14:00"}
     if kind == "task_added":
-        tid = tools.add_task(ctx, title="꾸민 추가", areas=["health"], **pre)["id"]
+        tid = tools.add_task(ctx, title="꾸민 추가", areas=["health"], planned_for=pre["planned_for"])["id"]  # SP9: 시각 없이
         change, before = "added", None
     elif kind == "tasks_confirmed":
         tid = tools.propose_tasks(_app_ctx(), tasks=[{"title": "꾸민 초안", "areas": ["health"]}])["proposed"][0]["id"]
@@ -781,3 +791,15 @@ def test_period_data_shape(uenv):
     assert (one["start"], one["end"], len(one["days"])) == ("2026-10-24", "2026-10-24", 1)
     assert one["days"][0] == {"date": "2026-10-24", "weekday": "토", "is_today": True,
                               "todos": this["days"][5]["todos"]}
+
+
+async def test_add_task_without_date_streams_the_filled_day(tmp_path):
+    # 두뇌가 날짜를 빼면 하네스가 오늘로 채우고, 앱이 받는 도구 입력·결과에도 그 날짜가 있다
+    add = ("add_task", {"title": "꾸민 치과", "areas": ["health"]})
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([add], "넣었어요.")]) as env:
+        _, raw = await env.chat("치과 예약 추가해 줘")
+    chunks = parse_sse(raw)
+    inputs = [c for c in chunks if c.get("type") == "tool-input-available" and c.get("toolName") == "add_task"]
+    outputs = [c for c in chunks if c.get("type") == "tool-output-available" and c["toolCallId"] == inputs[0]["toolCallId"]]
+    assert inputs[0]["input"]["planned_for"] == "2026-10-24"
+    assert outputs[0]["output"]["planned_for"] == "2026-10-24"

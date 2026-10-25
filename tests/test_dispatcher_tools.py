@@ -15,10 +15,15 @@ def add(title, **kw):
     return ("add_task", {"title": title, "areas": ["health"], **kw})
 
 
+def event(title, date, time):
+    """SP9 5.4: 시각이 있는 일은 할 일이 아니라 일정이다."""
+    return ("create_event", {"title": title, "date": date, "time": time})
+
+
 async def test_confirmation_add_with_schedule(tmp_path, conn, state):
-    env = _env(tmp_path, conn, state, [FakeTurn([add("치과", scheduled_at="2026-10-25T14:00")], "추가했어요.")])
+    env = _env(tmp_path, conn, state, [FakeTurn([event("치과", "2026-10-25", "14:00")], "추가했어요.")])
     await env.process(env.inbound("치과 내일 2시 추가해 줘"))
-    assert "✓ 추가: 치과 (10/25 14:00)" in env.sender.sent[0].text
+    assert "✓ 일정 추가: 치과 (10/25 14:00)" in env.sender.sent[0].text
 
 
 async def test_confirmation_move_to_tomorrow(tmp_path, conn, state):
@@ -48,7 +53,7 @@ async def test_no_tool_calls_no_confirmation_block(tmp_path, conn, state):
 async def test_confirmations_have_no_banned_words(tmp_path, conn, state):
     calls = [
         add("가", planned_for="2026-10-24"),
-        add("나", scheduled_at="2026-10-25T09:00"),
+        add("나", planned_for="2026-10-25"),
         ("update_task", {"id": 1, "note": "메모"}),
         ("move_task", {"id": 1, "planned_for": "2026-11-02"}),
         ("complete_task", {"id": 1}),
@@ -66,9 +71,9 @@ async def test_confirmations_have_no_banned_words(tmp_path, conn, state):
 
 
 async def test_confirmations_appended_below_reply(tmp_path, conn, state):
-    env = _env(tmp_path, conn, state, [FakeTurn([add("치과", scheduled_at="2026-10-25T14:00")], "추가했어요.")])
+    env = _env(tmp_path, conn, state, [FakeTurn([add("치과", planned_for="2026-10-25")], "추가했어요.")])
     await env.process(env.inbound("치과 추가"))
-    assert env.sender.sent[0].text == "추가했어요.\n\n✓ 추가: 치과 (10/25 14:00)"
+    assert env.sender.sent[0].text == "추가했어요.\n\n✓ 추가: 치과 → 내일"
     day = env.day_file("2026-10-24").read_text(encoding="utf-8")
     assert "> 도구: add_task" in day
     assert day.index("### 10:00 비서") < day.index("> 도구: add_task")
@@ -98,15 +103,15 @@ async def test_preamble_today_schedule(tmp_path, conn, state):
     from my_planner.domain import RunContext
 
     env = _env(tmp_path, conn, state, [FakeTurn([], "네"), FakeTurn([], "네")])
-    c = RunContext(None, None)
-    env.tools.add_task(c, title="치과", areas=["health"], scheduled_at="2026-10-24T14:00")
-    env.tools.add_task(c, title="점심", areas=["quality_of_life"], scheduled_at="2026-10-24T12:00")
-    env.tools.add_task(c, title="내일일정", areas=["career"], scheduled_at="2026-10-25T09:00")
+    c = RunContext(None, None, actor="user")
+    env.tools.create_event(c, title="치과", date="2026-10-24", time="14:00")
+    env.tools.create_event(c, title="점심", date="2026-10-24", time="12:00")
+    env.tools.create_event(c, title="내일일정", date="2026-10-25", time="09:00")
     await env.process(env.inbound("안녕", update_id=1))
 
     p = env.brain.prompts[0]
     sched = p[p.index("## 오늘 일정"):]
-    assert sched.index("12:00 점심") < sched.index("14:00 치과") and "내일일정" not in sched
+    assert sched.index("12:00 점심 (#e2)") < sched.index("14:00 치과 (#e1)") and "내일일정" not in sched
     assert "## 지금\n2026-10-24 (토) 10:00" in p
 
     await env.process(env.inbound("또", update_id=2))  # 이어지는 세션에는 앞머리가 없다
@@ -136,9 +141,9 @@ async def test_brain_call_log_has_tool_names(tmp_path, conn, state):
 
 
 async def test_confirmation_one_digit_month_day_schedule(tmp_path, conn, state):
-    env = _env(tmp_path, conn, state, [FakeTurn([add("회의", scheduled_at="2026-11-02T09:05")], "네")])
+    env = _env(tmp_path, conn, state, [FakeTurn([event("회의", "2026-11-02", "09:05")], "네")])
     await env.process(env.inbound("회의 추가"))
-    assert "✓ 추가: 회의 (11/2 09:05)" in env.sender.sent[0].text
+    assert "✓ 일정 추가: 회의 (11/2 09:05)" in env.sender.sent[0].text
 
 
 async def test_confirmation_priorities_set(tmp_path, conn, state):
@@ -190,3 +195,25 @@ async def test_preamble_priorities_skip_tasks_no_longer_open(tmp_path, conn, sta
     prompt = env.brain.prompts[0]
     assert "- 이번 주: 1. B (#2)" in prompt
     assert "- 오늘" not in prompt and "A (#1) 1." not in prompt
+
+
+def test_telegram_tool_count_unchanged():
+    """SP9 Q14: 새 도구는 앱 대화에만. 텔레그램 목록은 그대로 28개."""
+    from my_planner.domain import RunContext
+    from my_planner.tools.mcp_adapter import APP_ONLY_TOOLS, tool_names_for
+
+    assert "set_checkin_time" not in tool_names_for(RunContext(None, None, channel="telegram"))
+    assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28
+    assert "set_checkin_time" in APP_ONLY_TOOLS and "set_checkin_time" in tool_names_for(RunContext(None, None, channel="app"))
+
+
+def test_app_tools_plus_1():
+    """SP9-09: `find_conversations` 하나가 앱 대화에만 더해진다(SP6 G-BE2 넷까지 49개). 텔레그램은 그대로 28개."""
+    from my_planner.domain import RunContext
+    from my_planner.tools.mcp_adapter import APP_ONLY_TOOLS, TOOL_NAMES, tool_names_for
+
+    app = tool_names_for(RunContext(None, None, channel="app"))
+    telegram = tool_names_for(RunContext(None, None, channel="telegram"))
+    assert len(app) == 49 and len(telegram) == 28
+    assert "find_conversations" in APP_ONLY_TOOLS and "find_conversations" not in TOOL_NAMES + telegram
+    assert tool_names_for(RunContext(None, None, channel="app", kind="summary")) == []  # 요약 호출은 도구 없음

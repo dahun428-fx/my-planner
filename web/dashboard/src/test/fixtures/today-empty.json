@@ -7,5 +7,7 @@
   "todos": [],
   "checkins": [],
   "cards": [],
-  "habits": []
+  "habits": [],
+  "events": [],
+  "missed_reminders": []
 }

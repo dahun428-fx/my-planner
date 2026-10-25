@@ -1,4 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { IconMore } from "./icons";
 import styles from "./SwipeRow.module.css";
 import { Sheet } from "./Sheet";
 
@@ -29,6 +30,7 @@ export function SwipeRow({
   menuTitle,
   onLongPress,
   moreLabel,
+  moreVisible = false,
   menuExtra = [],
   children,
 }: {
@@ -38,6 +40,9 @@ export function SwipeRow({
   onLongPress?: () => void;
   /** Accessible name of the keyboard button that opens the same menu as a long press. */
   moreLabel?: string;
+  /** Show that button at rest (a quiet `--muted` dots icon), not only on keyboard focus. The row keeps its last
+   * 44px clear for it. For rows where a swipe or a long press would otherwise be the only visible way in. */
+  moreVisible?: boolean;
   /** Actions that only the menu offers (they have no swipe button). */
   menuExtra?: SwipeAction[];
   children: ReactNode;
@@ -213,8 +218,13 @@ export function SwipeRow({
       >
         {children}
         {moreLabel && !off && (
-          <button type="button" className={styles.more} aria-label={moreLabel} onClick={() => setMenu(true)}>
-            <span aria-hidden="true">…</span>
+          <button
+            type="button"
+            className={`${styles.more} ${moreVisible ? styles.moreShown : ""}`}
+            aria-label={moreLabel}
+            onClick={() => setMenu(true)}
+          >
+            {moreVisible ? <IconMore /> : <span aria-hidden="true">…</span>}
           </button>
         )}
       </div>

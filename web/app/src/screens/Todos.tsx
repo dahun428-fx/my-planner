@@ -9,6 +9,7 @@ import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
 import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
+import { MoreButton } from "../components/MoreButton";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
@@ -18,13 +19,14 @@ import { TodoRow } from "../components/TodoRow";
 import { useToast } from "../components/Toast";
 import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
 import { addDays } from "../lib/time";
 import page from "../styles/page.module.css";
 import { AddTodoSheet } from "./AddTodoSheet";
 import { type Edit, EditTodoSheet } from "./EditTodoSheet";
 import styles from "./Todos.module.css";
-import { useConfirmedDrop, useNotAllowed, useOptimisticCheck } from "./todoActions";
+import { useConfirmedAction, useNotAllowed, useOptimisticCheck } from "./todoActions";
 
 export type TodosTab = "day" | "week" | "month" | "quarter" | "year";
 const TABS: TodosTab[] = ["day", "week", "month", "quarter", "year"];
@@ -121,6 +123,8 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const chat = useChatSheet();
   // What was said in the sheet may have changed the lists: read again when it closes.
   useEffect(() => chat.onClosed(() => void refreshAll()), [chat, refreshAll]);
+  // ...and as soon as an answer or a chat card changed something, without waiting for the close.
+  useEffect(() => onTodayRefresh(() => void refreshAll()), [refreshAll]);
 
   // The BE's logical day, not the device calendar (it differs between 00:00 and 04:00).
   const todayDate = todayView.kind === "live" ? todayView.data.date : weekView.kind === "live" ? (weekView.data.days.find((d) => d.is_today)?.date ?? null) : null;
@@ -128,18 +132,18 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   const shownPrio = prio && isRange(tab) && prio.cadence === tab ? prio : null;
   const liveTodos = useMemo(() => {
     if (tab === "day" && todayView.kind === "live") return todayView.data.todos.map((t) => t.todo);
-    if (tab === "week" && weekView.kind === "live") return [...weekView.data.priorities, ...weekView.data.days.flatMap((d) => d.todos)];
-    if (shownPrio) return shownPrio.items;
+    if (tab === "week" && weekView.kind === "live") return [...weekView.data.priorities, ...weekView.data.days.flatMap((d) => d.todos), ...(weekView.data.undated ?? [])];
+    if (shownPrio) return [...shownPrio.items, ...(shownPrio.todos ?? [])];
     return null;
   }, [tab, todayView, weekView, shownPrio]);
   const { show, toggle } = useOptimisticCheck(liveTodos, refreshAll);
-  const { drop, sheet: dropSheet } = useConfirmedDrop(refreshAll);
+  // Dropping, and moving a to-do that has a time (SP6 8), may ask first.
+  const { run: confirmed, sheet: confirmSheet } = useConfirmedAction(refreshAll);
+  const drop = (id: number) => confirmed("drop_task", { id });
 
   const tomorrow = async (id: number) => {
     if (!todayDate) return;
-    const out = await run("move_task", { id, planned_for: addDays(todayDate, 1) });
-    if (out?.kind === "applied") await refreshAll();
-    else await guard(out);
+    await confirmed("move_task", { id, planned_for: addDays(todayDate, 1) });
   };
 
   // One draft write at a time: "모두 확정" and a single "확정" must not both go out for the same drafts.
@@ -170,11 +174,12 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     }
   };
 
-  const row = (todo: Todo, readOnly: boolean) => (
+  const row = (todo: Todo, readOnly: boolean, dateMeta?: string) => (
     <TodoRow
       key={todo.id}
       todo={show(todo)}
       readOnly={readOnly}
+      dateMeta={dateMeta}
       onToggle={() => void toggle(todo)}
       onTomorrow={() => void tomorrow(todo.id)}
       onDrop={() => void drop(todo.id)}
@@ -205,7 +210,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
   } else if (tab === "week") {
     if (weekView.kind === "loading") {
       body = (
-        <Group>
+        <Group paper>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} size="row" />
           ))}
@@ -214,7 +219,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     } else if (weekView.kind === "blocked") {
       const r = weekView.result;
       body = (
-        <Group>
+        <Group paper>
           <BlockError code={r.kind === "error" ? r.code : r.kind} onRetry={() => void refreshWeek()} />
         </Group>
       );
@@ -222,10 +227,11 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       body = null;
     } else {
       const w = weekView.data;
+      const undated = w.undated ?? [];
       const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
-          {w.priorities.length > 0 && <Group heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
+          {w.priorities.length > 0 && <Group paper heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
           {w.days.map((d) => {
             const [, m, day] = d.date.split("-").map(Number);
             if (d.todos.length === 0) {
@@ -236,46 +242,57 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
               );
             }
             return (
-              <Group key={d.date} heading={copy.todos.dayHeading(d.weekday, m, day, d.is_today)}>
+              <Group paper key={d.date} heading={copy.todos.dayHeading(d.weekday, m, day, d.is_today)}>
                 {rows(openFirst(d.todos.map(show)), readOnly)}
               </Group>
             );
           })}
+          {/* An older BE (or a snapshot from before) has no `undated`. */}
+          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(undated, readOnly)}</Group>}
         </>
       );
     }
   } else if (tab === "day") {
     if (todayView.kind === "live") {
       const list = openFirst(todayView.data.todos.map((t) => show(t.todo)));
-      body = <Group heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, !writable)}</Group>;
+      body = <Group paper heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, !writable)}</Group>;
     } else if (todayView.kind === "blocked") {
       body = (
-        <Group>
+        <Group paper>
           <BlockError code={todayView.result.kind === "error" ? todayView.result.code : todayView.result.kind} onRetry={() => void refreshToday()} />
         </Group>
       );
     } else {
       body = (
-        <Group>
+        <Group paper>
           <Skeleton size="row" />
         </Group>
       );
     }
   } else if (shownPrio) {
+    const planned = shownPrio.todos ?? []; // an older BE has no `todos`
     body = (
-      <Group heading={copy.todos.periodPriorities(LABEL[tab])}>
-        {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
-      </Group>
+      <>
+        <Group paper heading={copy.todos.periodPriorities(LABEL[tab])}>
+          {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
+        </Group>
+        {planned.length > 0 && (
+          <Group paper heading={copy.todos.periodTodos(LABEL[tab])}>
+            {/* Not grouped by day, so each row says its day ("10월 28일"). */}
+            {planned.map((t) => row(t, !writable, copy.dateParts.monthDay(+t.planned_for!.slice(5, 7), +t.planned_for!.slice(8))))}
+          </Group>
+        )}
+      </>
     );
   } else if (prioErr) {
     body = (
-      <Group>
+      <Group paper>
         <BlockError code={prioErr.kind === "error" ? prioErr.code : prioErr.kind} onRetry={() => setVersion((v) => v + 1)} />
       </Group>
     );
   } else {
     body = (
-      <Group>
+      <Group paper>
         <Skeleton size="row" />
       </Group>
     );
@@ -291,9 +308,10 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         trailing={
           <span className={styles.trailing}>
             {state && <StatusDot state={state} />}
-            <button type="button" className={styles.add} aria-label={copy.todos.add} disabled={!writable || !todayDate} onClick={() => setAdding(true)}>
+            <button type="button" className={`${styles.add} pressable`} aria-label={copy.todos.add} disabled={!writable || !todayDate} onClick={() => setAdding(true)}>
               <Icon name="plus" />
             </button>
+            <MoreButton />
           </span>
         }
       />
@@ -308,7 +326,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       {tab === "week" && weekOffline && <OfflineNotice savedAt={weekView.kind === "snapshot" ? weekView.savedAt : null} onRetry={() => void recheck()} />}
       {body}
       {draftList && (
-        <Group
+        <Group paper
           heading={copy.todos.drafts(draftList.length)}
           action={
             draftList.length >= 2 ? (
@@ -344,17 +362,16 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
         </Group>
       )}
       {live && !draftsHidden && draftsErr && (
-        <Group>
+        <Group paper>
           <BlockError code={draftsErr.kind === "error" ? draftsErr.code : draftsErr.kind} onRetry={() => void loadDrafts()} />
         </Group>
       )}
-      {dropSheet}
+      {confirmSheet}
       {todayDate && (
         <AddTodoSheet
           open={adding}
           onClose={() => setAdding(false)}
           defaultDate={todayDate}
-          dayBoundary={todayView.kind === "live" ? todayView.data.day_boundary : undefined}
           onAdded={() => void refreshAll()}
         />
       )}

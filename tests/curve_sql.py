@@ -3,27 +3,29 @@
 TS = "2026-10-01T00:00:00.000000+00:00"
 
 
-def chapter(conn, title, start, end=None, *, status="confirmed", sketch=None, certainty="fact"):
+def chapter(conn, title, start, end=None, *, status="confirmed", sketch=None, certainty="fact",
+            ladder_remembered=None):
     cur = conn.execute(
         "INSERT INTO curve_chapters (title, theme, start_month, end_month, sketch, certainty, status, origin, "
-        "draft_since, created_at, updated_at) VALUES (?, '꾸민 주제', ?, ?, ?, ?, ?, 'seed', ?, ?, ?)",
-        (title, start, end, sketch, certainty, status, TS if status == "draft" else None, TS, TS),
+        "draft_since, created_at, updated_at, ladder_remembered) VALUES (?, '꾸민 주제', ?, ?, ?, ?, ?, 'seed', ?, ?, ?, ?)",
+        (title, start, end, sketch, certainty, status, TS if status == "draft" else None, TS, TS, ladder_remembered),
     )
     return cur.lastrowid
 
 
 def milestone(
     conn, title, date_text, *, kind="high", status="confirmed", sensitive=0, precision=None, chapter_id=None,
-    title_label=None, note=None,
+    title_label=None, note=None, area=None, origin="seed", kind_certainty="fact", certainty="fact",
 ):
     precision = precision or {4: "year", 7: "month", 10: "day"}[len(date_text)]
     sort_date = {"year": date_text + "-01-01", "month": date_text + "-01", "day": date_text}[precision]
     cur = conn.execute(
         "INSERT INTO curve_milestones (chapter_id, date_text, precision, sort_date, kind, title, note, sensitive, "
-        "status, origin, title_label, draft_since, created_at, confirmed_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed', ?, ?, ?, ?, ?)",
-        (chapter_id, date_text, precision, sort_date, kind, title, note, sensitive, status, title_label,
-         TS if status == "draft" else None, TS, TS if status == "confirmed" else None, TS),
+        "status, origin, title_label, draft_since, created_at, confirmed_at, updated_at, area, kind_certainty, "
+        "certainty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (chapter_id, date_text, precision, sort_date, kind, title, note, sensitive, status, origin, title_label,
+         TS if status == "draft" else None, TS, TS if status == "confirmed" else None, TS, area, kind_certainty,
+         certainty),
     )
     return cur.lastrowid
 

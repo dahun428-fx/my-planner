@@ -5,6 +5,7 @@ import { type ReactNode, useEffect } from "react";
 import { ConnectionBand } from "../components/ConnectionBand";
 import { Nav } from "../components/Nav";
 import { ConnectionProvider, useConnection } from "../lib/ConnectionProvider";
+import "../styles/global.css";
 import "../styles/tokens.css";
 import "../styles/globals.css";
 

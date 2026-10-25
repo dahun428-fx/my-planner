@@ -8,9 +8,9 @@ export function HpCells({ score }: { score: number | null }) {
         <span className="hp-value num">{score === null ? T.hpNone : T.hp(score)}</span>
         <span className="meta">{T.hpWhat}</span>
       </div>
-      <svg className="hp-bar" viewBox="0 0 108 10" preserveAspectRatio="none" role="img" aria-label={T.hpBar(score)}>
+      <svg className="hp-bar" data-score={score ?? undefined} viewBox="0 0 108 10" preserveAspectRatio="none" role="img" aria-label={T.hpBar(score)}>
         {[0, 1, 2, 3, 4].map((i) => (
-          <rect key={i} className="hp-cell" data-on={score !== null && i < score} x={i * 22} y="0" width="20" height="10" rx="2" />
+          <rect key={i} className="hp-cell" data-on={score !== null && i < score} x={i * 22 + 0.5} y="0.5" width="19" height="9" rx="2" vectorEffect="non-scaling-stroke" />
         ))}
       </svg>
     </div>

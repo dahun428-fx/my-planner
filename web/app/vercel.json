@@ -3,6 +3,7 @@
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "out",
+  "git": { "deploymentEnabled": { "**": false, "main": true } },
   "ignoreCommand": "if [ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- . 2>/dev/null; then exit 0; else exit 1; fi",
   "headers": [
     {
@@ -23,6 +24,15 @@
         {
           "key": "Permissions-Policy",
           "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    },
+    {
+      "source": "/fonts/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, stale-while-revalidate=86400"
         }
       ]
     },

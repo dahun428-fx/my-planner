@@ -3,5 +3,5 @@
   padding-bottom: calc(var(--row) + env(safe-area-inset-bottom) + var(--gap));
 }
 .lead {
-  margin: 0 var(--pad);
+  margin: 0 var(--gutter);
 }

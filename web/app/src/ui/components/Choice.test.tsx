@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -25,5 +27,16 @@ describe("Choice", () => {
     for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "독서" }));
     expect(screen.getByRole("button", { name: "독서" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("pill is 44px", () => {
+    // SP6 6.1: ui_choice's pills are the buttons part's 44px pills (were 36px).
+    renderWithProviders(<Choice props={props} ctx={makeCtx({ onChoose: vi.fn() })} />);
+    expect(screen.getByRole("button", { name: "운동" })).toHaveClass("pill");
+    const strip = (f: string) => readFileSync(join(__dirname, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const css = strip("../primitives/primitives.module.css");
+    const pill = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(([, sel]) => sel.trim() === ".pill")?.[2] ?? "";
+    expect(pill).toMatch(/min-height:\s*var\(--control-h\)/);
+    expect(strip("../../styles/global.css")).toMatch(/--control-h:\s*44px/);
   });
 });

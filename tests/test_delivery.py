@@ -291,7 +291,9 @@ async def test_run_conversation_channel_follows_full_body(tmp_path):
     assert f"비서 [{conv.id}] (morning_brief) @app" in text
     assert tg is not None and tg.forked_from == conv.id
     second = env.brain.calls[1]
-    assert (second["session_id"], second["fork_session"]) == ("s-run", True)
+    # 앱 쪽 회차 대화에서 갈라 연 텔레그램 쪽은 앱 세션을 잇지 않고 회차 본문으로 새로 시작한다(SP8 6.7, 11장)
+    assert (second["session_id"], second["fork_session"]) == (None, False)
+    assert f"## 회차 메시지\n{BRIEF}" in second["prompt"]
 
 
 async def test_notice_goes_to_effective_channel_and_safe_mode_telegram_only(tmp_path, monkeypatch):
@@ -476,3 +478,68 @@ def test_web_push_sender_encrypts_signs_and_maps_status(tmp_path, monkeypatch, c
         assert type(e).__name__ == "ConnectionError"
     else:
         raise AssertionError("예외가 나야 한다")
+
+
+# --- SP8 계획 결정 10: 회고가 텔레그램 대체로 가도 순간의 글은 없다 ---
+
+
+async def test_review_fallback_to_telegram_has_no_moment_text(tmp_path):
+    """앱 통로 회고에서 푸시가 모두 실패하면 본문 전체가 텔레그램으로 간다(D4). 그래서 회고 앞머리에는 순간의 글을
+    두지 않는다: 두뇌에 준 프롬프트에도, 텔레그램으로 간 본문에도, 푸시 본문에도 시험 글이 없다."""
+    secret = "꾸며 낸 순간: 일요일 아침에 빵을 구웠어요"
+    reply = "한 주 수고했어요. 이번 주에 이룬 순간이 이틀 있었어요."
+    push = FakePushSender({EP_A: [500] * 3})
+    sun_review = kst(2026, 10, 25, 18, 0)
+    async with BeEnv.start(tmp_path, start=_start(sun_review), script=[FakeTurn([], reply)], push=push) as env:
+        await env.subscribe(EP_A)
+        now = env.clock.now()
+        env.parts.moments.save_day(date(2026, 10, 24), [(secret, "quality_of_life", ["chat"])], now)
+        env.parts.moments.save_day(date(2026, 10, 22), [("꾸며 낸 순간: 목요일 일", None, ["chat"])], now)
+        await env.tick()
+        prompt = env.brain.prompts[0]
+        done = env.parts.runs.with_status(RunStatus.done)
+
+    assert LoopKey.review in {r.loop for r in done}  # 저녁 체크인과 합친 주간 회고
+    sent = [d for r in done for d in deliveries(env, r.id)]
+    assert sent == [("app", "full", "not_sent", 0, 1), ("telegram", "fallback", "sent", 0, 0)]
+    assert [o.text for o in env.sender.sent] == [reply]
+    assert "## 이번 주 이룬 순간\n- 10/22 1개\n- 10/24 1개" in prompt
+    for text in (prompt, *(o.text for o in env.sender.sent), *(str(c.payload) for c in push.sent)):
+        assert "꾸며 낸" not in text
+
+
+async def test_telegram_reply_to_app_review_has_no_moment_text(tmp_path):
+    """SP8 6.7, 11장: 푸시로 간 회차에 앱에서 답하며 두뇌가 `get_status`로 순간의 글을 받았다. 같은 회차에 텔레그램으로
+    답하면 텔레그램 쪽은 앱 세션을 갈라 잇지 않고(`fork_session` 없음), 앱 대화의 원문(가르기 대체 경로)도 붙이지 않는다."""
+    secret = "꾸며 낸 순간: 금요일에 화분을 옮겼어요"
+    push = FakePushSender()
+    script = [
+        FakeTurn([], BRIEF, session_id="s-run"),
+        FakeTurn([("get_status", {})], f"어제 남긴 순간이 있어요. {secret}", session_id="s-run"),
+        FakeTurn([], "텔레그램에서 이어 가요", session_id="s-tg"),
+        FakeTurn([], "또 이어 가요", session_id="s-tg"),
+    ]
+    async with BeEnv.start(tmp_path, start=_start(), script=script, push=push) as env:
+        await env.subscribe(EP_A)
+        env.parts.moments.save_day(date(2026, 10, 23), [(secret, None, ["chat"])], env.clock.now())
+        await env.tick()
+        run = morning(env)
+        env.clock.advance(minutes=5)
+        resp, raw = await env.chat("어제 뭐 했지?", checkin_id=run.id)
+        env.clock.advance(minutes=5)
+        await env.telegram("꾸민 텔레그램 답")
+        env.clock.advance(minutes=2)
+        await env.telegram("꾸민 텔레그램 답 둘")
+        tg = env.parts.convs.run_conversation(run.id, "telegram")
+        transcript = (env.settings.paths.data_dir / "transcripts" / "2026" / "10" / "2026-10-24.md").read_text("utf-8")
+
+    assert resp.status == 200 and secret in raw.decode("utf-8")  # 앱 통로에서는 글을 받는다
+    assert secret in transcript  # 원래(앱) 대화의 비서 줄에 남았다: 대체 경로가 붙이면 텔레그램으로 샌다
+    assert tg is not None and tg.forked_from == run.conversation_id
+    tele = env.brain.calls[2:]
+    assert [(c["session_id"], c["fork_session"]) for c in tele] == [(None, False), ("s-tg", False)]
+    assert all(c["run_ctx"].channel == "telegram" for c in tele)
+    assert f"## 회차 메시지\n{BRIEF}" in tele[0]["prompt"]
+    for c in tele:
+        assert secret not in c["prompt"] and "꾸며 낸" not in c["prompt"]
+    assert all("꾸며 낸" not in o.text for o in env.sender.sent)

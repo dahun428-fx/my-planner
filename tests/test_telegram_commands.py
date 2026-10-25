@@ -7,6 +7,7 @@ from test_telegram_io import OWNER, _NoDispatch, _RecordingBot, _update
 from my_planner.bot.telegram_io import handle_update
 from my_planner.clock import FakeClock
 from my_planner.domain import Area, TaskStatus
+from my_planner.store.repos.events import EventsRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
@@ -29,6 +30,7 @@ class CmdEnv:
             clock=self.clock,
             tz=TZ,
             boundary=BOUNDARY,
+            events=EventsRepo(conn, self.clock, TZ),
         )
         self.bot = _RecordingBot()
         self.dispatcher = _NoDispatch()
@@ -40,6 +42,14 @@ class CmdEnv:
 
         pf = date.fromisoformat(planned_for) if planned_for else None
         return self.repo.create(title, [Area.career], status, pf, scheduled_at, None, "").id
+
+    def event(self, title, d, t):
+        """SP9: 시각이 있는 일은 스케줄의 일정이다."""
+        from datetime import date
+
+        fields = {"title": title, "start_date": date.fromisoformat(d), "start_time": time.fromisoformat(t),
+                  "remind_min": 10, "origin": "user"}
+        return self.tools.events.create(fields, self.clock.now()).id
 
     async def send(self, text, **kw):
         self._uid += 1
@@ -71,7 +81,7 @@ def cenv(tmp_path, conn, state):
 async def test_today_command_shows_priorities_schedule_open_no_drafts(cenv):
     a = cenv.add("보고서 쓰기", planned_for="2026-10-24")
     cenv.add("장보기", planned_for="2026-10-24")
-    cenv.add("치과", planned_for="2026-10-24", scheduled_at=kst(2026, 10, 24, 14, 0))
+    cenv.event("치과", "2026-10-24", "14:00")
     cenv.add("제안된 초안", status=TaskStatus.draft, planned_for="2026-10-24")
     cenv.add("내일 일", planned_for="2026-10-25")
     done = cenv.add("끝낸 일", planned_for="2026-10-24")
@@ -96,7 +106,7 @@ async def test_week_and_help_commands(cenv):
 
     a = cenv.add("보고서 쓰기", planned_for="2026-10-26")  # 다음 주 월요일: 이번 주에 안 나온다
     b = cenv.add("운동", planned_for="2026-10-22")
-    cenv.add("치과", planned_for="2026-10-25", scheduled_at=kst(2026, 10, 25, 14, 0))
+    cenv.event("치과", "2026-10-25", "14:00")
     cenv.add("제안된 초안", status=TaskStatus.draft, planned_for="2026-10-23")
     cenv.add("오늘 일", planned_for="2026-10-24")
     cenv.repo.set_priorities("week", "2026-W43", [b])

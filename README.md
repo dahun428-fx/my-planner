@@ -108,6 +108,65 @@ Unregister-ScheduledTask -TaskName my-planner -Confirm:$false
 Unregister-ScheduledTask -TaskName my-planner-wake -Confirm:$false
 ```
 
+## 자동 복구 (medic)
+
+비서(`my-planner`)와 따로 도는 작은 프로그램 `my-planner-medic`이 비서를 지켜봅니다. 비서 로그에 새 오류가 나거나 `/health`가 나빠지면 GitHub에 `incident` 이슈를 열고, GitHub Actions의 수리 워크플로(`repair.yml`)가 고친 PR이 CI를 통과해 `main`에 머지되면 medic이 노트북에 배포합니다. 수리는 핫픽스라 `main`에서 따서 `main`으로 가고, `sync-develop.yml`이 `develop`에 합칩니다. `watch.yml`(2시간마다)은 하트비트·토큰 만료를 확인하고 멈춘 수리를 다시 부르며, `signal.yml`은 `main`의 Vercel 빌드 실패와 CI 실패를 이슈로 엽니다. 배포 뒤 10분 안에 같은 문제가 다시 나면 이전 커밋과 DB로 되돌리고 텔레그램으로 알립니다. medic은 표준 라이브러리만 쓰고 `state\medic.db`만 씁니다(되돌릴 때 `planner.db`를 백업으로 바꾸는 것 하나가 예외입니다). 로그는 `state\logs\medic.log`에 남고 토큰과 메시지 본문은 적지 않습니다.
+
+**처음 한 번 넣어 둘 것**
+
+- 저장소 시크릿 4개(Settings > Secrets and variables > Actions): `CLAUDE_CODE_OAUTH_TOKEN`(노트북에서 `claude setup-token`), `REPAIR_PAT`(fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기·쓰기. Actions 쓰기는 `watch.yml`이 `repair.yml`을 다시 부를 때 씁니다), `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`(뒤의 둘은 `.env`와 같은 값).
+- 저장소 변수: `AUTO_REPAIR`(`on`/`off`, 없으면 켜짐), `PAT_EXPIRES`(PAT 만료일 `YYYY-MM-DD`). `RELEASE_PAT_EXPIRES`·`DEV_PAT_EXPIRES`가 있으면 그 토큰도 함께 알립니다. `REPAIR_MAX_FAILURES`(기본 2)와 `REPAIR_MAX_MERGES_PER_DAY`(기본 3)는 바꾸고 싶을 때만 넣습니다.
+- 라벨 `auto-repair` 하나를 미리 만들어 둡니다(Issues > Labels). 수리 PR을 열 때 붙이는 라벨이고, 나머지 라벨(`incident`, `repairing`, `failed-N` 등)은 처음 쓸 때 저절로 생깁니다.
+- Settings > Actions > General > Workflow permissions는 기본값(읽기 전용)으로 둡니다. 쓰기는 모두 `REPAIR_PAT`으로 해서 "Allow GitHub Actions to create and approve pull requests"는 켜지 않아도 됩니다.
+- 수리하는 Claude는 `REPAIR_PAT`을 받지 않습니다(읽기 전용 토큰으로 커밋만 하고, 푸시·PR·머지는 그 뒤 셸 단계가 합니다). `REPAIR_PAT`에는 Workflows 권한을 주지 않으므로, 수리가 `.github/workflows/` 파일을 바꾸면 푸시가 거부되어 그 시도는 실패로 세집니다. 그런 장애는 두 번 실패한 뒤 `needs-dahun`으로 넘어옵니다.
+- 노트북 `.env`에 1개: `MEDIC_GITHUB_TOKEN`(fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기, Pull requests 읽기(“고쳤어요” 알림의 PR 제목·링크)). 시크릿은 `.env`와 저장소 시크릿에만 둡니다. 이슈·로그·커밋에는 남지 않습니다.
+- 작업 등록: `scripts\register_task.ps1`이 `my-planner`와 함께 `my-planner-medic`도 등록합니다(medic 없이 등록하려면 `-NoMedic`, 점검에도 `-NoMedic`). 이 작업은 로그온할 때와 5분마다 `pythonw scripts\medic_boot.py`를 띄우고, 실행기가 `python -m my_planner_medic`을 자식으로 실행합니다. 점검 출력에 `my-planner-medic` 줄이 `OK`로 나와야 합니다.
+
+**끄기**
+
+- 수리만 멈추기: 저장소 변수 `AUTO_REPAIR`를 `off`로 바꿉니다. 이슈는 계속 열리지만 Claude가 고치려 하지 않고, `watch.yml`도 수리를 다시 부르지 않습니다(죽은 시도 정리만 합니다). 이미 돌고 있는 수리 실행(`repair #N`, 길면 약 100분)은 `off`로 멈추지 않으니 Actions에서 그 실행을 손으로 취소합니다.
+- medic 전체 멈추기: `config.medic.toml`에 `enabled = false`를 적고 medic을 다시 띄웁니다(하트비트만 보내고 감시·배포는 하지 않습니다). 작업 자체를 없애려면 `register_task.ps1 -NoMedic`을 다시 실행합니다.
+
+**medic 자신의 갱신**
+
+배포에 `src\my_planner_medic\`이 들어 있으면 medic은 확인을 마친 뒤 종료 코드 3으로 끝나고 실행기가 새 코드로 바로 다시 띄웁니다. 새 medic이 시작 후 60초 안에 연속 3번 죽으면 실행기가 `state\medic-last-good.json`의 커밋으로 `src\my_planner_medic\`만 되돌리고(`git checkout <sha> -- src/my_planner_medic`), 그 배포 커밋을 건너뛸 목록에 넣습니다. 이때 `git status`에 `src\my_planner_medic\` 변경이 보이는 것은 정상이며, 다음 배포 때 medic이 알아서 정리합니다. 이것도 안 되면 medic 하트비트가 끊겨 텔레그램으로 알림이 옵니다.
+
+**`failed-<sha>`에서 손으로 되살리기**
+
+스키마가 바뀐 배포가 되돌려지면 되돌리기 직전의 DB가 `state\backups\failed-<sha>\`(`planner.db`와 WAL 파일)에 남습니다. 되돌린 뒤 사이에 쓴 할 일·컨디션을 살리려면 위 "백업에서 복구하기"와 같은 순서(작업 끄고 멈추기, 지금 DB 옆으로 옮기기, 복사, 켜기)에서 복사할 파일만 `failed-<sha>\planner.db`로 바꿉니다. 옛 코드와 스키마가 달라서 열리지 않을 수 있으니, 필요한 행만 `sqlite3`로 꺼내는 편이 안전합니다. `failed-*`는 최근 3개만 남습니다.
+
+**PAT 만료**
+
+PAT은 만료일을 1년으로 두고 `PAT_EXPIRES` 변수에 같은 날짜를 적습니다. 만료 30일 전부터 하루 한 번 텔레그램으로 알려 줍니다. 새 토큰을 만들어 `REPAIR_PAT` 시크릿, `.env`의 `MEDIC_GITHUB_TOKEN`을 바꾸고 `PAT_EXPIRES`를 고친 뒤 medic을 다시 띄웁니다. 작업만 멈추면 자식 `python`(실제 medic)이 남을 수 있으니, 저장소 폴더(`E:\my-planner`)에서 아래로 자식까지 끝냅니다. 5분 안에 감시 트리거가 새 `.env`로 다시 띄웁니다.
+
+```powershell
+Stop-ScheduledTask -TaskName my-planner-medic
+$r = (Get-Location).Path.ToLowerInvariant() + '\'
+Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -in 'python.exe', 'pythonw.exe' -and $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($r) -and
+    ($_.CommandLine -match '-m\s+my_planner_medic' -or $_.CommandLine -match 'medic_boot\.py') } |
+    ForEach-Object { taskkill /T /F /PID $_.ProcessId }
+```
+
+실행기(`scripts\medic_boot.py`) 자체가 배포로 바뀌어도 이미 떠 있는 실행기는 그대로입니다. 다음 로그온이나 위 절차로 작업을 다시 시작하면 새 실행기가 뜹니다. medic을 `enabled = false`로 꺼 두어도 시작할 때 끊긴 배포의 되돌림은 끝까지 하고(`my-planner` 작업이 꺼진 채 남지 않게), 그 뒤로는 하트비트만 보냅니다.
+
+### 개발용 medic (medic-dev)
+
+개발용 체크아웃(`E:\my-planner-dev`, `develop`)에서 `scripts\setup_dev.ps1`을 실행하면 `my-planner-dev`와 함께 `my-planner-medic-dev` 작업이 등록됩니다(운영 `my-planner-medic`과 같은 템플릿, 이름·경로만 다름). medic-dev는 `develop` 머리를 배포하고, 확인 창(`verify_minutes`, 30분) 동안 `/health`가 정상이고 새 오류 지문이 없으면 그 커밋에 `staging/be` 커밋 상태 `success`를 올립니다. 확인 실패나 롤백이면 `failure`입니다. BE 파일이 안 바뀐 커밋(웹·문서만)도 재시작 없이 같은 창을 거쳐 올립니다. `promote.yml`이 이 상태를 기다립니다.
+
+설정은 Git에 넣지 않는 `config.medic.local.toml`(스크립트가 없을 때만 만듭니다)이 `config.medic.toml` 위에 겹쳐 읽습니다.
+
+```toml
+branch = "develop"
+be_task_name = "my-planner-dev"
+verify_minutes = 30
+watch_incidents = false     # 이슈 동기화·Actions 이슈 가져오기·ci:main 닫기·결과 알림 없음(개발용 PAT에 Issues 권한이 없음)
+heartbeat = false           # 하트비트 이슈 없음
+post_commit_status = true   # staging/be 올림
+```
+
+개발용 `.env`에는 개발용 PAT(`MEDIC_GITHUB_TOKEN`: Contents 읽기, Actions 읽기, Commit statuses 쓰기)를 손으로 넣습니다. `config.local.toml`이 `[runtime] role = "dev"`이면 medic은 텔레그램 값을 읽어도 쓰지 않습니다.
+
 ## API 열기
 
 운영 앱이 쓰는 API(`/api/v1/*`)는 BE가 `127.0.0.1:8787`에서만 엽니다. 폰과 다른 기기에서는 Tailscale `serve`로 **내 tailnet 안에만** 엽니다.
@@ -172,6 +231,41 @@ cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner
 3. 운영 앱 설정에 새 토큰을 넣습니다.
 
 VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새어 나갔을 때만 바꾸고 바꾼 뒤 앱에서 알림을 다시 켭니다.
+
+## iPhone 단축어
+
+아이폰의 걸음 수와 잠을 매일 비서에게 보내면 상태창의 건강 스탯에 근거가 쌓입니다. 보내는 길은 `POST /api/v1/body` 하나이고, 이 경로만 여는 **별도 토큰** `BODY_TOKEN`을 씁니다(`API_TOKEN`과 다른 값). 아래는 단축어 순서의 뼈대입니다. 단축어 앱의 동작 이름과 수면 합산 순서는 실제 아이폰으로 만들어 보고 화면 순서대로 고칩니다.
+
+1. 노트북에서 `.venv\Scripts\python.exe -m my_planner gen-token`을 한 번 더 돌려 나온 값을 `.env`에 `BODY_TOKEN=...`으로 넣습니다. `API_TOKEN`과 같은 값이면 안 되고 43자 이상이어야 합니다. 출력은 채팅이나 문서에 붙이지 않습니다. 그다음 작업을 다시 켭니다(`Stop-ScheduledTask -TaskName my-planner` 뒤 `Start-ScheduledTask -TaskName my-planner`). `/health`는 그대로 `ok`입니다.
+2. 아이폰에서 Tailscale이 켜져 있는지 봅니다(운영 앱이 열리면 됩니다).
+3. 단축어 앱 > 새 단축어 "몸 기록 보내기"를 만듭니다.
+   1. **건강 샘플 찾기**: 유형 "걸음", 시작일 "최근 3일", 일별로 묶기 > 날마다 합계.
+   2. **건강 샘플 찾기**: 유형 "수면 분석", 값 "잠듦", 시작일 "최근 3일" > 끝난 날짜별로 지속 시간(분)을 더합니다.
+   3. **숫자 반올림**: 걸음 합계와 잠(분)을 각각 소수점 없는 정수로 반올림합니다. 합계가 `8123.0`처럼 소수로 오면 BE가 400으로 거절합니다("걸음 수는 0~100,000, 잠은 0~1,440분이에요."). 참/거짓 값도 거절합니다.
+   4. 두 결과로 `days` 목록(사전 목록)을 만듭니다. 날짜는 형식 `yyyy-MM-dd`, 값 이름은 걸음 `steps`, 잠 `sleep_minutes`입니다. 값이 없는 날은 그 항목을 뺍니다.
+   5. **URL 콘텐츠 가져오기**: URL `https://<기계>.<tailnet>.ts.net/api/v1/body`, 방법 POST, 헤더 `Authorization: Bearer <BODY_TOKEN>`와 `Content-Type: application/json`, 본문 JSON `{"days": ...}`.
+4. 단축어를 한 번 손으로 실행해 건강 접근("걸음", "수면")을 허용합니다. 결과에 `{"saved": n}`이 보이면 됩니다. 운영 앱 상태창의 몸 기록 줄이 바뀝니다.
+5. 단축어 > 자동화 > 새 개인용 자동화 > "특정 시간" 매일 09:00 > "바로 실행"(묻지 않기) > "몸 기록 보내기".
+
+매일 지난 3일을 다시 보내므로 노트북이 꺼져 있던 날의 빈칸은 사흘 안에 다음 날 채워집니다. 걸음 6,000 이상, 잠 7시간 이상인 날은 건강 스탯의 "요즘" 보너스에 각 0.5로 들어가고, 기준에 못 미친 날은 0점일 뿐 아무것도 깎이지 않습니다.
+
+- **이 단축어와 `BODY_TOKEN`은 공유하지 않습니다.** 단축어는 iCloud로 기기 사이에 동기화되고, 공유하면 헤더의 `BODY_TOKEN`도 함께 나갑니다.
+- **토큰 바꾸기**: 새어 나갔다고 생각되면 `gen-token`으로 새 값을 만들어 `.env`의 `BODY_TOKEN` 줄을 바꾸고, 작업을 다시 켠 뒤, 단축어의 `Authorization` 헤더를 새 값으로 고칩니다. 옛 토큰은 바로 `401`이 됩니다.
+- `BODY_TOKEN`을 비워 두면 이 경로만 열리지 않습니다(다른 API는 그대로). 그래서 시작할 때 로그에 `body_token_missing` 경고가 한 줄 남는데, `BODY_TOKEN`을 쓰지 않는 동안은 **정상**입니다.
+
+## 이룬 순간 정리 멈추기
+
+하루 끝 이룬 순간 정리를 잠시 멈추려면 `app_state`의 `moments_paused`를 **문자열** `'1'`로 둡니다(숫자 1이 아닙니다). 행이 처음엔 없을 수 있어 `INSERT ... ON CONFLICT`로 씁니다. 작업(`my-planner`)을 먼저 멈추고(`Stop-ScheduledTask -TaskName my-planner`) 고친 뒤 다시 켭니다. 켜 둔 채 고치면 DB 잠금으로 실패할 수 있으니 그때는 잠금이 풀린 뒤 다시 시도합니다.
+
+```powershell
+sqlite3 state\planner.db "INSERT INTO app_state(key,value) VALUES('moments_paused','1') ON CONFLICT(key) DO UPDATE SET value='1'"
+```
+
+다시 돌리려면 행을 지웁니다.
+
+```powershell
+sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
+```
 
 ## 운영 앱
 

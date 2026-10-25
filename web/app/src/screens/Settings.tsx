@@ -8,6 +8,7 @@ import { sendCommand } from "../chat/command";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { PalettePicker } from "../components/PalettePicker";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
 import { Sheet } from "../components/Sheet";
@@ -21,14 +22,14 @@ import { hardReplace } from "../lib/nav";
 import { usePolling } from "../lib/polling";
 import { hasLiveSubscription, permission, pushSupport, subscribePush, unsubscribePush } from "../lib/push";
 import { clearDeviceData } from "../lib/snapshot";
-import { applyTheme, loadTheme, setTheme, type Theme } from "../lib/theme";
+import { applyPalette, applyTheme, DEFAULT_PALETTE, loadPalette, loadTheme, type Palette, PALETTES, setPalette, setTheme, type Theme } from "../lib/theme";
 import { formatKst, relativeChecked } from "../lib/time";
 import page from "../styles/page.module.css";
 import { useCatalog } from "../ui/CatalogProvider";
+import { CalendarSubscribe } from "./CalendarSubscribe";
+import { CheckinTimes } from "./CheckinTimes";
 import styles from "./Settings.module.css";
 
-/** SP1 default check-in times (v1 app constants; spec 5.5.7, 12장 request 3 would move them to /health). */
-export const SP1_SCHEDULE = { weekdays: ["09:00", "17:30"], weekend: ["10:00", "18:00"] } as const;
 const PAUSE_DAYS = [1, 3, 7, 14] as const;
 const PUSH_TEST_TIMEOUT_MS = 30_000;
 
@@ -50,7 +51,8 @@ function shortHost(beUrl: string): string {
   return host.length > 28 ? `${host.slice(0, 14)}…${host.slice(-12)}` : host;
 }
 
-// Spec 5.5.7, F7: connection, check-in notifications, schedule, pause, this device, about. No chat launcher.
+// Spec 5.5.7, F7 (off the tabs since SP9-07, "‹ 더보기" back): connection, check-in notifications, check-in times (SP9 9.7, editable), iPhone calendar subscription (9.7), pause, this device (theme, colour
+// preset), about. No chat launcher.
 export function Settings() {
   const toast = useToast();
   const { state, conn, recheck } = useConnection();
@@ -192,6 +194,12 @@ export function Settings() {
     setTheme(t);
     setThemeState(t);
   };
+  const [palette, setPaletteState] = useState<Palette>(DEFAULT_PALETTE);
+  useEffect(() => setPaletteState(loadPalette()), []);
+  const choosePalette = (p: Palette) => {
+    setPalette(p);
+    setPaletteState(p);
+  };
 
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -208,6 +216,7 @@ export function Settings() {
       }
       await clearDeviceData();
       applyTheme("system");
+      applyPalette(DEFAULT_PALETTE);
       window.dispatchEvent(new Event(CONN_CHANGED));
     } finally {
       // A full load of /connect/: the chat sheet, catalog and polls of the old BE leave memory too.
@@ -302,6 +311,12 @@ export function Settings() {
 
   return (
     <main className={page.main}>
+      {/* SP9-07: off the tabs, "‹ 더보기" back above the title (as Activity). */}
+      <nav className={styles.bar}>
+        <Link href="/more/" className={styles.back}>
+          {copy.settings.back}
+        </Link>
+      </nav>
       <LargeTitle title={copy.settings.title} />
 
       <Group heading={copy.settings.connection}>
@@ -331,10 +346,9 @@ export function Settings() {
         )}
       </Group>
 
-      <Group heading={copy.settings.schedule} footer={copy.settings.scheduleNote}>
-        <Row title={copy.settings.weekdays} trailing={<span className={styles.value}>{SP1_SCHEDULE.weekdays.join(" · ")}</span>} />
-        <Row title={copy.settings.weekend} trailing={<span className={styles.value}>{SP1_SCHEDULE.weekend.join(" · ")}</span>} />
-      </Group>
+      <CheckinTimes online={online} />
+
+      <CalendarSubscribe online={online} />
 
       <Group heading={copy.settings.pause}>
         {pausedUntil ? (
@@ -369,12 +383,36 @@ export function Settings() {
             onChange={chooseTheme}
           />
         </div>
+        <div className={styles.control}>
+          <span className={styles.controlLabel} aria-hidden="true">
+            {copy.settings.palette}
+          </span>
+          <PalettePicker
+            ariaLabel={copy.settings.palette}
+            options={PALETTES.map((p) => ({ value: p, label: copy.settings.palettes[p] }))}
+            value={palette}
+            onChange={choosePalette}
+          />
+        </div>
         <button type="button" className={`${styles.action} ${styles.danger}`} onClick={() => setDisconnectOpen(true)}>
           {copy.settings.disconnect}
         </button>
       </Group>
 
       <Group heading={copy.settings.about}>
+        {process.env.NEXT_PUBLIC_MEDIC_PROBE === "1" && (
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() =>
+              setTimeout(() => {
+                throw new Error("medic probe");
+              }, 0)
+            }
+          >
+            {copy.settings.probeThrow}
+          </button>
+        )}
         <Row title={copy.settings.appVersion} trailing={<span className={styles.value}>{pkg.version}</span>} />
         <Row title={copy.settings.beVersion} trailing={<span className={styles.value}>{health?.version.app ?? copy.settings.unknown}</span>} />
         <Row

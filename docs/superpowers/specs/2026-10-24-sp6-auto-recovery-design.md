@@ -29,7 +29,7 @@
 3. 머지 뒤 20분 안에 노트북 업데이터가 새 `main`을 배포하고, 확인이 통과하면 이슈를 닫고 주 통로로 "고쳤어요" 알림을 **한 번** 보낸다.
 4. 배포 뒤 확인이 실패하면 업데이터가 직전에 배포된 커밋(`prev_sha`)으로 되돌리고(스키마가 바뀐 배포면 DB도 배포 직전 백업으로), 비서가 다시 답하며, 이슈에 `rolled-back`이 붙고 다음 수리 시도가 시작된다.
 5. 같은 장애에 수리가 2번 **실패**(머지 못 함 또는 배포 롤백)하거나 오늘 자동 머지가 3번에 이르면 그 장애의 수리를 멈추고 `needs-dahun`을 붙이고 "못 고쳤어요" 알림을 한 번 보낸다.
-6. 노트북을 끈 채 회차 예정 시각이 지나면, 그 회차 시각 + 15분 + GitHub cron 지연 안에(보통 30분 안) 텔레그램으로 "노트북 응답 없음"이 한 번 온다. 그날은 다시 오지 않는다.
+6. 노트북을 끈 채 회차 예정 시각이 지나면, `max(마지막 하트비트 + 45분, 그 회차 시각)` 뒤 첫 `watch.yml` 실행(2시간 cron) + GitHub cron 지연 안에(보통 2시간 안) 텔레그램으로 "노트북 응답 없음"이 한 번 온다. 그날(Asia/Seoul)은 다시 오지 않는다.
 7. 운영 앱에서 던져진 브라우저 에러가 BE를 거쳐 1번과 같은 길로 이슈가 되고, 수리 PR이 머지되면 Vercel이 다시 배포하고, 5.1의 웹 확인이 통과하면 이슈가 닫히고 "고쳤어요" 알림이 한 번 온다.
 8. GitHub에 올라간 장애 이슈 어디에도 할 일 제목, 대화 본문, 컨디션 값, 메모, 사용자 폴더 경로(`C:\Users\…`)가 없다.
 
@@ -41,11 +41,11 @@
 │ my-planner (BE, 기존 작업)    │ ───────────────▶ │ incident 이슈           │ ───────────────▶ │ repair.yml           │
 │  ├ 로그 jsonl (이미 가림)     │                  │ heartbeat 이슈(본문 갱신) │                  │  claude-code-action  │
 │  └ POST /client-errors (신규)│   하트비트        │                        │ ◀─────────────── │  재현 테스트 → 수정   │
-│ my-planner-medic (신규 작업)  │ ───────────────▶ │ main                   │   PR (앱 신원)    │  셸 단계: CI 확인 → 머지│
+│ my-planner-medic (신규 작업)  │ ───────────────▶ │ main                   │   PR (REPAIR_PAT) │  셸 단계: CI 확인 → 머지│
 │  ├ 감시자: 2분마다 점검        │                  └────────────────────────┘                  ├ ci.yml (PR·main)     │
-│  └ 업데이터: 5분마다 main 확인  │ ◀── git fetch ──  main (CI 성공 커밋만 배포)                  ├ heartbeat.yml (cron) │
-│      백업 → 배포 → 확인 → 롤백  │                                                            ├ vercel-failure.yml   │
-└─────────────────────────────┘                   Vercel ◀── main 머지마다 자동 배포             └ repair-sweep (cron)  │
+│  └ 업데이터: 5분마다 main 확인  │ ◀── git fetch ──  main (CI 성공 커밋만 배포)                  ├ watch.yml (2시간 cron│
+│      백업 → 배포 → 확인 → 롤백  │                                                            │  하트비트 + sweep)    │
+└─────────────────────────────┘                   Vercel ◀── main 머지마다 자동 배포             └ signal.yml (Vercel·CI)│
 ```
 
 **원칙**
@@ -105,9 +105,9 @@
 ### 3.5 하트비트와 Vercel
 
 - 감시자는 30분마다 고정 이슈 "heartbeat"(라벨 `heartbeat`)의 **본문**을 `last_seen: <UTC>, sha: <배포된 커밋>, next_run: <다음 회차 예정 시각 UTC>`로 바꾼다. `next_run`은 `config.toml`의 `[schedule]`과 `timezone`으로 계산한 다음 회차 예정 시각이다(오늘 남은 것이 없으면 내일 것). medic은 `tomllib`(표준 라이브러리)로 읽는다.
-- `heartbeat.yml`(15분 cron, Claude 없음)은 `last_seen`이 45분보다 오래되었고 **`next_run`이 이미 지났으면** 텔레그램으로 "노트북 응답이 없어요. 꺼짐·잠자기·고장 중 하나예요. 지나간 회차는 켜지면 따라잡아요."를 보낸다. Asia/Seoul 하루에 한 번만 보낸다(이슈에 `stale-YYYY-MM-DD` 라벨로 표시). 회차가 지나지 않은 잠자기에는 보내지 않는다(P1).
-- 알림 시각은 `max(last_seen + 45분, next_run)` 뒤 첫 cron 실행이다. GitHub cron은 부하에 따라 수십 분 늦을 수 있다(완료 조건 6).
-- Vercel 빌드 실패는 노트북을 거치지 않는다. `vercel-failure.yml`이 `status` 이벤트(컨텍스트가 `Vercel`로 시작, `failure`, 브랜치 `main`)를 받아 같은 지문의 열린 이슈가 없으면 `incident` 이슈를 연다(10장 S4). 같은 워크플로가 `workflow_run`(`ci`, 브랜치 `main`, `failure`)도 받아 `ci:main` 지문으로 같은 일을 한다. 둘 다 이슈는 `REPAIR_PAT`으로 연다(4.2).
+- `watch.yml`(2시간 cron `7 */2 * * *`, Claude 없음)의 하트비트 단계(`.github/scripts/heartbeat_check.py`)는 `last_seen`이 45분보다 오래되었고 **`next_run`이 이미 지났으면** 텔레그램으로 "노트북 응답이 없어요. 꺼짐·잠자기·고장 중 하나예요. 지나간 회차는 켜지면 따라잡아요."를 보낸다. Asia/Seoul 하루에 한 번만 보낸다(이슈에 `stale-YYYY-MM-DD` 라벨로 표시). 회차가 지나지 않은 잠자기에는 보내지 않는다(P1).
+- 알림 시각은 `max(last_seen + 45분, next_run)` 뒤 첫 cron 실행이다. 확인 간격이 2시간이어도 조건은 "지금 이미 지났나"만 보므로 놓치지 않고, 늦어도 그 뒤 첫 실행이 보낸다. GitHub cron은 부하에 따라 수십 분 늦을 수 있다(완료 조건 6). 2시간은 GitHub Free 분량 때문에 Dahun이 고른 값이다(2026-10-24).
+- Vercel 빌드 실패는 노트북을 거치지 않는다. `signal.yml`이 `status` 이벤트(컨텍스트가 `Vercel`로 시작, `failure`, 그 커밋의 `branches`에 `main`이 있음. Vercel은 `develop` 미리보기도 빌드하므로 `develop`에만 있는 커밋은 거른다)를 받아 같은 지문의 열린 이슈가 없으면 `incident` 이슈를 연다(10장 S4). 같은 워크플로가 `workflow_run`(`ci`, 브랜치 `main`, `push`, `failure`)도 받아 `ci:main` 지문으로 같은 일을 한다(develop에서 통과한 SHA라 작업을 건너뛴 `already_green` main 실행은 `success`로 끝나 오지 않는다). 같은 지문의 열린 이슈가 있으면 댓글만 단다. 조각 라벨은 달지 않는다. `status` 이벤트의 `branches`는 최대 10개라, 그 커밋을 담은 브랜치가 10개를 넘으면 `main`이 빠져 놓칠 수 있다(받아들임. 수리 브랜치는 끝나면 지운다). 둘 다 이슈는 `REPAIR_PAT`으로 연다(4.2).
 
 ## 4. 클라우드 수리
 
@@ -126,24 +126,25 @@
 
 | 쓰기 | 신원 |
 |---|---|
-| medic이 이슈 열기·라벨·본문 수정 | 노트북 `.env`의 `MEDIC_GITHUB_TOKEN` (fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기) |
-| `vercel-failure.yml`의 이슈 열기, `repair.yml`의 라벨·머지, `repair-sweep` | 저장소 시크릿 `REPAIR_PAT` (fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기) |
-| 수리 브랜치 푸시·PR 열기 | `claude-code-action`이 쓰는 Claude GitHub App 토큰. 안 되면 `REPAIR_PAT`(10장 S1) |
+| medic이 이슈 열기·라벨·본문 수정 | 노트북 `.env`의 `MEDIC_GITHUB_TOKEN` (fine-grained PAT, 이 저장소만: Issues 읽기·쓰기, Contents 읽기, Actions 읽기, Commit statuses 읽기, Pull requests 읽기(“고쳤어요” 알림의 PR 제목·링크)) |
+| `signal.yml`의 이슈 열기, `repair.yml`의 라벨·머지, `watch.yml`의 sweep(라벨, PR 닫기, `repair.yml` 부르기)·하트비트 라벨 | 저장소 시크릿 `REPAIR_PAT` (fine-grained PAT, 이 저장소만: Issues·Pull requests·Contents 읽기·쓰기, Actions 읽기·쓰기(sweep의 `workflow_dispatch`)) |
+| 수리 브랜치 푸시·PR 열기 | `REPAIR_PAT`, 단 **Claude 단계 밖의 셸 작업**이 한다(10장 S1의 대안. App 설치가 필요 없고, PAT이 연 PR은 `ci.yml`을 깨운다). Claude는 읽기 전용 `GITHUB_TOKEN`만 받아 커밋만 하고, 그 커밋은 git bundle로 새 러너의 `publish` 작업에 넘어가 거기서 PAT으로 푸시·PR 열기를 한다. 체크아웃은 모두 `persist-credentials: false`라 의존성 설치도 쓰기 토큰을 못 본다. `.github/workflows/`를 바꾼 커밋은 PAT에 Workflows 권한이 없어 푸시가 거부되고 그 시도는 실패로 센다(금지 경로 검사는 두지 않는다, Q4) |
 
-PAT은 만료일을 1년으로 두고, 만료 30일 전부터 `heartbeat.yml`이 하루 한 번 텔레그램으로 알린다(만료일은 저장소 변수 `PAT_EXPIRES`). medic의 `git fetch`는 같은 `MEDIC_GITHUB_TOKEN`을 Git 자격 증명으로 쓴다.
+PAT은 만료일을 1년으로 두고, 만료 30일 전부터 `watch.yml`이 하루(Asia/Seoul) 한 번 텔레그램으로 알린다(만료일은 저장소 변수 `PAT_EXPIRES`, 배포 흐름의 `RELEASE_PAT_EXPIRES`·`DEV_PAT_EXPIRES`도 함께. 하루 한 번 표시는 heartbeat 이슈의 `pat-reminded-YYYY-MM-DD` 라벨). medic의 `git fetch`는 같은 `MEDIC_GITHUB_TOKEN`을 Git 자격 증명으로 쓴다.
 
 ### 4.3 `repair.yml`
 
-- **트리거**: `issues`의 `labeled` 하나만. 라벨이 `incident`, `rolled-back`, `recurred` 중 하나일 때. (라벨을 단 채 이슈를 열면 `opened`와 `labeled`가 둘 다 와서, `opened`는 쓰지 않는다.) 그리고 `repair-sweep`(30분 cron)이 열린 `incident` 이슈 중 `needs-dahun`·`repairing`·`merged`가 없는 것을 골라 `workflow_dispatch`(입력 `issue`)로 부른다(이벤트를 놓쳤거나 줄이 밀린 경우). 또 `repairing`인데 그 이슈의 `repair.yml` 실행이 진행 중이 아니면(취소·시간 초과로 죽은 시도) 그 시도를 정리한다: 열린 수리 PR이 CI 성공 상태면 머지 단계만 다시 돌리고(같은 PR 재사용), 아니면 PR을 닫고 브랜치를 지우고 `repairing`을 떼고 `failed-N`을 하나 올린다.
-- **동시성**: `concurrency: repair-${{ github.event.issue.number || inputs.issue }}`, `cancel-in-progress: false`. 서로 다른 장애는 동시에 고칠 수 있고, 머지 단계는 `concurrency: repair-merge`로 하나씩 한다(같은 그룹 대기 하나만 남는 GitHub 동작 때문에 머지는 대기 대신 `repair-sweep`이 다시 집는다).
-- **시작 전 검사**(셸, Claude 없음): 저장소 변수 `AUTO_REPAIR`가 `off`면 멈춤. 이슈 라벨의 실패 수(`failed-1`, `failed-2`)가 `REPAIR_MAX_FAILURES`(저장소 변수, 기본 2) 이상이거나, 오늘(Asia/Seoul) `auto-repair` 라벨로 머지된 PR이 `REPAIR_MAX_MERGES_PER_DAY`(기본 3) 이상이면 `needs-dahun`을 달고 실패 알림(6장) 후 멈춤. 통과하면 `repairing` 라벨을 단다.
+- **트리거**: `issues`의 `labeled` 하나만. 라벨이 `incident`, `rolled-back`, `recurred` 중 하나일 때. (라벨을 단 채 이슈를 열면 `opened`와 `labeled`가 둘 다 와서, `opened`는 쓰지 않는다.) 그리고 `watch.yml`의 sweep(2시간 cron, `.github/scripts/sweep.py`)이 열린 `incident` 이슈 중 `needs-dahun`·`repairing`·`merged`가 없는 것을 골라 `workflow_dispatch`(입력 `issue`, `mode=full`)로 부른다(이벤트를 놓쳤거나 줄이 밀린 경우). 그 이슈의 `repair.yml` 실행이 대기·진행 중이거나 10분 안에 끝났으면 건너뛴다(실행은 `run-name: repair #<이슈>`로 잇는다). 또 `repairing`인데 그 이슈의 `repair.yml` 실행이 진행 중이 아니면(취소·시간 초과로 죽은 시도) 그 시도를 정리한다: 열린 수리 PR이 CI 성공 상태면 머지 단계만 다시 돌리고(`mode=merge_only`, 같은 PR 재사용), CI가 아직 돌면 다음 sweep까지 두고, 아니면 PR을 닫고 브랜치를 지우고 `repairing`을 떼고 `failed-N`을 하나 올린다.
+- **브랜치**: 수리는 핫픽스다(배포 흐름 스펙 7장). 체크아웃 `ref: main`, 수리 브랜치는 `main`에서 따고 PR base는 `main`. 머지 뒤 `sync-develop.yml`이 `main`을 `develop`에 합친다.
+- **동시성**: `concurrency: repair-${{ github.event.issue.number || inputs.issue }}`, `cancel-in-progress: false`. 수리를 부르지 않는 라벨(`be`, `failed-N`, `repairing` 등)의 `labeled` 실행은 `repair-noop-<run_id>`로 따로 묶어, 진짜 대기 실행을 밀어내지 않게 한다. 서로 다른 장애는 동시에 고칠 수 있고, 머지 단계는 `concurrency: repair-merge`로 하나씩 한다(같은 그룹 대기 하나만 남는 GitHub 동작 때문에 머지는 대기 대신 sweep이 다시 집는다).
+- **시작 전 검사**(셸, Claude 없음): 저장소 변수 `AUTO_REPAIR`가 `off`면 멈춤. 이슈 라벨의 실패 수(`failed-1`, `failed-2`)가 `REPAIR_MAX_FAILURES`(저장소 변수, 기본 2) 이상이거나, 오늘(Asia/Seoul) `auto-repair` 라벨로 머지된 PR이 `REPAIR_MAX_MERGES_PER_DAY`(기본 3) 이상이면 `needs-dahun`을 달고 실패 알림(6장) 후 멈춤. 통과하면 `repairing` 라벨을 단다. 열린 `incident` 이슈가 아니거나 이미 `needs-dahun`·`merged`·`repairing`이면 아무것도 하지 않는다(`needs-dahun`이 이미 있으면 실패 알림도 다시 보내지 않는다). `mode=merge_only`는 `repairing`이 있을 때만 머지 단계로 간다. 스크립트 `.github/scripts/repair_gate.py`.
 - **Claude 단계**: `anthropics/claude-code-action`, 인증은 시크릿 `CLAUDE_CODE_OAUTH_TOKEN`(Dahun의 구독 로그인, 10장 S1). 프롬프트는 `.github/repair-prompt.md`. 순서:
   1. 이슈 본문으로 원인을 찾고 **실패하는 테스트를 먼저** 쓴다. 재현하지 못하면 진단만 이슈 댓글로 남기고 끝낸다(실패로 셈).
   2. 고치고 `ruff check`, `pytest`, 바뀐 웹 앱의 `npm test`·`npm run build`를 통과시킨다.
   3. 브랜치 `auto-repair/<이슈>-<시도>`로 PR을 연다. 본문 첫 줄 `Repairs #<이슈>`, 원인·수정·재현 테스트·되돌리는 법. 라벨 `auto-repair`.
   4. `.claude/agents/code-reviewer.md` 리뷰를 돌려 BLOCKER/SHOULD를 고친다(기존 작업 규칙과 같다).
   5. 재시도(`rolled-back`, `recurred`)이고 조각이 `app`/`dashboard`면 "직전 수리 PR을 `git revert`하는 것부터 검토"를 더한다.
-- **머지 단계**(셸, Claude 없음): PR 머리 커밋의 `ci.yml` 실행이 끝날 때까지 기다려 결과를 `GET /actions/runs?head_sha=`로 직접 확인한다. 필수 검사 설정이 없을 수 있어서 `--required` 검사에 기대지 않는다(10장 S6). 성공이면 `REPAIR_PAT`으로 `gh pr merge <PR> --squash --body "Repairs #<이슈>"`로 머지하고(squash 커밋 본문은 저장소 설정에 따라 PR 본문을 담지 않으므로 명시한다) 이슈의 `repairing`을 `merged`로 바꾼다. CI가 실패하면 Claude 단계를 한 번 더 돌린다(같은 시도 안에서 최대 1회). 그래도 실패면 `failed-N` 라벨을 하나 올리고 `repairing`을 뗀다 → `repair-sweep`이 다음 시도를 집는다.
+- **머지 단계**(셸, Claude 없음): PR 머리 커밋의 `ci.yml` 실행이 끝날 때까지 기다려 결과를 `GET /actions/runs?head_sha=`로 직접 확인한다. 필수 검사 설정이 없을 수 있어서 `--required` 검사에 기대지 않는다(10장 S6). PR은 이 저장소의 브랜치 `auto-repair/<이슈>-*`로 찾고(포크 제외), CI는 그 브랜치의 `.github/workflows/ci.yml` 실행만 본다(`cancelled`·`skipped`는 아직 안 끝난 것으로 본다). 성공이면 `REPAIR_PAT`으로 `PUT /pulls/<PR>/merge`(`merge_method=squash`, `commit_message="Repairs #<이슈>"`, 확인한 `sha`)로 머지하고(squash 커밋 본문은 저장소 설정에 따라 PR 본문을 담지 않으므로 명시한다) 이슈의 `repairing`을 `merged`로 바꾼다. CI가 실패하면 Claude 단계를 한 번 더 돌린다(같은 시도 안에서 최대 1회). 그래도 실패면(또는 PR이 없거나 단계가 실패하면) 정리 작업(`settle`)이 PR을 닫고 브랜치를 지우고 `failed-N` 라벨을 하나 올리고 `repairing`을 뗀다 → sweep이 다음 시도를 집는다. CI가 30분 안에 안 끝나면(시간 초과) 또는 머지 작업이 취소되면(동시성 밀림) `repairing`을 두고 끝낸다: sweep이 CI 초록을 보면 머지만 다시 한다. 머지에 성공하면 라벨 일보다 먼저 결과를 남기고 `merged`부터 단다. 머지 뒤 라벨 일에서 죽어도 settle·sweep이 이번 시도(마지막 `repairing` 뒤)의 머지된 PR을 보고 `merged`로 끝낸다. 실패 라벨은 시도 번호(`failed-<시도>`)로 달아 다시 해도 두 번 세지 않는다. 머지된 수리 브랜치는 지운다. sweep은 CI 결과 없이 6시간 넘게 멈춘 PR을 정리한다. 스크립트 `.github/scripts/repair_merge.py`.
 - 금지선은 두지 않는다(Q4). 머지는 **CI 성공 확인**이 필수이고, 그것을 Claude가 아니라 셸 단계가 한다. 저장소 플랜이 브랜치 보호를 지원하면 `main`에 `ci.yml` 필수 검사도 건다.
 
 ### 4.4 장애 상태
@@ -191,7 +192,7 @@ medic 프로세스 안에서 5분마다:
 
 Vercel이 `main` 머지마다 배포한다. Vercel 토큰은 두지 않는다. medic은 `merged` 상태의 웹 장애(`app`, `dashboard`, `vercel` 지문)마다:
 
-1. 그 `Repairs #N` 커밋(또는 더 새 `main` 커밋)의 Vercel 커밋 상태가 `success`가 될 때까지 기다린다(`GET /commits/{sha}/status`, Commit statuses 읽기 권한).
+1. 그 `Repairs #N` 커밋의 Vercel 배포가 `success`가 될 때까지 기다린다(`GET /commits/{sha}/statuses`, Commit statuses 읽기 권한). 컨텍스트는 정확히 하나: `app` → `Vercel – my-planner`, `dashboard` → `Vercel – my-planner-dashboard`(`config.medic.toml`의 `vercel_context_app`·`vercel_context_dashboard`, 저장소 변수 `VERCEL_CONTEXT_APP`·`VERCEL_CONTEXT_DASHBOARD`와 같게), `vercel:<컨텍스트>` → 그 컨텍스트. 만든 계정이 `vercel[bot]`인 상태만 센다. 볼 커밋은 배포 흐름 스펙 6.2 5의 `W`와 같은 생각이다: `Repairs #N` 커밋과 그 뒤 `main` 커밋 중 그 웹 폴더를 바꾼 가장 새 커밋(Vercel은 `ignoreCommand`로 안 바꾼 커밋의 빌드를 건너뛴다). 그런 커밋이 없으면(수리가 웹 폴더를 안 바꿨다) 지금 운영 중인 배포(그 폴더를 바꾼 가장 새 커밋)를 본다. 폴더를 모르는 `vercel:` 컨텍스트는 `Repairs #N` 커밋부터 그 컨텍스트 상태가 처음 있는 커밋을 본다(최종 리뷰 I-3).
 2. 그 뒤 `web_verify_minutes`(60분) 동안 같은 지문의 `client_error`가 없으면 `resolved`: 이슈를 닫고 "고쳤어요" 알림. `vercel:` 지문은 1번의 `success`만으로 `resolved`.
 3. 같은 지문이 다시 나면 `rolled-back` 대신 `failed-N` +1과 `recurred` 라벨 → 다음 시도(재시도 프롬프트는 "직전 수리 PR을 `git revert`하는 것부터 검토").
 4. 3시간 안에 Vercel 상태가 `success`가 되지 않으면 `failed-N` +1.
@@ -208,12 +209,12 @@ Vercel이 `main` 머지마다 배포한다. Vercel 토큰은 두지 않는다. m
 |---|---|---|
 | 고침 | "🔧 자동으로 고쳤어요: <PR 제목>. <PR 링크>" | medic → BE `POST /api/v1/internal/notify` → 실제 통로(앱 푸시, 안 되면 텔레그램) |
 | 못 고침 | "⚠️ 자동으로 못 고쳤어요: <지문>. 지금은 <이전 버전으로 돌려 둠/그대로>. <이슈 링크>" | BE가 답하면 위와 같은 길, 아니면 medic이나 Actions가 텔레그램 API로 직접 |
-| 노트북 응답 없음 | 3.5 | `heartbeat.yml` → 텔레그램 |
-| PAT 만료 임박 | "GitHub 토큰이 <날짜>에 만료돼요" | `heartbeat.yml` → 텔레그램 |
+| 노트북 응답 없음 | 3.5 | `watch.yml` → 텔레그램 |
+| PAT 만료 임박 | "GitHub 토큰이 <날짜>에 만료돼요"(배포 흐름 PAT은 "GitHub 토큰(<이름>)이 …") | `watch.yml` → 텔레그램 |
 
 `POST /api/v1/internal/notify`: 기존 API 토큰 인증(원격 주소 검사는 `tailscale serve`가 127.0.0.1로 프록시하므로 쓰지 않는다). 본문 `{"text": …, "kind": "recovery"}`. BE는 기존 전달 경로(`harness/delivery`, 실제 통로 선택)로 보내고 DB에는 쓰지 않는다(`run_deliveries`는 회차 전용이라 맞지 않다). 보낸 사실은 로그 이벤트 `recovery_notice_sent`(필드 `channel`)로만 남긴다. 두뇌는 거치지 않는다.
 
-**P1(피로를 늘리지 않는다)과 마스터 5.5의 하루 3회**: 복구 알림은 비서가 먼저 거는 "연락"이 아니라 시스템 알림이라 하루 3회 상한에 세지 않는다. 대신 복구 알림끼리 하루 최대 `max_notices_per_day`(5)개로 묶고, 넘치면 그날 남은 것은 다음 아침 브리핑 앞에 한 줄 묶음으로 붙인다. 마스터 5.5에 이 예외를 한 줄 더한다.
+**P1(피로를 늘리지 않는다)과 마스터 5.5의 하루 3회**: 복구 알림은 비서가 먼저 거는 "연락"이 아니라 시스템 알림이라 하루 3회 상한에 세지 않는다. 대신 복구 알림끼리 하루 최대 `max_notices_per_day`(5)개로 묶고, 넘치면 그날 남은 것은 `medic.db`에 쌓았다가, 다음 아침 회차 시각 이후 medic의 첫 tick이 `/internal/notify`로 한 줄 묶음("자동 복구 알림 N개: …")을 따로 보낸다. 아침 브리핑에는 붙이지 않는다(BE를 바꾸지 않으려고). 묶음은 상한에 세지 않는다. 마스터 5.5에 이 예외를 한 줄 더한다.
 
 기록: GitHub 이슈·PR이 정본이다. 대시보드·운영 앱의 "복구 기록" 화면은 2단계(9장).
 
@@ -236,7 +237,7 @@ P5는 "GitHub에는 코드와 문서만"이다. 장애 이슈는 그 예외이�
 
 ## 9. 나누기 (단계)
 
-- **1단계(이 스펙)**: medic(감시자 + 업데이터 + 배포 롤백 + `medic_boot.py`), 워크플로 5개(`ci`, `repair`, `repair-sweep`, `heartbeat`, `vercel-failure`)와 `.github/repair-prompt.md`, BE `POST /client-errors`·`POST /internal/notify`·`/health` 필드, 운영 앱 에러 보고, 작업 스케줄러 작업 `my-planner-medic`(실행 파일 `scripts/medic_boot.py`, 로그온 + 5분 감시 트리거; `register_task.ps1`, `check_tasks.ps1`, 새 XML 틀 `task_my-planner-medic.xml.tmpl`), README "자동 복구" 절(시크릿 넣기, 끄는 법, 손으로 되살리기).
+- **1단계(이 스펙)**: medic(감시자 + 업데이터 + 배포 롤백 + `medic_boot.py`), 워크플로 4개(`ci`, `repair`, `watch` = 하트비트 + sweep, `signal` = Vercel 상태 + `main` CI 실패)와 `.github/repair-prompt.md`, 판단 스크립트 `.github/scripts/*.py`, BE `POST /client-errors`·`POST /internal/notify`·`/health` 필드, 운영 앱 에러 보고, 작업 스케줄러 작업 `my-planner-medic`(실행 파일 `scripts/medic_boot.py`, 로그온 + 5분 감시 트리거; `register_task.ps1`, `check_tasks.ps1`, 새 XML 틀 `task_my-planner-medic.xml.tmpl`), README "자동 복구" 절(시크릿 넣기, 끄는 법, 손으로 되살리기).
 - **2단계**: 대시보드·운영 앱의 "복구 기록" 화면(`GET /api/v1/incidents`), 대시보드 에러 보고(대시보드가 생긴 뒤), 소스맵으로 브라우저 스택 풀기.
 
 ## 10. 미리 확인할 것 (스파이크)
@@ -246,7 +247,7 @@ P5는 "GitHub에는 코드와 문서만"이다. 장애 이슈는 그 예외이�
 | S1 | `claude-code-action`이 `CLAUDE_CODE_OAUTH_TOKEN`(구독)으로 private 저장소에서 브랜치 푸시·PR 열기가 되고, **그 PR이 `ci.yml`을 깨우는가** | PR 열기를 `REPAIR_PAT`으로. 구독 토큰이 안 되면 API 키로 바꾸고 ADR 0001에 예외를 적는다 |
 | S2 | 기존 테스트가 `windows-latest`에서 통과하는가 | 실패 테스트를 고치는 티켓을 먼저 둔다 |
 | S3 | medic(일반 권한, `pythonw`)이 `Disable-/Stop-/Enable-/Start-ScheduledTask my-planner`를 할 수 있는가 | `my-planner` 작업을 같은 사용자가 등록했으면 될 것으로 본다. 안 되면 BE에 토큰 인증 종료 엔드포인트를 두고, 끄기는 작업 XML의 감시 트리거 대신 medic이 맡는다 |
-| S4 | Vercel 커밋 상태가 `status` 이벤트로 Actions를 깨우는가 | `repair-sweep` cron이 `main` 머리 커밋의 상태를 읽는다 |
+| S4 | Vercel 커밋 상태가 `status` 이벤트로 Actions를 깨우는가 | `watch.yml` cron이 `main` 머리 커밋의 상태를 읽는다 |
 | S5 | BE를 멈춘 뒤 `git merge`·`pip install`이 Windows 파일 잠금 없이 되는가(medic은 venv 패키지를 불러오지 않으므로 잠그지 않아야 한다) | venv를 커밋별 폴더로 두고 작업 XML이 가리키는 경로를 바꾸는 방식으로 |
 | S6 | 저장소 플랜(GitHub Free, private)에서 브랜치 보호·룰셋을 쓸 수 있는가 | 쓸 수 없어도 4.3 머지 단계의 셸 확인이 막는다. 쓸 수 있으면 함께 건다 |
 
@@ -269,6 +270,20 @@ P5는 "GitHub에는 코드와 문서만"이다. 장애 이슈는 그 예외이�
 | 3 | 위 머지 뒤 | 20분 안에 이슈 닫힘, 주 통로 알림 "🔧 자동으로 고쳤어요" 1개, `/health`의 `version.app`이 새 커밋 |
 | 4 | `MEDIC_PROBE_HEALTH=1`일 때만 `/health`가 500을 주는 분기를 넣은 PR을 머지(CI는 통과), 노트북에서 그 변수를 켜고 다음 배포(문서 한 줄 수정 + `src/` 주석 한 줄)를 머지 | 확인 실패 → `git -C <repo> rev-parse HEAD`가 `prev_sha`. 사람 커밋이므로 4.4대로 `health:…` 지문의 새 이슈가 열리고 본문에 롤백한 커밋 범위, `repair.yml` 새 실행 |
 | 5 | `AUTO_REPAIR=on`, 재현 불가능한 지문의 가짜 이슈를 `MEDIC_GITHUB_TOKEN`으로 열기 | 2번 실패 뒤 `needs-dahun`, 알림 "⚠️ 자동으로 못 고쳤어요" 1개 |
-| 6 | 저녁 체크인 30분 전 노트북 종료 | 체크인 시각이 지나고 마지막 하트비트 뒤 75분 안에 텔레그램 "노트북 응답이 없어요" 1개. 같은 날 다시 없음 |
+| 6 | 저녁 체크인 30분 전 노트북 종료 | 체크인 시각 뒤 첫 `watch.yml` 실행(2시간 cron + 지연, 급하면 `workflow_dispatch`)에 텔레그램 "노트북 응답이 없어요" 1개. 같은 날 다시 없음 |
 | 7 | 운영 앱에 개발용 "에러 던지기" 버튼(빌드 플래그로만 보임)을 누름 | 10분 안에 `[incident] app:Error /settings` 이슈. 수리 머지 → Vercel `success` → 60분 뒤 이슈 닫힘, 알림 1개 |
 | 8 | `pytest tests/medic/test_redaction.py` (할 일 제목·대화·메모·`C:\Users\dahun` 경로가 든 가짜 로그와 health로 이슈 본문 생성) | 그 문자열이 본문에 하나도 없음, `1 passed` |
+
+## 13. 계획에서 정한 것 (구현 계획 "계획의 결정" 2–10, 티켓 10이 옮김)
+
+1. 넘친 알림 묶음은 6장대로(티켓 08이 옮겼다).
+2. `POST /internal/notify`는 `Dispatcher.send_notice` → 기존 `Delivery.deliver_notice`(고정 안내 경로)를 쓴다.
+3. `ClientErrorBody`의 필드 길이·정규식은 계획(티켓 02)이 정했다: `version` ≤40, `route` ≤120(`^/[A-Za-z0-9_\-/\[\]]*$`), `name` ≤80(`^[A-Za-z][A-Za-z0-9_.]*$`), `frames` ≤10개 각 ≤160, 모르는 키 거부.
+4. CI 실패 뒤 같은 시도 안 두 번째 Claude 단계는 같은 `repair.yml` 실행의 두 번째 작업(`refix` → `remerge`)이다. 새 `workflow_dispatch`가 아니다.
+5. medic의 "오늘"(알림 상한, 하루 한 번)은 논리적 날짜(04:00 경계), Actions의 "오늘"(머지 한도, 하트비트·PAT 알림)은 Asia/Seoul 달력 날짜다.
+6. `ci.yml`에 `actionlint` 작업을 둔다(v1.7.7, 러너의 shellcheck로 `run:` 셸도 본다). ruff 경로는 `src tests .github/scripts`.
+7. `POST /client-errors` 검증 실패는 3.3대로 `422`다(다른 본문 검증의 `400`과 다르다).
+8. 정상 지연 억제에 `plan_open`·`proactive_cap`을 더하고, 행 없는 지연은 `late_run:tick_stalled`로 잡는다.
+9. 워크플로는 `repair`, `watch`(2시간 cron: 하트비트 + sweep), `signal`(Vercel `status` + `main` `ci` 실패 `workflow_run`) 셋과 `ci`다. GitHub Free 분량 때문에 스펙의 `heartbeat`·`repair-sweep`·`vercel-failure`를 묶었다. CI의 Windows 검사는 `main`·`develop` 푸시(BE 변경)와 수리 PR에서만 돈다.
+10. 웹만 바뀐 `main` 전진에서도 `Repairs #N` 장애를 `merged`로 바꾼다. Actions가 연 `vercel:`·`ci:main` 이슈는 감시자가 가져오고, `ci:main`은 `main` CI 초록에서 닫는다.
+11. Actions 스크립트(`.github/scripts/`)는 `src/`를 가져오지 않는다. 라벨·제목·알림 틀은 medic과 같은 값을 다시 적고, 시험(`tests/workflows/test_scripts_contract.py`)이 둘이 같은지 본다.

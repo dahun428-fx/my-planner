@@ -89,8 +89,7 @@ SP6_CASES: dict[str, tuple[list[dict], list[FakeTurn], str]] = {
     ),
     "chat_period_list": (
         [{"title": "꾸민 보고서 초안", "areas": ["career"], "planned_for": "2026-10-25"},
-         {"title": "꾸민 독서 모임", "areas": ["learning"], "planned_for": "2026-10-26",
-          "scheduled_at": "2026-10-26T19:30"},
+         {"title": "꾸민 독서 모임", "areas": ["learning"], "planned_for": "2026-10-26"},  # SP9: 할 일에 시각 없음
          {"title": "꾸민 화분 분갈이", "areas": ["quality_of_life"], "planned_for": "2026-10-27"},
          {"title": "꾸민 산책", "areas": ["health"], "planned_for": "2026-10-28"}],
         [FakeTurn([("move_task", {"id": 1, "planned_for": "2026-10-29"}),
@@ -113,8 +112,7 @@ SP6_CASES: dict[str, tuple[list[dict], list[FakeTurn], str]] = {
     "chat_gallery": (
         [{"title": "꾸민 치과 예약", "areas": ["health"]},
          {"title": "꾸민 장보기", "areas": ["quality_of_life"], "planned_for": "2026-10-25"},
-         {"title": "꾸민 독서 모임", "areas": ["learning"], "planned_for": "2026-10-27",
-          "scheduled_at": "2026-10-27T19:30"}],
+         {"title": "꾸민 독서 모임", "areas": ["learning"], "planned_for": "2026-10-27"}],  # SP9: 할 일에 시각 없음
         [FakeTurn([
             ("move_task", {"id": 2, "planned_for": "2026-10-26"}),
             ("ui_todo_list", {"title": "꾸민 목록", "task_ids": [1, 2, 3]}),
@@ -241,7 +239,7 @@ def test_sp6_golden_contents():
     assert [n for n, _ in _parts(date_choice)] == ["ui_date_choice"]  # 이 답에는 `ui_result`가 없다
     (activity,) = [c for c in date_choice if c["type"] == "data-activity"]
     assert len(activity["data"]["activity_ids"]) == 1  # 추가(확인 칸이 추가와 되돌리기를 맡는다)
-    assert _parts(date_choice)[0][1]["data"]["todo"]["planned_for"] is None
+    assert _parts(date_choice)[0][1]["data"]["todo"]["planned_for"] == "2026-10-24"  # 날짜를 빼면 오늘(SP6 1장 1)
 
     result = _golden("chat_result")
     ((_, out),) = _parts(result)

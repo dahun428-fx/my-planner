@@ -13,6 +13,7 @@ import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { useToast } from "../components/Toast";
+import { onTodayRefresh } from "../lib/push";
 import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
@@ -83,7 +84,8 @@ function mergeById(first: ActivityItem[], older: ActivityItem[]): ActivityItem[]
   return [...first, ...older.filter((a) => !seen.has(a.id))].sort(newestFirst);
 }
 
-// Spec 5.5.6, F8: what the secretary and I changed, newest first, with undo.
+// Spec 5.5.6, F8: what the secretary and I changed, newest first, with undo. Off the tabs since
+// SP9-04: "‹ 더보기" back (SP9 9.1).
 export function Activity() {
   const { state, recheck } = useConnection();
   const canChat = useWritable(true, { strict: true });
@@ -120,6 +122,7 @@ export function Activity() {
   const afterRef = useRef(afterPartAction);
   afterRef.current = afterPartAction;
   useEffect(() => chat.onClosed(() => afterRef.current()), [chat]);
+  useEffect(() => onTodayRefresh(() => afterRef.current()), []);
 
   const first = result?.kind === "ok" ? result.data : null;
   const items = useMemo(() => (first ? applyUndone(mergeById(first.items, older), undone) : []), [first, older, undone]);
@@ -220,7 +223,7 @@ export function Activity() {
     );
   } else if (result === null) {
     body = (
-      <Group>
+      <Group paper>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} size="row" />
         ))}
@@ -241,7 +244,7 @@ export function Activity() {
     body = <p className={styles.line}>{copy.status.safeMode}</p>;
   } else if (result.kind === "error") {
     body = (
-      <Group>
+      <Group paper>
         <BlockError code={result.code} onRetry={() => void refresh()} />
       </Group>
     );
@@ -262,7 +265,7 @@ export function Activity() {
           <p className={styles.line}>{copy.activity.empty}</p>
         ) : (
           groups.map((g) => (
-            <Group key={g.day} heading={g.head}>
+            <Group paper key={g.day} heading={g.head}>
               {g.rows.map(renderRow)}
             </Group>
           ))
@@ -280,6 +283,11 @@ export function Activity() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
+      <nav className={styles.bar}>
+        <Link href="/more/" className={styles.back}>
+          {copy.activity.back}
+        </Link>
+      </nav>
       <LargeTitle title={copy.activity.title} sub={copy.activity.intro} trailing={state ? <StatusDot state={state} /> : undefined} />
       {body}
       <ChatLauncher disabled={!canChat} offline={state?.kind === "offline"} reason={launcherReason(state?.kind)} onOpen={chat.open} />

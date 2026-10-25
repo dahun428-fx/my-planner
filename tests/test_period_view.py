@@ -1,6 +1,7 @@
 """하루·한 주 보기의 순수 함수 `period_view`, `period_outside` (SP6 스펙 6.4, 10.2). 내용은 꾸며 낸 것이다."""
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 from test_tools_tasks import ToolEnv
@@ -22,6 +23,11 @@ def _ctx():
 
 
 def _add(env, title, **kw):
+    if "scheduled_at" in kw:  # SP9 전 시각 있는 할 일(도구로는 못 만든다, SP9 5.4): 저장소로 바로 만든다
+        pf, at = kw.pop("planned_for", None), kw.pop("scheduled_at")
+        assert not kw
+        return env.repo.create(title, ["health"], planned_for=date.fromisoformat(pf) if pf else None,
+                               scheduled_at=datetime.fromisoformat(at).replace(tzinfo=ZoneInfo("Asia/Seoul"))).id
     return env.tools.add_task(_ctx(), title=title, areas=["health"], **kw)["id"]
 
 
