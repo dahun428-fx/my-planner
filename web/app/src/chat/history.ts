@@ -7,7 +7,8 @@ import type { ViewPart } from "./parts";
 
 const ELSEWHERE_MAX = 3;
 
-export type Meta = { conversation_id?: number | null; at?: string };
+/** `checkin_id`: a message sent to a run from the check-in chip (SP9 9.5); the transport sends it as the request's. */
+export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number };
 type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string };
 
 export interface History {

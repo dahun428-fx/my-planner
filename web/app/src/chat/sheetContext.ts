@@ -10,3 +10,11 @@ export interface ChatSheetApi {
 
 export const ChatSheetContext = createContext<ChatSheetApi>({ open: () => {}, onClosed: () => () => {} });
 export const useChatSheet = (): ChatSheetApi => useContext(ChatSheetContext);
+
+/**
+ * SP9 9.5 / 7.3: the sheet's state that outlives a render. `pickedConversationId` is the conversation
+ * opened from the list: set when a row is opened, cleared by "새 대화" and when the sheet closes.
+ * While it is set every POST /chat carries `resume_conversation_id` (a check-in chip's message does
+ * not: it carries only `checkin_id`, Review Focus 5). The check-in screen's own reply box never reads it.
+ */
+export const sheetState: { pickedConversationId: number | null } = { pickedConversationId: null };

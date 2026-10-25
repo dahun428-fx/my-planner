@@ -2,15 +2,23 @@ import "fake-indexeddb/auto";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
-import { afterEach, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { copy } from "../lib/copy";
 import { events, gatedResponse, golden, serveChat, sse, sseResponse } from "../test/chat";
+import todayJson from "../test/fixtures/today.json";
 import { renderWithProviders } from "../test/render";
+import { BASE, server } from "../test/server";
 import { ChatSheet } from "./ChatSheet";
 import { loadParts } from "./localParts";
 
 // Spec 13장 "대화 계약", 1장 완료 조건 4: the BE's golden SSE files, read from the repo, through
 // useChat + parts.ts to what the sheet shows.
+
+// SP9 9.5: the sheet reads /today for its quick chips.
+beforeEach(() => {
+  server.use(http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)));
+});
 
 afterEach(async () => {
   await clear();

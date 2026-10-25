@@ -5,7 +5,7 @@ import { clear } from "idb-keyval";
 import { http, HttpResponse } from "msw";
 import type { AppProps } from "next/app";
 import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveConn } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { onTodayRefresh } from "../lib/push";
@@ -27,6 +27,11 @@ import { ChatSheet } from "./ChatSheet";
 import { chatSheetChunk } from "./loadChatSheet";
 import { saveParts } from "./localParts";
 import type { ViewPart } from "./parts";
+
+// SP9 9.5: the sheet reads /today for its quick chips (the fixture's check-ins are long past: no front chip).
+beforeEach(() => {
+  server.use(http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)));
+});
 
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -583,6 +588,8 @@ describe("ChatSheet in the app", () => {
     await waitFor(() => expect(launcher).toBeEnabled());
     await user.click(launcher);
     await ready();
+    // The screen's read and the sheet's own (its quick chips, SP9 9.5) are both in before counting.
+    await waitFor(() => expect(hits.today).toBeGreaterThanOrEqual(2));
     const before = hits.today;
     await user.keyboard("{Escape}");
     await waitFor(() => expect(hits.today).toBe(before + 1));
@@ -608,6 +615,7 @@ describe("ChatSheet in the app", () => {
       // The new BE's history cannot be read: nothing of the old one may stand in for it.
       http.get(`${OTHER_API}/conversations`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })),
       http.get(`${OTHER_API}/activity`, () => HttpResponse.json({ items: [], next_before: null, next_since: null })),
+      http.get(`${OTHER_API}/today`, () => HttpResponse.json(todayJson)), // the quick chips (SP9 9.5)
       http.post(`${OTHER_API}/chat`, async ({ request }) => {
         otherChat.push((await request.json()) as Record<string, unknown>);
         return sseResponse(textAnswer("m-9-1", 9, "second BE answer"));
@@ -678,5 +686,230 @@ describe("ChatSheet composer", () => {
     await user.type(input, "할 일");
     expect(input).toHaveAttribute("data-ready");
     expect(screen.getByRole("button", { name: copy.chat.send })).toBeEnabled();
+  });
+});
+
+// SP9 9.5: the list button in the head opens the conversation list inside the sheet. A conversation
+// opened from it is read with /messages, and while it is shown every message carries
+// resume_conversation_id (7.3). "새 대화" (the list's button or the head icon) closes it on the BE
+// and starts an empty chat. Closing the sheet forgets the pick.
+describe("ChatSheet conversation list (SP9 9.5)", () => {
+  const LIST = [
+    { id: 5, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-24T01:00:00Z", last_message_at: "2026-10-24T01:01:00Z", closed_at: null, title: "지금 대화", summary: null },
+    { id: 3, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-20T01:00:00Z", last_message_at: "2026-10-20T01:05:00Z", closed_at: "2026-10-20T01:35:00Z", title: "책 고르기", summary: "사피엔스로 정했어요." },
+  ];
+
+  /** The latest conversation (limit=3, the sheet's first read), the list (any other limit), /messages, /conversations/new and DELETE. */
+  function serveConversations() {
+    const seen = { newPosts: 0, deleted: [] as number[] };
+    serveHistory({
+      messages: {
+        5: [{ id: "m-5-1", at: "2026-10-24T01:01:00Z", speaker: "secretary", text: "지금 대화의 말" }],
+        3: [
+          { id: "u-3-1", at: "2026-10-20T01:00:00Z", speaker: "user", text: "읽을 책 골라 줘" },
+          { id: "m-3-1", at: "2026-10-20T01:05:00Z", speaker: "secretary", text: "사피엔스 어때요" },
+        ],
+      },
+    });
+    server.use(
+      http.get(`${BASE}/conversations`, () => HttpResponse.json({ items: LIST, next_before: null })),
+      http.post(`${BASE}/conversations/new`, () => {
+        seen.newPosts += 1;
+        return HttpResponse.json({ closed: [5] });
+      }),
+      http.delete(`${BASE}/conversations/:id`, ({ params }) => {
+        seen.deleted.push(Number(params.id));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    return seen;
+  }
+
+  async function openFromList(user: ReturnType<typeof userEvent.setup>, title: string) {
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await user.click((await screen.findByText(title)).closest("button") as HTMLElement);
+  }
+
+  it("a conversation opened from the list is read, and every message then carries resume_conversation_id", async () => {
+    serveConversations();
+    const bodies = serveChat(
+      () => sseResponse(textAnswer("m-3-2", 3, "이어서 말해요")),
+      () => sseResponse(textAnswer("m-3-3", 3, "또 이어서요")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("지금 대화의 말")).toBeInTheDocument();
+    await openFromList(user, "책 고르기");
+    expect(await screen.findByText("사피엔스 어때요")).toBeInTheDocument();
+    expect(screen.queryByText("지금 대화의 말")).toBeNull();
+    await sendText(user, "그 책 몇 쪽이야?");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ conversation_id: 3, resume_conversation_id: 3 });
+    expect(await screen.findByText("이어서 말해요")).toBeInTheDocument();
+    await sendText(user, "고마워");
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ resume_conversation_id: 3 });
+  });
+
+  it("새 대화 in the head closes the conversation on the BE and starts an empty one: no resume after it", async () => {
+    const seen = serveConversations();
+    const bodies = serveChat(() => sseResponse(textAnswer("m-9-1", 9, "새로 시작해요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await openFromList(user, "책 고르기");
+    await screen.findByText("사피엔스 어때요");
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(seen.newPosts).toBe(1));
+    await waitFor(() => expect(screen.queryByText("사피엔스 어때요")).toBeNull());
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0].conversation_id).toBeNull();
+    expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+  });
+
+  it("새 대화 at the top of the list does the same and goes back to the chat", async () => {
+    const seen = serveConversations();
+    const bodies = serveChat(() => sseResponse(textAnswer("m-9-1", 9, "새로 시작해요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await screen.findByText("책 고르기");
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(seen.newPosts).toBe(1));
+    expect(await screen.findByRole("textbox", { name: copy.chat.inputLabel })).toBeInTheDocument();
+    expect(screen.queryByText("지금 대화의 말")).toBeNull();
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ conversation_id: null });
+    expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+  });
+
+  it("closing the sheet forgets the pick", async () => {
+    serveConversations();
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-2", 5, "네")));
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await openFromList(user, "책 고르기");
+    await screen.findByText("사피엔스 어때요");
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("지금 대화의 말")).toBeInTheDocument();
+    await sendText(user, "다시 왔어요");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ conversation_id: 5 });
+    expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+  });
+
+  it("deleting the conversation on screen empties the chat", async () => {
+    const seen = serveConversations();
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await screen.findByText("책 고르기");
+    await user.click(screen.getByRole("button", { name: copy.today.moreActions("지금 대화") }));
+    await user.click(screen.getByRole("button", { name: copy.chat.delete }));
+    const ask = await screen.findByText(copy.chat.deleteAsk);
+    await user.click(within(ask.closest("[role=dialog]") as HTMLElement).getByRole("button", { name: copy.chat.delete }));
+    await waitFor(() => expect(seen.deleted).toEqual([5]));
+    await user.click(screen.getByRole("button", { name: copy.chat.backToChat }));
+    await ready();
+    expect(screen.queryByText("지금 대화의 말")).toBeNull();
+  });
+});
+
+// SP9 9.5: the quick chip row above the input. A press sends the chip's sentence as my message;
+// the check-in chip goes to its run (checkin_id) and never with resume_conversation_id.
+describe("ChatSheet quick chips (SP9 9.5)", () => {
+  const openRun = {
+    ...todayJson.checkins[1],
+    sent_at: new Date(Date.now() - 60_000).toISOString(),
+    reply_until: new Date(Date.now() + 3_600_000).toISOString(),
+  };
+  const serveToday = (checkins: unknown[] = []) => server.use(http.get(`${BASE}/today`, () => HttpResponse.json({ ...todayJson, checkins })));
+
+  it("the fixed four above the input; a press sends the sentence as my bubble", async () => {
+    history(5, []);
+    serveToday();
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "무엇을 추가할까요?")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    const row = screen.getByRole("group", { name: copy.chat.chipsLabel });
+    expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["할 일 추가", "일정 추가", "메모하기", "오늘 정리해줘"]);
+    // The row sits right above the input.
+    expect(row.compareDocumentPosition(screen.getByRole("textbox", { name: copy.chat.inputLabel })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(within(row).getByRole("button", { name: "할 일 추가" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0].message as { parts: { text: string }[] }).parts[0].text).toBe("할 일 추가할래요");
+    const mine = screen.getByText("할 일 추가할래요");
+    expect(mine.closest("[data-message]")).toBeInTheDocument();
+    expect(await screen.findByText("무엇을 추가할까요?")).toBeInTheDocument();
+  });
+
+  it("test_checkin_chip_sends_checkin_id_not_resume: the check-in chip goes to its run even while a picked conversation is shown", async () => {
+    serveToday([openRun]);
+    serveHistory({ messages: { 3: [{ id: "m-3-1", at: "2026-10-20T01:05:00Z", speaker: "secretary", text: "사피엔스 어때요" }] } });
+    server.use(
+      http.get(`${BASE}/conversations`, () =>
+        HttpResponse.json({ items: [{ id: 3, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-20T01:00:00Z", last_message_at: "2026-10-20T01:05:00Z", closed_at: "2026-10-20T01:35:00Z", title: "책 고르기", summary: null }], next_before: null }),
+      ),
+    );
+    const bodies = serveChat(
+      () => sseResponse(textAnswer("m-8-1", 8, "오늘 어땠어요?")),
+      () => sseResponse(textAnswer("m-3-2", 3, "네")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await user.click((await screen.findByText("책 고르기")).closest("button") as HTMLElement);
+    await screen.findByText("사피엔스 어때요");
+    const chip = await screen.findByRole("button", { name: "체크인 하기" });
+    await waitFor(() => expect(chip).toBeEnabled());
+    await user.click(chip);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ checkin_id: 341 });
+    expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+    expect((bodies[0].message as { parts: { text: string }[] }).parts[0].text).toBe("체크인 할게요");
+    await screen.findByText("오늘 어땠어요?");
+    // The next plain message goes back to the picked conversation.
+    await sendText(user, "책 얘기 계속");
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ checkin_id: null, resume_conversation_id: 3 });
+  });
+
+  it("read-only: the chips are dimmed offline and while an answer is coming", async () => {
+    history(5, []);
+    serveToday();
+    const gate = gatedResponse(textAnswer("m-5-1", 5, "네"), [1]);
+    serveChat(gate.response);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    const chips = () => within(screen.getByRole("group", { name: copy.chat.chipsLabel })).getAllByRole("button");
+    expect(chips().every((b) => !(b as HTMLButtonElement).disabled)).toBe(true);
+    await user.click(chips()[3]);
+    await waitFor(() => expect(chips().every((b) => (b as HTMLButtonElement).disabled)).toBe(true));
+    gate.release();
+    await screen.findByText("네");
+    await waitFor(() => expect(chips().every((b) => !(b as HTMLButtonElement).disabled)).toBe(true));
+  });
+
+  it("offline: every chip is disabled", async () => {
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "지난 말" }]);
+    renderWithProviders(<ChatSheet open onClose={() => {}} />, { conn: "offline" });
+    const row = await screen.findByRole("group", { name: copy.chat.chipsLabel });
+    expect(within(row).getAllByRole("button").every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("the check-in screen's reply box has no chip row", async () => {
+    serveHistory({ messages: { 8: [{ id: "m-8-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "체크인 대화예요" }] } });
+    renderWithProviders(<ChatSheet open embedded onClose={() => {}} conversationId={8} checkinId={341} />);
+    await screen.findByText("체크인 대화예요");
+    expect(screen.queryByRole("group", { name: copy.chat.chipsLabel })).toBeNull();
   });
 });

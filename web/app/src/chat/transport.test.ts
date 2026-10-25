@@ -34,6 +34,38 @@ describe("buildChatBody", () => {
     expect(body.conversation_id).toBeNull();
   });
 
+  // SP9 9.5 / 7.3: while a conversation picked from the list is on screen, every message carries it.
+  it("carries resume_conversation_id on every message while a picked conversation is shown", () => {
+    const ctx = { conversationId: 4, checkinId: null, resumeConversationId: 4 };
+    const first = user(crypto.randomUUID(), "이어서 할게요");
+    const second = user(crypto.randomUUID(), "그리고 하나 더");
+    expect(buildChatBody([first], ctx).resume_conversation_id).toBe(4);
+    expect(buildChatBody([first, assistant("m-4-1", "네"), second], { ...ctx, conversationId: 9 }).resume_conversation_id).toBe(4);
+  });
+
+  it("no resume_conversation_id after 새 대화 (nothing picked)", () => {
+    const body = buildChatBody([user(crypto.randomUUID(), "안녕")], { conversationId: null, checkinId: null, resumeConversationId: null });
+    expect(Object.keys(body)).not.toContain("resume_conversation_id");
+  });
+
+  // Review Focus 5: a message sent from the check-in chip goes to that run (checkin_id) and never
+  // carries the picked conversation, so the two never come together from the app.
+  it("test_checkin_chip_sends_checkin_id_not_resume", () => {
+    const chipMsg: UIMessage = { ...user(crypto.randomUUID(), "체크인 할게요"), metadata: { at: "2026-10-27T13:00:00Z", checkin_id: 341 } };
+    const body = buildChatBody([chipMsg], { conversationId: 4, checkinId: null, resumeConversationId: 4 });
+    expect(body.checkin_id).toBe(341);
+    expect(Object.keys(body)).not.toContain("resume_conversation_id");
+    // The next plain message goes back to the picked conversation.
+    const next = buildChatBody([chipMsg, assistant("m-1-1", "네"), user(crypto.randomUUID(), "고마워")], { conversationId: 4, checkinId: null, resumeConversationId: 4 });
+    expect(next).toMatchObject({ checkin_id: null, resume_conversation_id: 4 });
+  });
+
+  it("the check-in screen's box (a checkin id for the whole sheet) never carries resume either", () => {
+    const body = buildChatBody([user(crypto.randomUUID(), "3점이요")], { conversationId: 8, checkinId: 341, resumeConversationId: 4 });
+    expect(body.checkin_id).toBe(341);
+    expect(Object.keys(body)).not.toContain("resume_conversation_id");
+  });
+
   it("picks the last user message even when a reply follows it (regenerate)", () => {
     const last = user(crypto.randomUUID(), "다시");
     const body = buildChatBody([last, assistant("m-1-2", "")], { conversationId: 1, checkinId: null });

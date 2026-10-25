@@ -8,7 +8,7 @@
     "build": "next build && node scripts/sw-manifest.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test": "vitest run",
-    "test:tz": "TZ=America/Los_Angeles vitest run src/lib/time.test.ts src/ui/primitives/dates.test.ts src/lib/schedule.test.ts src/screens/Schedule.test.tsx",
+    "test:tz": "TZ=America/Los_Angeles vitest run src/lib/time.test.ts src/ui/primitives/dates.test.ts src/lib/schedule.test.ts src/screens/Schedule.test.tsx src/chat/quickChips.test.ts src/chat/ConversationList.test.tsx",
     "typecheck": "tsc --noEmit",
     "gen:types": "node scripts/gen-types.mjs",
     "check:csp": "node scripts/check-csp.mjs",

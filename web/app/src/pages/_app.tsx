@@ -41,6 +41,10 @@ import "../screens/EventSheet.module.css";
 // _app (its own and the palette picker's, which no other screen uses); its code is /settings/'s chunk.
 import "../components/PalettePicker.module.css";
 import "../screens/Settings.module.css";
+// SP9 9.5: the chat sheet's list and quick chip stylesheets only (CSP, as above); their code stays in the
+// chat sheet's chunk, out of the first screen's 180KB.
+import "../chat/ConversationList.module.css";
+import "../chat/QuickChips.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
 import "../ui/chat/cards.module.css";

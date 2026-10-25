@@ -257,6 +257,37 @@ export const copy = {
     changedMany: (n: number) => `✓ ${n}개를 바꿨어요`,
     undonePartly: (k: number) => `${k}개만 되돌렸어요`,
     messages: "대화 내용",
+    // SP9 9.5 대화 목록. 10장 "대화 목록" row verbatim (pastConversations, newConversation, deleteAsk);
+    // marked (9.5) are the section's words; (new) are not in the spec and go to Dahun in SP9-12.
+    pastConversations: "지난 대화",
+    deleteAsk: "이 대화를 지울까요? 되돌릴 수 없어요.",
+    delete: "지우기", // (9.5) the swipe action and the confirm button
+    keep: "그대로 두기", // (new) the confirm sheet's other button (the app's word elsewhere)
+    backToChat: "‹ 비서", // (new) the list screen's back link
+    checkinTag: "체크인", // (9.5) before a check-in conversation's title
+    untitled: "제목 없는 대화", // (new) a conversation the secretary has not titled yet
+    search: "검색", // (new) the search box's name, as on the memos tab
+    noConversations: "아직 지난 대화가 없어요.", // (new)
+    noMatch: "맞는 대화가 없어요.", // (new) a search that finds nothing
+    moreConversations: "더 보기", // (new) the next page, as on the memos tab
+    groups: {
+      today: "오늘", // (9.5)
+      yesterday: "어제", // (9.5)
+      thisWeek: "이번 주", // (9.5)
+      month: (m: number) => `${m}월`, // (9.5) "10월"
+      monthOfYear: (y: number, m: number) => `${y}년 ${m}월`, // (new) a month of another year
+    },
+    // SP9 9.5 퀵 칩: labels 10장 "퀵 칩" verbatim, sentences 9.5 verbatim.
+    chipsLabel: "퀵 칩", // (glossary) the chip row's accessible name
+    chips: {
+      todo: { label: "할 일 추가", text: "할 일 추가할래요" },
+      event: { label: "일정 추가", text: "일정 하나 추가할래요" },
+      memo: { label: "메모하기", text: "메모 하나 남길래요" },
+      today: { label: "오늘 정리해줘", text: "오늘 정리해줘" },
+      checkin: { label: "체크인 하기", text: "체크인 할게요" },
+      review: { label: "이번 주 돌아보기", text: "이번 주 돌아볼래요" },
+      next: { label: "다음 일정 보기", text: "다음 일정 알려줘" },
+    },
     openFailed: "대화를 열지 못했어요. 다시 눌러 주세요.",
     launcherBlocked: {
       unauthorized: "열쇠를 다시 넣으면 말할 수 있어요",

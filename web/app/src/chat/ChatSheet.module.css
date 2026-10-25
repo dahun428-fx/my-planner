@@ -16,7 +16,6 @@
   border-bottom: 1px solid var(--rule);
 }
 .close {
-  justify-self: start;
   min-height: 2.75rem;
   min-width: 2.75rem;
   padding: 0 0.5rem;
@@ -26,7 +25,48 @@
   font-size: var(--size-body);
   cursor: pointer;
 }
-/* 5.5.2: one row, "닫기" · "비서" · "앱 대화". */
+/* SP9 9.5: one row, the list button · "비서" over "앱 대화" · "새 대화" and "닫기". On the list
+   screen: "‹ 비서" · "지난 대화" · "닫기". Icon buttons are 44px. */
+.headIcon {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.headIcon:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.back {
+  justify-self: start;
+  min-height: var(--control-h);
+  padding: 0 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--size-body);
+  cursor: pointer;
+}
+.heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.headEnd {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+}
 .title {
   margin: 0;
   text-align: center;
@@ -34,9 +74,7 @@
   font-weight: 600;
 }
 .subtitle {
-  justify-self: end;
   margin: 0;
-  padding: 0 0.5rem;
   color: var(--muted);
   font-size: var(--size-meta);
 }
@@ -237,6 +275,8 @@
   background: var(--raised);
 }
 .close:focus-visible,
+.headIcon:focus-visible,
+.back:focus-visible,
 .retry:focus-visible,
 .send:focus-visible {
   outline: 2px solid var(--text);
