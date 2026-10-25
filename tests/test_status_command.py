@@ -1,5 +1,7 @@
 """텔레그램 `/status` (SP3-4 스펙 11.4, 부록 A). `GET /status`와 같은 `status_snapshot`에서 나온다. 내용은 꾸며 낸 것이다."""
 
+from datetime import date, timedelta
+
 from be_env import BeEnv
 from curve_sql import area_scores, milestone
 from fakes import FakeTurn
@@ -8,6 +10,7 @@ from test_dispatcher_messages import kst
 from my_planner.bot.commands import EMPTY_STATS, HELP_TEXT, command_of, status_text
 
 SAT_1300 = kst(2026, 10, 24, 13, 0)
+TS = "2026-10-01T00:00:00.000000+00:00"
 
 
 def _stat(area, label, score, period="2026-Q4", *, prev=None, debuff=False, quest=None):
@@ -110,3 +113,35 @@ async def test_status_command_and_api_same_numbers(tmp_path):
     assert "1. 꾸민 목표 (첫 걸음 0/1)" in telegram and "- 꾸민 첫 걸음" in telegram
     assert telegram.endswith("칭호: 「꾸민 결심」을 지나온 사람")  # 민감 사건 칭호는 뺀다
     assert "레벨 1 · 경험치 15/150" in raw.decode()  # 앱도 같은 `run_command`
+
+
+async def test_telegram_status_text_unchanged_by_bonus(tmp_path):
+    """SP8 D7: 보너스 필드가 있는 스냅샷에서도 텔레그램 `/status` 글은 SP7 그대로다(새 줄·"요즘"·"+1.5" 없음)."""
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 13, 0), script=[]) as env:
+        area_scores(env.conn, "2026-Q3", health=6)
+        area_scores(env.conn, "2026-Q4", career=6, health=4)
+        hid = env.conn.execute(
+            "INSERT INTO habits (title, area, kind, sort_order, created_at, updated_at) "
+            "VALUES ('꾸민 걷기', 'health', 'daily', 1, ?, ?)", (TS, TS),
+        ).lastrowid
+        env.conn.executemany(
+            "INSERT INTO habit_checks (habit_id, date, checked_at) VALUES (?, ?, ?)",
+            [(hid, (date(2026, 10, 25) - timedelta(days=d)).isoformat(), TS) for d in range(28)],
+        )
+        env.conn.commit()
+        await env.telegram("/status")
+        telegram = env.bot.sent[-1][1]
+        api = await (await env.get("/status")).json()
+
+    health = next(s for s in api["stats"] if s["area"] == "health")
+    assert (health["bonus"], health["effective_score"]) == (1.5, 5.5)
+    assert telegram == status_text(api) == (
+        "상태창\n"
+        "레벨 1 · 경험치 0/150\n"
+        "HP 기록 없음 (오늘 컨디션)\n"
+        "\n"
+        "스탯 (2026-Q4)\n"
+        "커리어 6 · 경제 - · 건강 4 ↓ · 관계 - · 배움 - · 삶의 질 -\n"
+        "↓ 건강 6 → 4: 회복 퀘스트 \"20분 걷기\""
+    )
+    assert "요즘" not in telegram and "+1.5" not in telegram and "5.5" not in telegram

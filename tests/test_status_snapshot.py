@@ -1,12 +1,12 @@
 """상태창 규칙과 스냅샷 (SP3-4 스펙 9장, 6.3.6). 내용은 모두 꾸며 낸 것이다."""
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 from curve_sql import area_default, area_scores, milestone, recovery, title, xp
 from test_dispatcher_messages import kst
 
-from my_planner.clock import FakeClock
+from my_planner.clock import FakeClock, to_iso
 from my_planner.domain import Area, Cadence, TaskStatus
 from my_planner.status.snapshot import status_snapshot
 from my_planner.status.xp import (
@@ -197,3 +197,114 @@ def test_main_quest_rank_is_priorities_rank(conn):
     tasks.set_priorities(Cadence.quarter, "2026-Q4", [a.id, b.id])
     tasks.set_status(a.id, TaskStatus.done)
     assert [(q["title"], q["rank"]) for q in snap(conn)["main_quests"]] == [("목표 둘", 2)]
+
+
+# --- SP8 1단계: 영역 활동 → 스탯 보너스 (SP8 스펙 5장) ---
+
+SUN = kst(2026, 10, 25, 13, 0)  # 논리적 날짜 2026-10-25(일)
+SUN_DAY = date(2026, 10, 25)
+TS = "2026-10-01T00:00:00.000000+00:00"
+
+
+def at_noon(d):
+    return kst(d.year, d.month, d.day, 12, 0)
+
+
+def done_task(conn, title_, at, *areas, status="done", deleted=False):
+    cur = conn.execute(
+        "INSERT INTO tasks (title, status, created_at, updated_at, completed_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (title_, status, TS, TS, to_iso(at) if status == "done" else None, TS if deleted else None),
+    )
+    conn.executemany("INSERT INTO task_areas (task_id, area) VALUES (?, ?)", [(cur.lastrowid, a) for a in areas])
+    return cur.lastrowid
+
+
+def habit(conn, area, *, status="active", deleted=False):
+    cur = conn.execute(
+        "INSERT INTO habits (title, area, kind, status, sort_order, created_at, updated_at, deleted_at) "
+        "VALUES ('꾸민 습관', ?, 'daily', ?, 1, ?, ?, ?)",
+        (area, status, TS, TS, TS if deleted else None),
+    )
+    return cur.lastrowid
+
+
+def check(conn, habit_id, d):
+    conn.execute("INSERT INTO habit_checks (habit_id, date, checked_at) VALUES (?, ?, ?)",
+                 (habit_id, d.isoformat(), TS))
+
+
+def test_reopened_and_soft_deleted_tasks_not_counted(conn):
+    tasks = TasksRepo(conn, FakeClock(SUN))
+    reopened = tasks.create("꾸민 다시 연 일", [Area.career], TaskStatus.open, None, None, None, "")
+    tasks.set_status(reopened.id, TaskStatus.done)
+    tasks.set_status(reopened.id, TaskStatus.open)
+    done_task(conn, "꾸민 지운 일", SUN, "career", deleted=True)
+    done_task(conn, "꾸민 끝낸 일", SUN, "career")
+    done_task(conn, "꾸민 그만둔 일", SUN, "career", status="dropped")
+    c = stat(snap(conn, now=SUN), "career")
+    assert c["activity"] == {"tasks": 1, "habit_checks": 0, "body_days": 0}
+    assert c["bonus"] == 0.2  # S = 1 → 0.2
+
+
+def test_deleted_habit_checks_excluded_paused_and_archived_included(conn):
+    for status_, deleted in (("active", False), ("paused", False), ("archived", False), ("active", True)):
+        check(conn, habit(conn, "health", status=status_, deleted=deleted), SUN_DAY)
+    h = stat(snap(conn, now=SUN), "health")
+    assert h["activity"] == {"tasks": 0, "habit_checks": 3, "body_days": 0}
+    assert h["bonus"] == 0.3  # S = 1.5
+
+
+def test_activity_rows_checks_bounded_by_from_day(conn):
+    hid = habit(conn, "learning")
+    check(conn, hid, SUN_DAY - timedelta(days=28))
+    check(conn, hid, SUN_DAY - timedelta(days=27))
+    check(conn, hid, SUN_DAY + timedelta(days=1))  # to_day 뒤
+    done_task(conn, "꾸민 오래된 일", kst(2026, 9, 27, 3, 59), "career")  # from_utc 앞
+    kept = done_task(conn, "꾸민 창 하루 앞 일", kst(2026, 9, 27, 4, 30), "career", "learning")
+    rows = StatusRepo(conn, FakeClock(SUN)).activity_rows(
+        kst(2026, 9, 27, 4, 0), SUN_DAY - timedelta(days=27), SUN_DAY
+    )
+    assert [c.date for c in rows.checks] == [SUN_DAY - timedelta(days=27)]
+    assert (rows.checks[0].area, rows.checks[0].habit_id) == ("learning", hid)
+    assert [(t.id, set(t.areas)) for t in rows.tasks] == [(kept, {"career", "learning"})]
+    assert rows.tasks[0].completed_at == kst(2026, 9, 27, 4, 30)
+    assert rows.body == []
+
+
+def test_stats_have_bonus_fields_and_counts(conn):
+    area_scores(conn, "2026-Q4", health=4)
+    hid = habit(conn, "health")
+    for d in range(28):
+        check(conn, hid, SUN_DAY - timedelta(days=d))
+    body = snap(conn, now=SUN)
+    h = stat(body, "health")
+    assert {k: h[k] for k in ("score", "bonus", "effective_score", "activity")} == {
+        "score": 4, "bonus": 1.5, "effective_score": 5.5,
+        "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0},
+    }
+    c = stat(body, "career")
+    assert (c["score"], c["bonus"], c["effective_score"]) == (None, 0.0, None)
+    assert c["activity"] == {"tasks": 0, "habit_checks": 0, "body_days": 0}
+    assert all(isinstance(s["bonus"], float) for s in body["stats"])
+
+
+def test_no_base_bonus_kept_effective_null(conn):
+    hid = habit(conn, "learning")
+    for d in range(28):
+        check(conn, hid, SUN_DAY - timedelta(days=d))
+    ln = stat(snap(conn, now=SUN), "learning")
+    assert (ln["score"], ln["bonus"], ln["effective_score"]) == (None, 1.5, None)
+
+
+def test_debuff_ignores_bonus(conn):
+    area_scores(conn, "2026-Q3", health=6, career=5)
+    area_scores(conn, "2026-Q4", health=4, career=7)
+    for area in ("health", "career"):
+        for d in range(28):
+            done_task(conn, f"꾸민 {area} {d}", at_noon(SUN_DAY - timedelta(days=d)), area)
+    body = snap(conn, now=SUN)
+    h = stat(body, "health")
+    assert (h["score"], h["bonus"], h["effective_score"], h["debuff"]) == (4, 2.0, 6.0, True)  # 보이는 6.0이어도
+    assert h["recovery_quest"] == DEFAULT_RECOVERY_QUESTS["health"]
+    c = stat(body, "career")
+    assert (c["score"], c["bonus"], c["debuff"], c["recovery_quest"]) == (7, 2.0, False, None)

@@ -131,8 +131,8 @@ effective_score = min(10, base + bonus)      # base 없으면 null
 
 ### 5.6 저장소, 계산 자리, API
 
-- `status/activity.py`: 순수 함수 `area_points(tasks, checks, body, today) -> dict[area, dict[date, Fraction]]`, `area_bonus(points, today) -> dict[area, Bonus]`(`Bonus(score_s, bonus, counts)`). 입출력 없음.
-- `store/repos/status.py`에 읽기 함수 `activity_rows(from_utc, to_day)`: 끝낸 할 일과 영역(`task_areas`), 습관 체크와 습관 영역, 몸 기록. 쓰기는 없다. `body_days`는 SP8-06(014)에서 생기므로 SP8-00의 `activity_rows`는 몸 기록을 `[]`로 돌려주고 `activity.body_days`는 늘 0이다. 몸 기록 질의는 SP8-06이 더한다.
+- `status/activity.py`: 순수 함수 `area_points(tasks, checks, body, today, *, tz, boundary) -> dict[area, dict[date, Fraction]]`(하루 상한을 적용한 점수, 할 일 날짜는 `logical_date(completed_at, tz, boundary)`), `activity_counts(tasks, checks, body, today, *, tz, boundary) -> dict[area, ActivityCounts]`(창 안의 가중하지 않은 개수: 상한을 적용한 점수에서는 다시 셀 수 없어 따로 센다), `area_bonus(points, today, counts) -> dict[area, Bonus]`(`Bonus(score_s, bonus, counts)`, 영역 6개 모두). 입출력 없음. (SP8 계획 결정 4)
+- `store/repos/status.py`에 읽기 함수 `activity_rows(from_utc, from_day, to_day) -> ActivityRows`: 끝낸 할 일과 영역(`task_areas`, `completed_at >= from_utc`, 호출 쪽이 `T − 28`의 04:00(한국)을 넘겨 하루 넉넉히 읽는다), 습관 체크와 습관 영역(`from_day = T − 27` ~ `to_day = T`), 몸 기록. 쓰기는 없다. `body_days`는 SP8-06(014)에서 생기므로 SP8-00의 `activity_rows`는 몸 기록을 `[]`로 돌려주고 `activity.body_days`는 늘 0이다. 몸 기록 질의는 SP8-06이 더한다.
 - `status_snapshot`의 `stats[]`에 필드를 더한다(필드 추가라 `/api/v1` 그대로, 기존 `score`의 뜻은 바뀌지 않는다):
 
 ```json
@@ -715,6 +715,7 @@ Dahun이 고르지 않은 선택은 비서가 정했다. 아래 추천으로 구
 
 ## 변경 기록
 
+- SP8-00 (2026-10-25): 5.6 함수 모양을 계획 결정 4대로 고침(`area_points`·`activity_counts`의 `tz`·`boundary`, `area_bonus(points, today, counts)`, `activity_rows(from_utc, from_day, to_day)`). 공식·값은 그대로.
 - v3 (2026-10-25): Dahun "텔레그램은 궁극적으로 사용안하게 될거라 굳이 넣을 필요없을 것 같은데"(SP9 스레드). 텔레그램 `/status`는 SP8에서 바꾸지 않는다(보너스·순간·몸 기록 줄 없음). 텔레그램 통로 두뇌의 날짜·개수 규칙은 그대로.
 - v2 (2026-10-25): 검토 1차(BLOCKER 3, SHOULD 9, NIT 7) 반영. 텔레그램 통로는 순간의 날짜·개수만(D7), 순간 호출은 `no-session-persistence`(SDK 0.2.173 확인), `max_turns = 3`과 호출 뒤 상태로 판정, 몸 기록 경로별 토큰·`/actions` 막기·한국 달력 오늘, 6.3 인터페이스, 금지 구를 정적 검사로 좁힘, 티켓 SP8-11까지 다시 나눔. SP9와 합의: 마이그레이션 013~015(SP9는 016부터), 메모는 순간과 따로, 앱 상태창은 더보기 화면의 한 줄, 스프라이트가 SP9 탭 아이콘 셋을 받음.
 - v1 (2026-10-25): 첫 초안. D1~D6 Dahun 결정(결정 카드), 나머지는 비서가 정함(17장). 캔버스 보드 `HistoryDesktop`, `HistoryPhone`, `Pictograms`, `HomePhone2` 방향 반영.

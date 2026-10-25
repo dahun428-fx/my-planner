@@ -479,7 +479,10 @@ def test_ledger_has_no_update_delete_functions():
     hits = [p for p in src.rglob("*.py") if pattern.search(p.read_text(encoding="utf-8"))]
     assert hits == []
     public = {n for n in dir(StatusRepo) if not n.startswith("_")}
-    assert public == {"grant", "count_secretary_on", "total", "recent", "titles", "add_title", "remove_title"}
+    assert public == {
+        "grant", "count_secretary_on", "total", "recent", "titles", "add_title", "remove_title",
+        "activity_rows",  # SP8 5.6: 읽기만 한다
+    }
 
 
 def test_ledger_rejects_non_positive_amount(conn):

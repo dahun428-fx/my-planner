@@ -638,7 +638,9 @@ CREATE TABLE status_titles (
   "hp": {"date": "2026-10-24", "score": 4},
   "stats": [ {"area": "health", "label": "건강", "score": 4, "period": "2026-Q4",
               "prev_score": 6, "prev_period": "2026-Q3", "debuff": true,
-              "recovery_quest": "저녁에 20분 걷기"} ],
+              "recovery_quest": "저녁에 20분 걷기",
+              "bonus": 1.5, "effective_score": 5.5,
+              "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0}} ],
   "main_quests": [ {"task_id": 31, "title": "…", "rank": 1, "period": "2026-Q4",
                     "first_steps": {"open": 2, "done": 3}} ],
   "daily_quests": [ {"task_id": 52, "title": "…", "parent_id": 31, "parent_title": "…", "planned_for": "2026-10-24"} ],
@@ -647,7 +649,7 @@ CREATE TABLE status_titles (
 }
 ```
 
-필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
+필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `bonus`·`effective_score`·`activity`는 SP8에서 더한 필드다(필드 추가라 `/api/v1` 그대로, `score`·`debuff`의 뜻은 바뀌지 않는다): 지난 28일 영역 활동에서 읽을 때마다 계산하는 보너스(0.0~2.0), `min(10, score + bonus)`(`score`가 없으면 `null`), 가중하지 않은 개수다. 계산은 [SP8 스펙](2026-10-25-sp8-status-records-history-design.md) 5장. 텔레그램 `/status` 글은 이 세 필드를 쓰지 않는다(SP8 D7). `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
 
 #### 6.3.7 `GET /priorities?cadence=week|month|quarter|year&period=…` (운영 앱용)
 

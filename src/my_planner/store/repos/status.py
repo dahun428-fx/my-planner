@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from my_planner.clock import Clock, from_iso, to_iso
+from my_planner.status.activity import BodyDayRow, DoneTask, HabitCheckRow
 from my_planner.status.xp import XpGain
 from my_planner.store.db import transaction
 
@@ -31,6 +32,15 @@ class TitleRow:
     title_label: str | None
     date_text: str
     granted_at: datetime
+
+
+@dataclass(frozen=True)
+class ActivityRows:
+    """영역 보너스의 재료(SP8 스펙 5.6). 제목·메모는 읽지 않는다."""
+
+    tasks: list[DoneTask]
+    checks: list[HabitCheckRow]
+    body: list[BodyDayRow]
 
 
 class StatusRepo:
@@ -75,6 +85,32 @@ class StatusRepo:
             "SELECT at, label, amount FROM status_xp_ledger ORDER BY at DESC, id DESC LIMIT ?", (n,)
         ).fetchall()
         return [XpEntry(at=from_iso(r["at"]), label=r["label"], amount=r["amount"]) for r in rows]
+
+    def activity_rows(self, from_utc: datetime, from_day: date, to_day: date) -> ActivityRows:
+        """끝낸 할 일(`completed_at >= from_utc`, 지운 것 빼고)과 영역, 습관 체크(`from_day..to_day`, 소프트 삭제한 습관
+        빼고 쉬는·그만둔 습관은 넣고)와 습관 영역. 할 일 쪽은 넉넉히 읽고 창은 `status.activity`가 거른다. 몸 기록은
+        SP8-06(014) 전까지 늘 `[]`.
+        """
+        task_rows = self.conn.execute(
+            "SELECT t.id, t.completed_at, a.area FROM tasks t LEFT JOIN task_areas a ON a.task_id = t.id "
+            "WHERE t.status = 'done' AND t.deleted_at IS NULL AND t.completed_at >= ? ORDER BY t.id, a.area",
+            (to_iso(from_utc),),
+        ).fetchall()
+        by_id: dict[int, tuple[str, list[str]]] = {}
+        for r in task_rows:
+            _, areas = by_id.setdefault(r["id"], (r["completed_at"], []))
+            if r["area"] is not None:
+                areas.append(r["area"])
+        tasks = [DoneTask(id=i, completed_at=from_iso(at), areas=tuple(areas)) for i, (at, areas) in by_id.items()]
+        checks = [
+            HabitCheckRow(habit_id=r["habit_id"], area=r["area"], date=date.fromisoformat(r["date"]))
+            for r in self.conn.execute(
+                "SELECT c.habit_id, h.area, c.date FROM habit_checks c JOIN habits h ON h.id = c.habit_id "
+                "WHERE h.deleted_at IS NULL AND c.date >= ? AND c.date <= ? ORDER BY c.date, c.habit_id",
+                (from_day.isoformat(), to_day.isoformat()),
+            ).fetchall()
+        ]
+        return ActivityRows(tasks=tasks, checks=checks, body=[])
 
     def titles(self, *, include_sensitive: bool) -> list[TitleRow]:
         """확정한 고점·전환점 사건의 칭호, 받은 순서. 민감 사건은 `include_sensitive`일 때만."""
