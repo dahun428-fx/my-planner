@@ -15,6 +15,8 @@ export interface ApiModels {
   ActivityResponse: ActivityResponse;
   BodyPostBody: BodyPostBody;
   BodySaved: BodySaved;
+  CalendarPutBody: CalendarPutBody;
+  CalendarSettings: CalendarSettings;
   ChatRequestBody: ChatRequestBody;
   CheckinDetail: CheckinDetail;
   CheckinList: CheckinList;
@@ -222,6 +224,22 @@ export interface BodyDayIn {
  */
 export interface BodySaved {
   saved: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CalendarPutBody".
+ */
+export interface CalendarPutBody {
+  rotate?: boolean;
+}
+/**
+ * `GET`/`POST /settings/calendar` (SP9 5.7). `url`은 구독 주소(비밀: 키가 들어 있다). 아직 안 만들었으면 null.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CalendarSettings".
+ */
+export interface CalendarSettings {
+  url: string | null;
 }
 /**
  * `POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).

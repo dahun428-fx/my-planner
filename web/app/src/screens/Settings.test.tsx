@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear, get, set } from "idb-keyval";
 import { http, HttpResponse } from "msw";
@@ -354,6 +354,135 @@ describe("Settings", () => {
     expect(within(group).getByText("09:00 · 17:30")).toBeInTheDocument();
     expect(within(group).getByText("10:00 · 18:00")).toBeInTheDocument();
     expect(within(group).queryAllByRole("combobox")).toEqual([]);
+  });
+
+  // SP9 9.7: 아이폰 캘린더에 구독. 만들기 -> 주소와 복사, 다시 만들기는 확인 시트, 안내 문구.
+  const calendarGroup = async () =>
+    (await screen.findByRole("heading", { name: copy.calendar.heading })).closest("section") as HTMLElement;
+  const URL1 = "https://gp76.tail1234.ts.net/api/v1/calendar.ics?key=KEY-ONE";
+  const URL2 = "https://gp76.tail1234.ts.net/api/v1/calendar.ics?key=KEY-TWO";
+
+  it("calendar: no address yet shows the make button and the guidance line", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await calendarGroup();
+    expect(await within(group).findByRole("button", { name: copy.calendar.create })).toBeInTheDocument();
+    expect(within(group).getByText(copy.calendar.help)).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: copy.calendar.recreate })).toBeNull();
+  });
+
+  it("calendar: make shows the address and a copy button that copies it", async () => {
+    serve();
+    const posts: unknown[] = [];
+    let made: string | null = null;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: made })),
+      http.post(`${BASE}/settings/calendar`, async ({ request }) => {
+        posts.push(await request.json());
+        made = URL1;
+        return HttpResponse.json({ url: URL1 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup(); // installs its own clipboard stub: ours goes in after it
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const group = await calendarGroup();
+    await user.click(await within(group).findByRole("button", { name: copy.calendar.create }));
+    expect(await within(group).findByText(URL1)).toBeInTheDocument();
+    expect(posts).toEqual([{ rotate: false }]);
+    expect(within(group).queryByRole("button", { name: copy.calendar.create })).toBeNull();
+    await user.click(within(group).getByRole("button", { name: copy.calendar.copy }));
+    expect(writeText).toHaveBeenCalledWith(URL1);
+    expect(await screen.findByText(copy.calendar.copied)).toBeInTheDocument();
+  });
+
+  it("calendar: an existing address is shown on load; copy failing says so", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: URL1 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => { throw new Error("denied"); } }, configurable: true });
+    const group = await calendarGroup();
+    expect(await within(group).findByText(URL1)).toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: copy.calendar.copy }));
+    expect(await screen.findByText(copy.calendar.copyFailed)).toBeInTheDocument();
+  });
+
+  it("calendar: make again asks first; keeping changes nothing, confirming rotates", async () => {
+    serve();
+    const posts: unknown[] = [];
+    let current = URL1;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: current })),
+      http.post(`${BASE}/settings/calendar`, async ({ request }) => {
+        posts.push(await request.json());
+        current = URL2;
+        return HttpResponse.json({ url: URL2 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await calendarGroup();
+    await within(group).findByText(URL1);
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText(copy.calendar.recreateSummary)).toBeInTheDocument();
+    expect(posts).toEqual([]);
+    await user.click(within(sheet).getByRole("button", { name: copy.settings.cancel }));
+    expect(posts).toEqual([]);
+    expect(within(group).getByText(URL1)).toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.calendar.recreate }));
+    expect(await within(group).findByText(URL2)).toBeInTheDocument();
+    expect(posts).toEqual([{ rotate: true }]);
+    expect(within(group).queryByText(URL1)).toBeNull();
+  });
+
+  it("calendar: a slow read that started before the rotate cannot put the old address back", async () => {
+    serve();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let current = URL1;
+    let slow = false;
+    let stale = false;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, async () => {
+        const seen = current; // what the BE says when the read starts
+        if (slow) {
+          stale = true;
+          await gate;
+        }
+        return HttpResponse.json({ url: seen });
+      }),
+      http.post(`${BASE}/settings/calendar`, () => {
+        current = URL2;
+        return HttpResponse.json({ url: URL2 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await calendarGroup();
+    await within(group).findByText(URL1);
+    slow = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange"))); // a poll starts and hangs
+    await waitFor(() => expect(stale).toBe(true));
+    slow = false;
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.calendar.recreate }));
+    expect(await within(group).findByText(URL2)).toBeInTheDocument();
+    release(); // the old read answers now, after the rotate
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(group).getByText(URL2)).toBeInTheDocument();
+    expect(within(group).queryByText(URL1)).toBeNull();
+  });
+
+  it("calendar: an older BE without the route leaves the section out", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    await checkinGroup();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: copy.calendar.heading })).toBeNull());
   });
 
   it("pause sheet offers 1 3 7 14", async () => {

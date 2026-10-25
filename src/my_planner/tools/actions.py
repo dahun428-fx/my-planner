@@ -523,6 +523,30 @@ def _wake_task_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
     return {"wake_updated": ok}
 
 
+def _calendar_key_create(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """구독 키가 없으면 만든다(있으면 그대로). 키는 활동, 로그에 넣지 않는다: 활동을 남기지 않는다(5.7)."""
+    from my_planner.api.calendar import new_key
+    from my_planner.store.repos.state import CALENDAR_KEY_KEY
+
+    assert deps.state is not None
+    key = deps.state.get(CALENDAR_KEY_KEY)
+    if not key:
+        key = new_key()
+        deps.state.set(CALENDAR_KEY_KEY, key)
+    return {"key": key}
+
+
+def _calendar_key_rotate(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """새 키로 바꾼다. 이전 주소는 바로 끊긴다."""
+    from my_planner.api.calendar import new_key
+    from my_planner.store.repos.state import CALENDAR_KEY_KEY
+
+    assert deps.state is not None
+    key = new_key()
+    deps.state.set(CALENDAR_KEY_KEY, key)
+    return {"key": key}
+
+
 def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """`POST /push/test`의 결과 기록(구독마다 받음·못 받음). 활동은 남기지 않는다(바뀐 데이터가 없다)."""
     results = args.get("results")
@@ -614,6 +638,9 @@ ACTIONS: dict[str, ActionSpec] = {
     "push_test_result": ActionSpec(_push_test_result, public=False, accepts=frozenset({"results"}), endpoint="push"),
     # 내부(`POST /body`, SP8 7.2): 아이폰 단축어. 활동·경험치·중복 방지 기록 없음. `/actions`에서는 `400`(계획 결정 1)
     "record_body_days": ActionSpec("record_body_days", public=False, endpoint="body"),
+    # 내부(`api/calendar.py`: 아이폰 캘린더 구독 키, SP9 5.7). 활동·되돌리기 없음(키가 기록에 남지 않게)
+    "calendar_key_create": ActionSpec(_calendar_key_create, public=False, accepts=frozenset(), endpoint="push"),
+    "calendar_key_rotate": ActionSpec(_calendar_key_rotate, public=False, accepts=frozenset(), endpoint="push"),
     # 내부(`api/actions.refresh_wake`: 체크인 시간을 바꾼 뒤 깨우기 작업 결과, SP9 8장)
     "wake_task_result": ActionSpec(_wake_task_result, public=False, accepts=frozenset({"ok"}), endpoint="push"),
 }

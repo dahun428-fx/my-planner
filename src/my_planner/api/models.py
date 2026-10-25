@@ -1026,6 +1026,16 @@ class NotifyPutBody(_Model):
     primary: Literal["telegram", "app"]
 
 
+class CalendarSettings(_Model):
+    """`GET`/`POST /settings/calendar` (SP9 5.7). `url`은 구독 주소(비밀: 키가 들어 있다). 아직 안 만들었으면 null."""
+
+    url: str | None
+
+
+class CalendarPutBody(_Model):
+    rotate: bool = False
+
+
 CheckinLoop = Literal["morning_brief", "evening_checkin"]
 CheckinDayType = Literal["weekday", "weekend"]
 
@@ -1139,6 +1149,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "PushTestResult": PushTestResult,
     "NotifySettings": NotifySettings,
     "NotifyPutBody": NotifyPutBody,
+    "CalendarSettings": CalendarSettings,
+    "CalendarPutBody": CalendarPutBody,
     "CheckinTimes": CheckinTimes,
     "CheckinTimePutBody": CheckinTimePutBody,
     "CheckinTimesUpdated": CheckinTimesUpdated,

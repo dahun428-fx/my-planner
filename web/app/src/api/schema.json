@@ -366,6 +366,35 @@
       ],
       "type": "object"
     },
+    "CalendarPutBody": {
+      "additionalProperties": false,
+      "properties": {
+        "rotate": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "CalendarSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
     "ChatRequestBody": {
       "$defs": {
         "ChatMessage": {

@@ -429,6 +429,18 @@ export const copy = {
     reviewNote: "주말 저녁은 일요일 주간 회고 시각이기도 해요.",
   },
 
+  // SP9 9.7, 10장 "캘린더" (그대로) + 안내 한 줄(9.7). `copied`는 10장에 없는 토스트 한 줄(복사했다는 사실만)
+  calendar: {
+    heading: "아이폰 캘린더에 구독",
+    create: "구독 주소 만들기",
+    copy: "복사",
+    copied: "주소를 복사했어요",
+    copyFailed: "복사하지 못했어요. 주소를 길게 눌러 복사해 주세요.",
+    recreate: "주소 다시 만들기",
+    recreateSummary: "이전 주소는 더 이상 갱신되지 않아요.",
+    help: "아이폰 설정 → 캘린더 → 계정 → 계정 추가 → 기타 → 구독 캘린더 추가에 붙여 넣어요. 폰에서 Tailscale이 켜져 있을 때 갱신돼요.",
+  },
+
   connect: {
     back: BACK_MORE,
     title: "노트북의 비서와 연결해요",

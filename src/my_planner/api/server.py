@@ -25,6 +25,12 @@ from aiohttp import web
 from my_planner.api.actions import get_activity, post_actions, post_undo
 from my_planner.api.auth import AuthLimiter, bearer_ok
 from my_planner.api.body import BODY_MAX_BYTES, BODY_PATH, post_body
+from my_planner.api.calendar import (
+    CALENDAR_PATH,
+    get_calendar_ics,
+    get_calendar_settings,
+    post_calendar_settings,
+)
 from my_planner.api.chat import post_chat
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
@@ -76,6 +82,7 @@ log = logging.getLogger(__name__)
 API_PREFIX = "/api/v1"
 HEALTH_PATH = f"{API_PREFIX}/health"
 UNMATCHED_ROUTE = "(unmatched)"
+MASKED_QUERY = "?key=***"
 
 Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 
@@ -118,15 +125,15 @@ async def access_log(request: web.Request, handler: Handler) -> web.StreamRespon
         status = e.status
         raise
     finally:
-        log.info(
-            "api_request",
-            extra={
-                "method": request.method,
-                "route": route_template(request),
-                "status": status,
-                "duration_ms": round((time.monotonic() - started) * 1000),
-            },
-        )
+        extra: dict[str, Any] = {
+            "method": request.method,
+            "route": route_template(request),
+            "status": status,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+        }
+        if extra["route"] == CALENDAR_PATH and request.query_string:
+            extra["query"] = MASKED_QUERY  # 키가 든 쿼리는 통째로 가린다(SP9 5.7)
+        log.info("api_request", extra=extra)
 
 
 def body_limit_middleware(limit_bytes: int) -> Callable[[web.Request, Handler], Awaitable[web.StreamResponse]]:
@@ -148,7 +155,12 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
     deps = request.app[DEPS_KEY]
     limiter = request.app[LIMITER_KEY]
     if limiter.blocked():
-        return error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
+        blocked = error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
+        if route_template(request) == CALENDAR_PATH:
+            blocked.headers["Cache-Control"] = "no-store"
+        return blocked
+    if route_template(request) == CALENDAR_PATH:
+        return await handler(request)  # 캘린더 구독: Bearer 대신 처리기가 `?key=`를 비교한다(SP9 5.7). 위에서 429는 거른 뒤
     # 경로 틀로 기대 토큰을 고른다(SP8 7.2): `/body`는 `BODY_TOKEN`만, 그 밖은 `API_TOKEN`만. 다른 쪽 토큰은 맞아도 401.
     # `/body`가 등록되지 않았으면(토큰 없음) 틀이 `(unmatched)`라 `API_TOKEN`을 기대하고, 지나면 라우팅이 404다
     expected = (deps.body_token or "") if route_template(request) == BODY_PATH else deps.token
@@ -163,7 +175,10 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
 @web.middleware
 async def safe_mode(request: web.Request, handler: Handler) -> web.StreamResponse:
     if request.app[DEPS_KEY].safe_mode and request.path != HEALTH_PATH:
-        return error_response(503, "safe_mode", "데이터베이스 안전 모드예요. 상태 확인만 할 수 있어요.")
+        unavailable = error_response(503, "safe_mode", "데이터베이스 안전 모드예요. 상태 확인만 할 수 있어요.")
+        if route_template(request) == CALENDAR_PATH:
+            unavailable.headers["Cache-Control"] = "no-store"
+        return unavailable
     return await handler(request)
 
 
@@ -223,6 +238,7 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/push/vapid-public-key", get_vapid_public_key),
     ("/settings/notify", get_notify),
     ("/settings/checkin-times", get_checkin_times),
+    ("/settings/calendar", get_calendar_settings),
 )
 
 
@@ -241,6 +257,7 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
     ("/activity/{id}/undo", post_undo),
     ("/push/subscriptions", post_subscription),
     ("/push/test", post_push_test),
+    ("/settings/calendar", post_calendar_settings),
     ("/client-errors", post_client_error),
     ("/internal/notify", post_internal_notify),
 )
@@ -268,6 +285,7 @@ def build_app(deps: ApiDeps) -> web.Application:
     app[DEPS_KEY] = deps
     app[LIMITER_KEY] = AuthLimiter(deps.clock)
     app.router.add_get(HEALTH_PATH, _health)
+    app.router.add_get(CALENDAR_PATH, get_calendar_ics)
     for path, view in READ_ROUTES:
         app.router.add_get(API_PREFIX + path, read_handler(view))
     for path, write in WRITE_ROUTES:
