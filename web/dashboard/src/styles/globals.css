@@ -1569,3 +1569,121 @@ h2 {
 .history-folded {
   padding: var(--space-1) 0;
 }
+
+/* ---- history: hidden-event line, side column, glance strip, side summary (SP8 8.5, 8.6) ---- */
+.history-event-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.history-event-line .history-event-row {
+  flex: 1;
+  min-width: 0;
+}
+.history-hide {
+  flex: none;
+}
+.history-hidden {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 var(--space-6);
+}
+@media (min-width: 720px) {
+  .history-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    align-items: start;
+  }
+}
+.glance {
+  margin: 0 0 var(--space-4);
+}
+.glance-title {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+}
+.glance-sub {
+  margin: var(--space-1) 0 var(--space-2);
+}
+.glance-svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+.glance-band {
+  fill: var(--raised);
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.glance-band-dashed {
+  stroke-dasharray: 4 3;
+}
+.glance-ladder {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.glance-mark {
+  color: var(--text);
+}
+.glance-tick {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.glance-tick-label {
+  fill: var(--muted);
+  font-size: var(--fs-caption);
+}
+.history-summary {
+  margin: var(--space-4) 0;
+}
+.history-summary-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.history-summary-lines li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+.history-summary-lines .pictogram {
+  flex: none;
+  margin-top: 2px;
+}
+.history-help {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  background: var(--raised);
+  border-radius: var(--radius-panel);
+  color: var(--text-2);
+}
+.history-help .pictogram {
+  flex: none;
+  color: var(--hue);
+  margin-top: 2px;
+}
+.history-summary-text {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.history-summary-value {
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+}

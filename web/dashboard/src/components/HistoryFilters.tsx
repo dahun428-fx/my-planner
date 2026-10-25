@@ -15,11 +15,15 @@ export function HistoryFilters({
   order,
   onFilter,
   onOrder,
+  hideSensitive,
+  onHideSensitive,
 }: {
   filter: HistoryFilter;
   order: HistoryOrder;
   onFilter(f: HistoryFilter): void;
   onOrder(o: HistoryOrder): void;
+  hideSensitive: boolean;
+  onHideSensitive(hide: boolean): void;
 }) {
   return (
     <div className="history-controls">
@@ -34,6 +38,10 @@ export function HistoryFilters({
       <button type="button" className="text-button" onClick={() => onOrder(order === "recent" ? "oldest" : "recent")}>
         {T.sort[order]}
       </button>
+      <label className="check history-sensitive-toggle">
+        <input type="checkbox" checked={hideSensitive} onChange={(e) => onHideSensitive(e.target.checked)} />
+        <span>{T.hideSensitive}</span>
+      </label>
     </div>
   );
 }
