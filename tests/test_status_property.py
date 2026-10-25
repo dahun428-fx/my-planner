@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fakes import FakeBrain, FakeSender, make_settings
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings, target
 from hypothesis import strategies as st
 from test_dispatcher_messages import kst
 
@@ -137,6 +137,19 @@ ACTIVITY = st.one_of(
     st.tuples(st.just("body"), st.integers(0, 35), st.just(["health"]), st.integers(0, 3)),
 )
 
+# 촘촘한 묶음: 영역 둘과 건강, 창 안 날짜만, 40~200개. 상한 2와 `min(10, …)` 구역에 닿게 한다.
+DENSE_AREAS = [Area.career.value, Area.health.value]
+DENSE = st.one_of(
+    st.tuples(st.just("task"), st.integers(0, 27), st.sampled_from(DENSE_AREAS).map(lambda a: [a]),
+              st.integers(4, 23)),
+    st.tuples(st.just("check"), st.integers(0, 27), st.sampled_from(DENSE_AREAS).map(lambda a: [a]),
+              st.integers(1, 4)),
+    st.tuples(st.just("body"), st.integers(0, 27), st.just(["health"]), st.integers(0, 3)),
+)
+ACTS = st.one_of(st.lists(ACTIVITY, max_size=60), st.lists(DENSE, min_size=40, max_size=200))
+# 포화된 묶음: 28일 매일 커리어 할 일 3개(하루 상한), S = 43.5
+SATURATED = [("task", d, ["career"], 9 + k) for d in range(28) for k in range(3)]
+
 
 def _rows(acts):
     tasks, checks, body, seen_checks, seen_body = [], [], [], set(), set()
@@ -161,9 +174,13 @@ def _bonuses(rows, today):
 
 
 @settings(max_examples=300, deadline=None)
-@given(st.lists(ACTIVITY, max_size=60), st.dictionaries(st.sampled_from(AREA_NAMES), st.integers(1, 10)))
+@given(ACTS, st.dictionaries(st.sampled_from(AREA_NAMES), st.integers(1, 10)))
+@example(SATURATED, {"career": 9, "health": 4})
+@example(SATURATED, {"career": 4})
 def test_effective_between_base_and_base_plus_2(acts, bases):
-    for area, b in _bonuses(_rows(acts), T_DAY).items():
+    bonuses = _bonuses(_rows(acts), T_DAY)
+    target(float(max(b.score_s for b in bonuses.values())))
+    for area, b in bonuses.items():
         assert Decimal("0.0") <= b.bonus <= Decimal("2.0")
         base = bases.get(area)
         eff = effective_score(base, b.bonus)
@@ -174,7 +191,8 @@ def test_effective_between_base_and_base_plus_2(acts, bases):
 
 
 @settings(max_examples=300, deadline=None)
-@given(st.lists(ACTIVITY, max_size=60), st.integers(0, 30))
+@given(ACTS, st.integers(0, 30))
+@example(SATURATED, 0)
 def test_no_new_activity_bonus_never_rises(acts, shift):
     rows = _rows(acts)  # 모든 활동이 T_DAY 이전이라 `today` 뒤로 새 활동이 없다
     today = T_DAY + timedelta(days=shift)
@@ -185,7 +203,9 @@ def test_no_new_activity_bonus_never_rises(acts, shift):
 
 
 @settings(max_examples=300, deadline=None)
-@given(st.lists(ACTIVITY, max_size=60), st.lists(ACTIVITY, max_size=20))
+@given(ACTS, st.one_of(st.lists(ACTIVITY, max_size=20), st.lists(DENSE, min_size=10, max_size=40)))
+@example(SATURATED, [])
+@example([], [("task", 0, ["career"], 9 + k) for k in range(5)])
 def test_daily_change_at_most_0_7(acts, extra):
     """하루가 지나며 그날(T + 1) 새 활동이 더해져도, 없어도 보너스가 바뀌는 폭은 0.7 이하."""
     tasks, checks, body = _rows(acts)

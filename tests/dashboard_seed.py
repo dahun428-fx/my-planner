@@ -60,7 +60,7 @@ PAST_DONE = (
 # 건강 습관 하나: 지난 27일 중 체크하지 않은 날(오늘은 아직 체크 전)
 HABIT = "저녁에 걷기"
 HABIT_GAPS = frozenset({3, 6, 11, 18, 20, 25})
-BRIEF_TEXT ="좋은 아침이에요. 오늘은 수채화 밑그림과 저녁 산책이 우선이에요.\n14:00에 치과 정기 검진이 있어요."
+BRIEF_TEXT = "좋은 아침이에요. 오늘은 수채화 밑그림과 저녁 산책이 우선이에요.\n14:00에 치과 정기 검진이 있어요."
 # 이번 분기 영역 점수(지난 분기보다 건강만 낮다: 디버프 하나)
 THIS_QUARTER = {"career": 6, "finance": 5, "health": 4, "relationships": 7, "learning": 6, "quality_of_life": 5}
 LAST_QUARTER = {"career": 6, "finance": 5, "health": 6, "relationships": 7, "learning": 6, "quality_of_life": 5}
