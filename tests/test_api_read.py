@@ -533,3 +533,54 @@ async def test_expired_draft_hidden_in_cards_and_drafts_alike(tmp_path):
     assert before["cards"][0]["component"] == "ui_todo_draft" and drafts_before["items"]
     assert "ui_todo_draft" not in [c["component"] for c in after["cards"]]
     assert drafts_after["items"] == []
+
+
+# --- 메모 (SP9 6.4) ---
+
+
+def _memo(env, body, minutes, *, pinned=False, area=None, origin="user"):
+    repo = env.parts.memos
+    m = repo.create(body, area, origin, SAT + timedelta(minutes=minutes))
+    if pinned:
+        repo.pin(m.id, SAT + timedelta(minutes=minutes))
+    return m.id
+
+
+async def test_api_memos_list_pinned_first(tmp_path):
+    from test_api_actions import _validate
+
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        old_pin = _memo(env, "고정한 옛 메모", 1, pinned=True)
+        a = _memo(env, "읽을 책\n- [ ] 사피엔스\n- [ ] **총균쇠**", 2, area="learning", origin="chat")
+        b = _memo(env, "- [ ]\n\n장보기", 3)
+        new_pin = _memo(env, "고정한 새 메모", 4, pinned=True)
+        body = await get_json(env, "/memos")
+        searched = await get_json(env, "/memos?q=사피")
+        one = await get_json(env, f"/memos/{a}")
+        missing = await env.get("/memos/999")
+        bad = [(await env.get(p)).status for p in ("/memos?limit=0", "/memos?limit=101", "/memos?before=x")]
+
+    _validate("MemoList", body)
+    assert [x["id"] for x in body["items"]] == [new_pin, old_pin, b, a] and body["next_before"] is None
+    item = next(x for x in body["items"] if x["id"] == a)
+    assert item == {"id": a, "title": "읽을 책", "preview": "사피엔스 총균쇠", "area": "learning", "pinned": False,
+                    "origin": "chat", "updated_at": "2026-10-24T04:02:00Z"}
+    assert next(x for x in body["items"] if x["id"] == b)["title"] == "장보기"
+    assert [x["id"] for x in searched["items"]] == [a]
+    _validate("Memo", one)
+    assert one["body"] == "읽을 책\n- [ ] 사피엔스\n- [ ] **총균쇠**" and one["created_at"] == "2026-10-24T04:02:00Z"
+    assert missing.status == 404 and bad == [400, 400, 400]
+
+
+async def test_api_memos_second_page_has_no_pinned(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        pins = [_memo(env, f"고정 {i}", i, pinned=True) for i in range(2)]
+        rest = [_memo(env, f"메모 {i}", 10 + i) for i in range(5)]  # 최근순: rest[4] … rest[0]
+        first = await get_json(env, "/memos?limit=2")
+        second = await get_json(env, f"/memos?limit=2&before={first['next_before']}")
+        third = await get_json(env, f"/memos?limit=2&before={second['next_before']}")
+
+    assert [x["id"] for x in first["items"]] == [pins[1], pins[0], rest[4], rest[3]]
+    assert [x["id"] for x in second["items"]] == [rest[2], rest[1]]
+    assert [x["id"] for x in third["items"]] == [rest[0]] and third["next_before"] is None
+    assert not any(x["pinned"] for x in second["items"] + third["items"])

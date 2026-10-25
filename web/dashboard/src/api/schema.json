@@ -143,7 +143,10 @@
                 "safe_mode",
                 "internal",
                 "unavailable",
-                "checkin_time_invalid"
+                "checkin_time_invalid",
+                "memo_conflict",
+                "too_many_memos",
+                "too_many_pinned"
               ],
               "title": "Code",
               "type": "string"
@@ -2030,7 +2033,10 @@
                 "safe_mode",
                 "internal",
                 "unavailable",
-                "checkin_time_invalid"
+                "checkin_time_invalid",
+                "memo_conflict",
+                "too_many_memos",
+                "too_many_pinned"
               ],
               "title": "Code",
               "type": "string"
@@ -2779,6 +2785,235 @@
         "push"
       ],
       "title": "Health",
+      "type": "object"
+    },
+    "Memo": {
+      "additionalProperties": false,
+      "description": "`GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "pinned": {
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "body",
+        "area",
+        "pinned",
+        "origin",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "Memo",
+      "type": "object"
+    },
+    "MemoItem": {
+      "additionalProperties": false,
+      "description": "`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 \"제목 없는 메모\"). `preview`: 제목 줄 다음부터\n서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다.",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "pinned": {
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "preview": {
+          "title": "Preview",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "preview",
+        "area",
+        "pinned",
+        "origin",
+        "updated_at"
+      ],
+      "title": "MemoItem",
+      "type": "object"
+    },
+    "MemoList": {
+      "$defs": {
+        "MemoItem": {
+          "additionalProperties": false,
+          "description": "`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 \"제목 없는 메모\"). `preview`: 제목 줄 다음부터\n서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다.",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "pinned": {
+              "title": "Pinned",
+              "type": "boolean"
+            },
+            "preview": {
+              "title": "Preview",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "updated_at": {
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "preview",
+            "area",
+            "pinned",
+            "origin",
+            "updated_at"
+          ],
+          "title": "MemoItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모 `limit`개가 고친\n시각 최근순. `next_before`는 고정 아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MemoItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Before"
+        }
+      },
+      "required": [
+        "items",
+        "next_before"
+      ],
+      "title": "MemoList",
       "type": "object"
     },
     "Messages": {

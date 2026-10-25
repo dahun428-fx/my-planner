@@ -89,12 +89,14 @@ from my_planner.tools.confirmations import (
     xp_granted_line,
 )
 from my_planner.tools.habits import HabitTools
+from my_planner.tools.memos import MemoTools
 from my_planner.tools.moments import MomentTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.activity import ConfirmsRepo
+    from my_planner.store.repos.memos import MemosRepo
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.state import StateRepo
@@ -128,7 +130,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-class Tools(MomentTools, HabitTools, CheckinTimeTools):
+class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools):
     def __init__(
         self,
         *,
@@ -152,6 +154,7 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools):
         state: StateRepo | None = None,
         settings: Settings | None = None,
         runs: RunsRepo | None = None,
+        memos: MemosRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -181,6 +184,9 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools):
         self.state = state
         self.settings = settings
         self.runs = runs
+        # 메모(SP9 6장). None이면 메모 도구·동작이 거절한다. 내보내기 `memos.md`는 하루 한 번 작업만 쓴다(6.1)
+        self.memos = memos
+        self.memos_export_path = self.export_path.parent / "memos.md"  # data/exports/memos.md
 
     # --- 공통 ---
 

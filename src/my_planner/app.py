@@ -54,6 +54,7 @@ from my_planner.loop.runner import (
     expire_curve_drafts,
     expire_drafts,
     grant_rest_days_daily,
+    memos_daily,
     prune_api_state_daily,
     prune_records_daily,
     prune_updates_daily,
@@ -75,6 +76,7 @@ from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.habits import HabitsRepo
+from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
@@ -217,6 +219,7 @@ class BeParts:
     status: StatusRepo
     habits: HabitsRepo | None = None  # 습관(SP7)
     moments: MomentsRepo | None = None  # 이룬 순간(SP8)
+    memos: MemosRepo | None = None  # 메모(SP9 6장)
 
 
 def build_be(
@@ -254,6 +257,7 @@ def build_be(
     status = StatusRepo(conn, clock)
     habits = HabitsRepo(conn, clock)
     moments = MomentsRepo(conn, clock)
+    memos = MemosRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -280,6 +284,7 @@ def build_be(
         habits=habits,  # 습관 도구(SP7 5.4), `data/exports/habits.md`(5.8)
         moments=moments,  # 하루 끝 순간 호출의 `save_moments`(SP8 6.3). 내보내기는 없다
         state=state, settings=settings, runs=runs,  # 체크인 시간 바꾸기(SP9 8장)
+        memos=memos,  # 메모 도구·동작(SP9 6장). `memos.md`는 하루 한 번 작업이 쓴다
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -318,6 +323,7 @@ def build_be(
     runner.register_daily(grant_rest_days_daily(dispatcher))  # X9 쉬는 날(어제까지, 최대 14일)
     runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
     runner.register_daily(prune_records_daily(dispatcher))  # 60일 지난 status_moment_days(SP8 6.4)
+    runner.register_daily(memos_daily(dispatcher))  # 30일 지난 지운 메모 완전 삭제, memos.md(SP9 6.1)
     # 하루 끝 이룬 순간: 정리할 날을 골라 디스패처에 가장 낮은 차례로(SP8 6.2). 두뇌는 디스패처가 부른다
     runner.register_daily(queue_moments_daily(dispatcher, moments, state))
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
@@ -342,7 +348,7 @@ def build_be(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
-        pushes=pushes, curve=curve, status=status, habits=habits, moments=moments,
+        pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos,
     )
 
 

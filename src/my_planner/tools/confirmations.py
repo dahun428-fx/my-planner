@@ -28,6 +28,8 @@ _CADENCE_LABEL = {"day": "오늘", "week": "이번 주", "month": "이번 달", 
 def confirmation_line(e: ToolEvent, today: date) -> str | None:
     """이벤트 하나의 확인 문구 한 줄(SP1 5.5). 문구가 없는 종류는 None. 활동의 `summary`도 이것이다(5.2)."""
     title = e.data.get("title", "")
+    if e.kind in MEMO_KINDS:
+        return memo_line(e.kind, title)
     if e.kind in HABIT_KINDS:
         day = e.data.get("date")
         return habit_line(
@@ -77,6 +79,22 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
 
 
 # --- 습관 (SP7 스펙 5.4 규칙 H4, 부록 A) ---
+
+# 메모(SP9 6장). 만들기는 스펙 10장·6.3 문구, 나머지는 같은 꼴(SP9-03 판단). 활동 `summary`는 제목 앞 20자로 부른다
+_MEMO_LINES = {
+    "memo_created": "✓ 메모를 만들었어요: {}",
+    "memo_updated": "✓ 메모를 고쳤어요: {}",
+    "memo_pinned": "✓ 메모를 고정했어요: {}",
+    "memo_unpinned": "✓ 메모 고정을 풀었어요: {}",
+    "memo_deleted": "✓ 메모를 지웠어요: {}",
+}
+MEMO_KINDS = frozenset(_MEMO_LINES)
+
+
+def memo_line(kind: str, title: str) -> str:
+    """메모 확인 문구 한 줄. 본문은 넣지 않고 제목(`memo_title`)만."""
+    return _MEMO_LINES[kind].format(title)
+
 
 HABIT_KINDS = frozenset({"habit_added", "habit_updated", "habit_status_set", "habit_checked", "habit_unchecked"})
 _HABIT_STATUS_VERB = {"paused": "쉬어 가기", "active": "다시 시작", "archived": "그만두기"}

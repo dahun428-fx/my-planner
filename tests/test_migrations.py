@@ -297,7 +297,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 15 == _migration_count()
+    assert dbmod.LATEST_VERSION == 16 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -406,8 +406,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 15 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 15
+    assert migrate(conn) == 16 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -461,7 +461,7 @@ def test_013_ledger_untouched(tmp_path):
         conn.execute(_LEDGER_INS, row)
     conn.commit()
     before = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'status_xp_ledger'").fetchone()[0]
-    assert migrate(conn) == 15
+    assert migrate(conn) == dbmod.LATEST_VERSION
     got = conn.execute(
         "SELECT id, at, logical_date, source_kind, source_ref, amount, area, label "
         "FROM status_xp_ledger ORDER BY id"
@@ -530,7 +530,7 @@ def test_015_keeps_curve_rows(tmp_path):
     conn.commit()
     before_c = conn.execute("SELECT id, title, start_month FROM curve_chapters").fetchall()
     before_m = conn.execute("SELECT id, date_text, kind, title FROM curve_milestones").fetchall()
-    assert migrate(conn) == 15
+    assert migrate(conn) == dbmod.LATEST_VERSION
     assert [tuple(r) for r in conn.execute("SELECT id, title, start_month FROM curve_chapters")] == [
         tuple(r) for r in before_c
     ]

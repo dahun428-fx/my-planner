@@ -1,4 +1,4 @@
-"""읽기 경로 (SP3-4 스펙 6.3.2~6.3.4, 6.3.7, 6.3.8, 6.4.5~6.4.7, 6.4 `/schema`, SP7 5.5 습관).
+"""읽기 경로 (SP3-4 스펙 6.3.2~6.3.4, 6.3.7, 6.3.8, 6.4.5~6.4.7, 6.4 `/schema`, SP7 5.5 습관, SP9 6.4 메모).
 
 모든 처리기는 읽기 전용 연결(`deps.read_conn()`) 하나만 받는다(스펙 4.3). 응답은 `to_api_times`로 UTC `Z`로 바꾼 뒤
 모델로 검증한다. 오류 문구에는 쿼리 값, 경로 값, 본문을 넣지 않는다.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
@@ -23,6 +23,8 @@ from my_planner.api.models import (
     Drafts,
     HabitHistory,
     HabitsList,
+    Memo,
+    MemoList,
     Messages,
     Priorities,
     SchemaBundle,
@@ -45,6 +47,7 @@ from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.habits import HabitsRepo
+from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -60,6 +63,7 @@ from my_planner.store.views import (
     todo_refs,
     week_view,
 )
+from my_planner.tools.memos import memo_dict, memo_item
 from my_planner.tools.ui import catalog
 
 if TYPE_CHECKING:
@@ -281,6 +285,62 @@ def get_habit(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     if h is None:
         raise ApiError(404, "not_found", "없는 습관이에요.")
     return dump(HabitHistory, habit_history(habits, h, _today(deps), weeks))
+
+
+# --- 메모 (SP9 6.4) ---
+
+MEMOS_DEFAULT_LIMIT, MEMOS_MAX_LIMIT = 50, 100
+MEMO_QUERY_MAX = 200
+_MEMO_CURSOR = re.compile(r"^(\d{8}T\d{12})Z_([0-9]{1,18})$")
+
+
+def memo_cursor(updated_at: datetime, memo_id: int) -> str:
+    """고정 아닌 메모의 (`updated_at`, `id`) 커서. URL에 그대로 쓸 수 있는 글자만."""
+    return f"{updated_at.astimezone(UTC):%Y%m%dT%H%M%S%f}Z_{memo_id}"
+
+
+def _memo_before(raw: str | None) -> tuple[datetime, int] | None:
+    if raw is None:
+        return None
+    m = _MEMO_CURSOR.match(raw)
+    if m is None:
+        raise _bad("before는 앞 응답의 next_before 값이어야 해요.")
+    try:
+        at = datetime.strptime(m.group(1), "%Y%m%dT%H%M%S%f").replace(tzinfo=UTC)
+    except ValueError:
+        raise _bad("before는 앞 응답의 next_before 값이어야 해요.") from None
+    return at, int(m.group(2))
+
+
+def get_memos(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """`q`(검색어, 3글자 이상 trigram·미만 LIKE), `limit`(고정 아닌 메모 수, 1~100, 기본 50), `before`(커서)."""
+    q = request.query.get("q")
+    if q is not None and len(q) > MEMO_QUERY_MAX:
+        raise _bad(f"q는 {MEMO_QUERY_MAX}자까지예요.")
+    raw = request.query.get("limit")
+    limit = MEMOS_DEFAULT_LIMIT
+    if raw is not None:
+        if not _INT.match(raw) or not 1 <= int(raw) <= MEMOS_MAX_LIMIT:
+            raise _bad(f"limit은 1~{MEMOS_MAX_LIMIT} 사이 정수여야 해요.")
+        limit = int(raw)
+    before = _memo_before(request.query.get("before"))
+    rows = MemosRepo(conn, deps.clock).list(q=q, limit=limit + 1, before=before)
+    pinned = [m for m in rows if m.pinned]
+    rest = [m for m in rows if not m.pinned]
+    more = len(rest) > limit
+    rest = rest[:limit]
+    return dump(MemoList, {
+        "items": [memo_item(m) for m in [*pinned, *rest]],
+        "next_before": memo_cursor(rest[-1].updated_at, rest[-1].id) if more and rest else None,
+    })
+
+
+def get_memo(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:
+    """본문 전체. 없는·지운 메모는 404."""
+    m = MemosRepo(conn, deps.clock).get(_path_id(request))
+    if m is None:
+        raise ApiError(404, "not_found", "없는 메모예요.")
+    return dump(Memo, memo_dict(m))
 
 
 # --- 인생 곡선, 상태창 ---

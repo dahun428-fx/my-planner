@@ -382,6 +382,25 @@ def _prune_records(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> d
     return {"moment_days_pruned": repo.prune_days(deps.tools.today() - timedelta(days=MOMENT_DAYS_KEEP))}
 
 
+def _memos_daily(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고 `data/exports/memos.md`를 다시 쓴다. 활동은 없다.
+    내보내기가 안 돼도 지우기는 그대로다(다음 날 다시 쓴다)."""
+    from my_planner.store.exports import export_memos
+    from my_planner.tools.memos import DELETED_KEEP
+
+    tools = deps.tools
+    if tools.memos is None:
+        return {"purged": 0, "exported": False}
+    purged = tools.memos.purge_deleted(deps.clock.now() - DELETED_KEEP)
+    try:
+        export_memos(tools.memos, tools.memos_export_path)
+        exported = True
+    except OSError as e:
+        log.warning("memos_export_failed", extra={"error_type": type(e).__name__})
+        exported = False
+    return {"purged": purged, "exported": exported}
+
+
 def _cmd_pause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     from my_planner.bot.commands import cmd_pause
 
@@ -520,6 +539,13 @@ ACTIONS: dict[str, ActionSpec] = {
     # 체크인 시간(SP9 8장): 앱 설정(`PUT /settings/checkin-times`)과 두뇌 확인 카드(`/actions` + 토큰)가 같은 동작.
     # 바로 적용하고 되돌릴 수 있다(이전 칸으로). 두뇌 도구 `set_checkin_time`은 확인 토큰만 만든다
     "set_checkin_time": ActionSpec("apply_checkin_time", target=_checkin_target),
+    # 메모(SP9 6.2·6.4). 확인 없음. 만들기·고정·고정 풀기·지우기는 되돌릴 수 있고 고치기는 되돌릴 수 없다.
+    # 고치기·고정·지우기는 두뇌 도구가 아니다(`mcp_adapter` 목록에 없다, Q5)
+    "create_memo": ActionSpec("create_memo"),
+    "update_memo": ActionSpec("update_memo"),
+    "pin_memo": ActionSpec("pin_memo"),
+    "unpin_memo": ActionSpec("unpin_memo"),
+    "delete_memo": ActionSpec("delete_memo"),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
@@ -527,6 +553,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
     "prune_records": ActionSpec(_prune_records, public=False),  # SP8 6.4(몸 기록 56일은 SP8-06)
     "grant_rest_days": ActionSpec(_grant_rest_days, public=False),  # X9
+    "memos_daily": ActionSpec(_memos_daily, public=False),  # SP9 6.1: 30일 지난 지운 메모, memos.md
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),
     # 내부(상태를 바꾸는 명령 `/pause`, `/unpause`, `/done`: `bot.commands.run_command`, 6.4.1). 중복 방지는
@@ -553,10 +580,22 @@ def _error(status: ActionStatus, http: int, code: str, message: str) -> ActionRe
     return ActionResult(status, http, {"error": {"code": code, "message": message}})
 
 
-def _rejected(message: str) -> ActionResult:
+def _rejected(message: str, code: str = "rejected") -> ActionResult:
     return ActionResult(
-        "rejected", 422, {"status": "rejected", "activity_id": None, "error": {"code": "rejected", "message": message}}
+        "rejected", 422, {"status": "rejected", "activity_id": None, "error": {"code": code, "message": message}}
     )
+
+
+# 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
+CONFLICT_CODES = frozenset({"memo_conflict"})
+REJECT_CODES = frozenset({"too_many_memos", "too_many_pinned"})
+
+
+def _tool_error(out: dict[str, Any]) -> ActionResult:
+    code, message = out.get("code"), str(out["error"])
+    if code in CONFLICT_CODES:
+        return _error("conflict", 409, code, message)
+    return _rejected(message, code if code in REJECT_CODES else "rejected")
 
 
 def _applied(deps: ActionDeps, ctx: RunContext, result: dict[str, Any]) -> ActionResult:
@@ -604,7 +643,7 @@ def _call(deps: ActionDeps, spec: ActionSpec, ctx: RunContext, args: dict[str, A
     else:
         out = spec.tool(deps, ctx, args)
     if "error" in out:
-        return _rejected(str(out["error"]))
+        return _tool_error(out)
     if out.get(STALE_RESULT) is True:  # 확인을 물은 뒤 상황이 바뀌어 다른 결과가 된다: 다시 물어야 한다(5.2)
         return _error("conflict", 409, "conflict", STALE_TOKEN)
     if spec.reply:
