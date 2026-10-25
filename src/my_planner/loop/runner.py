@@ -20,6 +20,12 @@ from my_planner.harness.dispatcher import (  # 다시 넣기 상한은 앱 재�
 from my_planner.harness.moments import days_to_queue
 from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
+from my_planner.loop.reminders import (
+    RESUME_GAP,
+    PendingReminder,
+    remind_events,
+    send_reminders,
+)
 from my_planner.loop.schedule import (
     ENABLED_LOOPS,
     Due,
@@ -38,6 +44,8 @@ from my_planner.tools.actions import ActionRequest, ActionResult
 if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.harness.conversations import ConversationRouter
+    from my_planner.harness.delivery import Delivery
+    from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
@@ -45,7 +53,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DRAFT_EXPIRE_DAYS = 3
-RESUME_GAP = timedelta(minutes=3)  # 직전 tick과 이보다 멀면 절전에서 깨어난 것으로 본다(스펙 7, S5)
+# RESUME_GAP(3분): 직전 tick과 이보다 멀면 절전에서 깨어난 것으로 본다(스펙 7, S5). 일정 알림 판정(SP9 5.3)이 같이 써서
+# `loop/reminders.py`에 두고 여기서 가져온다
 
 
 def _due(run: Run) -> Due:
@@ -359,6 +368,8 @@ class Runner:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         on_resume: Callable[[], Awaitable[None]] | None = None,
         checkins: bool = True,
+        events: EventsRepo | None = None,
+        reminder_delivery: Delivery | None = None,
     ) -> None:
         """`checkins=False`(role = "dev", 릴리스 흐름 스펙 5.2): 회차를 만들지도 따라잡지도 않는다. 만료된 대화
         닫기, 하트비트, 하루 한 번 작업(초안 만료, 백업, 로그 정리 등)은 그대로 돈다."""
@@ -375,6 +386,9 @@ class Runner:
         self._on_resume = on_resume
         self._ticked = False  # 이 프로세스에서 tick을 한 번이라도 했는가
         self._polling_down = False  # 폴링 재시작이 안 됐다: tick마다 다시 해 본다
+        self.events = events  # 일정 알림(SP9 5.3). 없으면 알림 판정을 건너뛴다
+        self.reminder_delivery = reminder_delivery
+        self.reminder_tasks: set[asyncio.Task[None]] = set()  # 보내는 중인 알림 작업(끝나면 스스로 빠진다)
 
     @property
     def polling_down(self) -> bool:
@@ -474,6 +488,7 @@ class Runner:
         self.ensure_installed()
         last_seen = self._get_time("last_seen_at")
         installed = self._get_time("installed_at")
+        self._remind(last_seen, now)  # 회차가 없어도, 멈춤 중에도, 하트비트 기록보다 앞에서(SP9 5.3)
         if not self.checkins:  # 회차 없이 정리만(2·3단계의 회차 부분을 건너뛴다)
             if self.router is not None:
                 self.router.close_expired()
@@ -537,6 +552,35 @@ class Runner:
         # 4. 하트비트
         self.state.set("last_seen_at", to_iso(now))
         self._run_daily(logical_date(now, tz, boundary))
+
+    def _remind(self, last_seen: datetime | None, now: datetime) -> None:
+        """일정 알림: 판정과 행 기록은 여기서 동기로, 보내기는 asyncio 작업으로 넘긴다. 안 돼도 tick은 그대로 간다."""
+        if self.events is None or last_seen is None:  # 첫 실행은 공백을 알 수 없다
+            return
+        try:
+            pending = remind_events(last_seen_at=last_seen, now=now, events=self.events, limits=self.settings.limits)
+        except Exception:  # 알림 판정이 안 돼도 회차 판정은 돈다
+            log.exception("remind_error")
+            return
+        if pending:
+            self._send_in_background(pending)
+
+    def _send_in_background(self, pending: list[PendingReminder]) -> None:
+        assert self.events is not None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 이벤트 루프 밖(동기 호출): 보낼 수 없으니 못 보냈다고 적는다
+            for p in pending:
+                self.events.mark_reminder_failed(p.outcome.event_id, p.outcome.date)
+            log.warning("reminders_no_loop", extra={"count": len(pending)})
+            return
+        if self.reminder_delivery is None:
+            for p in pending:
+                self.events.mark_reminder_failed(p.outcome.event_id, p.outcome.date)
+            return
+        task = loop.create_task(send_reminders(pending, self.reminder_delivery, self.events))
+        self.reminder_tasks.add(task)
+        task.add_done_callback(self.reminder_tasks.discard)
 
     def _run_daily(self, today: date) -> None:
         if self.state.get("last_daily_jobs_date") == today.isoformat():

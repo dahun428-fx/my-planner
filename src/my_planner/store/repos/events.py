@@ -401,3 +401,52 @@ class EventsRepo:
             self.delete(id, now)
             return None
         return self.update(id, {"repeat_until": from_date - timedelta(days=1)}, now)
+
+    # --- 알림 판정 기록 (`event_reminders`, SP9 5.3) ---
+
+    def decided_reminders(self, first: date, last: date) -> set[tuple[int, date]]:
+        """`[first, last]`(그날 일정의 현지 날짜) 안에서 이미 판정한 (일정 번호, 날짜). 같은 날에 두 번 판정하지 않는다."""
+        rows = self.conn.execute(
+            "SELECT event_id, occurrence_date FROM event_reminders WHERE occurrence_date BETWEEN ? AND ?",
+            (first.isoformat(), last.isoformat()),
+        ).fetchall()
+        return {(r[0], date.fromisoformat(r[1])) for r in rows}
+
+    def record_reminder(self, event_id: int, d: date, remind_at: datetime, outcome: str, now: datetime) -> None:
+        """판정 한 줄. 이미 있으면 그대로 둔다(먼저 적은 쪽이 맞다)."""
+        with transaction(self.conn):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO event_reminders (event_id, occurrence_date, remind_at, outcome, decided_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (event_id, d.isoformat(), to_iso(remind_at), outcome, to_iso(now)),
+            )
+
+    def mark_reminder_failed(self, event_id: int, d: date) -> bool:
+        """보냈다고 적은 줄(`sent`·`late_sent`)을 `failed`로 고친다. 그 밖의 줄은 건드리지 않는다."""
+        with transaction(self.conn):
+            cur = self.conn.execute(
+                "UPDATE event_reminders SET outcome = 'failed' WHERE event_id = ? AND occurrence_date = ? "
+                "AND outcome IN ('sent', 'late_sent')",
+                (event_id, d.isoformat()),
+            )
+        return cur.rowcount == 1
+
+    def reminders_attempted_since(self, since: datetime) -> int:
+        """`since` 이후에 보내려 한 알림 수(`sent`·`late_sent`·`failed`). 하루 상한 계산용."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM event_reminders WHERE decided_at >= ? AND outcome IN ('sent', 'late_sent', 'failed')",
+            (to_iso(since),),
+        ).fetchone()[0]
+
+    def open_unsent_reminders(self, keys: list[tuple[int, date]]) -> dict[tuple[int, date], str]:
+        """(일정 번호, 날짜)마다 닫지 않은 `missed`·`failed`·`skipped` 줄의 결과."""
+        out: dict[tuple[int, date], str] = {}
+        for eid, d in keys:
+            r = self.conn.execute(
+                "SELECT outcome FROM event_reminders WHERE event_id = ? AND occurrence_date = ? "
+                "AND outcome IN ('missed', 'failed', 'skipped') AND dismissed_at IS NULL",
+                (eid, d.isoformat()),
+            ).fetchone()
+            if r is not None:
+                out[(eid, d)] = r[0]
+        return out

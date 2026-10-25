@@ -54,6 +54,7 @@ PUSH_TEST_TEXT = "알림이 잘 오는지 시험으로 보냈어요."
 BODY_MAX_CHARS = 120  # 본문 첫 줄을 이 길이로 자른다(6.4.8)
 NOTICE_TTL_S = 24 * 60 * 60
 NOTICE_URL = "/"
+REMINDER_TTL_S = 60 * 60  # 일정 알림은 한 시간이 지나면 낡았다(SP9 5.3)
 GONE_STATUSES = frozenset({404, 410})  # 구독이 만료됐다: 다시 보내지 않고 끈다
 
 PushResult = Literal["ok", "gone", "failed"]
@@ -127,6 +128,11 @@ def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -
 def notice_payload(text: str) -> dict[str, Any]:
     """고정 안내·시험 푸시(`type: notice`)."""
     return {"type": "notice", "checkin_id": None, "title": NOTICE_TITLE, "body": _first_line(text), "url": NOTICE_URL}
+
+
+def reminder_payload(title: str, body: str, url: str) -> dict[str, Any]:
+    """일정 알림(`type: reminder`, SP9 5.3): 제목은 일정 제목, 누르면 `url`(앱 `/schedule/?date=…`)."""
+    return {"type": "reminder", "checkin_id": None, "title": title, "body": _first_line(body), "url": url}
 
 
 @dataclass
@@ -227,6 +233,23 @@ class Delivery:
             await self.telegram.send(Outbound(text=text))
         except Exception as e:  # noqa: BLE001 - 안내가 안 가도 다음 기회에 다시 보낸다
             log.warning("notice_send_error", extra={"error_type": type(e).__name__})
+            return None
+        return "telegram"
+
+    # --- 일정 알림 (SP9 5.3) ---
+
+    async def deliver_reminder(self, title: str, body: str, url: str) -> Channel | None:
+        """`deliver_notice`와 같은 통로 규칙: 주 통로가 `app`이면 `type: reminder` 푸시, 아무도 못 받으면 텔레그램에
+        같은 한 줄. 받은 통로, 어디에도 못 보냈으면 None."""
+        if self.effective() == "app":
+            ok, _ = await self._push_all(reminder_payload(title, body, url), ttl=REMINDER_TTL_S, topic=None, attempts=1)
+            if ok:
+                return "app"
+            log.warning("reminder_push_fallback_telegram")
+        try:
+            await self.telegram.send(Outbound(text=f"{title} · {body}"))
+        except Exception as e:  # noqa: BLE001 - 못 갔으면 부르는 쪽이 `failed`로 적는다
+            log.warning("reminder_send_error", extra={"error_type": type(e).__name__})
             return None
         return "telegram"
 

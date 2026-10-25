@@ -3592,7 +3592,7 @@
     },
     "MissedReminder": {
       "additionalProperties": false,
-      "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null). 채우기는 SP9-06.",
+      "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null).",
       "properties": {
         "date": {
           "title": "Date",
@@ -5217,7 +5217,7 @@
         },
         "MissedReminder": {
           "additionalProperties": false,
-          "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null). 채우기는 SP9-06.",
+          "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null).",
           "properties": {
             "date": {
               "title": "Date",
@@ -5471,7 +5471,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의\n그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3(SP9-06이 채운다).",
+      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의\n그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3.",
       "properties": {
         "brief": {
           "anyOf": [

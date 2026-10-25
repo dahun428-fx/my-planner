@@ -324,6 +324,7 @@ def build_be(
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
         on_resume=on_resume, sleep=sleep, checkins=settings.runtime.role == "prod",  # dev는 회차·따라잡기 끔
+        events=events, reminder_delivery=delivery,  # 일정 알림 1분 tick(SP9 5.3): 두뇌 없이 주 통로로
     )
     # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))

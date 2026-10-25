@@ -641,6 +641,20 @@ def ui_event_items(items: Any) -> Any:
     return out
 
 
+def today_missed_reminders(events: EventsRepo | None, d: _date, boundary: _time) -> list[dict[str, Any]]:
+    """오늘(논리적 날짜) 그날 일정 가운데 `missed`·`failed`·`skipped`이고 닫지 않은 알림(`/today.missed_reminders`, 5.3·5.6).
+    새벽 일정은 `today_events`와 같은 날에 든다."""
+    if events is None:
+        return []
+    occ = events.on_logical_date(d, boundary)
+    got = events.open_unsent_reminders([(o.event_id, o.date) for o in occ])
+    return [
+        {"event_id": o.event_id, "date": o.date.isoformat(), "start": o.start, "title": o.title,
+         "outcome": got[(o.event_id, o.date)]}
+        for o in occ if (o.event_id, o.date) in got
+    ]
+
+
 def today_events(events: EventsRepo | None, d: _date, boundary: _time) -> list[Occurrence]:
     """논리적 날짜 `d`의 그날 일정(오늘 화면 `/today.events`, 앞머리). 저장소가 없으면 빈 목록."""
     return events.on_logical_date(d, boundary) if events is not None else []
