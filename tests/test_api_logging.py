@@ -242,3 +242,56 @@ async def test_body_logs_have_no_numbers_or_token(tmp_path):
     assert not {"steps", "sleep_minutes", "date", "dates"} & set(received[0])
     assert len(pruned) == 1 and pruned[0]["body_days_pruned"] == 0
     assert routes[:3] == [(BODY_PATH, 200), (BODY_PATH, 400), (BODY_PATH, 401)]
+
+
+async def test_sp8_logs_exports_and_summaries_clean(tmp_path):
+    """SP8 1장 조건 7, 11장, 13장 "로그·개인정보": 이야기 흐름(`test_sp8_story`) 뒤 시스템 로그(`state/logs/`),
+    `data/exports/`, 원문 기록(`data/transcripts/`), 활동 `summary`에 시험 순간 글·걸음/잠 숫자·`BODY_TOKEN`이 없다.
+    `data/exports/`에 순간 파일이 없다.
+
+    원문 기록은 하루 끝 작업·순간 도구·텔레그램 통로가 쓰는 줄 전부를 본다. 앱 대화에서 비서가 `get_status`로 받은 순간을
+    옮겨 말한 줄(머리글 ` @app`의 비서 항목)만은 11장이 받아들인 자리라 뺀다: 그 줄은 이야기에 일부러 하나 두었고,
+    텔레그램 통로의 `read_transcript`가 빼고 주는 것은 `test_sp8_story`가 본다."""
+    from test_sp8_story import (
+        BODY_NUMBERS,
+        BODY_TOKEN,
+        MOMENT_DAYS,
+        MOMENT_TEXTS,
+        sp8_story,
+    )
+
+    s = await sp8_story(tmp_path)
+    logs = [p for p in (s["state_dir"] / "logs").rglob("*") if p.is_file()]
+    exports = [p for p in (s["data_dir"] / "exports").rglob("*") if p.is_file()]
+    transcripts = [p for p in (s["data_dir"] / "transcripts").rglob("*") if p.is_file()]
+    assert logs and transcripts
+    raw_logs = "\n".join(p.read_text(encoding="utf-8") for p in logs)
+    entries = [json.loads(line) for line in raw_logs.splitlines() if line]
+    # 시각(`ts`, 실제 벽시계의 밀리초)은 빼고 본다: 세 자리 잠 숫자가 우연히 밀리초와 겹치지 않게
+    logged = "\n".join(json.dumps({k: v for k, v in e.items() if k != "ts"}, ensure_ascii=False) for e in entries)
+    assert BODY_TOKEN not in raw_logs and "Bearer" not in raw_logs
+    raw_exports = "\n".join(p.read_text(encoding="utf-8") for p in exports)
+    secrets = (*MOMENT_TEXTS, "꾸민순간", *BODY_NUMBERS, BODY_TOKEN, "SP8STORY")
+
+    for secret in secrets:
+        assert secret not in logged, secret
+        assert secret not in raw_exports, secret
+        assert not [x for x in s["summaries"] if secret in x], secret
+        assert secret not in s["transcripts_without_app_secretary"], secret
+    assert not [p for p in exports if "moment" in p.name.lower() or "순간" in p.name]
+    # 원문 기록에 순간 글이 있는 곳은 앱 대화 비서의 그 한 줄뿐이다(검사가 실제로 파일을 읽고 있다)
+    quoted = MOMENT_DAYS[max(MOMENT_DAYS)]
+    raw_transcripts = "\n".join(p.read_text(encoding="utf-8") for p in transcripts)
+    assert raw_transcripts.count(quoted) == 1 and s["transcripts_all"].count(quoted) == 1
+    for secret in secrets:
+        if secret not in (quoted, "꾸민순간"):
+            assert secret not in raw_transcripts, secret
+    # 로그에 남는 것은 이름과 수만: 순간 작업 네 번, 두뇌 호출의 도구 이름, 몸 기록 받은 날 수
+    jobs = [e for e in entries if e.get("msg") == "moments_job"]
+    assert [(e["date"], e["state"], e["saved"]) for e in jobs] == [
+        ("2026-10-25", "done", 2), ("2026-10-26", "done", 1), ("2026-10-27", "done", 1), ("2026-10-28", "done", 1),
+    ]
+    assert [e["days"] for e in entries if e.get("msg") == "body_received"] == [3]
+    summaries = [x for x in s["summaries"] if "이룬 순간" in x]
+    assert summaries == ["이룬 순간 2개 정리 (10/25)", "이룬 순간 숨김 (10/25)", "이룬 순간 지움 (10/25)",
+                         "이룬 순간 1개 정리 (10/26)", "이룬 순간 1개 정리 (10/27)", "이룬 순간 1개 정리 (10/28)"]

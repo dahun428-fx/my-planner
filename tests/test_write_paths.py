@@ -235,6 +235,27 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     assert ("body_days", "my_planner.tools.actions", "my_planner.loop.runner", True) in rec.tool_calls
 
 
+async def test_sp8_write_paths(tmp_path, monkeypatch):
+    """SP8 이야기(`tests/test_sp8_story.py`)의 쓰기도 4.3의 길만 지난다: 순간은 두뇌 갈래의 `save_moments`, 숨기기·지우기는
+    `/actions`, 날 행과 `moments_since`는 하루 끝 작업(`harness/moments.py`), 몸 기록은 `/body`의 즉시 갈래."""
+    from test_sp8_story import sp8_story
+
+    rec = Recorder()
+    monkeypatch.setattr(be_env, "ON_WRITE", rec)
+    await sp8_story(tmp_path)
+
+    assert rec.unparsed == []
+    assert sorted((t, m) for t, m in rec.seen if not _allowed(t, m)) == []
+    assert not any(m.startswith(READ_API) for _, m in rec.seen) and rec.from_read == set()
+    assert rec.bypasses() == []
+    moments = {(e, g) for t, _, e, g in rec.tool_calls if t == "status_moments"}
+    assert moments == {(DISPATCHER, True), ("my_planner.api.actions", True)}  # 저장(두뇌 갈래), 숨기기·지우기(`/actions`)
+    assert ("status_moment_days", MOMENTS_JOB) in rec.seen and ("app_state", MOMENTS_JOB) not in rec.seen  # 이미 적힌 since
+    assert ("status_moment_days", "my_planner.tools.moments", DISPATCHER, True) in rec.tool_calls
+    assert ("body_days", "my_planner.tools.body", "my_planner.api.body", True) in rec.tool_calls
+    assert ("habit_checks", "my_planner.tools.habits", "my_planner.api.actions", True) in rec.tool_calls
+
+
 @pytest.mark.parametrize("table", sorted(ALLOWED))
 def test_allowed_tables_exist(conn, table):
     """`ALLOWED`의 표 이름이 실제 표다(오타로 감시가 비지 않게)."""
