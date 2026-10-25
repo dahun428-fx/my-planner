@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useId } from "react";
-import type { Status, StatusStat } from "../api/types.gen";
+import type { Status, StatusBody, StatusStat } from "../api/types.gen";
+import { BodyLine } from "../components/BodyLine";
 import { MomentsPanel } from "../components/MomentsPanel";
 import { RecentAreas } from "../components/RecentAreas";
 import { StatBar, rampStep } from "../components/StatBar";
@@ -18,7 +19,7 @@ function shortPeriod(prev: string, current: string | null): string {
   return current !== null && prev.slice(0, 4) === current.slice(0, 4) ? prev.slice(5) : prev;
 }
 
-function StatRow({ stat: s, latest }: { stat: StatusStat; latest: string | null }) {
+function StatRow({ stat: s, latest, body }: { stat: StatusStat; latest: string | null; body: StatusBody | null }) {
   const older = s.score !== null && s.period !== null && s.period !== latest;
   return (
     <li className="stat" data-area={s.area} data-debuff={s.debuff || undefined}>
@@ -45,6 +46,7 @@ function StatRow({ stat: s, latest }: { stat: StatusStat; latest: string | null 
         <span className="stat-debuff">{T.debuff(shortPeriod(s.prev_period, s.period), s.prev_score)}</span>
       )}
       {s.debuff && s.recovery_quest && <span className="stat-quest">{T.recovery(s.recovery_quest)}</span>}
+      {s.area === "health" && <BodyLine body={body} />}
     </li>
   );
 }
@@ -82,7 +84,7 @@ export function StatusView({ status: s }: { status: Status }) {
         ) : (
           <ul className="stats">
             {s.stats.map((x) => (
-              <StatRow key={x.area} stat={x} latest={latest} />
+              <StatRow key={x.area} stat={x} latest={latest} body={s.body} />
             ))}
           </ul>
         )}

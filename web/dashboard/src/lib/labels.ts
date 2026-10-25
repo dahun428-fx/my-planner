@@ -245,6 +245,15 @@ export const STATUS_TEXT = {
   momentsHeading: "이룬 순간",
   momentsFooter: "숨기거나 지우는 것은 운영 앱 상태창에서 할 수 있어요.",
   momentsEmpty: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.",
+  // SP8 10.1, appendix A: the body record line under health. A part with no value is left out; no warning when old.
+  bodyLine: (b: { steps_avg_7: number | null; sleep_avg_7: number | null }) => {
+    const parts: string[] = [];
+    if (typeof b.steps_avg_7 === "number") parts.push(`지난 7일 걸음 평균 ${b.steps_avg_7.toLocaleString("ko-KR")}`);
+    if (typeof b.sleep_avg_7 === "number")
+      parts.push(`${typeof b.steps_avg_7 === "number" ? "" : "지난 7일 "}잠 평균 ${Math.floor(b.sleep_avg_7 / 60)}시간 ${b.sleep_avg_7 % 60}분`);
+    // Nothing to say when neither average exists (a record older than a week): no line, no warning.
+    return parts.length > 0 ? ["몸 기록", ...parts].join(" · ") : "";
+  },
 } as const;
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;

@@ -326,3 +326,48 @@ describe("StatusScreen moments panel (SP8 10.1)", () => {
     for (const w of ["숨기기", "지우기", "다시 보이기", "숨긴 순간"]) expect(panel.textContent).not.toContain(w);
   });
 });
+
+// SP8-07 (spec 7.5, 10.1): the body record line under the health row.
+
+describe("StatusScreen body line (SP8-07)", () => {
+  const healthRow = async () => {
+    const region = await screen.findByRole("region", { name: /^스탯/ });
+    return within(region)
+      .getAllByRole("listitem")
+      .find((r) => r.dataset.area === "health")!;
+  };
+  const withBody = (b: Record<string, unknown> | null) => ({ ...status, body: b }) as unknown as Status;
+
+  it("body_line_under_health", async () => {
+    server.use(statusAnswers.ok(withBody({ last_date: "2026-10-24", days_7: 6, steps_avg_7: 6800, sleep_avg_7: 410 })));
+    renderScreen();
+    const health = await healthRow();
+    expect(within(health).getByText("몸 기록 · 지난 7일 걸음 평균 6,800 · 잠 평균 6시간 50분")).toBeInTheDocument();
+    expect(screen.getAllByText(/^몸 기록 · /)).toHaveLength(1);
+  });
+
+  it("body_line_omits_missing_values", async () => {
+    server.use(statusAnswers.ok(withBody({ last_date: "2026-10-24", days_7: 2, steps_avg_7: null, sleep_avg_7: 450 })));
+    renderScreen();
+    const health = await healthRow();
+    expect(within(health).getByText("몸 기록 · 지난 7일 잠 평균 7시간 30분")).toBeInTheDocument();
+    expect(health.textContent).not.toContain("걸음");
+  });
+
+  it("no_body_line_when_null", async () => {
+    server.use(statusAnswers.ok(withBody(null)));
+    renderScreen();
+    const health = await healthRow();
+    expect(health.textContent).not.toContain("몸 기록");
+    expect(text()).not.toContain("단축어");
+  });
+
+  it("no_warning_when_old", async () => {
+    server.use(statusAnswers.ok(withBody({ last_date: "2026-08-30", days_7: 0, steps_avg_7: null, sleep_avg_7: null })));
+    renderScreen();
+    const health = await healthRow();
+    expect(health.textContent).not.toContain("몸 기록");
+    expect(health.textContent).not.toContain("마지막");
+    for (const w of ["오래", "경고", "끊", "부족", "목표", "못 "]) expect(health.textContent).not.toContain(w);
+  });
+});

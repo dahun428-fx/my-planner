@@ -232,6 +232,41 @@ cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner
 
 VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새어 나갔을 때만 바꾸고 바꾼 뒤 앱에서 알림을 다시 켭니다.
 
+## iPhone 단축어
+
+아이폰의 걸음 수와 잠을 매일 비서에게 보내면 상태창의 건강 스탯에 근거가 쌓입니다. 보내는 길은 `POST /api/v1/body` 하나이고, 이 경로만 여는 **별도 토큰** `BODY_TOKEN`을 씁니다(`API_TOKEN`과 다른 값). 아래는 단축어 순서의 뼈대입니다. 단축어 앱의 동작 이름과 수면 합산 순서는 실제 아이폰으로 만들어 보고 화면 순서대로 고칩니다.
+
+1. 노트북에서 `.venv\Scripts\python.exe -m my_planner gen-token`을 한 번 더 돌려 나온 값을 `.env`에 `BODY_TOKEN=...`으로 넣습니다. `API_TOKEN`과 같은 값이면 안 되고 43자 이상이어야 합니다. 출력은 채팅이나 문서에 붙이지 않습니다. 그다음 작업을 다시 켭니다(`Stop-ScheduledTask -TaskName my-planner` 뒤 `Start-ScheduledTask -TaskName my-planner`). `/health`는 그대로 `ok`입니다.
+2. 아이폰에서 Tailscale이 켜져 있는지 봅니다(운영 앱이 열리면 됩니다).
+3. 단축어 앱 > 새 단축어 "몸 기록 보내기"를 만듭니다.
+   1. **건강 샘플 찾기**: 유형 "걸음", 시작일 "최근 3일", 일별로 묶기 > 날마다 합계.
+   2. **건강 샘플 찾기**: 유형 "수면 분석", 값 "잠듦", 시작일 "최근 3일" > 끝난 날짜별로 지속 시간(분)을 더합니다.
+   3. **숫자 반올림**: 걸음 합계와 잠(분)을 각각 소수점 없는 정수로 반올림합니다. 합계가 `8123.0`처럼 소수로 오면 BE가 400으로 거절합니다("걸음 수는 0~100,000, 잠은 0~1,440분이에요."). 참/거짓 값도 거절합니다.
+   4. 두 결과로 `days` 목록(사전 목록)을 만듭니다. 날짜는 형식 `yyyy-MM-dd`, 값 이름은 걸음 `steps`, 잠 `sleep_minutes`입니다. 값이 없는 날은 그 항목을 뺍니다.
+   5. **URL 콘텐츠 가져오기**: URL `https://<기계>.<tailnet>.ts.net/api/v1/body`, 방법 POST, 헤더 `Authorization: Bearer <BODY_TOKEN>`와 `Content-Type: application/json`, 본문 JSON `{"days": ...}`.
+4. 단축어를 한 번 손으로 실행해 건강 접근("걸음", "수면")을 허용합니다. 결과에 `{"saved": n}`이 보이면 됩니다. 운영 앱 상태창의 몸 기록 줄이 바뀝니다.
+5. 단축어 > 자동화 > 새 개인용 자동화 > "특정 시간" 매일 09:00 > "바로 실행"(묻지 않기) > "몸 기록 보내기".
+
+매일 지난 3일을 다시 보내므로 노트북이 꺼져 있던 날의 빈칸은 사흘 안에 다음 날 채워집니다. 걸음 6,000 이상, 잠 7시간 이상인 날은 건강 스탯의 "요즘" 보너스에 각 0.5로 들어가고, 기준에 못 미친 날은 0점일 뿐 아무것도 깎이지 않습니다.
+
+- **이 단축어와 `BODY_TOKEN`은 공유하지 않습니다.** 단축어는 iCloud로 기기 사이에 동기화되고, 공유하면 헤더의 `BODY_TOKEN`도 함께 나갑니다.
+- **토큰 바꾸기**: 새어 나갔다고 생각되면 `gen-token`으로 새 값을 만들어 `.env`의 `BODY_TOKEN` 줄을 바꾸고, 작업을 다시 켠 뒤, 단축어의 `Authorization` 헤더를 새 값으로 고칩니다. 옛 토큰은 바로 `401`이 됩니다.
+- `BODY_TOKEN`을 비워 두면 이 경로만 열리지 않습니다(다른 API는 그대로). 그래서 시작할 때 로그에 `body_token_missing` 경고가 한 줄 남는데, `BODY_TOKEN`을 쓰지 않는 동안은 **정상**입니다.
+
+## 이룬 순간 정리 멈추기
+
+하루 끝 이룬 순간 정리를 잠시 멈추려면 `app_state`의 `moments_paused`를 **문자열** `'1'`로 둡니다(숫자 1이 아닙니다). 행이 처음엔 없을 수 있어 `INSERT ... ON CONFLICT`로 씁니다. 작업(`my-planner`)을 먼저 멈추고(`Stop-ScheduledTask -TaskName my-planner`) 고친 뒤 다시 켭니다. 켜 둔 채 고치면 DB 잠금으로 실패할 수 있으니 그때는 잠금이 풀린 뒤 다시 시도합니다.
+
+```powershell
+sqlite3 state\planner.db "INSERT INTO app_state(key,value) VALUES('moments_paused','1') ON CONFLICT(key) DO UPDATE SET value='1'"
+```
+
+다시 돌리려면 행을 지웁니다.
+
+```powershell
+sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
+```
+
 ## 운영 앱
 
 폰에서 쓰는 운영 앱(`web/app/`)은 Vercel에 정적 파일로 올라가 있습니다: `https://my-planner-beige-eight.vercel.app`. 앱은 데이터를 갖지 않고, 폰이 tailnet 안의 BE(`/api/v1/*`)를 직접 부릅니다.

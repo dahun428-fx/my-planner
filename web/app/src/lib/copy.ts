@@ -110,6 +110,17 @@ export const copy = {
         .filter(Boolean)
         .join(" · ")}`,
     recentAreasEmpty: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.",
+    // 10.2 body line under health: a part with no value is left out; no warning when the last record is old.
+    bodyLine: (b: { steps_avg_7: number | null; sleep_avg_7: number | null }) => {
+      const parts: string[] = [];
+      if (typeof b.steps_avg_7 === "number") parts.push(`지난 7일 걸음 평균 ${b.steps_avg_7.toLocaleString("ko-KR")}`);
+      if (typeof b.sleep_avg_7 === "number")
+        parts.push(`${typeof b.steps_avg_7 === "number" ? "" : "지난 7일 "}잠 평균 ${Math.floor(b.sleep_avg_7 / 60)}시간 ${b.sleep_avg_7 % 60}분`);
+      // Nothing to say when neither average exists (a record older than a week): no line, no warning.
+      return parts.length > 0 ? ["몸 기록", ...parts].join(" · ") : "";
+    },
+    bodyLast: (date: string) => `마지막 기록 ${Number(String(date).slice(5, 7))}/${Number(String(date).slice(8, 10))}`,
+    bodyConnect: "아이폰 단축어로 걸음과 잠을 보내면 건강 스탯의 근거가 돼요. 설정은 README의 'iPhone 단축어'를 봐 주세요.",
     // 10.2 moments block, appendix A (verbatim).
     momentsHeading: "이룬 순간",
     momentsEmpty: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.",
