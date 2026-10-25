@@ -195,7 +195,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setLoading(true);
     setLoadError(null);
     const pick = picked();
-    void loadHistory(pick ?? conversationId).then((r) => {
+    const notBefore = pick === null && conversationId === undefined && !embeddedRef.current ? sheetState.freshSince : null;
+    void loadHistory(pick ?? conversationId, { notBefore }).then((r) => {
       if (mine !== seq.current) return;
       setLoading(false);
       if (r.kind === "offline") return; // the last view stays, read-only (F9)
@@ -221,12 +222,16 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (embedded) return;
     if (!open) {
       sheetState.pickedConversationId = null;
+      focusAfter.current = null;
       setView("chat");
     }
   }, [open, embedded]);
   useEffect(
     () => () => {
-      if (!embeddedRef.current) sheetState.pickedConversationId = null;
+      if (!embeddedRef.current) {
+        sheetState.pickedConversationId = null;
+        sheetState.freshSince = null;
+      }
     },
     [],
   );
@@ -245,10 +250,22 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setLoadError(null);
   }, [setMessages]);
 
+  // Also on the way back from the list screen: the log is a fresh element then (review round 1).
   useEffect(() => {
     const el = list.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, phase, failure, elsewhere]);
+  }, [messages, phase, failure, elsewhere, view]);
+
+  // The pressed row or "새 대화" goes away with the list screen: focus moves to the list button (a
+  // conversation is loading, the input is still off) or to the input (an empty chat). Review round 1.
+  const focusAfter = useRef<"list" | "input" | null>(null);
+  const listButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (view !== "chat" || focusAfter.current === null) return;
+    const target = focusAfter.current === "list" ? listButton.current : field.current;
+    focusAfter.current = null;
+    target?.focus();
+  }, [view, loading]);
 
   const busy = inFlight || status === "submitted" || status === "streaming";
   const readOnly = !online;
@@ -264,6 +281,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setInFlight(true);
     setFailure(null);
     setPhase(null);
+    if (!embedded) sheetState.freshSince = null; // said something: the latest conversation is this one again
     const metadata: Meta = { at: new Date().toISOString(), ...(checkinId === undefined ? {} : { checkin_id: checkinId }) };
     void sendMessage({ text: t, metadata });
     return true;
@@ -275,6 +293,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (sending.current) return; // an answer still coming stays on screen
     clearView();
     sheetState.pickedConversationId = id;
+    sheetState.freshSince = null;
+    focusAfter.current = "list";
     setView("chat");
     load();
   };
@@ -289,11 +309,16 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       return;
     }
     clearView();
+    sheetState.freshSince = new Date().toISOString();
+    if (view === "list") focusAfter.current = "input"; // from the head, its icon keeps the focus
     setView("chat");
   };
   // A deleted conversation that is on screen leaves an empty chat (the BE closed it first, 7.6).
   const onDeleted = (id: number) => {
-    if (id === ctx.current.conversationId || id === sheetState.pickedConversationId) clearView();
+    if (id === ctx.current.conversationId || id === sheetState.pickedConversationId) {
+      clearView();
+      sheetState.freshSince = new Date().toISOString();
+    }
   };
 
   const retry = () => {
@@ -345,6 +370,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   ));
   const rows: React.ReactNode[] = [];
   let prevConv: number | null = null;
+  // A conversation already on screen is not "새 대화" when the talk goes back to it (a picked
+  // conversation after a check-in chip's answer, review round 1).
+  const shownConvs = new Set<number>();
   let prevAt: string | null = null;
   messages.forEach((m, i) => {
     const meta = metaOf(m);
@@ -353,7 +381,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       const reply = messages.slice(i + 1).find((n) => n.role === "assistant");
       conv = reply ? conversationIdOf(reply) : null;
     }
-    const newConv = conv !== null && prevConv !== null && conv !== prevConv;
+    const newConv = conv !== null && prevConv !== null && conv !== prevConv && !shownConvs.has(conv);
     const at = typeof meta.at === "string" ? meta.at : prevAt;
     const gap = at !== null && prevAt !== null && Date.parse(at) - Date.parse(prevAt) > GAP_MS;
     if (newConv) {
@@ -373,7 +401,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
     rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} onOpen={openScreen} onOpenPath={openPath} />);
     if (i === historyCount - 1) rows.push(elsewhereLines);
-    if (conv !== null) prevConv = conv;
+    if (conv !== null) {
+      prevConv = conv;
+      shownConvs.add(conv);
+    }
     if (at !== null) prevAt = at;
   });
 
@@ -396,7 +427,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // SP9 9.5: the list button at the left of the head; "새 대화" at the right, left of 닫기.
   const chatHead = (
     <header className={styles.header}>
-      <button type="button" className={styles.headIcon} aria-label={copy.chat.pastConversations} onClick={() => setView("list")}>
+      <button ref={listButton} type="button" className={styles.headIcon} aria-label={copy.chat.pastConversations} onClick={() => setView("list")}>
         <Icon name="list" />
       </button>
       <div className={styles.heading}>

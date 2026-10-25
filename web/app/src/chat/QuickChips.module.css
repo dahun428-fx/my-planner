@@ -50,7 +50,6 @@
 }
 .chip:disabled {
   color: var(--muted);
-  opacity: 0.5;
   cursor: default;
 }
 .chip:disabled .mark {

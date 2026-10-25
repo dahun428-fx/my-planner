@@ -803,6 +803,109 @@ describe("ChatSheet conversation list (SP9 9.5)", () => {
     expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
   });
 
+  // Review round 1, SHOULD 1: 새 대화 then a close and a reopen without sending stays an empty new chat.
+  it("새 대화, close, reopen without sending: still an empty chat, and the next message opens a new conversation", async () => {
+    const seen = serveConversations();
+    const bodies = serveChat(() => sseResponse(textAnswer("m-9-1", 9, "새로 시작해요")));
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(seen.newPosts).toBe(1));
+    await waitFor(() => expect(screen.queryByText("지금 대화의 말")).toBeNull());
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    expect(screen.queryByText("지금 대화의 말")).toBeNull();
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0].conversation_id).toBeNull();
+    expect(await screen.findByText("새로 시작해요")).toBeInTheDocument();
+    // Once something was said, a reopen shows the latest conversation again.
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("지금 대화의 말")).toBeInTheDocument();
+  });
+
+  it("a conversation said after 새 대화 (another device) still shows on reopen", async () => {
+    serveConversations();
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(screen.queryByText("지금 대화의 말")).toBeNull());
+    const later = new Date(Date.now() + 60_000).toISOString();
+    server.use(
+      http.get(`${BASE}/conversations`, () =>
+        HttpResponse.json({ items: [{ id: 5, kind: "chat", channel: "app", run_id: null, opened_at: later, last_message_at: later, closed_at: null }] }),
+      ),
+    );
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("지금 대화의 말")).toBeInTheDocument();
+  });
+
+  // Review round 1, SHOULD 2: back from the list, the conversation is at its end again.
+  it("‹ 비서 from the list scrolls the conversation to the bottom", async () => {
+    serveConversations();
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900);
+    const set: number[] = [];
+    vi.spyOn(Element.prototype, "scrollTop", "set").mockImplementation(function (this: Element, v: number) {
+      if (this.getAttribute("role") === "log") set.push(v);
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await screen.findByText("책 고르기");
+    set.length = 0;
+    await user.click(screen.getByRole("button", { name: copy.chat.backToChat }));
+    await screen.findByText("지금 대화의 말");
+    expect(set).toContain(900);
+  });
+
+  // Review round 1, NIT: the pressed button goes away, focus lands somewhere sensible in the sheet.
+  it("focus stays in the sheet: the list button after opening a row, the input after 새 대화", async () => {
+    serveConversations();
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await openFromList(user, "책 고르기");
+    await screen.findByText("사피엔스 어때요");
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.pastConversations })).toHaveFocus());
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await screen.findByText("책 고르기");
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toHaveFocus());
+  });
+
+  // Review round 1, NIT: going back to a conversation already on screen (after a check-in chip) is not "새 대화".
+  it("no second 새 대화 divider when the talk returns to the picked conversation", async () => {
+    server.use(
+      http.get(`${BASE}/today`, () =>
+        HttpResponse.json({ ...todayJson, checkins: [{ ...todayJson.checkins[1], sent_at: new Date(Date.now() - 60_000).toISOString(), reply_until: new Date(Date.now() + 3_600_000).toISOString() }] }),
+      ),
+    );
+    serveConversations();
+    serveChat(
+      () => sseResponse(textAnswer("m-8-1", 8, "오늘 어땠어요?")),
+      () => sseResponse(textAnswer("m-3-2", 3, "책 얘기 이어가요")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("지금 대화의 말");
+    await openFromList(user, "책 고르기");
+    await screen.findByText("사피엔스 어때요");
+    const chip = await screen.findByRole("button", { name: "체크인 하기" });
+    await waitFor(() => expect(chip).toBeEnabled());
+    await user.click(chip);
+    await screen.findByText("오늘 어땠어요?");
+    await sendText(user, "책 얘기 계속");
+    await screen.findByText("책 얘기 이어가요");
+    const log = screen.getByRole("log");
+    expect(within(log).getAllByText(copy.chat.newConversation)).toHaveLength(1);
+  });
+
   it("deleting the conversation on screen empties the chat", async () => {
     const seen = serveConversations();
     const user = userEvent.setup();
