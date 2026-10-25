@@ -87,14 +87,23 @@ class TranscriptStore:
         with path.open("a", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines))
 
-    def read_range(self, start: date, end: date, *, max_chars: int = 20000) -> str:
-        """논리적 날짜 `start`~`end`(포함)의 원문 기록. 없는 날은 건너뛴다. 너무 길면 앞부분만."""
+    def read_range(
+        self, start: date, end: date, *, max_chars: int = 20000, drop_app_secretary: bool = False
+    ) -> str:
+        """논리적 날짜 `start`~`end`(포함)의 원문 기록. 없는 날은 건너뛴다. 너무 길면 앞부분만.
+
+        `drop_app_secretary`: 앱 대화의 비서 항목(머리글 끝 ` @app`)을 뺀다. 텔레그램 통로 두뇌의 `read_transcript`가
+        쓴다: 앱 대화의 비서는 `get_status`로 받은 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 1장 조건 7, 11장).
+        """
         parts: list[str] = []
         d = start
         while d <= end:
             path = self.root / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.isoformat()}.md"
             if path.exists():
-                parts.append(f"# {d.isoformat()}\n\n" + path.read_text(encoding="utf-8"))
+                text = path.read_text(encoding="utf-8")
+                if drop_app_secretary:
+                    text = _without_app_secretary(text)
+                parts.append(f"# {d.isoformat()}\n\n" + text)
             d += timedelta(days=1)
         return "\n".join(parts)[:max_chars]
 
@@ -199,6 +208,19 @@ class _Entry:
     app: bool
     body_lines: list[str]  # 도구 줄은 뺀 본문 줄
     tools: list[str]
+
+
+def _without_app_secretary(text: str) -> str:
+    """머리글이 `비서`이고 ` @app`인 항목(머리글과 본문, 다음 머리글 전까지)을 뺀 원문. 나머지 줄은 그대로."""
+    out: list[str] = []
+    skip = False
+    for line in text.splitlines(keepends=True):
+        m = _HEADER.match(line.rstrip("\n"))
+        if m:
+            skip = m["speaker"] == "비서" and m["app"] is not None
+        if not skip:
+            out.append(line)
+    return "".join(out)
 
 
 def _parse(path: Path) -> list[_Entry]:

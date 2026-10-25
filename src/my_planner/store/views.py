@@ -18,6 +18,7 @@ from my_planner.store.exports import week_bounds
 from my_planner.store.repos.conditions import Condition, ConditionsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.habits import Habit, HabitsRepo
+from my_planner.store.repos.moments import Moment
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 WEEKDAY = "월화수목금토일"
@@ -265,3 +266,29 @@ def habit_history(habits: HabitsRepo, h: Habit, today: date, weeks: int) -> dict
         "checked_dates": [d.isoformat() for d in days],
         "weeks": [{"week": w, "count": n} for w, n in per_week.items()],
     }
+
+
+# --- 이룬 순간 (SP8 스펙 6.5) ---
+
+MOMENT_SOURCE_KINDS = ("task", "habit", "condition", "chat")
+
+
+def moment_dict(m: Moment) -> dict[str, Any]:
+    """공통 `Moment` 모양(6.5). `sources`는 참조의 종류만 중복 없이 준다(id는 주지 않는다: 그 사이 지운 할 일일 수 있다)."""
+    kinds = dict.fromkeys(k for s in m.sources if (k := s.split(":", 1)[0]) in MOMENT_SOURCE_KINDS)
+    return {
+        "id": m.id,
+        "date": m.date.isoformat(),
+        "text": m.text,
+        "area": m.area,
+        "sources": list(kinds),
+        "hidden": m.hidden_at is not None,
+    }
+
+
+def moment_counts(ms: Sequence[Moment]) -> list[dict[str, Any]]:
+    """날짜와 개수만(`[{"date", "count"}]`, 최근 날짜부터). 텔레그램 통로 두뇌와 회고 앞머리가 쓴다: 글은 없다(6.7, 10.3)."""
+    counts: dict[date, int] = {}
+    for m in ms:
+        counts[m.date] = counts.get(m.date, 0) + 1
+    return [{"date": d.isoformat(), "count": n} for d, n in sorted(counts.items(), reverse=True)]

@@ -174,5 +174,7 @@
       "label": "할 일 완료",
       "amount": 10
     }
-  ]
+  ],
+  "moments": [],
+  "moments_hidden": 0
 }
