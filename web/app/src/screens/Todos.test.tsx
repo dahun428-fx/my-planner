@@ -79,7 +79,7 @@ describe("Todos", () => {
     await waitFor(() => expect(add).toBeEnabled());
     await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeEnabled());
     fireEvent.click(screen.getByRole("checkbox", { name: copy.today.checkLabel("장보기") }));
-    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.launcher })).toBeDisabled(), { timeout: 3000 }); // CI 부하에서 429 → 쓰기 멈춤 전파가 1초를 넘은 적이 있다
     expect(add).toBeDisabled();
     expect(screen.queryByRole("checkbox", { name: copy.today.checkLabel("장보기") })).toBeNull(); // a read-only row has no check
   });
