@@ -1,6 +1,6 @@
 # SP9 앱 탭 개편 · 스케줄 · 메모 · 대화 목록 상세 설계 (추가 기능)
 
-- 상태: 초안 v2 (Dahun 결정 2026-10-25, 질문 15개. 나머지는 비서의 추천, 15장에서 검토)
+- 상태: 초안 v2.1 (Dahun 결정 2026-10-25, 질문 15개. 나머지는 비서의 추천, 15장에서 검토)
 - 작성일: 2026-10-25
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP1 비서 코어](2026-10-23-sp1-secretary-core-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP5 운영 앱](2026-10-24-sp5-ops-app-design.md), [SP6 채팅 생성형 UI](2026-10-24-sp6-chat-generative-ui-design.md), [SP7 습관](2026-10-24-sp7-habits-design.md)
 - 함께 맞춘 문서: SP8 상태창 기록(`2026-10-25-sp8-status-records-history-design.md`, 브랜치 `docs/sp8-status-records`). 마이그레이션 번호, 메모와 이룬 순간의 경계, 앱 상태창 자리를 그 스레드와 맞췄다(11장).
@@ -176,7 +176,7 @@ CREATE TABLE event_reminders (
 - 대상: `status = 'open'`이고 `scheduled_at IS NOT NULL`이고 `deleted_at IS NULL`이고, **우선순위에 오르지 않았고 하위 할 일이 없는**(`parent_id`로 가리키는 열린 할 일이 없는) 할 일. 우선순위·하위 할 일이 있는 것은 옮기지 않고 시각만 지운 채 할 일로 남긴 뒤 같은 시각의 일정을 따로 만든다(`from_task_id`로 잇는다). 초안(`draft`)은 대상이 아니다.
 - 대상 할 일마다 `events` 한 행을 만든다: 제목, 영역(첫 영역), `note`, 한 번짜리, `remind_min = 10`, `origin = 'migrated'`, `from_task_id`. 그 할 일은 `deleted_at`을 채우고 `task_events(kind = 'updated', payload = {"moved_to_event": <id>})`를 남긴다.
 - 끝냈거나 버린 할 일의 `scheduled_at`은 그대로 둔다(기록).
-- 마이그레이션 `017_events.sql`은 표만 만든다(`executescript`는 SQL만 돈다). 옮기기는 **Python 훅** `store/migrations/hooks.py: after_017(conn, tz)`로 하고, `migrate()`가 그 번호를 적용한 바로 뒤 같은 트랜잭션 안에서 부른다(UTC→현지 날짜·시각 변환은 `clock.local`로). 옮긴 개수는 로그에 숫자만 남긴다. 마이그레이션은 DB 백업 뒤에 돈다(SP6 updater 규칙 그대로).
+- 마이그레이션 `017_events.sql`은 표만 만든다(`executescript`는 SQL만 돈다). 옮기기는 **Python 훅** `store/migrations/hooks.py: after_017(conn, tz)`로 한다. 지금 `migrate()`는 `executescript("BEGIN; … PRAGMA user_version = N; COMMIT;")` 한 덩어리라 훅이 끼어들 수 없으므로, SP9-05가 `migrate()`를 "BEGIN + SQL(COMMIT 없음) → 그 번호의 훅(있으면) → `PRAGMA user_version = N` → COMMIT" 순서로 바꾼다(실패하면 ROLLBACK, 지금과 같다). `tz`는 `migrate(conn, *, upto=None, tz="Asia/Seoul")`로 받고, 앱 시작 경로는 `settings.timezone`을 넘긴다. UTC→현지 날짜·시각 변환은 `clock.local`로 한다. 옮긴 개수는 로그에 숫자만 남긴다. 마이그레이션은 DB 백업 뒤에 돈다(SP6 updater 규칙 그대로).
 - 이후 `create_task`·`update_task`는 `scheduled_at`을 받지 않는다. 두뇌가 넘기면 도구 결과: "시간이 정해진 일은 스케줄로 만들어요. create_event를 써 주세요." 앱의 할 일 추가·고치기 시트에서 시각 칸을 뺀다. `confirmations.py`의 "timed 할 일 날짜 옮기기" 확인은 `update_event` 확인으로 옮긴다.
 
 ### 5.5 두뇌 도구 (앱 대화에만, `APP_ONLY_TOOLS`)
@@ -199,7 +199,7 @@ CREATE TABLE event_reminders (
 | `GET /events?start=YYYY-MM-DD&end=YYYY-MM-DD` | 그날 일정 목록(최대 62일). 각 항목 `event_id, date, start, end, all_day, title, area, remind_min, repeat, origin` |
 | `GET /events/{id}` | 정의 하나(반복 규칙 포함) |
 | `POST /actions` `create_event`, `update_event`, `delete_event` | 앱의 직접 쓰기. 앱에서 사용자가 누른 것은 확인 없이 적용하고 되돌리기를 준다(사용자가 한 일이라서) |
-| `GET /today` | `events`(오늘 일정)와 `missed_reminders`(오늘 놓친 알림, 닫지 않은 것) 필드 추가 |
+| `GET /today` | `events`(오늘 일정)와 `missed_reminders`(오늘 날짜 일정 중 `outcome`이 `missed`·`failed`·`skipped`이고 닫지 않은 것, 항목에 `event_id, date, start, title, outcome`) 필드 추가 |
 | `POST /actions` `dismiss_missed_reminder` | 놓친 알림 줄 닫기 |
 | `GET /calendar.ics?key=…` | 5.7 |
 
@@ -290,7 +290,7 @@ CREATE TABLE conversation_sessions (
 );
 ```
 
-`conversations.session_id`를 쓰는 곳(디스패처)은 새 id를 받을 때마다 `conversation_sessions`에도 한 행을 넣는다.
+018은 끝에 `INSERT INTO conversation_sessions SELECT id, session_id, opened_at FROM conversations WHERE session_id IS NOT NULL;`로 옛 대화의 세션 id도 채운다. 그 뒤 `conversations.session_id`를 쓰는 곳(디스패처)은 새 id를 받을 때마다 `conversation_sessions`에도 한 행을 넣는다.
 
 ### 7.2 요약 만들기
 
@@ -302,8 +302,8 @@ CREATE TABLE conversation_sessions (
 
 ### 7.3 지난 대화 잇기와 새 대화
 
-- `POST /chat`에는 이미 `conversation_id`가 있다(앱이 지금 화면의 대화를 알려 주는 값, 라우터의 `asked_id`: 30분 안의 열린 `chat`일 때만 쓴다). 그 뜻은 그대로 두고 **새 필드 `resume_conversation_id`**(선택)를 더한다. 앱은 목록에서 **닫힌** 대화를 골라 연 상태에서 보낸 첫 메시지에만 이 필드를 싣는다(그 뒤로는 다시 열린 대화라 기존 `conversation_id`로 충분하다).
-- 라우터(`for_user_message`, SP3-4 7.2 표)에 **0번 규칙**을 더한다: `resume_conversation_id`가 있고 그 대화가 앱 통로이며 지우지 않았으면, 1~5번 규칙보다 먼저 그 대화로 보낸다. 저녁 답장 창(다음 날 04:00까지)이 열려 있어도 고른 대화가 회차 대화에 빨려 들지 않게 하려는 것이다. SP3-4 7.2 표도 같은 PR에서 고친다.
+- `POST /chat`에는 이미 `conversation_id`가 있다(앱이 지금 화면의 대화를 알려 주는 값, 라우터의 `asked_id`: 30분 안의 열린 `chat`일 때만 쓴다). 그 뜻은 그대로 두고 **새 필드 `resume_conversation_id`**(선택)를 더한다. 앱은 목록에서 대화를 골라 연 뒤로는, 그 화면을 떠나거나 "새 대화"를 누를 때까지 **모든 메시지에** 이 필드를 싣는다. 기존 `conversation_id`(라우터 4번 규칙)는 3번 규칙(답장 창 안의 회차 대화)보다 뒤라서, 첫 메시지만 실으면 저녁 답장 창 동안 두 번째 메시지부터 다시 회차 대화로 빨려 들기 때문이다. 사용자가 직접 고른 대화라서 30분 규칙도 이 동안은 보지 않는다.
+- 라우터(`for_user_message`, SP3-4 7.2 표)에 **0번 규칙**을 더한다: `resume_conversation_id`가 있고 그 대화가 앱 통로이며 지우지 않았으면, 1~5번 규칙보다 먼저 그 대화로 보낸다. 저녁 답장 창(다음 날 04:00까지)이 열려 있어도 고른 대화가 회차 대화에 빨려 들지 않게 하려는 것이다. 이미 열린 대화를 가리키면 다시 열기 없이 그대로 그 대화로 간다. SP3-4 7.2 표도 같은 PR에서 고친다.
   - 고른 대화가 `chat`이면: 열린 다른 앱 `chat`·`plan` 대화를 닫고(요약 큐로) 그 대화를 다시 연다(`closed_at = NULL`, `last_message_at = now`).
   - 고른 대화가 `plan`이면: 계획 모드로 다시 열지 않고 **`chat` 대화를 새로 연다**(계획 모드는 회차를 기다리게 하므로, 다시 켜려면 `/plan`을 쓴다). 새 대화 앞머리에 그 계획 대화의 요약을 붙인다.
   - 고른 대화가 `run`(체크인)이면: 답장 창 안이면 1번 규칙(`checkin_id`)과 같게 그 회차 대화로 간다. 창이 지났으면 `chat` 대화를 새로 열고 그 회차 대화의 요약을 붙인다(회차 규칙을 깨지 않는다).
@@ -346,6 +346,7 @@ CREATE TABLE conversation_sessions (
 - `app_state.schedule_override`(JSON): 칸마다 `{"time": "09:30", "from": "2026-10-26", "prev": "09:00"}`. 예: `{"morning_brief": {"weekday": {"time": "09:30", "from": "2026-10-26", "prev": "09:00"}}}`. 날짜 d(현지)의 시각은 `d >= from`이면 `time`, 아니면 `prev`. 칸이 없으면 `config.toml` 값. `loop/schedule.py`는 날짜를 받는 순수 함수 `checkin_time(settings, overrides, loop, d)`로 시각을 정하고 `due_between`이 날마다 그것을 쓴다.
 - 허용 범위: 아침 05:00~11:30(아침 답장 창 12:00보다 30분 앞), 저녁 15:00~23:30. 10분 단위. 벗어나면 422 `checkin_time_invalid`.
 - 주간 회고 시각(`schedule.review.week`)은 **주말 저녁 체크인 시각을 따라간다**(일요일 저녁에 합친 결정, SP1). 바꾸면 회고도 같은 시각이다.
+- 여기서 "오늘"은 **논리적 날짜**(04:00 경계)다. 회차가 논리적 날짜로 묶이기 때문이다. 예: 00:30에 저녁 시각을 바꾸면 "오늘"은 전날이고, 그날 저녁 회차는 이미 있으므로 `from`은 그다음 논리적 날짜다.
 - **적용 시점** (`from` 정하기, 바꾸는 순간에 한 번): 오늘 그 루프의 회차가 이미 있으면(만들어짐, 보냄, 건너뜀 모두) `from = 내일`. 없고 새 시각이 지금보다 뒤이며 원래 시각도 지금보다 뒤면 `from = 오늘`. 그 밖에는 `from = 내일`(오늘은 `prev`, 즉 원래 시각대로). 그래서 시각을 바꿔서 오늘 회차가 사라지거나 두 번 생기는 일은 없다. 이미 `from`이 미래인 칸을 다시 바꾸면 `prev`는 그대로 두고 `time`만 바꾼다.
 
 | 지금 | 바꾸기 (평일 아침) | 오늘 회차 | `from` | 오늘 받는 시각 |
@@ -379,7 +380,7 @@ CREATE TABLE conversation_sessions (
 ### 9.3 오늘 화면
 
 - 컨디션 블록 다음에 **오늘 일정** 블록: 오늘 일정(최대 5줄, 넘으면 "스케줄에서 {n}개 더 보기"). 일정이 없으면 블록을 숨긴다.
-- 놓친 알림이 있으면 오늘 일정 블록 위에 한 줄씩: "놓친 알림 · 14:00 치과", 오른쪽 닫기(×) → `dismiss_missed_reminder`. 다음 날(논리적 날짜)에는 보이지 않는다.
+- 놓친 알림이 있으면 오늘 일정 블록 위에 한 줄씩: `missed`는 "놓친 알림 · 14:00 치과", `failed`·`skipped`는 "알림을 못 보냈어요 · 14:00 치과". 오른쪽 닫기(×) → `dismiss_missed_reminder`. 다음 날(논리적 날짜)에는 보이지 않는다.
 
 ### 9.4 메모 탭 (`/memos/`)
 
@@ -391,7 +392,7 @@ CREATE TABLE conversation_sessions (
 
 ### 9.5 채팅 시트
 
-- **대화 목록**: 시트 머리 왼쪽에 목록 버튼. 누르면 시트 안에서 목록 화면으로 넘어간다: 검색창, 날짜 묶음("오늘", "어제", "이번 주", "10월"), 줄 = 제목 + 요약 앞 한 줄 + 시각. 체크인 대화는 제목 앞에 "체크인". 맨 위 "새 대화" 버튼. 줄을 밀면 "지우기"(확인 시트). 줄을 누르면 그 대화를 읽기로 연다(`/conversations/{id}/messages`). 닫힌 대화를 연 상태에서 보내는 첫 메시지에 `resume_conversation_id`를 실어 잇는다(7.3).
+- **대화 목록**: 시트 머리 왼쪽에 목록 버튼. 누르면 시트 안에서 목록 화면으로 넘어간다: 검색창, 날짜 묶음("오늘", "어제", "이번 주", "10월"), 줄 = 제목 + 요약 앞 한 줄 + 시각. 체크인 대화는 제목 앞에 "체크인". 맨 위 "새 대화" 버튼. 줄을 밀면 "지우기"(확인 시트). 줄을 누르면 그 대화를 읽기로 연다(`/conversations/{id}/messages`). 목록에서 연 대화를 보는 동안 보내는 메시지에는 `resume_conversation_id`를 실어 그 대화로 잇는다(7.3).
 - **새 대화**: 시트 머리 오른쪽(닫기 왼쪽)에 "새 대화" 아이콘도 둔다. 누르면 `POST /conversations/new` 뒤 빈 채팅.
 - **퀵 칩 줄**(입력창 바로 위, 가로로 밀기, 칩 = 작은 아이콘 + 라벨, 높이 32px):
   - 고정 4개와 보내는 문장: `할 일 추가` → "할 일 추가할래요", `일정 추가` → "일정 하나 추가할래요", `메모하기` → "메모 하나 남길래요", `오늘 정리해줘` → "오늘 정리해줘".
@@ -465,7 +466,7 @@ CREATE TABLE conversation_sessions (
 - `tests/test_event_reminders.py` 알림 tick: R1~R5 각각, 공백 정확히 3분(깨어남 아님, R1), 공백 25분(늦게 보냄 "15분 남았어요"), 공백 50분(missed), 늦은 알림 4개 중 3개만 보냄(4번째 `skipped`), 하루 전 알림 늦게 보냄 "2시간 남았어요", 공백 직후 첫 tick 전에 만든 일정은 안 보냄(`updated_at` 규칙), 7일보다 오래된 공백은 판정 안 함, 멈춤 중에도 보냄, 시각 바꾸면 앞으로의 행 지움, 지난 `remind_at`은 안 보냄, 하루 상한 30.
 - `tests/test_migrations.py` 마이그레이션 017 훅: 시각 있는 열린 할 일 2개 → 일정 2개 + 할 일 `deleted_at`, 우선순위에 오른 할 일은 남고 시각만 지워짐 + 일정 생김, 끝낸 할 일은 그대로, UTC 05:00 → 현지 14:00. `create_task(scheduled_at=…)` → 안내 문구.
 - `tests/test_memos.py` 메모: 만들기·고치기(409 충돌)·고정 상한 10·지우기·30일 뒤 완전 삭제, `trigram` 검색 "사피", 2글자 검색 LIKE, 제목 추출, 도구 결과에 `redact()`.
-- `tests/test_conversation_summaries.py` 대화: 닫힘 → 요약 큐 → 제목·요약 저장(가짜 두뇌), 상한·오류 시 대체 제목, 짧은 대화는 두뇌 안 부름, `resume_conversation_id`로 잇기(resume 성공/실패 경로, 저녁 답장 창이 열려 있어도 고른 대화로 감, 고른 `plan`은 새 `chat`으로), 기존 `conversation_id`의 30분 뜻은 그대로, 새 대화, 지우기(원문 기록 줄 바뀜, 목록에서 빠짐), 말아 넣기(31번째 메시지 호출 전 새 세션, 입력에 요약 + 6줄, 요약 실패 시 미룸), `conversation_sessions`의 세션 파일 모두 지움, 여러 날 원문 기록 파일 다시 씀.
+- `tests/test_conversation_summaries.py` 대화: 닫힘 → 요약 큐 → 제목·요약 저장(가짜 두뇌), 상한·오류 시 대체 제목, 짧은 대화는 두뇌 안 부름, `resume_conversation_id`로 잇기(resume 성공/실패 경로, 저녁 답장 창이 열려 있어도 고른 대화로 감, 고른 `plan`은 새 `chat`으로), 기존 `conversation_id`의 30분 뜻은 그대로, 다시 연 대화의 두 번째 메시지도 저녁 답장 창 중 그 대화로 감, 새 대화, 지우기(원문 기록 줄 바뀜, 목록에서 빠짐), 말아 넣기(31번째 메시지 호출 전 새 세션, 입력에 요약 + 6줄, 요약 실패 시 미룸), `conversation_sessions`의 세션 파일 모두 지움, 여러 날 원문 기록 파일 다시 씀.
 - `tests/test_conversation_summaries.py` **새 세션 입력에 다른 대화 원문이 없다**: 대화 A에 고유 문자열을 남기고 닫은 뒤 새 대화 B의 첫 두뇌 입력에 그 문자열이 없음을 확인(완료 조건 9).
 - `tests/test_checkin_times.py` 체크인 시간: 범위 밖 422, 8장 적용 시점 표 네 줄 그대로(오늘 회차가 사라지거나 두 번 생기지 않음), 주간 회고가 주말 저녁을 따라감, 재시작 없이 `due_between`이 새 값.
 - `tests/test_calendar_ics.py` `.ics`: RRULE·EXDATE·BYSETPOS 모양, `note` 없음, `Cache-Control: no-store`, 매주 `start_date` 요일이 `weekdays`에 없으면 422, 키 틀리면 401, 다른 경로에 캘린더 키 안 됨, 로그에 키 가림.
@@ -476,7 +477,7 @@ CREATE TABLE conversation_sessions (
 - TabBar 네 칸과 문구, 더보기 버튼이 네 탭에 있음, `/more/` 목록, 돌아가기 "‹ 더보기".
 - 스케줄: 한 주 띠 점, 날 고르기, 달력 펼침, 추가 시트 기본 알림 10분 전, 하루 종일에서 10·30·60분 숨김, 반복 상세 시트 버튼.
 - 메모: 목록 정렬(고정 먼저), 검색 디바운스, 체크박스 토글이 그 줄만 바꿈, 409 처리, 오프라인 읽기만.
-- 채팅: 대화 목록·검색·지우기 확인, 닫힌 대화 잇기 첫 요청에만 `resume_conversation_id`, 퀵 칩 고정 4개와 앞 칩 규칙 3가지(가짜 `/today`), 읽기 전용에서 칩 비활성, 활동 한 줄과 토스트 6초 되돌리기(다른 토스트는 4초), 여럿이면 모두 되돌리기, 카드 안 되돌리기 버튼 없음.
+- 채팅: 대화 목록·검색·지우기 확인, 고른 대화를 보는 동안 모든 요청에 `resume_conversation_id`, 새 대화 뒤에는 없음, 퀵 칩 고정 4개와 앞 칩 규칙 3가지(가짜 `/today`), 읽기 전용에서 칩 비활성, 활동 한 줄과 토스트 6초 되돌리기(다른 토스트는 4초), 여럿이면 모두 되돌리기, 카드 안 되돌리기 버튼 없음.
 - 금지어 검사에 10장 문구 추가. CSP 검사(`check-csp`) 통과(새 화면 CSS는 `_app`에서 import).
 
 ## 13. 설정
@@ -522,3 +523,4 @@ Dahun이 고르지 않은 아래 선택은 비서의 추천이다. 바꾸고 싶
 
 - v1 (2026-10-25): Dahun 질문 15개 결정으로 첫 초안.
 - v2 (2026-10-25): 문서 리뷰 반영. `resume_conversation_id`와 라우터 0번 규칙, 체크인 시간 `from`/`prev`와 적용 표, 마이그레이션 순서 위험(016 메모, 017 스케줄, 018 대화, SP8 뒤 머지, 빈 번호 거부), 알림 R5·7일 범위·`updated_at` 규칙·시간 단위 문구, 매주 시작 요일 규칙, `.ics` BYSETPOS·TZID·`note` 뺌·키 평문·인증 예외, 할 일 옮기기 대상 좁힘과 Python 훅, 세션 id 이력, 지워도 남는 것, 말아 넣기 31번째·미룸, 토스트 6초는 채팅 활동에만·여럿이면 모두 되돌리기, 탭 교체를 화면 티켓에 맞춤.
+- v2.1 (2026-10-25): 재검토 반영. 고른 대화를 보는 동안 모든 메시지에 `resume_conversation_id`, `migrate()` 훅 순서와 `tz`, 018에서 옛 세션 id 채우기, `/today` 못 보낸 알림, 체크인 "오늘" = 논리적 날짜.
