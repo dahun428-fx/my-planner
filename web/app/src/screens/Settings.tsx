@@ -26,6 +26,7 @@ import { applyPalette, applyTheme, DEFAULT_PALETTE, loadPalette, loadTheme, type
 import { formatKst, relativeChecked } from "../lib/time";
 import page from "../styles/page.module.css";
 import { useCatalog } from "../ui/CatalogProvider";
+import { CalendarSubscribe } from "./CalendarSubscribe";
 import { CheckinTimes } from "./CheckinTimes";
 import styles from "./Settings.module.css";
 
@@ -50,7 +51,7 @@ function shortHost(beUrl: string): string {
   return host.length > 28 ? `${host.slice(0, 14)}…${host.slice(-12)}` : host;
 }
 
-// Spec 5.5.7, F7 (off the tabs since SP9-07, "‹ 더보기" back): connection, check-in notifications, check-in times (SP9 9.7, editable), pause, this device (theme, colour
+// Spec 5.5.7, F7 (off the tabs since SP9-07, "‹ 더보기" back): connection, check-in notifications, check-in times (SP9 9.7, editable), iPhone calendar subscription (9.7), pause, this device (theme, colour
 // preset), about. No chat launcher.
 export function Settings() {
   const toast = useToast();
@@ -346,6 +347,8 @@ export function Settings() {
       </Group>
 
       <CheckinTimes online={online} />
+
+      <CalendarSubscribe online={online} />
 
       <Group heading={copy.settings.pause}>
         {pausedUntil ? (

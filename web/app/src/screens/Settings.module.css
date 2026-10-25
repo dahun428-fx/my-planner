@@ -194,3 +194,11 @@
   color: var(--hue);
   text-decoration: none;
 }
+
+/* SP9 9.7: the subscription address, long and unbroken; selectable so it can be copied by hand too. */
+.url {
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  user-select: all;
+}

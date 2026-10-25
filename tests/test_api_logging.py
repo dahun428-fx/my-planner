@@ -314,3 +314,14 @@ async def test_sp8_logs_exports_and_summaries_clean(tmp_path):
     summaries = [x for x in s["summaries"] if "이룬 순간" in x]
     assert summaries == ["이룬 순간 2개 정리 (10/25)", "이룬 순간 숨김 (10/25)", "이룬 순간 지움 (10/25)",
                          "이룬 순간 1개 정리 (10/26)", "이룬 순간 1개 정리 (10/27)", "이룬 순간 1개 정리 (10/28)"]
+
+
+async def test_access_log_masks_key(env):
+    key = (await (await env.post("/settings/calendar", json={"rotate": False})).json())["url"].split("key=")[1]
+    assert (await env.get(f"/api/v1/calendar.ics?key={key}", token=None)).status == 200
+    assert (await env.get("/api/v1/calendar.ics?key=WRONG-KEY-VALUE&x=1", token=None)).status == 401
+    state_dir = env.settings.paths.state_dir
+    raw = _raw(state_dir)
+    assert key not in raw and "WRONG-KEY-VALUE" not in raw
+    lines = [e for e in _entries(state_dir, "api_request") if e["route"] == "/api/v1/calendar.ics"]
+    assert [(e["status"], e["query"]) for e in lines] == [(200, "?key=***"), (401, "?key=***")]

@@ -30,6 +30,7 @@ EXPECTED_MODELS = {
     "BodyPostBody", "BodySaved",  # SP8 7.3
     "CurveHistory",  # SP8 8.2
     "EventItem", "EventList", "EventDetail", "MissedReminder",  # SP9 5.6
+    "CalendarSettings", "CalendarPutBody",  # SP9 5.7
 }
 
 

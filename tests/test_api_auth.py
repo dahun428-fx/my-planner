@@ -115,3 +115,49 @@ async def test_body_token_rejected_on_every_other_route(tmp_path):
             env.client.app[LIMITER_KEY]._failures.clear()  # 실패 세기에 막히지 않게(세기는 다른 시험이 본다)
         resp = await env.request("POST", BODY_PATH, token=BODY, json={"days": [{"date": "2026-10-24", "steps": 1}]})
         assert resp.status == 200
+
+
+# --- SP9 5.7: 캘린더 구독 경로만 Bearer 없이 `?key=`로 열린다 ---
+
+ICS = "/api/v1/calendar.ics"
+
+
+async def _calendar_key(env) -> str:
+    return (await (await env.post("/settings/calendar", json={"rotate": False})).json())["url"].split("key=")[1]
+
+
+async def test_api_token_not_needed_for_ics(env):
+    key = await _calendar_key(env)
+    assert (await env.get(f"{ICS}?key={key}", token=None)).status == 200
+    # 키 없이 API 토큰만으로는 안 된다(토큰이 키 자리를 대신하지 않는다)
+    assert (await env.get(ICS)).status == 401
+    assert (await env.get(f"{ICS}?key={TEST_TOKEN}")).status == 401
+
+
+async def test_wrong_key_401_counts_limiter(env):
+    await _calendar_key(env)
+    for _ in range(9):
+        resp = await env.get(f"{ICS}?key=wrong", token=None)
+        assert resp.status == 401
+        assert resp.headers["Cache-Control"] == "no-store"
+        assert (await resp.json())["error"]["code"] == "unauthorized"
+    assert (await env.get(f"{ICS}", token=None)).status == 401  # 키 없음도 센다: 10번째
+    # 10번 채웠으니 1분 동안 모든 요청이 429(맞는 API 토큰도)
+    assert (await env.get("/health")).status == 429
+    assert (await env.get(f"{ICS}?key=wrong", token=None)).status == 429
+    env.clock.advance(timedelta(seconds=61))
+    assert (await env.get("/health")).status == 200
+
+
+async def test_no_key_set_yet_401(env):
+    assert (await env.get(f"{ICS}?key=", token=None)).status == 401
+    assert (await env.get(f"{ICS}?key=anything", token=None)).status == 401
+
+
+async def test_calendar_key_not_accepted_elsewhere(env):
+    key = await _calendar_key(env)
+    for path in ("/health", "/today", "/events?start=2026-10-24&end=2026-10-25", "/settings/calendar"):
+        assert (await env.get(path, token=key)).status == 401  # Bearer 자리
+        sep = "&" if "?" in path else "?"
+        assert (await env.get(f"{path}{sep}key={key}", token=None)).status == 401  # 쿼리 자리
+    assert (await env.post("/settings/calendar", token=key, json={"rotate": True})).status == 401

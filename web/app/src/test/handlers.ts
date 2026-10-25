@@ -22,4 +22,5 @@ export const handlers = [
   http.get(`${BASE}/ui/catalog`, () => HttpResponse.json(catalog)),
   http.get(`${BASE}/checkins/:id`, () => HttpResponse.json({ ...checkin341, cards: [] })),
   http.get(`${BASE}/settings/checkin-times`, () => HttpResponse.json(checkinTimes)), // SP9 9.7, Settings
+  http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: null })), // SP9 9.7, Settings
 ];

@@ -27,6 +27,8 @@ APP_INBOUND_SEQ_KEY = "app_inbound_seq"  # 앱 메시지의 마지막 inbound_id
 SCHEDULE_OVERRIDE_KEY = "schedule_override"
 # 마지막 깨우기 작업 다시 등록이 안 됐으면 "true"(설정 화면 안내 줄). 되면 지운다
 WAKE_TASK_STALE_KEY = "wake_task_stale"
+# SP9 5.7: 아이폰 캘린더 구독 키(32바이트 무작위, 평문: 설정 화면이 주소를 다시 보여 줘야 한다). 없으면 구독 주소 없음
+CALENDAR_KEY_KEY = "calendar_key"
 
 UsageField = Literal["brain_calls", "proactive_messages"]
 _USAGE_FIELDS = ("brain_calls", "proactive_messages")
