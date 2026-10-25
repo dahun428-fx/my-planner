@@ -22,11 +22,13 @@ import test_api_e2e
 
 from my_planner.store.db import is_write, open_db
 
-# 도구 함수(`tools/core.py`, 습관 `tools/habits.py`), 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의
-# `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
+# 도구 함수(`tools/core.py`, 습관 `tools/habits.py`, 이룬 순간 `tools/moments.py`), 즉시 갈래(`tools/actions.py`),
+# 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
+    "my_planner.tools.moments",
 })
+MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
 DISPATCHER = "my_planner.harness.dispatcher"
 LOOP = "my_planner.loop.*"
 SEED = "my_planner.curve.seed"  # 잠금을 잡은 별도 프로세스(4.3, 12장)
@@ -61,6 +63,10 @@ ALLOWED: dict[str, set[str]] = {
     "curve_questions": {*TOOLS, SEED},
     # 칭호(9.4): 사건을 확정하는 도구, 시드(12장)
     "status_titles": {*TOOLS, SEED},
+    # SP8 6.1: 순간은 `save_moments`(두뇌 갈래)만. 날 행은 그 도구, 정리(`prune_records`, 즉시 갈래), 하루 끝 작업의
+    # 고르기·판정(`harness/moments.py`)
+    "status_moments": set(TOOLS),
+    "status_moment_days": {*TOOLS, MOMENTS_JOB},
     # 4.3 2행: 변경과 같은 트랜잭션(`tools/activity.py`), 되돌리기 표시(`apply_action`, U5)
     "activity": set(TOOLS),
     "activity_targets": set(TOOLS),
@@ -93,6 +99,8 @@ ALLOWED: dict[str, set[str]] = {
         "my_planner.api.chat",
         # 12장: `app_state.life_seed_imported_at`
         SEED,
+        # SP8 6.2: `moments_since`(처음 작업이 돈 날의 전날)
+        MOMENTS_JOB,
     },
 }
 
@@ -209,6 +217,10 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     assert ("status_xp_ledger", "my_planner.tools.actions") in rec.seen  # X9
     assert ("curve_milestones", SEED) in rec.seen and ("run_deliveries", "my_planner.harness.delivery") in rec.seen
     assert ("inbound_pending", "my_planner.api.chat") in rec.seen
+    # SP8: 순간은 두뇌 갈래의 도구만, 날 행은 하루 끝 작업도
+    assert ("status_moments", "my_planner.tools.moments") in rec.seen
+    assert ("status_moment_days", MOMENTS_JOB) in rec.seen and ("app_state", MOMENTS_JOB) in rec.seen
+    assert ("status_moments", "my_planner.tools.moments", DISPATCHER, True) in rec.tool_calls
 
 
 @pytest.mark.parametrize("table", sorted(ALLOWED))

@@ -34,6 +34,7 @@ class FakeTurn:
     hang: bool = False  # 도구를 부른 뒤 영영 돌아오지 않는다(두뇌 호출 시간 상한 시험)
     gate: asyncio.Event | None = None  # 도구를 부른 뒤 이 이벤트가 설 때까지 기다린다(처리 중 시험)
     deltas: list[str] | None = None  # 앱 채팅에서 도구 호출 전에 이 조각들로 글 블록을 스트리밍한다(06b)
+    raises: Exception | None = None  # 도구를 부른 뒤 결과 대신 이 예외를 올린다(두뇌 구현의 예기치 않은 오류)
 
 
 class FakeBrain:
@@ -57,10 +58,12 @@ class FakeBrain:
         return [c["fork_session"] for c in self.calls]
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult:
         self.calls.append(
-            {"prompt": prompt, "session_id": session_id, "run_ctx": run_ctx, "fork_session": fork_session}
+            {"prompt": prompt, "session_id": session_id, "run_ctx": run_ctx, "fork_session": fork_session,
+             "system_prompt": system_prompt, "max_turns": max_turns, "persist_session": persist_session}
         )
         if not self.script:
             raise AssertionError("FakeBrain: 시나리오가 더 없다")
@@ -81,6 +84,8 @@ class FakeBrain:
             out = getattr(self.tools, name)(run_ctx, **args)
             if inspect.isawaitable(out):
                 await out
+        if turn.raises is not None:
+            raise turn.raises
         if turn.gate is not None:
             await turn.gate.wait()
         if turn.hang:

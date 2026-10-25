@@ -28,6 +28,7 @@ from my_planner.domain import (
     TaskStatus,
     ToolEvent,
 )
+from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
 from my_planner.harness.context import (
@@ -207,6 +208,13 @@ class _RunJob:
 
 
 @dataclass
+class _MomentsJob:
+    """하루 끝 작업: 그날의 이룬 순간 정리(SP8 6.2). 가장 낮은 차례다."""
+
+    date: date
+
+
+@dataclass
 class _ResendJob:
     """전송이 끝내 안 된 회차를 5분 뒤 전송만 한 번 더 한다. 두뇌는 다시 부르지 않는다."""
 
@@ -225,6 +233,7 @@ class _ResendJob:
 # 큐 우선순위(작을수록 먼저). 같은 우선순위는 들어온 순서.
 _PRIORITY_MESSAGE = 0  # 사용자 메시지가 회차보다 먼저
 _PRIORITY_RUN = 1
+_PRIORITY_MOMENTS = 2  # 하루 끝 순간: 기다리는 메시지와 회차가 먼저(SP8 6.2-4)
 _PRIORITY_STOP = 1_000_000
 
 # 루프별 지시문 파일 (스펙 5.3 "프롬프트 선택")
@@ -324,6 +333,7 @@ class Dispatcher:
         confirms: ConfirmsRepo | None = None,
         app_sender: AppReplySender | None = None,
         delivery: Delivery | None = None,
+        claude_config_dir: Path | None = None,
     ) -> None:
         self.brain = brain
         self.sender = sender
@@ -344,6 +354,8 @@ class Dispatcher:
         self.app_sender = app_sender  # 앱 답을 보낼 곳(M4). None이면 기본 `AppReplySender`(쓰개에 쓴다)
         # 회차·고정 안내의 통로(7.3 D1~D8). None이면 SP1처럼 텔레그램(`sender`)만
         self.delivery = delivery
+        # 순간 호출 뒤 세션 파일을 지울 CLI 설정 폴더(SP8 6.3, 결정 18). None이면 지우지 않는다(앞 SP 시험)
+        self.claude_config_dir = claude_config_dir
         self._app: dict[str, _AppSlot] = {}
         self._cur: _AppSlot | None = None  # 지금 처리 중인 앱 메시지(작업자는 하나라 한 번에 하나)
         self._sleep = sleep
@@ -661,6 +673,10 @@ class Dispatcher:
         job = _RunJob(run, list(merged), frozenset(carried_ids))
         self._queue.put_nowait((_PRIORITY_RUN, next(self._seq), job))
 
+    def submit_moments(self, day: date) -> None:
+        """그날의 이룬 순간 정리를 넣는다(하루 한 번 작업 `queue_moments`, SP8 6.2). 대기열은 메모리에만 있다."""
+        self._queue.put_nowait((_PRIORITY_MOMENTS, next(self._seq), _MomentsJob(day)))
+
     def submit_resend(self, run: Run) -> None:
         """시작 시 복구: 전송이 끝내 안 된 회차(`failed`, `outbound_text` 있음)를 전송만 한 번 다시 한다.
 
@@ -735,6 +751,12 @@ class Dispatcher:
                 await self._resend_run(item)
             except Exception:
                 log.exception("run_resend_error", extra={"run_id": item.run.id})
+            return
+        if isinstance(item, _MomentsJob):
+            try:
+                await self._handle_moments(item)
+            except Exception:
+                log.exception("moments_handling_error", extra={"date": item.date.isoformat()})
             return
         # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다).
         # 앱 메시지도 묶지 않는다(요청마다 스트림이 하나다, M2)
@@ -1503,7 +1525,9 @@ class Dispatcher:
         붙일 질문과 열린 시드 질문(`## 이번에 물을 질문`)을 알린다.
         """
         # 회차 첫 호출의 활동 통로는 `scheduler`다(6.4.4)
-        run_ctx = RunContext(conversation_id=conv.id, run_id=run.id, events=[], activity_channel="scheduler")
+        run_ctx = RunContext(
+            conversation_id=conv.id, run_id=run.id, events=[], activity_channel="scheduler", kind="run"
+        )
         of = review_in([run, *merged], self.settings)
         loop_prompts: list[str] = []
         for r in (run, *merged):
@@ -1781,14 +1805,19 @@ class Dispatcher:
         return from_iso(v) if v else None
 
     async def _call_brain(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult:
-        """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다. `fork_session`: `session_id`를 갈라 새 세션으로(7.2)."""
+        """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다. `fork_session`: `session_id`를 갈라 새 세션으로(7.2).
+
+        `system_prompt`, `max_turns`, `persist_session`: 하루 끝 순간 호출(SP8 6.3). 순간 호출은 '입력 중'이 없다.
+        """
         if run_ctx.stream is not None:
             run_ctx.stream.begin_attempt()  # 앞 시도가 글을 보냈으면 새 단계로 나눈다(06b)
         self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7, 두 통로가 함께)
-        # '입력 중'은 텔레그램에만. 앱은 `data-status`와 `: ping`이 대신한다(6.4.1)
-        typing = asyncio.create_task(self._typing_loop() if run_ctx.channel != "app" else _idle(), name="typing")
+        # '입력 중'은 텔레그램에만. 앱은 `data-status`와 `: ping`이 대신한다(6.4.1). 순간 호출은 아무 데도 보내지 않는다
+        quiet = run_ctx.channel == "app" or run_ctx.kind == "moments"
+        typing = asyncio.create_task(self._typing_loop() if not quiet else _idle(), name="typing")
         started = time.monotonic()
         try:
             # 한 호출이 멈춰 직렬 작업자 전체가 서지 않도록 상한을 둔다. 넘으면 error(timeout)로 보고
@@ -1796,9 +1825,15 @@ class Dispatcher:
             # anyio 취소 범위를 쓴다: SDK가 CLI 자식을 정리하는 차폐 구간(close())이 끝까지 돈다.
             # asyncio.wait_for의 날 취소는 그 차폐 안의 다음 await에서 터져 자식이 고아로 남을 수 있다
             with anyio.fail_after(self.settings.limits.brain_timeout_s):
-                # 가를 때만 넘긴다: SP1의 두뇌 구현(시험용 포함)은 이 인자를 모른다
-                fork = {"fork_session": True} if fork_session else {}
-                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **fork)
+                # 기본값이 아닐 때만 넘긴다: SP1의 두뇌 구현(시험용 포함)은 이 인자들을 모른다
+                extra: dict[str, Any] = {"fork_session": True} if fork_session else {}
+                if system_prompt is not None:
+                    extra["system_prompt"] = system_prompt
+                if max_turns is not None:
+                    extra["max_turns"] = max_turns
+                if not persist_session:
+                    extra["persist_session"] = False
+                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **extra)
         except TimeoutError:
             result = BrainResult(text="", session_id=session_id, turns=0, status="error", error="timeout")
         finally:
@@ -1822,6 +1857,80 @@ class Dispatcher:
             },
         )
         return result
+
+    # --- 하루 끝 순간 (SP8 6.2~6.3) ---
+
+    def _moments_blocked(self) -> bool:
+        """두뇌를 부르지 않고 그대로 둘 때(6.2-5): 사용자 몫 10회가 남지 않음, 로그인·결제 문제, 사용 한도 대기.
+
+        `brain.auth`는 `login`·`billing`일 때만 멈춘다(설치 뒤 아직 모르면 막지 않는다, 계획 결정 5). 안전 모드에서는
+        디스패처가 없다(결정 6). 멈춤(`/pause`)은 보지 않는다(6.2-7).
+        """
+        limit = self.settings.limits.daily_brain_calls - moments_job.MOMENTS_RESERVE_CALLS
+        if self.state.usage(self._today()).brain_calls >= limit:
+            return True
+        if self.state.get(BRAIN_AUTH_STATE_KEY) in ("login", "billing"):
+            return True
+        limited = self._state_time(LIMITED_UNTIL_KEY)
+        return limited is not None and self.clock.now() < limited
+
+    async def _handle_moments(self, job: _MomentsJob) -> None:
+        """그날의 이룬 순간을 정리한다. 원문 기록에 쓰지 않고 알리지 않는다. 로그는 `moments_job` 한 줄(글 없음)."""
+        if self._stopping:  # 멈추는 중: 두뇌를 부르지 않고 `pending` 그대로(다음 날 다시 고른다, Review Focus 1)
+            return
+        tools = self.tools
+        if tools is None or tools.moments is None:
+            return
+        repo, d = tools.moments, job.date
+        row = repo.day(d)
+        if row is not None and row.state != "pending":  # 실행 직전에 다시 읽는다(6.2-4)
+            return
+        started = time.monotonic()
+        s = self.settings
+        inp = moments_job.build_moments_input(
+            d, tasks=tools.tasks, habits=tools.habits, conditions=tools.conditions, transcripts=self.transcripts,
+            tz=s.timezone, boundary=s.day_boundary,
+        )
+        if not inp.has_data:
+            moments_job.mark_empty(repo, d, self.clock.now())
+            self._log_moments(d, "empty", 0, 0, started)
+            return
+        if self._moments_blocked():
+            log.info("moments_job_waiting", extra={"date": d.isoformat()})
+            return
+        run_ctx = RunContext(
+            None, None, kind="moments", actor="secretary", activity_channel="scheduler", moments_date=d,
+            moments_refs=inp.refs,
+        )
+        result: BrainResult | None = None
+        try:
+            result = await self._call_brain(
+                inp.text, session_id=None, run_ctx=run_ctx, system_prompt=moments_job.moments_system_prompt(),
+                max_turns=moments_job.MOMENTS_MAX_TURNS, persist_session=False,
+            )
+        finally:
+            # 결과가 무엇이든 그 세션 파일을 지운다(플래그와 두 겹, 결정 18). 결과가 없으면 id를 모른다
+            if self.claude_config_dir is not None:
+                if result is None:
+                    log.info("moments_session_cleanup", extra={"removed": False, "reason": "no_result"})
+                else:
+                    moments_job.remove_session_file(result.session_id, config_dir=self.claude_config_dir)
+        if result.status == "rate_limited":
+            self._set_limited(result.retry_at)
+        state = moments_job.settle(repo, d, result, "save_moments" in run_ctx.tool_names, self.clock.now())
+        saved = 0
+        if state == "done":
+            got = repo.day(d)
+            saved = got.saved if got is not None else 0
+        rejected = sum(int(e.data.get("rejected", 0)) for e in run_ctx.events if e.kind == "moments_saved")
+        self._log_moments(d, state, saved, rejected, started)
+
+    @staticmethod
+    def _log_moments(d: date, state: str, saved: int, rejected: int, started: float) -> None:
+        log.info("moments_job", extra={
+            "date": d.isoformat(), "state": state, "saved": saved, "rejected": rejected,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+        })
 
     def _record_brain_auth(self, result: BrainResult) -> None:
         """`GET /health`의 `brain.auth`(SP3-4 6.3.1): 로그인·결제 문제면 그 종류, 두뇌가 답했으면 `ok`.

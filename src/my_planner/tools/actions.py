@@ -359,6 +359,16 @@ def _prune_api_state(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) ->
     return out
 
 
+def _prune_records(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """하루 한 번 작업: 60일 지난 `status_moment_days` 행을 지운다(순간 행은 그대로, SP8 6.4). 활동은 없다."""
+    from my_planner.harness.moments import MOMENT_DAYS_KEEP
+
+    repo = deps.tools.moments
+    if repo is None:
+        return {"moment_days_pruned": 0}
+    return {"moment_days_pruned": repo.prune_days(deps.tools.today() - timedelta(days=MOMENT_DAYS_KEEP))}
+
+
 def _cmd_pause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     from my_planner.bot.commands import cmd_pause
 
@@ -489,6 +499,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
     "expire_curve_drafts": ActionSpec(_expire_curve_drafts, public=False, accepts=frozenset({"older_than"})),
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
+    "prune_records": ActionSpec(_prune_records, public=False),  # SP8 6.4(몸 기록 56일은 SP8-06)
     "grant_rest_days": ActionSpec(_grant_rest_days, public=False),  # X9
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),

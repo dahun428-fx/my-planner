@@ -98,6 +98,25 @@ class TranscriptStore:
             d += timedelta(days=1)
         return "\n".join(parts)[:max_chars]
 
+    def user_lines(self, day: date) -> list[tuple[str, str]]:
+        """논리적 날짜 `day` 파일의 `사용자` 줄만 `(HH:MM, 본문)`으로, 오래된 것부터(두 통로, 이미 가린 글).
+
+        하루 끝 순간 입력(SP8 6.3)이 쓴다. 비서 줄과 도구 줄은 넣지 않는다.
+        """
+        path = self.root / f"{day.year:04d}" / f"{day.month:02d}" / f"{day.isoformat()}.md"
+        if not path.exists():
+            return []
+        return [
+            (
+                e.hhmm,
+                "\n".join(
+                    line[1:] if line.startswith(_HEADER_ESCAPE + "### ") else line for line in e.body_lines
+                ).strip(),
+            )
+            for e in _parse(path)
+            if e.speaker == "사용자"
+        ]
+
     def messages(self, conversation_id: int) -> list[TranscriptMessage]:
         """그 대화의 모든 줄을 원문 기록 순서(날짜 파일 순, 파일 안에서는 위에서부터)로 (스펙 6.4.6).
 

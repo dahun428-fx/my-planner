@@ -48,3 +48,23 @@ def test_banned_words_include_new_three():
             text = "\n".join(line for line in text.splitlines() if not line.startswith("12. "))
         for word in ("끊겼", "며칠째", "남음"):
             assert word not in text, (f.name, word)
+
+
+def test_moments_prompt_rules():
+    """하루 끝 순간 지시문(SP8 6.3 규칙 1~6). 대화 원칙(`system.md`)은 싣지 않고 금지어 블록만 붙인다."""
+    from my_planner.harness.moments import moments_system_prompt
+    from my_planner.tools.ui import banned_words
+
+    text = prompts.load("moments.md")
+    for phrase in ("해낸 일", "60자", "0개", "병명", "sources", "save_moments", "포트폴리오 사례 하나를 끝까지 다듬었어요"):
+        assert phrase in text, phrase
+    for word in banned_words():
+        assert word not in text, word
+    full = moments_system_prompt()
+    assert full.startswith(text + "\n\n")
+    block = _BANNED_BLOCK.search(_system()).group(0)
+    assert full.endswith(block)
+    line_before = _system().split(block)[0].rstrip("\n").splitlines()[-1]
+    assert full == f"{text}\n\n{line_before}\n{block}"
+    assert "## 할 일을 다루는 방식" not in full and "## 말하는 방식" not in full
+    assert _system().splitlines()[0] not in full

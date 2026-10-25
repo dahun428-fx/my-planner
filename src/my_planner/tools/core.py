@@ -88,10 +88,12 @@ from my_planner.tools.confirmations import (
     xp_granted_line,
 )
 from my_planner.tools.habits import HabitTools
+from my_planner.tools.moments import MomentTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
     from my_planner.store.repos.activity import ConfirmsRepo
+    from my_planner.store.repos.moments import MomentsRepo
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +124,7 @@ PERIOD_EXAMPLE = {
 }
 
 
-class Tools(HabitTools):
+class Tools(MomentTools, HabitTools):
     def __init__(
         self,
         *,
@@ -142,6 +144,7 @@ class Tools(HabitTools):
         review_date_for: Callable[[RunContext], date | None] | None = None,
         curve_export_path: Path | None = None,
         habits: HabitsRepo | None = None,
+        moments: MomentsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -166,6 +169,7 @@ class Tools(HabitTools):
         )
         self.habits = habits  # 습관(SP7 5.4). None이면 습관 도구가 거절한다
         self.habits_export_path = self.export_path.parent / "habits.md"  # data/exports/habits.md (5.8)
+        self.moments = moments  # 이룬 순간(SP8 6.1). None이면 `save_moments`가 거절한다. 내보내기는 없다(6.4)
 
     # --- 공통 ---
 

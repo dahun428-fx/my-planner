@@ -267,10 +267,10 @@ def test_group_layout_errors():
 
 
 def test_app_tool_count_unchanged():
-    assert set(tool_names_for("app")) - set(TOOL_NAMES) == {
+    assert set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES) == {
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
     }
-    assert not set(NEW) & set(tool_names_for("app"))
+    assert not set(NEW) & set(tool_names_for(RunContext(None, None, channel="app")))
     assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 8
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 

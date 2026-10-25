@@ -52,14 +52,21 @@ class BrainResult:
     retry_at: datetime | None = None  # rate_limited일 때 재개 시각(UTC)
 
 
+# 세션 저장을 끄는 CLI 플래그(SP8 6.3). SDK는 값이 None인 열쇠를 `--<flag>`로 그대로 넘긴다
+NO_SESSION_PERSISTENCE = {"no-session-persistence": None}
+
+
 class Brain(Protocol):
     """`fork_session=True`: `session_id`를 이어 가되 새 세션으로 갈라 시작한다(회차 대화 가르기, SP3-4 7.2).
 
-    디스패처는 가를 때만 이 인자를 넘긴다(SP1의 두뇌 구현은 받지 않아도 된다).
+    `system_prompt`·`max_turns`가 있으면 기본 지시문(`system.md`)·설정값 대신 쓰고, `persist_session=False`면
+    세션 파일을 쓰지 않는다(하루 끝 순간 호출, SP8 6.3). 디스패처는 기본값이 아닐 때만 이 인자들을 넘긴다
+    (SP1의 두뇌 구현은 받지 않아도 된다).
     """
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult: ...
 
 
@@ -73,10 +80,12 @@ def build_options(
     cli_path: str | Path | None = None,
     include_partial_messages: bool = False,
     fork_session: bool = False,
+    extra_args: dict[str, str | None] | None = None,
 ) -> ClaudeAgentOptions:
     """스펙 5.3 두뇌 실행 설정. S2: strict MCP는 필드로, S3: cli_path는 기본 None(번들 CLI).
 
     `include_partial_messages`: 글 조각 스트리밍(SP3-4 S11, 티켓 06b). `fork_session`: 회차 대화 가르기(7.2, 티켓 07).
+    `extra_args`: CLI 플래그(순간 호출의 `no-session-persistence`, SP8 6.3). 없으면 빈 dict.
     """
     return ClaudeAgentOptions(
         tools=[],
@@ -93,6 +102,7 @@ def build_options(
         cli_path=cli_path,
         include_partial_messages=include_partial_messages,
         fork_session=fork_session,
+        extra_args=dict(extra_args or {}),
     )
 
 
@@ -190,7 +200,8 @@ class ClaudeBrain:
         return self._app_system_prompt if channel == "app" else self._system_prompt
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult:
         server = build_planner_server(self._tools_factory(), run_ctx)
         # 앱 채팅(스트림 쓰개가 있음)만 글 조각을 받는다(SP3-4 S11, 6.4.1). 조각이 안 오면 06처럼 끝난 뒤 글 블록 하나
@@ -198,13 +209,15 @@ class ClaudeBrain:
             server=server,
             session_id=session_id,
             workdir=self._workdir,
-            max_turns=self._max_turns,
-            system_prompt=self.system_prompt_for(run_ctx.channel),
+            max_turns=max_turns if max_turns is not None else self._max_turns,
+            system_prompt=system_prompt if system_prompt is not None else self.system_prompt_for(run_ctx.channel),
             cli_path=self._cli_path,
             include_partial_messages=run_ctx.stream is not None,
             # S11: `resume=<원래 세션>` + `fork_session=True`면 CLI가 새 세션 id로 갈라 시작한다(결과의 session_id).
             # 가르기가 안 되면(세션 파일 없음 등) resume 실패와 같은 모양이라 디스패처가 SP1 대체 경로로 간다
             fork_session=fork_session and session_id is not None,
+            # 하루 끝 순간 호출은 이어 쓰지 않으므로 세션 jsonl을 쓰지 않는다(SP8 6.3, 디스패처가 호출 뒤 한 번 더 지운다)
+            extra_args=None if persist_session else NO_SESSION_PERSISTENCE,
         )
         messages: list[object] = []
         text_stream = _TextStreamer(run_ctx.stream) if run_ctx.stream is not None else None

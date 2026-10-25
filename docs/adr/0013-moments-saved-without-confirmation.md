@@ -14,3 +14,5 @@ SP3-4는 비서가 만든 삶의 기록(사건, 챕터)을 초안으로만 내�
 받아들이는 것: 앱 대화에서 두뇌가 `get_status`로 순간의 글을 읽으면, 그 결과는 그 대화의 SDK 세션 파일(`~/.claude/projects/`, 대화 이어 쓰기용, SP1)에 다른 대화 내용과 함께 남는다. 노트북 안의 사본이고 대화 기록과 같은 취급이다.
 
 사건·챕터·할 일 초안의 확인 규칙은 바뀌지 않는다. 상세는 [SP8 스펙](../superpowers/specs/2026-10-25-sp8-status-records-history-design.md) 6장.
+
+구현 계획: [SP8 계획](../superpowers/plans/2026-10-25-sp8-status-records-history.md) (SP8-03이 이 결정을 코드로 옮긴다: `save_moments` 하나, 세션 저장 끄기와 호출 뒤 세션 파일 지우기).
