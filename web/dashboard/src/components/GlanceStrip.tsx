@@ -22,7 +22,7 @@ export function GlanceStrip({ history: h, width, today = kstToday() }: { history
   return (
     <figure className="glance">
       <figcaption>
-        <h3 className="glance-title">{T.glance.title}</h3>
+        <p className="glance-title">{T.glance.title}</p>
         <p className="meta glance-sub">{T.glance.subtitle}</p>
       </figcaption>
       <svg className="glance-svg" width={width} height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} role="group" aria-label={T.glance.title}>
@@ -78,6 +78,14 @@ export function GlanceStrip({ history: h, width, today = kstToday() }: { history
               <td>{c.events.length}</td>
             </tr>
           ))}
+          {h.unassigned.events.length > 0 && (
+            <tr>
+              <th scope="row">{T.unassigned}</th>
+              <td>{T.glance.noYears}</td>
+              <td>{T.glance.noLadder}</td>
+              <td>{h.unassigned.events.length}</td>
+            </tr>
+          )}
         </tbody>
       </table>
     </figure>

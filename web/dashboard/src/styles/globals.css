@@ -1677,3 +1677,13 @@ h2 {
   color: var(--hue);
   margin-top: 2px;
 }
+.history-summary-text {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.history-summary-value {
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+}

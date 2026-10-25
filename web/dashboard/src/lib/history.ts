@@ -78,7 +78,10 @@ export function applySensitive(h: CurveHistory, opened: Set<number>, all: boolea
   if (removed === 0) return h;
   const turns = [...chapters.flatMap((c) => c.events), ...unassigned.events].filter((e) => e.kind === "turning_point");
   const years = [...new Set(turns.map(eventYear))].sort((a, b) => a - b);
-  return { ...h, chapters, unassigned, summary: { ...h.summary, events: h.summary.events - removed, turning_points: { count: turns.length, years } } };
+  // what is left decides the first year too, so a hidden event does not pull the axis back
+  const firstYears = [...chapters.map((c) => Number(c.start.slice(0, 4))), ...chapters.flatMap((c) => c.events), ...unassigned.events].map((v) => (typeof v === "number" ? v : eventYear(v)));
+  const since_year = firstYears.length > 0 ? Math.min(...firstYears) : null;
+  return { ...h, since_year, chapters, unassigned, summary: { ...h.summary, events: h.summary.events - removed, turning_points: { count: turns.length, years } } };
 }
 
 // ---- the glance strip (SP8 8.6): the layout is numbers only, GlanceStrip draws it ----

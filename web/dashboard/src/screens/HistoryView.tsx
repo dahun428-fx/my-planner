@@ -17,9 +17,20 @@ import { useWidth } from "../lib/useWidth";
  * the summary are a column at the side.
  *
  * `history` may hold sensitive events (the page asked for them); only those of an opened chapter, or all while
- * "민감한 사건 가림" is off, are shown, drawn or counted. `onNeedSensitive` asks the page to fetch them.
+ * "민감한 사건 가림" is off, are shown, drawn or counted. `onNeedSensitive` asks the page to fetch them;
+ * `onDropSensitive` tells it nothing is open any more, so it can let go of them.
  */
-export function HistoryView({ history, isPhone, onNeedSensitive }: { history: CurveHistory; isPhone: boolean; onNeedSensitive?: () => void }) {
+export function HistoryView({
+  history,
+  isPhone,
+  onNeedSensitive,
+  onDropSensitive,
+}: {
+  history: CurveHistory;
+  isPhone: boolean;
+  onNeedSensitive?: () => void;
+  onDropSensitive?: () => void;
+}) {
   const [filter, setFilterState] = useState<HistoryFilter>(memory.filter);
   const [order, setOrderState] = useState<HistoryOrder>(memory.order);
   const [foldedOpened, setFoldedOpened] = useState<Set<number>>(memory.foldedOpened);
@@ -55,11 +66,21 @@ export function HistoryView({ history, isPhone, onNeedSensitive }: { history: Cu
     memory.sensitiveOpened = next;
     setSensitiveOpened(next);
     setSelectedId(null);
+    if (next.size === 0 && !showAll) onDropSensitive?.();
   };
   const hideSensitive = (hide: boolean) => {
     memory.sensitive = !hide;
     setShowAllState(!hide);
-    if (!hide) onNeedSensitive?.();
+    if (!hide) {
+      onNeedSensitive?.();
+      return;
+    }
+    // hiding again folds every chapter, also the ones opened one by one
+    const none = new Set<number>();
+    memory.sensitiveOpened = none;
+    setSensitiveOpened(none);
+    setSelectedId(null);
+    onDropSensitive?.();
   };
   const select = useCallback((e: HistoryEvent) => setSelectedId(e.id), []);
   const close = useCallback(() => {
@@ -148,7 +169,7 @@ export function HistoryView({ history, isPhone, onNeedSensitive }: { history: Cu
         {filters}
         {list}
       </div>
-      <aside className="history-side" aria-label={T.summary.label}>
+      <aside className="history-side" aria-label={T.summary.asideLabel}>
         {strip}
         {summary}
       </aside>

@@ -60,6 +60,7 @@ describe("glanceLayout and GlanceStrip", () => {
     expect(rows.map((r) => within(r).getAllByRole("cell").map((c) => c.textContent))).toEqual([
       ["2025 –", "5.1", "2"],
       ["2023 – 2025", "6", "0"],
+      ["—", "없음", "2"], // the group with no chapter
     ]);
     expect(within(rows[0]).getByRole("rowheader").textContent).toBe("꾸민 새 출발");
   });

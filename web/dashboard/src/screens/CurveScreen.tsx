@@ -202,6 +202,11 @@ function HistoryPane() {
   const lastOk = useRef<CurveHistory | null>(null);
   if (result?.kind === "ok") lastOk.current = result.data;
   const needSensitive = useCallback(() => setWithSensitive(true), []);
+  // Nothing is open and everything is hidden again: ask for the plain answer and let go of the raw one.
+  const dropSensitive = useCallback(() => {
+    lastOk.current = null;
+    setWithSensitive(false);
+  }, []);
   const isPhone = useIsPhone();
   const shown = result ?? (lastOk.current ? ({ kind: "ok", data: lastOk.current } as const) : null);
   return (
@@ -209,7 +214,7 @@ function HistoryPane() {
       {!ready || !conn || shown === null ? (
         <Loading />
       ) : shown.kind === "ok" ? (
-        <HistoryView history={shown.data} isPhone={isPhone} onNeedSensitive={needSensitive} />
+        <HistoryView history={shown.data} isPhone={isPhone} onNeedSensitive={needSensitive} onDropSensitive={dropSensitive} />
       ) : (
         <StateNotice result={shown} />
       )}
