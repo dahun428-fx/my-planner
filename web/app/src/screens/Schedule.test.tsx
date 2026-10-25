@@ -8,7 +8,8 @@ import type { EventItem } from "../api/types.gen";
 import { copy } from "../lib/copy";
 import SchedulePage from "../pages/schedule";
 import { ev } from "../test/events";
-import { renderWithProviders } from "../test/render";
+import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
+import { mockRouter, renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
 import { Schedule } from "./Schedule";
 
@@ -45,7 +46,9 @@ function serve(items: EventItem[] = WEEK) {
 }
 
 const strip = () => screen.getByRole("group", { name: copy.schedule.week });
-const dayButton = (m: number, d: number, w: string) => within(strip()).getByRole("button", { name: copy.parts.dayLabel(m, d, w) });
+// 일정 있는 날은 읽는 이름에 "일정 있음"이 붙는다(점은 눈으로만 보이므로).
+const dayButton = (m: number, d: number, w: string) =>
+  within(strip()).getByRole("button", { name: new RegExp(`^${copy.parts.dayLabel(m, d, w).replace(/[()]/g, "\\$&")}`) });
 
 describe("Schedule (spec 9.2)", () => {
   it("opens on today: the month as the large title, the week strip Monday to Sunday, today marked", async () => {
@@ -67,8 +70,11 @@ describe("Schedule (spec 9.2)", () => {
     renderWithProviders(<Schedule />, { route: "/schedule/" });
     await waitFor(() => expect(dayButton(10, 27, "화")).toHaveAttribute("data-events", "true"));
     expect(dayButton(10, 30, "금")).toHaveAttribute("data-events", "true");
+    // 화면 읽기에도: 점이 있는 날만 이름에 "일정 있음"
+    expect(dayButton(10, 27, "화")).toHaveAccessibleName(copy.schedule.hasEvents(copy.parts.dayLabel(10, 27, "화")));
     for (const [d, w] of [[26, "월"], [28, "수"], [29, "목"], [31, "토"]] as const) {
       expect(dayButton(10, d, w)).not.toHaveAttribute("data-events");
+      expect(dayButton(10, d, w)).toHaveAccessibleName(copy.parts.dayLabel(10, d, w));
     }
     expect(within(strip()).queryByText("3")).not.toBeInTheDocument();
   });
@@ -208,6 +214,40 @@ describe("Schedule (spec 9.2)", () => {
     renderWithProviders(<Schedule />, { route: "/schedule/", conn: "offline" });
     expect(await screen.findByRole("button", { name: copy.offline.reconnect })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: copy.schedule.add })).toBeDisabled();
+  });
+
+  it("waits for the address before the first read: a push to ?date= asks that week only", async () => {
+    const asked = serve();
+    const notReady = { ...mockRouter("/schedule/"), isReady: false, query: {} };
+    const { rerender } = renderWithProviders(
+      <RouterContext.Provider value={notReady}>
+        <SchedulePage />
+      </RouterContext.Provider>,
+      { route: "/schedule/?date=2026-11-04" },
+    );
+    await screen.findByRole("navigation", { name: copy.tabs.navLabel });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).toEqual([]);
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    rerender(
+      <RouterContext.Provider value={mockRouter("/schedule/?date=2026-11-04")}>
+        <SchedulePage />
+      </RouterContext.Provider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: copy.schedule.month(11) })).toBeInTheDocument();
+    await waitFor(() => expect(asked).toContain("2026-11-02..2026-11-08"));
+    expect(asked).not.toContain("2026-10-26..2026-11-01");
+  });
+
+  it("the month calendar steps with the chevron icons", async () => {
+    serve();
+    const user = userEvent.setup();
+    renderWithProviders(<Schedule />, { route: "/schedule/" });
+    await user.click(await screen.findByRole("button", { name: copy.schedule.month(10) }));
+    const prev = screen.getByRole("button", { name: copy.schedule.prevMonth });
+    const next = screen.getByRole("button", { name: copy.schedule.nextMonth });
+    expect(prev.querySelector("svg path")?.getAttribute("d")).toBe(next.querySelector("svg path")?.getAttribute("d"));
+    expect(prev).not.toHaveTextContent("‹");
   });
 
   it("the page marks the schedule tab", async () => {

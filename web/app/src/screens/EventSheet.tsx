@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useAction } from "../api/actions";
 import { apiGet } from "../api/client";
 import type { EventDetail, EventItem } from "../api/types.gen";
+import { BlockError } from "../components/BlockError";
 import { ConfirmSheet } from "../components/ConfirmSheet";
 import { Segmented } from "../components/Segmented";
 import { Sheet } from "../components/Sheet";
@@ -51,18 +52,24 @@ export function EventDetailSheet({
     if (item) setShown(item);
   }, [item]);
   const [detail, setDetail] = useState<EventDetail | null>(null);
+  // 정의를 읽지 못하면 말없이 꺼진 "고치기" 대신 그 까닭과 다시 시도를 보인다(5.4 블록 오류).
+  const [failed, setFailed] = useState<string | null>(null);
+  const [reads, setReads] = useState(0);
   const id = item?.event_id;
   useEffect(() => {
     setDetail(null);
+    setFailed(null);
     if (id === undefined) return;
     let alive = true;
     void apiGet<EventDetail>(`/events/${id}`, "EventDetail").then((r) => {
-      if (alive && r.kind === "ok") setDetail(r.data);
+      if (!alive) return;
+      if (r.kind === "ok") setDetail(r.data);
+      else setFailed(r.kind === "error" ? r.code : r.kind);
     });
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, reads]);
 
   const { run } = useAction();
   const [asking, setAsking] = useState<Scope | null>(null);
@@ -109,6 +116,7 @@ export function EventDetailSheet({
             {e.area && ` · ${copy.areas[e.area]}`}
           </p>
           {detail?.note && <p className={styles.note}>{detail.note}</p>}
+          {failed !== null && <BlockError code={failed} onRetry={() => setReads((n) => n + 1)} />}
           <div className={styles.actions}>
             <button type="button" className={styles.action} disabled={!writable || !detail} onClick={() => detail && onEdit(detail)}>
               {copy.schedule.edit}

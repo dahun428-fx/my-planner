@@ -96,6 +96,7 @@ export const copy = {
     prevMonth: "이전 달", // (new)
     nextMonth: "다음 달", // (new)
     week: "한 주", // (new) 한 주 띠의 이름
+    hasEvents: (day: string) => `${day} · 일정 있음`, // (new) 점이 있는 날의 읽는 이름(점은 눈으로만 보인다)
     add: "일정 추가", // 10장 퀵 칩 "일정 추가"와 같은 말
     empty: "이날은 일정이 없어요.",
     allDay: "하루 종일", // (9.2)
@@ -232,6 +233,7 @@ export const copy = {
     moreEvents: (n: number) => `스케줄에서 ${n}개 더 보기`,
     missed: (hhmm: string, title: string) => `놓친 알림 · ${hhmm} ${title}`,
     unsent: (hhmm: string, title: string) => `알림을 못 보냈어요 · ${hhmm} ${title}`,
+    dismissMissed: (title: string) => `${title} 알림 닫기`, // (new) 놓친 알림 줄의 × 이름
   },
 
   chat: {

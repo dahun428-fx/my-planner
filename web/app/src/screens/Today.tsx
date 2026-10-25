@@ -256,7 +256,7 @@ export function Today() {
             {missed.map((r) => (
               <li key={`${r.event_id}:${r.date}`} className={styles.missedLine}>
                 <span className={styles.missedText}>{(r.outcome === "missed" ? copy.today.missed : copy.today.unsent)(clock(r.start), r.title)}</span>
-                <button type="button" className={styles.dismiss} aria-label={copy.common.close} disabled={readOnly} onClick={() => void dismiss(r.event_id, r.date)}>
+                <button type="button" className={styles.dismiss} aria-label={copy.today.dismissMissed(r.title)} disabled={readOnly} onClick={() => void dismiss(r.event_id, r.date)}>
                   <Icon name="close" />
                 </button>
               </li>

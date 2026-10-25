@@ -239,6 +239,21 @@ describe("EventDetailSheet (spec 9.2 detail sheet)", () => {
     expect(onEdit).toHaveBeenCalledWith(d);
   });
 
+  it("a definition that cannot be read says so with a retry, instead of a silent off button", async () => {
+    let fail = true;
+    server.use(
+      http.get(`${BASE}/events/3`, () => (fail ? HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) : HttpResponse.json(detailOf()))),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EventDetailSheet item={meeting} writable onClose={() => {}} onEdit={() => {}} onChanged={() => {}} />);
+    expect(await screen.findByText(copy.errors.block("internal"))).toBeInTheDocument();
+    fail = false;
+    await user.click(screen.getByRole("button", { name: copy.errors.retry }));
+    expect(await screen.findByText("매주 화 09:30")).toBeInTheDocument();
+    expect(screen.queryByText(copy.errors.block("internal"))).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: S.edit })).toBeEnabled();
+  });
+
   it("read-only (offline): every button is off", async () => {
     serveDetail(detailOf());
     renderWithProviders(<EventDetailSheet item={meeting} writable={false} onClose={() => {}} onEdit={() => {}} onChanged={() => {}} />);

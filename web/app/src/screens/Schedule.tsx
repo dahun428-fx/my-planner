@@ -234,7 +234,7 @@ export function Schedule() {
             key={d}
             type="button"
             className={styles.day}
-            aria-label={dayName(d)}
+            aria-label={marked.has(d) ? copy.schedule.hasEvents(dayName(d)) : dayName(d)}
             aria-pressed={d === selected}
             aria-current={d === today ? "date" : undefined}
             data-events={marked.has(d) ? "true" : undefined}

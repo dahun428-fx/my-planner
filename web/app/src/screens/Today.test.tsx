@@ -631,6 +631,9 @@ describe("Today offline and refused", () => {
       expect(screen.getByText(copy.today.unsent(copy.schedule.allDay, "엄마 생신"))).toBeInTheDocument();
       expect(before(screen.getByRole("heading", { name: copy.today.condition }), missed)).toBe(true);
       expect(before(missed, screen.getByRole("heading", { name: copy.today.events }))).toBe(true);
+      // 닫기 버튼마다 어느 알림인지 이름에 있다
+      expect(screen.getByRole("button", { name: copy.today.dismissMissed("치과") })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: copy.today.dismissMissed("약 받기") })).toBeInTheDocument();
     });
 
     it("× closes a line with dismiss_missed_reminder and reads again", async () => {
@@ -640,7 +643,7 @@ describe("Today offline and refused", () => {
       const line = (await screen.findByText(copy.today.missed("14:00", "치과"))).closest("li") as HTMLElement;
       await waitFor(() => expect(hits.today).toBeGreaterThan(0));
       const before = hits.today;
-      await userEvent.click(within(line).getByRole("button", { name: copy.common.close }));
+      await userEvent.click(within(line).getByRole("button", { name: copy.today.dismissMissed("치과") }));
       await waitFor(() => expect(bodies).toHaveLength(1));
       expect(bodies[0]).toMatchObject({ action: "dismiss_missed_reminder", args: { event_id: 20, date: D } });
       await waitFor(() => expect(hits.today).toBeGreaterThan(before));

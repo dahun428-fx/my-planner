@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "../components/icons";
 import { copy } from "../lib/copy";
 import { addMonths, dayName, monthGrid } from "../lib/schedule";
 import styles from "./MonthCalendar.module.css";
@@ -12,13 +13,15 @@ export function MonthCalendar({ selected, today, onPick }: { selected: string; t
     <div role="group" aria-label={copy.schedule.monthOf(y, m)} className={styles.calendar}>
       <div className={styles.head}>
         <button type="button" className={styles.step} aria-label={copy.schedule.prevMonth} onClick={() => setMonth(addMonths(month, -1))}>
-          <span aria-hidden="true">‹</span>
+          <span className={styles.back}>
+            <Icon name="chevron" />
+          </span>
         </button>
         <span className={styles.name} aria-hidden="true">
           {copy.schedule.monthOf(y, m)}
         </span>
         <button type="button" className={styles.step} aria-label={copy.schedule.nextMonth} onClick={() => setMonth(addMonths(month, 1))}>
-          <span aria-hidden="true">›</span>
+          <Icon name="chevron" />
         </button>
       </div>
       <div className={styles.grid}>

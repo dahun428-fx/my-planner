@@ -15,16 +15,21 @@
   color: var(--text);
 }
 .step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: var(--control-h);
   min-height: var(--control-h);
   padding: 0;
   border: 0;
   background: transparent;
-  font: inherit;
-  font-size: var(--size-title);
-  line-height: 1;
   color: var(--text);
   cursor: pointer;
+}
+/* 앞 달은 같은 꺾쇠 아이콘을 뒤집어 쓴다. */
+.back {
+  display: inline-flex;
+  transform: scaleX(-1);
 }
 .grid {
   display: grid;
