@@ -1,14 +1,27 @@
-import type { HistoryChapter as ChapterData, HistoryEvent } from "../api/types.gen";
+import type { HiddenSensitive, HistoryChapter as ChapterData, HistoryEvent } from "../api/types.gen";
 import { eventDateText, ladderText, yearsText } from "../lib/history";
 import { AREA_LABELS, CURVE_TEXT, HISTORY_TEXT as T } from "../lib/labels";
 import { MilestonePopover } from "./MilestonePopover";
 import { Pictogram } from "./pictograms.gen";
 
 /** One event line (52px or more): kind in a 36px circle, title, date, note, then its tags. Tapping opens the popover. */
-function EventRow({ event: e, open, onSelect, onClose }: { event: HistoryEvent; open: boolean; onSelect(e: HistoryEvent): void; onClose(): void }) {
+function EventRow({
+  event: e,
+  open,
+  onSelect,
+  onClose,
+  onHide,
+}: {
+  event: HistoryEvent;
+  open: boolean;
+  onSelect(e: HistoryEvent): void;
+  onClose(): void;
+  onHide?(): void;
+}) {
   const kind = CURVE_TEXT.kinds[e.kind];
   return (
     <li className="history-event" data-event-id={e.id}>
+      <div className="history-event-line">
       <button type="button" className="history-event-row" aria-expanded={open} onClick={() => (open ? onClose() : onSelect(e))}>
         <span className="history-kind">
           <Pictogram name={e.kind} size={20} />
@@ -45,32 +58,66 @@ function EventRow({ event: e, open, onSelect, onClose }: { event: HistoryEvent; 
           </span>
         </span>
       </button>
+      {e.sensitive && onHide && (
+        <button type="button" className="text-button history-hide" onClick={onHide}>
+          {T.hideAgain}
+        </button>
+      )}
+      </div>
       {open && <MilestonePopover milestone={e} onClose={onClose} />}
     </li>
   );
 }
 
-/** The events of one group. A kind filter that leaves none says so, so the way walked does not look cut. */
+/** "가려 둔 사건 {n}개 · {해들}" with "보기" (SP8 8.5): the count and years only, never a title. */
+function HiddenLine({ hidden, onShow }: { hidden: HiddenSensitive; onShow(): void }) {
+  return (
+    <p className="meta history-hidden">
+      <Pictogram name="eyeoff" size={16} />
+      <span>{T.hidden(hidden.count, hidden.years)}</span>
+      <button type="button" className="text-button" onClick={onShow}>
+        {T.showHidden}
+      </button>
+    </p>
+  );
+}
+
+/**
+ * The events of one group, then the line for the sensitive ones kept hidden. A kind filter that leaves none says
+ * so, so the way walked does not look cut. `onHide` folds an opened sensitive event's group again.
+ */
 export function HistoryEvents({
   events,
   filtered,
   selected,
   onSelect,
   onClose,
+  hidden,
+  onShow,
+  onHide,
 }: {
   events: HistoryEvent[];
   filtered: boolean;
   selected: number | null;
   onSelect(e: HistoryEvent): void;
   onClose(): void;
+  hidden?: HiddenSensitive;
+  onShow?(): void;
+  onHide?(): void;
 }) {
-  if (events.length === 0) return filtered ? <p className="empty history-none">{T.noneOfKind}</p> : null;
   return (
-    <ul className="history-events">
-      {events.map((e) => (
-        <EventRow key={e.id} event={e} open={selected === e.id} onSelect={onSelect} onClose={onClose} />
-      ))}
-    </ul>
+    <>
+      {events.length === 0 ? (
+        filtered && <p className="empty history-none">{T.noneOfKind}</p>
+      ) : (
+        <ul className="history-events">
+          {events.map((e) => (
+            <EventRow key={e.id} event={e} open={selected === e.id} onSelect={onSelect} onClose={onClose} onHide={onHide} />
+          ))}
+        </ul>
+      )}
+      {hidden && hidden.count > 0 && onShow && <HiddenLine hidden={hidden} onShow={onShow} />}
+    </>
   );
 }
 
@@ -98,6 +145,8 @@ export function HistoryChapter({
   selected,
   onSelect,
   onClose,
+  onShow,
+  onHide,
 }: {
   chapter: ChapterData;
   events: HistoryEvent[];
@@ -105,6 +154,8 @@ export function HistoryChapter({
   selected: number | null;
   onSelect(e: HistoryEvent): void;
   onClose(): void;
+  onShow(): void;
+  onHide?(): void;
 }) {
   const estimate = c.certainty === "estimate";
   const memo = c.sketch ?? (estimate ? T.estimateSketch : null);
@@ -125,7 +176,7 @@ export function HistoryChapter({
       </div>
       <SecondLine chapter={c} />
       {memo && <p className="history-memo">{memo}</p>}
-      <HistoryEvents events={events} filtered={filtered} selected={selected} onSelect={onSelect} onClose={onClose} />
+      <HistoryEvents events={events} filtered={filtered} selected={selected} onSelect={onSelect} onClose={onClose} hidden={c.hidden_sensitive} onShow={onShow} onHide={onHide} />
     </section>
   );
 }

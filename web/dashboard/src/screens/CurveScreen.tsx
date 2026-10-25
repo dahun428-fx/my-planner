@@ -186,19 +186,33 @@ type Tab = "curve" | "history";
 const tabFrom = (q: unknown): Tab => (q === "history" ? "history" : "curve");
 
 /**
- * 히스토리 탭 (SP8 8.3): `GET /curve/history`, with sensitive events only while "민감한 사건 보기" is on in this
- * tab (the same state as the curve's). Read only.
+ * 히스토리 탭 (SP8 8.3, 8.5): `GET /curve/history`, and once `include_sensitive=true` when the view needs the hidden
+ * events (a chapter's "보기", or "민감한 사건 보기" already on). Read only.
  */
 function HistoryPane() {
   const { ready, conn, backOnline } = useConnection();
-  const path = memory.sensitive ? "/curve/history?include_sensitive=true" : "/curve/history";
+  // Sensitive events are asked for once, when "민감한 사건 보기" is already on, or when the view needs them
+  // ("보기" on a chapter, or the toggle turned off). The answer stays; the view decides what it shows of it.
+  const [withSensitive, setWithSensitive] = useState(memory.sensitive);
+  const path = withSensitive ? "/curve/history?include_sensitive=true" : "/curve/history";
   const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
   const load = useCallback(async (): Promise<ApiResult<CurveHistory>> => (conn ? fetchApi(conn, path, isCurveHistory) : NONE), [conn, path]);
   const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "", { wake: backOnline });
+  // The request changes, the polling starts over with no answer: keep the last good one on screen meanwhile.
+  const lastOk = useRef<CurveHistory | null>(null);
+  if (result?.kind === "ok") lastOk.current = result.data;
+  const needSensitive = useCallback(() => setWithSensitive(true), []);
   const isPhone = useIsPhone();
+  const shown = result ?? (lastOk.current ? ({ kind: "ok", data: lastOk.current } as const) : null);
   return (
     <div>
-      {!ready || !conn || result === null ? <Loading /> : result.kind === "ok" ? <HistoryView history={result.data} isPhone={isPhone} /> : <StateNotice result={result} />}
+      {!ready || !conn || shown === null ? (
+        <Loading />
+      ) : shown.kind === "ok" ? (
+        <HistoryView history={shown.data} isPhone={isPhone} onNeedSensitive={needSensitive} />
+      ) : (
+        <StateNotice result={shown} />
+      )}
     </div>
   );
 }

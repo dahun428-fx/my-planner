@@ -4,14 +4,17 @@ import type { HistoryFilter, HistoryOrder } from "./history";
 /**
  * What the life curve screen remembers while this tab has the dashboard open (SP3-4 13.4, SP8 8.4): module
  * memory, never storage. Leaving for another screen and coming back keeps it; a reload or a new tab starts over.
- * "민감한 사건 보기" is one state for the curve and the history tab.
+ * "민감한 사건 보기" is one state for the curve and the history tab (`sensitive`). `foldedOpened` are the old
+ * chapters a phone opened; `sensitiveOpened` the chapters whose hidden events were shown with "보기" (0 is the
+ * group with no chapter). The two are different things.
  */
-export const memory: { zoom: Zoom; sensitive: boolean; filter: HistoryFilter; order: HistoryOrder; expanded: Set<number> } = {
+export const memory: { zoom: Zoom; sensitive: boolean; filter: HistoryFilter; order: HistoryOrder; foldedOpened: Set<number>; sensitiveOpened: Set<number> } = {
   zoom: "month",
   sensitive: false,
   filter: "all",
   order: "recent",
-  expanded: new Set(),
+  foldedOpened: new Set(),
+  sensitiveOpened: new Set(),
 };
 
 /** For tests: start again as a fresh tab would. */
@@ -20,5 +23,6 @@ export function resetMemory() {
   memory.sensitive = false;
   memory.filter = "all";
   memory.order = "recent";
-  memory.expanded = new Set();
+  memory.foldedOpened = new Set();
+  memory.sensitiveOpened = new Set();
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CurveHistory, HistoryEvent } from "../api/types.gen";
-import { collapsedOnPhone, eventDateText, filterEvents, ladderText, orderChapters, yearsText } from "./history";
+import { applySensitive, UNASSIGNED_ID, collapsedOnPhone, eventDateText, filterEvents, ladderText, orderChapters, yearsText } from "./history";
 
 const ev = (id: number, kind: HistoryEvent["kind"]): HistoryEvent => ({
   id,
@@ -77,5 +77,31 @@ describe("history lib", () => {
     expect(ladderText(6.0)).toBe("6");
     expect(ladderText(6.3)).toBe("6.3");
     expect(ladderText(5.14)).toBe("5.1");
+  });
+
+  it("hidden_sensitive_alone_keeps_the_unassigned_group", () => {
+    const h = history([1]);
+    h.unassigned.hidden_sensitive = { count: 1, years: [2020] };
+    expect(ids(orderChapters(h, "recent"))).toEqual([1, "unassigned"]);
+  });
+
+  it("apply_sensitive_hides_unopened_groups_and_recounts", () => {
+    const secret = { ...ev(7, "turning_point"), sensitive: true, date: "2021-04" };
+    const h = history([2, 1], [{ ...secret, id: 8, date: "2018-01" }]);
+    h.chapters[0].events = [ev(1, "high"), secret];
+    h.summary = { ...h.summary, events: 3, turning_points: { count: 2, years: [2018, 2021] } };
+    const hid = applySensitive(h, new Set(), false);
+    expect(hid.chapters[0].events.map((e) => e.id)).toEqual([1]);
+    expect(hid.chapters[0].hidden_sensitive).toEqual({ count: 1, years: [2021] });
+    expect(hid.unassigned.hidden_sensitive).toEqual({ count: 1, years: [2018] });
+    expect(hid.summary.events).toBe(1);
+    expect(hid.summary.turning_points).toEqual({ count: 0, years: [] });
+    const one = applySensitive(h, new Set([2]), false);
+    expect(one.chapters[0].events.map((e) => e.id)).toEqual([1, 7]);
+    expect(one.unassigned.events).toEqual([]);
+    expect(one.summary.events).toBe(2);
+    expect(one.summary.turning_points).toEqual({ count: 1, years: [2021] });
+    expect(applySensitive(h, new Set([2, UNASSIGNED_ID]), false)).toBe(h);
+    expect(applySensitive(h, new Set(), true)).toBe(h);
   });
 });
