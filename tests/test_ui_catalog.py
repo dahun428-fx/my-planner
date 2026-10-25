@@ -271,9 +271,10 @@ def test_app_tool_count_unchanged():
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
         "set_checkin_time",  # SP9-02(화면 조각이 아니다)
         "search_memos", "read_memo", "create_memo",  # SP9-03
+        "list_events", "create_event", "update_event", "delete_event",  # SP9-05
     }
     assert not set(NEW) & set(tool_names_for(RunContext(None, None, channel="app")))
-    assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 8
+    assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 9  # SP9-05 `ui_events`
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 
 
@@ -340,3 +341,20 @@ def test_catalog_schema_uses_nested_oneof():
     # 바깥 oneOf는 부품 열 가지(group은 안쪽 oneOf 하나)
     outer = schema["properties"]["children"]["items"]["oneOf"]
     assert len(outer) == 10 and groups[0] in [m.get("oneOf") for m in outer]
+
+
+def test_ui_events_catalog_entry():
+    """SP9-05: `ui_events`(그날 일정 띠)는 두뇌 화면 조각으로 목록에만 있다. 두뇌 도구·고정 카드는 아니다."""
+    from my_planner.tools.ui import UI_CATALOG_VERSION, UI_COMPONENTS
+
+    entry = UI_COMPONENTS["ui_events"]
+    assert entry["origin"] == "brain" and UI_CATALOG_VERSION == "2026-10-24.5"
+    assert "ui_events" in BRAIN_COMPONENTS and "ui_events" not in PINNABLE_COMPONENTS
+    assert "ui_events" not in tool_names_for(RunContext(None, None, channel="app"))
+    schema = entry["schema"]
+    assert schema["additionalProperties"] is False and "items" in schema["required"]
+    item = {"event_id": 1, "date": "2026-10-28", "start": "2026-10-28T05:00:00Z", "end": None, "all_day": False,
+            "title": "치과", "area": None, "repeat": "none", "origin": "chat"}
+    assert validate_props("ui_events", {"items": [item]}) is None
+    assert validate_props("ui_events", {"items": []}) is not None
+    assert validate_props("ui_events", {"items": [item] * 11}) is not None

@@ -584,3 +584,61 @@ async def test_api_memos_second_page_has_no_pinned(tmp_path):
     assert [x["id"] for x in second["items"]] == [rest[2], rest[1]]
     assert [x["id"] for x in third["items"]] == [rest[0]] and third["next_before"] is None
     assert not any(x["pinned"] for x in second["items"] + third["items"])
+
+
+# --- 스케줄 (SP9 5.6) ---
+
+
+def _ev(env, title, d, t=None, **kw):
+    from datetime import time as _t
+
+    fields = {"title": title, "start_date": date.fromisoformat(d), "start_time": _t.fromisoformat(t) if t else None,
+              "all_day": t is None, "remind_min": 10 if t else 0, "origin": "user", **kw}
+    return env.parts.events.create(fields, env.clock.now())
+
+
+async def test_today_events_use_logical_day_0100_belongs_to_previous(tmp_path):
+    """Review Focus 1: 10/27 01:00 일정은 현지 날짜 10/27, 논리적 날짜 10/26. 오늘 화면은 논리적 날짜,
+    `/events`(스케줄 띠)는 현지 날짜."""
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 27, 1, 30)) as env:  # 논리적 날짜 10/26(월)
+        _ev(env, "꾸민 낮 일정", "2026-10-26", "14:00")
+        late = _ev(env, "꾸민 새벽 일정", "2026-10-27", "01:00")
+        _ev(env, "꾸민 전날 새벽", "2026-10-26", "02:00")  # 논리적 날짜 10/25
+        _ev(env, "꾸민 하루 종일", "2026-10-26")
+        _ev(env, "꾸민 다음 날 하루 종일", "2026-10-27")  # 하루 종일은 현지 날짜 = 논리적 날짜
+        today = await get_json(env, "/today")
+        strip = await get_json(env, "/events?start=2026-10-27&end=2026-10-27")
+
+    assert today["date"] == "2026-10-26"
+    assert [e["title"] for e in today["events"]] == ["꾸민 하루 종일", "꾸민 낮 일정", "꾸민 새벽 일정"]
+    item = today["events"][2]
+    assert item == {
+        "event_id": late.id, "date": "2026-10-27", "start": "2026-10-26T16:00:00Z", "end": None, "all_day": False,
+        "title": "꾸민 새벽 일정", "area": None, "remind_min": 10, "repeat": "none", "origin": "user",
+    }
+    assert today["missed_reminders"] == []
+    assert [e["title"] for e in strip["items"]] == ["꾸민 다음 날 하루 종일", "꾸민 새벽 일정"]
+
+
+async def test_api_events_range_over_62_422(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        _ev(env, "꾸민 매일", "2026-10-24", "08:00", repeat="daily")
+        ok = await get_json(env, "/events?start=2026-10-24&end=2026-12-24")  # 62일(포함)
+        too_long = await get_json(env, "/events?start=2026-10-24&end=2026-12-25", status=422)
+        await get_json(env, "/events?start=2026-10-24", status=400)
+        await get_json(env, "/events?start=2026-10-25&end=2026-10-24", status=400)
+    assert len(ok["items"]) == 62 and (ok["start"], ok["end"]) == ("2026-10-24", "2026-12-24")
+    assert too_long["error"] == {"code": "range_too_long", "message": "기간은 62일까지 볼 수 있어요."}
+
+
+async def test_api_event_detail_and_404(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        e = _ev(env, "꾸민 팀 회의", "2026-10-26", "10:00", repeat="weekly", weekdays=1 | 4, note="꾸민 메모")
+        env.parts.events.skip(e.id, date(2026, 10, 28))
+        gone = _ev(env, "꾸민 지운 일정", "2026-10-26", "11:00")
+        env.parts.events.delete(gone.id, env.clock.now())
+        body = await get_json(env, f"/events/{e.id}")
+        missing = await get_json(env, f"/events/{gone.id}", status=404)
+    assert body["weekdays"] == ["mon", "wed"] and body["skipped_dates"] == ["2026-10-28"]
+    assert body["note"] == "꾸민 메모" and body["time"] == "10:00" and body["created_at"].endswith("Z")
+    assert missing["error"]["message"] == "없는 일정이에요."

@@ -54,14 +54,12 @@ APP_ONLY_TOOLS: list[str] = [
     *PINNABLE_COMPONENTS, "ui_habit_check", "pin_card", "unpin_card", "reorder_cards", "set_checkin_time",
     # 메모(SP9 6.3): 찾기·읽기·만들기만. 고치기·지우기 도구는 없다(Q5)
     "search_memos", "read_memo", "create_memo",
+    # 스케줄(SP9 5.5): 시간이 정해진 일. 고치기(시각류)·지우기는 확인을 거친다
+    "list_events", "create_event", "update_event", "delete_event",
 ]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 _DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD"}
-_DATETIME = {
-    "type": ["string", "null"],
-    "description": "시각이 있는 일의 날짜와 시각. 한국 시간 기준 ISO 8601, 예: 2026-10-25T14:00",
-}
 _ID = {"type": "integer", "description": "할 일 번호"}
 
 
@@ -79,7 +77,6 @@ _NEW_TASK = _schema(
             "description": "영역 하나 이상",
         },
         "planned_for": _DATE,
-        "scheduled_at": _DATETIME,
         "parent_id": {"type": ["integer", "null"], "description": "첫 걸음이면 부모 할 일 번호"},
         "note": {"type": ["string", "null"]},
     },
@@ -89,7 +86,10 @@ _NEW_TASK = _schema(
 # (이름, 설명, 입력 스키마). JSON 스키마의 "from"은 부르기 전에 파이썬 이름 `from_`으로 바꾼다(`_py_args`).
 _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "add_task": (
-        "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다.",
+        (
+            "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다. "
+            "시간이 정해진 일(\"내일 14:00 치과\")은 할 일이 아니라 create_event로 일정을 만듭니다."
+        ),
         _NEW_TASK,
     ),
     "propose_tasks": (
@@ -118,14 +118,16 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
         _schema({"ids": {"type": "array", "items": _ID, "minItems": 1}}, ["ids"]),
     ),
     "update_task": (
-        "할 일의 제목, 영역, 메모, 시각을 바꿉니다. 날짜는 move_task로 바꿉니다.",
+        (
+            "할 일의 제목, 영역, 메모를 바꿉니다. 날짜는 move_task로 바꿉니다. 할 일에는 시각을 붙이지 않습니다: "
+            "시간이 정해진 일은 create_event로 일정을 만듭니다."
+        ),
         _schema(
             {
                 "id": _ID,
                 "title": {"type": "string"},
                 "areas": {"type": "array", "items": {"enum": _AREAS}, "minItems": 1},
                 "note": {"type": "string"},
-                "scheduled_at": _DATETIME,
             },
             ["id"],
         ),
@@ -474,6 +476,63 @@ _SPECS.update({
                 "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
             },
             ["body"],
+        ),
+    ),
+})
+
+
+_EVENT_ID = {"type": "integer", "description": "일정 번호(앞머리의 #e12는 12)"}
+_LOCAL_DATE = {"type": "string", "description": "현지 날짜 YYYY-MM-DD(논리적 날짜가 아니다: 새벽 1시 일정은 그 달력 날)"}
+_EVENT_FIELDS: dict[str, Any] = {
+    "title": {"type": "string", "description": "1~100자"},
+    "date": {**_LOCAL_DATE, "description": "첫 날의 현지 날짜 YYYY-MM-DD"},
+    "time": {"type": ["string", "null"], "description": "현지 시각 HH:MM. 하루 종일이면 null"},
+    "all_day": {"type": "boolean", "description": "하루 종일 일정(기본 false)"},
+    "duration_min": {"type": ["integer", "null"], "minimum": 5, "maximum": 1440, "description": "길이(분)"},
+    "repeat": {"enum": ["none", "daily", "weekly", "monthly"], "description": "반복 없음, 매일, 매주(요일), 매달(같은 날짜)"},
+    "weekdays": {
+        "type": ["array", "null"], "items": {"enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+        "description": "매주 반복의 요일. 첫 날(date)의 요일이 들어 있어야 합니다",
+    },
+    "repeat_until": {"type": ["string", "null"], "description": "반복의 마지막이 될 수 있는 날 YYYY-MM-DD(포함)"},
+    "remind_min": {
+        "type": ["integer", "null"], "enum": [0, 10, 30, 60, 1440, None],
+        "description": "알림: 0 정시, 10·30·60분 전, 1440 하루 전, null 없음. 하루 종일은 0(그날 09:00)이나 1440만",
+    },
+    "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+    "note": {"type": ["string", "null"], "description": "1,000자까지"},
+}
+_SPECS.update({
+    "list_events": (
+        "스케줄에서 기간(현지 날짜, 포함, 62일까지)의 일정을 날짜·시각순으로 읽습니다. 건너뛴 날은 빠져 있습니다.",
+        _schema({"start": _LOCAL_DATE, "end": _LOCAL_DATE}, ["start", "end"]),
+    ),
+    "create_event": (
+        (
+            "시간이 정해진 일을 스케줄에 일정으로 만듭니다(\"내일 14:00 치과\", \"매주 월 10:00 팀 회의\"). 할 일과 다릅니다: "
+            "끝내기·밀림이 없습니다. 사용자가 말한 일정만 만듭니다. remind_min을 빼면 10분 전(하루 종일은 그날 09:00) "
+            "알림입니다. 매주 반복은 weekdays에 요일을 넣고, 매달 반복은 첫 날의 날짜(없는 달은 그 달 마지막 날)입니다. "
+            "비서가 먼저 꺼낸 차례(회차)에서는 needs_confirm이 오고 사용자가 확인해야 만들어집니다."
+        ),
+        _schema(_EVENT_FIELDS, ["title", "date"]),
+    ),
+    "update_event": (
+        (
+            "일정을 고칩니다. 바꿀 칸만 넣습니다. 제목·메모·영역은 바로 바뀝니다. 날짜·시각·하루 종일·길이·반복·알림을 "
+            "바꾸면 결과가 needs_confirm이고 앱에 확인 카드가 붙습니다: 바꿨다고 말하지 않습니다. 반복 중 하루만 시각을 "
+            "바꾸는 것은 없습니다(그날을 건너뛰고 한 번짜리를 새로 만듭니다)."
+        ),
+        _schema({"id": _EVENT_ID, **_EVENT_FIELDS}, ["id"]),
+    ),
+    "delete_event": (
+        (
+            "일정을 지웁니다. 언제나 needs_confirm이고 앱에 확인 카드가 붙습니다: 지웠다고 말하지 않습니다. scope는 "
+            "one(그날만 건너뛰기, date 필요), following(date부터 반복 끝내기, date 필요), all(모두 지우기)입니다. "
+            "한 번짜리 일정은 scope와 상관없이 지웁니다."
+        ),
+        _schema(
+            {"id": _EVENT_ID, "scope": {"enum": ["one", "following", "all"]}, "date": _LOCAL_DATE},
+            ["id", "scope"],
         ),
     ),
 })

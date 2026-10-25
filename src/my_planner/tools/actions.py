@@ -292,6 +292,13 @@ def _checkin_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     return [checkin_target(loop, day_type)] if loop is not None and day_type is not None else []
 
 
+def _event_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """일정 하나(`event:<id>`, SP9 5.5). 토큰 뒤에 그 일정을 고치거나 지우면 `stale`이다. 건너뛰기(`event:<id>:<날짜>`)는
+    막지 않는다."""
+    i = _int(args.get("id"))
+    return [f"event:{i}"] if i is not None else []
+
+
 def confirm_targets(tasks: TasksRepo, action: str, args: dict[str, Any]) -> list[str]:
     """확인 토큰의 대상(`stale` 판정). 그 가운데 하나라도 토큰 뒤 활동이 있으면 적용하지 않는다(5.2). 읽기만 한다."""
     spec = ACTIONS.get(action)
@@ -577,6 +584,12 @@ ACTIONS: dict[str, ActionSpec] = {
     "hide_moment": ActionSpec("hide_moment", target=_moment_target),
     "unhide_moment": ActionSpec("unhide_moment", target=_moment_target),
     "delete_moment": ActionSpec("delete_moment", needs_confirm=moment_delete_needs_confirm, target=_moment_target),
+    # 스케줄(SP9 5.5·5.6). 앱에서 사용자가 누른 것은 확인 없이 적용하고 되돌리기를 준다. 두뇌의 고치기(시각류)·지우기
+    # 확인 카드와 회차 차례의 만들기 확인도 이 동작(+ 토큰)으로 적용한다
+    "create_event": ActionSpec("create_event"),
+    "update_event": ActionSpec("update_event", target=_event_target),
+    "delete_event": ActionSpec("delete_event", target=_event_target),
+    "dismiss_missed_reminder": ActionSpec("dismiss_missed_reminder"),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
@@ -619,9 +632,11 @@ def _rejected(message: str, code: str = "rejected") -> ActionResult:
     )
 
 
-# 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
+# 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모, 5.1 스케줄). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
 CONFLICT_CODES = frozenset({"memo_conflict"})
-REJECT_CODES = frozenset({"too_many_memos", "too_many_pinned"})
+REJECT_CODES = frozenset({
+    "too_many_memos", "too_many_pinned", "remind_invalid", "start_not_in_weekdays", "too_many_events",
+})
 
 
 def _tool_error(out: dict[str, Any]) -> ActionResult:

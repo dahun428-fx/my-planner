@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -297,7 +298,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 16 == _migration_count()
+    assert dbmod.LATEST_VERSION == 17 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -406,8 +407,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 16 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
+    assert migrate(conn) == 17 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 17
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -570,3 +571,128 @@ def test_duplicate_migration_number_refuses(tmp_path, monkeypatch):
     conn = open_db(tmp_path / "state" / "planner.db")
     with pytest.raises(dbmod.MigrationGapError, match="duplicate migration 013"):
         migrate(conn)
+
+
+# --- 017: 스케줄과 시각 할 일 옮기기 훅 (SP9 스펙 5.1, 5.4, 11장) ---
+
+_T0 = "2026-10-25T00:00:00+00:00"
+
+
+def _at_016(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=16) == 16
+    return conn
+
+
+def _task(conn, title, *, status="open", scheduled_at=None, parent_id=None, areas=("health",), note=""):
+    tid = conn.execute(
+        "INSERT INTO tasks (title, status, scheduled_at, parent_id, note, created_at, updated_at, completed_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (title, status, scheduled_at, parent_id, note, _T0, _T0, _T0 if status == "done" else None),
+    ).lastrowid
+    for a in areas:
+        conn.execute("INSERT INTO task_areas (task_id, area) VALUES (?, ?)", (tid, a))
+    conn.commit()
+    return tid
+
+
+def _events(conn):
+    return [dict(r) for r in conn.execute("SELECT * FROM events ORDER BY id")]
+
+
+def test_017_hook_moves_open_timed_tasks(tmp_path):
+    conn = _at_016(tmp_path)
+    a = _task(conn, "치과", scheduled_at="2026-10-27T05:00:00+00:00", areas=("health", "career"), note="스케일링")
+    b = _task(conn, "통화", scheduled_at="2026-10-28T23:30:00+00:00", areas=("relationships",))
+    plain = _task(conn, "시각 없음")
+    assert migrate(conn) == 17
+    evs = _events(conn)
+    assert [(e["title"], e["start_date"], e["start_time"], e["all_day"], e["repeat"], e["remind_min"], e["origin"],
+             e["from_task_id"]) for e in evs] == [
+        ("치과", "2026-10-27", "14:00", 0, "none", 10, "migrated", a),  # UTC 05:00 → 현지 14:00
+        ("통화", "2026-10-29", "08:30", 0, "none", 10, "migrated", b),  # 현지 날짜는 다음 날
+    ]
+    assert evs[0]["area"] == "health" and evs[0]["note"] == "스케일링"  # 첫 영역(넣은 순서)
+    gone = {r["id"]: r["deleted_at"] for r in conn.execute("SELECT id, deleted_at FROM tasks")}
+    assert gone[a] and gone[b] and gone[plain] is None
+    payloads = [r[0] for r in conn.execute(
+        "SELECT payload_json FROM task_events WHERE task_id = ? AND kind = 'updated'", (a,))]
+    assert payloads == [json.dumps({"moved_to_event": evs[0]["id"]})]
+
+
+def test_017_hook_keeps_prioritized_and_parent_tasks(tmp_path):
+    conn = _at_016(tmp_path)
+    prio = _task(conn, "발표", scheduled_at="2026-10-27T05:00:00+00:00")
+    conn.execute("INSERT INTO priorities (cadence, period, rank, task_id) VALUES ('week', '2026-W44', 1, ?)", (prio,))
+    parent = _task(conn, "이사", scheduled_at="2026-10-30T01:00:00+00:00")
+    child = _task(conn, "박스 사기", parent_id=parent)
+    conn.commit()
+    migrate(conn)
+    rows = {r["id"]: dict(r) for r in conn.execute("SELECT id, scheduled_at, deleted_at FROM tasks")}
+    for tid in (prio, parent):
+        assert rows[tid]["deleted_at"] is None and rows[tid]["scheduled_at"] is None  # 할 일로 남고 시각만 지움
+    assert rows[child]["deleted_at"] is None
+    assert [(e["from_task_id"], e["start_time"]) for e in _events(conn)] == [(prio, "14:00"), (parent, "10:00")]
+    assert conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0] == 1
+
+
+def test_017_hook_skips_done_and_draft(tmp_path):
+    conn = _at_016(tmp_path)
+    done = _task(conn, "끝냄", status="done", scheduled_at="2026-10-20T05:00:00+00:00")
+    draft = _task(conn, "초안", status="draft", scheduled_at="2026-10-27T05:00:00+00:00")
+    dropped = _task(conn, "버림", status="dropped", scheduled_at="2026-10-27T05:00:00+00:00")
+    migrate(conn)
+    assert _events(conn) == []
+    rows = {r["id"]: r["scheduled_at"] for r in conn.execute("SELECT id, scheduled_at FROM tasks")}
+    assert rows[done] and rows[draft] and rows[dropped]  # 기록 그대로
+
+
+def test_hook_failure_rolls_back_version(tmp_path, monkeypatch):
+    from my_planner.store.migrations import hooks
+
+    conn = _at_016(tmp_path)
+    _task(conn, "치과", scheduled_at="2026-10-27T05:00:00+00:00")
+    seen = []
+
+    def boom(c, tz):
+        hooks.after_017(c, tz)  # 쓰기까지 한 뒤 실패
+        seen.append(c.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(hooks.HOOKS, 17, boom)
+    with pytest.raises(RuntimeError):
+        migrate(conn)
+    assert seen == [1]
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "events" not in tables
+    assert conn.execute("SELECT deleted_at FROM tasks").fetchone()[0] is None
+    monkeypatch.setitem(hooks.HOOKS, 17, hooks.after_017)
+    assert migrate(conn) == 17 and len(_events(conn)) == 1
+
+
+def test_017_tz_argument_used(tmp_path):
+    conn = _at_016(tmp_path)
+    _task(conn, "치과", scheduled_at="2026-10-27T05:00:00+00:00")
+    migrate(conn, tz="UTC")
+    assert [(e["start_date"], e["start_time"]) for e in _events(conn)] == [("2026-10-27", "05:00")]
+
+
+def test_017_checks(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    ins = ("INSERT INTO events (title, all_day, start_date, start_time, repeat, weekdays, repeat_until, remind_min, "
+           "origin, created_at, updated_at) VALUES (?, ?, '2026-10-26', ?, ?, ?, ?, ?, 'user', ?, ?)")
+    ok = ("가", 0, "10:00", "weekly", 1, None, 10)
+    conn.execute(ins, (*ok, _T0, _T0))
+    for bad in (
+        ("가", 1, "10:00", "none", None, None, 10),  # 하루 종일인데 시각
+        ("가", 0, None, "none", None, None, 10),  # 시각 없음
+        ("가", 0, "10:00", "weekly", None, None, 10),  # 매주인데 요일 없음
+        ("가", 0, "10:00", "daily", 1, None, 10),  # 매주가 아닌데 요일
+        ("가", 0, "10:00", "none", None, "2026-11-01", 10),  # 한 번짜리에 끝
+        ("가", 0, "10:00", "none", None, None, 15),  # 알림 값
+        ("", 0, "10:00", "none", None, None, 10),  # 빈 제목
+    ):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(ins, (*bad, _T0, _T0))

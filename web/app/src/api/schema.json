@@ -146,7 +146,11 @@
                 "checkin_time_invalid",
                 "memo_conflict",
                 "too_many_memos",
-                "too_many_pinned"
+                "too_many_pinned",
+                "remind_invalid",
+                "start_not_in_weekdays",
+                "too_many_events",
+                "range_too_long"
               ],
               "title": "Code",
               "type": "string"
@@ -2101,7 +2105,11 @@
                 "checkin_time_invalid",
                 "memo_conflict",
                 "too_many_memos",
-                "too_many_pinned"
+                "too_many_pinned",
+                "remind_invalid",
+                "start_not_in_weekdays",
+                "too_many_events",
+                "range_too_long"
               ],
               "title": "Code",
               "type": "string"
@@ -2129,6 +2137,437 @@
         "error"
       ],
       "title": "ErrorBody",
+      "type": "object"
+    },
+    "EventDetail": {
+      "additionalProperties": false,
+      "description": "`GET /events/{id}` (SP9 5.6): 정의 하나. `date`는 첫 날(현지), `time`은 현지 `HH:MM`(하루 종일은 null),\n`weekdays`는 매주 반복의 요일(그 밖에는 null), `repeat_until`은 마지막이 될 수 있는 날(포함, null이면 끝없음).\n`skipped_dates`: 이번만 건너뛴 날. 동작(`create_event`, `update_event`)의 칸 이름과 같다.",
+      "properties": {
+        "all_day": {
+          "title": "All Day",
+          "type": "boolean"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "duration_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Min"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat",
+            "migrated"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "remind_min": {
+          "anyOf": [
+            {
+              "enum": [
+                0,
+                10,
+                30,
+                60,
+                1440
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Remind Min"
+        },
+        "repeat": {
+          "enum": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "title": "Repeat",
+          "type": "string"
+        },
+        "repeat_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Repeat Until"
+        },
+        "skipped_dates": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Skipped Dates",
+          "type": "array"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "weekdays": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Weekdays"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "date",
+        "time",
+        "all_day",
+        "duration_min",
+        "repeat",
+        "weekdays",
+        "repeat_until",
+        "remind_min",
+        "area",
+        "note",
+        "origin",
+        "skipped_dates",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "EventDetail",
+      "type": "object"
+    },
+    "EventItem": {
+      "additionalProperties": false,
+      "description": "그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은\nnull, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,\nnull 알림 없음.",
+      "properties": {
+        "all_day": {
+          "title": "All Day",
+          "type": "boolean"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "End"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat",
+            "migrated"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "remind_min": {
+          "anyOf": [
+            {
+              "enum": [
+                0,
+                10,
+                30,
+                60,
+                1440
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Remind Min"
+        },
+        "repeat": {
+          "enum": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "title": "Repeat",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "date",
+        "start",
+        "end",
+        "all_day",
+        "title",
+        "area",
+        "remind_min",
+        "repeat",
+        "origin"
+      ],
+      "title": "EventItem",
+      "type": "object"
+    },
+    "EventList": {
+      "$defs": {
+        "EventItem": {
+          "additionalProperties": false,
+          "description": "그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은\nnull, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,\nnull 알림 없음.",
+          "properties": {
+            "all_day": {
+              "title": "All Day",
+              "type": "boolean"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "event_id": {
+              "title": "Event Id",
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat",
+                "migrated"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "remind_min": {
+              "anyOf": [
+                {
+                  "enum": [
+                    0,
+                    10,
+                    30,
+                    60,
+                    1440
+                  ],
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Remind Min"
+            },
+            "repeat": {
+              "enum": [
+                "none",
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "title": "Repeat",
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "end",
+            "all_day",
+            "title",
+            "area",
+            "remind_min",
+            "repeat",
+            "origin"
+          ],
+          "title": "EventItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /events?start=&end=` (SP9 5.6): 기간(현지 날짜, 포함, 최대 62일, 넘으면 422 `range_too_long`) 안의 그날\n일정. 날짜, 하루 종일 먼저, 시작 시각순. 건너뛴 날은 없다.",
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EventItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "start": {
+          "title": "Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "items"
+      ],
+      "title": "EventList",
       "type": "object"
     },
     "Habit": {
@@ -3149,6 +3588,53 @@
         "items"
       ],
       "title": "Messages",
+      "type": "object"
+    },
+    "MissedReminder": {
+      "additionalProperties": false,
+      "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null). 채우기는 SP9-06.",
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "integer"
+        },
+        "outcome": {
+          "enum": [
+            "missed",
+            "failed",
+            "skipped"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "date",
+        "start",
+        "title",
+        "outcome"
+      ],
+      "title": "MissedReminder",
       "type": "object"
     },
     "Moment": {
@@ -4541,6 +5027,120 @@
           "title": "ConditionItem",
           "type": "object"
         },
+        "EventItem": {
+          "additionalProperties": false,
+          "description": "그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은\nnull, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,\nnull 알림 없음.",
+          "properties": {
+            "all_day": {
+              "title": "All Day",
+              "type": "boolean"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "event_id": {
+              "title": "Event Id",
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat",
+                "migrated"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "remind_min": {
+              "anyOf": [
+                {
+                  "enum": [
+                    0,
+                    10,
+                    30,
+                    60,
+                    1440
+                  ],
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Remind Min"
+            },
+            "repeat": {
+              "enum": [
+                "none",
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "title": "Repeat",
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "end",
+            "all_day",
+            "title",
+            "area",
+            "remind_min",
+            "repeat",
+            "origin"
+          ],
+          "title": "EventItem",
+          "type": "object"
+        },
         "Habit": {
           "additionalProperties": false,
           "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
@@ -4613,6 +5213,53 @@
             "week_count"
           ],
           "title": "Habit",
+          "type": "object"
+        },
+        "MissedReminder": {
+          "additionalProperties": false,
+          "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null). 채우기는 SP9-06.",
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "event_id": {
+              "title": "Event Id",
+              "type": "integer"
+            },
+            "outcome": {
+              "enum": [
+                "missed",
+                "failed",
+                "skipped"
+              ],
+              "title": "Outcome",
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "title",
+            "outcome"
+          ],
+          "title": "MissedReminder",
           "type": "object"
         },
         "TodayBrief": {
@@ -4824,7 +5471,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.",
+      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의\n그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3(SP9-06이 채운다).",
       "properties": {
         "brief": {
           "anyOf": [
@@ -4869,11 +5516,25 @@
           "title": "Day Boundary",
           "type": "string"
         },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/EventItem"
+          },
+          "title": "Events",
+          "type": "array"
+        },
         "habits": {
           "items": {
             "$ref": "#/$defs/Habit"
           },
           "title": "Habits",
+          "type": "array"
+        },
+        "missed_reminders": {
+          "items": {
+            "$ref": "#/$defs/MissedReminder"
+          },
+          "title": "Missed Reminders",
           "type": "array"
         },
         "todos": {
