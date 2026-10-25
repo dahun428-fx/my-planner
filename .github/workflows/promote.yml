@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   promote:
-    # Vercel 등 다른 상태는 러너를 띄우지 않는다
+    # staging/be가 아닌 상태(Vercel 등)는 러너를 띄우지 않는다
     if: github.event_name != 'status' || github.event.context == 'staging/be'
     # 워크플로 수준에 두면 걸러질 status 실행도 대기 칸을 차지해 staging/be 실행을 밀어낸다(스펙 6.1)
     concurrency:
@@ -52,7 +52,5 @@ jobs:
           TRIGGER_SHA: ${{ github.event_name == 'status' && github.event.sha || '' }}
           REQUIRE_STAGING_BE: ${{ vars.REQUIRE_STAGING_BE }}
           DEV_STATUS_LOGIN: ${{ vars.DEV_STATUS_LOGIN }}
-          VERCEL_CONTEXT_APP: ${{ vars.VERCEL_CONTEXT_APP }}
-          VERCEL_CONTEXT_DASHBOARD: ${{ vars.VERCEL_CONTEXT_DASHBOARD }}
           SKIP_STAGING_BE: ${{ inputs.skip_staging_be }}
         run: python scripts/promote_check.py
