@@ -324,6 +324,7 @@ def build_be(
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
         on_resume=on_resume, sleep=sleep, checkins=settings.runtime.role == "prod",  # dev는 회차·따라잡기 끔
+        events=events, reminder_delivery=delivery,  # 일정 알림 1분 tick(SP9 5.3): 두뇌 없이 주 통로로
     )
     # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
@@ -572,6 +573,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 ticking.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await ticking
+                await runner.drain_reminders()  # 보내는 중인 일정 알림을 기다리고, 못 끝낸 것은 failed로(DB를 닫기 전)
                 # 진행 중인 폴링 재시작은 끝나기를 기다린다(안 됐어도 종료는 계속). 끝나면 목록에서 빠지므로 복사한다
                 for task in list(restarting):  # noqa: PERF101
                     with contextlib.suppress(Exception):

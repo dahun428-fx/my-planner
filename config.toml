@@ -21,6 +21,7 @@ time = "18:00"
 daily_brain_calls = 60          # 하루 두뇌 호출 상한
 max_turns = 10                  # 호출당 턴 상한
 daily_proactive_messages = 3    # 비서가 먼저 보내는 메시지 하루 상한
+daily_event_reminders = 30      # 일정 알림 하루 상한(위 상한에 세지 않는다, SP9 5.3)
 chat_resume_minutes = 30        # chat 대화 이어가기
 plan_idle_hours = 2             # 계획 모드 유휴 만료
 draft_ttl_days = 3              # 초안 만료

@@ -70,7 +70,12 @@ from my_planner.store.views import (
     todo_refs,
     week_view,
 )
-from my_planner.tools.events import event_dict, occurrence_item, today_events
+from my_planner.tools.events import (
+    event_dict,
+    occurrence_item,
+    today_events,
+    today_missed_reminders,
+)
 from my_planner.tools.memos import memo_dict, memo_item
 from my_planner.tools.ui import catalog
 
@@ -157,9 +162,9 @@ def get_today(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
         "cards": today_cards(CardsRepo(conn, deps.clock), tasks, view.date),
         # 활성 습관, `sort_order` 순(SP7 5.5). 없으면 []
         "habits": habits_view(HabitsRepo(conn, deps.clock), view.date, ("active",))["items"],
-        # 오늘(논리적 날짜)의 그날 일정(SP9 5.6, Review Focus 1). 놓친 알림은 SP9-06이 채운다
+        # 오늘(논리적 날짜)의 그날 일정(SP9 5.6, Review Focus 1)과 닫지 않은 놓친 알림(5.3)
         "events": [occurrence_item(o) for o in today_events(_events(conn, deps), view.date, s.day_boundary)],
-        "missed_reminders": [],
+        "missed_reminders": today_missed_reminders(_events(conn, deps), view.date, s.day_boundary),
     }
     return dump(Today, body)
 

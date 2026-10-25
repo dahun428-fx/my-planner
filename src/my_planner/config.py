@@ -91,6 +91,7 @@ class LimitsConfig(_Model):
     daily_brain_calls: int = 60
     max_turns: int = 10
     daily_proactive_messages: int = 3
+    daily_event_reminders: int = 30  # 일정 알림 하루 상한(SP9 5.3). 비서가 먼저 보내는 말(위)에 세지 않는다
     chat_resume_minutes: int = 30
     plan_idle_hours: int = 2
     draft_ttl_days: int = 3
