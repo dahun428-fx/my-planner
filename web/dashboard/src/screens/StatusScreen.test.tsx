@@ -121,7 +121,7 @@ describe("StatusScreen", () => {
       screen.getByText("이번 분기 메인 퀘스트가 아직 없어요. 계획 모드(/plan)에서 함께 정할 수 있어요."),
     ).toBeInTheDocument();
     expect(screen.getByText("오늘의 퀘스트는 첫 걸음이 생기면 나타나요.")).toBeInTheDocument();
-    expect(screen.getByText("고점이나 전환점을 곡선에 남기면 칭호가 생겨요.")).toBeInTheDocument();
+    expect(screen.getByText("높은 때나 전환점을 곡선에 남기면 칭호가 생겨요.")).toBeInTheDocument();
     expect(screen.getByText("할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.")).toBeInTheDocument();
   });
 

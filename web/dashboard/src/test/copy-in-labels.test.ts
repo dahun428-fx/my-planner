@@ -16,6 +16,9 @@ const FILES = [
   "screens/CurveScreen.tsx",
   "screens/StatusScreen.tsx",
   "components/MomentsPanel.tsx",
+  "screens/HistoryView.tsx",
+  "components/HistoryChapter.tsx",
+  "components/HistoryFilters.tsx",
 ];
 
 const code = (rel: string) =>

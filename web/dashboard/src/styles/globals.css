@@ -1441,3 +1441,128 @@ h2 {
 .reassure-more .reassure:first-child {
   padding-top: var(--space-1);
 }
+
+/* ---- life curve tabs and the history list: a list on the paper, no boxes; area colour only as a dot or a small tag ---- */
+.curve-tabs {
+  margin-bottom: var(--panel-gap);
+}
+.tab.with-icon {
+  justify-content: center;
+}
+.history-subtitle {
+  margin: 0 0 var(--space-3);
+}
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.history-controls .tabs {
+  margin: 0;
+}
+.history-filters .tab {
+  min-width: 0;
+  padding: 0 var(--space-3);
+}
+.history-chapter {
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--rule);
+}
+.history-chapter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.history-chapter-title {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+  overflow-wrap: anywhere;
+}
+.history-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+}
+.history-memo {
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+.history-events {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.history-none {
+  margin-top: var(--space-2);
+}
+.history-event-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--row);
+  padding: var(--space-2) 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.history-kind {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--raised);
+}
+.history-event-body {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.history-event-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+}
+.history-event-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.history-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: var(--lh-label);
+}
+.tag.history-assistant {
+  color: var(--hue);
+}
+.history-folded {
+  padding: var(--space-1) 0;
+}

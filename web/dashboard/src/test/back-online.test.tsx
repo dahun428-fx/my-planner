@@ -11,6 +11,8 @@ import { TasksScreen } from "../screens/TasksScreen";
 import { BASE, ORIGIN, healthAnswers } from "./handlers";
 import { server } from "./server";
 
+vi.mock("next/router", () => ({ useRouter: () => ({ isReady: true, query: {}, replace: async () => true }) }));
+
 const saveConn = () => localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
 
 /** Every BE path off: the laptop is asleep. */

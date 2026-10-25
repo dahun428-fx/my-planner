@@ -14,6 +14,9 @@ import status from "../test/fixtures/status.json";
 import todayEmpty from "../test/fixtures/today-empty.json";
 import today from "../test/fixtures/today.json";
 import week from "../test/fixtures/week.json";
+import historyEmpty from "../test/fixtures/curve-history-empty.json";
+import history from "../test/fixtures/curve-history.json";
+import historySensitive from "../test/fixtures/curve-history-sensitive.json";
 import curveDay from "../test/fixtures/curve-day.json";
 import curveEmpty from "../test/fixtures/curve-empty.json";
 import curveMonth from "../test/fixtures/curve-month.json";
@@ -21,7 +24,7 @@ import curveSensitive from "../test/fixtures/curve-month-sensitive.json";
 import curveQuarter from "../test/fixtures/curve-quarter.json";
 import curveWeek from "../test/fixtures/curve-week.json";
 import curveYear from "../test/fixtures/curve-year.json";
-import { fetchApi, getHealth, isConditions, isCurve, isHealth, isSafeModeHealth, isStatus, isToday, isWeek } from "./api";
+import { fetchApi, getHealth, isConditions, isCurve, isCurveHistory, isHealth, isSafeModeHealth, isStatus, isToday, isWeek } from "./api";
 
 const conn = { beUrl: ORIGIN, token: "fake-token-abc" };
 
@@ -150,5 +153,12 @@ describe("screen shapes", () => {
     expect(isCurve({ ...curveMonth, ladder: [{ period: "2026-10", now: "6", future: null }] })).toBe(false);
     expect(isCurve({ ...curveMonth, milestones: [{ ...curveMonth.milestones[0], kind: "peak" }] })).toBe(false);
     expect(isCurve({ ...curveMonth, reassurance: undefined })).toBe(false);
+  });
+
+  it("accept every history fixture and refuse a wrong field", () => {
+    expect([history, historySensitive, historyEmpty].map(isCurveHistory)).toEqual([true, true, true]);
+    expect(isCurveHistory({ ...history, chapters: [{ ...history.chapters[0], ladder: { value: "6", source: "recorded" } }] })).toBe(false);
+    expect(isCurveHistory({ ...history, unassigned: undefined })).toBe(false);
+    expect(isCurveHistory({ ...history, chapters: [{ ...history.chapters[0], events: [{ ...history.chapters[0].events[0], area: "sleep" }] }] })).toBe(false);
   });
 });

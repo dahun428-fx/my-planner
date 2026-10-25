@@ -223,7 +223,7 @@ export const STATUS_TEXT = {
   dailyEmpty: "오늘의 퀘스트는 첫 걸음이 생기면 나타나요.",
   take: "텔레그램이나 운영 앱에서 '그 퀘스트 할게'라고 말씀해 주세요.",
   titles: "칭호",
-  titlesEmpty: "고점이나 전환점을 곡선에 남기면 칭호가 생겨요.",
+  titlesEmpty: "높은 때나 전환점을 곡선에 남기면 칭호가 생겨요.",
   recentXp: "최근 경험치",
   xpGain: (amount: number, label: string) => `+${amount} ${label}`,
   recentEmpty: "할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.",
@@ -323,7 +323,7 @@ export const CURVE_TEXT = {
     [`사다리 ${period}`, now !== null ? `지금 ${now}` : null, future !== null ? `5년 뒤 ${future}` : null].filter(Boolean).join(" · "),
   conditionRow: (bucket: string, average: number, days: number) => `컨디션 ${bucket} 평균 ${average.toFixed(1)} · ${days}일 기록`,
   chapterRow: (title: string, start: string, end: string | null) => `챕터 ${title} (${start}~${end ?? "지금"})`,
-  kinds: { high: "고점", low: "저점", turning_point: "전환점" },
+  kinds: { high: "높은 때", low: "힘든 때", turning_point: "전환점" },
   glyphs: { high: "▲", low: "▼", turning_point: "◆" },
   milestoneButton: (kind: string, date: string, title: string) => `${kind} ${date} ${title}`,
   estimate: "(추정)",
@@ -368,4 +368,27 @@ export const CURVE_TEXT = {
 export const REVIEW_TEXT = {
   weekdays: ["일", "월", "화", "수", "목", "금", "토"],
   day: (m: number, d: number, weekday: string) => `${m}월 ${d}일(${weekday})`,
+} as const;
+
+// SP8 8.3, 8.4 and appendix A: the history tab of the life curve. Nothing here ranks or compares a chapter.
+export const HISTORY_TEXT = {
+  tabsLabel: "보기",
+  tabs: { curve: "곡선", history: "히스토리" },
+  subtitle: (chapters: number, events: number, sinceYear: number | null) =>
+    `지금까지 걸어온 길 · 챕터 ${chapters}개 · 사건 ${events}개${sinceYear === null ? "" : ` · ${sinceYear}년부터`}`,
+  filterLabel: "거르기",
+  filters: { all: "전체", high: "높은 때", low: "힘든 때", turning_point: "전환점" },
+  sort: { recent: "최근부터 ▾", oldest: "오래된 것부터 ▾" },
+  ladderRemembered: (n: string) => `그때 사다리 ${n}`,
+  ladderRecorded: (n: string) => `사다리 평균 ${n}`,
+  eventCount: (n: number) => `사건 ${n}개`,
+  estimate: "추정",
+  estimateSketch: "기억으로 그린 시기예요.",
+  assistantMade: "비서가 만듦",
+  sensitive: "민감",
+  more: (title: string, years: string) => `${title} · ${years} 더 보기`,
+  noneOfKind: "이 시기에는 고른 종류의 사건이 없어요.",
+  unassigned: "시기를 정하지 않은 사건",
+  empty: "시드를 가져오거나 대화에서 사건을 남기면 여기에 쌓여요.",
+  kindEstimate: (kind: string) => `${kind} · 추정`,
 } as const;

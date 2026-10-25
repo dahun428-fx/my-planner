@@ -14,6 +14,9 @@ import { BASE, ORIGIN, curveAnswers } from "../test/handlers";
 import { server } from "../test/server";
 import { CurveScreen, curvePath, resetCurveMemory } from "./CurveScreen";
 
+const router = vi.hoisted(() => ({ isReady: true, query: {} as Record<string, string>, replace: vi.fn(async () => true) }));
+vi.mock("next/router", () => ({ useRouter: () => router }));
+
 const BY_ZOOM: Record<string, object> = { day: curveDay, week: curveWeek, month: curveMonth, quarter: curveQuarter, year: curveYear };
 
 /** Answers each `/curve` with the fixture of its zoom (and the sensitive one when asked) and records the queries. */
@@ -50,9 +53,13 @@ function tap(marker: HTMLElement) {
 }
 
 const text = () => document.body.textContent ?? "";
-const firstMarker = () => screen.findByRole("button", { name: "고점 2025년 9월 꾸민 첫 전시" });
+const firstMarker = () => screen.findByRole("button", { name: "높은 때 2025년 9월 꾸민 첫 전시" });
 
-beforeEach(() => resetCurveMemory());
+beforeEach(() => {
+  resetCurveMemory();
+  router.query = {};
+  router.replace.mockClear();
+});
 
 /** Freeze only the clock (MSW and waitFor keep real timers): 2026-10-24 12:00 in Korea unless told otherwise. */
 function today(iso = "2026-10-24T03:00:00Z") {
@@ -97,7 +104,7 @@ describe("CurveScreen", () => {
     renderScreen();
     await firstMarker();
     await user.click(screen.getByRole("button", { name: "년" }));
-    expect(await screen.findByRole("button", { name: "고점 2019년 꾸민 첫 자전거" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "높은 때 2019년 꾸민 첫 자전거" })).toBeInTheDocument();
   });
 
   it("sensitive toggle refetches and is not persisted", async () => {
@@ -111,7 +118,7 @@ describe("CurveScreen", () => {
     const toggle = screen.getByRole("checkbox", { name: "민감한 사건 보기" });
     expect(toggle).not.toBeChecked();
     await user.click(toggle);
-    const marker = await screen.findByRole("button", { name: "저점 2025년 12월 꾸민 조용한 겨울" });
+    const marker = await screen.findByRole("button", { name: "힘든 때 2025년 12월 꾸민 조용한 겨울" });
     expect(notWide(seen)).toEqual(["zoom=month", "zoom=month&include_sensitive=true"]);
     tap(marker);
     expect(within(screen.getByRole("dialog")).getByText(/민감한 사건/)).toBeInTheDocument();
@@ -126,11 +133,18 @@ describe("CurveScreen", () => {
     view.unmount();
     const again = renderScreen();
     expect(await screen.findByRole("checkbox", { name: "민감한 사건 보기" })).toBeChecked();
-    await screen.findByRole("button", { name: "저점 2025년 12월 꾸민 조용한 겨울" });
+    await screen.findByRole("button", { name: "힘든 때 2025년 12월 꾸민 조용한 겨울" });
     again.unmount();
     resetCurveMemory();
     renderScreen();
     expect(await screen.findByRole("checkbox", { name: "민감한 사건 보기" })).not.toBeChecked();
+  });
+
+  it("kind_names_are_new", async () => {
+    renderScreen();
+    const marker = await firstMarker();
+    tap(marker);
+    expect(screen.getByRole("dialog", { name: "꾸민 첫 전시" }).textContent).toContain("높은 때");
   });
 
   it("milestone tap shows details", async () => {
@@ -140,7 +154,7 @@ describe("CurveScreen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     tap(marker);
     const dialog = screen.getByRole("dialog", { name: "꾸민 첫 전시" });
-    expect(dialog.textContent).toContain("2025년 9월 · 고점");
+    expect(dialog.textContent).toContain("2025년 9월 · 높은 때");
     expect(dialog.textContent).toContain("꾸민 메모: 작은 카페 벽에 세 점");
     expect(marker).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "꾸민 첫 전시" })).toHaveFocus();
@@ -154,7 +168,7 @@ describe("CurveScreen", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "전환점 2026년 2월 14일 꾸민 이사 결정" })).toHaveFocus();
 
-    const low = screen.getByRole("button", { name: "저점 2026년 6월 꾸민 긴 감기" });
+    const low = screen.getByRole("button", { name: "힘든 때 2026년 6월 꾸민 긴 감기" });
     low.focus();
     await user.keyboard("{Enter}");
     expect(screen.getByRole("dialog", { name: "꾸민 긴 감기" })).toBeInTheDocument();
@@ -176,7 +190,7 @@ describe("CurveScreen", () => {
     renderScreen();
     await firstMarker();
     await user.click(screen.getByRole("button", { name: "년" }));
-    await screen.findByRole("button", { name: "고점 2019년 꾸민 첫 자전거" });
+    await screen.findByRole("button", { name: "높은 때 2019년 꾸민 첫 자전거" });
     const markers = Array.from(document.querySelectorAll<HTMLElement>(".curve-marker"));
     expect(markers).toHaveLength(5);
     // at this width the 2025–26 centres are closer together than a fingertip
@@ -238,7 +252,7 @@ describe("CurveScreen", () => {
     expect(rows.some((r) => r?.startsWith("사다리 2026-04"))).toBe(false);
     expect(rows).toContain("챕터 꾸민 새 출발 (2025-03~지금)");
     expect(rows).toContain("컨디션 2026-08 평균 4.5 · 12일 기록");
-    expect(screen.getAllByRole("button", { name: /^(고점|저점|전환점) / })).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /^(높은 때|힘든 때|전환점) / })).toHaveLength(3);
   });
 
   it("shows the reassurance view with the 8.3 copy, newest month first", async () => {
@@ -306,7 +320,7 @@ describe("CurveScreen", () => {
     const early = { ...curveMonth.milestones[0], id: 99, date: "2024", precision: "year", title: "꾸민 이른 해" };
     server.use(curveAnswers.ok({ ...curveMonth, milestones: [...curveMonth.milestones, early] }));
     renderScreen();
-    const marker = await screen.findByRole("button", { name: "고점 2024년 꾸민 이른 해" });
+    const marker = await screen.findByRole("button", { name: "높은 때 2024년 꾸민 이른 해" });
     const xs = Array.from(document.querySelectorAll<HTMLElement>(".curve-marker")).map((m) => Number(m.dataset.cx));
     expect(Number(marker.dataset.cx)).toBe(Math.min(...xs));
   });
