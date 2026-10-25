@@ -7,6 +7,7 @@ import { BlockError } from "../components/BlockError";
 import { Icon } from "../components/icons";
 import { Sheet } from "../components/Sheet";
 import { CHAT_ACTIVITY_MS, useToast } from "../components/Toast";
+import { notifyDataChanged } from "../lib/push";
 import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
@@ -136,6 +137,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       }
       settle(null);
       onSentRef.current?.();
+      notifyDataChanged();
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
       const parts = toViewParts(message);

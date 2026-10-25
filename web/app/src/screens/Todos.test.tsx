@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Drafts, Priorities, Today as TodayData, Week } from "../api/types.gen";
 import { copy } from "../lib/copy";
+import { notifyDataChanged } from "../lib/push";
 import draftsJson from "../test/fixtures/drafts.json";
 import monthJson from "../test/fixtures/priorities-month.json";
 import quarterJson from "../test/fixtures/priorities-quarter.json";
@@ -124,6 +125,37 @@ describe("Todos", () => {
     for (const box of screen.getAllByRole("checkbox", { name: copy.today.doneLabel("주간 계획 세우기") })) expect(box).toHaveAttribute("aria-checked", "true");
     expect(container.textContent).not.toMatch(/\d\s*\/\s*\d/);
     expect(container.textContent).not.toContain("%");
+  });
+
+  it("week lists the to-dos with no date under their own heading", async () => {
+    serve();
+    renderWithProviders(<Todos tab="week" />);
+    const heading = await screen.findByRole("heading", { name: copy.todos.undated });
+    const group = heading.closest("section") ?? heading.parentElement!.parentElement!;
+    expect(within(group).getByText("언젠가 읽을 책 고르기")).toBeInTheDocument();
+  });
+
+  it("month shows the to-dos planned in it with their day (10/28 is not only a priority)", async () => {
+    serve();
+    renderWithProviders(<Todos tab="month" />);
+    const heading = await screen.findByRole("heading", { name: copy.todos.periodTodos(copy.todos.periods.month) });
+    const group = heading.closest("section") ?? heading.parentElement!.parentElement!;
+    expect(within(group).getByText("분기 보고서 초안")).toBeInTheDocument();
+    expect(within(group).getByText(copy.dateParts.monthDay(10, 28))).toBeInTheDocument();
+  });
+
+  it("an answer that changed something reads the lists again at once, sheet still open", async () => {
+    let weekHits = 0;
+    serve();
+    server.use(http.get(`${BASE}/week`, () => {
+      weekHits += 1;
+      return HttpResponse.json(week);
+    }));
+    renderWithProviders(<Todos tab="week" />);
+    await screen.findByText("장보기");
+    const before = weekHits;
+    notifyDataChanged();
+    await waitFor(() => expect(weekHits).toBe(before + 1));
   });
 
   it("empty day collapsed", async () => {

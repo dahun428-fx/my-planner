@@ -6,9 +6,9 @@ data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
 
 data: {"type":"start-step"}
 
-data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"propose_tasks","input":{"tasks":[{"title":"물 마시기","areas":["health"]},{"title":"스트레칭","areas":["health"]}]}}
+data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"propose_tasks","input":{"tasks":[{"title":"물 마시기","areas":["health"],"planned_for":"2026-10-24"},{"title":"스트레칭","areas":["health"],"planned_for":"2026-10-24"}]}}
 
-data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"proposed":[{"id":1,"title":"물 마시기","status":"draft","areas":["health"],"planned_for":null,"scheduled_at":null,"parent_id":null,"note":"","completed_at":null},{"id":2,"title":"스트레칭","status":"draft","areas":["health"],"planned_for":null,"scheduled_at":null,"parent_id":null,"note":"","completed_at":null}]}}
+data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"proposed":[{"id":1,"title":"물 마시기","status":"draft","areas":["health"],"planned_for":"2026-10-24","scheduled_at":null,"parent_id":null,"note":"","completed_at":null},{"id":2,"title":"스트레칭","status":"draft","areas":["health"],"planned_for":"2026-10-24","scheduled_at":null,"parent_id":null,"note":"","completed_at":null}]}}
 
 data: {"type":"text-start","id":"t1"}
 
@@ -18,7 +18,7 @@ data: {"type":"text-end","id":"t1"}
 
 data: {"type":"tool-input-available","toolCallId":"h_draft_1","toolName":"ui_todo_draft","input":{"task_ids":[1,2]}}
 
-data: {"type":"tool-output-available","toolCallId":"h_draft_1","output":{"ok":true,"data":{"todos":[{"id":1,"title":"물 마시기","cadence":null,"area":"health","status":"draft","planned_for":null,"scheduled_at":null},{"id":2,"title":"스트레칭","cadence":null,"area":"health","status":"draft","planned_for":null,"scheduled_at":null}]}}}
+data: {"type":"tool-output-available","toolCallId":"h_draft_1","output":{"ok":true,"data":{"todos":[{"id":1,"title":"물 마시기","cadence":null,"area":"health","status":"draft","planned_for":"2026-10-24","scheduled_at":null},{"id":2,"title":"스트레칭","cadence":null,"area":"health","status":"draft","planned_for":"2026-10-24","scheduled_at":null}]}}}
 
 data: {"type":"finish-step"}
 

@@ -4480,7 +4480,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /priorities` (6.3.7).",
+      "description": "`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.",
       "properties": {
         "cadence": {
           "enum": [
@@ -4502,12 +4502,20 @@
         "period": {
           "title": "Period",
           "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "title": "Todos",
+          "type": "array"
         }
       },
       "required": [
         "cadence",
         "period",
-        "items"
+        "items",
+        "todos"
       ],
       "title": "Priorities",
       "type": "object"
@@ -6719,7 +6727,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다.",
+      "description": "`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안은 뺀다).",
       "properties": {
         "days": {
           "items": {
@@ -6743,6 +6751,13 @@
           "title": "Start",
           "type": "string"
         },
+        "undated": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "title": "Undated",
+          "type": "array"
+        },
         "week": {
           "title": "Week",
           "type": "string"
@@ -6753,7 +6768,8 @@
         "start",
         "end",
         "priorities",
-        "days"
+        "days",
+        "undated"
       ],
       "title": "Week",
       "type": "object"

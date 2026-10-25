@@ -137,3 +137,23 @@ async def test_propose_and_confirm_reachable_through_mcp_handler(env):
     res = await handlers["confirm_tasks"].handler({"ids": [tid]})
     assert json.loads(res["content"][0]["text"])["confirmed"][0]["status"] == "open"
     assert [e.kind for e in ctx.events] == ["tasks_proposed", "tasks_confirmed"]
+
+
+async def test_brain_todos_always_get_a_date(env):
+    # 비서가 날짜를 빼고 넣은 할 일은 오늘로 들어간다(날짜 없는 할 일은 앱 목록 어디에도 안 보였다)
+    import json
+
+    from my_planner.tools.mcp_adapter import build_planner_tools
+
+    handlers = {t.name: t for t in build_planner_tools(env.tools, env.ctx(conv=9))}
+    today = env.tools.today().isoformat()
+    res = await handlers["add_task"].handler({"title": "치과 예약", "areas": ["health"]})
+    added = json.loads(res["content"][0]["text"])
+    res = await handlers["add_task"].handler({"title": "책", "areas": ["learning"], "planned_for": "2026-11-02"})
+    dated = json.loads(res["content"][0]["text"])
+    res = await handlers["propose_tasks"].handler({"tasks": [_proposal("산책"), _proposal("정리", planned_for="2026-11-03")]})
+    proposed = json.loads(res["content"][0]["text"])["proposed"]
+
+    assert env.repo.get(added["id"]).planned_for.isoformat() == today
+    assert env.repo.get(dated["id"]).planned_for.isoformat() == "2026-11-02"
+    assert [env.repo.get(p["id"]).planned_for.isoformat() for p in proposed] == [today, "2026-11-03"]

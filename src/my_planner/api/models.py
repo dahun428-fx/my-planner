@@ -444,13 +444,14 @@ class WeekDay(_Model):
 
 
 class Week(_Model):
-    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다."""
+    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안은 뺀다)."""
 
     week: str
     start: str
     end: str
     priorities: list[Todo]
     days: list[WeekDay]
+    undated: list[Todo]
 
 
 class Conditions(_Model):
@@ -466,11 +467,12 @@ class Conditions(_Model):
 
 
 class Priorities(_Model):
-    """`GET /priorities` (6.3.7)."""
+    """`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다."""
 
     cadence: Literal["week", "month", "quarter", "year"]
     period: str
     items: list[Todo]
+    todos: list[Todo]
 
 
 class DraftItem(_Model):

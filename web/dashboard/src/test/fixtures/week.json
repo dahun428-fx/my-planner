@@ -160,5 +160,51 @@
         }
       ]
     }
+  ],
+  "undated": [
+    {
+      "id": 6,
+      "title": "친구에게 안부 문자",
+      "status": "open",
+      "planned_for": null,
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [
+        "relationships"
+      ],
+      "note": "",
+      "priority": null,
+      "completed_at": null
+    },
+    {
+      "id": 9,
+      "title": "꾸민 작은 그림책 만들기",
+      "status": "open",
+      "planned_for": null,
+      "scheduled_at": null,
+      "parent_id": null,
+      "areas": [
+        "quality_of_life"
+      ],
+      "note": "",
+      "priority": {
+        "cadence": "quarter",
+        "period": "2026-Q4",
+        "rank": 1
+      },
+      "completed_at": null
+    },
+    {
+      "id": 14,
+      "title": "인쇄소 견적 묻기",
+      "status": "open",
+      "planned_for": null,
+      "scheduled_at": null,
+      "parent_id": 9,
+      "areas": [],
+      "note": "",
+      "priority": null,
+      "completed_at": null
+    }
   ]
 }

@@ -54,6 +54,7 @@ class WeekView:
     end: date
     priorities: list[Task]
     days: list[DayView]  # 할 일이 없는 날도 포함, 7일
+    undated: list[Task] = field(default_factory=list)  # 날짜 없는 열린 일(비서가 날짜 없이 추가한 일 포함)
 
 
 def today_view(
@@ -100,7 +101,8 @@ def week_view(tasks: TasksRepo, now: datetime, tz: str | tzinfo, boundary: time)
         d = mon + timedelta(days=i)
         # 시각이 있는 일이 먼저 나오도록 repo가 정렬해 준다
         days.append(DayView(d, WEEKDAY[d.weekday()], d == today, [t for t in open_tasks if t.planned_for == d]))
-    return WeekView(period_of(Cadence.week, today), mon, sun, prios, days)
+    undated = [t for t in tasks.list(status=TaskStatus.open) if t.planned_for is None]
+    return WeekView(period_of(Cadence.week, today), mon, sun, prios, days, undated)
 
 
 def conditions_view(conditions: ConditionsRepo, from_: date, to: date) -> dict[str, Any]:

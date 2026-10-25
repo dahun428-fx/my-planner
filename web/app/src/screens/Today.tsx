@@ -53,7 +53,7 @@ export function Today() {
   useEffect(() => toast.onUndone(() => void refresh()), [toast, refresh]);
   // What was said in the sheet may have changed today (F4): read again when it closes.
   useEffect(() => chat.onClosed(() => void refresh()), [chat, refresh]);
-  // A push came while the app is open (F7): the service worker asks for a fresh read.
+  // A push came while the app is open (F7), or a chat answer finished: read again now.
   useEffect(() => onTodayRefresh(() => void refresh()), [refresh]);
 
   const data = view.kind === "live" || view.kind === "snapshot" ? view.data : null;

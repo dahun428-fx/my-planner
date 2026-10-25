@@ -27,7 +27,22 @@ const sortKeys = (v) =>
       : v;
 
 const ordered = sortKeys(bundle);
-writeFileSync(join(appRoot, "src/api/schema.json"), JSON.stringify(ordered, null, 2) + "\n");
+
+// schema.json ships in the first screen's bundle (validate.ts) and is only used to check shapes:
+// the annotations ("title", "description") change nothing there, so they stay out of it (spec 9장
+// 180KB budget). A property that is itself called "title" or "description" is kept.
+const dropNotes = (v) =>
+  Array.isArray(v)
+    ? v.map(dropNotes)
+    : v && typeof v === "object"
+      ? Object.fromEntries(
+          Object.entries(v)
+            .filter(([k, x]) => !((k === "title" || k === "description") && typeof x === "string"))
+            .map(([k, x]) => [k, k === "properties" || k === "$defs" || k === "models" ? noteMap(x) : dropNotes(x)]),
+        )
+      : v;
+const noteMap = (m) => Object.fromEntries(Object.entries(m).map(([k, x]) => [k, dropNotes(x)]));
+writeFileSync(join(appRoot, "src/api/schema.json"), JSON.stringify(dropNotes(ordered), null, 2) + "\n");
 
 // Property titles ("Checked At") would become named aliases (`type Date = string`); drop them
 // so only models and $defs are named types.
