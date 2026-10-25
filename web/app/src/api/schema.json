@@ -371,16 +371,13 @@
       "properties": {
         "rotate": {
           "default": false,
-          "title": "Rotate",
           "type": "boolean"
         }
       },
-      "title": "CalendarPutBody",
       "type": "object"
     },
     "CalendarSettings": {
       "additionalProperties": false,
-      "description": "`GET`/`POST /settings/calendar` (SP9 5.7). `url`은 구독 주소(비밀: 키가 들어 있다). 아직 안 만들었으면 null.",
       "properties": {
         "url": {
           "anyOf": [
@@ -390,14 +387,12 @@
             {
               "type": "null"
             }
-          ],
-          "title": "Url"
+          ]
         }
       },
       "required": [
         "url"
       ],
-      "title": "CalendarSettings",
       "type": "object"
     },
     "ChatRequestBody": {
