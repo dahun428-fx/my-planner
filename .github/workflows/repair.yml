@@ -138,6 +138,20 @@ jobs:
           github_token: ${{ github.token }}
           prompt: ${{ steps.prompt.outputs.text }}
           claude_args: --max-turns 60 --allowedTools "Bash,Edit,MultiEdit,Write,Read,Glob,Grep,Task,TodoWrite"
+      # Claude가 실패하면 그 까닭 한 줄(로그인 만료, 사용 한도 등). 전체 출력은 숨기므로 결과 글만 300자까지
+      - name: Why Claude stopped
+        if: failure()
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$f" ] || exit 0
+          python3 - "$f" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          items = data if isinstance(data, list) else [data]
+          res = next((i for i in reversed(items) if isinstance(i, dict) and i.get("type") == "result"), None)
+          if res:
+              print("claude result:", str(res.get("result") or res.get("errors") or "")[:300])
+          PY
       # Claude의 커밋(시작 커밋 뒤)과 PR 글을 다음 작업에 넘긴다. 이 러너의 git 설정·훅은 넘기지 않는다
       - name: Bundle
         env:
@@ -314,6 +328,20 @@ jobs:
           github_token: ${{ github.token }}
           prompt: ${{ steps.prompt.outputs.text }}
           claude_args: --max-turns 60 --allowedTools "Bash,Edit,MultiEdit,Write,Read,Glob,Grep,Task,TodoWrite"
+      # Claude가 실패하면 그 까닭 한 줄(로그인 만료, 사용 한도 등). 전체 출력은 숨기므로 결과 글만 300자까지
+      - name: Why Claude stopped
+        if: failure()
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          [ -f "$f" ] || exit 0
+          python3 - "$f" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          items = data if isinstance(data, list) else [data]
+          res = next((i for i in reversed(items) if isinstance(i, dict) and i.get("type") == "result"), None)
+          if res:
+              print("claude result:", str(res.get("result") or res.get("errors") or "")[:300])
+          PY
       # Claude의 커밋(시작 커밋 뒤)과 PR 글을 다음 작업에 넘긴다. 이 러너의 git 설정·훅은 넘기지 않는다
       - name: Bundle
         env:
