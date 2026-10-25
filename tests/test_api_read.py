@@ -39,17 +39,20 @@ async def test_today_matches_today_text_same_order(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT) as env:
         a = mk(env, "수채화 밑그림", planned_for="2026-10-24")
         b = mk(env, "도서관 반납", planned_for="2026-10-24")
-        c = mk(env, "치과 정기 검진", planned_for="2026-10-24", scheduled_at=kst(2026, 10, 24, 15, 0))
+        c = _ev(env, "치과 정기 검진", "2026-10-24", "15:00")  # SP9: 시각이 있는 일은 일정이다
         d = mk(env, "지난 주에 잡은 빨래", planned_for="2026-10-22")
         mk(env, "다음 주 장보기", planned_for="2026-10-28")
         env.parts.tasks.set_priorities(Cadence.day, "2026-10-24", [b.id, a.id])
         body = await get_json(env, "/today")
-        text = today_text(env.parts.tasks, env.clock.now(), env.settings.timezone, env.settings.day_boundary)
+        text = today_text(env.parts.tasks, env.clock.now(), env.settings.timezone, env.settings.day_boundary,
+                          env.parts.events)
 
     assert body["date"] == "2026-10-24" and body["weekday"] == "토"
     got = [(x["group"], x["todo"]["id"]) for x in body["todos"]]
-    assert got == [("priority", b.id), ("priority", a.id), ("scheduled", c.id), ("open", d.id)]
-    titles_in_order(text, [x["todo"]["title"] for x in body["todos"]])
+    assert got == [("priority", b.id), ("priority", a.id), ("open", d.id)]  # 시각 있는 일은 일정(`events`)
+    assert [e["event_id"] for e in body["events"]] == [c.id]
+    titles = [x["todo"]["title"] for x in body["todos"]]
+    titles_in_order(text, [*titles[:2], "15:00 치과 정기 검진", *titles[2:]])
     assert "다음 주 장보기" not in text and all(x["todo"]["title"] != "다음 주 장보기" for x in body["todos"])
     assert body["todos"][0]["todo"]["priority"] == {"cadence": "day", "period": "2026-10-24", "rank": 1}
     assert body["brief"] is None and body["condition"] is None and body["cards"] == []

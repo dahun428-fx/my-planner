@@ -5,7 +5,7 @@ import { Segmented } from "../components/Segmented";
 import { Sheet } from "../components/Sheet";
 import { useToast } from "../components/Toast";
 import { copy } from "../lib/copy";
-import { addDays, scheduledAtOf } from "../lib/time";
+import { addDays } from "../lib/time";
 import styles from "./AddTodoSheet.module.css";
 
 type Area = Todo["areas"][number];
@@ -18,30 +18,28 @@ export interface AddTodoSheetProps {
   onClose(): void;
   /** The BE's logical today (/today.date): "오늘" is this day, "내일" the next. */
   defaultDate: string;
-  /** `/today.day_boundary`: a time before it belongs to the next calendar day of the chosen date. */
-  dayBoundary?: string;
   /** Called after the to-do was added, so the screen can read again. */
   onAdded?(): void;
 }
 
 // Spec 5.5.5 add sheet. Priorities are the secretary's job in v1 (set_priorities), so there is no field for them.
-export function AddTodoSheet({ open, onClose, defaultDate, dayBoundary, onAdded }: AddTodoSheetProps) {
+// No time field (SP9 5.4): a thing with a set time is an event on the schedule, and the BE refuses `scheduled_at`.
+export function AddTodoSheet({ open, onClose, defaultDate, onAdded }: AddTodoSheetProps) {
   return (
     <Sheet open={open} onClose={onClose} title={copy.todos.addTitle}>
-      <AddForm onClose={onClose} defaultDate={defaultDate} dayBoundary={dayBoundary} onAdded={onAdded} />
+      <AddForm onClose={onClose} defaultDate={defaultDate} onAdded={onAdded} />
     </Sheet>
   );
 }
 
-function AddForm({ onClose, defaultDate, dayBoundary, onAdded }: Omit<AddTodoSheetProps, "open">) {
+function AddForm({ onClose, defaultDate, onAdded }: Omit<AddTodoSheetProps, "open">) {
   const { run } = useAction();
   const toast = useToast();
-  const ids = { title: useId(), time: useId(), note: useId(), date: useId() };
+  const ids = { title: useId(), note: useId(), date: useId() };
   const [title, setTitle] = useState("");
   const [areas, setAreas] = useState<ReadonlySet<Area>>(new Set());
   const [mode, setMode] = useState<DateMode>("today");
   const [picked, setPicked] = useState(defaultDate);
-  const [time, setTime] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -62,10 +60,7 @@ function AddForm({ onClose, defaultDate, dayBoundary, onAdded }: Omit<AddTodoShe
     setBusy(true);
     try {
       const args: Record<string, unknown> = { title: trimmed, areas: AREAS.filter((a) => areas.has(a)) };
-      if (planned) {
-        args.planned_for = planned;
-        if (time) args.scheduled_at = scheduledAtOf(planned, time, dayBoundary);
-      }
+      if (planned) args.planned_for = planned;
       if (note.trim()) args.note = note.trim();
       const out = await run("add_task", args);
       if (out === null) return;
@@ -131,12 +126,6 @@ function AddForm({ onClose, defaultDate, dayBoundary, onAdded }: Omit<AddTodoShe
             <input id={ids.date} className={styles.input} type="date" value={picked} onChange={(e) => setPicked(e.target.value)} />
           </>
         )}
-      </div>
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor={ids.time}>
-          {copy.todos.timeLabel}
-        </label>
-        <input id={ids.time} className={styles.input} type="time" value={time} disabled={!planned} onChange={(e) => setTime(e.target.value)} />
       </div>
       <div className={styles.field}>
         <label className={styles.label} htmlFor={ids.note}>

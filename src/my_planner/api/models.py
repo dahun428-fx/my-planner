@@ -229,7 +229,7 @@ class TodayBrief(_Model):
 
 
 class TodayTodo(_Model):
-    group: Literal["priority", "scheduled", "open"]
+    group: Literal["priority", "scheduled", "open"]  # "scheduled"는 SP9부터 죽은 갈래(열린 할 일에 시각이 없다)
     todo: Todo
 
 
@@ -432,9 +432,8 @@ class Today(_Model):
     checkins: list[CheckinSummary]
     cards: list[AppCard]
     habits: list[Habit]
-    # BE는 언제나 싣는다. 스키마에서 선택으로 둔 것은 이 칸이 없는 앱 시험 자료(SP9 앱 티켓이 고친다)가 그대로 맞게
-    events: list[EventItem] = Field(default_factory=list)
-    missed_reminders: list[MissedReminder] = Field(default_factory=list)
+    events: list[EventItem]
+    missed_reminders: list[MissedReminder]
 
 
 class WeekDay(_Model):

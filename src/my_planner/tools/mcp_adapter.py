@@ -9,6 +9,7 @@ from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_serv
 
 from my_planner.domain import RunContext
 from my_planner.timefmt import to_api_times
+from my_planner.tools.events import ui_event_items
 from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
 
 SERVER_NAME = "planner"
@@ -56,6 +57,7 @@ APP_ONLY_TOOLS: list[str] = [
     "search_memos", "read_memo", "create_memo",
     # 스케줄(SP9 5.5): 시간이 정해진 일. 고치기(시각류)·지우기는 확인을 거친다
     "list_events", "create_event", "update_event", "delete_event",
+    "ui_events",  # 그날 일정 카드(9.8), 그리기만
 ]
 
 _AREAS = ["career", "finance", "health", "relationships", "learning", "quality_of_life"]
@@ -88,7 +90,7 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     "add_task": (
         (
             "사용자가 직접 추가해 달라고 한 할 일을 바로 추가합니다. 비서가 제안하는 것에는 쓰지 않습니다. "
-            "시간이 정해진 일(\"내일 14:00 치과\")은 할 일이 아니라 create_event로 일정을 만듭니다."
+            "할 일에는 시각을 붙이지 않습니다(시간이 정해진 일은 할 일이 아니라 일정입니다)."
         ),
         _NEW_TASK,
     ),
@@ -119,8 +121,8 @@ _SPECS: dict[str, tuple[str, dict[str, Any]]] = {
     ),
     "update_task": (
         (
-            "할 일의 제목, 영역, 메모를 바꿉니다. 날짜는 move_task로 바꿉니다. 할 일에는 시각을 붙이지 않습니다: "
-            "시간이 정해진 일은 create_event로 일정을 만듭니다."
+            "할 일의 제목, 영역, 메모를 바꿉니다. 날짜는 move_task로 바꿉니다. 할 일에는 시각을 붙이지 않습니다"
+            "(시간이 정해진 일은 할 일이 아니라 일정입니다)."
         ),
         _schema(
             {
@@ -405,6 +407,13 @@ _SPECS.update({
         ),
         UI_COMPONENTS["ui_habit_check"]["schema"],
     ),
+    "ui_events": (
+        (
+            "앱 화면에 그날 일정 카드를 그립니다(그리기만 합니다). items는 list_events 결과 항목을 그대로 1~10개 넘깁니다. "
+            "같은 뜻을 답 글에도 씁니다."
+        ),
+        UI_COMPONENTS["ui_events"]["schema"],
+    ),
     "pin_card": (
         (
             "화면 조각(ui_todo_list, ui_choice, ui_summary_card)을 앱의 고정 카드로 맨 뒤에 둡니다. "
@@ -600,6 +609,8 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
     ui = name in BRAIN_COMPONENTS
     if name == "ui_habit_check" and args.get("date") is None:  # 날짜를 빼면 오늘: 조각 입력에도 채워 앱이 그릴 수 있게
         args = {**args, "date": tools.today().isoformat()}
+    if name == "ui_events":  # `list_events` 항목 그대로 받는다: 조각 입력은 카탈로그 칸만(앱이 엄격히 읽는다)
+        args = {**args, "items": ui_event_items(args.get("items"))}
     call_id = w.next_tool_call_id() if w is not None and not ui else None  # 화면 도구는 조각을 쓸 때 받는다
     if w is not None and not ui:
         w.tool_input(call_id, name, args)
@@ -627,11 +638,26 @@ def _py_args(args: dict[str, Any]) -> dict[str, Any]:
     return {("from_" if k == "from" else k): v for k, v in args.items()}
 
 
+# 앱 대화에만 붙이는 설명(텔레그램에는 일정 도구가 없다, SP9 5.4)
+_APP_NOTES = {
+    "add_task": " 시간이 정해진 일(\"내일 14:00 치과\")은 create_event로 일정을 만듭니다.",
+    "propose_tasks": " 시간이 정해진 일은 초안이 아니라 create_event로 일정을 만듭니다.",
+    "update_task": " 시각을 붙이려면 create_event로 일정을 만듭니다.",
+}
+
+
+def tool_description(name: str, ctx: RunContext) -> str:
+    """도구 설명. 앱 대화면 `_APP_NOTES`를 덧붙인다."""
+    description = _SPECS[name][0]
+    return description + _APP_NOTES.get(name, "") if ctx.channel == "app" else description
+
+
 def build_planner_tools(tools: Any, ctx: RunContext) -> list[SdkMcpTool[Any]]:
     """도구마다 `ctx`를 클로저로 감싼 SDK 도구 정의. 테스트는 `.handler`를 직접 await한다."""
     out: list[SdkMcpTool[Any]] = []
     for name in tool_names_for(ctx):
-        description, schema = _SPECS[name]
+        _, schema = _SPECS[name]
+        description = tool_description(name, ctx)
         out.append(
             SdkMcpTool(name=name, description=description, input_schema=schema,
                        handler=_handler(tools, ctx, name))

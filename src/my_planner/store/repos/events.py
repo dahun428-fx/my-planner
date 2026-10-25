@@ -364,9 +364,11 @@ class EventsRepo:
             )
 
     def restore(self, id: int) -> bool:
+        """되살린다. `updated_at = 지금`: SP9-06 알림 판정(`remind_at > updated_at`)이 되살리기 전 회차를 보내지 않게."""
         with transaction(self.conn):
             cur = self.conn.execute(
-                "UPDATE events SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL", (id,)
+                "UPDATE events SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL",
+                (to_iso(self.clock.now()), id),
             )
         return cur.rowcount == 1
 
@@ -380,10 +382,15 @@ class EventsRepo:
         return cur.rowcount == 1
 
     def unskip(self, id: int, d: date) -> bool:
+        """건너뛰기를 되돌린다. 되살리기처럼 `updated_at = 지금`(SP9-06 `remind_at > updated_at`)."""
         with transaction(self.conn):
             cur = self.conn.execute(
                 "DELETE FROM event_skips WHERE event_id = ? AND occurrence_date = ?", (id, d.isoformat())
             )
+            if cur.rowcount == 1:
+                self.conn.execute(
+                    "UPDATE events SET updated_at = ? WHERE id = ?", (to_iso(self.clock.now()), id)
+                )
         return cur.rowcount == 1
 
     def end_repeat(self, id: int, from_date: date, now: datetime) -> Event | None:

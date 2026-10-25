@@ -36,6 +36,7 @@ def after_017(conn: sqlite3.Connection, tz: str) -> int:
     일정: 제목(앞 100자), 첫 영역(넣은 순서), `note`(앞 1000자), 한 번짜리, `remind_min = 10`, `origin = 'migrated'`.
     UTC 시각은 `settings.timezone`의 현지 날짜·"HH:MM"으로 바꾼다(`clock.local`).
     """
+    # 훅은 `migrate`가 앱 시계(`Clock`)를 갖기 전에 돈다: 지금 시각은 주입할 수 없어 실제 시계를 쓴다(시험은 시각 칸을 보지 않는다)
     now = to_iso(datetime.now(UTC))
     rows = conn.execute(
         "SELECT t.id, t.title, t.note, t.scheduled_at, "
@@ -69,6 +70,8 @@ def after_017(conn: sqlite3.Connection, tz: str) -> int:
             (r["id"], json.dumps(payload), now),
         )
         made += 1
+    # 내보내기 `tasks.md`는 여기서 다시 쓰지 않는다(훅에는 저장소도 경로도 없다): 다음 할 일 쓰기까지 옮긴 할 일이
+    # 그 파일에 남아 있다. 일정 300개 상한(`EVENTS_MAX`)도 보지 않는다: 옮길 일을 버리지 않는다(넘으면 새로 만들 때만 막힌다)
     log.info("tasks_moved_to_events", extra={"count": made})
     return made
 

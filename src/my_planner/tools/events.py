@@ -39,6 +39,7 @@ from my_planner.store.repos.events import (
     weekday_names,
     weekdays_mask,
 )
+from my_planner.timefmt import api_time
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import SUPERSEDED, UndoRefused, register_undo
 from my_planner.tools.confirmations import (
@@ -92,7 +93,15 @@ MSG_SCOPE_DATE = "scope가 one이나 following이면 그날 일정의 날짜(dat
 MSG_NOT_OCCURRENCE = "그날은 이 일정이 있는 날이 아니에요."
 MSG_NOTHING = "바꿀 내용을 알려 주세요."
 MSG_REMINDER_NOT_FOUND = "닫을 알림이 없어요."
-MSG_TIMED_TASK = "시간이 정해진 일은 스케줄로 만들어요. create_event를 써 주세요."  # 5.4
+# 5.4: 할 일은 시각을 받지 않는다. 도구 이름은 앱 대화의 두뇌에게만(텔레그램에는 `create_event`가 없고, 사람이 보는
+# 글(`/actions` 오류, 텔레그램)에는 도구 이름을 쓰지 않는다)
+MSG_TIMED_TASK = "시간이 정해진 일은 앱의 스케줄에서 만들어요."
+MSG_TIMED_TASK_APP_BRAIN = "시간이 정해진 일은 스케줄로 만들어요. create_event를 써 주세요."
+
+
+def timed_task_message(ctx: RunContext) -> str:
+    """시각 있는 할 일을 거절하는 문구: 앱 대화의 두뇌에게만 `create_event`를 가리킨다."""
+    return MSG_TIMED_TASK_APP_BRAIN if ctx.channel == "app" and ctx.actor == "secretary" else MSG_TIMED_TASK
 
 _HHMM = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -362,8 +371,10 @@ class EventTools:
                 "id": o.event_id, "date": o.date.isoformat(), "all_day": o.all_day,
                 "time": f"{local(o.start, self.tz):%H:%M}" if o.start else None,
                 "end_time": f"{local(o.end, self.tz):%H:%M}" if o.end else None,
+                # `ui_events`에 그대로 넘길 수 있게 UTC ISO(`Z`)도 싣는다
+                "start": api_time(o.start) if o.start else None, "end": api_time(o.end) if o.end else None,
                 "title": o.title, "area": o.area.value if o.area is not None else None, "repeat": o.repeat,
-                "remind_min": o.remind_min,
+                "remind_min": o.remind_min, "origin": o.origin,
             })
         log.info("events_listed", extra={"count": len(items)})
         return {"items": items}
@@ -611,6 +622,23 @@ for _kind, _handler in (
     ("event_deleted", _undo_event_deleted),
 ):
     register_undo(_kind, _handler)
+
+
+_UI_EVENT_KEYS = ("event_id", "date", "start", "end", "all_day", "title", "area", "remind_min", "repeat", "origin")
+
+
+def ui_event_items(items: Any) -> Any:
+    """`ui_events` props의 `items`: `list_events` 항목을 그대로 받는다(`id` → `event_id`, `time`·`end_time` 등
+    카탈로그에 없는 칸은 뺀다). 목록이 아니면 그대로 둬 스키마 검사가 알린다."""
+    if not isinstance(items, list):
+        return items
+    out = []
+    for it in items:
+        if isinstance(it, dict):
+            it = {**it, "event_id": it.get("event_id", it.get("id"))}
+            it = {k: it[k] for k in _UI_EVENT_KEYS if k in it}
+        out.append(it)
+    return out
 
 
 def today_events(events: EventsRepo | None, d: _date, boundary: _time) -> list[Occurrence]:

@@ -208,10 +208,10 @@ def test_run_turn_create_needs_ui_confirm(env):
 def test_app_tools_plus_4_telegram_unchanged():
     app = tool_names_for(RunContext(None, None, channel="app"))
     telegram = tool_names_for(RunContext(None, None, channel="telegram"))
-    assert len(app) == 43 and len(telegram) == 28
-    assert APP_ONLY_TOOLS[-4:] == EVENT_TOOLS
+    assert len(app) == 44 and len(telegram) == 28
+    assert APP_ONLY_TOOLS[-5:] == [*EVENT_TOOLS, "ui_events"]
     assert not set(EVENT_TOOLS) & set(TOOL_NAMES) and not set(EVENT_TOOLS) & set(telegram)
-    assert "dismiss_missed_reminder" not in app and "ui_events" not in app
+    assert "dismiss_missed_reminder" not in app and "ui_events" not in telegram
 
 
 # --- 기록·로그 ---
@@ -259,12 +259,34 @@ async def test_reprocessing_same_inbound_leaves_one_event(tmp_path, conn, state)
 
 def test_event_copy_has_no_banned_words():
     """10장 금지어 검사: 이 티켓이 쓴 일정 문구 전부(확인 문구, 오류, 기간 이름)."""
+    from datetime import date
+
     from my_planner.tools import events as et
-    from my_planner.tools.confirmations import _EVENT_LINES, REMIND_LABELS
+    from my_planner.tools.confirmations import (
+        _EVENT_LINES,
+        REMIND_LABELS,
+        confirm_event_create_summary,
+        confirm_event_delete_summary,
+        confirm_event_update_summary,
+        when_label,
+    )
     from my_planner.tools.ui import banned_words
 
-    copy = [*_EVENT_LINES.values(), *REMIND_LABELS.values(), *(v for k, v in vars(et).items() if k.startswith("MSG_"))]
-    assert len(copy) >= 5 + 30
+    once = {"date": "2026-10-28", "time": "14:00", "all_day": False, "repeat": "none", "remind_min": 10}
+    whens = [when_label({**once, **kw}) for kw in (
+        {}, {"all_day": True, "time": None}, {"repeat": "daily"}, {"repeat": "weekly", "weekdays": ["mon", "wed"]},
+        {"repeat": "monthly"},
+    )]
+    asks = [
+        confirm_event_create_summary("치과", whens[0]),
+        confirm_event_update_summary("치과", whens[2], {**once, "remind_min": 30}, once),
+        confirm_event_update_summary("치과", whens[2], {**once, "remind_min": None}, once),
+        *(confirm_event_delete_summary(scope, "치과", date(2026, 10, 29)) for scope in ("one", "following", "all")),
+    ]
+    copy = [*_EVENT_LINES.values(), *REMIND_LABELS.values(), *whens, *asks,
+            *(v for k, v in vars(et).items() if k.startswith("MSG_"))]
+    assert len(copy) == 5 + 6 + 5 + 6 + 28
+    assert [c for c in copy if "create_event" in c] == [et.MSG_TIMED_TASK_APP_BRAIN]  # 앱 대화의 두뇌에게만
     words = banned_words()
     assert [(c, w) for c in copy for w in words if w in c] == []
 
@@ -290,3 +312,116 @@ def test_preamble_today_events_from_events(env):
     for i in range(10):
         env.make(title=f"꾸민 회의 {i}", date="2026-10-26", time=f"{10 + i}:30")
     assert block(events=env.events).count("\n- ") == 8
+
+
+# --- 리뷰 1차 ---
+
+
+def test_timed_task_message_names_tool_only_for_app_brain(env):
+    """텔레그램에는 `create_event`가 없고, 사람이 보는 글(`/actions` 오류)에는 도구 이름을 쓰지 않는다."""
+    from my_planner.tools.mcp_adapter import build_planner_tools
+
+    args = {"title": "치과", "areas": ["health"], "scheduled_at": "2026-10-28T14:00"}
+    app_brain = RunContext(conversation_id=7, run_id=None, inbound_id=1, channel="app")
+    telegram = RunContext(conversation_id=7, run_id=None, inbound_id=1, channel="telegram")
+    assert env.tools.add_task(app_brain, **args)["error"] == "시간이 정해진 일은 스케줄로 만들어요. create_event를 써 주세요."
+    for ctx in (telegram, env.user()):
+        assert env.tools.add_task(ctx, **args)["error"] == "시간이 정해진 일은 앱의 스케줄에서 만들어요."
+        assert "create_event" not in env.tools.propose_tasks(ctx, tasks=[args])["error"]
+    t = env.tools.add_task(telegram, title="장보기", areas=["health"])["id"]
+    assert env.tools.update_task(telegram, id=t, scheduled_at="2026-10-28T14:00")["error"] == (
+        "시간이 정해진 일은 앱의 스케줄에서 만들어요.")
+
+    def described(ctx):
+        return {x.name: x.description for x in build_planner_tools(env.tools, ctx)}
+
+    tg, app = described(telegram), described(app_brain)
+    assert not [n for n, d in tg.items() if "create_event" in d or "list_events" in d]
+    assert all("create_event" in app[n] for n in ("add_task", "propose_tasks", "update_task"))
+
+
+def test_today_and_week_text_read_events(env):
+    """텔레그램 `/today`의 "일정"은 스케줄의 오늘(논리적 날짜), `/week`는 날마다 그날 일정(현지 날짜)."""
+    from my_planner.bot.commands import today_text, week_text
+
+    env.tools.add_task(env.user(), title="꾸민 장보기", areas=["health"], planned_for="2026-10-26")
+    env.make(title="꾸민 치과", date="2026-10-26", time="14:00")
+    env.make(title="꾸민 카드 결제일", date="2026-10-26", time=None, all_day=True)
+    env.make(title="꾸민 새벽 일정", date="2026-10-27", time="01:00")  # 논리적 10/26, 현지 10/27
+    env.make(title="꾸민 수요일 회의", date="2026-10-28", time="10:00")
+    text = today_text(env.tasks, NOW, TZ, BOUNDARY, env.events)
+    assert text == (
+        "오늘 (10/26 월)\n\n일정\n- 하루 종일 꾸민 카드 결제일\n- 14:00 꾸민 치과\n- 01:00 꾸민 새벽 일정"
+        "\n\n열린 할 일\n- 꾸민 장보기"
+    )
+    assert "일정" not in today_text(env.tasks, NOW, TZ, BOUNDARY)  # 스케줄이 없으면 일정 줄도 없다
+    week = week_text(env.tasks, NOW, TZ, BOUNDARY, env.events)
+    assert "10/26 월 (오늘)\n- 하루 종일 꾸민 카드 결제일\n- 14:00 꾸민 치과\n- 꾸민 장보기" in week
+    assert "10/27 화\n- 01:00 꾸민 새벽 일정" in week and "10/28 수\n- 10:00 꾸민 수요일 회의" in week
+
+
+def test_reopen_and_undo_never_bring_back_task_time(env):
+    """SP9 5.4: 열린 할 일은 시각을 갖지 않는다. 017 전의 끝낸 할 일을 다시 열거나 되돌려도 옛 시각은 버린다."""
+    from my_planner.tools.core import _undo_task_moved, _undo_task_status
+
+    at = kst(2026, 10, 25, 14, 0)
+    done = env.tasks.create("꾸민 치과", ["health"], planned_for=NOW.date(), scheduled_at=at)
+    env.tasks.set_status(done.id, "done")
+    out = env.tools.reopen_task(env.user(), id=done.id)
+    assert out["status"] == "open" and out["scheduled_at"] is None
+    assert env.tasks.get(done.id).scheduled_at is None
+
+    # 끝내기 되돌리기: 옛 행에 시각이 남아 있어도(017 전의 기록) 열린 할 일로 돌아오면 지운다
+    other = env.tasks.create("꾸민 회의", ["health"], planned_for=NOW.date(), scheduled_at=at)
+    ctx = env.user()
+    env.tools.complete_task(ctx, id=other.id)
+    assert env.tasks.get(other.id).scheduled_at == at  # 끝낸 할 일의 기록은 그대로
+    (raw,) = env.conn.execute("SELECT undo_json FROM activity WHERE id = ?", (ctx.undo_ids[-1],)).fetchone()
+    undo = json.loads(raw)
+    undo["scheduled_at"] = at.isoformat()  # 017 전에 남은 기록처럼
+    assert _undo_task_status(env.tools, undo, env.user()) is None
+    got = env.tasks.get(other.id)
+    assert got.status.value == "open" and got.scheduled_at is None
+    # 날짜 옮기기 되돌리기도 열린 할 일에 옛 시각을 되살리지 않는다
+    assert _undo_task_moved(env.tools, {"task_id": other.id, "planned_for": "2026-10-25",
+                                        "scheduled_at": at.isoformat()}, env.user()) is None
+    assert env.tasks.get(other.id).scheduled_at is None
+
+
+def test_ui_events_takes_list_events_items(env):
+    """9.8: `list_events` 항목을 그대로 `ui_events`에 넘긴다(`start`·`end`는 UTC ISO). 조각 입력은 카탈로그 칸만."""
+    from fakes import ListSink
+
+    from my_planner.harness.stream import UiMessageWriter
+    from my_planner.tools.mcp_adapter import call_tool
+
+    env.make(title="꾸민 치과", date="2026-10-28", time="14:00", duration_min=60)
+    env.make(title="꾸민 휴가", date="2026-10-28", time=None, all_day=True)
+    items = env.tools.list_events(env.chat(), start="2026-10-28", end="2026-10-28")["items"]
+    assert items[1]["start"] == "2026-10-28T05:00:00Z" and items[1]["end"] == "2026-10-28T06:00:00Z"
+    assert items[1]["time"] == "14:00" and items[0]["start"] is None
+    sink = ListSink()
+    ctx = RunContext(conversation_id=7, run_id=None, inbound_id=1, channel="app", stream=UiMessageWriter(sink, "m-1"))
+    assert call_tool(env.tools, ctx, "ui_events", {"items": items}) == {"ok": True}
+    (inp,) = [c for c in sink.chunks if c["type"] == "tool-input-available"]
+    assert inp["toolName"] == "ui_events"
+    assert inp["input"]["items"][1] == {
+        "event_id": items[1]["id"], "date": "2026-10-28", "start": "2026-10-28T05:00:00Z",
+        "end": "2026-10-28T06:00:00Z", "all_day": False, "title": "꾸민 치과", "area": None, "remind_min": 10,
+        "repeat": "none", "origin": "chat",
+    }
+    assert "error" in env.tools.ui_events(env.chat(), items=[])
+
+
+def test_unskip_and_restore_touch_updated_at(env):
+    """SP9-06 알림은 `remind_at > updated_at`인 회차만 본다: 건너뛰기를 되돌리거나 되살리면 `updated_at = 지금`."""
+    e = env.make(repeat="daily")
+    env.events.skip(e["id"], kst(2026, 10, 29, 0, 0).date())
+    later = NOW + timedelta(hours=2)
+    env.clock.set(later)
+    assert env.events.unskip(e["id"], kst(2026, 10, 29, 0, 0).date())
+    assert env.events.get(e["id"]).updated_at == later
+    env.events.delete(e["id"], later)
+    env.clock.set(later + timedelta(hours=1))
+    assert env.events.restore(e["id"])
+    assert env.events.get(e["id"]).updated_at == later + timedelta(hours=1)

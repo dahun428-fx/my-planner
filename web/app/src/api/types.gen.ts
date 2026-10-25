@@ -1136,9 +1136,9 @@ export interface Today {
   condition: ConditionItem | null;
   date: string;
   day_boundary: string;
-  events?: EventItem[];
+  events: EventItem[];
   habits: Habit[];
-  missed_reminders?: MissedReminder[];
+  missed_reminders: MissedReminder[];
   todos: TodayTodo[];
   weekday: string;
 }

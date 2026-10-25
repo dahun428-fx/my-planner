@@ -214,8 +214,9 @@ def test_tasks_md_reflects_complete_and_move_and_skips_drafts(env):
 
 
 def test_add_and_update_task_reject_scheduled_at(env):
-    """SP9 5.4: 할 일에는 시각을 붙이지 않는다(일정은 `create_event`). `update_task`의 null은 시각 지우기다."""
-    msg = "시간이 정해진 일은 스케줄로 만들어요. create_event를 써 주세요."
+    """SP9 5.4: 할 일에는 시각을 붙이지 않는다(일정은 스케줄). `update_task`의 null은 시각 지우기다. 텔레그램
+    대화에는 도구 이름 없이(앱 대화의 두뇌 문구는 `test_event_tools`)."""
+    msg = "시간이 정해진 일은 앱의 스케줄에서 만들어요."
     assert env.tools.add_task(env.ctx(), title="새벽", areas=["health"], scheduled_at="2026-10-25T01:30") == {"error": msg}
     out = env.tools.propose_tasks(env.ctx(), tasks=[{"title": "치과", "areas": ["health"], "scheduled_at": "2026-10-25T14:00"}])
     assert out == {"error": f"1번째 제안: {msg}"}
