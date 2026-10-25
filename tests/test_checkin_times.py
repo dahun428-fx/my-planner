@@ -14,6 +14,14 @@ from my_planner.store.repos.runs import Run
 from my_planner.tools.checkin_times import decide_from
 
 
+@pytest.fixture(autouse=True)
+def _not_windows(monkeypatch):
+    # Windows CI에서도 진짜 깨우기 작업을 건드리지 않는다. Windows 경로는 시험이 IS_WINDOWS=True로 따로 켠다.
+    from my_planner.platform import windows
+
+    monkeypatch.setattr(windows, "IS_WINDOWS", False)
+
+
 @pytest.fixture
 def cfg(tmp_path):
     return make_settings(tmp_path)
