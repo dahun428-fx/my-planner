@@ -92,7 +92,7 @@ test("SP6 cards render under CSP", async ({ page }) => {
   await expect(log.getByText(copy.parts.dayHead(26, "월"), { exact: true })).toBeVisible();
   // ui_block: its title and its progress bar.
   await expect(log.getByRole("heading", { name: "이번 주 운동" })).toBeVisible();
-  expect(await log.locator("progress").count()).toBeGreaterThanOrEqual(1);
+  await expect(log.locator("progress").first()).toBeAttached();
   await expect(page.getByText(copy.parts.unknown)).toHaveCount(0);
 });
 

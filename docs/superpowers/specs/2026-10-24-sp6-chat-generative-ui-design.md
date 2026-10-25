@@ -649,7 +649,7 @@ web/app/src/ui/
 | 대비 | 새로 쓰는 쌍(`--raised` 위 `--text-2`, `--surface` 위 `--hue` 글자, 진행 막대 `--primary` 대 `--raised` 3:1)을 모든 프리셋 × 밝게·어둡게에서 | Vitest(대비 계산) | `npx vitest run src/styles` → `0 failed` |
 | 빌드·CSP | 정적 내보내기에 인라인 스크립트·스타일·쪽 CSS 없음 | `npm run build && npm run check:csp` | `CSP OK: <n> files` |
 | 크기 | 첫 화면 180KB 이하 | `npm run size` | 종료 코드 0 |
-| CSP 실행 | 빌드한 `out/`을 CSP 헤더로 띄우고 `chat_gallery.sse`로 대화를 열어 새 넷이 모두 부품으로 그려짐 + 콘솔 CSP 위반 0건 | Playwright | `npx playwright test csp.spec.ts` → 지금 셋("chat part renders under CSP", "no CSP violations", "screens keep their styles after moving between tabs")에 "SP6 cards render under CSP", "SP6 gallery has no CSP violations"를 더해 `5 passed` |
+| CSP 실행 | 빌드한 `out/`을 CSP 헤더로 띄우고 `chat_gallery.sse`로 대화를 열어 새 넷이 모두 부품으로 그려짐 + 콘솔 CSP 위반 0건 | Playwright | `npx playwright test csp.spec.ts` → 지금 셋("chat part renders under CSP", "no CSP violations", "screens keep their styles after moving between tabs")에 "SP6 cards render under CSP", "SP6 gallery has no CSP violations"를 더한다. Markdown과 Pretendard 시험까지 합쳐 `7 passed` |
 | 눈으로 | 390×844, `chat_gallery.sse` 대화 시트: (1) 기본 프리셋 밝게·어둡게에서 카드 7개(새 넷 + `ui_todo_list`, `ui_choice`, `ui_summary_card`) 하나씩 = 14장, (2) 프리셋 6개 × 밝게·어둡게 시트 전체 = 12장. 다시 짠 기존 넷은 SP6 전 스크린샷과 나란히 본다 | Playwright + MSW | `npx playwright test screens.spec.ts` → 26장 저장, 사람이 확인 |
 | 디자인 | taste 규칙 | `node <taste>/scripts/lint.mjs --app web/app/src` | `0 FAIL` |
 | 실기기 | 아이폰에서 날짜 없는 할 일 말하기 → 후보 누름 → 되돌리기, 할 일 둘 옮기기 → `ui_result` 되돌리기, 셋 옮기기 → `ui_period_list`, "이번 주 컨디션 어땠지" → `ui_block` | Dahun과 함께 | `docs/acceptance/sp6-checklist.md`(계획 빈 곳 7: `sp5-checklist.md`가 아직 없어 따로 둔다)의 줄을 모두 확인 |
