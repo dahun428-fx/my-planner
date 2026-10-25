@@ -145,6 +145,8 @@ def migrate(conn: sqlite3.Connection, *, upto: int | None = None) -> int:
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     migrations = _migrations()
     for expected, (number, _) in enumerate(migrations, start=1):
+        if number == expected - 1:
+            raise MigrationGapError(f"duplicate migration {number:03d}")
         if number != expected:
             raise MigrationGapError(f"missing migration {expected:03d}")
     for number, path in migrations:

@@ -23,6 +23,7 @@ def find_session_file(session_id: str, projects: Path | None = None, cwd: Path |
         return exact
     for hit in sorted(projects.glob(f"*/{name}")):
         if hit.is_file():
+            print(f"note: not under {encoded}, found by search", file=sys.stderr)
             return hit
     return None
 

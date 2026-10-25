@@ -431,3 +431,12 @@ def test_contiguous_numbers_apply(tmp_path, monkeypatch):
     conn = open_db(tmp_path / "state" / "planner.db")
     assert migrate(conn) == 13
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+
+
+def test_duplicate_migration_number_refuses(tmp_path, monkeypatch):
+    folder = _fake_dir(tmp_path, range(1, 14))
+    (folder / "013_y.sql").write_text("CREATE TABLE dup (a INTEGER);", encoding="utf-8")
+    monkeypatch.setattr(dbmod, "MIGRATIONS_DIR", folder)
+    conn = open_db(tmp_path / "state" / "planner.db")
+    with pytest.raises(dbmod.MigrationGapError, match="duplicate migration 013"):
+        migrate(conn)
