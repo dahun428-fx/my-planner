@@ -238,7 +238,7 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
 async def test_sp8_write_paths(tmp_path, monkeypatch):
     """SP8 이야기(`tests/test_sp8_story.py`)의 쓰기도 4.3의 길만 지난다: 순간은 두뇌 갈래의 `save_moments`, 숨기기·지우기는
     `/actions`, 날 행과 `moments_since`는 하루 끝 작업(`harness/moments.py`), 몸 기록은 `/body`의 즉시 갈래."""
-    from test_sp8_story import sp8_story
+    from sp8_story_flow import sp8_story
 
     rec = Recorder()
     monkeypatch.setattr(be_env, "ON_WRITE", rec)
