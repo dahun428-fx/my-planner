@@ -95,7 +95,7 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 
 | # | 티켓 | 막는 티켓 | 라벨 |
 |---|---|---|---|
-| SP9-00 | 스파이크 S1(빈 번호 거부)~S3 | 없음 | `ready-for-agent` + `needs-laptop`(S2·S3의 노트북 부분, 막지 않음) |
+| SP9-00 | 스파이크 S1(빈 번호 거부)~S3 (깨우기 작업 확인은 SP9-02·11) | 없음 | `ready-for-agent` + `needs-laptop`(S2·S3의 노트북 부분, 막지 않음) |
 | SP9-01 | 앱: 더보기·오른쪽 위 아이콘, 활동 한 줄, 토스트 되돌리기 | 없음 | `ready-for-agent` |
 | SP9-02 | 체크인 시간: `schedule_override`, API, 도구, 설정 화면 | 없음 | `ready-for-agent` |
 | SP9-03 | 메모 BE: 016, 저장소, API, 도구, 내보내기 | SP9-00, **SP8 013~015 머지** | `ready-for-agent` |
@@ -106,10 +106,11 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 | SP9-08 | `.ics` 구독 주소와 설정 묶음 | SP9-05 | `ready-for-agent` |
 | SP9-09 | 대화 BE: 018, 요약, 0번 규칙, 말아 넣기, 지우기, `find_conversations` | SP9-05 | `ready-for-agent` |
 | SP9-10 | 앱: 대화 목록, 새 대화, 퀵 칩 | SP9-09, SP9-07 | `ready-for-agent` |
-| SP9-11 | 수용 시험(노트북: 실제 푸시, 노트북 끄고 켜기, 아이폰 캘린더) | 전부 | `needs-laptop` |
+| SP9-13 | 클라우드 끝-끝 `test_sp9_story` | SP9-02, 03, 06, 08, 09 | `ready-for-agent` |
+| SP9-11 | 수용 시험(노트북: 실제 푸시, 노트북 끄고 켜기, 아이폰 캘린더, 깨우기 작업 S4) | 전부 | `needs-laptop` |
 | SP9-12 | Dahun 확인: 스펙 15장 13개, 10장 문구 | 없음(바뀌면 후속 PR) | **Dahun 검토** |
 
-**완료 조건 → 티켓**: 1 → SP9-01·04·07 / 2 → SP9-05·06·07 / 3 → SP9-06 / 4 → SP9-05·07 / 5 → SP9-08 / 6 → SP9-03·04 / 7 → SP9-03 / 8 → SP9-09·10 / 9 → SP9-09 / 10 → SP9-09 / 11 → SP9-10 / 12 → SP9-01 / 13 → SP9-02 / 14 → 모든 티켓의 끝 검증. 클라우드 끝-끝은 SP9-09의 `test_sp9_story`, 노트북은 SP9-11. GLOSSARY의 `_SP9 초안_` 표시는 SP9-11이 끝날 때 뗀다.
+**완료 조건 → 티켓**: 1 → SP9-01·04·07 / 2 → SP9-05·06·07 / 3 → SP9-06 / 4 → SP9-05·07 / 5 → SP9-08 / 6 → SP9-03·04 / 7 → SP9-03 / 8 → SP9-09·10 / 9 → SP9-09 / 10 → SP9-09 / 11 → SP9-10 / 12 → SP9-01 / 13 → SP9-02 / 14 → 모든 티켓의 끝 검증. 클라우드 끝-끝은 SP9-13의 `test_sp9_story`, 노트북은 SP9-11. GLOSSARY의 `_SP9 초안_` 표시는 SP9-11이 끝날 때 뗀다.
 
 - BE 줄: SP9-00 → (SP8 머지) → SP9-03 → SP9-05 → (SP9-06, SP9-08, SP9-09). SP9-02는 어느 때나.
 - 앱 줄: SP9-01 → SP9-04 → SP9-07 → SP9-10. SP9-01은 바로 배포해 Dahun이 써 본다.
@@ -130,7 +131,6 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 - [ ] `test_gap_in_migration_numbers_refuses`(`monkeypatch`로 `MIGRATIONS_DIR`을 임시 폴더로, 001~012와 016 → `MigrationGapError`, `user_version` 그대로), `test_contiguous_numbers_apply`
 - [ ] S2: 클라우드에서 `python -c "import sqlite3; c=sqlite3.connect(':memory:'); c.execute(\"create virtual table t using fts5(x, tokenize='trigram')\"); print(sqlite3.sqlite_version)"` → 3.34 이상, 오류 없음. 노트북 결과는 Dahun에게 한 줄로 받는다(막지 않음).
 - [ ] S3: 세션 파일 경로 스크립트. 노트북 확인과 아이폰 `.ics` 구독 확인은 SP9-11로 넘긴다.
-- [ ] S4(노트북, 막지 않음): 관리자 권한 없이 BE 프로세스(같은 사용자)가 `my-planner-wake` 작업만 다시 등록할 수 있는지. `powershell -File scripts/update_wake_task.ps1 -DryRun` → "would set N triggers". 안 되면 SP9-02의 실패 경로(설정 화면 안내 줄)만 쓴다.
 
 **마무리**
 - [ ] **Review + Commit** `feat(store): refuse migration number gaps (SP9-00)`
@@ -177,7 +177,7 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 - `decide_from(now, loop, day_type, new: time, overrides, runs) -> date`: 8장 규칙(논리적 날짜 기준).
 - 주간 회고: override가 없으면 지금처럼 config의 `review.week.time`, 주말 저녁 override가 있으면 그 날짜부터 그 시각.
 - `wake_times.wake_lines(root) -> list[str]`: config + DB override(`from` 이후 값과, `from`이 미래면 `prev`도)로 "weekday HH:MM"/"weekend HH:MM" 줄. DB가 없거나 못 읽으면 config만.
-- 바꾼 뒤 `refresh_wake_task() -> bool`(`platform/windows.py`, `scripts/update_wake_task.ps1`을 백그라운드로 실행, Windows가 아니면 `True`). 실패하면 응답 `"wake_updated": false`, 설정 화면에 "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요." 한 줄.
+- 바꾼 뒤 `refresh_wake_task(timeout_s=20) -> bool`(`platform/windows.py`, `scripts/update_wake_task.ps1`을 `asyncio.to_thread`로 실행해 종료를 최대 20초 기다림, Windows가 아니면 `True`). 모듈 전역 `asyncio.Lock`으로 한 번에 하나만 돌고, 스크립트는 그때의 DB 값으로 트리거를 다시 만들므로 겹쳐도 마지막 값이 이긴다. PUT 응답의 `wake_updated`는 그 결과(시간 초과면 `false`). 실패하면 응답 `"wake_updated": false`, 설정 화면에 "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요." 한 줄.
 - `StateRepo.get_schedule_override() -> Overrides`, `set_schedule_override(Overrides)`(`app_state.schedule_override`, JSON 칸 `{"time","from","prev"}`).
 - 동작 `set_checkin_time(loop, day_type, time)`: 즉시 갈래(앱 설정)는 바로 적용 + 되돌리기(이전 칸으로). 두뇌 도구는 언제나 `needs_confirm` "체크인 시간을 바꿔요: {평일 아침} {09:00} → {09:30} ({내일부터|오늘부터})". 활동 `kind = "checkin_time_set"`, 대상 `checkin_time:<loop>:<day_type>`.
 - API: `GET /settings/checkin-times` → `{"items": [{"loop", "day_type", "time", "from", "effective_today"}]}`(4개), `PUT /settings/checkin-times` 본문 `{"loop", "day_type", "time"}` → 같은 모양 + `"applies": "today" | "tomorrow"`. 범위 밖 422 `checkin_time_invalid`.
@@ -188,6 +188,7 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 - [ ] `test_due_between_reads_override_without_restart`(runner가 tick마다 override를 다시 읽음)
 - [ ] `test_range_and_step_validation`(04:50, 11:40, 09:05 → 422), `test_tool_always_needs_confirm`, `test_undo_restores_previous_slot`
 - [ ] `test_telegram_tool_count_unchanged`(`tests/test_dispatcher_tools.py`)
+- [ ] 노트북(SP9-11에서, 막지 않음): 관리자 권한 없이 BE 프로세스(같은 사용자)가 `my-planner-wake` 작업만 다시 등록할 수 있는지. `powershell -File scripts/update_wake_task.ps1 -DryRun` → "would set N triggers". 안 되면 실패 경로(설정 화면 안내 줄)만 쓴다.
 - [ ] `test_wake_times_include_override`, `test_wake_times_without_db_uses_config`, `test_catchup_uses_override`, `test_put_reports_wake_updated_false_on_failure`
 - [ ] `Settings.test`: 네 줄, 시간 선택 후 "내일부터 적용돼요" 토스트, 주말 저녁 안내 문구, `wake_updated: false` 안내 줄
 - [ ] `npm run lint:copy && npm run check:csp` → 통과
@@ -286,11 +287,11 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 **목표:** 스펙 5.3, 완료 조건 2·3.
 **막는 티켓:** SP9-05
 
-**Files:** Create `loop/reminders.py`. Modify `loop/runner.py`, `api/read.py`(`/today.missed_reminders`), `config.py`, `config.toml`. Test `tests/test_event_reminders.py`, `tests/test_runner.py`
+**Files:** Create `loop/reminders.py`. Modify `loop/runner.py`, `harness/delivery.py`, `web/app/public/sw.js`, `api/read.py`(`/today.missed_reminders`), `config.py`, `config.toml`. Test에 `web/app/src/lib/sw.test.ts`(없으면 만든다: `type: reminder` 알림을 누르면 `data.url`을 연다). Test `tests/test_event_reminders.py`, `tests/test_runner.py`
 
 **Interfaces**
 - Consumes: `EventsRepo.occurrences`, `harness/delivery.py`의 주 통로 규칙(텔레그램 대체 포함).
-- `harness/delivery.py`에 더한다: `reminder_payload(title: str, body: str, url: str) -> dict`(`type: "reminder"`, 지금 `notice_payload`의 고정 제목·주소 대신), `async Delivery.deliver_reminder(title, body, url) -> Channel | None`(지금 `deliver_notice`와 같은 통로 규칙, 못 보내면 None). Files에 `harness/delivery.py`, 앱 `public/sw.js`(알림 `type: reminder`면 `data.url`을 연다)를 더한다.
+- `harness/delivery.py`에 더한다: `reminder_payload(title: str, body: str, url: str) -> dict`(`type: "reminder"`, 지금 `notice_payload`의 고정 제목·주소 대신), `async Delivery.deliver_reminder(title, body, url) -> Channel | None`(지금 `deliver_notice`와 같은 통로 규칙, 못 보내면 None). 앱 `public/sw.js`는 알림 `type: reminder`면 `data.url`을 연다.
 - 순서: tick(동기) 안에서 판정하고 `event_reminders` 행을 `outcome = 'sent'`(또는 `late_sent`)로 **먼저** 넣는다(같은 날 두 번 보내지 않기). 보내기는 `asyncio` 작업으로 넘기고, 결과가 None이면 그 행을 `failed`로 고친다. `missed`·`skipped`는 보내지 않고 행만.
 - Produces: `remind_events(*, last_seen_at: datetime, now: datetime, events: EventsRepo, limits) -> list[PendingReminder]`(동기, 판정과 행 기록), `async send_reminders(pending, delivery, events)`(보내고 실패를 `failed`로). `ReminderOutcome(event_id, date, outcome: Literal["sent","late_sent","missed","failed","skipped"])`. `reminder_text(occ, now, late: bool) -> tuple[str, str]`(제목, 본문, 5.3 문구). 푸시 데이터 `{"url": "/schedule/?date=YYYY-MM-DD"}`.
 - `runner.py`: `if not self.checkins` 조기 반환과 하트비트 기록보다 앞에서 부른다.
@@ -357,7 +358,7 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 **목표:** 스펙 7장, 완료 조건 8(BE)·9·10.
 **막는 티켓:** SP9-05
 
-**Files:** Create `store/migrations/018_conversation_summaries.sql`, `harness/summaries.py`, `tests/test_sp9_story.py`(클라우드 끝-끝), `harness/prompts/summarize.md`, `tools/conversations.py`. Modify `store/repos/conversations.py`, `store/transcripts.py`, `harness/{conversations,dispatcher,brain}.py`, `api/{chat,read,models,server}.py`, `loop/runner.py`(요약 큐, 하루 한 번 다시 해 보기), `config.py`, `config.toml`, `harness/prompts/channel_app.md`. Docs: SP3-4 스펙 7.2 표에 0번 규칙. Regenerate types. Test `tests/test_conversation_summaries.py`, `tests/test_dispatcher_conversations.py`, `tests/test_api_chat.py`, `tests/test_api_read.py`
+**Files:** Create `store/migrations/018_conversation_summaries.sql`, `harness/summaries.py`, `harness/prompts/summarize.md`, `tools/conversations.py`. Modify `store/repos/conversations.py`, `store/transcripts.py`, `harness/{conversations,dispatcher,brain}.py`, `api/{chat,read,models,server}.py`, `loop/runner.py`(요약 큐, 하루 한 번 다시 해 보기), `config.py`, `config.toml`, `harness/prompts/channel_app.md`. Docs: SP3-4 스펙 7.2 표에 0번 규칙. Regenerate types. Test `tests/test_conversation_summaries.py`, `tests/test_dispatcher_conversations.py`, `tests/test_api_chat.py`, `tests/test_api_read.py`
 
 **Interfaces**
 - Produces:
@@ -380,7 +381,6 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 - [ ] `test_rollup_at_31st_message`, `test_rollup_deferred_when_summary_fails`(31번째 실패 → 32번째에 다시 해 보고 성공), `test_rollup_app_only`
 - [ ] `test_delete_erases_lines_across_days`, `test_delete_removes_all_session_files`, `test_deleted_hidden_from_list_messages_and_tool`, `test_new_conversation_endpoint`
 - [ ] `test_find_conversations_no_transcript`, `test_app_tools_plus_1`(`tests/test_dispatcher_tools.py`)
-- [ ] `tests/test_sp9_story.py::test_sp9_story`(가짜 두뇌·가짜 시계): 메모 만들기·찾기 → 일정 만들기 → 알림 tick 보냄 → 공백 뒤 늦은 알림 → 체크인 시간 바꾸기 → 대화 닫힘·요약 → 목록에서 잇기 → 지우기. 완료 조건 2·3·6·7·8·9·13의 BE 쪽을 한 번에.
 
 **마무리**
 - [ ] **Review + Commit** `feat(chat): conversation summaries, resume, rollup and delete (SP9-09)`
@@ -410,6 +410,18 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 
 ---
 
+### 티켓 SP9-13: 클라우드 끝-끝 이야기
+
+**목표:** 완료 조건 2·3·6·7·8·9·13의 BE 쪽을 한 흐름으로.
+**막는 티켓:** SP9-02, SP9-03, SP9-06, SP9-08, SP9-09
+
+**Files:** Create `tests/test_sp9_story.py`
+
+- [ ] `test_sp9_story`(가짜 두뇌·가짜 시계): 메모 만들기·찾기 → 일정 만들기 → 알림 tick 보냄 → 공백 뒤 늦은 알림 → 체크인 시간 바꾸기(다음 회차 시각 확인) → 대화 닫힘·요약 → 목록에서 잇기 → 지우기 → `.ics`에 일정 있음. `python -m pytest tests/test_sp9_story.py -q` → `1 passed`.
+- [ ] **Review + Commit** `test: SP9 end-to-end story (SP9-13)`
+
+---
+
 ### 티켓 SP9-11: 수용 시험 (노트북)
 
 **목표:** 완료 조건 1~13을 실제 기기로. 스파이크 S2·S3의 노트북 부분.
@@ -420,7 +432,7 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 - [ ] 완료 조건 3: 지금 T에 40분 뒤 시작·30분 전 알림 일정(알림 T+10)을 만들고 T+5부터 T+20까지 노트북 절전 → 깨어난 직후 "20분 남았어요" 한 번.
 - [ ] 완료 조건 5: 설정에서 구독 주소 → 아이폰 캘린더 구독 → 일정 보임.
 - [ ] 완료 조건 9·10: 앱 대화 두 개, 두 번째 첫 두뇌 입력 로그(길이·섹션 이름만)에 다른 대화 원문 없음. S12처럼 앱 도구 수(지금 + 9개)로 `max_turns=10` 안에 끝남.
-- [ ] 완료 조건 13: 설정에서 평일 아침을 5분 뒤로 바꾸고(내일부터면 다음 날 확인) 노트북을 절전 → 바꾼 시각 5분 전에 깨어나고 브리핑이 그 시각에 온다(재시작 없음). `wake_updated: false`였다면 그 사실을 적는다.
+- [ ] 완료 조건 13: 평일 07:30에 설정에서 평일 아침 08:00 → 08:20으로 바꾼다(원래·새 시각 모두 지금 뒤라 `from` = 오늘). 노트북을 절전 → 08:15에 깨어나고 08:20에 브리핑이 온다(재시작 없음). 평일 아침 기본값이 08:00이 아니면 같은 모양으로 맞춘다(원래 시각 +20분, 30분 전에 바꾸기, 10분 단위). `wake_updated: false`였다면 그 사실을 적는다.
 - [ ] 완료 조건 1·4·6·7·8·11·12: 폰에서 눈으로 한 번씩(체크리스트).
 - [ ] 결과를 `docs/acceptance/2026-10-xx-sp9.md`에 남긴다. 스파이크 S2·S4 노트북 결과도.
 
@@ -433,4 +445,5 @@ docs/superpowers/specs/2026-10-24-sp3-4-life-curve-dashboard-design.md  # SP9-09
 ## 변경 기록
 
 - v1 (2026-10-25): 스펙 v2.1에서 티켓 13개로.
+- v1.2 (2026-10-25): 재검토 반영. 완료 조건 13 절차(08:00→08:20), 끝-끝을 SP9-13으로 분리, 깨우기 확인을 SP9-02로, `refresh_wake_task` 직렬화·20초 대기, SP9-06 Files.
 - v1.1 (2026-10-25): 문서 리뷰 반영. 깨우기 작업 갱신(S4, `update_wake_task.ps1`), 알림 보내기 순서와 `deliver_reminder`, 말아 넣기 `>=`, 수용 절차 시각, SP8 뒤 시작, 0번 규칙을 스펙대로, 돌아가기 담당 티켓, 완료 조건 표와 끝-끝 테스트, 빠진 Files·메서드, 문구 검사 명령.
