@@ -81,6 +81,11 @@ describe("toggleChecklistLine", () => {
     expect(toggleChecklistLine(BODY, line)).toBe(BODY);
   });
 
+  it.each(["- [x]붙음", "- [ ]붙음", "1. [ ]붙음"])("%s (no space after the box) is not a checklist line", (body) => {
+    expect(checklistLines(body)).toEqual([]);
+    expect(toggleChecklistLine(body, 0)).toBe(body);
+  });
+
   it("only the first box on the line flips", () => {
     expect(toggleChecklistLine("- [ ] a [ ] b", 0)).toBe("- [x] a [ ] b");
   });
@@ -105,6 +110,34 @@ describe("memo rendering (spec 6.2)", () => {
     expect(root.querySelector("ol li")).toHaveTextContent("첫째");
     expect(root.querySelector("strong")).toHaveTextContent("꼭");
     expect(screen.getByRole("checkbox", { name: "빵 꼭" })).toBeEnabled();
+  });
+
+  it.each([
+    ["no space after the box", "- [x]붙음\n- [ ] 사이"],
+    ["4+ spaces after a blank line", "메모\n\n    - [ ] 코드 같음\n- [ ] 다음"],
+    ["4+ spaces after a plain line", "메모\n        - [x] 깊음\n\t- [ ] 탭"],
+    ["nested under a list line", "- [ ] 위\n    - [ ] 안쪽\n        - [x] 더 안쪽"],
+    ["boxes in numbered lists and after text", "1. [ ] 하나\n2. [x] 둘\n글\n- [ ] 셋\n\n- [ ]"],
+    ["indents between levels and too deep", "   - [x] 위\n    - [ ] 사이\n1. 번호\n         - [ ] 깊음\n- 위\n          - [ ] 더 깊음\n  - [ ] 되돌아옴"],
+  ])("%s: as many boxes are drawn as checklistLines counts, so each press works", (_what, body) => {
+    shown(body);
+    const boxes = screen.queryAllByRole("checkbox");
+    expect(boxes).toHaveLength(checklistLines(body).length);
+    for (const b of boxes) expect(b).toBeEnabled();
+  });
+
+  it("a press on a box in a 4+ space line flips that line", async () => {
+    const body = "메모\n\n    - [ ] 코드 같음";
+    const flips: number[] = [];
+    render(<Markdown text={body} tasks={{ ...tasks(body), onToggle: (i) => flips.push(i) }} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "코드 같음" }));
+    expect(flips).toEqual([2]);
+  });
+
+  it("***셋*** keeps the bold: two plain stars around bold 셋", () => {
+    const root = shown("***셋*** 그리고 ****넷****");
+    expect([...root.querySelectorAll("strong")].map((e) => e.textContent)).toEqual(["셋", "넷"]);
+    expect(root.textContent).toBe("*셋* 그리고 **넷**");
   });
 
   it.each([

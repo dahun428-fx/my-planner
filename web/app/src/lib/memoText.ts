@@ -3,7 +3,7 @@ import { formatKst } from "./time";
 
 // SP9 6.2: the memo format is a title line, lists `- `, numbered lists `1. `, checkboxes `- [ ]` /
 // `- [x]` and bold `**`. A checklist line is `-` or `1.` (maybe indented), a space, then the box.
-const CHECK_LINE = /^(\s*(?:-|\d+\.)\s+\[)([ xX])(\])/;
+const CHECK_LINE = /^(\s*(?:-|\d+\.)\s+\[)([ xX])(\])(?=\s|$)/;
 
 /** The 0-based line numbers of the body's checklist lines, in order (the order the renderer draws their boxes). */
 export function checklistLines(body: string): number[] {
@@ -31,32 +31,71 @@ const LIST_HEAD = /^(\s*)(-|\d+\.)(\s+)(\[[ xX]\](?=\s|$))?/;
 // escaped so it shows as typed.
 const PUNCT = /[\\#>|`~_[\]<!()=+&:.@]/g;
 
-function escapeRest(rest: string): string {
-  return rest.replace(PUNCT, (c) => `\\${c}`).replace(/\*\*|\*/g, (m) => (m === "**" ? m : "\\*"));
+// `**` stays bold, a lone `*` is escaped. A longer run keeps two for the bold and escapes the rest on
+// its outer side: `***셋***` → `\***셋**\*` (bold 셋 between two plain stars).
+function escapeStars(rest: string): string {
+  return rest.replace(/\*+/g, (run, at: number) => {
+    if (run.length === 2) return run;
+    if (run.length === 1) return "\\*";
+    const extra = "\\*".repeat(run.length - 2);
+    return at === 0 || /\s/.test(rest[at - 1]) ? `${extra}**` : `**${extra}`;
+  });
 }
+
+function escapeRest(rest: string): string {
+  return escapeStars(rest.replace(PUNCT, (c) => `\\${c}`));
+}
+
+// Leading whitespace width (a tab counts 4, as markdown reads it).
+const widthOf = (lead: string) => [...lead].reduce((w, c) => w + (c === "\t" ? 4 : 1), 0);
+// A plain line keeps at most 3 spaces: 4 would make an indented code block.
+const MAX_PLAIN_INDENT = 3;
 
 /**
  * SP9 6.2: everything but the memo format shows as typed. Before the SP6 renderer compiles a memo,
  * each line keeps its list head (`- `, `1. `, a box) and the rest has headings, quotes, tables,
- * code, strikes, links, emphasis, rules and other list marks escaped. `**` stays bold. Lines are
- * neither added nor removed, so checklistLines still names the renderer's boxes.
+ * code, strikes, links, emphasis, rules and other list marks escaped. `**` stays bold.
+ *
+ * Indents are redrawn so the renderer draws a box for every checklist line: a list line nested
+ * under the list line above starts exactly at that line's text, a sibling at its sibling's indent,
+ * and a list after a blank or a plain line starts at 0 (never 4+ spaces, which would be code, or
+ * between levels, which the renderer folds into the text above). A plain line keeps at most 3
+ * spaces. Lines are neither added nor removed, so checklistLines still names the renderer's boxes.
  */
 export function escapeMemoMarkdown(body: string): string {
+  // The open list levels: the typed indent, the redrawn indent, and where its text starts.
+  let levels: { raw: number; norm: number; col: number }[] = [];
   return body
     .split("\n")
     .map((line) => {
       const m = line.match(LIST_HEAD);
-      if (m) return m[0] + escapeRest(line.slice(m[0].length));
-      const indent = line.match(/^\s*/)?.[0] ?? "";
+      if (m) {
+        const raw = widthOf(m[1]);
+        while (levels.length > 0 && raw < levels[levels.length - 1].raw) levels.pop();
+        const top = levels[levels.length - 1];
+        let norm = 0;
+        if (top && raw === top.raw) {
+          norm = top.norm;
+          levels.pop();
+        } else if (top) {
+          norm = top.col;
+        }
+        levels.push({ raw, norm, col: norm + m[2].length + 1 });
+        const head = `${" ".repeat(norm)}${m[2]} ${m[4] ?? ""}`;
+        return head + escapeRest(line.slice(m[0].length));
+      }
+      levels = [];
+      const lead = line.match(/^[ \t]*/)?.[0] ?? "";
+      const indent = " ".repeat(Math.min(widthOf(lead), MAX_PLAIN_INDENT));
       // A line that only looks like a list (`-x`, `---`, `1)`) keeps its first character as typed.
-      let rest = line.slice(indent.length);
-      let lead = "";
+      let rest = line.slice(lead.length);
+      let first = "";
       if (/^-/.test(rest) || /^\d+\./.test(rest)) {
         const n = rest.match(/^\d+/)?.[0] ?? "";
-        lead = n ? `${n}\\.` : "\\-";
+        first = n ? `${n}\\.` : "\\-";
         rest = rest.slice(n ? n.length + 1 : 1);
       }
-      return indent + lead + escapeRest(rest);
+      return indent + first + escapeRest(rest);
     })
     .join("\n");
 }
