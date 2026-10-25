@@ -208,12 +208,12 @@ def test_telegram_tool_count_unchanged():
 
 
 def test_app_tools_plus_1():
-    """SP9-09: `find_conversations` 하나가 앱 대화에만 더해진다(45개). 텔레그램은 그대로 28개."""
+    """SP9-09: `find_conversations` 하나가 앱 대화에만 더해진다(SP6 G-BE2 넷까지 49개). 텔레그램은 그대로 28개."""
     from my_planner.domain import RunContext
     from my_planner.tools.mcp_adapter import APP_ONLY_TOOLS, TOOL_NAMES, tool_names_for
 
     app = tool_names_for(RunContext(None, None, channel="app"))
     telegram = tool_names_for(RunContext(None, None, channel="telegram"))
-    assert len(app) == 45 and len(telegram) == 28
+    assert len(app) == 49 and len(telegram) == 28
     assert "find_conversations" in APP_ONLY_TOOLS and "find_conversations" not in TOOL_NAMES + telegram
     assert tool_names_for(RunContext(None, None, channel="app", kind="summary")) == []  # 요약 호출은 도구 없음

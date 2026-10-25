@@ -406,9 +406,9 @@ def test_options_with_habit_tools_28_and_35(tmp_path):
 
     for channel, extra, expected in (
         ("telegram", FAKE_HABIT_TOOLS, 28),
-        ("app", [*FAKE_HABIT_TOOLS, "ui_habit_check"], 45),  # SP9-02 `set_checkin_time` +1, SP9-03 메모 +3, SP9-05 일정 +4·`ui_events` +1, SP9-09 `find_conversations` +1
+        ("app", [*FAKE_HABIT_TOOLS, "ui_habit_check"], 49),  # SP6 G-BE2 화면 도구 넷 +4, SP9-02 `set_checkin_time` +1, SP9-03 메모 +3, SP9-05 일정 +4·`ui_events` +1, SP9-09 `find_conversations` +1
     ):
-        # SP7-02부터 습관 도구는 실제 도구다: 이미 있는 이름은 다시 더하지 않는다(수는 그대로 28, 35)
+        # SP7-02부터 습관 도구는 실제 도구다: 이미 있는 이름은 다시 더하지 않는다(수는 그대로 28, 49)
         base = tool_names_for(RunContext(None, None, channel=channel))
         names = [*base, *(n for n in extra if n not in base)]
         assert len(names) == expected == len(set(names))

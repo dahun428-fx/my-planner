@@ -266,15 +266,18 @@ def test_group_layout_errors():
     assert err.endswith(": union_tag_invalid")
 
 
-def test_app_tool_count_unchanged():
-    assert set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES) == {
-        "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
+def test_app_tool_count_g_be1_base_plus_new_four():
+    """G-BE1은 앱 대화 도구 수를 바꾸지 않았고(아래 일곱), G-BE2가 새 넷을 두뇌에게 준다(+4, 스펙 9.3). SP9 도구는 따로."""
+    g_be1 = {"ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards"}
+    sp9 = {
         "set_checkin_time",  # SP9-02(화면 조각이 아니다)
         "search_memos", "read_memo", "create_memo",  # SP9-03
         "find_conversations",  # SP9-09
         "list_events", "create_event", "update_event", "delete_event", "ui_events",  # SP9-05
     }
-    assert not set(NEW) & set(tool_names_for(RunContext(None, None, channel="app")))
+    app_only = set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES)
+    assert app_only == g_be1 | sp9 | set(NEW)
+    assert len(app_only) == len(g_be1) + len(sp9) + 4
     assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 9  # SP9-05 `ui_events`
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 

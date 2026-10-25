@@ -208,7 +208,7 @@ def test_run_turn_create_needs_ui_confirm(env):
 def test_app_tools_plus_4_telegram_unchanged():
     app = tool_names_for(RunContext(None, None, channel="app"))
     telegram = tool_names_for(RunContext(None, None, channel="telegram"))
-    assert len(app) == 45 and len(telegram) == 28
+    assert len(app) == 49 and len(telegram) == 28
     assert APP_ONLY_TOOLS[-5:] == [*EVENT_TOOLS, "ui_events"]
     assert not set(EVENT_TOOLS) & set(TOOL_NAMES) and not set(EVENT_TOOLS) & set(telegram)
     assert "dismiss_missed_reminder" not in app and "ui_events" not in telegram

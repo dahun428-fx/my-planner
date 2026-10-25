@@ -201,11 +201,12 @@ async def test_get_status_equals_snapshot(tmp_path):
     assert got["titles"][0]["title"] == "「꾸민 결심」을 지나온 사람"
 
 
-async def test_tool_counts_28_and_35(tmp_path):
-    """S12, 10장: 텔레그램 대화 28개(SP1 12 + 곡선 10 + 습관 6, SP7 5.4 H8), 앱 대화 35개(+ 화면 3, 습관 1, 카드 3)."""
+async def test_tool_counts_28_and_39(tmp_path):
+    """S12, 10장: 텔레그램 대화 28개(SP1 12 + 곡선 10 + 습관 6, SP7 5.4 H8), 앱 대화 39개(+ 화면 3, 습관 1, 카드 3,
+    SP6 G-BE2 화면 4)."""
     assert TOOL_NAMES[12:22] == CURVE_TOOLS
     assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28
-    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 45  # SP9-09 `find_conversations`, SP9-02 `set_checkin_time`, SP9-03 메모 3, SP9-05 일정 4·`ui_events`(앱에만)
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 49  # SP6 G-BE2 화면 도구 넷 +4, SP9-09 `find_conversations`, SP9-02 `set_checkin_time`, SP9-03 메모 3, SP9-05 일정 4·`ui_events`(앱에만)
     assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         names = [t.name for t in build_planner_tools(env.parts.tools, _ctx())]

@@ -46,7 +46,15 @@ from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.transcripts import TranscriptStore
-from my_planner.store.views import habits_view, moment_counts, moment_dict, todo_refs
+from my_planner.store.views import (
+    habits_view,
+    moment_counts,
+    moment_dict,
+    period_outside,
+    period_view,
+    todo_ref,
+    todo_refs,
+)
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import (
     CARDS_ORDER_TARGET,
@@ -63,6 +71,7 @@ from my_planner.tools.activity import (
     register_undo,
     task_target,
     tasks_target,
+    undoable_now,
 )
 from my_planner.tools.body import BodyTools
 from my_planner.tools.checkin_times import CheckinTimeTools
@@ -99,7 +108,7 @@ from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
-    from my_planner.store.repos.activity import ConfirmsRepo
+    from my_planner.store.repos.activity import Activity, ConfirmsRepo
     from my_planner.store.repos.body import BodyRepo
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.events import EventsRepo
@@ -137,6 +146,58 @@ PERIOD_EXAMPLE = {
     Cadence.quarter: "2026-Q4",
     Cadence.year: "2026",
 }
+
+MOVE_NOT_OPEN = "열린 할 일만 날짜를 옮길 수 있어요."  # SP6 8장(G-BE2): 끝난·뺀·초안 할 일은 옮기지 않는다
+
+# SP6 화면 도구의 뜻 검사(6.2~6.4)와 두뇌가 받는 오류 문구(부록 B)
+DATE_CHOICE_DAYS = 90
+PERIOD_DAY_BACK, PERIOD_DAY_AHEAD = 14, 56
+PERIOD_WEEK_BACK, PERIOD_WEEK_AHEAD = 2, 8
+DATE_CHOICE_SCHEDULED = "시각이 잡힌 할 일은 날짜 고르기로 옮기지 않아요. 대화로 정해 주세요."
+DATE_CHOICE_NOT_OPEN = "시각이 없는 열린 할 일만 날짜를 고를 수 있어요."
+DATE_CHOICE_RANGE = "후보 날짜는 오늘부터 90일 안이에요."
+RESULT_UNCHANGED = "이번 답에서 바꾼 할 일만 보여 줄 수 있어요."
+PERIOD_HIGHLIGHT_UNCHANGED = "바뀐 줄 표시는 이번 답에서 바꾼 할 일만 할 수 있어요."
+RESULT_ALL_GONE = "보여 줄 바뀐 할 일이 없어요."
+PERIOD_RANGE = "하루는 2주 전부터 8주 뒤까지, 주는 2주 전부터 8주 뒤까지 보여 줄 수 있어요."
+_ISO_WEEK = re.compile(r"\d{4}-W\d{2}")
+# 할 일을 바꾸는 활동 종류 → `ui_result`의 `change`(6.3). 이것만 "이번 답에서 바꾼 할 일"로 센다
+RESULT_CHANGES = {
+    "task_added": "added",
+    "task_moved": "moved",
+    "task_completed": "completed",
+    "task_reopened": "reopened",
+    "task_dropped": "dropped",
+    "task_updated": "updated",
+    "tasks_confirmed": "confirmed",
+}
+
+
+def _calendar_date(v: Any) -> date | None:
+    """`YYYY-MM-DD`이고 달력에 있는 날(스키마는 모양만 본다)."""
+    if not isinstance(v, str) or not _ISO_DATE.fullmatch(v):
+        return None
+    try:
+        return date.fromisoformat(v)
+    except ValueError:
+        return None
+
+
+def _result_before(a: Activity) -> dict[str, Any]:
+    """그 할 일의 이번 답 가장 이른 활동의 `undo_json` → `before`(6.3 표). 표에 없는 필드는 null. 시각은 저장 형식(UTC)."""
+    undo = a.undo or {}
+    out: dict[str, Any] = {"status": None, "planned_for": None, "scheduled_at": None, "title": None}
+    if a.kind == "task_moved":
+        out.update(planned_for=undo.get("planned_for"), scheduled_at=undo.get("scheduled_at"))
+    elif a.kind in ("task_completed", "task_reopened", "task_dropped"):
+        out.update(status=undo.get("status"), planned_for=undo.get("planned_for"),
+                   scheduled_at=undo.get("scheduled_at"))
+    elif a.kind == "task_updated":
+        prior = undo.get("before") or {}
+        out.update({k: prior[k] for k in ("title", "planned_for", "scheduled_at") if k in prior})
+    elif a.kind == "tasks_confirmed":
+        out["status"] = "draft"
+    return out
 
 
 class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, EventTools, ConversationTools):
@@ -530,6 +591,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, Eve
         t = self._get(id)
         if isinstance(t, str):
             return _err(t)
+        if t.status is not TaskStatus.open:  # 그린 뒤 끝나거나 빠진 할 일의 날짜 후보 누름(SP6 Review Focus 3)
+            return _err(MOVE_NOT_OPEN)
         pf = self._parse_date(planned_for, "planned_for")
         if isinstance(pf, str):
             return _err(pf)
@@ -1145,6 +1208,178 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, Eve
             return []
         ints = [i for i in ids if isinstance(i, int) and not isinstance(i, bool)]
         return todo_refs(ints, self.tasks, self.today(), drafts=drafts)
+
+    # --- SP6 화면 도구 넷 (스펙 6.2~6.4, 7장, 10.2): `_draw` 뒤 뜻 검사. 읽기만 한다 ---
+
+    @_tool
+    def ui_date_choice(
+        self, ctx: RunContext, task_id: Any = None, question: Any = None, candidates: Any = None, **extra: Any
+    ) -> dict[str, Any]:
+        """날짜 고르기(6.2): 시각이 없는 열린 할 일만, 후보는 오늘 ~ 오늘 + 90일(스키마는 시계를 모른다, 빈 곳 9)."""
+        out = self._draw("ui_date_choice", {"task_id": task_id, "question": question, "candidates": candidates, **extra})
+        if "error" in out:
+            return out
+        t = self.tasks.get(task_id)
+        if t is None or t.status is not TaskStatus.open:
+            return _err(DATE_CHOICE_NOT_OPEN)
+        if t.scheduled_at is not None:
+            return _err(DATE_CHOICE_SCHEDULED)
+        today = self.today()
+        for i, c in enumerate(candidates):
+            d = _calendar_date(c["date"])
+            if d is None:
+                return _err(f"화면 조각 형식이 맞지 않아요: candidates.{i}.date: date_invalid")
+            if not today <= d <= today + timedelta(days=DATE_CHOICE_DAYS):
+                return _err(DATE_CHOICE_RANGE)
+        return out
+
+    @_tool
+    def ui_result(self, ctx: RunContext, task_ids: Any = None, **extra: Any) -> dict[str, Any]:
+        """방금 바꾼 것(6.3): 이번 답에서 바꾼 할 일만. 그 사이 모두 지워졌으면 그릴 것이 없다."""
+        out = self._draw("ui_result", {"task_ids": task_ids, **extra})
+        if "error" in out:
+            return out
+        if not set(task_ids) <= self.changed_task_ids(ctx):
+            return _err(RESULT_UNCHANGED)
+        if not self.ui_result_items(ctx, task_ids):
+            return _err(RESULT_ALL_GONE)
+        return out
+
+    @_tool
+    def ui_period_list(
+        self, ctx: RunContext, day: Any = None, week: Any = None, highlight_task_ids: Any = None, **extra: Any
+    ) -> dict[str, Any]:
+        """하루·한 주 보기(6.4): `day`는 오늘 − 14일 ~ + 56일, `week`는 이번 주 − 2주 ~ + 8주. 바뀐 줄은 이번 답에서 바꾼 것만."""
+        out = self._draw(
+            "ui_period_list", {"day": day, "week": week, "highlight_task_ids": highlight_task_ids, **extra}
+        )
+        if "error" in out:
+            return out
+        span = self._period_span(day, week)
+        if span is None:
+            return _err(f"화면 조각 형식이 맞지 않아요: {'day' if day is not None else 'week'}: date_invalid")
+        start, _ = span
+        today = self.today()
+        if day is not None:
+            lo, hi = today - timedelta(days=PERIOD_DAY_BACK), today + timedelta(days=PERIOD_DAY_AHEAD)
+        else:
+            this_monday = today - timedelta(days=today.weekday())
+            lo, hi = this_monday - timedelta(weeks=PERIOD_WEEK_BACK), this_monday + timedelta(weeks=PERIOD_WEEK_AHEAD)
+        if not lo <= start <= hi:
+            return _err(PERIOD_RANGE)
+        if not set(highlight_task_ids or []) <= self.changed_task_ids(ctx):
+            return _err(PERIOD_HIGHLIGHT_UNCHANGED)
+        return out
+
+    @_tool
+    def ui_block(self, ctx: RunContext, title: Any = None, children: Any = None, **extra: Any) -> dict[str, Any]:
+        """조립 카드(7장): 스키마와 쌓기 규칙(`BlockProps`)만 본다."""
+        return self._draw("ui_block", {"title": title, "children": children, **extra})
+
+    def changed_task_ids(self, ctx: RunContext) -> set[int]:
+        """이번 답(`ctx.activity_ids`)에서 바꾼 할 일: 할 일 변경 활동(`RESULT_CHANGES`)의 대상 `task:<id>`.
+
+        우선순위 목록 변경(`priorities_set`의 지켜보는 대상)과 초안 제안(`tasks_proposed`)은 할 일을 바꾼 것이 아니다."""
+        return {tid for a, tids in self._task_activities(ctx) for tid in tids}
+
+    def _task_activities(self, ctx: RunContext) -> list[tuple[Activity, list[int]]]:
+        """이번 답의 할 일 변경 활동과 그 대상 할 일 번호, 오래된 것부터."""
+        if self.activity is None:
+            return []
+        out: list[tuple[Activity, list[int]]] = []
+        for aid in sorted(ctx.activity_ids):
+            a = self.activity.get(aid)
+            if a is None or a.kind not in RESULT_CHANGES:
+                continue
+            tids = [int(t.split(":", 1)[1]) for t in self.activity.targets(aid) if t.startswith("task:")]
+            out.append((a, tids))
+        return out
+
+    def ui_result_items(self, ctx: RunContext, task_ids: Any) -> list[dict[str, Any]]:
+        """`ui_result`의 `data.items`(6.3): `{todo, change, before, after, activity_ids, undo_id}`, `task_ids` 순서.
+
+        `before`는 이번 답에서 그 할 일의 가장 이른 활동의 `undo_json`에서, `undo_id`는 활동이 하나이고 그 대상이 그 할 일
+        하나뿐이며 지금 되돌릴 수 있을 때만. 소프트 삭제한 할 일은 빠진다. 읽기만 한다."""
+        if not isinstance(task_ids, list):
+            return []
+        acts = self._task_activities(ctx)
+        today, now = self.today(), self.clock.now()
+        items: list[dict[str, Any]] = []
+        for tid in task_ids:
+            t = self.tasks.get(tid) if isinstance(tid, int) and not isinstance(tid, bool) else None
+            mine = [a for a, tids in acts if tid in tids]
+            if t is None or not mine:
+                continue
+            kinds = [a.kind for a in mine]
+            change = "added" if "task_added" in kinds else RESULT_CHANGES[kinds[-1]]
+            before = None if change == "added" else _result_before(mine[0])
+            after = {
+                "status": t.status.value,
+                "planned_for": t.planned_for.isoformat() if t.planned_for else None,
+                "scheduled_at": t.scheduled_at.isoformat() if t.scheduled_at else None,
+                "title": t.title if before is not None and before["title"] is not None else None,
+            }
+            only = mine[0]
+            undo_id = (
+                only.id
+                if len(mine) == 1 and self.activity is not None
+                and self.activity.targets(only.id) == [task_target(tid)] and undoable_now(only, self.activity, now)
+                else None
+            )
+            items.append({
+                "todo": todo_ref(t, self.tasks, today), "change": change, "before": before, "after": after,
+                "activity_ids": [a.id for a in mine], "undo_id": undo_id,
+            })
+        return items
+
+    @staticmethod
+    def _period_span(day: Any, week: Any) -> tuple[date, date] | None:
+        """`day` 하루 또는 ISO 주 `week`의 월~일. 달력에 없는 값이면 None."""
+        if isinstance(day, str):
+            d = _calendar_date(day)
+            return (d, d) if d is not None else None
+        if isinstance(week, str) and _ISO_WEEK.fullmatch(week):
+            try:
+                mon = date.fromisocalendar(int(week[:4]), int(week[6:]), 1)
+            except ValueError:
+                return None
+            return mon, mon + timedelta(days=6)
+        return None
+
+    def ui_period_data(self, args: dict[str, Any]) -> dict[str, Any] | None:
+        """`ui_period_list`의 `data`(6.4): `{today, start, end, days[], outside[]}`. 기간이 틀리면 None. 읽기만 한다."""
+        span = self._period_span(args.get("day"), args.get("week"))
+        if span is None:
+            return None
+        start, end = span
+        today = self.today()
+        ids = [i for i in args.get("highlight_task_ids") or [] if isinstance(i, int) and not isinstance(i, bool)]
+        return {
+            "today": today.isoformat(), "start": start.isoformat(), "end": end.isoformat(),
+            "days": [
+                {"date": d.date.isoformat(), "weekday": d.weekday, "is_today": d.is_today,
+                 "todos": [todo_ref(t, self.tasks, today) for t in d.tasks]}
+                for d in period_view(self.tasks, start, end, today)
+            ],
+            "outside": [
+                {"reason": reason, "todo": todo_ref(t, self.tasks, today)}
+                for reason, t in period_outside(self.tasks, ids, start, end)
+            ],
+        }
+
+    def ui_block_data(self, args: dict[str, Any]) -> dict[str, Any]:
+        """`ui_block`의 `data`(7.3): 모든 `todo_rows`의 id를 나온 순서대로 한 번씩(초안·소프트 삭제 뺌). 없으면 `today`만."""
+        rows: list[Any] = []
+        for c in args.get("children") or []:
+            if isinstance(c, dict):
+                inner = c.get("children") if c.get("type") == "group" else None
+                for x in [c, *(inner if isinstance(inner, list) else [])]:
+                    if isinstance(x, dict) and x.get("type") == "todo_rows" and isinstance(x.get("task_ids"), list):
+                        rows.extend(x["task_ids"])
+        data: dict[str, Any] = {"today": self.today().isoformat()}
+        if rows:
+            data["todos"] = self.ui_todo_refs(list(dict.fromkeys(rows)), drafts=False)
+        return data
 
     # --- 카드 도구 (SP3-4 10장, 6.4.2): 고정 카드(`app_cards`). 활동은 되돌릴 수 있다 ---
 

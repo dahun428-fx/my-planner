@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 
 from my_planner.harness import prompts
 from my_planner.harness.dispatcher import LOOP_PROMPTS
@@ -49,6 +50,48 @@ def test_banned_words_include_new_three():
             text = "\n".join(line for line in text.splitlines() if not line.startswith("12. "))
         for word in ("끊겼", "며칠째", "남음"):
             assert word not in text, (f.name, word)
+
+
+# --- SP6 G-BE2: 앱 대화 지시문(9.2)과 도구 설명(9.3) ---
+
+SP6_SPEC = (Path(__file__).parent.parent / "docs" / "superpowers" / "specs"
+            / "2026-10-24-sp6-chat-generative-ui-design.md")
+
+
+def _spec_section(title: str) -> str:
+    text = SP6_SPEC.read_text(encoding="utf-8")
+    start = text.index(f"\n### {title}")
+    end = text.index("\n### ", start + 1)
+    return text[start:end]
+
+
+def test_channel_app_is_spec_text():
+    """`channel_app.md`는 스펙 9.2 블록(공백까지)으로 시작한다. 그 뒤는 SP9 줄(메모, 지난 대화, 일정)이 빈 줄 하나 뒤에 붙는다."""
+    block = re.search(r"```markdown\n(.*?)\n```", _spec_section("9.2"), re.DOTALL).group(1)
+    raw = (prompts.PROMPTS_DIR / "channel_app.md").read_text(encoding="utf-8")
+    assert raw.startswith(block + "\n\n")
+    rest = raw.removeprefix(block + "\n\n").splitlines()
+    assert [line.split(" ", 1)[0] for line in rest] == ["메모는", "메모", "지난", "시간이"]
+    assert "`find_conversations`" in rest[2] and "`create_event`" in rest[3]
+
+
+def test_old_echo_sentence_gone():
+    from my_planner.tools.mcp_adapter import _SPECS
+
+    texts = [f.read_text(encoding="utf-8") for f in prompts.PROMPTS_DIR.glob("*.md")]
+    texts += [desc for desc, _ in _SPECS.values()]
+    for t in texts:
+        assert "답 글에도 같은 뜻을 씁니다" not in t
+        assert "답 글에도 씁니다" not in t  # "같은 뜻을/같은 질문을 답 글에도 씁니다"(9.2와 맞춘다)
+
+
+def test_new_tool_descriptions():
+    from my_planner.tools.mcp_adapter import _SPECS
+
+    rows = dict(re.findall(r'^\| `(ui_\w+)` \| "(.+?)" \|', _spec_section("9.3"), re.MULTILINE))
+    assert set(rows) == {"ui_date_choice", "ui_result", "ui_period_list", "ui_block"}
+    for name, desc in rows.items():
+        assert _SPECS[name][0] == desc, name
 
 
 def test_moments_prompt_rules():

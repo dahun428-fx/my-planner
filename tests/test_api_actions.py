@@ -475,3 +475,37 @@ async def test_drop_token_stale_after_set_priorities_touches_task(tmp_path, whic
     assert set(targets) == {"priorities:day:2026-10-24", f"task:{a}", f"task:{b}"}
     assert status == 409 and err["error"]["code"] == "conflict"
     assert resolution == "stale" and state == "open"
+
+
+# --- SP6 G-BE2: 앱 통로 `move_task` (SP6 8장, Review Focus 3). 시각 있는 할 일의 옮기기 확인은 SP9-05에서 없어졌다 ---
+
+
+async def test_app_move_task_unscheduled_applies(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env, "꾸민 산책")
+        status, body = await env.action("move_task", {"id": tid, "planned_for": "2026-10-27"})
+        planned = env.parts.tasks.get(tid).planned_for.isoformat()
+    assert status == 200 and body["status"] == "applied" and body["undo_id"] == body["activity_id"]
+    assert planned == "2026-10-27"
+
+
+@pytest.mark.parametrize("state", ["done", "dropped"])
+async def test_move_task_rejects_non_open(tmp_path, state):
+    """그린 뒤 다른 곳에서 끝내거나 뺀 할 일의 날짜 후보 누름: `rejected`이고 할 일은 그대로다. 두뇌도 같다."""
+    from my_planner.domain import RunContext
+
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env, "꾸민 할 일")
+        await env.action("complete_task" if state == "done" else "drop_task", {"id": tid})
+        n_before = len(env.activity())
+        status, body = await env.action("move_task", {"id": tid, "planned_for": "2026-10-27"})
+        brain = env.parts.tools.move_task(RunContext(conversation_id=1, run_id=None, channel="app"),
+                                          id=tid, planned_for="2026-10-27")
+        t = env.parts.tasks.get(tid)
+        n_after = len(env.activity())
+
+    assert status == 422
+    _validate("ActionRejected", body)
+    assert body["error"]["message"] == "열린 할 일만 날짜를 옮길 수 있어요."
+    assert brain == {"error": "열린 할 일만 날짜를 옮길 수 있어요."}
+    assert t.status.value == state and t.planned_for is None and n_after == n_before

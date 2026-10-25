@@ -108,6 +108,42 @@ def week_view(tasks: TasksRepo, now: datetime, tz: str | tzinfo, boundary: time)
     return WeekView(period_of(Cadence.week, today), mon, sun, prios, days, undated)
 
 
+def period_view(tasks: TasksRepo, start: date, end: date, today: date) -> list[DayView]:
+    """하루·한 주 보기(SP6 6.4, 10.2): `start`~`end`의 날마다 **`planned_for`가 그날이고 `open`·`done`인 할 일**을
+    한 번씩. 오늘도 같다(`today_view`와 달리 전에 잡은 열린 할 일을 끌어오지 않는다). 순서는 시각 있는 `open`(시각 순)
+    → 시각 없는 `open` → `done`. 초안·소프트 삭제·`dropped`는 빠진다. `today`는 `is_today`에만 쓴다."""
+    # 상태를 목록으로 주면 `done`도 완료한 날이 아니라 `planned_for`로 거른다(`TasksRepo.list`)
+    rows = tasks.list(status=[TaskStatus.open, TaskStatus.done], from_=start, to=end)
+    days: list[DayView] = []
+    d = start
+    while d <= end:
+        mine = [t for t in rows if t.planned_for == d]
+        timed = sorted((t for t in mine if t.status is TaskStatus.open and t.scheduled_at is not None),
+                       key=lambda t: (t.scheduled_at, t.id))  # type: ignore[arg-type,return-value]
+        untimed = [t for t in mine if t.status is TaskStatus.open and t.scheduled_at is None]
+        done = [t for t in mine if t.status is TaskStatus.done]
+        days.append(DayView(d, WEEKDAY[d.weekday()], d == today, [*timed, *untimed, *done]))
+        d += timedelta(days=1)
+    return days
+
+
+def period_outside(tasks: TasksRepo, ids: Iterable[int], start: date, end: date) -> list[tuple[str, Task]]:
+    """`ids` 가운데 `period_view`에 나오지 않는 할 일과 그 이유(SP6 6.4 `outside`), `ids` 순서. 이유는 `dropped`(뺀 것)
+    → `no_date`(`planned_for` 없음) → `moved`(날짜가 기간 밖) 가운데 먼저 맞는 하나. 소프트 삭제한 것과 초안은 뺀다."""
+    out: list[tuple[str, Task]] = []
+    for i in dict.fromkeys(ids):
+        t = tasks.get(i)
+        if t is None or t.status is TaskStatus.draft:
+            continue
+        if t.status is TaskStatus.dropped:
+            out.append(("dropped", t))
+        elif t.planned_for is None:
+            out.append(("no_date", t))
+        elif not start <= t.planned_for <= end:
+            out.append(("moved", t))
+    return out
+
+
 def conditions_view(conditions: ConditionsRepo, from_: date, to: date) -> dict[str, Any]:
     """기록 없는 날은 넣지 않는다(빈 날은 0이 아니다). 평균은 기록한 날만, 소수 첫째 자리."""
     items = conditions.between(from_, to)

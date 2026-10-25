@@ -591,6 +591,7 @@ def _push_test_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
 ACTIONS: dict[str, ActionSpec] = {
     "add_task": ActionSpec("add_task"),
     "update_task": ActionSpec("update_task", target=_task_target),
+    # SP6 8장의 "시각 있는 할 일 옮기기 확인"은 SP9-05에서 할 일이 시각을 받지 않게 되며 없어졌다(ADR 0015)
     "move_task": ActionSpec("move_task", target=_task_target),
     "complete_task": ActionSpec("complete_task", target=_task_target),
     "reopen_task": ActionSpec("reopen_task", target=_task_target),

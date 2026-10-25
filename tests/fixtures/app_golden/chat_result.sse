@@ -1,0 +1,30 @@
+data: {"type":"start","messageId":"<id>","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat","checkin_id":null}}
+
+data: {"type":"data-status","data":{"state":"queued"},"transient":true}
+
+data: {"type":"data-status","data":{"state":"thinking"},"transient":true}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-available","toolCallId":"tc_01","toolName":"move_task","input":{"id":1,"planned_for":"2026-10-27"}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_01","output":{"id":1,"title":"꾸민 장보기","status":"open","areas":["quality_of_life"],"planned_for":"2026-10-27","scheduled_at":null,"parent_id":null,"note":"","completed_at":null}}
+
+data: {"type":"tool-input-available","toolCallId":"tc_02","toolName":"ui_result","input":{"task_ids":[1]}}
+
+data: {"type":"tool-output-available","toolCallId":"tc_02","output":{"ok":true,"data":{"today":"2026-10-24","items":[{"todo":{"id":1,"title":"꾸민 장보기","cadence":null,"area":"quality_of_life","status":"open","planned_for":"2026-10-27","scheduled_at":null},"change":"moved","before":{"status":null,"planned_for":"2026-10-25","scheduled_at":null,"title":null},"after":{"status":"open","planned_for":"2026-10-27","scheduled_at":null,"title":null},"activity_ids":[2],"undo_id":2}]}}}
+
+data: {"type":"text-start","id":"t1"}
+
+data: {"type":"text-delta","id":"t1","delta":"화요일로 옮겼어요."}
+
+data: {"type":"text-end","id":"t1"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"data-activity","data":{"activity_ids":[2],"undo_ids":[2],"confirmation":"✓ 옮김: 꾸민 장보기 → 10/27"}}
+
+data: {"type":"finish","messageMetadata":{"conversation_id":1,"channel":"app","kind":"chat"}}
+
+data: [DONE]
+
