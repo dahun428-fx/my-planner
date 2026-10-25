@@ -107,7 +107,7 @@ describe("StatusMoments (SP8 10.2)", () => {
       ),
     );
     renderMoments();
-    await userEvent.click(within(rowOf(THREE[1].text)).getByRole("button", { name: T.more }));
+    await userEvent.click(within(rowOf(THREE[1].text)).getByRole("button", { name: /^더 보기/ }));
     await userEvent.click(await screen.findByRole("button", { name: T.hide }));
     await waitFor(() => expect(screen.queryByText(THREE[1].text)).toBeNull());
     await userEvent.click(screen.getByRole("button", { name: copy.activity.undo }));
@@ -117,7 +117,7 @@ describe("StatusMoments (SP8 10.2)", () => {
   it("more_button_opens_sheet_with_two_actions", async () => {
     renderMoments();
     const row = rowOf(THREE[0].text);
-    await userEvent.click(within(row).getByRole("button", { name: T.more }));
+    await userEvent.click(within(row).getByRole("button", { name: /^더 보기/ }));
     const sheet = await screen.findByRole("dialog");
     expect(within(sheet).getAllByRole("button").map((b) => b.textContent)).toEqual(["숨기기", "지우기"]);
   });
@@ -129,7 +129,7 @@ describe("StatusMoments (SP8 10.2)", () => {
         : applied("이룬 순간 지움 (10/24)"),
     );
     renderMoments();
-    await userEvent.click(within(rowOf(THREE[2].text)).getByRole("button", { name: T.more }));
+    await userEvent.click(within(rowOf(THREE[2].text)).getByRole("button", { name: /^더 보기/ }));
     await userEvent.click(await screen.findByRole("button", { name: T.delete }));
 
     // The sheet's own words, not the BE's summary.
@@ -147,7 +147,7 @@ describe("StatusMoments (SP8 10.2)", () => {
   it("keep_closes_sheet_sends_nothing_more", async () => {
     const sent = actions(() => ({ status: "needs_confirm", confirm_token: "tok-1", summary: "x", expires_at: "2026-10-25T00:00:00Z" }));
     renderMoments();
-    await userEvent.click(within(rowOf(THREE[2].text)).getByRole("button", { name: T.more }));
+    await userEvent.click(within(rowOf(THREE[2].text)).getByRole("button", { name: /^더 보기/ }));
     await userEvent.click(await screen.findByRole("button", { name: T.delete }));
     await userEvent.click(await screen.findByRole("button", { name: "그대로 두기" }));
     await waitFor(() => expect(screen.queryByText("이 순간을 지울까요? 되돌릴 수 없어요.")).toBeNull());
@@ -222,13 +222,29 @@ describe("StatusMoments (SP8 10.2)", () => {
     renderMoments({ moments: [] });
     expect(screen.getByText("하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.")).toBeInTheDocument();
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
-    expect(screen.queryByRole("button", { name: "지난 순간 더 보기" })).toBeNull();
+  });
+
+  it("older_loads_14_more_days_when_week_is_empty", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get(`${BASE}/moments`, ({ request }) => {
+        asked.push(new URL(request.url).search);
+        return HttpResponse.json({ from: "2026-10-12", to: "2026-10-25", items: [moment(30, "2026-10-15", "쉬기 전 마지막 순간이에요", "finance")] });
+      }),
+    );
+    renderMoments({ moments: [] });
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    expect(await screen.findByText("쉬기 전 마지막 순간이에요")).toBeInTheDocument();
+    expect(asked).toEqual(["?days=14"]);
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    await waitFor(() => expect(asked).toHaveLength(2));
+    expect(asked[1]).toBe("?before=2026-10-12&days=14");
   });
 
   it("offline_read_only", async () => {
     renderMoments({ hiddenCount: 1 }, "offline");
     await act(async () => {});
-    await waitFor(() => expect(screen.queryByRole("button", { name: T.more })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^더 보기/ })).toBeNull());
     expect(screen.queryByRole("button", { name: T.hide })).toBeNull();
     // The text is still there to read.
     expect(screen.getByText(THREE[0].text)).toBeInTheDocument();

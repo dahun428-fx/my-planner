@@ -87,21 +87,21 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
   }, []);
 
   const hide = async (m: Moment) => {
-    const out = await run("hide_moment", { id: m.id });
+    const out = await run("hide_moment", { id: m.id }, { quiet: true });
     if (out?.kind === "applied") {
       fold(m.id);
       toast.show({ text: T.hidden, undoId: out.undoId });
       onChanged();
-    } else if (out?.kind === "conflict") onChanged();
+    } else if (out?.kind === "conflict" || out?.kind === "failed") onChanged();
   };
 
   const unhide = async (m: Moment) => {
-    const out = await run("unhide_moment", { id: m.id });
+    const out = await run("unhide_moment", { id: m.id }, { quiet: true });
     if (out?.kind === "applied") {
       setHiddenList((l) => (l ? l.filter((x) => x.id !== m.id) : l));
       toast.show({ text: T.unhidden, undoId: out.undoId });
       onChanged();
-    } else if (out?.kind === "conflict") onChanged();
+    } else if (out?.kind === "conflict" || out?.kind === "failed") onChanged();
   };
 
   const remove = async (m: Moment) => {
@@ -110,7 +110,7 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
     else if (out?.kind === "applied") {
       fold(m.id);
       onChanged();
-    } else if (out?.kind === "conflict") onChanged();
+    } else if (out?.kind === "conflict" || out?.kind === "failed") onChanged();
   };
 
   const confirmDelete = async () => {
@@ -123,7 +123,7 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
       fold(ask.id);
       setHiddenList((l) => (l ? l.filter((x) => x.id !== ask.id) : l));
     }
-    if (out?.kind === "applied" || out?.kind === "conflict") onChanged();
+    if (out?.kind === "applied" || out?.kind === "conflict" || out?.kind === "failed") onChanged();
   };
 
   const shown = [...moments, ...older.filter((o) => !moments.some((m) => m.id === o.id))].filter((m) => !gone.has(m.id));
@@ -131,9 +131,11 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
 
   const loadOlder = async () => {
     const before = cursor ?? earliest;
-    if (before === null || loadingOlder) return;
+    if (loadingOlder) return;
     setLoadingOlder(true);
-    const r = await apiGet<MomentsList>(`/moments?before=${before}&days=${OLDER_DAYS}`, "MomentsList");
+    // Nothing shown yet (a quiet week): ask for the last 14 days up to today, then page back from its `from`.
+    const path = before === null ? `/moments?days=${OLDER_DAYS}` : `/moments?before=${before}&days=${OLDER_DAYS}`;
+    const r = await apiGet<MomentsList>(path, "MomentsList");
     setLoadingOlder(false);
     if (r.kind === "ok") {
       setOlder((o) => [...o, ...r.data.items.filter((m) => !o.some((x) => x.id === m.id))]);
@@ -168,7 +170,7 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
                           { label: T.delete, tone: "negative", onPress: () => void remove(m) },
                         ]}
                         disabled={!writable}
-                        moreLabel={T.more}
+                        moreLabel={`${T.more}, ${m.text}`}
                       >
                         <div className={styles.momentRow}>
                           <Face moment={m} />
@@ -182,11 +184,9 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
             </div>
           ))
         )}
-        {earliest !== null && (
-          <button type="button" className={styles.textButton} disabled={loadingOlder} onClick={() => void loadOlder()}>
-            {T.older}
-          </button>
-        )}
+        <button type="button" className={styles.textButton} disabled={loadingOlder} onClick={() => void loadOlder()}>
+          {T.older}
+        </button>
         {hiddenCount > 0 && (
           <div className={styles.hiddenGroup}>
             <button type="button" className={styles.textButton} aria-expanded={open} onClick={() => setOpen((o) => !o)}>

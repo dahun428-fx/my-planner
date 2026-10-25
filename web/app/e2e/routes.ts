@@ -142,7 +142,6 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") return json(route, today());
     if (get && path === "/status") return json(route, fixture("status"));
-    if (get && path === "/moments") return json(route, momentsList(q.has("include_hidden")));
     if (get && path === "/moments") return json(route, momentsList(q.get("include_hidden") === "true"));
     if (get && path === "/week") return json(route, week());
     if (get && path === "/drafts") return json(route, fixture("drafts"));
