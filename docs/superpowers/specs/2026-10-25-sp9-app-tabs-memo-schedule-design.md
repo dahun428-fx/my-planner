@@ -1,6 +1,6 @@
 # SP9 앱 탭 개편 · 스케줄 · 메모 · 대화 목록 상세 설계 (추가 기능)
 
-- 상태: 초안 v2.1 (Dahun 결정 2026-10-25, 질문 15개. 나머지는 비서의 추천, 15장에서 검토)
+- 상태: 초안 v2.2 (Dahun 결정 2026-10-25, 질문 15개. 나머지는 비서의 추천, 15장에서 검토)
 - 작성일: 2026-10-25
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP1 비서 코어](2026-10-23-sp1-secretary-core-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP5 운영 앱](2026-10-24-sp5-ops-app-design.md), [SP6 채팅 생성형 UI](2026-10-24-sp6-chat-generative-ui-design.md), [SP7 습관](2026-10-24-sp7-habits-design.md)
 - 함께 맞춘 문서: SP8 상태창 기록(`2026-10-25-sp8-status-records-history-design.md`, 브랜치 `docs/sp8-status-records`). 마이그레이션 번호, 메모와 이룬 순간의 경계, 앱 상태창 자리를 그 스레드와 맞췄다(11장).
@@ -356,6 +356,7 @@ CREATE TABLE conversation_sessions (
 | 09:30 | 09:00 → 10:00 | 있음(09:00에 보냄) | 내일 | 추가 없음 |
 | 08:50 | 09:00 → 08:40 | 없음 | 내일 | 09:00 |
 - API: `GET /settings/checkin-times`, `PUT /settings/checkin-times`(네 칸 중 바꿀 칸만). 응답에 지금 적용되는 네 값과 "오늘부터/내일부터"를 준다.
+- **노트북 깨우기**: 깨우기 작업 `my-planner-wake`의 트리거는 `wake_times.py`가 계산한다. 이제 `wake_times`는 `config.toml`에 DB의 `schedule_override`(읽기 전용)를 합친다. 시각을 바꾸면 BE가 `scripts/update_wake_task.ps1`로 깨우기 작업만 다시 등록한다. 안 되면(권한 등) 응답에 `"wake_updated": false`를 주고 설정 화면에 "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요."를 보인다.
 - 두뇌 도구 `set_checkin_time(loop, day_type, time)`(앱 대화에만): 언제나 `needs_confirm` "체크인 시간을 바꿔요: 평일 아침 09:00 → 09:30 (내일부터)". 되돌리기 있음(이전 값으로).
 
 ## 9. 운영 앱
@@ -523,4 +524,5 @@ Dahun이 고르지 않은 아래 선택은 비서의 추천이다. 바꾸고 싶
 
 - v1 (2026-10-25): Dahun 질문 15개 결정으로 첫 초안.
 - v2 (2026-10-25): 문서 리뷰 반영. `resume_conversation_id`와 라우터 0번 규칙, 체크인 시간 `from`/`prev`와 적용 표, 마이그레이션 순서 위험(016 메모, 017 스케줄, 018 대화, SP8 뒤 머지, 빈 번호 거부), 알림 R5·7일 범위·`updated_at` 규칙·시간 단위 문구, 매주 시작 요일 규칙, `.ics` BYSETPOS·TZID·`note` 뺌·키 평문·인증 예외, 할 일 옮기기 대상 좁힘과 Python 훅, 세션 id 이력, 지워도 남는 것, 말아 넣기 31번째·미룸, 토스트 6초는 채팅 활동에만·여럿이면 모두 되돌리기, 탭 교체를 화면 티켓에 맞춤.
+- v2.2 (2026-10-25, 계획 리뷰에서): 8장 노트북 깨우기 작업 갱신.
 - v2.1 (2026-10-25): 재검토 반영. 고른 대화를 보는 동안 모든 메시지에 `resume_conversation_id`, `migrate()` 훅 순서와 `tz`, 018에서 옛 세션 id 채우기, `/today` 못 보낸 알림, 체크인 "오늘" = 논리적 날짜.
