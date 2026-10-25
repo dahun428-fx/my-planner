@@ -241,7 +241,19 @@ export const STATUS_TEXT = {
       .filter(Boolean)
       .join(" · ")}`,
   recentAreasEmpty: "4주 안에 끝낸 할 일이나 습관 체크가 생기면 여기에 보여요.",
+  // SP8 10.1, appendix A: the moments panel is read only.
+  momentsHeading: "이룬 순간",
+  momentsFooter: "숨기거나 지우는 것은 운영 앱 상태창에서 할 수 있어요.",
+  momentsEmpty: "하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.",
 } as const;
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
+
+/** "10월 24일 (토)": the date head over a day's moments (SP8 appendix A). `date` is a calendar day, "YYYY-MM-DD". */
+export function momentDay(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return `${m}월 ${d}일 (${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+}
 
 /** The name of each pictogram (spec 9.1), for the places one stands without a word beside it. */
 export const PICTOGRAM_LABELS: Record<PictogramName, string> = {

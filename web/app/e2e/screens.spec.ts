@@ -110,6 +110,10 @@ const SCREENS: Screen[] = [
       await page.goto("/status/");
       await expect(heading(page, copy.statusScreen.heading)).toBeVisible();
       await expect(page.getByRole("heading", { level: 2, name: copy.statusScreen.recentHeading })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: copy.statusScreen.momentsHeading })).toBeVisible();
+      await expect(page.getByText("포트폴리오 사례 하나를 끝까지 다듬었어요")).toBeVisible();
+      await page.getByRole("button", { name: copy.statusScreen.hiddenGroup(1) }).click();
+      await expect(page.getByText("조용히 숨긴 순간이에요")).toBeVisible();
     },
   },
   {

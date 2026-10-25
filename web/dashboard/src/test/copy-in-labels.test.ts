@@ -15,6 +15,7 @@ const FILES = [
   "pages/settings.tsx",
   "screens/CurveScreen.tsx",
   "screens/StatusScreen.tsx",
+  "components/MomentsPanel.tsx",
 ];
 
 const code = (rel: string) =>

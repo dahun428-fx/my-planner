@@ -958,6 +958,30 @@ h2 {
 .recent-counts {
   grid-column: 1 / -1;
 }
+/* 이룬 순간: a day head, then a pictogram (area colour) beside each line. */
+.moment-day + .moment-day {
+  margin-top: var(--space-3);
+}
+.moments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.moment {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.moment .pictogram {
+  flex: none;
+  margin-top: 2px;
+  color: var(--area, var(--muted));
+}
+.moment-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 /* The area score's ramp step: an 8px dot beside the number, ringed in ink so a light step still reads 3:1. */
 .stat-step {
   display: inline-block;

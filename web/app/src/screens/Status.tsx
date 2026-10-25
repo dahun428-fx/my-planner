@@ -12,6 +12,7 @@ import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
 import page from "../styles/page.module.css";
 import styles from "./Status.module.css";
+import { StatusMoments } from "./StatusMoments";
 
 const T = copy.statusScreen;
 const AREAS: StatusStat["area"][] = ["career", "finance", "health", "relationships", "learning", "quality_of_life"];
@@ -111,6 +112,7 @@ export function Status() {
         <Level data={result.data} />
         <Stats stats={result.data.stats} />
         <Recent stats={result.data.stats} />
+        <StatusMoments moments={result.data.moments} hiddenCount={result.data.moments_hidden} onChanged={() => void refresh()} />
       </>
     );
   } else if (offline) {

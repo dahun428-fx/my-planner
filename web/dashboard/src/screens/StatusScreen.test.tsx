@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import type { Status } from "../api/types.gen";
 import { ConnectionProvider } from "../lib/ConnectionProvider";
 import statusEmpty from "../test/fixtures/status-empty.json";
 import status from "../test/fixtures/status.json";
@@ -271,5 +272,57 @@ describe("StatusScreen bonus (SP8-02)", () => {
     clone.querySelectorAll(".stat-debuff").forEach((n) => n.remove());
     const all = clone.textContent ?? "";
     for (const mark of ["−", "%", "줄었", "↓"]) expect(all).not.toContain(mark);
+  });
+});
+
+// SP8 10.1: the moments panel. Read only; hiding and deleting live in the ops app.
+describe("StatusScreen moments panel (SP8 10.1)", () => {
+  const moment = (id: number, date: string, text: string, area: Status["moments"][number]["area"]) => ({
+    id,
+    date,
+    text,
+    area,
+    sources: ["task" as const],
+    hidden: false,
+  });
+  const withMoments = (moments: Status["moments"]) => ({ ...status, moments }) as Status;
+
+  it("moments_panel_groups_and_footer", async () => {
+    server.use(
+      statusAnswers.ok(
+        withMoments([
+          moment(1, "2026-10-24", "포트폴리오 사례 하나를 끝까지 다듬었어요", "career"),
+          moment(2, "2026-10-24", "아침마다 물을 마셨어요", "health"),
+          moment(3, "2026-10-23", "오래 미룬 전화를 걸었어요", null),
+        ]),
+      ),
+    );
+    renderScreen();
+    const panel = await screen.findByRole("region", { name: "이룬 순간" });
+    expect(within(panel).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["10월 24일 (토)", "10월 23일 (금)"]);
+    const rows = within(panel).getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toBe("포트폴리오 사례 하나를 끝까지 다듬었어요");
+    expect(rows[0].querySelector("svg.pictogram use")).toHaveAttribute("href", "#p-career");
+    expect(rows[0]).toHaveAttribute("data-area", "career");
+    expect(rows[2].querySelector("svg.pictogram use")).toHaveAttribute("href", "#p-memory"); // no area: memory
+    expect(rows[2]).not.toHaveAttribute("data-area");
+    expect(within(panel).getByText("숨기거나 지우는 것은 운영 앱 상태창에서 할 수 있어요.")).toBeInTheDocument();
+  });
+
+  it("moments_panel_empty_copy", async () => {
+    renderScreen();
+    const panel = await screen.findByRole("region", { name: "이룬 순간" });
+    expect(within(panel).getByText("하루가 끝나면 비서가 그날 해낸 일을 몇 줄로 남겨 둬요.")).toBeInTheDocument();
+    expect(within(panel).queryByRole("listitem")).toBeNull();
+    expect(within(panel).queryByText(/운영 앱 상태창/)).toBeNull();
+  });
+
+  it("dashboard_has_no_hide_or_delete", async () => {
+    server.use(statusAnswers.ok(withMoments([moment(1, "2026-10-24", "물을 마셨어요", "health")])));
+    renderScreen();
+    const panel = await screen.findByRole("region", { name: "이룬 순간" });
+    expect(within(panel).queryAllByRole("button")).toHaveLength(0);
+    for (const w of ["숨기기", "지우기", "다시 보이기", "숨긴 순간"]) expect(panel.textContent).not.toContain(w);
   });
 });
