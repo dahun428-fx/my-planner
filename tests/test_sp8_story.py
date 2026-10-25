@@ -12,6 +12,7 @@ from typing import Any
 
 from claude_agent_sdk import ResultMessage
 from sp8_story_flow import (
+    BODY_NUMBERS,
     MOMENT_DAYS,
     MOMENT_DELETE,
     MOMENT_HIDE,
@@ -127,6 +128,11 @@ async def test_sp8_story(tmp_path, monkeypatch):
     for text in MOMENT_TEXTS:
         assert text not in tg_json, text
     assert [m["text"] for m in app_out[1]["moments"]] == [MOMENT_DAYS[date(2026, 10, n)] for n in (28, 27, 26)]
+    # 걸음·잠 숫자도 앱 통로만: 텔레그램 두뇌의 `body`는 null이고 건강의 날 수만 남는다(10.3, 11장, S2 판정)
+    assert tg_out[1]["body"] is None and app_out[1]["body"]["days_7"] == 3
+    assert stat(tg_out[1], "health")["activity"]["body_days"] == 3
+    for n in (*BODY_NUMBERS, str(app_out[1]["body"]["steps_avg_7"]), str(app_out[1]["body"]["sleep_avg_7"])):
+        assert n not in tg_json, n
     # 텔레그램 통로의 `read_transcript`는 앱 대화의 비서 줄을 빼고 준다(11장). 텔레그램에 나간 글에도 없다
     assert "꾸민 앱 질문" in s["telegram_read_transcript"]
     for text in MOMENT_TEXTS:

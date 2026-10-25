@@ -1,5 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SwipeRow } from "./SwipeRow";
 
@@ -95,6 +97,30 @@ describe("SwipeRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "운동 더 보기" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "내일로" }));
     expect(tomorrow).toHaveBeenCalledTimes(1);
+  });
+
+  it("more_visible_shows_the_button_at_rest", () => {
+    // SP8 10.2 (final review S4): the "더 보기" button is seen without focus, so people who cannot swipe find it.
+    const css = readFileSync(join(__dirname, "SwipeRow.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = (sel: string) => css.match(new RegExp(`(?:^|\\n)${sel.replace(".", "\\.")}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(".more")).toMatch(/opacity:\s*0;/); // hidden until focus by default (to-dos, memos, schedule)
+    expect(rule(".moreShown")).toMatch(/opacity:\s*1;/);
+    expect(rule(".moreShown")).toMatch(/color:\s*var\(--muted\);/);
+
+    const { rerender } = render(
+      <SwipeRow actions={actions(vi.fn(), vi.fn())} disabled={false} moreLabel="운동 더 보기" moreVisible>
+        <span>운동</span>
+      </SwipeRow>,
+    );
+    const shown = screen.getByRole("button", { name: "운동 더 보기" });
+    expect(shown).toHaveClass("more", "moreShown");
+    expect(shown.querySelector("svg")).not.toBeNull(); // the dots icon, not a text glyph
+    rerender(
+      <SwipeRow actions={actions(vi.fn(), vi.fn())} disabled={false} moreLabel="운동 더 보기">
+        <span>운동</span>
+      </SwipeRow>,
+    );
+    expect(screen.getByRole("button", { name: "운동 더 보기" })).not.toHaveClass("moreShown");
   });
 
   it("moving cancels a long press", () => {

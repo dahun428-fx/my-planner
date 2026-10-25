@@ -290,6 +290,31 @@ def test_get_status_app_has_text_last_7_days(env):
     assert SECRET_OLD not in text and SECRET_HIDDEN not in text
 
 
+def test_get_status_body_numbers_app_only(env):
+    """SP8 10.3, 11장(S2 판정): 걸음·잠 7일 평균은 앱 통로만 받는다. 텔레그램 대화와 회차 차례는 `body`가 null이고
+    건강 영역의 `body_days`(날 수)만 남는다. 숫자는 꾸며 낸 것이다."""
+    from my_planner.store.repos.body import BodyDay, BodyRepo
+
+    _status_tools(env)
+    env.tools.body = BodyRepo(env.conn, env.clock)
+    env.tools.body.upsert(
+        [BodyDay(date(2026, 10, d), 7321, 437) for d in (23, 24, 25)], env.clock.now(),
+    )
+
+    app = env.tools.get_status(RunContext(None, None, channel="app"))
+    assert app["body"]["steps_avg_7"] == 7321 and app["body"]["sleep_avg_7"] == 437
+    for ctx in (
+        RunContext(None, None, channel="telegram"),
+        RunContext(None, None, kind="run", activity_channel="scheduler"),
+    ):
+        out = env.tools.get_status(ctx)
+        assert out["body"] is None
+        health = next(s for s in out["stats"] if s["area"] == "health")
+        assert health["activity"]["body_days"] == 3
+        text = json.dumps(out, ensure_ascii=False)
+        assert "7321" not in text and "437" not in text
+
+
 def test_read_transcript_telegram_omits_app_secretary_lines(env):
     """SP8 1장 조건 7, 11장: 앱 대화의 비서 줄은 이룬 순간의 글을 옮겨 말했을 수 있다. 텔레그램 통로(회차 차례 포함)의
     `read_transcript`에는 그 줄이 없다. 앱 사용자 줄과 텔레그램 줄은 그대로다. 앱 통로는 전부 받는다."""
