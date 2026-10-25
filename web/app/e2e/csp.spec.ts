@@ -67,6 +67,66 @@ test("no CSP violations", async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
+// SP6 13장 "CSP 실행": G-BE2's chat_gallery answer (every brain part in one answer) draws the four
+// new cards from their primitives under the real CSP.
+async function openGallery(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: copy.chat.launcher }).click();
+  const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
+  await expect(input).toBeEnabled();
+  await input.fill("전부 보여 줘");
+  await page.getByRole("button", { name: copy.chat.send }).click();
+  await expect(page.getByText("꾸민 갤러리예요.")).toBeVisible();
+}
+
+test("SP6 cards render under CSP", async ({ page }) => {
+  await mockBe(page, { chat: ["chat_gallery.sse"] });
+  await openGallery(page);
+  const log = page.getByRole("log");
+  // ui_date_choice: a button per candidate date.
+  await expect(log.getByRole("button", { name: "10월 28일 (수) 오전이 비어요" })).toBeVisible();
+  await expect(log.getByRole("button", { name: "10월 29일 (목)" })).toBeVisible();
+  // ui_result: the change pill.
+  await expect(log.getByText(copy.parts.changeChip.moved, { exact: true })).toBeVisible();
+  // ui_period_list: a day head of the week.
+  await expect(log.getByText(copy.parts.dayHead(26, "월"), { exact: true })).toBeVisible();
+  // ui_block: its title and its progress bar.
+  await expect(log.getByRole("heading", { name: "이번 주 운동" })).toBeVisible();
+  expect(await log.locator("progress").count()).toBeGreaterThanOrEqual(1);
+  await expect(page.getByText(copy.parts.unknown)).toHaveCount(0);
+});
+
+test("SP6 gallery has no CSP violations", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => {
+    if (/content.security.policy|CSP/i.test(m.text())) problems.push(`console ${m.type()}: ${m.text()}`);
+  });
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI} at ${e.sourceFile}:${e.lineNumber}:${e.columnNumber}`));
+  });
+  await mockBe(page, { chat: ["chat_gallery.sse"] });
+  await openGallery(page);
+  await expect(page.getByRole("log").getByRole("heading", { name: "이번 주 운동" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `chat: securitypolicyviolation ${v}`));
+  // Then Today and Todos, in the same page (a client move keeps the cards' stylesheet loaded).
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("log")).toHaveCount(0);
+  for (const [tab, title] of [
+    [copy.tabs.todos, copy.todos.title],
+    [copy.tabs.today, copy.today.title],
+  ] as const) {
+    await page.getByRole("navigation").getByRole("link", { name: tab }).click();
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+  }
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `screens: securitypolicyviolation ${v}`));
+  expect(problems).toEqual([]);
+});
+
 // The secretary's Markdown (its parser comes in its own chunk) draws a table, a code block and a
 // link under the CSP, and raw HTML in it stays text.
 test("markdown answer renders with no CSP violations", async ({ page }) => {

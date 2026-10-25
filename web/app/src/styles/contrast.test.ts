@@ -144,6 +144,13 @@ describe("tokens contrast", () => {
     expect(ratio(t["--control"], t["--surface"])).toBeGreaterThanOrEqual(3);
   });
 
+  // SP6 13장 "대비" (G-A3): the pairs the chat cards newly use stay in the 4.5:1 list above, so they
+  // run in every preset, light and dark. The progress fill (3:1) is the test below.
+  it("SP6 pairs are checked in all twelve sets", () => {
+    expect(PAIRS).toEqual(expect.arrayContaining([["--text-2", "--raised"], ["--hue", "--surface"]]));
+    expect(Object.keys(sets)).toEqual(PALETTES.flatMap((p) => [`${p} light`, `${p} dark`]));
+  });
+
   // SP6 5.3.4: the progress bar's fill against its track is a graphic, 3:1 (WCAG 1.4.11).
   it.each(Object.keys(sets))("progress fill vs track: %s --primary on --raised is at least 3:1", (set) => {
     const t = sets[set];

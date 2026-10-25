@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear } from "idb-keyval";
+import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { copy } from "../lib/copy";
@@ -11,6 +12,7 @@ import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
 import { ChatSheet } from "./ChatSheet";
 import { loadParts } from "./localParts";
+import { toViewParts } from "./parts";
 
 // Spec 13장 "대화 계약", 1장 완료 조건 4: the BE's golden SSE files, read from the repo, through
 // useChat + parts.ts to what the sheet shows.
@@ -241,3 +243,143 @@ describe("chat contract", () => {
     expect(bodies).toHaveLength(1);
   });
 });
+
+// SP6 13장 "앱 대화 계약" (G-A3): G-BE2's golden answers for the four new cards, read in place.
+// The activity line ("✓ …") is the "확인 칸": it stays unless a drawn ui_result shows every
+// activity it stands for (hideCoveredActivity). No hand-written SSE for these cards remains.
+const activityLine = () => screen.getByRole("log").querySelector("[data-activity]");
+const confirmationOf = (body: string) => {
+  const ev = events(body).find((e) => e.includes('"data-activity"'));
+  return (JSON.parse(ev!.slice("data: ".length)) as { data: { confirmation: string } }).data.confirmation;
+};
+const cards = () => screen.getByRole("log").querySelectorAll("section");
+
+/** A golden answer as useChat's stream makes it, through the AI SDK's own reader. */
+async function goldenMessage(name: string): Promise<UIMessage> {
+  const chunks = events(golden(name))
+    .map((e) => e.slice("data: ".length))
+    .filter((d) => d !== "[DONE]")
+    .map((d) => JSON.parse(d) as UIMessageChunk);
+  const stream = new ReadableStream<UIMessageChunk>({
+    start(c) {
+      chunks.forEach((ch) => c.enqueue(ch));
+      c.close();
+    },
+  });
+  let last: UIMessage | undefined;
+  for await (const m of readUIMessageStream({ stream, terminateOnError: true })) last = m;
+  return last!;
+}
+
+describe("chat contract: SP6 cards (golden)", () => {
+  it("date_choice: DateChoice draws, no ui_result, the activity line stays", async () => {
+    const body = golden("chat_date_choice.sse");
+    serveChat(() => sseResponse(body));
+    const { send } = await openSheet();
+    await send("치과 예약 추가해 줘");
+    expect(await screen.findByText("치과 예약은 언제 할까요?")).toBeInTheDocument();
+    const log = screen.getByRole("log");
+    // add_task is a brain tool (not drawn); the card is the only part, its to-do's title under the question.
+    expect(cards()).toHaveLength(1);
+    const card = within(cards()[0] as HTMLElement);
+    expect(card.getByText("치과 예약")).toBeInTheDocument();
+    for (const day of ["10월 27일 (화)", "10월 28일 (수)", "10월 30일 (금)"]) {
+      expect(card.getByRole("button", { name: new RegExp(`^${day.replace(/[()]/g, "\\$&")}`) })).toBeEnabled();
+    }
+    expect(card.getByRole("button", { name: "10월 27일 (화) 오후가 비어요" })).toBeInTheDocument();
+    expect(card.getByRole("button", { name: copy.parts.otherDay })).toBeEnabled();
+    expect(within(log).queryByText(copy.parts.changeChip.moved)).toBeNull();
+    expect(within(log).queryByText(copy.parts.changeChip.added)).toBeNull();
+    // The golden's confirmation: add_task now plans the to-do for today.
+    expect(confirmationOf(body)).toBe("✓ 추가: 치과 예약 → 오늘");
+    await waitFor(() => expect(activityLine()).toHaveTextContent("✓ 추가: 치과 예약 → 오늘"));
+    expect(await screen.findByRole("button", { name: copy.chat.undo })).toBeInTheDocument(); // the toast's
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("result: Result draws and the activity line it covers is hidden", async () => {
+    const body = golden("chat_result.sse");
+    serveChat(() => sseResponse(body));
+    const { send } = await openSheet();
+    await send("장보기 화요일로 옮겨 줘");
+    expect(await screen.findByText("화요일로 옮겼어요.")).toBeInTheDocument();
+    const card = within(cards()[0] as HTMLElement);
+    expect(cards()).toHaveLength(1);
+    expect(card.getByText(copy.parts.changeChip.moved)).toBeInTheDocument();
+    expect(card.getByText("꾸민 장보기")).toBeInTheDocument();
+    expect(card.getByRole("img", { name: copy.parts.changeAria("10월 25일 (일)", "10월 27일 (화)") })).toBeInTheDocument();
+    // Nothing to press on the card (SP9 9.6): the undo is the toast's, with the same confirmation.
+    expect(card.queryByRole("button")).toBeNull();
+    const undo = await screen.findByRole("button", { name: copy.chat.undo });
+    expect(undo.closest("[role=status]")).toHaveTextContent(confirmationOf(body));
+    expect(activityLine()).toBeNull();
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("period_list: PeriodList draws, three changed rows, the activity line stays", async () => {
+    const body = golden("chat_period_list.sse");
+    serveChat(() => sseResponse(body));
+    const { send } = await openSheet();
+    await send("다음 주로 나눠 옮겨 줘");
+    expect(await screen.findByText("다음 주로 나눠 옮겼어요.")).toBeInTheDocument();
+    expect(cards()).toHaveLength(1);
+    const section = cards()[0] as HTMLElement;
+    const card = within(section);
+    expect(card.getByRole("heading", { name: copy.parts.nextWeek })).toBeInTheDocument();
+    expect(card.getByText(copy.parts.dayHead(29, "목"))).toBeInTheDocument();
+    expect(card.getByText(copy.parts.outsideHead.moved)).toBeInTheDocument();
+    // The three moved to-dos carry the --hue bar (and its spoken words); the fourth row does not.
+    expect(card.getAllByText(copy.parts.changedBySecretary)).toHaveLength(3);
+    for (const title of ["꾸민 보고서 초안", "꾸민 화분 분갈이", "꾸민 산책"]) {
+      expect(card.getByText(title).closest("li"), title).toHaveTextContent(copy.parts.changedBySecretary);
+    }
+    expect(card.getByText("꾸민 독서 모임").closest("li")).not.toHaveTextContent(copy.parts.changedBySecretary);
+    // A ui_period_list does not cover the activities: the line stays, all three changes in it.
+    await waitFor(() => expect(activityLine()).not.toBeNull());
+    expect(activityLine()!.textContent).toBe(confirmationOf(body));
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("block: Block draws with its todo_rows row", async () => {
+    serveChat(() => sseResponse(golden("chat_block.sse")));
+    const { send } = await openSheet();
+    await send("이번 주 운동 어땠지");
+    expect(await screen.findByText("이번 주 운동이에요.")).toBeInTheDocument();
+    expect(cards()).toHaveLength(1);
+    const section = cards()[0] as HTMLElement;
+    const card = within(section);
+    expect(card.getByRole("heading", { name: "이번 주 운동" })).toBeInTheDocument();
+    expect(card.getByText("3회")).toBeInTheDocument();
+    expect(section.querySelector("progress")).toHaveAttribute("value", "3");
+    expect(card.getByRole("checkbox", { name: copy.parts.checkLabel("꾸민 저녁 운동") })).toBeEnabled();
+    expect(card.getByRole("button", { name: "운동 끝났어" })).toBeEnabled();
+    expect(section.querySelector("strong")).toHaveTextContent("목요일");
+    expect(activityLine()).toBeNull();
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+  });
+
+  it("ui_rejected: only the part the BE accepted reaches the app", async () => {
+    const body = golden("chat_ui_rejected.sse");
+    expect(events(body).filter((e) => e.includes('"tool-input-available"'))).toHaveLength(1);
+    serveChat(() => sseResponse(body));
+    const { send } = await openSheet();
+    await send("이번 주 운동 어땠지");
+    expect(await screen.findByText("이번 주 운동이에요.")).toBeInTheDocument();
+    expect(cards()).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { name: "이번 주 운동" })).toHaveLength(1);
+    expect(screen.queryByText(copy.parts.unknown)).toBeNull();
+    await waitFor(async () => expect((await loadParts("<id>"))?.map((p) => p.kind === "ui" && p.name)).toEqual(["ui_block"]));
+  });
+
+  it.each([
+    ["chat_date_choice.sse", [1]],
+    ["chat_result.sse", [2]],
+    ["chat_period_list.sse", [5, 6, 7]],
+    ["chat_gallery.sse", [4]],
+  ])("activityIds read from %s", async (name, ids) => {
+    const parts = toViewParts(await goldenMessage(name));
+    const acts = parts.filter((p) => p.kind === "activity");
+    expect(acts).toEqual([{ kind: "activity", confirmation: confirmationOf(golden(name)), undoIds: ids, activityIds: ids }]);
+  });
+});
+
