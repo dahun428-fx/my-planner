@@ -68,6 +68,12 @@ describe("frontChip", () => {
     expect(chip).toMatchObject({ key: "checkin", label: "체크인 하기", text: "체크인 할게요", checkinId: 341 });
   });
 
+  it("a /today from a BE before the schedule (no events) gives no next-event chip (spec 14)", () => {
+    const old: Partial<Today> = today();
+    delete old.events;
+    expect(frontChip(old as Today, new Date("2026-10-27T05:00:00Z"))).toBeNull();
+  });
+
   it("no check-in chip once answered, after the window, or before it is sent", () => {
     const now = at("2026-10-27T13:00:00Z");
     expect(frontChip(today({ checkins: [run({ state: "answered", answered_at: "2026-10-27T12:30:00Z" })] }), now)).toBeNull();

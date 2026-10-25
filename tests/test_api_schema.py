@@ -114,6 +114,20 @@ def test_schema_includes_habit_models():
     assert models["Today"]["properties"]["habits"]["items"] == {"$ref": "#/$defs/Habit"}
 
 
+def test_today_sp9_fields_not_required():
+    """스펙 14: 앱이 BE보다 먼저 배포되거나 BE가 되돌아가도 `/today`가 모양 검사를 넘도록 SP9 칸은 required가 아니다."""
+    from my_planner.api.models import Today
+
+    today = schema_bundle()["models"]["Today"]
+    assert {"events", "missed_reminders"} <= set(today["properties"])
+    assert not {"events", "missed_reminders"} & set(today["required"])
+    old = Today.model_validate({
+        "date": "2026-10-26", "weekday": "월", "day_boundary": "04:00", "brief": None, "condition": None,
+        "todos": [], "checkins": [], "cards": [], "habits": [],
+    })
+    assert (old.events, old.missed_reminders) == ([], [])
+
+
 def test_cli_schema_prints_bundle(capsys):
     assert cli.main(["schema"]) == 0
     out = capsys.readouterr().out

@@ -1101,7 +1101,7 @@ class Dispatcher:
         return True
 
     def _elsewhere(self, conv: Conversation, channel: Channel) -> list[str] | None:
-        """이 대화의 마지막 메시지 뒤에 다른 통로에서 생긴 활동의 `summary`(최대 5줄, 7.1 "다른 곳에서 바뀐 것").
+        """이 대화의 마지막 메시지 뒤에 다른 통로에서 생긴 활동의 `summary`(최대 5줄, 7.1 "다른 곳에서 바뀐 것", `redact()` 거침).
 
         기준은 받기 직전 그 대화의 `last_message_at`이다(`ConversationRouter.notice_base`, 메모리에만 있다: 재시작을
         넘긴 메시지는 받을 때 갱신된 값을 써서 한 번은 몇 줄 빠질 수 있다. 받아들인 한계, 두뇌는 도구로 다시 읽는다).
@@ -1118,7 +1118,9 @@ class Dispatcher:
             run = self.runs.get(conv.run_id)
             if run is not None and run.finished_at is not None:
                 base = min(base, run.finished_at)
-        return [a.summary for a in self.activity.other_channel_since(base, channel, limit=5)] or None
+        # 활동 `summary`에는 메모·일정·대화 제목 같은 사용자 글이 들어 있어 두뇌에 주기 전에 `redact()`를 거친다(6.3·7.5)
+        rows = self.activity.other_channel_since(base, channel, limit=5)
+        return [redact(a.summary)[0] for a in rows] or None
 
     @staticmethod
     def _not_forked(fork: bool, session_id: str | None, result: BrainResult) -> bool:

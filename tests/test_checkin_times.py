@@ -609,3 +609,32 @@ def test_ps1_scripts_are_crlf_with_bom():
         raw = f.read_bytes()
         assert raw.startswith(b"\xef\xbb\xbf"), f.name
         assert raw.count(b"\n") == raw.count(b"\r\n"), f.name
+
+
+def test_checkin_time_and_conversation_copy_has_no_banned_words():
+    """10장 금지어 검사(최종 리뷰 NIT 6): 체크인 시간 문구(확인 한 줄, 되돌림, 버튼, 오류)와 대화 도구 오류.
+    이 문구들은 `copy.ts`에 없어 `lint:copy`가 보지 않는다."""
+    from my_planner.tools import checkin_times as ct
+    from my_planner.tools import conversations as cv
+    from my_planner.tools.confirmations import (
+        checkin_set_line,
+        slot_label,
+        undo_summary,
+    )
+    from my_planner.tools.ui import banned_words
+
+    lines = [
+        checkin_set_line(loop, day, time(9, 0), time(9, 30), applies)
+        for loop in ("morning_brief", "evening_checkin") for day in ("weekday", "weekend")
+        for applies in ("today", "tomorrow")
+    ]
+    copy = [
+        *lines, *(undo_summary(x) for x in lines),
+        *(f"체크인 시간: {slot_label(loop, day)}" for loop in ("morning_brief", "evening_checkin")
+          for day in ("weekday", "weekend")),
+        *(v for k, v in vars(ct).items() if k.startswith("MSG_")),
+        *(v for k, v in vars(cv).items() if k.startswith("MSG_")),
+    ]
+    assert all(u.startswith("↩ 되돌림: ") for u in copy[len(lines):2 * len(lines)])
+    words = banned_words()
+    assert [(c, w) for c in copy for w in words if w in c] == []

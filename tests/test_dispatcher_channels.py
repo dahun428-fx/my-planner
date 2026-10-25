@@ -195,6 +195,23 @@ async def test_other_channel_notice_max_5_lines(tmp_path):
     assert "다른 곳에서 바뀐 것" not in prompts[2]
 
 
+async def test_other_channel_notice_is_redacted(tmp_path):
+    """앱에서 만든 메모 제목이 텔레그램 두뇌의 "다른 곳에서 바뀐 것"에 갈 때 `redact()`를 거친다(6.3·7.5)."""
+    script = [FakeTurn([], "텔레 답"), FakeTurn([], "텔레 둘")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 13, 0), script=script) as env:
+        await env.telegram("꾸민 인사")
+        env.clock.advance(timedelta(minutes=5))
+        status, _ = await env.action("create_memo", {"body": "비번: hunter2pass!\n꾸민 본문"})
+        assert status == 200
+        env.clock.advance(timedelta(minutes=5))
+        await env.telegram("꾸민 둘째")
+        prompt = env.brain.prompts[1]
+
+    section = prompt.split("## 다른 곳에서 바뀐 것\n", 1)[1].split("\n\n", 1)[0]
+    assert "hunter2pass" not in prompt
+    assert section.splitlines() == ["- ✓ 메모를 만들었어요: 비번: [가림]"]
+
+
 # --- 6.4.5: 답한 회차 ---
 
 

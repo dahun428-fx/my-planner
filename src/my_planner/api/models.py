@@ -432,8 +432,8 @@ class Today(_Model):
     checkins: list[CheckinSummary]
     cards: list[AppCard]
     habits: list[Habit]
-    events: list[EventItem]
-    missed_reminders: list[MissedReminder]
+    events: list[EventItem] = Field(default_factory=list)  # 기본값: 앞선 BE에는 없어서 앱이 required로 읽지 않게
+    missed_reminders: list[MissedReminder] = Field(default_factory=list)  # 기본값: 위와 같다(스펙 14)
 
 
 class WeekDay(_Model):
