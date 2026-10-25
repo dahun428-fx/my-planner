@@ -15,6 +15,10 @@ function readBannedList(): string[] {
 }
 const banned = [...readBannedList(), ...APP_BANNED];
 
+it("APP_BANNED holds the SP8 phrases", () => {
+  expect(APP_BANNED).toEqual(expect.arrayContaining(["보너스가 줄", "스탯이 떨어"]));
+});
+
 // Every copy value as text; template functions are called with sample arguments.
 function texts(value: unknown): string[] {
   if (typeof value === "string") return [value];

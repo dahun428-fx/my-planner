@@ -64,7 +64,6 @@ function Joined({ items }: { items: string[] }) {
 export function StatusView({ status: s }: { status: Status }) {
   const statsId = useId();
   const questsId = useId();
-  const recentId = useId();
   const scored = s.stats.filter((x) => x.score !== null && x.period !== null);
   const latest = scored.length > 0 ? scored.map((x) => x.period!).sort().at(-1)! : null;
   const offersQuest = s.daily_quests.length > 0 || s.stats.some((x) => x.debuff && x.recovery_quest);
@@ -88,7 +87,7 @@ export function StatusView({ status: s }: { status: Status }) {
         )}
       </section>
 
-      <RecentAreas stats={s.stats} headingId={recentId} />
+      <RecentAreas stats={s.stats} />
 
       <section className="panel" aria-labelledby={questsId}>
         <h2 id={questsId}>{T.mainQuests}</h2>

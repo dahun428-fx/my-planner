@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { StatusStat } from "../api/types.gen";
 import { AREAS, STATUS_TEXT as T } from "../lib/labels";
 import { Pictogram } from "./pictograms.gen";
@@ -10,7 +11,8 @@ export function recentAreas(stats: StatusStat[]): StatusStat[] {
 }
 
 /** 요즘 손이 간 영역: where the last four weeks went. A line per area; no earlier value, no direction. */
-export function RecentAreas({ stats, headingId }: { stats: StatusStat[]; headingId: string }) {
+export function RecentAreas({ stats }: { stats: StatusStat[] }) {
+  const headingId = useId();
   const rows = recentAreas(stats);
   return (
     <section className="panel" aria-labelledby={headingId}>

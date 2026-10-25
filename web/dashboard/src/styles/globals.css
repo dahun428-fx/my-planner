@@ -900,14 +900,12 @@ h2 {
   display: block;
   width: 100%;
   height: var(--stat-bar-h);
+  overflow: visible;
 }
 .stat-fill {
   fill: var(--bar-fill);
 }
 /* The recent bonus: empty cells after the base, a 1px ink outline (shape tells it from the fill, not colour). */
-.stat-bar {
-  overflow: visible;
-}
 .stat-bonus {
   fill: none;
   stroke: var(--text);
@@ -947,9 +945,12 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--area);
+  color: var(--text);
   font-size: var(--fs-callout);
   font-weight: 600;
+}
+.recent-name .pictogram {
+  color: var(--area);
 }
 .recent-bonus {
   font-weight: 600;
