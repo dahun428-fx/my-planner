@@ -99,6 +99,16 @@ describe("StatusMoments (SP8 10.2)", () => {
     expect(screen.getByText(THREE[0].text)).toBeInTheDocument();
   });
 
+  it("more_button_is_seen_on_every_row", () => {
+    // 10.2 (final review S4): people who cannot swipe see the way to 숨기기·지우기 without focusing first.
+    renderMoments();
+    for (const m of THREE) {
+      const more = within(rowOf(m.text)).getByRole("button", { name: `${T.more}, ${m.text}` });
+      expect(more).toHaveClass("moreShown");
+      expect(more.querySelector("svg")).not.toBeNull();
+    }
+  });
+
   it("undo_brings_the_row_back", async () => {
     actions(() => applied("이룬 순간 숨김 (10/24)", 77));
     server.use(
@@ -210,12 +220,49 @@ describe("StatusMoments (SP8 10.2)", () => {
     renderMoments();
     await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
     expect(await screen.findByText("더 이른 날의 순간이에요")).toBeInTheDocument();
-    expect(asked).toEqual(["?before=2026-10-23&days=14"]);
+    // The first page starts the day after the earliest shown day, so that day comes back whole.
+    expect(asked).toEqual(["?before=2026-10-24&days=14"]);
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["10월 24일 (토)", "10월 23일 (금)", "10월 20일 (화)"]);
     // The next page goes before what was fetched last.
     await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
     await waitFor(() => expect(asked).toHaveLength(2));
     expect(asked[1]).toBe("?before=2026-10-09&days=14");
+  });
+
+  it("older_keeps_the_rest_of_a_day_cut_at_20", async () => {
+    // Seven days of three moments: `GET /status` gives the newest 20, so 10월 18일 comes with only two of its three.
+    const days = ["2026-10-24", "2026-10-23", "2026-10-22", "2026-10-21", "2026-10-20", "2026-10-19", "2026-10-18"];
+    const all = days.flatMap((d, i) => [0, 1, 2].map((slot) => moment(100 - (i * 3 + slot), d, `${d}의 ${slot + 1}번째 순간이에요`, "health")));
+    expect(all).toHaveLength(21);
+    const asked: string[] = [];
+    server.use(
+      http.get(`${BASE}/moments`, ({ request }) => {
+        const q = new URL(request.url).searchParams;
+        asked.push(`?${q.toString()}`);
+        // The BE's rule: `to` is the day before `before`, and the page reaches 14 days back from it.
+        const to = new Date(`${q.get("before")}T00:00:00Z`);
+        to.setUTCDate(to.getUTCDate() - 1);
+        const from = new Date(to);
+        from.setUTCDate(from.getUTCDate() - 13);
+        const [f, t] = [from.toISOString().slice(0, 10), to.toISOString().slice(0, 10)];
+        return HttpResponse.json({ from: f, to: t, items: all.filter((m) => m.date >= f && m.date <= t) });
+      }),
+    );
+    renderMoments({ moments: all.slice(0, 20) });
+    expect(screen.queryByText("2026-10-18의 3번째 순간이에요")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "지난 순간 더 보기" }));
+    expect(await screen.findByText("2026-10-18의 3번째 순간이에요")).toBeInTheDocument();
+    expect(asked).toEqual(["?before=2026-10-19&days=14"]);
+    for (const m of all) expect(screen.getAllByText(m.text)).toHaveLength(1);
+    // The cut day stays one group, in its own order.
+    const heads = screen.getAllByRole("heading", { level: 3 });
+    expect(heads).toHaveLength(7);
+    const last = heads[6].parentElement as HTMLElement;
+    expect(within(last).getAllByText(/^2026-10-18의/).map((el) => el.textContent)).toEqual([
+      "2026-10-18의 1번째 순간이에요",
+      "2026-10-18의 2번째 순간이에요",
+      "2026-10-18의 3번째 순간이에요",
+    ]);
   });
 
   it("empty_copy", () => {

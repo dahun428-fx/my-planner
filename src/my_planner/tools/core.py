@@ -1299,6 +1299,9 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, Eve
         이룬 순간은 지난 7일(숨긴 것 빼고)만, 통로를 하네스가 고른다(SP8 10.3, D7): 앱 통로(`ctx.channel == "app"`)는
         글이 있는 `Moment`, 그 밖(텔레그램 대화, 회차 차례)은 `[{"date", "count"}]`(날짜와 개수만). 두뇌에게 고르게
         하지 않는다.
+
+        몸 기록 요약(`body`, 걸음·잠 7일 평균)도 앱 통로만 받는다. 그 밖은 `null`이고, 건강 `activity.body_days`(날 수)만
+        남는다(SP8 10.3, 11장: 숫자가 텔레그램 메시지와 원문 기록으로 나가지 않게).
         """
         if self.curve is None or self.status is None or self.conditions is None:
             return _err("상태창을 읽을 수 없어요.")
@@ -1306,6 +1309,8 @@ class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, Eve
             now=self.clock.now(), tz=self.tz, boundary=self.boundary, status=self.status, curve=self.curve,
             tasks=self.tasks, conditions=self.conditions, body=self.body,
         )
+        if ctx.channel != "app":
+            snap["body"] = None
         snap["moments"] = self._brain_moments(ctx)
         del snap["moments_hidden"]  # `GET /status`의 14일 수다. 두뇌에는 지난 7일의 보이는 순간만 준다
         return self._local_times(snap)

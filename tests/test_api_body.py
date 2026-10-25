@@ -16,7 +16,9 @@ from test_dispatcher_messages import kst
 from test_status_snapshot import check, habit
 
 from my_planner.api.body import BODY_MAX_BYTES, BODY_PATH, parse_body_days
+from my_planner.api.calendar import CALENDAR_PATH
 from my_planner.api.models import schema_bundle
+from my_planner.api.server import LIMITER_KEY
 from my_planner.app import _body_token
 from my_planner.store.repos.body import BodyDay, BodyRepo
 from my_planner.tools.actions import ActionRequest
@@ -177,14 +179,26 @@ async def test_api_token_on_body_401(env):
     assert rows(env) == []
 
 
-@pytest.mark.parametrize(("method", "path"), [
-    ("GET", "/status"), ("GET", "/health"), ("GET", "/today"), ("POST", "/actions"), ("POST", "/chat"),
-    ("GET", "/nope"),
-])
-async def test_body_token_on_status_401(env, method, path):
-    resp = await env.request(method, path, token=BODY, json={})
-    assert resp.status == 401
-    assert (await resp.json())["error"]["code"] == "unauthorized"
+# Bearer 검사를 건너뛰는 경로(이름으로 적는다). 이 경로도 `BODY_TOKEN`으로는 열리지 않는지 따로 본다
+PUBLIC_ROUTES = {("GET", CALENDAR_PATH)}  # 캘린더 구독: 처리기가 `?key=`를 비교한다(SP9 5.7)
+
+
+async def test_body_token_401_on_every_other_route(env):
+    """실제 라우터의 모든 경로(`/body` 빼고, `{id}`는 숫자로)에 `BODY_TOKEN`을 보내면 401. 새 경로가 생겨도 이 시험이 본다."""
+    routes = sorted({
+        (r.method, r.resource.canonical) for r in env.client.app.router.routes()
+        if r.resource is not None and r.method != "HEAD"  # HEAD는 aiohttp가 GET마다 더한 것(같은 처리기)
+    })
+    assert ("POST", BODY_PATH) in routes and PUBLIC_ROUTES <= set(routes) and len(routes) > 20
+    for method, path in [*(x for x in routes if x != ("POST", BODY_PATH)), ("GET", "/api/v1/nope")]:
+        url = path.replace("{id}", "1")
+        resp = await env.request(method, url, token=BODY, json={})
+        assert resp.status == 401, (method, path)
+        assert (await resp.json())["error"]["code"] == "unauthorized", (method, path)
+        if (method, path) in PUBLIC_ROUTES:  # 쿼리 자리에 넣어도 안 된다
+            resp = await env.request(method, f"{url}?key={BODY}", token=None)
+            assert resp.status == 401, (method, path)
+        env.client.app[LIMITER_KEY]._failures.clear()  # 실패 세기에 막히지 않게(세기는 다른 시험이 본다)
 
 
 async def test_actions_record_body_days_rejected_400(env):

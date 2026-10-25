@@ -85,3 +85,21 @@
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
+/* moreVisible: a quiet dots icon at rest, level with a one-line row's middle and with the first line when the
+   text wraps (the row keeps padding-right: var(--control-h) for it). */
+.moreShown {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: calc((var(--row) - 1.5rem) / 2) 0 0;
+  color: var(--muted);
+  opacity: 1;
+}
+.moreShown:focus:not(:focus-visible) {
+  outline: none;
+}
+@media (hover: hover) {
+  .moreShown:hover {
+    color: var(--text);
+  }
+}

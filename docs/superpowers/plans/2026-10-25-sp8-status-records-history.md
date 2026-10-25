@@ -23,7 +23,7 @@
 - (5.3, 12장) 보너스가 줄어드는 것을 알리는 문구·표시(아래 화살표, "−0.3", "줄었어요"), 지난 보너스 비교, 남은 날 수, 비율(%)은 어디에도 없다. 보너스는 디버프를 만들지도 지우지도 않는다.
 - (6.6) 이룬 순간은 경험치·칭호를 주지 않는다. `status_xp_ledger`의 `source_kind`는 그대로다.
 - (1장 조건 7, 11장) 이룬 순간의 글은 SQLite `status_moments`에만: 로그, `data/exports/`, 원문 기록, 활동 `summary`, 순간 호출의 SDK 세션 파일, 텔레그램, 웹 푸시, `/client-errors`에 없다. 텔레그램 통로 두뇌는 날짜와 개수만.
-- (6.3) 순간 호출: `session_id = None`, `RunContext(kind="moments")`, 지시문 `moments.md` + 금지어 블록만, `max_turns = 3`, 입력 중 표시 없음, 도구 `mcp__planner__save_moments` 하나, `extra_args = {"no-session-persistence": None}`, **그리고** 호출 바로 뒤 결과의 `session_id`로 그 세션 파일(`<CLAUDE_CONFIG_DIR 또는 ~/.claude>/projects/*/<session_id>.jsonl`)이 있으면 지운다(두 겹, 이 계획의 결정 18). `save_moments`는 대화 도구 목록에 없다(텔레그램 28, 앱 35 그대로).
+- (6.3) 순간 호출: `session_id = None`, `RunContext(kind="moments")`, 지시문 `moments.md` + 금지어 블록만, `max_turns = 3`, 입력 중 표시 없음, 도구 `mcp__planner__save_moments` 하나, `extra_args = {"no-session-persistence": None}`, **그리고** 호출 바로 뒤 결과의 `session_id`로 그 세션 파일(`<CLAUDE_CONFIG_DIR 또는 ~/.claude>/projects/*/<session_id>.jsonl`)이 있으면 지운다(두 겹, 이 계획의 결정 18). `save_moments`는 텔레그램·앱 어느 대화 도구 목록에도 없다(시험이 이름으로 본다).
 - (10.3, 이 계획의 결정 10) 주간 회고 앞머리의 이룬 순간 블록은 **어느 통로든 날짜와 개수만**이다. 순간의 글을 두뇌가 보는 자리는 앱 통로 대화의 `get_status` 하나뿐이고, "곡선에 남길까요?"는 거기서만 묻는다.
 - (6.2) `MOMENTS_LOOKBACK_DAYS = 7`, 상한 여유 `daily_brain_calls − 10`, 실패 2회 → `failed`, 사용자 메시지 6,000자, 끝낸 할 일 20개.
 - (7.2) `BODY_TOKEN`은 `POST /api/v1/body`만, 43자 이상, `API_TOKEN`과 다를 때만 열린다. 본문 4KB, CORS 없음, `client_msg_id` 없음, 활동 기록·경험치 없음. 걸음·잠 숫자는 로그에 없다.
@@ -627,7 +627,7 @@ SP8-03이 플래그와 호출 뒤 지우기를 둘 다 하므로, 이 관문은 
 | 자리 | 문구 |
 |---|---|
 | `/actions` 없는 순간(404) | "없는 순간이에요." |
-| `GET /moments` 오류(400) | "before는 YYYY-MM-DD 형식이에요.", "days는 1~60 사이예요.", "include_hidden은 true나 false예요." |
+| `GET /moments` 오류(400) | "before는 YYYY-MM-DD 형식이어야 해요.", "before는 없는 날짜예요.", "days는 1~60 사이 정수여야 해요.", "include_hidden은 true 또는 false여야 해요." (SP8 최종 리뷰 N1: 다른 읽기 경로의 날짜 오류 "{name}은 YYYY-MM-DD 형식이어야 해요."와 같은 말투인 코드 쪽으로 맞춤) |
 | `add_milestone` 영역 오류 | "area는 career, finance, health, relationships, learning, quality_of_life 가운데 하나예요." |
 | `propose_chapter` 사다리 오류 | "ladder는 0~10 사이의 정수예요." |
 | `seed-life --update-history` 시드 없음(코드 7) | "아직 가져온 시드가 없어요. 먼저 seed-life로 가져와 주세요." |

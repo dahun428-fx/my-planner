@@ -153,6 +153,12 @@ async def test_get_moments_bad_query_400(tmp_path):
         assert code == 400, q
         assert body["error"]["code"] == "invalid_request", q
         assert TEXT not in str(body)
+    # 문구는 플랜 문구 표(H4)와 같다(최종 리뷰 N1)
+    messages = {q: body["error"]["message"] for q, (_, body) in zip(bad, got, strict=True)}
+    assert messages["before=2026-10-1"] == "before는 YYYY-MM-DD 형식이어야 해요."
+    assert messages["before=2026-13-01"] == "before는 없는 날짜예요."
+    assert messages["days=61"] == "days는 1~60 사이 정수여야 해요."
+    assert messages["include_hidden=yes"] == "include_hidden은 true 또는 false여야 해요."
     assert ok[0] == 200 and (ok[1]["from"], ok[1]["to"]) == ("2026-08-27", "2026-10-25")
 
 

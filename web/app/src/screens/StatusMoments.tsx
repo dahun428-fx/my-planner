@@ -9,6 +9,7 @@ import { SwipeRow } from "../components/SwipeRow";
 import { useToast } from "../components/Toast";
 import { useWritable } from "../lib/ConnectionProvider";
 import { copy, momentDay } from "../lib/copy";
+import { addDays } from "../lib/time";
 import styles from "./Status.module.css";
 
 const T = copy.statusScreen;
@@ -130,7 +131,9 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
   const earliest = [...moments, ...older].map((m) => m.date).sort()[0] ?? null;
 
   const loadOlder = async () => {
-    const before = cursor ?? earliest;
+    // The first page asks from the day after the earliest shown day, so that day comes whole again: `GET /status`
+    // stops at 20 moments and can cut a day in the middle. The rows already shown drop out by id below.
+    const before = cursor ?? (earliest === null ? null : addDays(earliest, 1));
     if (loadingOlder) return;
     setLoadingOlder(true);
     // Nothing shown yet (a quiet week): ask for the last 14 days up to today, then page back from its `from`.
@@ -171,6 +174,7 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
                         ]}
                         disabled={!writable}
                         moreLabel={`${T.more}, ${m.text}`}
+                        moreVisible
                       >
                         <div className={styles.momentRow}>
                           <Face moment={m} />
