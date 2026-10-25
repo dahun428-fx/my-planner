@@ -8,7 +8,9 @@
   - 구조 작업 my-planner-medic(SP6 자동 복구): 로그온 + 5분 감시 트리거로 `pythonw scripts\medic_boot.py`(medic 실행기)를 띄웁니다.
     시간 제한 없음, IgnoreNew. 운영 작업(my-planner)을 등록할 때만 함께 등록합니다. `-NoMedic`이면 등록하지 않고 있으면 지웁니다.
   - 깨우기 작업 my-planner-wake: 회차 시각 5분 전에 깨우고 pythonw -c pass만 실행합니다.
-    시각은 `python -m my_planner.wake_times`가 config.toml에서 계산합니다. 회차 시각을 바꾸면 다시 실행하세요.
+    시각은 `python -m my_planner.wake_times`가 config.toml과 앱에서 바꾼 체크인 시간(DB, 읽기 전용)으로 계산합니다.
+    앱 설정에서 체크인 시간을 바꾸면 BE가 scripts\update_wake_task.ps1로 깨우기 작업만 다시 등록합니다.
+    그게 안 됐다는 안내(설정 화면)가 보이거나 config.toml의 회차 시각을 바꾸면 이 스크립트를 다시 실행하세요.
     S4: 깨우기 타이머는 AC 전원에서만 확인했습니다. 배터리에서는 전원 옵션 "절전 모드 해제 타이머 허용"이 정합니다.
 
   - 개발용 구조 작업(-MedicTaskName my-planner-medic-dev, 배포 흐름 스펙 5.2·5.3): 운영과 같은 템플릿에 이름·경로만 다릅니다.
@@ -40,10 +42,6 @@ Set-StrictMode -Version Latest
 $MainTask = $TaskName
 $WakeTask = 'my-planner-wake'
 $MedicTask = 'my-planner-medic'
-$DaysXml = @{
-    weekday = '<Monday /><Tuesday /><Wednesday /><Thursday /><Friday />'
-    weekend = '<Saturday /><Sunday />'
-}
 
 # Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
@@ -66,26 +64,8 @@ foreach ($exe in @($python, $pythonw)) {
 $user = "$env:USERDOMAIN\$env:USERNAME"
 $outDir = Join-Path $Root 'state\tasks'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-
-function ConvertTo-XmlText([string]$Value) {
-    return [System.Security.SecurityElement]::Escape($Value)
-}
-
-function Expand-Template([string]$Name, [hashtable]$Values) {
-    $text = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot $Name)
-    foreach ($key in $Values.Keys) {
-        $text = $text.Replace('{{' + $key + '}}', $Values[$key])
-    }
-    if ($text.Contains('{{')) { throw "채우지 않은 자리표시자가 남았습니다: $Name" }
-    return $text
-}
-
-function Register-FromXml([string]$TaskName, [string]$Xml) {
-    $path = Join-Path $outDir "$TaskName.xml"
-    Set-Content -LiteralPath $path -Value $Xml -Encoding Unicode -NoNewline  # UTF-16 LE (BOM)
-    Register-ScheduledTask -Xml (Get-Content -Raw -LiteralPath $path) -TaskName $TaskName -Force | Out-Null
-    Write-Output "등록했습니다: $TaskName ($path)"
-}
+# 템플릿 채우기, 등록, 깨우기 시각(Get-WakeTimes)은 update_wake_task.ps1과 함께 쓴다
+. (Join-Path $PSScriptRoot 'task_common.ps1')
 
 function Stop-MedicProcesses {
     # 작업을 멈춰도 실행기가 띄운 자식 python(medic)은 남는다: 이 폴더의 medic 프로세스 트리를 끝낸다
@@ -96,27 +76,6 @@ function Stop-MedicProcesses {
         ($_.CommandLine -match '(^|\s)-m\s+my_planner_medic(\s|$)' -or $_.CommandLine -match 'medic_boot\.py')
     })
     foreach ($proc in $found) { & taskkill /T /F /PID $proc.ProcessId | Out-Null }
-}
-
-function Get-WakeTimes {
-    # config.toml의 [schedule]만 읽습니다(.env는 읽지 않음). 한 줄에 하나: "weekday HH:MM" / "weekend HH:MM"
-    $saved = $env:MY_PLANNER_ROOT
-    try {
-        $env:MY_PLANNER_ROOT = $Root
-        $lines = @(& $python -m my_planner.wake_times)
-        if ($LASTEXITCODE -ne 0) { throw "wake_times 실행이 끝까지 되지 않았습니다(종료 코드 $LASTEXITCODE)" }
-    } finally {
-        $env:MY_PLANNER_ROOT = $saved
-    }
-    $times = @()
-    foreach ($line in $lines) {
-        if ("$line".Trim() -notmatch '^(weekday|weekend) ([0-2][0-9]:[0-5][0-9])$') {
-            throw "wake_times 출력 형식이 다릅니다: $line"
-        }
-        $times += [pscustomobject]@{ Kind = $Matches[1]; Time = $Matches[2] }
-    }
-    if ($times.Count -eq 0) { throw 'wake_times가 시각을 하나도 내지 않았습니다' }
-    return $times
 }
 
 $common = @{

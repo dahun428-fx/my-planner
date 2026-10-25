@@ -27,10 +27,12 @@ from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
 from my_planner.api.push import (
     delete_subscription,
+    get_checkin_times,
     get_notify,
     get_vapid_public_key,
     post_push_test,
     post_subscription,
+    put_checkin_times,
     put_notify,
 )
 from my_planner.api.read import (
@@ -198,6 +200,7 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/activity", get_activity),
     ("/push/vapid-public-key", get_vapid_public_key),
     ("/settings/notify", get_notify),
+    ("/settings/checkin-times", get_checkin_times),
 )
 
 
@@ -241,6 +244,7 @@ def build_app(deps: ApiDeps) -> web.Application:
     for path, write in WRITE_ROUTES:
         app.router.add_post(API_PREFIX + path, write_handler(write))
     app.router.add_put(API_PREFIX + "/settings/notify", write_handler(put_notify))
+    app.router.add_put(API_PREFIX + "/settings/checkin-times", write_handler(put_checkin_times))
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
     return app
 

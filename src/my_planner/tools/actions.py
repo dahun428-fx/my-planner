@@ -256,6 +256,18 @@ def _priorities_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     return [priorities_target(c, p), *(task_target(i) for i in dict.fromkeys([*current, *new]))]
 
 
+def _checkin_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """체크인 시간 한 칸(`checkin_time:<loop>:<day_type>`, SP9 8장). 토큰 뒤에 그 칸을 바꾸면 `stale`이다."""
+    from my_planner.tools.checkin_times import (
+        checkin_target,
+        parse_day_type,
+        parse_loop,
+    )
+
+    loop, day_type = parse_loop(args.get("loop")), parse_day_type(args.get("day_type"))
+    return [checkin_target(loop, day_type)] if loop is not None and day_type is not None else []
+
+
 def confirm_targets(tasks: TasksRepo, action: str, args: dict[str, Any]) -> list[str]:
     """확인 토큰의 대상(`stale` 판정). 그 가운데 하나라도 토큰 뒤 활동이 있으면 적용하지 않는다(5.2). 읽기만 한다."""
     spec = ACTIONS.get(action)
@@ -484,6 +496,9 @@ ACTIONS: dict[str, ActionSpec] = {
     ),
     "check_habit": ActionSpec("check_habit"),
     "uncheck_habit": ActionSpec("uncheck_habit"),
+    # 체크인 시간(SP9 8장): 앱 설정(`PUT /settings/checkin-times`)과 두뇌 확인 카드(`/actions` + 토큰)가 같은 동작.
+    # 바로 적용하고 되돌릴 수 있다(이전 칸으로). 두뇌 도구 `set_checkin_time`은 확인 토큰만 만든다
+    "set_checkin_time": ActionSpec("apply_checkin_time", target=_checkin_target),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),

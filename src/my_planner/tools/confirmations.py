@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from my_planner.domain import Area, ToolEvent
@@ -349,3 +349,31 @@ def period_label(cadence: str, period: str, current: str) -> str:
 def draft_dropped_reply(title: str) -> str:
     """`✗ 빼기` 버튼을 눌렀을 때의 알림. 버튼 낱말에 맞춘다(`drop_task`의 "내려놓음"과 다르다)."""
     return f"✗ 뺐어요: {title}"
+
+
+# --- 체크인 시간 (SP9 8장, 10장 문구) ---
+
+CHECKIN_LOOP_LABEL = {"morning_brief": "아침", "evening_checkin": "저녁"}
+CHECKIN_DAY_LABEL = {"weekday": "평일", "weekend": "주말"}
+CHECKIN_APPLIES_LABEL = {"today": "오늘부터", "tomorrow": "내일부터"}
+
+
+def slot_label(loop: str, day_type: str) -> str:
+    """`평일 아침` 같은 칸 이름(10장)."""
+    return f"{CHECKIN_DAY_LABEL[day_type]} {CHECKIN_LOOP_LABEL[str(getattr(loop, 'value', loop))]}"
+
+
+def confirm_checkin_summary(loop: str, day_type: str, before: time, after: time, applies: str) -> str:
+    """두뇌 도구의 확인 문구(8장): `체크인 시간을 바꿔요: 평일 아침 09:00 → 09:30 (내일부터)`."""
+    return (
+        f"체크인 시간을 바꿔요: {slot_label(loop, day_type)} {before:%H:%M} → {after:%H:%M} "
+        f"({CHECKIN_APPLIES_LABEL[applies]})"
+    )
+
+
+def checkin_set_line(loop: str, day_type: str, before: time, after: time, applies: str) -> str:
+    """적용한 활동 한 줄: `✓ 체크인 시간 바꿈: 평일 아침 09:00 → 09:30 (내일부터)`."""
+    return (
+        f"✓ 체크인 시간 바꿈: {slot_label(loop, day_type)} {before:%H:%M} → {after:%H:%M} "
+        f"({CHECKIN_APPLIES_LABEL[applies]})"
+    )

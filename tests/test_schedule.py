@@ -133,3 +133,40 @@ def test_review_week_day_must_be_sunday(tmp_path):
     with pytest.raises(ValidationError):
         make_settings(tmp_path, schedule=ScheduleConfig(review=ReviewSchedule(week=WeeklyTime(day="mon", time=time(18, 0)))))
     assert make_settings(tmp_path).schedule.review.week.day == "sun"
+
+
+# --- SP9-02 체크인 시간 바꾸기 (스펙 8장) ---
+
+
+def test_checkin_time_uses_prev_before_from(cfg):
+    from datetime import date, time
+
+    from my_planner.loop.schedule import CheckinSlot, checkin_time
+
+    ov = {LoopKey.morning_brief: {"weekday": CheckinSlot(time(9, 30), date(2026, 10, 28), time(9, 0))}}
+    # 10/27(화)는 from 전이라 prev, 10/28(수)부터 새 시각. 주말 칸은 config 그대로
+    assert checkin_time(cfg, ov, LoopKey.morning_brief, date(2026, 10, 27)) == time(9, 0)
+    assert checkin_time(cfg, ov, LoopKey.morning_brief, date(2026, 10, 28)) == time(9, 30)
+    assert checkin_time(cfg, ov, LoopKey.morning_brief, date(2026, 10, 31)) == time(10, 0)
+    assert checkin_time(cfg, {}, LoopKey.evening_checkin, date(2026, 10, 26)) == time(17, 30)
+    got = due_between(kst(2026, 10, 27, 4, 0), kst(2026, 10, 29, 4, 0), cfg, cfg.timezone,
+                      {LoopKey.morning_brief}, overrides=ov)
+    assert got == [Due(LoopKey.morning_brief, kst(2026, 10, 27, 9, 0)), Due(LoopKey.morning_brief, kst(2026, 10, 28, 9, 30))]
+
+
+def test_review_week_follows_weekend_evening(cfg):
+    from datetime import date, time
+
+    from my_planner.loop.schedule import ENABLED_LOOPS, CheckinSlot, review_time
+
+    # override가 없으면 config의 review.week.time
+    assert review_time(cfg, {}, date(2026, 11, 1)) == time(18, 0)
+    ov = {LoopKey.evening_checkin: {"weekend": CheckinSlot(time(20, 0), date(2026, 11, 1), time(18, 0))}}
+    assert review_time(cfg, ov, date(2026, 10, 25)) == time(18, 0)  # from 전
+    assert review_time(cfg, ov, date(2026, 11, 1)) == time(20, 0)
+    got = due_between(kst(2026, 11, 1, 4, 0), kst(2026, 11, 2, 4, 0), cfg, cfg.timezone, ENABLED_LOOPS, overrides=ov)
+    assert got == [
+        Due(LoopKey.morning_brief, kst(2026, 11, 1, 10, 0)),
+        Due(LoopKey.evening_checkin, kst(2026, 11, 1, 20, 0)),
+        Due(LoopKey.review, kst(2026, 11, 1, 20, 0), Cadence.week),
+    ]

@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from my_planner.clock import logical_date
 from my_planner.domain import LoopKey, SkipReason
-from my_planner.loop.schedule import Due, due_between, limit_for
+from my_planner.loop.schedule import Due, Overrides, due_between, limit_for
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -68,7 +68,9 @@ def decide(
     cfg: Settings,
     tz: str | tzinfo,
     boundary: time,
+    overrides: Overrides | None = None,
 ) -> Decision:
+    """`overrides`: 바꾼 체크인 시각(SP9 8장). R1이 그날 아침 브리핑 시각을 볼 때 쓴다."""
     # 시계가 뒤로 갔으면(last_seen_at이 미래) 공백을 0으로 본다
     clock_backwards = last_seen_at is not None and last_seen_at > now
     gap = timedelta(0) if last_seen_at is None or clock_backwards else now - last_seen_at
@@ -96,7 +98,7 @@ def decide(
     if gap >= RETURN_GAP and not paused_now:  # R1: 멈춤 중이면 복귀 인사를 만들지 않는다
         # 이미 넘겨 받은 회고가 있으면 그것도 공백의 회차로 다시 판정한다
         gap_runs = [*pending, *([carried_review] if carried_review else [])]
-        d = _return(now, last_seen_at, gap_runs, cfg, tz, boundary)
+        d = _return(now, last_seen_at, gap_runs, cfg, tz, boundary, overrides)
         d.skipped = [*paused, *d.skipped]
         return d
     d = _regular(now, pending, carried_review, proactive_today, plan_open, cfg, tz, boundary)
@@ -148,6 +150,7 @@ def _return(
     cfg: Settings,
     tz: str | tzinfo,
     boundary: time,
+    overrides: Overrides | None = None,
 ) -> Decision:
     """R1: 공백 동안의 회차는 `skipped(merged_into_return)`, 복귀 인사 하나를 만든다.
 
@@ -169,6 +172,6 @@ def _return(
     # 복귀 인사가 오늘(논리적 날짜) 아침 브리핑 예정 시각 전에 나가면, 그 아침 브리핑도 건너뛴다
     zone = ZoneInfo(tz) if isinstance(tz, str) else tz
     day_end = datetime.combine(logical_date(now, tz, boundary) + timedelta(days=1), boundary, zone)
-    for morning in due_between(now, day_end, cfg, tz, {LoopKey.morning_brief}):
+    for morning in due_between(now, day_end, cfg, tz, {LoopKey.morning_brief}, overrides):
         skipped.append((morning, SkipReason.merged_into_return))
     return Decision(primary=Due(LoopKey.return_, now), skipped=skipped, create_return=True, carry_review=carry)

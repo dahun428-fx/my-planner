@@ -31,9 +31,12 @@ from my_planner.api.models import (
     error_response,
 )
 from my_planner.clock import to_iso
+from my_planner.platform import windows
 from my_planner.store.repos.activity import ActivityRepo
 from my_planner.tools.actions import ActionRequest
 from my_planner.tools.activity import undoable_now
+from my_planner.tools.checkin_times import ACTION as CHECKIN_ACTION
+from my_planner.tools.checkin_times import KIND as CHECKIN_KIND
 
 if TYPE_CHECKING:
     from my_planner.api.server import ApiDeps
@@ -71,8 +74,26 @@ async def post_actions(request: web.Request, deps: ApiDeps) -> web.StreamRespons
             confirm_token=req.confirm_token,
         )
     )
+    if res.status == "applied" and req.action == CHECKIN_ACTION:
+        await _refresh_wake(deps)  # 확인 카드로 바꾼 체크인 시간(SP9 8장)
     model = _RESPONSE_MODELS.get(res.status, ErrorBody)
     return web.json_response(dump(model, res.body), status=res.http_status)
+
+
+async def _refresh_wake(deps: ApiDeps) -> bool:
+    """체크인 시간이 바뀌면 깨우기 작업을 다시 등록한다(SP9 8장). 안 돼도 답은 그대로다(설정 화면은 PUT의 결과를 본다)."""
+    return await windows.refresh_wake_task(root=deps.settings.paths.root)
+
+
+def _undid_checkin_time(deps: ApiDeps, undone_id: Any) -> bool:
+    if deps.read_conn is None or not isinstance(undone_id, int):
+        return False
+    conn = deps.read_conn()
+    try:
+        a = ActivityRepo(conn, deps.clock).get(undone_id)
+    finally:
+        conn.close()
+    return a is not None and a.kind == CHECKIN_KIND
 
 
 async def post_undo(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
@@ -93,6 +114,8 @@ async def post_undo(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
             endpoint="undo",
         )
     )
+    if res.status == "undone" and _undid_checkin_time(deps, res.body.get("undone")):
+        await _refresh_wake(deps)
     model = UndoResponse if res.status in ("undone", "already_undone") else ErrorBody
     return web.json_response(dump(model, res.body), status=res.http_status)
 

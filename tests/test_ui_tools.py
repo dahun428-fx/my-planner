@@ -149,6 +149,7 @@ def test_ui_todo_list_stream_output_has_current_todos(uenv):
 def test_ui_and_card_tools_absent_from_telegram(uenv):
     assert APP_ONLY_TOOLS == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
+        "set_checkin_time",
     ]
     assert tool_names_for("telegram") == TOOL_NAMES
     assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
@@ -287,7 +288,7 @@ def test_ui_habit_check_no_db_writes(uenv, tmp_path):
 
 
 def test_app_tool_count_35():
-    assert len(tool_names_for("app")) == 35 and len(tool_names_for("telegram")) == 28
+    assert len(tool_names_for("app")) == 36 and len(tool_names_for("telegram")) == 28  # SP9-02 +1(앱에만)
     assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for("telegram")
     names = [t.name for t in build_planner_tools(Tools.__new__(Tools), RunContext(conversation_id=None, run_id=None, channel="app"))]
     assert "ui_habit_check" in names  # 도구 정의(설명, 스키마)가 있다

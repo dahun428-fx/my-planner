@@ -12,6 +12,8 @@ import degraded from "../test/fixtures/health-degraded.json";
 import paused from "../test/fixtures/health-paused.json";
 import notify from "../test/fixtures/notify.json";
 import notifyTelegram from "../test/fixtures/notify-effective-telegram.json";
+import checkinTimes from "../test/fixtures/checkin-times.json";
+import type { CheckinTimesUpdated } from "../api/types.gen";
 import { device, storePushId, storedPushId, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
 import { renderWithProviders, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -74,6 +76,7 @@ const pushRow = () => screen.findByTestId("device-push");
 
 describe("Settings", () => {
   it("more button at the top right goes to /more/ (spec 9.1)", async () => {
+    serve(); // every side request answered (an unanswered one is an MSW error)
     renderWithProviders(<Settings />);
     expect(await screen.findByRole("link", { name: "더보기" })).toHaveAttribute("href", "/more/");
   });
@@ -258,17 +261,90 @@ describe("Settings", () => {
     expect(await screen.findByText(copy.settings.testNoDevices)).toBeInTheDocument();
   });
 
-  it("schedule is read-only constants", async () => {
+  // SP9 9.7: 체크인 시간 네 줄, 고르면 바로 바꾸고 토스트, 주말 저녁 안내, 깨우기 작업 안내 줄.
+  const checkinGroup = async () =>
+    (await screen.findByRole("heading", { name: copy.checkinTimes.heading })).closest("section") as HTMLElement;
+
+  function serveCheckinPut(answer: Partial<CheckinTimesUpdated> = {}) {
+    const puts: unknown[] = [];
+    server.use(
+      http.put(`${BASE}/settings/checkin-times`, async ({ request }) => {
+        const body = (await request.json()) as { loop: string; day_type: string; time: string };
+        puts.push(body);
+        const items = checkinTimes.items.map((i) =>
+          i.loop === body.loop && i.day_type === body.day_type ? { ...i, time: body.time, from: "2026-10-27" } : i,
+        );
+        return HttpResponse.json({ items, applies: "tomorrow", wake_updated: true, activity_id: 9, undo_id: 9, ...answer });
+      }),
+    );
+    return puts;
+  }
+
+  it("check-in times: four rows with the current times and the weekend-evening note", async () => {
     serve();
     renderWithProviders(<Settings />, { route: "/settings/" });
-    const group = (await screen.findByRole("heading", { name: copy.settings.schedule })).closest("section") as HTMLElement;
-    expect(within(group).getByText(copy.settings.weekdays)).toBeInTheDocument();
+    const group = await checkinGroup();
+    const c = copy.checkinTimes;
+    const selects = await within(group).findAllByRole("combobox");
+    expect(selects.map((s) => s.getAttribute("aria-label"))).toEqual([c.weekdayMorning, c.weekdayEvening, c.weekendMorning, c.weekendEvening]);
+    expect(selects.map((s) => (s as HTMLSelectElement).value)).toEqual(["09:00", "17:30", "10:00", "18:00"]);
+    expect(within(group).getByText(c.reviewNote)).toBeInTheDocument();
+    expect(within(group).queryByText(c.wakeStale)).toBeNull();
+    // 10분 단위, 아침 05:00~11:30, 저녁 15:00~23:30
+    const morning = within(selects[0]).getAllByRole("option").map((o) => o.textContent);
+    expect(morning[0]).toBe("05:00");
+    expect(morning.at(-1)).toBe("11:30");
+    expect(morning).toHaveLength(40);
+    const evening = within(selects[1]).getAllByRole("option").map((o) => o.textContent);
+    expect([evening[0], evening.at(-1), evening.length]).toEqual(["15:00", "23:30", 52]);
+  });
+
+  it("check-in times: picking a time saves it and says from when", async () => {
+    serve();
+    const puts = serveCheckinPut();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await checkinGroup();
+    const select = await within(group).findByRole("combobox", { name: copy.checkinTimes.weekdayMorning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "09:30");
+    expect(await screen.findByText(copy.checkinTimes.fromTomorrow)).toBeInTheDocument();
+    expect(puts).toEqual([{ loop: "morning_brief", day_type: "weekday", time: "09:30" }]);
+    expect((select as HTMLSelectElement).value).toBe("09:30");
+    expect(screen.getByRole("button", { name: copy.activity.undo })).toBeInTheDocument();
+  });
+
+  it("check-in times: from today toast", async () => {
+    serve();
+    serveCheckinPut({ applies: "today" });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await checkinGroup()).findByRole("combobox", { name: copy.checkinTimes.weekendEvening });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "20:00");
+    expect(await screen.findByText(copy.checkinTimes.fromToday)).toBeInTheDocument();
+  });
+
+  it("check-in times: wake_updated false shows the register_task line", async () => {
+    serve();
+    serveCheckinPut({ wake_updated: false });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await checkinGroup();
+    const select = await within(group).findByRole("combobox", { name: copy.checkinTimes.weekdayEvening });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "18:00");
+    expect(await within(group).findByText(copy.checkinTimes.wakeStale)).toBeInTheDocument();
+  });
+
+  it("check-in times: an older BE without the route shows the SP1 times read-only", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/checkin-times`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = (await screen.findByText(copy.settings.scheduleNote)).closest("section") as HTMLElement;
     expect(within(group).getByText("09:00 · 17:30")).toBeInTheDocument();
-    expect(within(group).getByText(copy.settings.weekend)).toBeInTheDocument();
     expect(within(group).getByText("10:00 · 18:00")).toBeInTheDocument();
-    expect(within(group).getByText(copy.settings.scheduleNote)).toBeInTheDocument();
-    expect(within(group).queryAllByRole("button")).toEqual([]);
-    expect(within(group).queryAllByRole("textbox")).toEqual([]);
+    expect(within(group).queryAllByRole("combobox")).toEqual([]);
   });
 
   it("pause sheet offers 1 3 7 14", async () => {

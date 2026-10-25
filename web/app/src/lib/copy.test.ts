@@ -142,6 +142,15 @@ describe("copy", () => {
     for (const t of texts(m)) expect(banned.filter((w) => t.includes(w))).toEqual([]);
   });
 
+  it("checkin times copy is SP9 10장 verbatim", () => {
+    const c = copy.checkinTimes;
+    expect([c.heading, c.weekdayMorning, c.weekdayEvening, c.weekendMorning, c.weekendEvening, c.fromToday, c.fromTomorrow, c.wakeStale].join(" · ")).toBe(
+      "체크인 시간 · 평일 아침 · 평일 저녁 · 주말 아침 · 주말 저녁 · 오늘부터 적용돼요 · 내일부터 적용돼요 · 노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요.",
+    );
+    expect(c.reviewNote).toBe("주말 저녁은 일요일 주간 회고 시각이기도 해요."); // 9.7
+    for (const t of texts(c)) expect(banned.filter((w) => t.includes(w))).toEqual([]);
+  });
+
   it("SP9 9.6 chat activity copy", () => {
     expect(copy.chat.changedMany(3)).toBe("✓ 3개를 바꿨어요"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     expect(copy.chat.undonePartly(1)).toBe("1개만 되돌렸어요");
