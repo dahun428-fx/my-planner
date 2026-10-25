@@ -51,9 +51,7 @@ function Stats({ stats, body }: { stats: StatusStat[]; body: StatusData["body"] 
             </span>
             <span className={styles.text}>
               <span className={styles.name}>{s.label}</span>
-              {(s.score !== null || s.bonus > 0) && (
-                <span className={styles.meta}>{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
-              )}
+              <span className={styles.meta}>{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
               {s.area === "health" &&
                 (body === null ? (
                   <span className={styles.meta}>{T.bodyConnect}</span>

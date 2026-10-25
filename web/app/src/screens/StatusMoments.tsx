@@ -50,6 +50,7 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
   const [older, setOlder] = useState<Moment[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [emptyRuns, setEmptyRuns] = useState(0);
   const [open, setOpen] = useState(false);
   const [hiddenList, setHiddenList] = useState<Moment[] | null>(null);
   const [again, setAgain] = useState(0);
@@ -141,6 +142,9 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
     const r = await apiGet<MomentsList>(path, "MomentsList");
     setLoadingOlder(false);
     if (r.kind === "ok") {
+      // Nothing new twice in a row (the first page can only repeat the S1 overlap day): say so quietly, keep the button.
+      const fresh = r.data.items.filter((m) => !older.some((x) => x.id === m.id) && !moments.some((x) => x.id === m.id));
+      setEmptyRuns((n) => (fresh.length === 0 ? n + 1 : 0));
       setOlder((o) => [...o, ...r.data.items.filter((m) => !o.some((x) => x.id === m.id))]);
       setCursor(r.data.from);
     } else toast.show({ text: failureText(r) });
@@ -191,6 +195,11 @@ export function StatusMoments({ moments, hiddenCount, onChanged }: { moments: Mo
         <button type="button" className={styles.textButton} disabled={loadingOlder} onClick={() => void loadOlder()}>
           {T.older}
         </button>
+        {emptyRuns >= 2 && (
+          <p className={styles.empty} role="status">
+            {T.olderNone}
+          </p>
+        )}
         {hiddenCount > 0 && (
           <div className={styles.hiddenGroup}>
             <button type="button" className={styles.textButton} aria-expanded={open} onClick={() => setOpen((o) => !o)}>

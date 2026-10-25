@@ -72,6 +72,17 @@ describe("Status (spec 10.2)", () => {
     expect(lines[1].textContent).toContain("4주 동안 할 일 12개");
   });
 
+  it("no_score_and_no_bonus_still_hints_at_the_review", async () => {
+    serve({ ...body, stats: body.stats.map((s) => (s.area === "finance" ? { ...s, score: null, period: null, bonus: 0, effective_score: null } : s)) });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 1, name: "상태창" });
+    const finance = within(sectionOf(copy.statusScreen.statsHeading))
+      .getAllByRole("listitem")
+      .find((r) => r.dataset.area === "finance")!;
+    expect(within(finance).getByText("분기 회고에서 점수를 정하면 더해져요")).toBeInTheDocument();
+    expect(finance.textContent).not.toContain("요즘");
+  });
+
   it("empty recent areas say what fills them", async () => {
     serve({ ...body, stats: body.stats.map((s) => ({ ...s, bonus: 0, effective_score: s.score })) });
     renderWithProviders(<Status />, { route: "/status/" });

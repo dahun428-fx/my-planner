@@ -229,7 +229,7 @@ export const STATUS_TEXT = {
   recentEmpty: "할 일, 체크인 답, 컨디션 기록, 쉬는 날 모두 경험치가 돼요.",
   // SP8 10.1, appendix A. Numbers with one decimal; nothing here compares with an earlier bonus.
   statSub: (base: number, bonus: number) => (bonus > 0 ? `바탕 ${base} · 요즘 +${bonus.toFixed(1)}` : `바탕 ${base}`),
-  statSubNoBase: (bonus: number) => `요즘 +${bonus.toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요`,
+  statSubNoBase: (bonus: number) => (bonus > 0 ? `요즘 +${bonus.toFixed(1)} · 분기 회고에서 점수를 정하면 더해져요` : "분기 회고에서 점수를 정하면 더해져요"),
   recentHeading: "요즘 손이 간 영역",
   recentLine: (bonus: number) => `+${bonus.toFixed(1)}`,
   recentCounts: (c: { tasks: number; habit_checks: number; body_days: number }) =>

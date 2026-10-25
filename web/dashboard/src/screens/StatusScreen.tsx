@@ -39,9 +39,7 @@ function StatRow({ stat: s, latest, body }: { stat: StatusStat; latest: string |
         )}
         {older && <span className="meta"> {T.olderPeriod(s.period!)}</span>}
       </span>
-      {(s.score !== null || s.bonus > 0) && (
-        <span className="stat-sub meta">{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
-      )}
+      <span className="stat-sub meta">{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
       {s.debuff && s.prev_score !== null && s.prev_period !== null && (
         <span className="stat-debuff">{T.debuff(shortPeriod(s.prev_period, s.period), s.prev_score)}</span>
       )}
