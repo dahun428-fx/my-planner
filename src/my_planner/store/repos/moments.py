@@ -1,7 +1,7 @@
 """status_moments, status_moment_days 표 (SP8 스펙 6.1, ADR 0013). 날짜는 논리적 날짜, 시각은 UTC ISO 8601.
 
 순간의 글은 이 표에만 둔다. 이 모듈은 로그를 남기지 않는다.
-읽기(`between`, `get`)와 숨기기·지우기는 SP8-04에서 더한다.
+읽기(`between`, `hidden_count`, `get`)는 읽기 전용 연결로도 된다. 숨기기·지우기는 쓰기 연결로만(SP8-04).
 """
 
 from __future__ import annotations
@@ -129,3 +129,53 @@ class MomentsRepo:
         marks = ", ".join("?" for _ in ids)
         rows = self.conn.execute(f"SELECT * FROM status_moments WHERE id IN ({marks}) ORDER BY slot", ids).fetchall()
         return [_moment(r) for r in rows]
+
+    def between(self, from_: date, to: date, *, include_hidden: bool) -> list[Moment]:
+        """`from_`~`to`(둘 다 포함)의 순간. 최근 날짜부터, 같은 날은 `slot` 순."""
+        hidden = "" if include_hidden else " AND hidden_at IS NULL"
+        rows = self.conn.execute(
+            f"SELECT * FROM status_moments WHERE date BETWEEN ? AND ?{hidden} ORDER BY date DESC, slot",
+            (from_.isoformat(), to.isoformat()),
+        ).fetchall()
+        return [_moment(r) for r in rows]
+
+    def hidden_count(self, from_: date, to: date) -> int:
+        r = self.conn.execute(
+            "SELECT COUNT(*) FROM status_moments WHERE date BETWEEN ? AND ? AND hidden_at IS NOT NULL",
+            (from_.isoformat(), to.isoformat()),
+        ).fetchone()
+        return int(r[0])
+
+    def get(self, moment_id: int) -> Moment | None:
+        r = self.conn.execute("SELECT * FROM status_moments WHERE id = ?", (moment_id,)).fetchone()
+        return _moment(r) if r else None
+
+    def _hidden_at(self, moment_id: int) -> str | None:
+        r = self.conn.execute("SELECT hidden_at FROM status_moments WHERE id = ?", (moment_id,)).fetchone()
+        return r["hidden_at"] if r else None
+
+    def hide(self, moment_id: int, at: datetime) -> str | None:
+        """숨긴다. 이전 `hidden_at`(저장 형식 그대로)을 돌려준다. 이미 숨겼으면 바꾸지 않는다."""
+        prev = self._hidden_at(moment_id)
+        if prev is None:
+            self.conn.execute("UPDATE status_moments SET hidden_at = ? WHERE id = ?", (to_iso(at), moment_id))
+        return prev
+
+    def unhide(self, moment_id: int) -> str | None:
+        """다시 보이게 한다. 이전 `hidden_at`을 돌려준다(숨기지 않았으면 None)."""
+        prev = self._hidden_at(moment_id)
+        if prev is not None:
+            self.conn.execute("UPDATE status_moments SET hidden_at = NULL WHERE id = ?", (moment_id,))
+        return prev
+
+    def restore_hidden(self, moment_id: int, hidden_at: str | None) -> bool:
+        """되돌리기: `hidden_at`을 그 값으로. 행이 없으면(지웠으면) False."""
+        cur = self.conn.execute("UPDATE status_moments SET hidden_at = ? WHERE id = ?", (hidden_at, moment_id))
+        return cur.rowcount > 0
+
+    def delete(self, moment_id: int) -> Moment | None:
+        """행을 지운다(되돌릴 수 없다). 지운 순간, 없으면 None. 날 행(`status_moment_days`)은 그대로다(6.4)."""
+        m = self.get(moment_id)
+        if m is not None:
+            self.conn.execute("DELETE FROM status_moments WHERE id = ?", (moment_id,))
+        return m

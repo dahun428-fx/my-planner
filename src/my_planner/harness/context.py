@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, tzinfo
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import local, logical_date, period_of
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.habits import Habit, HabitsRepo
+    from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.tasks import Task, TasksRepo
 
@@ -159,6 +160,29 @@ def habit_week_block(habits: HabitsRepo, review_day: date) -> str:
         for h in active
     ]
     return "## 이번 주 습관\n" + "\n".join(lines)
+
+
+def moments_week_block(moments: MomentsRepo, review_day: date) -> str:
+    """주간 회고 회차의 `## 이번 주 이룬 순간`(SP8 10.3): 회고 주(월~회고 날)의 보이는 순간을 날마다 `- 10/24 2개`.
+
+    **어느 통로든 날짜와 개수만** 준다(계획 결정 10): 회고 답은 푸시가 안 되면 본문 전체가 텔레그램으로 가므로
+    (`delivery.deliver_run` 대체 경로) 앞머리에 순간의 글을 두지 않는다. 글은 앱 대화의 `get_status`에서만 본다.
+    없으면 빈 문자열.
+    """
+    from my_planner.store.views import moment_counts
+
+    monday = review_day - timedelta(days=review_day.weekday())
+    counts = moment_counts(moments.between(monday, review_day, include_hidden=False))
+    if not counts:
+        return ""
+    lines = [f"- {(d := date.fromisoformat(c['date'])).month}/{d.day} {c['count']}개" for c in counts]
+    return "## 이번 주 이룬 순간\n" + "\n".join(lines)
+
+
+def recent_areas_block(stats: list[dict[str, Any]]) -> str:
+    """주간 회고 회차의 `## 요즘 손이 간 영역`(SP8 10.3): 상태창 `stats[]`에서 `bonus > 0`인 영역과 값. 없으면 빈 문자열."""
+    lines = [f"- {s['label']} +{s['bonus']:.1f}" for s in stats if s.get("bonus", 0) > 0]
+    return "## 요즘 손이 간 영역\n" + "\n".join(lines) if lines else ""
 
 
 def evening_done(d: date, *, runs: RunsRepo, settings: Settings) -> bool:

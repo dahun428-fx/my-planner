@@ -25,6 +25,7 @@ EXPECTED_MODELS = {
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
     "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
     "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
+    "Moment", "MomentsList",  # SP8 6.5
 }
 
 

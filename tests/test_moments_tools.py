@@ -238,3 +238,53 @@ def test_no_xp_from_moments(env):
 def test_no_moments_repo_rejects(env):
     env.tools.moments = None
     assert env.save([_m()]) == {"error": NOT_HERE}
+
+
+# --- `get_status`의 이룬 순간: 통로마다 (SP8 6.7, 10.3, 1장 조건 7) ---
+
+SECRET_A = "꾸며 낸 순간: 산책을 30분 했어요"
+SECRET_B = "꾸며 낸 순간: 친구에게 먼저 연락했어요"
+SECRET_OLD = "꾸며 낸 순간: 8일 전 일"
+SECRET_HIDDEN = "꾸며 낸 순간: 숨긴 것"
+
+
+def _status_tools(env):
+    from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.curve import CurveRepo
+
+    env.tools.curve = CurveRepo(env.conn, env.clock)
+    env.tools.conditions = ConditionsRepo(env.conn, env.clock)
+    m = env.moments
+    now = env.clock.now()
+    a, b = m.save_day(date(2026, 10, 24), [(SECRET_A, "health", ["chat"]), (SECRET_B, None, ["task:12"])], now)
+    m.save_day(date(2026, 10, 22), [("꾸며 낸 순간: 22일", "career", ["habit:3"])], now)
+    m.save_day(date(2026, 10, 19), [(SECRET_OLD, None, ["chat"])], now)  # 10/26 기준 7일 밖(14일 안)
+    (h,) = m.save_day(date(2026, 10, 23), [(SECRET_HIDDEN, None, ["chat"])], now)
+    m.hide(h.id, now)
+    return a, b
+
+
+def test_get_status_telegram_has_dates_and_counts_only(env):
+    _status_tools(env)
+    out = env.tools.get_status(RunContext(None, None, channel="telegram"))
+    text = json.dumps(out, ensure_ascii=False)
+
+    assert out["moments"] == [{"date": "2026-10-24", "count": 2}, {"date": "2026-10-22", "count": 1}]
+    for secret in (SECRET_A, SECRET_B, SECRET_OLD, SECRET_HIDDEN, "꾸며 낸"):
+        assert secret not in text
+    run = env.tools.get_status(RunContext(None, None, kind="run", activity_channel="scheduler"))
+    assert "꾸며 낸" not in json.dumps(run, ensure_ascii=False)  # 회차 차례도 `ctx.channel`(telegram) 그대로
+
+
+def test_get_status_app_has_text_last_7_days(env):
+    a, b = _status_tools(env)
+    out = env.tools.get_status(RunContext(None, None, channel="app"))
+
+    assert [(m["id"], m["text"]) for m in out["moments"]] == [
+        (a.id, SECRET_A), (b.id, SECRET_B), (out["moments"][2]["id"], "꾸며 낸 순간: 22일"),
+    ]
+    assert out["moments"][0] == {
+        "id": a.id, "date": "2026-10-24", "text": SECRET_A, "area": "health", "sources": ["chat"], "hidden": False,
+    }
+    text = json.dumps(out, ensure_ascii=False)
+    assert SECRET_OLD not in text and SECRET_HIDDEN not in text

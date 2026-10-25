@@ -6,13 +6,20 @@
 
 from datetime import date, timedelta
 
+import pytest
 from be_env import BeEnv
-from fakes import FakeTurn
+from fakes import FakePushSender, FakeTurn
 from test_dispatcher_messages import kst
 
 from my_planner.domain import Cadence, LoopKey
-from my_planner.harness.context import build_preamble, habit_week_block
+from my_planner.harness.context import (
+    build_preamble,
+    habit_week_block,
+    moments_week_block,
+    recent_areas_block,
+)
 from my_planner.harness.dispatcher import _habit_buttons_note
+from my_planner.store.repos.state import NOTIFY_PRIMARY_KEY
 
 SAT = date(2026, 10, 24)
 SUN = date(2026, 10, 25)
@@ -210,3 +217,88 @@ async def test_unmerged_review_run_has_week_block_but_no_today_block(tmp_path):
 
     assert "## 이번 주 습관" in prompt
     assert "## 오늘 습관" not in prompt
+
+
+# --- SP8 10.3: 주간 회고 앞머리의 이룬 순간과 요즘 손이 간 영역 ---
+
+MOMENT_A = "꾸며 낸 순간: 아침에 스트레칭을 했어요"
+MOMENT_B = "꾸며 낸 순간: 보고서 초안을 끝냈어요"
+MOMENT_C = "꾸며 낸 순간: 화요일의 작은 일"
+EP = "https://push.example.invalid/sub/review-fake"
+
+
+def seed_moments(env):
+    m, now = env.parts.moments, env.clock.now()
+    m.save_day(SAT, [(MOMENT_A, "health", ["chat"]), (MOMENT_B, "career", ["chat"])], now)
+    m.save_day(date(2026, 10, 20), [(MOMENT_C, None, ["chat"])], now)
+    m.save_day(date(2026, 10, 18), [("꾸며 낸 순간: 지난주 일", None, ["chat"])], now)  # 지난주(일)
+
+
+def test_moments_week_block_counts_only(tmp_path):
+    async def go():
+        async with BeEnv.start(tmp_path, start=SUN_EVENING) as env:
+            empty = moments_week_block(env.parts.moments, SUN)
+            seed_moments(env)
+            return empty, moments_week_block(env.parts.moments, SUN)
+
+    import asyncio
+
+    empty, block = asyncio.run(go())
+    assert empty == ""
+    assert block == "## 이번 주 이룬 순간\n- 10/24 2개\n- 10/20 1개"
+
+
+def test_recent_areas_block_only_positive_bonus():
+    stats = [
+        {"area": "health", "label": "건강", "bonus": 1.5},
+        {"area": "career", "label": "커리어", "bonus": 0.0},
+        {"area": "learning", "label": "배움", "bonus": 0.1},
+    ]
+    assert recent_areas_block(stats) == "## 요즘 손이 간 영역\n- 건강 +1.5\n- 배움 +0.1"
+    assert recent_areas_block([{"area": "career", "label": "커리어", "bonus": 0.0}]) == ""
+
+
+@pytest.mark.parametrize("channel", ["app", "telegram"])
+async def test_review_preamble_moments_counts_only_on_every_channel(tmp_path, channel):
+    """계획 결정 10: 회고가 어느 통로로 가든 앞머리의 이룬 순간은 날짜와 개수만이다(글 없음)."""
+    push = FakePushSender()
+    async with BeEnv.start(tmp_path, start=SUN_EVENING, script=[FakeTurn([], "한 주 수고했어요")], push=push) as env:
+        await env.subscribe(EP)
+        env.parts.state.set(NOTIFY_PRIMARY_KEY, channel)
+        seed_moments(env)
+        await env.tick()
+        prompt = env.brain.prompts[0]
+        via_app = bool(push.sent)
+
+    assert via_app is (channel == "app")
+    assert "## 이번 주 이룬 순간\n- 10/24 2개\n- 10/20 1개" in prompt
+    for secret in (MOMENT_A, MOMENT_B, MOMENT_C, "꾸며 낸"):
+        assert secret not in prompt
+
+
+async def test_review_preamble_recent_areas_block(tmp_path):
+    async with BeEnv.start(tmp_path, start=SUN_EVENING, script=[FakeTurn([], "한 주 수고했어요")]) as env:
+        h = habit(env, "물 마시기")
+        check(env, h, *(date(2026, 10, n) for n in range(19, 26)))  # 지난 7일 매일: 0.5 × (28+…+22)/28 → +0.6
+        await env.tick()
+        prompt = env.brain.prompts[0]
+
+    assert "## 요즘 손이 간 영역\n- 건강 +0.6" in prompt
+    assert "커리어 +" not in prompt
+
+
+async def test_no_blocks_when_empty(tmp_path):
+    async with BeEnv.start(tmp_path, start=SUN_EVENING, script=[FakeTurn([], "한 주 수고했어요")]) as env:
+        await env.tick()
+        prompt = env.brain.prompts[0]
+    async with BeEnv.start(tmp_path / "sat", start=SAT_EVENING, script=[FakeTurn([], "수고했어요")]) as env:
+        seed_moments(env)
+        h = habit(env, "물 마시기")
+        check(env, h, SAT)
+        await env.tick()
+        evening = env.brain.prompts[0]
+
+    assert "## 회고 주" in prompt  # 회고 회차다
+    assert "## 이번 주 이룬 순간" not in prompt and "## 요즘 손이 간 영역" not in prompt
+    # 회고가 아닌 회차(토요일 저녁 체크인)에는 기록이 있어도 두 블록이 없다
+    assert "## 이번 주 이룬 순간" not in evening and "## 요즘 손이 간 영역" not in evening

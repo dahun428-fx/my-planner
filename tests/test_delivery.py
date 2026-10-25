@@ -476,3 +476,31 @@ def test_web_push_sender_encrypts_signs_and_maps_status(tmp_path, monkeypatch, c
         assert type(e).__name__ == "ConnectionError"
     else:
         raise AssertionError("예외가 나야 한다")
+
+
+# --- SP8 계획 결정 10: 회고가 텔레그램 대체로 가도 순간의 글은 없다 ---
+
+
+async def test_review_fallback_to_telegram_has_no_moment_text(tmp_path):
+    """앱 통로 회고에서 푸시가 모두 실패하면 본문 전체가 텔레그램으로 간다(D4). 그래서 회고 앞머리에는 순간의 글을
+    두지 않는다: 두뇌에 준 프롬프트에도, 텔레그램으로 간 본문에도, 푸시 본문에도 시험 글이 없다."""
+    secret = "꾸며 낸 순간: 일요일 아침에 빵을 구웠어요"
+    reply = "한 주 수고했어요. 이번 주에 이룬 순간이 이틀 있었어요."
+    push = FakePushSender({EP_A: [500] * 3})
+    sun_review = kst(2026, 10, 25, 18, 0)
+    async with BeEnv.start(tmp_path, start=_start(sun_review), script=[FakeTurn([], reply)], push=push) as env:
+        await env.subscribe(EP_A)
+        now = env.clock.now()
+        env.parts.moments.save_day(date(2026, 10, 24), [(secret, "quality_of_life", ["chat"])], now)
+        env.parts.moments.save_day(date(2026, 10, 22), [("꾸며 낸 순간: 목요일 일", None, ["chat"])], now)
+        await env.tick()
+        prompt = env.brain.prompts[0]
+        done = env.parts.runs.with_status(RunStatus.done)
+
+    assert LoopKey.review in {r.loop for r in done}  # 저녁 체크인과 합친 주간 회고
+    sent = [d for r in done for d in deliveries(env, r.id)]
+    assert sent == [("app", "full", "not_sent", 0, 1), ("telegram", "fallback", "sent", 0, 0)]
+    assert [o.text for o in env.sender.sent] == [reply]
+    assert "## 이번 주 이룬 순간\n- 10/24 1개\n- 10/22 1개" in prompt
+    for text in (prompt, *(o.text for o in env.sender.sent), *(str(c.payload) for c in push.sent)):
+        assert "꾸며 낸" not in text
