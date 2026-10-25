@@ -138,7 +138,8 @@ def queue_moments_daily(target: MomentsSubmitter, moments: MomentsRepo, state: S
 
 
 def prune_records_daily(target: ActionApplier) -> Callable[[date], None]:
-    """하루 한 번 작업: 60일 지난 `status_moment_days` 행 지우기(SP8 6.4, 계획 결정 17). 즉시 갈래로(4.3)."""
+    """하루 한 번 작업: 60일 지난 `status_moment_days` 행(SP8 6.4)과 56일 지난 `body_days` 행(7.1) 지우기(계획 결정 17).
+    즉시 갈래로(4.3). 로그에는 개수만."""
 
     def job(today: date) -> None:
         res = target.apply_action(_scheduler("prune_records", {}))

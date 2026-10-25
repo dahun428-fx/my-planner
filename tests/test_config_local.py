@@ -14,7 +14,7 @@ SECRETS = "TELEGRAM_BOT_TOKEN=123:fake\nOWNER_TELEGRAM_ID=42\n"
 
 @pytest.fixture(autouse=True)
 def _no_env_secrets(monkeypatch):
-    for k in ("TELEGRAM_BOT_TOKEN", "OWNER_TELEGRAM_ID", "API_TOKEN"):
+    for k in ("TELEGRAM_BOT_TOKEN", "OWNER_TELEGRAM_ID", "API_TOKEN", "BODY_TOKEN"):
         monkeypatch.delenv(k, raising=False)
 
 
@@ -70,6 +70,7 @@ def test_missing_local_file_reads_config_toml_only(tmp_path):
     'telegram_bot_token = "x"\n',
     "owner_telegram_id = 1\n",
     'api_token = "x"\n',
+    'body_token = "x"\n',
     '[vapid]\npublic_key = "x"\n',
     '[paths]\nroot = "C:/x"\n',
 ])
@@ -103,3 +104,12 @@ def test_prod_role_still_requires_telegram_secrets(tmp_path):
 def test_unknown_role_rejected(tmp_path):
     with pytest.raises(ValidationError):
         load_settings(_root(tmp_path, local='[runtime]\nrole = "staging"\n'))
+
+
+def test_body_token_read_from_env_file(tmp_path):
+    """SP8 7.2: `BODY_TOKEN`은 `.env`에서만 읽는다(꾸며 낸 값). 없으면 None."""
+    fake = "b" * 43
+    s = load_settings(_root(tmp_path, env=SECRETS + f"BODY_TOKEN={fake}\n"))
+    assert s.body_token is not None and s.body_token.get_secret_value() == fake
+    assert fake not in repr(s)
+    assert load_settings(_root(tmp_path)).body_token is None

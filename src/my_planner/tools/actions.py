@@ -29,6 +29,9 @@
 U1~U3에 걸리면 `422 not_undoable`·`409 undo_expired`·`409 superseded`. 되돌리면 대상 복원, 새 활동(`kind="undo"`,
 `undo_json = NULL`), 원래 행의 `undone_at`·`undone_by`를 한 트랜잭션에 쓴다(U5). 경험치 원장은 건드리지 않는다(U6).
 
+몸 기록 `record_body_days`(SP8 7.2)는 `POST /body`만 부르는 내부 동작이다(`endpoint="body"`, 계획 결정 1). 활동 기록,
+경험치, `api_idempotency`가 없다(단축어는 `client_msg_id`를 보내지 않는다).
+
 로그에는 동작 이름과 결과만 남긴다(제목, 인자, 토큰 없이).
 """
 
@@ -122,7 +125,8 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
     "superseded": (409, "그 뒤에 바뀐 내용이 있어서 되돌릴 수 없어요."),
 }
 
-RequestEndpoint = Literal["chat", "actions", "undo", "push"]  # `push`: `api/push.py`(중복 방지 기록 없음)
+# `push`: `api/push.py`, `body`: `api/body.py`(둘 다 중복 방지 기록 없음)
+RequestEndpoint = Literal["chat", "actions", "undo", "push", "body"]
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
@@ -392,13 +396,17 @@ def _prune_api_state(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) ->
 
 
 def _prune_records(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
-    """하루 한 번 작업: 60일 지난 `status_moment_days` 행을 지운다(순간 행은 그대로, SP8 6.4). 활동은 없다."""
+    """하루 한 번 작업: 60일 지난 `status_moment_days` 행(순간 행은 그대로, SP8 6.4)과 56일 지난 `body_days` 행(7.1)을
+    지운다(계획 결정 17). 활동은 없다. 결과는 개수만."""
     from my_planner.harness.moments import MOMENT_DAYS_KEEP
+    from my_planner.store.repos.body import BODY_KEEP_DAYS
 
-    repo = deps.tools.moments
-    if repo is None:
-        return {"moment_days_pruned": 0}
-    return {"moment_days_pruned": repo.prune_days(deps.tools.today() - timedelta(days=MOMENT_DAYS_KEEP))}
+    today = deps.tools.today()
+    moments, body = deps.tools.moments, deps.tools.body
+    return {
+        "moment_days_pruned": moments.prune_days(today - timedelta(days=MOMENT_DAYS_KEEP)) if moments else 0,
+        "body_days_pruned": body.prune(today - timedelta(days=BODY_KEEP_DAYS)) if body else 0,
+    }
 
 
 def _memos_daily(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -574,7 +582,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),
     "expire_curve_drafts": ActionSpec(_expire_curve_drafts, public=False, accepts=frozenset({"older_than"})),
     "prune_api_state": ActionSpec(_prune_api_state, public=False),
-    "prune_records": ActionSpec(_prune_records, public=False),  # SP8 6.4(몸 기록 56일은 SP8-06)
+    "prune_records": ActionSpec(_prune_records, public=False),  # SP8 6.4 순간 날 행 60일, 7.1 몸 기록 56일
     "grant_rest_days": ActionSpec(_grant_rest_days, public=False),  # X9
     "memos_daily": ActionSpec(_memos_daily, public=False),  # SP9 6.1: 30일 지난 지운 메모, memos.md
     # 내부(`POST /activity/{id}/undo`)
@@ -591,6 +599,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "push_unsubscribe": ActionSpec(_push_unsubscribe, public=False, accepts=frozenset({"id"}), endpoint="push"),
     "notify_set": ActionSpec(_notify_set, public=False, accepts=frozenset({"primary"}), endpoint="push"),
     "push_test_result": ActionSpec(_push_test_result, public=False, accepts=frozenset({"results"}), endpoint="push"),
+    # 내부(`POST /body`, SP8 7.2): 아이폰 단축어. 활동·경험치·중복 방지 기록 없음. `/actions`에서는 `400`(계획 결정 1)
+    "record_body_days": ActionSpec("record_body_days", public=False, endpoint="body"),
     # 내부(`api/actions.refresh_wake`: 체크인 시간을 바꾼 뒤 깨우기 작업 결과, SP9 8장)
     "wake_task_result": ActionSpec(_wake_task_result, public=False, accepts=frozenset({"ok"}), endpoint="push"),
 }

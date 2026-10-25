@@ -27,6 +27,7 @@ EXPECTED_MODELS = {
     "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
     "Memo", "MemoItem", "MemoList",  # SP9 6.4
     "Moment", "MomentsList",  # SP8 6.5
+    "BodyPostBody", "BodySaved",  # SP8 7.3
 }
 
 

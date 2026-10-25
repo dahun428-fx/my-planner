@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import hmac
 import logging
 import os
 import sqlite3
@@ -70,6 +71,7 @@ from my_planner.platform.windows import (
 )
 from my_planner.store.db import integrity_ok, migrate, open_db, open_ro
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo, IdempotencyRepo
+from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
@@ -219,6 +221,7 @@ class BeParts:
     status: StatusRepo
     habits: HabitsRepo | None = None  # 습관(SP7)
     moments: MomentsRepo | None = None  # 이룬 순간(SP8)
+    body: BodyRepo | None = None  # 몸 기록(SP8 7장)
     memos: MemosRepo | None = None  # 메모(SP9 6장)
 
 
@@ -258,6 +261,7 @@ def build_be(
     habits = HabitsRepo(conn, clock)
     moments = MomentsRepo(conn, clock)
     memos = MemosRepo(conn, clock)
+    body = BodyRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -285,6 +289,7 @@ def build_be(
         moments=moments,  # 하루 끝 순간 호출의 `save_moments`(SP8 6.3). 내보내기는 없다
         state=state, settings=settings, runs=runs,  # 체크인 시간 바꾸기(SP9 8장)
         memos=memos,  # 메모 도구·동작(SP9 6장). `memos.md`는 하루 한 번 작업이 쓴다
+        body=body,  # 몸 기록(SP8 7장): `POST /body`의 `record_body_days`, 56일 정리(`prune_records`)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -348,7 +353,7 @@ def build_be(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
-        pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos,
+        pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos, body=body,
     )
 
 
@@ -397,6 +402,23 @@ def _api_token(settings: Settings) -> str | None:
     return token
 
 
+def _body_token(settings: Settings, api_token: str) -> str | None:
+    """`POST /body`를 열 토큰(SP8 7.2). 없거나 43자 미만이거나 `API_TOKEN`과 같으면 경고 한 줄을 남기고 None: 그 경로만
+    열지 않는다(다른 경로는 그대로). 값은 남기지 않는다."""
+    token = settings.body_token.get_secret_value() if settings.body_token is not None else ""
+    reason = None
+    if not token:
+        reason = "missing"
+    elif len(token) < API_TOKEN_MIN_CHARS:
+        reason = "too_short"
+    elif hmac.compare_digest(token.encode("utf-8"), api_token.encode("utf-8")):
+        reason = "same_as_api"
+    if reason is not None:
+        log.warning("body_token_missing", extra={"reason": reason})
+        return None
+    return token
+
+
 async def _open_api(
     settings: Settings,
     clock: Clock,
@@ -415,6 +437,7 @@ async def _open_api(
     deps = ApiDeps(
         settings=settings, clock=clock, token=token, read_conn=read_conn, dispatcher=dispatcher, errors=errors,
         polling_state=polling_state, started_at=errors.started_at, transcripts=transcripts, safe_mode=safe_mode,
+        body_token=_body_token(settings, token),
     )
     try:
         return await start_api(build_app(deps), settings.api.host, settings.api.port)

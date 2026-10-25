@@ -489,6 +489,7 @@ CREATE TABLE status_titles (
 | GET, PUT | `/settings/notify` | 운영 앱용 | PUT은 즉시 갈래 | 6.4.9 |
 | POST | `/client-errors` | 운영 앱·대시보드용 | 없음(로그 `client_error`만) | SP6 3.3 |
 | POST | `/internal/notify` | 자동 복구 감시자용 | 없음(고정 안내 길, 푸시 결과만 기록) | SP6 6장 |
+| POST | `/body` | 아이폰 단축어(`BODY_TOKEN`만, `API_TOKEN`은 401) | 즉시 갈래(`record_body_days`, `endpoint = body`) | SP8 7.2 |
 
 대시보드는 표의 `GET` 여섯 개와 `POST /client-errors`만 쓴다.
 

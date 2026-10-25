@@ -90,3 +90,28 @@ async def test_options_preflight_without_token(env):
         headers={"Origin": "https://dash.example", "Access-Control-Request-Method": "GET"},
     )
     assert resp.status == 204
+
+
+# --- SP8 7.2: 경로 틀로 기대 토큰을 고른다(`BODY_TOKEN`은 `/body`만) ---
+
+BODY = "body-token-" + "q" * 40  # 꾸며 낸 값(51자)
+
+
+async def test_body_token_rejected_on_every_other_route(tmp_path):
+    """등록된 모든 경로(틀의 `{id}`는 숫자로)에 `BODY_TOKEN`을 보내면 401. `/body`에 `API_TOKEN`도 401."""
+    from my_planner.api.body import BODY_PATH
+    from my_planner.api.server import LIMITER_KEY
+
+    async with BeEnv.start(tmp_path, start=START, body_token=BODY) as env:
+        routes = sorted({
+            (r.method, r.resource.canonical) for r in env.client.app.router.routes()
+            if r.resource is not None and r.method != "HEAD"
+        })
+        assert ("POST", BODY_PATH) in routes and len(routes) > 20
+        for method, path in routes:
+            url = path.replace("{id}", "1")
+            resp = await env.request(method, url, token=BODY if path != BODY_PATH else TEST_TOKEN, json={})
+            assert resp.status == 401, (method, path)
+            env.client.app[LIMITER_KEY]._failures.clear()  # 실패 세기에 막히지 않게(세기는 다른 시험이 본다)
+        resp = await env.request("POST", BODY_PATH, token=BODY, json={"days": [{"date": "2026-10-24", "steps": 1}]})
+        assert resp.status == 200

@@ -1,6 +1,8 @@
 """aiohttp 앱 조립과 수명: `build_app()`, `start_api()`, `stop_api()` (SP3-4 스펙 4.2, 6.1, 14, 15).
 
 미들웨어(바깥 → 안): 접근 로그 → CORS(사전 요청, 오류를 JSON으로) → 본문 상한 → 인증 → 안전 모드.
+- 몸 기록 `POST /body`(SP8 7.2)는 경로 틀로 기대 토큰을 `BODY_TOKEN`으로 바꾸고(다른 경로는 `API_TOKEN`), 본문 상한
+  4KB, CORS 없음이다. `BODY_TOKEN`이 없으면 이 경로를 등록하지 않는다.
 - 접근 로그는 aiohttp 기본 것을 끄고(`access_log=None`) 요청마다 `method`, 경로 틀, 상태, 소요 시간만 남긴다.
   쿼리 문자열, 헤더, 본문, 토큰, 푸시 구독 주소는 남기지 않는다.
 - `GET` 처리기는 요청마다 따로 연 읽기 전용 연결(`mode=ro`)만 받는다. 쓰기는 디스패처 경로뿐이다(ADR 0007).
@@ -9,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import sqlite3
 import time
@@ -21,6 +24,7 @@ from aiohttp import web
 
 from my_planner.api.actions import get_activity, post_actions, post_undo
 from my_planner.api.auth import AuthLimiter, bearer_ok
+from my_planner.api.body import BODY_MAX_BYTES, BODY_PATH, post_body
 from my_planner.api.chat import post_chat
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
@@ -86,6 +90,7 @@ class ApiDeps:
     transcripts: TranscriptStore | None = None
     safe_mode: bool = False
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep  # `/chat`의 15초 `: ping`(시험이 바꾼다)
+    body_token: str | None = None  # `POST /body`만 받는 토큰(SP8 7.2). None이면 그 경로를 등록하지 않는다
 
 
 DEPS_KEY = web.AppKey("deps", ApiDeps)
@@ -122,11 +127,13 @@ async def access_log(request: web.Request, handler: Handler) -> web.StreamRespon
 
 
 def body_limit_middleware(limit_bytes: int) -> Callable[[web.Request, Handler], Awaitable[web.StreamResponse]]:
-    """`Content-Length`가 상한을 넘으면 읽지 않고 `413`. 길이가 없는 본문은 `client_max_size`가 막는다."""
+    """`Content-Length`가 상한을 넘으면 읽지 않고 `413`. 길이가 없는 본문은 `client_max_size`가 막는다.
+    `POST /body`는 4KB(SP8 7.2, 길이 없는 본문은 처리기가 읽으며 막는다)."""
 
     @web.middleware
     async def body_limit(request: web.Request, handler: Handler) -> web.StreamResponse:
-        if request.content_length is not None and request.content_length > limit_bytes:
+        limit = BODY_MAX_BYTES if route_template(request) == BODY_PATH else limit_bytes
+        if request.content_length is not None and request.content_length > limit:
             return error_response(413, "too_large", "요청 본문이 너무 커요.")
         return await handler(request)
 
@@ -139,7 +146,10 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
     limiter = request.app[LIMITER_KEY]
     if limiter.blocked():
         return error_response(429, "too_many_auth_failures", "잠시 뒤에 다시 해 주세요.")
-    if not bearer_ok(request.headers.get("Authorization"), deps.token):
+    # 경로 틀로 기대 토큰을 고른다(SP8 7.2): `/body`는 `BODY_TOKEN`만, 그 밖은 `API_TOKEN`만. 다른 쪽 토큰은 맞아도 401.
+    # `/body`가 등록되지 않았으면(토큰 없음) 틀이 `(unmatched)`라 `API_TOKEN`을 기대하고, 지나면 라우팅이 404다
+    expected = (deps.body_token or "") if route_template(request) == BODY_PATH else deps.token
+    if not bearer_ok(request.headers.get("Authorization"), expected):
         if limiter.record_failure():
             log.warning("api_auth_blocked")
         log.info("api_auth_failed", extra={"route": route_template(request)})
@@ -230,6 +240,13 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
 )
 
 
+def body_route_open(deps: ApiDeps) -> bool:
+    """`POST /body`를 등록하나. `BODY_TOKEN`이 있고 `API_TOKEN`과 다를 때만(`app._body_token`이 먼저 거르지만 한 번 더)."""
+    if not deps.body_token:
+        return False
+    return not hmac.compare_digest(deps.body_token.encode("utf-8"), deps.token.encode("utf-8"))
+
+
 def build_app(deps: ApiDeps) -> web.Application:
     cfg = deps.settings.api
     app = web.Application(
@@ -252,6 +269,8 @@ def build_app(deps: ApiDeps) -> web.Application:
     app.router.add_put(API_PREFIX + "/settings/notify", write_handler(put_notify))
     app.router.add_put(API_PREFIX + "/settings/checkin-times", write_handler(put_checkin_times))
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
+    if body_route_open(deps):  # 아이폰 단축어(SP8 7.2). 토큰이 없으면 경로도 없다
+        app.router.add_post(BODY_PATH, write_handler(post_body))
     return app
 
 

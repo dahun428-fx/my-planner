@@ -208,3 +208,37 @@ async def test_full_scenario_logs_have_no_secrets(tmp_path):
                    "비밀답-앱", "비밀회차본문", "비밀회차답", "비밀회차글", "비밀기기", "SECRET-CMID", "push.example"):
         assert secret not in raw, secret
     assert "xp_granted_by_secretary" in raw and "rest_days_granted" in raw  # 남는 것은 이름과 수만
+
+
+async def test_body_logs_have_no_numbers_or_token(tmp_path):
+    """몸 기록(SP8 7.3, 11장): 로그에 걸음·잠 숫자, `BODY_TOKEN`, 보낸 날짜가 없다. `body_received` 줄은 `days`만."""
+    from datetime import timedelta
+
+    from my_planner.api.body import BODY_PATH
+
+    body_token = "body-token-SECRET-" + "w" * 40  # 꾸며 낸 값
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 13, 0), body_token=body_token) as env:
+        env.parts.runner.checkins = False
+        setup_logging(env.settings.paths.state_dir, 30)
+        days = {"days": [{"date": "2026-10-24", "steps": 8123, "sleep_minutes": 412},
+                         {"date": "2026-10-23", "steps": 7311}]}
+        assert (await env.post(BODY_PATH, token=body_token, json=days)).status == 200
+        bad = {"days": [{"date": "2026-10-24", "steps": 98765.5}]}
+        assert (await env.post(BODY_PATH, token=body_token, json=bad)).status == 400
+        assert (await env.post(BODY_PATH, token=TEST_TOKEN, json=days)).status == 401
+        assert (await env.get("/status", token=body_token)).status == 401
+        assert (await env.get("/status")).status == 200
+        env.clock.set(kst(2026, 10, 26, 4, 1) + timedelta(seconds=1))  # 하루 한 번 작업(`records_pruned`)
+        await env.tick()
+        state_dir = env.settings.paths.state_dir
+        raw = _raw(state_dir)
+        received = _entries(state_dir, "body_received")
+        pruned = _entries(state_dir, "records_pruned")
+        routes = [(e["route"], e["status"]) for e in _entries(state_dir, "api_request")]
+
+    for secret in ("8123", "412", "7311", "98765", "2026-10-23", body_token, "SECRET", "Bearer"):
+        assert secret not in raw, secret
+    assert len(received) == 1 and received[0]["days"] == 2
+    assert not {"steps", "sleep_minutes", "date", "dates"} & set(received[0])
+    assert len(pruned) == 1 and pruned[0]["body_days_pruned"] == 0
+    assert routes[:3] == [(BODY_PATH, 200), (BODY_PATH, 400), (BODY_PATH, 401)]

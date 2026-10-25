@@ -88,8 +88,8 @@ class StatusRepo:
 
     def activity_rows(self, from_utc: datetime, from_day: date, to_day: date) -> ActivityRows:
         """끝낸 할 일(`completed_at >= from_utc`, 지운 것 빼고)과 영역, 습관 체크(`from_day..to_day`, 소프트 삭제한 습관
-        빼고 쉬는·그만둔 습관은 넣고)와 습관 영역. 할 일 쪽은 넉넉히 읽고 창은 `status.activity`가 거른다. 몸 기록은
-        SP8-06(014) 전까지 늘 `[]`.
+        빼고 쉬는·그만둔 습관은 넣고)와 습관 영역, 몸 기록(`body_days`, `from_day..to_day`, SP8 7.4). 할 일 쪽은 넉넉히
+        읽고 창은 `status.activity`가 거른다.
         """
         task_rows = self.conn.execute(
             "SELECT t.id, t.completed_at, a.area FROM tasks t LEFT JOIN task_areas a ON a.task_id = t.id "
@@ -110,7 +110,14 @@ class StatusRepo:
                 (from_day.isoformat(), to_day.isoformat()),
             ).fetchall()
         ]
-        return ActivityRows(tasks=tasks, checks=checks, body=[])
+        body = [
+            BodyDayRow(date=date.fromisoformat(r["date"]), steps=r["steps"], sleep_minutes=r["sleep_minutes"])
+            for r in self.conn.execute(
+                "SELECT date, steps, sleep_minutes FROM body_days WHERE date >= ? AND date <= ? ORDER BY date",
+                (from_day.isoformat(), to_day.isoformat()),
+            ).fetchall()
+        ]
+        return ActivityRows(tasks=tasks, checks=checks, body=body)
 
     def titles(self, *, include_sensitive: bool) -> list[TitleRow]:
         """확정한 고점·전환점 사건의 칭호, 받은 순서. 민감 사건은 `include_sensitive`일 때만."""
