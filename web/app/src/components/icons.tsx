@@ -1,6 +1,6 @@
 import styles from "./icons.module.css";
 
-export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send" | "schedule" | "memo" | "more" | "list" | "compose" | "stop";
+export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send" | "schedule" | "memo" | "more" | "list" | "compose" | "stop" | "clear";
 
 // Hand-drawn 24px icons, 1.7px stroke, currentColor (spec 4.3). SP9 9.1's three (schedule, memo,
 // more) follow the SP8 pictogram rule: 24px, 1.75 stroke, round ends, no emoji.
@@ -33,9 +33,11 @@ const PATHS: Record<IconName, string[]> = {
   compose: ["M11 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V13", "M16.5 4.5l3 3L12 15H9v-3z"],
   // A filled square: stop the answer that is coming (the chat's send button while busy). Same pictogram rule.
   stop: ["M8 8h8v8H8z"],
+  // A small ×: empty the chat field (smaller than `close`, it sits inside the field). Same pictogram rule.
+  clear: ["M8 8l8 8", "M16 8l-8 8"],
 };
 
-const STROKE: Partial<Record<IconName, string>> = { schedule: "1.75", memo: "1.75", more: "1.75", list: "1.75", compose: "1.75", stop: "1.75" };
+const STROKE: Partial<Record<IconName, string>> = { schedule: "1.75", memo: "1.75", more: "1.75", list: "1.75", compose: "1.75", stop: "1.75", clear: "1.75" };
 // Drawn filled as well as stroked (the stroke's round joins round its corners).
 const FILLED: Partial<Record<IconName, true>> = { stop: true };
 

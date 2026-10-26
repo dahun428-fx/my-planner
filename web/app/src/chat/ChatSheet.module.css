@@ -232,11 +232,19 @@
   padding: var(--space-2) var(--gutter);
   border-top: 1px solid var(--rule);
 }
+/* The field and the × that empties it: the × is a 44px button at the field's trailing edge, centred
+   on the first line; the field keeps that much room at its right so the text never runs under it. */
+.field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
 .input {
   flex: 1;
   min-width: 0;
   min-height: 3rem;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem var(--control-h) 0.75rem 1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-field);
   background: var(--surface);
@@ -251,6 +259,22 @@
 .input[data-ready] {
   border-color: var(--primary);
   box-shadow: 0 0 0 0.5px var(--primary);
+}
+.clear {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
 }
 .send {
   flex: none;
@@ -287,6 +311,7 @@
 .headIcon:focus-visible,
 .back:focus-visible,
 .retry:focus-visible,
+.clear:focus-visible,
 .send:focus-visible {
   outline: 2px solid var(--text);
 }

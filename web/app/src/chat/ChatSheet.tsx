@@ -432,6 +432,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setFieldRows(next);
   }, [text]);
   const ready = canSend && text.trim() !== "";
+  // The × inside the field: empties it in one press (a one-line write stays open), the focus back in it.
+  const clearable = text !== "" && !readOnly && !loading;
+  const clearInput = () => {
+    setText("");
+    field.current?.focus();
+  };
 
   // Dividers (5.5.2): the time when the conversation changes or after a gap of more than 10 minutes.
   // Right after the history it was read for, not after what is said now.
@@ -573,21 +579,28 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       {reason && <p className={styles.reason}>{reason}</p>}
       {!embedded && <QuickChips chips={chips} disabled={!canSend} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
       <form className={styles.composer} onSubmit={onSubmit}>
-        <textarea
-          ref={field}
-          className={styles.input}
-          rows={fieldRows}
-          aria-label={copy.chat.inputLabel}
-          placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
-          aria-describedby={writing ? WRITING_ID : undefined}
-          value={text}
-          disabled={readOnly || loading}
-          enterKeyHint="send"
-          autoComplete="off"
-          data-ready={ready ? "" : undefined}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+        <div className={styles.field}>
+          <textarea
+            ref={field}
+            className={styles.input}
+            rows={fieldRows}
+            aria-label={copy.chat.inputLabel}
+            placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
+            aria-describedby={writing ? WRITING_ID : undefined}
+            value={text}
+            disabled={readOnly || loading}
+            enterKeyHint="send"
+            autoComplete="off"
+            data-ready={ready ? "" : undefined}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          {clearable && (
+            <button type="button" className={styles.clear} aria-label={copy.chat.clearInput} onClick={clearInput}>
+              <Icon name="clear" />
+            </button>
+          )}
+        </div>
         {busy ? (
           // While an answer is coming the send button is the stop button (enabled with an empty field).
           <button type="button" className={`${styles.send} pressable`} aria-label={copy.chat.stop} onClick={stopAnswer}>

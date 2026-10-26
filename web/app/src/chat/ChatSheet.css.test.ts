@@ -50,6 +50,17 @@ describe("chat styles", () => {
     expect(rule(".sendMark")).toMatch(/background:\s*var\(--primary\)/);
   });
 
+  it("the × is a 44px --muted button at the field's trailing edge, and the text keeps clear of it", () => {
+    const clear = rule(".clear");
+    expect(clear).toMatch(/position:\s*absolute/);
+    expect(clear).toMatch(/right:\s*2px/);
+    expect(clear).toMatch(/width:\s*var\(--control-h\)/);
+    expect(clear).toMatch(/height:\s*var\(--control-h\)/);
+    expect(clear).toMatch(/color:\s*var\(--muted\)/);
+    expect(rule(".field")).toMatch(/position:\s*relative/);
+    expect(rule(".input")).toMatch(/padding:\s*0\.75rem var\(--control-h\) 0\.75rem 1rem/);
+  });
+
   it("the ready field still shows focus: a 2px --text outline off the field", () => {
     expect(rule(".input[data-ready]:focus-visible")).toMatch(/outline:\s*2px solid var\(--text\)/);
     expect(rule(".input[data-ready]:focus-visible")).toMatch(/outline-offset:\s*2px/);

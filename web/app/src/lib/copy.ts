@@ -258,6 +258,7 @@ export const copy = {
     // (new) the send button while an answer is coming, and the line a stopped answer ends with (the BE's STOPPED_REPLY)
     stop: "멈추기",
     stopped: "멈췄어요.",
+    clearInput: "입력한 글 지우기", // (new) the × inside the field
     inputLabel: "비서에게 보낼 말",
     undo: "되돌리기",
     undone: "되돌렸어요",

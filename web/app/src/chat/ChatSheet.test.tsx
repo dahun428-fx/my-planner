@@ -677,6 +677,26 @@ describe("ChatSheet composer", () => {
     expect(input).toHaveValue("");
   });
 
+  it("the × in the field shows only with text, empties it in one press, and puts the focus back", async () => {
+    history(5, []);
+    const bodies = serveChat(() => sseResponse(textAnswer("m-1", 5, "네")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await ready();
+    expect(screen.queryByRole("button", { name: copy.chat.clearInput })).toBeNull();
+    await user.type(input, "첫 줄{Shift>}{Enter}{/Shift}둘째 줄");
+    expect(input).toHaveAttribute("rows", "2");
+    const clear = screen.getByRole("button", { name: copy.chat.clearInput });
+    expect(clear).toHaveAttribute("type", "button");
+    await user.click(clear);
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("rows", "1");
+    expect(screen.queryByRole("button", { name: copy.chat.clearInput })).toBeNull();
+    expect(bodies).toHaveLength(0); // clearing sends nothing
+    expect(screen.getByRole("button", { name: copy.chat.send })).toBeDisabled();
+  });
+
   it("marks the field ready only while sending is possible", async () => {
     history(5, []);
     const user = userEvent.setup();
@@ -1060,6 +1080,20 @@ describe("ChatSheet one-line write (SP9c)", () => {
     expect(closeWrite()).toBeNull();
     expect(input).not.toHaveAttribute("placeholder");
     expect(await screen.findByText("일정에 넣었어요")).toBeInTheDocument();
+  });
+
+  it("the × in a one-line write empties the line and keeps the write open", async () => {
+    history(5, []);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await user.click(await screen.findByRole("button", { name: copy.chat.chips.todo.label }));
+    const input = screen.getByRole("textbox", { name: copy.chat.inputLabel });
+    await user.type(input, "보고서 초안");
+    await user.click(screen.getByRole("button", { name: copy.chat.clearInput }));
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("placeholder", copy.chat.write.todo);
   });
 
   it("each add chip has its own example, and the memo label is 메모", async () => {
