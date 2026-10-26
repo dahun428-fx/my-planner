@@ -114,6 +114,14 @@ async def test_event_chip_repeat_is_start_date_and_sorted(tmp_path):
     assert props["items"][2]["repeat"] == "weekly"
 
 
+async def test_event_chip_card_capped_at_events_max(tmp_path):
+    made = [("create_event", {"title": f"꾸민 일정 {n}", "date": "2026-10-26", "time": f"{8 + n:02d}:00"})
+            for n in range(chip_cards_mod.EVENTS_MAX + 1)]
+    chunks, _ = await _run(tmp_path, "event", [FakeTurn(made, "넣었어요.")])
+    ((_, _, props, _),) = _chip(chunks)
+    assert len(props["items"]) == chip_cards_mod.EVENTS_MAX == 10
+
+
 async def test_event_chip_nothing_created_no_card(tmp_path):
     chunks, _ = await _run(tmp_path, "event", [FakeTurn([], "안녕하세요.")], text="안녕")
     assert _ui(chunks) == []
@@ -215,6 +223,12 @@ async def test_today_chip_period_list_logical_day(tmp_path, start, day):
     assert output["data"]["today"] == day and output["data"]["start"] == day
 
 
+async def test_today_chip_brain_drew_period_list_no_duplicate(tmp_path):
+    script = [FakeTurn([("ui_period_list", {"day": "2026-10-24"})], "오늘은 조용해요.")]
+    chunks, _ = await _run(tmp_path, "today", script)
+    assert [u[1] for u in _ui(chunks)] == ["ui_period_list"] and _chip(chunks) == []
+
+
 # --- next ---
 
 
@@ -231,11 +245,25 @@ async def test_next_chip_upcoming_sorted(tmp_path):
         t.create_event(user, title="꾸민 오후", date="2026-10-24", time="15:00")
         t.create_event(user, title="꾸민 오전", date="2026-10-24", time="09:00")  # 지났다
         t.create_event(user, title="꾸민 먼 일", date="2026-11-05", time="09:00")  # 7일 밖
+        t.create_event(user, title="꾸민 오늘 종일", date="2026-10-24", all_day=True)  # 오늘 하루 종일: 뺀다
+        t.create_event(user, title="꾸민 자정", date="2026-10-25", time="00:00")  # 내일 00:00: 하루 종일 다음
 
     chunks, _ = await _run(tmp_path, "next", [FakeTurn([], "다음은 오후 일정이에요.")], before=seed)
 
     ((_, name, props, _),) = _chip(chunks)
-    assert name == "ui_events" and [i["title"] for i in props["items"]] == ["꾸민 오후", "꾸민 휴가"]
+    assert name == "ui_events" and [i["title"] for i in props["items"]] == ["꾸민 오후", "꾸민 휴가", "꾸민 자정"]
+
+
+async def test_next_chip_brain_drew_ui_events_no_duplicate(tmp_path):
+    def seed(env):
+        user = RunContext(conversation_id=None, run_id=None, actor="user", channel="app")
+        env.parts.tools.create_event(user, title="꾸민 오후", date="2026-10-24", time="15:00")
+
+    items = [{"event_id": 1, "date": "2026-10-24", "start": "2026-10-24T06:00:00Z", "end": None, "all_day": False,
+              "title": "꾸민 오후", "area": None, "remind_min": 10, "repeat": "none", "origin": "user"}]
+    script = [FakeTurn([("ui_events", {"items": items})], "다음은 오후 일정이에요.")]
+    chunks, _ = await _run(tmp_path, "next", script, before=seed)
+    assert [u[1] for u in _ui(chunks)] == ["ui_events"] and _chip(chunks) == []
 
 
 # --- 붙이지 않는 경로 ---
@@ -253,6 +281,29 @@ async def test_no_chip_card_when_capped(tmp_path):
         env.conn.commit()
         _, raw = await env.chat("오늘 정리해줘", chip="today")
     assert _ui(parse_sse(raw)) == []
+
+
+async def test_no_chip_card_when_cap_hit_during_retries(tmp_path):
+    from my_planner.harness.dispatcher import DAILY_CAP_REPLY
+
+    script = [FakeTurn([], "", status="error", error="x")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        env.conn.execute("INSERT INTO usage_state (date, brain_calls) VALUES ('2026-10-24', 59)")  # 첫 호출로 60
+        env.conn.commit()
+        _, raw = await env.chat("오늘 정리해줘", chip="today")
+        calls = len(env.brain.calls)
+    chunks = parse_sse(raw)
+    assert calls == 1 and _ui(chunks) == []  # 첫 오류 뒤 다시 부르기 전에 상한
+    assert DAILY_CAP_REPLY in "".join(c["delta"] for c in chunks if c["type"] == "text-delta")
+
+
+@pytest.mark.parametrize("turn", [
+    FakeTurn([DENTIST_EVENT], "", status="rate_limited", retry_at=START + timedelta(hours=2)),
+    FakeTurn([DENTIST_EVENT], "", status="auth_error", error="login"),
+], ids=["rate_limited", "auth_error"])
+async def test_no_chip_card_on_rate_limited_or_auth_error(tmp_path, turn):
+    chunks, _ = await _run(tmp_path, "event", [turn])
+    assert _chip(chunks) == []
 
 
 async def test_no_chip_card_on_replay(tmp_path):
@@ -299,3 +350,35 @@ def test_harness_card_skips_text_check():
     props = {"title": "꾸민 메모", "lines": [f"{banned_words()[0]} 들어간 줄"]}
     assert validate_props("ui_summary_card", props) is not None
     assert validate_props("ui_summary_card", props, harness=True) is None
+
+
+# --- `chip_cards()` 단위 ---
+
+
+def _ctx(**kw):
+    return RunContext(conversation_id=1, run_id=None, channel="app", chip="today", **kw)
+
+
+def test_chip_cards_no_room_returns_empty():
+    assert chip_cards_mod.chip_cards("today", _ctx(ui_drawn=2), None, START) == []
+
+
+@pytest.mark.parametrize(("chip", "drawn"), [
+    ("todo", "ui_events"), ("event", "ui_events"), ("memo", "ui_summary_card"), ("today", "ui_period_list"),
+    ("next", "ui_events"),
+])
+def test_chip_cards_brain_drew_enough_returns_empty(chip, drawn):
+    ctx = _ctx(ui_drawn=1, ui_drawn_names=[drawn])
+    assert chip_cards_mod.chip_cards(chip, ctx, None, START) == []  # 만드는 함수에 닿지 않는다(tools 없음)
+
+
+def test_chip_cards_builder_error_is_logged_and_skipped(monkeypatch, caplog):
+    def boom(ctx, tools, now):
+        raise RuntimeError("꾸민 내용")
+
+    monkeypatch.setitem(chip_cards_mod._BUILDERS, "today", boom)
+    caplog.set_level(logging.INFO)
+    assert chip_cards_mod.chip_cards("today", _ctx(), None, START) == []
+    (rec,) = [r for r in caplog.records if r.getMessage() == "chip_card_error"]
+    assert (rec.chip, rec.error_type) == ("today", "RuntimeError")
+    assert "꾸민 내용" not in f"{rec.__dict__}"

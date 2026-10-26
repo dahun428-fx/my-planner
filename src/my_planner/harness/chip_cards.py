@@ -73,7 +73,7 @@ def chip_cards(chip: str, ctx: RunContext, tools: Tools, now: datetime) -> list[
         log.warning("chip_card_invalid", extra={"chip": chip, "component": component})
         return []
     log.info("chip_card_added", extra={"chip": chip, "component": component})
-    return [card][:room]
+    return [card]
 
 
 # --- 칩마다 ---
@@ -145,6 +145,7 @@ def _next(ctx: RunContext, tools: Tools, now: datetime) -> ChipCard | None:
 
     got = [
         o for o in repo.occurrences(today, today + timedelta(days=NEXT_DAYS - 1))
+        # 01:30(논리적 오늘은 전날)이면 달력 오늘의 하루 종일 일정도 "다음"에 든다: 의도한 규칙
         if (o.date > today if o.all_day else o.start is not None and o.start >= now)
     ]
     got.sort(key=lambda o: (start_of(o), not o.all_day, o.event_id))
