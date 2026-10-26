@@ -101,6 +101,8 @@ def get_notify(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) ->
 
 
 async def post_subscription(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    from my_planner.api.server import DEVICE_ID_KEY
+
     if (off := _push_off(deps)) is not None:
         return off
     body = await read_json_object(request)
@@ -113,6 +115,7 @@ async def post_subscription(request: web.Request, deps: ApiDeps) -> web.StreamRe
     assert deps.dispatcher is not None
     res = deps.dispatcher.apply_action(_request("push_subscribe", {
         "endpoint": sub.endpoint, "p256dh": sub.keys.p256dh, "auth": sub.keys.auth, "label": sub.label,
+        "device_id": request.get(DEVICE_ID_KEY),  # 기기 토큰으로 왔으면 그 기기(기기 연결 스펙 4.6)
     }))
     if res.status != "applied":
         return error_response(400, "invalid_request", BAD_BODY)

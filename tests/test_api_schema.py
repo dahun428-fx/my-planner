@@ -30,6 +30,7 @@ EXPECTED_MODELS = {
     "Moment", "MomentsList",  # SP8 6.5
     "BodyPostBody", "BodySaved",  # SP8 7.3
     "CurveHistory",  # SP8 8.2
+    "PairCreated", "PairStatus", "PairBody", "PairResult", "DeviceList",  # 기기 연결 스펙 4.5
     "EventItem", "EventList", "EventDetail", "MissedReminder",  # SP9 5.6
     "CalendarSettings", "CalendarPutBody",  # SP9 5.7
 }

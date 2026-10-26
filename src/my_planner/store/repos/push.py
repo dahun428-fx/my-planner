@@ -71,18 +71,22 @@ class PushRepo:
         return [_row(r) for r in rows]
 
     def upsert(
-        self, endpoint: str, p256dh: str, auth: str, label: str | None, *, at: datetime | None = None
+        self, endpoint: str, p256dh: str, auth: str, label: str | None, *, at: datetime | None = None,
+        device_id: int | None = None,
     ) -> int:
-        """같은 `endpoint`면 키와 이름을 갱신하고 다시 켠다(실패 수 0). 같은 id를 돌려준다(6.4.8)."""
+        """같은 `endpoint`면 키와 이름을 갱신하고 다시 켠다(실패 수 0). 같은 id를 돌려준다(6.4.8).
+
+        `device_id`는 마지막으로 구독한 쪽으로 덮는다(기기 연결 스펙 4.6). API 토큰으로 구독하면 NULL."""
         if at is None:
             assert self.clock is not None, "upsert에는 시각이나 시계가 있어야 한다"
             at = self.clock.now()
         with transaction(self.conn):
             self.conn.execute(
-                "INSERT INTO push_subscriptions (endpoint, p256dh, auth, label, created_at) VALUES (?, ?, ?, ?, ?) "
+                "INSERT INTO push_subscriptions (endpoint, p256dh, auth, label, created_at, device_id) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, "
-                "label = excluded.label, failure_count = 0, disabled_at = NULL",
-                (endpoint, p256dh, auth, label, to_iso(at)),
+                "label = excluded.label, failure_count = 0, disabled_at = NULL, device_id = excluded.device_id",
+                (endpoint, p256dh, auth, label, to_iso(at), device_id),
             )
             r = self.conn.execute("SELECT id FROM push_subscriptions WHERE endpoint = ?", (endpoint,)).fetchone()
         return int(r["id"])

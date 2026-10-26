@@ -35,6 +35,7 @@ ErrorCode = Literal[
     "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal", "unavailable",
     "checkin_time_invalid", "memo_conflict", "too_many_memos", "too_many_pinned",
     "remind_invalid", "start_not_in_weekdays", "too_many_events", "range_too_long", "digest_time_invalid",
+    "bad_code",
 ]
 
 
@@ -1044,6 +1045,66 @@ class PushSubscribed(_Model):
     id: int
 
 
+DeviceClient = Literal["app", "dashboard"]
+
+
+class PairCreated(_Model):
+    """`POST /devices/pair` `201`: 연결 코드(숫자 6자리)와 만료 시각 (기기 연결 스펙 4.5)."""
+
+    code: str
+    expires_at: str
+
+
+class DeviceRef(_Model):
+    id: int
+    label: str
+
+
+class PairStatus(_Model):
+    """`GET /devices/pair`: 지금 코드의 상태. `used`면 그 코드로 연결한 기기."""
+
+    state: Literal["waiting", "used", "expired", "none"]
+    device: DeviceRef | None = None
+
+
+class PairBody(BaseModel):
+    """`POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    code: str = Field(pattern=r"^[0-9]{6}$", repr=False)
+    client: DeviceClient
+    label: str = Field(min_length=1, max_length=40, pattern=r"^[^\x00-\x1f\x7f]+$")
+
+
+class PairedDevice(_Model):
+    id: int
+    label: str
+    client: DeviceClient
+
+
+class PairResult(_Model):
+    """`POST /pair` `201`: 기기 토큰(이 응답에만 한 번 나온다)과 기기."""
+
+    token: str
+    device: PairedDevice
+
+
+class DeviceItem(_Model):
+    id: int
+    label: str
+    client: DeviceClient
+    created_at: str
+    last_used_at: str | None
+    this_device: bool
+
+
+class DeviceList(_Model):
+    """`GET /devices`: 끊지 않은 기기, 만든 순서. API 토큰은 나오지 않는다."""
+
+    devices: list[DeviceItem]
+
+
 class PushTestResult(_Model):
     """`POST /push/test`: 받은 구독 수, 못 받은 구독 수."""
 
@@ -1221,6 +1282,11 @@ MODELS: dict[str, type[BaseModel]] = {
     "VapidPublicKey": VapidPublicKey,
     "PushSubscribeBody": PushSubscribeBody,
     "PushSubscribed": PushSubscribed,
+    "PairCreated": PairCreated,
+    "PairStatus": PairStatus,
+    "PairBody": PairBody,
+    "PairResult": PairResult,
+    "DeviceList": DeviceList,
     "PushTestResult": PushTestResult,
     "NotifySettings": NotifySettings,
     "NotifyPutBody": NotifyPutBody,

@@ -134,7 +134,8 @@
                 "start_not_in_weekdays",
                 "too_many_events",
                 "range_too_long",
-                "digest_time_invalid"
+                "digest_time_invalid",
+                "bad_code"
               ],
               "type": "string"
             },
@@ -2185,6 +2186,66 @@
       ],
       "type": "object"
     },
+    "DeviceList": {
+      "$defs": {
+        "DeviceItem": {
+          "additionalProperties": false,
+          "properties": {
+            "client": {
+              "enum": [
+                "app",
+                "dashboard"
+              ],
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "label": {
+              "type": "string"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "this_device": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "client",
+            "created_at",
+            "last_used_at",
+            "this_device"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/DeviceItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "devices"
+      ],
+      "type": "object"
+    },
     "DigestSettingPutBody": {
       "additionalProperties": false,
       "properties": {
@@ -2552,7 +2613,8 @@
                 "start_not_in_weekdays",
                 "too_many_events",
                 "range_too_long",
-                "digest_time_invalid"
+                "digest_time_invalid",
+                "bad_code"
               ],
               "type": "string"
             },
@@ -4069,6 +4131,139 @@
         "primary",
         "effective",
         "push_subscriptions"
+      ],
+      "type": "object"
+    },
+    "PairBody": {
+      "additionalProperties": false,
+      "properties": {
+        "client": {
+          "enum": [
+            "app",
+            "dashboard"
+          ],
+          "type": "string"
+        },
+        "code": {
+          "pattern": "^[0-9]{6}$",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "client",
+        "label"
+      ],
+      "type": "object"
+    },
+    "PairCreated": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "PairResult": {
+      "$defs": {
+        "PairedDevice": {
+          "additionalProperties": false,
+          "properties": {
+            "client": {
+              "enum": [
+                "app",
+                "dashboard"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "client"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "$ref": "#/$defs/PairedDevice"
+        },
+        "token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "device"
+      ],
+      "type": "object"
+    },
+    "PairStatus": {
+      "$defs": {
+        "DeviceRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "waiting",
+            "used",
+            "expired",
+            "none"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
       ],
       "type": "object"
     },

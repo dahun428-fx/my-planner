@@ -100,7 +100,7 @@ BODY = "body-token-" + "q" * 40  # 꾸며 낸 값(51자)
 async def test_body_token_rejected_on_every_other_route(tmp_path):
     """등록된 모든 경로(틀의 `{id}`는 숫자로)에 `BODY_TOKEN`을 보내면 401. `/body`에 `API_TOKEN`도 401."""
     from my_planner.api.body import BODY_PATH
-    from my_planner.api.server import LIMITER_KEY
+    from my_planner.api.server import LIMITER_KEY, PAIR_PATH
 
     async with BeEnv.start(tmp_path, start=START, body_token=BODY) as env:
         routes = sorted({
@@ -109,6 +109,8 @@ async def test_body_token_rejected_on_every_other_route(tmp_path):
         })
         assert ("POST", BODY_PATH) in routes and len(routes) > 20
         for method, path in routes:
+            if (method, path) == ("POST", PAIR_PATH):
+                continue  # Bearer 없이 연결 코드로 인증한다(기기 연결 스펙 4.4): `test_api_devices.py`가 본다
             url = path.replace("{id}", "1")
             resp = await env.request(method, url, token=BODY if path != BODY_PATH else TEST_TOKEN, json={})
             assert resp.status == 401, (method, path)
@@ -161,6 +163,7 @@ async def test_calendar_key_not_accepted_elsewhere(env):
     routes = sorted({
         (r.method, r.resource.canonical) for r in env.client.app.router.routes()
         if r.resource is not None and r.method != "HEAD" and r.resource.canonical != ICS
+        and (r.method, r.resource.canonical) != ("POST", "/api/v1/pair")  # 연결 코드가 인증(test_api_devices.py)
     })
     assert len(routes) > 20
     for method, path in routes:
