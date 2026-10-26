@@ -6,11 +6,21 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
+from my_planner.loop.digests import (
+    DIGEST_KINDS,
+    DigestKind,
+    DigestSetting,
+    dump_digest_settings,
+    parse_digest_settings,
+)
 from my_planner.loop.schedule import Overrides, dump_overrides, parse_overrides
 from my_planner.store.db import transaction
+
+if TYPE_CHECKING:
+    from my_planner.config import DigestConfig
 
 # app_state 키 (티켓 10). 시각은 UTC ISO, 날짜는 논리적 날짜 ISO.
 PAUSE_UNTIL_KEY = "pause_until"  # /pause가 정한 멈춤 끝 시각
@@ -29,6 +39,10 @@ SCHEDULE_OVERRIDE_KEY = "schedule_override"
 WAKE_TASK_STALE_KEY = "wake_task_stale"
 # SP9 5.7: 아이폰 캘린더 구독 키(32바이트 무작위, 평문: 설정 화면이 주소를 다시 보여 줘야 한다). 없으면 구독 주소 없음
 CALENDAR_KEY_KEY = "calendar_key"
+# SP9b 4장: 일정 정리 알림 설정(JSON, 종류마다 {"on", "time"}). 없거나 잘못된 칸은 config.toml [schedule.digest] 값
+DIGEST_SETTINGS_KEY = "digest_settings"
+# 종류마다 판정한 마지막 슬롯 날짜(JSON, 현지 달력 날짜 ISO). 판정할 때 보내기 전에 적는다
+DIGEST_LAST_KEY = "digest_last"
 
 UsageField = Literal["brain_calls", "proactive_messages", "summaries"]
 _USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries")  # `summaries`: 하루 요약 호출(SP9 7.2, 018)
@@ -101,6 +115,37 @@ class StateRepo:
 
     def set_schedule_override(self, overrides: Overrides) -> None:
         self.set(SCHEDULE_OVERRIDE_KEY, dump_overrides(overrides))
+
+    def get_digest_settings(self, defaults: DigestConfig) -> dict[DigestKind, DigestSetting]:
+        return parse_digest_settings(self.get(DIGEST_SETTINGS_KEY), defaults)
+
+    def set_digest_settings(self, settings: dict[DigestKind, DigestSetting]) -> None:
+        self.set(DIGEST_SETTINGS_KEY, dump_digest_settings(settings))
+
+    def _digest_last_raw(self) -> dict[str, object]:
+        try:
+            data = json.loads(self.get(DIGEST_LAST_KEY) or "{}")
+        except ValueError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def get_digest_last(self) -> dict[DigestKind, date | None]:
+        """종류마다 판정한 마지막 슬롯 날짜. 없거나 깨진 값은 None(그 종류를 아직 판정하지 않은 것으로 본다)."""
+        raw = self._digest_last_raw()
+        out: dict[DigestKind, date | None] = {}
+        for kind in DIGEST_KINDS:
+            v = raw.get(kind)
+            try:
+                out[kind] = date.fromisoformat(v) if isinstance(v, str) else None
+            except ValueError:
+                out[kind] = None
+        return out
+
+    def set_digest_last(self, kind: DigestKind, d: date) -> None:
+        with transaction(self.conn):  # 읽고 고쳐 쓰기를 한 트랜잭션으로(다른 종류의 날짜는 그대로)
+            raw = self._digest_last_raw()
+            raw[kind] = d.isoformat()
+            self.set(DIGEST_LAST_KEY, json.dumps(raw))
 
     def wake_task_stale(self) -> bool:
         return self.get(WAKE_TASK_STALE_KEY) == "true"

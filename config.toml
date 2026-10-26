@@ -17,6 +17,14 @@ weekend = "18:00"
 day = "sun"
 time = "18:00"
 
+# 일정 정리 알림 (SP9b): 아침은 오늘 일정, 밤은 내일 일정. 일정이 없는 날은 보내지 않는다
+# 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위. 앱 설정에서 바꾸면 그 값이 먼저다(app_state.digest_settings)
+[schedule.digest]
+morning = "07:30"
+night = "21:30"
+morning_on = true
+night_on = true
+
 [limits]
 daily_brain_calls = 60          # 하루 두뇌 호출 상한
 max_turns = 10                  # 호출당 턴 상한

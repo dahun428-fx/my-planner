@@ -20,6 +20,7 @@ from my_planner.harness.dispatcher import (  # 다시 넣기 상한은 앱 재�
 from my_planner.harness.moments import days_to_queue
 from my_planner.logging_setup import cleanup_logs
 from my_planner.loop.catchup import RETURN_GAP, decide, merge_order
+from my_planner.loop.digests import PendingDigest, judge_digests, send_digests
 from my_planner.loop.reminders import (
     RESUME_GAP,
     RETRY_DELAYS_S,
@@ -419,7 +420,8 @@ class Runner:
         self.events = events  # 일정 알림(SP9 5.3). 없으면 알림 판정을 건너뛴다
         self.reminder_delivery = reminder_delivery
         self.reminder_delays = RETRY_DELAYS_S  # 보내기 재시도 간격(시험이 바꾼다)
-        self.reminder_tasks: set[asyncio.Task[None]] = set()  # 보내는 중인 알림 작업(끝나면 스스로 빠진다)
+        # 보내는 중인 알림 작업(일정 알림과 일정 정리 알림, 끝나면 스스로 빠진다)
+        self.reminder_tasks: set[asyncio.Task[None]] = set()
         # 대화 요약 큐(SP9 7.2): 만료로 닫은 뒤 tick마다 닫힌 앱 대화를 넣는다. 없으면 건너뛴다
         self.summaries = summaries
 
@@ -524,6 +526,7 @@ class Runner:
         # 회차가 없어도, 멈춤 중에도, 하트비트 기록보다 앞에서(SP9 5.3). 하트비트는 tick 끝에서만 적으니, 뒷부분이 매번
         # 예외(`tick_error`)면 공백이 커져 알림이 `late_sent`·`missed`로 바뀐다(스펙이 정한 순서)
         self._remind(last_seen, now)
+        self._digest(last_seen, now)  # 일정 정리 알림(SP9b 3.1): 같은 자리, 따로 감싼다
         if not self.checkins:  # 회차 없이 정리만(2·3단계의 회차 부분을 건너뛴다)
             if self.router is not None:
                 self.router.close_expired()
@@ -612,8 +615,39 @@ class Runner:
         if pending:
             self._send_in_background(pending)
 
+    def _digest(self, last_seen: datetime | None, now: datetime) -> None:
+        """일정 정리 알림(SP9b 3장): `_remind`와 같은 조건에서 판정하고 `digest_last`를 적은 뒤, 보내기는 asyncio 작업으로
+        넘긴다. 설정은 tick마다 읽는다(재시작 없이 새 시각). 안 돼도 일정 알림과 tick은 그대로 간다."""
+        if self.events is None or last_seen is None:  # 첫 실행은 공백을 알 수 없다
+            return
+        try:
+            pending = judge_digests(
+                last_seen_at=last_seen, now=now,
+                settings=self.state.get_digest_settings(self.settings.schedule.digest),
+                events=self.events, state=self.state, tz=self.settings.timezone,
+                day_boundary=self.settings.day_boundary,
+            )
+        except Exception:  # 판정이 안 돼도 회차 판정은 돈다. 그 tick의 일정 정리 알림만 빠진다
+            log.exception("digest_error")
+            return
+        if pending:
+            self._send_digests_in_background(pending)
+
+    def _send_digests_in_background(self, pending: list[PendingDigest]) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 이벤트 루프 밖(동기 호출): 적을 행이 없으니 로그만
+            loop = None
+        if loop is None or self.reminder_delivery is None:
+            log.warning("digests_no_loop", extra={"count": len(pending)})
+            return
+        task = loop.create_task(send_digests(pending, self.reminder_delivery, delays=self.reminder_delays))
+        self.reminder_tasks.add(task)
+        task.add_done_callback(self.reminder_tasks.discard)
+
     async def drain_reminders(self, timeout: float = 10) -> None:
-        """종료 때: 보내는 중인 알림을 잠깐 기다리고, 남은 것은 취소한다(취소된 알림의 행은 `failed`가 된다)."""
+        """종료 때: 보내는 중인 알림을 잠깐 기다리고, 남은 것은 취소한다(취소된 일정 알림의 행은 `failed`가 된다.
+        일정 정리 알림은 적을 행이 없다)."""
         tasks = list(self.reminder_tasks)
         if not tasks:
             return
