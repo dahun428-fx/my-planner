@@ -28,6 +28,17 @@ export const healthAnswers = {
     }),
 };
 
+// Device pairing spec 5.3: `POST /pair` (no Authorization) and the `DELETE /devices/{id}` of "연결 지우기".
+export const PAIRED = { token: "fake-device-token", device: { id: 7, label: "Linux · 대시보드", client: "dashboard" } };
+export const pairAnswers = {
+  ok: (body: object = PAIRED) => http.post(`${BASE}/pair`, () => HttpResponse.json(body as Record<string, unknown>, { status: 201 })),
+  badCode: () => http.post(`${BASE}/pair`, () => error(401, "bad_code")),
+  oldBe: () => http.post(`${BASE}/pair`, () => error(401, "unauthorized")),
+  tooMany: () => http.post(`${BASE}/pair`, () => error(429, "too_many_auth_failures")),
+  safeMode: () => http.post(`${BASE}/pair`, () => error(503, "safe_mode")),
+  unreachable: () => http.post(`${BASE}/pair`, () => HttpResponse.error()),
+};
+
 // The same states for a screen's own GET (`/today`, `/week`, `/conditions`, `/status`, `/curve`; a query string still matches).
 export function answersFor(path: string, fixture: object) {
   const url = `${BASE}${path}`;

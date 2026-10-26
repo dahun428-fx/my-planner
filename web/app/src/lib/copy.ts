@@ -34,6 +34,7 @@ export const copy = {
     habits: "습관",
     status: "상태창",
     connect: "기기 연결",
+    devices: "연결된 기기", // device pairing spec 5.1, under "기기 연결"
     back: BACK_MORE,
   },
 
@@ -518,6 +519,49 @@ export const copy = {
     invalidUrl: "주소 모양이 맞지 않아요.",
     homeScreenGuide:
       "공유 버튼에서 ‘홈 화면에 추가’를 한 뒤, 홈 화면의 ‘비서’를 열어 연결해 주세요. 탭과 홈 화면 앱은 저장 공간이 따로라서, 여기서 넣은 값은 앱으로 넘어가지 않아요.",
+    // Device pairing spec 5.3. Marked (new) where the spec gives no words.
+    codeIntro: "연결된 기기의 더보기 › 연결된 기기에서 만든 6자리 코드를 넣어 주세요.", // (new)
+    codeLabel: "연결 코드",
+    digitLabel: (n: number) => `연결 코드 ${n}번째 숫자`, // (new) each box's name
+    changeUrl: "주소 바꾸기",
+    useKey: "열쇠로 연결",
+    useCode: "연결 코드로 연결", // (new) back from the key form
+    badCode: "코드가 맞지 않거나 만료됐어요. 연결된 기기에서 새 코드를 만들어 주세요.",
+    oldBe: "BE를 먼저 업데이트해야 해요. 지금은 열쇠로 연결해 주세요.",
+  },
+
+  // Device pairing spec 5.1, 5.2: the connected devices screen and its new device sheet. (new) as above.
+  devices: {
+    title: "연결된 기기",
+    back: BACK_MORE,
+    add: "새 기기 연결",
+    lastUsed: (when: string) => `마지막 사용 ${when}`,
+    today: "오늘",
+    connectedOn: (when: string) => `연결 ${when}`,
+    thisDevice: "이 기기",
+    revoke: "연결 끊기",
+    revokeSummary: "이 기기에서 다시 쓰려면 새 코드가 필요해요.",
+    revokeOthers: "다른 기기 모두 끊기",
+    revokeOthersSummary: "다른 기기는 모두 새 코드로 다시 연결해야 해요.", // (new)
+    cancel: "그대로 두기",
+    keyNote: "노트북 열쇠(.env)로 연결한 기기는 여기 나오지 않아요.",
+    empty: "연결 코드로 연결한 기기가 아직 없어요.", // (new)
+    revokeFailed: "끊지 못했어요. 다시 해 주세요.", // (new)
+    someDevice: "기기", // spec 6.2: a device the user agent does not tell
+    whereApp: "앱", // spec 6.2: "iPhone · 앱"
+    sheetTitle: "새 기기 연결",
+    remaining: (mss: string) => `남은 시간 ${mss}`,
+    appAddress: "앱 주소",
+    dashboardAddress: "대시보드 주소",
+    qrFor: "QR", // (new) the QR switch's name
+    qrApp: "앱용", // (new)
+    qrDashboard: "대시보드용",
+    remake: "코드 다시 만들기",
+    used: (label: string) => `연결됐어요 · ${label}`,
+    expired: "코드가 만료됐어요",
+    makeAgain: "다시 만들기",
+    createFailed: (code: string) => `코드를 만들지 못했어요 (${code})`, // (new)
+    qrLabel: "연결 코드 QR", // (new) the QR image's name
   },
 
   // Date formats for formatKst (lib/time.ts). The Korean ones live here so time.ts has no Hangul.

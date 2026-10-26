@@ -1,5 +1,8 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
 
+// NEXT_PUBLIC_DEFAULT_BE_URL and NEXT_PUBLIC_DASHBOARD_URL are optional (device pairing spec 5.2, 6.1;
+// declared in src/env.d.ts). Not checked here: a default address normalizeBeUrl refuses leaves the
+// connect screen's field empty, it never stops the build.
 /** @param {string} phase */
 export default function config(phase) {
   if (phase === PHASE_PRODUCTION_BUILD) {

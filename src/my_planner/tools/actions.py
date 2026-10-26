@@ -127,8 +127,8 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
 }
 
 # `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
-RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations"]
-NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations"})  # `api_idempotency.endpoint`에 없는 값
+RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices"]
+NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
@@ -474,12 +474,13 @@ def _push_summary(base: str, label: Any) -> str:
 def _push_subscribe(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     endpoint, p256dh, auth = args.get("endpoint"), args.get("p256dh"), args.get("auth")
     label = args.get("label")
+    device_id = args.get("device_id")  # 기기 토큰으로 왔으면 그 기기(기기 연결 스펙 4.6), API 토큰이면 None
     if not all(isinstance(v, str) and v for v in (endpoint, p256dh, auth)) or not (
         label is None or isinstance(label, str)
-    ):
+    ) or not (device_id is None or _int(device_id) is not None):
         return {"error": BAD_ARGS}
     assert deps.pushes is not None
-    sid = deps.pushes.upsert(endpoint, p256dh, auth, label or None, at=deps.clock.now())
+    sid = deps.pushes.upsert(endpoint, p256dh, auth, label or None, at=deps.clock.now(), device_id=device_id)
     record_activity(
         deps.activity, ctx, kind="push_subscribed", target=f"push:{sid}", summary=_push_summary(PUSH_SUBSCRIBED, label),
         risk="low", undo=None,
@@ -498,6 +499,42 @@ def _push_unsubscribe(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
         summary=_push_summary(PUSH_UNSUBSCRIBED, sub.label), risk="low", undo=None,
     )
     return {"id": sub.id}
+
+
+NO_DEVICE = "없는 기기예요."
+DEVICE_CLIENTS = ("app", "dashboard")
+
+
+def _device_pair(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """기기 한 대를 넣는다(기기 연결 스펙 4.2). 인자에는 토큰 원문이 아니라 `token_hash`만 온다. 활동은 남기지 않는다."""
+    from my_planner.store.repos.devices import DevicesRepo
+
+    token_hash, label, client = args.get("token_hash"), args.get("label"), args.get("client")
+    if not (isinstance(token_hash, str) and len(token_hash) == 64 and isinstance(label, str) and label
+            and client in DEVICE_CLIENTS):
+        return {"error": BAD_ARGS}
+    return {"id": DevicesRepo(deps.conn).add(token_hash, label, client, deps.clock.now())}
+
+
+def _device_revoke(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """끊는다. 그 기기의 푸시 구독도 끈다. 되돌릴 수 없다."""
+    from my_planner.store.repos.devices import DevicesRepo
+
+    did = _int(args.get("id"))
+    if did is None or not DevicesRepo(deps.conn).revoke(did, deps.clock.now()):
+        return {"error": NO_DEVICE}
+    return {"id": did}
+
+
+def _device_touch(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """마지막 사용 시각(하루 한 번, 4.4)."""
+    from my_planner.store.repos.devices import DevicesRepo
+
+    did = _int(args.get("id"))
+    if did is None:
+        return {"error": BAD_ARGS}
+    DevicesRepo(deps.conn).touch(did, deps.clock.now())
+    return {"id": did}
 
 
 def _notify_set(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -659,7 +696,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
     # 내부(`api/push.py`: 6.4.8, 6.4.9). 되돌릴 수 없다
     "push_subscribe": ActionSpec(
-        _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label"}), endpoint="push"
+        _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label", "device_id"}),
+        endpoint="push",
     ),
     "push_unsubscribe": ActionSpec(_push_unsubscribe, public=False, accepts=frozenset({"id"}), endpoint="push"),
     "notify_set": ActionSpec(_notify_set, public=False, accepts=frozenset({"primary"}), endpoint="push"),
@@ -669,6 +707,12 @@ ACTIONS: dict[str, ActionSpec] = {
     # 내부(`api/calendar.py`: 아이폰 캘린더 구독 키, SP9 5.7). 활동·되돌리기 없음(키가 기록에 남지 않게)
     "calendar_key_create": ActionSpec(_calendar_key_create, public=False, accepts=frozenset(), endpoint="push"),
     "calendar_key_rotate": ActionSpec(_calendar_key_rotate, public=False, accepts=frozenset(), endpoint="push"),
+    # 내부(`api/devices.py`: 기기 연결 스펙 4.2). 활동·되돌리기 없음. 토큰 원문은 인자에 없다(`token_hash`만)
+    "device_pair": ActionSpec(
+        _device_pair, public=False, accepts=frozenset({"token_hash", "label", "client"}), endpoint="devices"
+    ),
+    "device_revoke": ActionSpec(_device_revoke, public=False, accepts=frozenset({"id"}), endpoint="devices"),
+    "device_touch": ActionSpec(_device_touch, public=False, accepts=frozenset({"id"}), endpoint="devices"),
     # 내부(`DELETE /conversations/{id}`, SP9 7.7): 되돌릴 수 없다. 원문 기록·세션 파일은 디스패처가 커밋 뒤에 지운다
     "conversation_delete": ActionSpec(
         _conversation_delete, public=False, accepts=frozenset({"id"}), endpoint="conversations"

@@ -1,0 +1,145 @@
+/* Device pairing spec 5.1, 5.2: the connected devices list and the new device sheet. */
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
+.add {
+  min-height: var(--control-h);
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+.add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pad {
+  padding: 0.75rem var(--pad);
+}
+.note {
+  font-size: var(--size-meta);
+  color: var(--text-2);
+}
+.mark {
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--hue);
+}
+.danger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--row);
+  padding: 0.5rem var(--pad);
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  text-align: left;
+  color: var(--negative);
+  cursor: pointer;
+}
+.danger:active {
+  background: var(--ground);
+}
+
+/* The sheet */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.code {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: var(--lh-display);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.remaining {
+  margin: 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.where {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+}
+.where div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.where dt {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.where dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  text-align: right;
+  user-select: all;
+}
+.qrSwitch {
+  display: flex;
+  justify-content: center;
+}
+.result {
+  margin: 0;
+  padding: 0.5rem 0;
+  font-size: var(--size-body);
+  text-align: center;
+}
+.inline {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--hue);
+  cursor: pointer;
+}
+.remake {
+  min-height: var(--control-h);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--size-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+.add:focus-visible,
+.back:focus-visible,
+.danger:focus-visible,
+.inline:focus-visible,
+.remake:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

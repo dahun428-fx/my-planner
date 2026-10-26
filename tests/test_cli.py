@@ -69,3 +69,85 @@ def test_gen_vapid_prints_key_pair_usable_by_pywebpush(capsys):
     ) == raw(pub)
     assert cli.main(["gen-vapid"]) == 0
     assert capsys.readouterr().out != captured.out  # 매번 새 키
+
+
+# --- 기기 연결 스펙 4.7: `pair` ---
+
+
+def _pair_env(monkeypatch, tmp_path, *, token="t" * 43):
+    from fakes import make_settings
+
+    settings = make_settings(tmp_path, api_token=token) if token else make_settings(tmp_path)
+    monkeypatch.setattr("my_planner.config.load_settings", lambda root: settings)
+    return settings
+
+
+def test_cli_pair_prints_code(monkeypatch, tmp_path, capsys):
+    settings = _pair_env(monkeypatch, tmp_path)
+    seen = []
+
+    def fake_post(url, token):
+        seen.append((url, token))
+        return 201, {"code": "482913", "expires_at": "2026-10-26T05:05:00Z"}
+
+    monkeypatch.setattr(cli, "_post_local", fake_post)
+    assert cli.main(["pair"]) == 0
+    out = capsys.readouterr()
+    assert out.out.strip() == "연결 코드: 482 913 (5분 동안, 한 번만)"
+    assert seen == [(f"http://127.0.0.1:{settings.api.port}/api/v1/devices/pair", "t" * 43)]
+    assert "t" * 43 not in out.out + out.err
+
+
+def test_cli_pair_be_down_exit_1(monkeypatch, tmp_path, capsys):
+    _pair_env(monkeypatch, tmp_path)
+
+    def down(url, token):
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(cli, "_post_local", down)
+    assert cli.main(["pair"]) == 1
+    assert "BE가 꺼져 있어요" in capsys.readouterr().err
+
+
+def test_cli_pair_401_exit_1(monkeypatch, tmp_path, capsys):
+    _pair_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli, "_post_local", lambda url, token: (401, {"error": {"code": "unauthorized"}}))
+    assert cli.main(["pair"]) == 1
+    assert "API_TOKEN이 BE와 달라요" in capsys.readouterr().err
+
+
+def test_cli_pair_safe_mode_exit_1(monkeypatch, tmp_path, capsys):
+    _pair_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli, "_post_local", lambda url, token: (503, {"error": {"code": "safe_mode"}}))
+    assert cli.main(["pair"]) == 1
+    assert "안전 모드" in capsys.readouterr().err
+
+
+def test_cli_pair_no_token_exit_1(monkeypatch, tmp_path, capsys):
+    _pair_env(monkeypatch, tmp_path, token=None)
+    assert cli.main(["pair"]) == 1
+    assert "API_TOKEN이 없어요" in capsys.readouterr().err
+
+
+async def test_cli_pair_against_real_api(tmp_path, monkeypatch):
+    """실제 `_post_local`이 돌고 있는 API에서 코드를 받는다(127.0.0.1, 프록시 없이)."""
+    import asyncio
+    import socket
+
+    from be_env import TEST_TOKEN, BeEnv
+    from test_dispatcher_messages import kst
+
+    from my_planner.api.server import build_app, start_api, stop_api
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 14, 0)) as env:
+        runner = await start_api(build_app(env.deps), "127.0.0.1", port)
+        try:
+            status, body = await asyncio.to_thread(
+                cli._post_local, f"http://127.0.0.1:{port}/api/v1/devices/pair", TEST_TOKEN
+            )
+        finally:
+            await stop_api(runner)
+    assert status == 201 and len(body["code"]) == 6

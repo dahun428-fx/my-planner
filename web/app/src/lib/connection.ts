@@ -8,6 +8,9 @@ export type Conn = { beUrl: string; token: string };
 const K_URL = "mp.beUrl";
 const K_TOKEN = "mp.token";
 const K_OK = "mp.lastHealthOk";
+// Device pairing spec 5.4: set when this device connected with a pairing code (its own device token).
+const K_KIND = "mp.tokenKind";
+const K_DEVICE = "mp.deviceId";
 
 // ---- BE address and key -------------------------------------------------------------------
 
@@ -45,6 +48,38 @@ export function normalizeToken(input: string): string {
   return input.trim();
 }
 
+// Device pairing spec 6.1: the optional build-time BE address that fills the connect screen. Used only
+// when it passes the same check as a typed address; otherwise the field starts empty.
+export function defaultBeUrl(value: string | undefined = process.env.NEXT_PUBLIC_DEFAULT_BE_URL): string {
+  if (!value || !value.trim()) return "";
+  const norm = normalizeBeUrl(value);
+  return norm.ok ? norm.url : "";
+}
+
+// Device pairing spec 3.3: `#be=<address>&code=<6 digits>` from the pairing sheet's QR. Either part may
+// be missing; a code that is not 6 digits is dropped.
+export function parsePairHash(hash: string): { be: string | null; code: string | null } | null {
+  const raw = hash.replace(/^#/, "");
+  if (!raw) return null;
+  const params = new URLSearchParams(raw);
+  const be = params.get("be");
+  const code = params.get("code");
+  if (be === null && code === null) return null;
+  return { be: be && be.trim() ? be.trim() : null, code: code && /^\d{6}$/.test(code) ? code : null };
+}
+
+// Device pairing spec 6.2: the device's kind from the user agent, then where it runs.
+export function deviceLabel(ua: string, where: string): string {
+  let kind = "";
+  if (/iPhone/.test(ua)) kind = "iPhone";
+  else if (/iPad/.test(ua) || (/Macintosh/.test(ua) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1)) kind = "iPad";
+  else if (/Android/.test(ua)) kind = "Android";
+  else if (/Macintosh|Mac OS X/.test(ua)) kind = "Mac";
+  else if (/Windows/.test(ua)) kind = "Windows";
+  else if (/Linux|X11/.test(ua)) kind = "Linux";
+  return `${kind || copy.devices.someDevice} · ${where}`;
+}
+
 // ---- device storage (spec 4.7); blocked storage reads as "nothing" -------------------------
 
 function read(key: string): string | null {
@@ -79,10 +114,34 @@ export function loadConn(): Conn | null {
   return beUrl && token ? { beUrl, token } : null;
 }
 
-export function saveConn(c: Conn): void {
+function remove(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // blocked storage
+  }
+}
+
+// `device` is the paired device when the token came from a pairing code (spec 5.4); a key connect
+// (no `device`) drops what an earlier code connect left.
+export function saveConn(c: Conn, device?: { id: number }): void {
   write(K_URL, c.beUrl);
   write(K_TOKEN, c.token);
+  if (device) {
+    write(K_KIND, "device");
+    write(K_DEVICE, String(device.id));
+  } else {
+    remove(K_KIND);
+    remove(K_DEVICE);
+  }
   announce();
+}
+
+// This device's id at the BE when its saved token is a device token, else null (a key connect).
+export function loadDeviceId(): number | null {
+  if (read(K_KIND) !== "device") return null;
+  const id = Number(read(K_DEVICE));
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 export function loadLastHealthOk(): string | null {

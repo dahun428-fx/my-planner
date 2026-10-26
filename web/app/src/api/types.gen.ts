@@ -32,6 +32,7 @@ export interface ApiModels {
   ConversationsClosed: ConversationsClosed;
   Curve: Curve;
   CurveHistory: CurveHistory;
+  DeviceList: DeviceList;
   DigestSettingPutBody: DigestSettingPutBody;
   DigestSettings: DigestSettings;
   DigestSettingsUpdated: DigestSettingsUpdated;
@@ -54,6 +55,10 @@ export interface ApiModels {
   MomentsList: MomentsList;
   NotifyPutBody: NotifyPutBody;
   NotifySettings: NotifySettings;
+  PairBody: PairBody;
+  PairCreated: PairCreated;
+  PairResult: PairResult;
+  PairStatus: PairStatus;
   Priorities: Priorities;
   PushSubscribeBody: PushSubscribeBody;
   PushSubscribed: PushSubscribed;
@@ -149,7 +154,8 @@ export interface ErrorDetail {
     | "start_not_in_weekdays"
     | "too_many_events"
     | "range_too_long"
-    | "digest_time_invalid";
+    | "digest_time_invalid"
+    | "bad_code";
   message: string;
 }
 /**
@@ -708,6 +714,27 @@ export interface HistoryUnassigned {
   hidden_sensitive: HiddenSensitive;
 }
 /**
+ * `GET /devices`: 끊지 않은 기기, 만든 순서. API 토큰은 나오지 않는다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DeviceList".
+ */
+export interface DeviceList {
+  devices: DeviceItem[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DeviceItem".
+ */
+export interface DeviceItem {
+  client: "app" | "dashboard";
+  created_at: string;
+  id: number;
+  label: string;
+  last_used_at: string | null;
+  this_device: boolean;
+}
+/**
  * `PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면
  * `422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다).
  *
@@ -1132,6 +1159,64 @@ export interface NotifySettings {
   effective: "telegram" | "app";
   primary: "telegram" | "app";
   push_subscriptions: number;
+}
+/**
+ * `POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairBody".
+ */
+export interface PairBody {
+  client: "app" | "dashboard";
+  code: string;
+  label: string;
+}
+/**
+ * `POST /devices/pair` `201`: 연결 코드(숫자 6자리)와 만료 시각 (기기 연결 스펙 4.5).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairCreated".
+ */
+export interface PairCreated {
+  code: string;
+  expires_at: string;
+}
+/**
+ * `POST /pair` `201`: 기기 토큰(이 응답에만 한 번 나온다)과 기기.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairResult".
+ */
+export interface PairResult {
+  device: PairedDevice;
+  token: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairedDevice".
+ */
+export interface PairedDevice {
+  client: "app" | "dashboard";
+  id: number;
+  label: string;
+}
+/**
+ * `GET /devices/pair`: 지금 코드의 상태. `used`면 그 코드로 연결한 기기.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairStatus".
+ */
+export interface PairStatus {
+  device?: DeviceRef | null;
+  state: "waiting" | "used" | "expired" | "none";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DeviceRef".
+ */
+export interface DeviceRef {
+  id: number;
+  label: string;
 }
 /**
  * `GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
