@@ -25,7 +25,7 @@ $MainTask = 'my-planner'
 $WakeTask = 'my-planner-wake'
 $MedicTask = 'my-planner-medic'
 # MSFT_TaskWeeklyTrigger.DaysOfWeek 비트: 일 1, 월 2, 화 4, 수 8, 목 16, 금 32, 토 64
-$DaysMask = @{ weekday = 62; weekend = 65 }
+$DaysMask = @{ weekday = 62; weekend = 65; daily = 127 }
 
 # Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }

@@ -162,3 +162,11 @@ def test_medic_task_runs_boot_script_forever_with_5_minute_watchdog():
     assert text(execs[0], "t:Command") == PYTHONW
     assert text(execs[0], "t:Arguments") == r"scripts\medic_boot.py"
     assert text(execs[0], "t:WorkingDirectory") == ROOT
+
+
+def test_wake_scripts_know_daily_lines():
+    common = (SCRIPTS / "task_common.ps1").read_text(encoding="utf-8-sig")
+    assert "daily = '<Sunday /><Monday /><Tuesday /><Wednesday /><Thursday /><Friday /><Saturday />'" in common
+    assert "'^(weekday|weekend|daily) ([0-2][0-9]:[0-5][0-9])$'" in common
+    check = (SCRIPTS / "check_tasks.ps1").read_text(encoding="utf-8-sig")
+    assert "daily = 127" in check

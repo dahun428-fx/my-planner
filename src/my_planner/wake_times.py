@@ -1,11 +1,12 @@
 """깨우기 작업 `my-planner-wake`의 트리거 시각 (스펙 5.1, S4).
 
 `python -m my_planner.wake_times`는 회차 시각보다 5분 이른 시각을 한 줄에 하나씩 출력한다:
-`weekday HH:MM`(월~금) 또는 `weekend HH:MM`(토·일). `scripts/register_task.ps1`이 이 출력으로 트리거를 만든다.
+`weekday HH:MM`(월~금), `weekend HH:MM`(토·일) 또는 `daily HH:MM`(매일, 켜진 일정 정리 알림 시각). `scripts/register_task.ps1`이 이 출력으로 트리거를 만든다.
 
 `config.toml`의 `[schedule]`(과 오늘을 정할 `timezone`, `day_boundary`)만 읽는다. `.env`(비밀값)는 읽지 않는다.
 SP9 8장: 앱에서 바꾼 체크인 시각(DB `app_state.schedule_override`)을 읽기 전용(`mode=ro`)으로 읽어 합친다.
 `from` 이후 값과, `from`이 아직 오지 않았으면 그 전 값(`prev`)도 넣는다. DB가 없거나 못 읽으면 config만 쓴다.
+SP9b 6장: 일정 정리 알림 설정(DB `app_state.digest_settings`, 깨졌으면 config `[schedule.digest]`)도 같은 식으로 읽는다.
 """
 
 from __future__ import annotations
@@ -21,14 +22,21 @@ from zoneinfo import ZoneInfo
 from my_planner.clock import logical_date
 from my_planner.config import ScheduleConfig, Settings, resolve_root
 from my_planner.domain import LoopKey
+from my_planner.loop.digests import (
+    DIGEST_KINDS,
+    DigestKind,
+    DigestSetting,
+    parse_digest_settings,
+)
 from my_planner.loop.schedule import Overrides, parse_overrides, review_time
 
 WAKE_LEAD = timedelta(minutes=5)
 
-DayKind = Literal["weekday", "weekend"]
+DayKind = Literal["weekday", "weekend", "daily"]
 
 
 DB_FILE = Path("state") / "planner.db"  # `app.DB_FILE`(app을 가져오지 않는다)
+DIGEST_SETTINGS_KEY = "digest_settings"  # `store.repos.state.DIGEST_SETTINGS_KEY`와 같다
 
 
 def _config(root: Path) -> dict[str, Any]:
@@ -43,20 +51,31 @@ def load_schedule(root: Path) -> ScheduleConfig:
     return ScheduleConfig.model_validate(_config(root).get("schedule", {}))
 
 
-def load_overrides(root: Path) -> Overrides:
-    """DB의 `schedule_override`. 읽기 전용 연결(`mode=ro`)만 연다. DB가 없거나 못 읽으면 빈 값(config만)."""
+def _read_state_value(root: Path, key: str) -> str | None:
+    """DB `app_state`의 한 줄. 읽기 전용 연결(`mode=ro`)만 연다. DB가 없거나 못 읽으면 None."""
     path = Path(root) / DB_FILE
     if not path.exists():
-        return {}
+        return None
     try:
         conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
         try:
-            row = conn.execute("SELECT value FROM app_state WHERE key = 'schedule_override'").fetchone()
+            row = conn.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
         finally:
             conn.close()
     except sqlite3.Error:
-        return {}
-    return parse_overrides(row[0]) if row is not None else {}
+        return None
+    return row[0] if row is not None else None
+
+
+def load_overrides(root: Path) -> Overrides:
+    """DB의 `schedule_override`. DB가 없거나 못 읽으면 빈 값(config만)."""
+    raw = _read_state_value(root, "schedule_override")
+    return parse_overrides(raw) if raw is not None else {}
+
+
+def load_digest_settings(root: Path) -> dict[DigestKind, DigestSetting]:
+    """DB의 `digest_settings`와 config `[schedule.digest]`를 합친다. DB가 없거나 못 읽거나 JSON이 깨졌으면 config 값."""
+    return parse_digest_settings(_read_state_value(root, DIGEST_SETTINGS_KEY), load_schedule(root).digest)
 
 
 def _early(t: time) -> time:
@@ -76,7 +95,10 @@ def _slot_times(schedule: ScheduleConfig, overrides: Overrides, loop: LoopKey, k
 
 
 def wake_times(
-    schedule: ScheduleConfig, overrides: Overrides | None = None, today: date | None = None
+    schedule: ScheduleConfig,
+    overrides: Overrides | None = None,
+    today: date | None = None,
+    digests: dict[DigestKind, DigestSetting] | None = None,
 ) -> list[tuple[DayKind, time]]:
     """평일·주말별로 정렬하고 같은 시각은 한 번만 둔다.
 
@@ -93,8 +115,11 @@ def wake_times(
     cfg = Settings.model_construct(schedule=schedule)  # `review_time`은 `schedule`만 본다
     sunday = d + timedelta(days=(6 - d.weekday()) % 7)
     weekend |= {review_time(cfg, ov, sunday), review_time(cfg, ov, sunday + timedelta(days=7))}
+    # 켜진 일정 정리 알림 시각은 매일(`daily`). `digests`가 없으면 config 값
+    settings = digests if digests is not None else parse_digest_settings(None, schedule.digest)
+    daily = {settings[k].time for k in DIGEST_KINDS if settings[k].on}
     out: list[tuple[DayKind, time]] = []
-    for kind, times in (("weekday", weekday), ("weekend", weekend)):
+    for kind, times in (("weekday", weekday), ("weekend", weekend), ("daily", daily)):
         out.extend((kind, t) for t in sorted({_early(t) for t in times}))
     return out
 
@@ -108,8 +133,9 @@ def _today(root: Path) -> date:
 
 
 def wake_lines(root: Path) -> list[str]:
-    """`"weekday HH:MM"`/`"weekend HH:MM"` 줄. config에 DB의 바꾼 시각을 합친다(DB가 없거나 못 읽으면 config만)."""
-    return [f"{kind} {t:%H:%M}" for kind, t in wake_times(load_schedule(root), load_overrides(root), _today(root))]
+    """`"weekday HH:MM"`/`"weekend HH:MM"`/`"daily HH:MM"` 줄. config에 DB의 바꾼 시각을 합친다(DB가 없거나 못 읽으면 config만)."""
+    times = wake_times(load_schedule(root), load_overrides(root), _today(root), load_digest_settings(root))
+    return [f"{kind} {t:%H:%M}" for kind, t in times]
 
 
 def main() -> int:

@@ -460,10 +460,11 @@ def test_wake_times_include_override(tmp_path):
 
     got = [f"{k} {t:%H:%M}" for k, t in wake_times(ScheduleConfig(), ov, MON)]
     # 주간 회고도 주말 저녁(20:00)을 따라간다
-    assert got == ["weekday 06:55", "weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 19:55"]
+    assert got == ["weekday 06:55", "weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 19:55",
+                   "daily 07:25", "daily 21:25"]
     # 하루 지나 from이 지나면 prev는 빠진다
     got2 = [f"{k} {t:%H:%M}" for k, t in wake_times(ScheduleConfig(), ov, from_future)]
-    assert got2 == ["weekday 06:55", "weekday 17:25", "weekend 09:55", "weekend 19:55"]
+    assert got2 == ["weekday 06:55", "weekday 17:25", "weekend 09:55", "weekend 19:55", "daily 07:25", "daily 21:25"]
 
 
 def test_wake_lines_read_db_readonly(tmp_path):
@@ -474,7 +475,8 @@ def test_wake_lines_read_db_readonly(tmp_path):
     shutil.copy(REPO_CONFIG, tmp_path / "config.toml")
     _db_with_override(tmp_path, {LoopKey.evening_checkin: {"weekday": CheckinSlot(time(21, 0), date(2026, 1, 1),
                                                                                     time(17, 30))}})
-    assert wake_lines(tmp_path) == ["weekday 08:55", "weekday 20:55", "weekend 09:55", "weekend 17:55"]
+    assert wake_lines(tmp_path) == ["weekday 08:55", "weekday 20:55", "weekend 09:55", "weekend 17:55",
+                                  "daily 07:25", "daily 21:25"]
 
 
 def test_wake_times_without_db_uses_config(tmp_path):
@@ -483,10 +485,12 @@ def test_wake_times_without_db_uses_config(tmp_path):
     from my_planner.wake_times import wake_lines
 
     shutil.copy(REPO_CONFIG, tmp_path / "config.toml")
-    assert wake_lines(tmp_path) == ["weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 17:55"]
+    assert wake_lines(tmp_path) == ["weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 17:55",
+                                  "daily 07:25", "daily 21:25"]
     (tmp_path / "state").mkdir()
     (tmp_path / "state" / "planner.db").write_bytes(b"not a database")  # 못 읽으면 config만
-    assert wake_lines(tmp_path) == ["weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 17:55"]
+    assert wake_lines(tmp_path) == ["weekday 08:55", "weekday 17:25", "weekend 09:55", "weekend 17:55",
+                                  "daily 07:25", "daily 21:25"]
 
 
 async def test_refresh_wake_task_true_off_windows():
