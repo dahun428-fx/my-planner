@@ -18,7 +18,7 @@ from typing import Any, Literal
 from my_planner.clock import Clock, from_iso, to_iso
 from my_planner.store.db import transaction
 
-Endpoint = Literal["chat", "actions", "undo"]
+Endpoint = Literal["chat", "actions", "undo", "photos"]  # `photos`: 020부터(SP10 5.3)
 ConfirmOrigin = Literal["actions", "run_turn"]
 Resolution = Literal["applied", "declined", "expired", "stale"]
 TOKEN_PREFIX = "ct_"

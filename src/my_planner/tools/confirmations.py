@@ -393,6 +393,11 @@ _CHECKIN_SET = re.compile(
 )
 
 
+# 사진을 붙여 만든 메모의 꼬리(SP10 8장 `(사진 {n}장)`, `memo_line`). 되돌림 요지에는 넣지 않는다
+_MEMO_PHOTOS_TAIL = re.compile(r" \(사진 \d+장\)$")
+_MEMO_CREATED_VERB = _MEMO_LINES["memo_created"].removeprefix("✓ ").removesuffix(": {}")
+
+
 # `digest_set_line`의 되돌림(SP9b 5.1): `✓ 일정 정리 알림 바꿈: 밤 끔` → `↩ 되돌림: 밤 일정 정리 알림`
 _DIGEST_SET = re.compile(r"^✓ 일정 정리 알림 바꿈: (?P<kind>아침|밤) ")
 
@@ -423,6 +428,8 @@ def undo_summary(summary: str) -> str:
                 rest = _DATE_TAIL.sub("", rest)
             elif verb in _EVENT_TAIL_VERBS:
                 rest = _EVENT_TAIL.sub("", rest)
+            elif verb == _MEMO_CREATED_VERB:
+                rest = _MEMO_PHOTOS_TAIL.sub("", rest)
             gist = f"{rest} {_UNDO_VERB.get(verb, verb)}"
     elif (b := _BARE.match(summary)) is not None:
         gist = b["verb"]

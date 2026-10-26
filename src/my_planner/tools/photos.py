@@ -7,6 +7,7 @@
 - 활동은 `photo_attached`/`photo_detached`, 대상 `photo:<id>`. `summary`에는 고정 문구만, `undo_json`에는 id와
   위치만 둔다. 파일 경로, sha256, 사진 읽기 결과는 활동·로그·결과에 넣지 않는다(6장).
 - 오류 코드(`code`): `too_many_photos`(422), `photo_not_found`(422), `photo_in_use`(409). `tools/actions.py`가 HTTP로 바꾼다.
+  그 메모에 없는 사진을 빼면 코드 없는 일반 거절(422 `rejected`, 8장)이다.
 """
 
 from __future__ import annotations
@@ -51,8 +52,10 @@ MSG_NO_PHOTOS = "사진을 다룰 수 없어요."
 MSG_MEMO_NOT_FOUND = "없는 메모예요."
 MSG_STORE_ARGS = "사진 정보가 맞지 않아요."
 MSG_PHOTO_IDS = "photo_ids는 서로 다른 사진 번호(정수) 목록이에요."
-DETACHED = "✓ 사진을 뺐어요"  # 8장 "사진 보기"
+MSG_NOT_ON_MEMO = "그 메모에 없는 사진이에요."  # 빼기의 낡은 대상: 일반 거절(8장 응답→문구, `photo_not_found`가 아니다)
+# 8장 "사진 보기"(v2.5). 활동 `summary`이자 `/actions` 확인 문구. 이 문구는 여기에만 둔다
 ATTACHED = "✓ 사진을 붙였어요"
+DETACHED = "✓ 사진을 뺐어요"
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -201,8 +204,8 @@ class PhotoTools:
         assert self.photos is not None
         conn = self.tasks.conn
         at = self.photos.memo_of(conn, photo_id) if _is_int(photo_id) else None
-        if at is None or at[0] != m.id:
-            return _code(MSG_PHOTO_NOT_FOUND, PHOTO_NOT_FOUND)
+        if at is None or at[0] != m.id:  # 없는 사진, 뺀 사진, 다른 메모의 사진: 다른 낡은 대상처럼 일반 거절(422 `rejected`)
+            return _err(MSG_NOT_ON_MEMO)
         with transaction(conn):
             self.photos.detach(conn, m.id, photo_id, self.clock.now())
             undo = {"memo_id": m.id, "photo_id": photo_id, "position": at[1]}

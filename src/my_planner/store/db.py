@@ -79,13 +79,14 @@ def after_rollback(conn: sqlite3.Connection, fn: Callable[[], None]) -> None:
         stack[-1].append(fn)
 
 
-def _run_after(fns: list[Callable[[], None]]) -> None:
-    """커밋 뒤의 일을 하나씩. 하나가 실패해도 커밋은 이미 됐다: 종류만 남기고 나머지를 부른다."""
+def _run_after(fns: list[Callable[[], None]], name: str) -> None:
+    """커밋 뒤(`after_commit_error`)·롤백 때(`after_rollback_error`)의 일을 하나씩. 하나가 실패해도 커밋·롤백은
+    이미 됐다: `name`으로 종류만 남기고 나머지를 부른다."""
     for fn in fns:
         try:
             fn()
-        except Exception as e:  # noqa: BLE001 - 커밋된 변경을 실패로 돌려주지 않는다
-            log.warning("after_commit_error", extra={"error_type": type(e).__name__})
+        except Exception as e:  # noqa: BLE001 - 끝난 커밋·롤백을 이 실패로 바꾸지 않는다
+            log.warning(name, extra={"error_type": type(e).__name__})
 
 
 @contextmanager
@@ -115,7 +116,7 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
             conn.execute(f"ROLLBACK TO {name}")
             conn.execute(f"RELEASE {name}")
             stack.pop()  # 롤백된 SAVEPOINT에서 건 일은 버린다
-            _run_after(undo.pop())
+            _run_after(undo.pop(), "after_rollback_error")
             raise
         else:
             conn.execute(f"RELEASE {name}")
@@ -138,13 +139,13 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         conn.rollback()
         _DEPTH.pop(key, None)
         _AFTER.pop(key, None)
-        _run_after(_UNDO.pop(key, [[]])[0])
+        _run_after(_UNDO.pop(key, [[]])[0], "after_rollback_error")
         raise
     finally:
         _DEPTH.pop(key, None)
         stack = _AFTER.pop(key, [[]])
         _UNDO.pop(key, None)
-    _run_after(stack[0])
+    _run_after(stack[0], "after_commit_error")
 
 
 class MigrationGapError(RuntimeError):

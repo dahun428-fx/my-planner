@@ -31,3 +31,18 @@ CREATE TABLE message_photos (
 CREATE INDEX idx_message_photos_conv ON message_photos (conversation_id);
 
 ALTER TABLE usage_state ADD COLUMN photo_reads INTEGER NOT NULL DEFAULT 0;   -- 하루 사진 읽기 수(5.4)
+
+-- 같은 요청 다시 받기(SP3-4) 표의 endpoint CHECK에 'photos'를 더한다(POST /photos의 client_msg_id 재생, 5.3).
+-- SQLite는 CHECK를 바꿀 수 없어 api_idempotency를 같은 열로 다시 만들고 행을 옮긴다(007과 같은 열, 색인은 기본 키뿐).
+CREATE TABLE api_idempotency_new (
+    client_msg_id   TEXT PRIMARY KEY,
+    endpoint        TEXT NOT NULL CHECK (endpoint IN ('chat', 'actions', 'undo', 'photos')),
+    status_code     INTEGER NOT NULL,
+    response_json   TEXT NULL,     -- actions·undo·photos: 응답 JSON. chat: {"conversation_id", "reply_text"(가린 뒤의 답 글, 확인 문구 포함)}
+    conversation_id INTEGER NULL,
+    at              TEXT NOT NULL
+);
+INSERT INTO api_idempotency_new (client_msg_id, endpoint, status_code, response_json, conversation_id, at)
+    SELECT client_msg_id, endpoint, status_code, response_json, conversation_id, at FROM api_idempotency;
+DROP TABLE api_idempotency;
+ALTER TABLE api_idempotency_new RENAME TO api_idempotency;

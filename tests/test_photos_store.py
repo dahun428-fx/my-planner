@@ -7,13 +7,20 @@ import hashlib
 import json
 import os
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
 from test_dispatcher_messages import kst
 
-from my_planner.store.db import after_rollback, migrate, open_db, transaction
+from my_planner.store.db import (
+    after_commit,
+    after_rollback,
+    migrate,
+    open_db,
+    transaction,
+)
 from my_planner.store.photos import (
     PhotoFileConflict,
     PhotoFiles,
@@ -105,6 +112,41 @@ def test_020_tables_checks_and_photo_reads(tmp_path):
 
 
 # --- JPEG 머리 (5.2) ---
+
+
+def test_020_rebuilds_api_idempotency_with_photos(tmp_path):
+    """5.1 끝·14장: CHECK에 'photos'를 더하려고 표를 다시 만든다. 열·행은 그대로, 다른 경로도 그대로, 엉뚱한 값은 거절."""
+    conn = open_db(tmp_path / "planner.db")
+    assert migrate(conn, upto=19) == 19
+    ins = (
+        "INSERT INTO api_idempotency (client_msg_id, endpoint, status_code, response_json, conversation_id, at) "
+        "VALUES (?, ?, ?, ?, ?, ?)"
+    )
+    old = [
+        ("c-1", "chat", 200, '{"conversation_id": 3, "reply_text": "네"}', 3, "2026-10-26T01:00:00+00:00"),
+        ("a-1", "actions", 422, '{"status": "rejected"}', None, "2026-10-26T02:00:00+00:00"),
+        ("u-1", "undo", 200, None, None, "2026-10-26T03:00:00+00:00"),
+    ]
+    conn.executemany(ins, old)
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):  # 019까지는 'photos'를 받지 않았다
+        conn.execute(ins, ("p-0", "photos", 201, None, None, "a"))
+    conn.rollback()
+    cols_before = [tuple(r) for r in conn.execute("PRAGMA table_info(api_idempotency)")]
+    assert migrate(conn) == 20
+    rows = [tuple(r) for r in conn.execute("SELECT * FROM api_idempotency ORDER BY at")]
+    cols_after = [tuple(r) for r in conn.execute("PRAGMA table_info(api_idempotency)")]
+    conn.execute(ins, ("p-1", "photos", 201, '{"id": 1}', None, "b"))
+    for i, ep in enumerate(("chat", "actions", "undo")):
+        conn.execute(ins, (f"n-{i}", ep, 200, None, None, "c"))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(ins, ("x-1", "bogus", 200, None, None, "d"))
+    with pytest.raises(sqlite3.IntegrityError):  # client_msg_id는 그대로 기본 키
+        conn.execute(ins, ("c-1", "chat", 200, None, None, "e"))
+    assert rows == old and cols_after == cols_before
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
+    assert "api_idempotency_new" not in names and "api_idempotency_old" not in names
 
 
 def test_jpeg_size_from_sof(files):
@@ -230,6 +272,27 @@ def test_after_rollback_runs_only_on_rollback(conn):
     assert ran == ["outer", "inner", "released"]
 
 
+def test_after_callback_failures_logged_by_kind(conn, caplog):
+    """커밋 뒤 일의 실패는 `after_commit_error`, 롤백 때 일의 실패는 `after_rollback_error`. 나머지 일은 그대로 부른다."""
+    ran = []
+
+    def boom() -> None:
+        raise OSError("locked")
+
+    with caplog.at_level("WARNING", logger="my_planner.store.db"), pytest.raises(RuntimeError), transaction(conn):
+        after_rollback(conn, boom)
+        after_rollback(conn, lambda: ran.append("rb"))
+        raise RuntimeError
+    rollback_msgs = [r.getMessage() for r in caplog.records]
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="my_planner.store.db"), transaction(conn):
+        after_commit(conn, boom)
+        after_commit(conn, lambda: ran.append("ac"))
+    commit_msgs = [r.getMessage() for r in caplog.records]
+    assert rollback_msgs == ["after_rollback_error"] and commit_msgs == ["after_commit_error"]
+    assert ran == ["rb", "ac"]
+
+
 # --- 저장소 (5.1) ---
 
 
@@ -339,6 +402,29 @@ async def test_store_photo_writes_row_and_files(tmp_path):
     assert row["unlinked_at"] is None and status == 400 and activity == 0
 
 
+async def test_store_photo_replays_client_msg_id(tmp_path):
+    """5.3: 같은 `client_msg_id`로 다시 오면 처음 응답 그대로(행·파일은 하나). 다른 경로에 쓴 id면 409."""
+    from be_env import BeEnv
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        files = env.parts.tools.photo_files
+        image = jpeg(800, 600)
+        first = env.parts.dispatcher.apply_action(
+            replace(_store_req(files.write_incoming(image, jpeg(80, 60)), image), client_msg_id="p-1")
+        )
+        again = env.parts.dispatcher.apply_action(
+            replace(_store_req(files.write_incoming(image, jpeg(80, 60)), image), client_msg_id="p-1")
+        )
+        stored = env.conn.execute("SELECT endpoint, status_code FROM api_idempotency").fetchall()
+        count = env.conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+        status, other = await env.action("create_memo", {"body": "x"}, client_msg_id="p-1")
+    assert first.status == "applied" and (again.status, again.http_status, again.body) == (
+        first.status, first.http_status, first.body
+    )
+    assert [tuple(r) for r in stored] == [("photos", first.http_status)] and count == 1
+    assert status == 409 and other["error"]["code"] == "conflict"
+
+
 async def test_failed_insert_removes_file(tmp_path, monkeypatch):
     """Review Focus 1: 행 트랜잭션이 실패하면 최종 파일도 tmp도 없다."""
     from be_env import BeEnv
@@ -408,16 +494,21 @@ async def test_attach_detach_actions_and_undo(tmp_path):
         memo_stamp = env.conn.execute("SELECT updated_at FROM memos").fetchone()[0]
         created = env.conn.execute("SELECT created_at FROM memos").fetchone()[0]
         status_gone, gone = await env.action("detach_photo", {"memo_id": made["id"], "photo_id": 999})
+        other = (await env.action("create_memo", {"body": "다른 메모"}))[1]["result"]["id"]
+        status_other, not_here = await env.action("detach_photo", {"memo_id": other, "photo_id": ids[0]})
     assert status == 422 and over["error"]["code"] == "too_many_photos"
     assert over["error"]["message"] == "사진은 메모 하나에 10장까지예요."
     assert att["result"] == {"memo_id": made["id"], "photo_id": ids[9], "position": 9} and "undo_id" not in att
+    assert att["confirmation"] == "✓ 사진을 붙였어요"  # 8장 "사진 보기"(v2.5)
     assert out["confirmation"] == "✓ 사진을 뺐어요" and out["undo_id"]
     assert again["result"]["position"] == 3
     # 되돌릴 때 원래 자리(3)가 차 있으면 가장 작은 빈 자리: 0~9가 다 차 있어 10장 상한이다
     assert resp.status == 422 and undone["error"]["code"] == "too_many_photos"
     assert back.unlinked_at is not None and ids[3] not in positions
     assert memo_stamp == stamp == created  # 붙이기·빼기·되돌리기는 updated_at을 바꾸지 않는다
-    assert status_gone == 422 and gone["error"]["code"] == "photo_not_found"
+    # 그 메모에 없는 사진(없는 사진, 다른 메모의 사진)은 일반 거절(8장: `photo_not_found`가 아니다)
+    assert status_gone == 422 and gone["error"]["code"] == "rejected"
+    assert status_other == 422 and not_here["error"] == gone["error"]
     dumped = json.dumps(rows, ensure_ascii=False)
     assert ".jpg" not in dumped and "incoming" not in dumped  # 파일 경로는 활동에 없다(6장)
     detached = next(r for r in rows if r["kind"] == "photo_detached")
@@ -425,6 +516,7 @@ async def test_attach_detach_actions_and_undo(tmp_path):
         "memo_id": made["id"], "photo_id": ids[3], "position": 3,
     }
     assert {r["kind"] for r in rows} == {"memo_created", "photo_attached", "photo_detached"}
+    assert {r["summary"] for r in rows if r["kind"] == "photo_attached"} == {"✓ 사진을 붙였어요"}
 
 
 async def test_detach_undo_restores_original_or_smallest_free(tmp_path):
@@ -500,6 +592,7 @@ async def test_create_memo_with_photo_ids(tmp_path):
             "update_memo", {"id": memo, "body": "x", "updated_at": made["result"]["updated_at"], "photo_ids": [a]}
         )
         resp = await env.post(f"/activity/{made['undo_id']}/undo", json={"client_msg_id": "u-memo"})
+        undone = await resp.json()
         hidden = repo.is_live(env.conn, a)
         links = env.conn.execute("SELECT COUNT(*) FROM memo_photos WHERE memo_id = ?", (memo,)).fetchone()[0]
     assert status == 200 and order == [b, a]
@@ -512,6 +605,7 @@ async def test_create_memo_with_photo_ids(tmp_path):
     assert s_upd == 400  # `update_memo`는 사진을 받지 않는다
     assert resp.status == 200 and hidden is False and links == 2  # 되돌리기는 지우기: 연결은 그대로, 사진은 숨김
     assert dup["error"]["code"] == "rejected"
+    assert undone["confirmation"] == "↩ 되돌림: 영수증 정리 메모를 만들었어요"  # 사진 수는 만들기 확인에만
 
 
 def test_photo_copy_has_no_banned_words():
@@ -521,4 +615,4 @@ def test_photo_copy_has_no_banned_words():
 
     copy = [v for k, v in vars(pt).items() if k.startswith("MSG_")] + [pt.ATTACHED, pt.DETACHED]
     words = banned_words()
-    assert len(copy) == 9 and [(c, w) for c in copy for w in words if w in c] == []
+    assert len(copy) == 10 and [(c, w) for c in copy for w in words if w in c] == []

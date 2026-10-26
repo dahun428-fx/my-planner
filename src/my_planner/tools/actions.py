@@ -127,9 +127,10 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
 }
 
 # `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
-# `photos`: 사진 올리기(SP10 5.2 `store_photo`, PH-02 `POST /photos`)
+# `photos`: 사진 올리기(SP10 5.2 `store_photo`, PH-02 `POST /photos`). 020부터 `api_idempotency`에 기록한다: 같은
+# `client_msg_id`면 처음 응답을 그대로 돌려주고 인자(그 요청의 `.incoming/` tmp)는 보지 않는다. 그 tmp 정리는 처리기(PH-02) 몫
 RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices", "photos"]
-NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices", "photos"})  # `api_idempotency.endpoint`에 없는 값
+NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
