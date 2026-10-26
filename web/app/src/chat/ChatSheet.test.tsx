@@ -24,7 +24,7 @@ import { useChatSheet } from "./sheetContext";
 import { healthAnswers } from "../test/handlers";
 import { mockRouter, renderWithProviders, TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
-import { ChatSheet } from "./ChatSheet";
+import { ChatSheet, STOP_GUARD_MS } from "./ChatSheet";
 import { chatSheetChunk } from "./loadChatSheet";
 import { saveParts } from "./localParts";
 import type { ViewPart } from "./parts";
@@ -688,6 +688,7 @@ describe("ChatSheet composer", () => {
     expect(input).toHaveAttribute("rows", "2");
     const clear = screen.getByRole("button", { name: copy.chat.clearInput });
     expect(clear).toHaveAttribute("type", "button");
+    expect(fireEvent.pointerDown(clear)).toBe(false); // the field keeps the focus (a phone's keyboard stays up)
     await user.click(clear);
     expect(input).toHaveValue("");
     expect(input).toHaveFocus();
@@ -1292,6 +1293,8 @@ describe("ChatSheet one-line write (SP9c)", () => {
 // The stop button (the send button while an answer is coming): the answer stops here at once and the
 // BE is asked to stop too (POST /chat/stop). The abort is not a cut: no resend, no failure line.
 describe("ChatSheet stop", () => {
+  // A press this soon after the send is ignored (a double tap on send): the tests wait past it.
+  const pastGuard = () => act(() => new Promise((r) => setTimeout(r, STOP_GUARD_MS + 50)));
   const partial = () =>
     gatedResponse(
       sse([
@@ -1343,6 +1346,7 @@ describe("ChatSheet stop", () => {
     renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await sendText(user, "길게 말해 줘");
     expect(await screen.findByText("길게 답하는 중")).toBeInTheDocument();
+    await pastGuard();
     await user.click(screen.getByRole("button", { name: copy.chat.stop }));
     expect(await screen.findByText(copy.chat.stopped)).toBeInTheDocument();
     await waitFor(() => expect(stops).toEqual([{ client_msg_id: bodies[0].client_msg_id }]));
@@ -1366,7 +1370,9 @@ describe("ChatSheet stop", () => {
     const user = userEvent.setup();
     renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await sendText(user, "안녕");
-    await user.click(await screen.findByRole("button", { name: copy.chat.stop }));
+    const stop = await screen.findByRole("button", { name: copy.chat.stop });
+    await pastGuard();
+    await user.click(stop);
     expect(await screen.findByText(copy.chat.stopped)).toBeInTheDocument();
     expect(screen.getByText("안녕")).toBeInTheDocument();
     expect(screen.queryByText(copy.chat.notReceived)).toBeNull();
@@ -1382,6 +1388,7 @@ describe("ChatSheet stop", () => {
     renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await sendText(user, "길게 말해 줘");
     await screen.findByText("길게 답하는 중");
+    await pastGuard();
     await user.click(screen.getByRole("button", { name: copy.chat.stop }));
     expect(await screen.findByText(copy.chat.stopped)).toBeInTheDocument();
     await waitFor(() => expect(stops).toHaveLength(1));
@@ -1399,6 +1406,7 @@ describe("ChatSheet stop", () => {
     const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await sendText(user, "길게 말해 줘");
     await screen.findByText("길게 답하는 중");
+    await pastGuard();
     await user.click(screen.getByRole("button", { name: copy.chat.stop }));
     await screen.findByText(copy.chat.stopped);
     history(5, [
@@ -1409,5 +1417,38 @@ describe("ChatSheet stop", () => {
     rerender(<ChatSheet open onClose={() => {}} />);
     await waitFor(() => expect(document.querySelectorAll("[data-message]")).toHaveLength(2));
     expect(screen.getAllByText(copy.chat.stopped)).toHaveLength(1);
+  });
+
+  it("a double tap on send does not stop: the second tap is ignored and the answer comes", async () => {
+    history(5, []);
+    serveChat(() => sseResponse(textAnswer("m-5-1", 5, "다 왔어요")));
+    const stops = serveStop();
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await ready();
+    await user.type(input, "안녕");
+    const button = screen.getByRole("button", { name: copy.chat.send });
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: copy.chat.stop })); // the same place, now the stop button
+    expect(await screen.findByText("다 왔어요")).toBeInTheDocument();
+    expect(stops).toEqual([]);
+    expect(screen.queryByText(copy.chat.stopped)).toBeNull();
+  });
+
+  it("the stop names the message just sent, not the one before it", async () => {
+    history(5, []);
+    const gate = partial();
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-0", 5, "첫 답")), gate.response);
+    const stops = serveStop();
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await sendText(user, "하나");
+    await screen.findByText("첫 답");
+    await sendText(user, "둘");
+    await pastGuard();
+    await user.click(screen.getByRole("button", { name: copy.chat.stop }));
+    await waitFor(() => expect(stops).toHaveLength(1));
+    expect(stops[0]).toEqual({ client_msg_id: bodies[1].client_msg_id });
+    expect(bodies[1].client_msg_id).not.toBe(bodies[0].client_msg_id);
   });
 });

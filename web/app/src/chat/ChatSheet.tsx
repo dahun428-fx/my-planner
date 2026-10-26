@@ -34,6 +34,8 @@ import { type ChatCtx, InFlightError, makeTransport } from "./transport";
 const GAP_MS = 10 * 60_000;
 // The front chip depends on the time (a check-in window, an event within 3 hours): looked at again each minute.
 const CHIP_TICK_MS = 60_000;
+// The stop button ignores a press this soon after a send or a retry: it is the send button's place.
+export const STOP_GUARD_MS = 600;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // --- retries ---
@@ -104,6 +106,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const regenerateRef = useRef<() => Promise<void>>(async () => {});
   // The stop button was pressed for the answer coming now: its abort is not a cut (no resend, no failure line).
   const stopping = useRef(false);
+  // The client_msg_id actually sent (the user message's id, set before sendMessage), and when: a stop
+  // right after a send must not name the previous message, and a double tap on send must not stop.
+  const sentId = useRef<string | null>(null);
+  const sentAt = useRef(-Infinity);
   const showStoppedRef = useRef<(m: UIMessage, all: UIMessage[]) => void>(() => {});
   const list = useRef<HTMLDivElement>(null);
 
@@ -192,7 +198,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         ? { id: message.id, role: "assistant", parts: [line], metadata: { ...metaOf(message), at: new Date().toISOString() } }
         : { ...all[i], parts: [...all[i].parts, line] };
     setMessages(i === -1 ? [...all, shown] : all.map((m, k) => (k === i ? shown : m)));
-    void saveParts(shown.id, toViewParts(shown), sentTo.current);
+    // Stopped before its start, the id is the app's own: no BE line will ever carry it, so nothing is kept.
+    if (i !== -1) void saveParts(shown.id, toViewParts(shown), sentTo.current);
   };
 
   // SP9 9.5: the chips are judged from /today (check-in and review state, today's events). Not on the
@@ -313,7 +320,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (!embedded) sheetState.freshSince = null; // said something: the latest conversation is this one again
     const metadata: Meta = { at: new Date().toISOString(), ...(checkinId === undefined ? {} : { checkin_id: checkinId }) };
     if (chip) metadata.chip = chip;
-    void sendMessage({ text: t, metadata });
+    const id = newClientMsgId();
+    sentId.current = id;
+    sentAt.current = performance.now();
+    void sendMessage({ id, role: "user", parts: [{ type: "text", text: t }], metadata });
     return true;
   };
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
@@ -379,9 +389,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // Offline or refused, the BE goes on, and its answer shows in the history later instead of the stopped line.
   const stopAnswer = () => {
     if (!busy || stopping.current) return;
-    const clientMsgId = [...messages].reverse().find((m) => m.role === "user")?.id;
+    if (performance.now() - sentAt.current < STOP_GUARD_MS) return; // the second tap of a double tap on send
     stopping.current = true;
-    if (clientMsgId) void stopOnBe(clientMsgId);
+    if (sentId.current) void stopOnBe(sentId.current);
     void stop().then(() => {
       if (!stopping.current) return; // onFinish took it
       stopping.current = false; // nothing was in flight to abort (between a cut and its resend)
@@ -393,6 +403,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const retry = () => {
     if (sending.current || readOnly) return;
     stopping.current = false;
+    sentId.current = [...messages].reverse().find((m) => m.role === "user")?.id ?? null; // regenerate sends it again
+    sentAt.current = performance.now();
     sending.current = true;
     setInFlight(true);
     setFailure(null);
@@ -596,7 +608,14 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
             onKeyDown={onKeyDown}
           />
           {clearable && (
-            <button type="button" className={styles.clear} aria-label={copy.chat.clearInput} onClick={clearInput}>
+            <button
+              type="button"
+              className={styles.clear}
+              aria-label={copy.chat.clearInput}
+              // The field keeps the focus, so a phone's keyboard stays up.
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={clearInput}
+            >
               <Icon name="clear" />
             </button>
           )}

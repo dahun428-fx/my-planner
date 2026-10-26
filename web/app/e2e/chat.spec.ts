@@ -21,6 +21,7 @@ test("stop: the send button stops a slow answer, asks the BE, and the field is u
   const stop = page.getByRole("button", { name: copy.chat.stop });
   await expect(stop).toBeEnabled();
   await expect(input).toHaveValue("");
+  await page.waitForTimeout(700); // past the guard against a double tap on send
   await stop.click();
   await expect(page.getByText(copy.chat.stopped)).toBeVisible();
   await expect.poll(() => be.stopBodies).toEqual([{ client_msg_id: (be.chatBodies[0] as { client_msg_id: string }).client_msg_id }]);
