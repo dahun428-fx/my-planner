@@ -1,4 +1,6 @@
-# SP10 메모 사진 글자 읽기(OCR) Implementation Plan
+# SP11 로컬 OCR 서비스 Implementation Plan
+
+> **보류 (2026-10-26).** 사진 기능은 SP10(사진 남기기 + Claude 읽기)이 먼저다. 이 계획은 SP10이 끝난 뒤 스펙 머리말의 바뀐 점(서비스를 부르는 쪽 = BE `PhotoReader`)에 맞춰 OCR-06·07을 다시 쓰고 연다.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan ticket-by-ticket. Steps use checkbox (`- [ ]`) syntax for tracking. 티켓 하나를 끝낼 때마다 `.claude/agents/code-reviewer.md`로 리뷰하고, 지적을 반영한 뒤 다음 티켓으로 간다.
 
@@ -11,7 +13,7 @@
 
 **Tech Stack:** 서비스 Python 3.12, aiohttp(BE와 같은 판), Pillow, `paddleocr==3.7.0`, `paddlepaddle==3.3.1`, `numpy==1.26.4`, `opencv-python-headless==4.11.0.86`(S1·S5로 확정), pytest, ruff. 앱은 SP9와 같다(Next.js 15 Pages Router 정적 내보내기, Vitest, Playwright).
 
-**Spec:** [`docs/superpowers/specs/2026-10-26-sp10-memo-ocr-design.md`](../specs/2026-10-26-sp10-memo-ocr-design.md) (v1.1). 결정 [ADR 0016](../../adr/0016-add-on-services-run-beside-be.md). 상위: [SP9](../specs/2026-10-25-sp9-app-tabs-memo-schedule-design.md) 6장·9.4, [SP5](../specs/2026-10-24-sp5-ops-app-design.md), [배포 흐름](../specs/2026-10-24-release-flow-design.md).
+**Spec:** [`docs/superpowers/specs/2026-10-26-sp11-local-ocr-service-design.md`](../specs/2026-10-26-sp11-local-ocr-service-design.md) (v1.1). 결정 [ADR 0016](../../adr/0016-add-on-services-run-beside-be.md). 상위: [SP9](../specs/2026-10-25-sp9-app-tabs-memo-schedule-design.md) 6장·9.4, [SP5](../specs/2026-10-24-sp5-ops-app-design.md), [배포 흐름](../specs/2026-10-24-release-flow-design.md).
 - 스펙과 이 계획이 다르면 스펙이 맞다. 티켓은 스펙을 다시 쓰지 않고 절을 가리킨다.
 
 ## Global Constraints
