@@ -1074,7 +1074,10 @@ class PairBody(BaseModel):
 
     code: str = Field(pattern=r"^[0-9]{6}$", repr=False)
     client: DeviceClient
-    label: str = Field(min_length=1, max_length=40, pattern=r"^[^\x00-\x1f\x7f]+$")
+    # C0·C1 제어 문자, 줄·문단 구분자, 방향 제어 문자를 막는다(목록에 그대로 보인다)
+    label: str = Field(
+        min_length=1, max_length=40, pattern=r"^[^\x00-\x1f\x7f-\x9f\u200e\u200f\u2028-\u202e\u2066-\u2069]+$"
+    )
 
 
 class PairedDevice(_Model):

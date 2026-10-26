@@ -139,7 +139,7 @@ async def test_pair_rejects_non_json_content_type(env):
     assert (await _pair(env, code)).status == 201  # 코드는 그대로 살아 있다
 
 
-@pytest.mark.parametrize("label", ["", "a\nb", "tab\there", "x" * 41])
+@pytest.mark.parametrize("label", ["", "a\nb", "tab\there", "x" * 41, "a\x85b", "a\u2028b", "a\u202eb", "a\u2066b"])
 async def test_pair_label_rejects_control_chars(env, label):
     code = await _code(env)
     assert (await _pair(env, code, label=label)).status == 400

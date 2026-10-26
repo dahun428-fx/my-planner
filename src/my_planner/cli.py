@@ -119,13 +119,14 @@ def _post_local(url: str, token: str) -> tuple[int, dict[str, object]]:
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(req, timeout=PAIR_TIMEOUT_S) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8"))
+            status, raw = resp.status, resp.read()
     except urllib.error.HTTPError as e:
-        try:
-            body = json.loads(e.read().decode("utf-8"))
-        except ValueError:
-            body = {}
-        return e.code, body if isinstance(body, dict) else {}
+        status, raw = e.code, e.read()
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except ValueError:  # JSON이 아니거나 UTF-8이 아닌 본문
+        body = {}
+    return status, body if isinstance(body, dict) else {}
 
 
 def pair() -> int:

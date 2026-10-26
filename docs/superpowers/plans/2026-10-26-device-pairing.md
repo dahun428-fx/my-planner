@@ -34,9 +34,9 @@
 - Modify: `src/my_planner/api/server.py`(auth, 경로, `ApiDeps.devices`, `ApiDeps.pair_codes`), `src/my_planner/api/models.py`(응답 모델, 스키마 묶음), `src/my_planner/api/push.py`(`device_id`), `src/my_planner/store/repos/push.py`(`upsert(device_id=)`, `disable_for_device`), `src/my_planner/tools/actions.py`(세 동작), `src/my_planner/app.py`(시작할 때 사전 읽기), `src/my_planner/cli.py`(`pair`), `tests/test_cli.py`, `README.md`
 
 **Interfaces:**
-- `DevicesRepo(conn).add(token_hash, label, client, at) -> int`, `.active() -> list[Device]`, `.revoke(id, at) -> bool`, `.touch(id, at) -> None`.
-- `DeviceTokens.load(rows)`, `.lookup(token) -> int | None`, `.add(hash, id)`, `.remove(id)`, `.needs_touch(id, day) -> bool`.
-- `PairCodes(clock).create() -> (code, expires_at)`, `.status() -> dict`, `.consume(code) -> bool`, `.mark_used(device)`.
+- `DevicesRepo(conn).add(token_hash, label, client, at) -> int`, `.active() -> list[Device]`, `.revoke(id, at) -> bool`(그 기기의 푸시 구독도 끈다), `.touch(id, at) -> None`.
+- `DeviceTokens.load(conn)`, `.lookup(token) -> int | None`, `.add(hash, id)`, `.remove(id)`, `.claim_touch(id, day) -> bool`. `ApiDeps.devices`에 두고 `build_app`이 읽기 연결로 채운다. `device_pair`·`device_revoke`를 부르는 처리기가 동작이 커밋된 뒤 사전을 고친다(이 두 동작은 `api/devices.py`에서만 부른다).
+- `PairCodes(clock).create() -> (code, expires_at)`, `.status() -> dict`, `.check(code) -> bool`, `.mark_used(device)`. `ApiDeps.pair_codes`.
 - 경로·오류는 스펙 4.5 표 그대로. 응답 모델 `PairCreated`, `PairStatus`, `PairResult`, `DeviceList`.
 
 - [ ] 스펙 9장 BE 시험을 `tests/test_api_devices.py`, `tests/test_cli.py`에 쓴다 → `pytest tests/test_api_devices.py -q` 실패 확인

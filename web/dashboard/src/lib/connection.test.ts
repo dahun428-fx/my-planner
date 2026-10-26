@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  clearConnection,
+  defaultBeUrl,
   loadConnection,
   loadLastHealthOk,
   normalizeBeUrl,
@@ -50,12 +52,39 @@ describe("connection", () => {
   it("round trips connection and last answer", () => {
     expect(loadConnection()).toBeNull();
     saveConnection({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc" });
-    expect(loadConnection()).toEqual({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc" });
-    expect(JSON.parse(localStorage.getItem("mp.connection") ?? "null")).toEqual({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc" });
+    expect(loadConnection()).toEqual({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc", kind: "api" });
+    expect(JSON.parse(localStorage.getItem("mp.connection") ?? "null")).toEqual({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc", kind: "api" });
 
     expect(loadLastHealthOk()).toBeNull();
     saveLastHealthOk({ at: "2026-10-24T08:00:05Z", lastTickAt: "2026-10-24T08:00:00Z" });
     expect(loadLastHealthOk()).toEqual({ at: "2026-10-24T08:00:05Z", lastTickAt: "2026-10-24T08:00:00Z" });
+  });
+
+  it("keeps a device token's id, and reads a value saved before pairing as an API token", () => {
+    saveConnection({ beUrl: "https://desk.example.ts.net", token: "fake-device-token", kind: "device", deviceId: 7 });
+    expect(loadConnection()).toEqual({ beUrl: "https://desk.example.ts.net", token: "fake-device-token", kind: "device", deviceId: 7 });
+
+    // what the dashboard saved before device pairing: no kind
+    localStorage.setItem("mp.connection", JSON.stringify({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc" }));
+    expect(loadConnection()).toEqual({ beUrl: "https://desk.example.ts.net", token: "fake-token-abc", kind: "api" });
+    // a device kind without a usable id cannot be revoked: a plain token
+    localStorage.setItem("mp.connection", JSON.stringify({ beUrl: "https://desk.example.ts.net", token: "t", kind: "device", deviceId: "7" }));
+    expect(loadConnection()).toEqual({ beUrl: "https://desk.example.ts.net", token: "t", kind: "api" });
+
+    clearConnection();
+    expect(loadConnection()).toBeNull();
+  });
+
+  it("takes the default BE address only when it passes the check (device pairing spec 6.1)", () => {
+    expect(defaultBeUrl("https://desk.example.ts.net/api/v1")).toBe("https://desk.example.ts.net");
+    expect(defaultBeUrl(undefined)).toBeNull();
+    expect(defaultBeUrl("  ")).toBeNull();
+    expect(defaultBeUrl("http://desk.example.ts.net")).toBeNull();
+    expect(defaultBeUrl("https://desk.example.com")).toBeNull();
+    vi.stubEnv("NEXT_PUBLIC_DEFAULT_BE_URL", "https://desk.example.ts.net");
+    expect(defaultBeUrl()).toBe("https://desk.example.ts.net");
+    vi.unstubAllEnvs();
+    expect(defaultBeUrl()).toBeNull();
   });
 
   it("reads damaged values as nothing", () => {
@@ -78,5 +107,9 @@ describe("connection", () => {
     expect(loadLastHealthOk()).toBeNull();
     expect(() => saveConnection({ beUrl: "https://desk.example.ts.net", token: "t" })).not.toThrow();
     expect(() => saveLastHealthOk({ at: "2026-10-24T08:00:05Z", lastTickAt: null })).not.toThrow();
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    expect(() => clearConnection()).not.toThrow();
   });
 });

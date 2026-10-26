@@ -294,6 +294,11 @@ def test_dashboard_reads_only():
     src = REPO / "web" / "dashboard" / "src"
     files = [p for p in src.rglob("*.ts*") if ".test." not in p.name and not p.name.endswith(".gen.ts")]
     assert any(p.name == "api.ts" for p in files)
+    # 쓰기 예외는 기기 연결 하나뿐이다(기기 연결 스펙 6장): `lib/pairing.ts`의 `POST /pair`, 자기 기기 `DELETE /devices/{id}`
+    pairing = src / "lib" / "pairing.ts"
+    writes = re.findall(r"""method:\s*["'](POST|PUT|PATCH|DELETE)["']""", pairing.read_text(encoding="utf-8"))
+    assert sorted(writes) == ["DELETE", "POST"]
+    files = [p for p in files if p != pairing]
     text = "\n".join(p.read_text(encoding="utf-8") for p in files)
     for needle in ('"/actions"', "'/actions'", "/actions`", '"/moments', "hide_moment", "delete_moment"):
         assert needle not in text, needle

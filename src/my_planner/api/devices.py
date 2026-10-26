@@ -177,7 +177,8 @@ async def post_pair(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     except ValidationError:
         return error_response(400, "invalid_request", BAD_BODY)
     if not deps.pair_codes.check(req.code):
-        request.app[LIMITER_KEY].record_failure()
+        if request.app[LIMITER_KEY].record_failure():
+            log.warning("api_auth_blocked")
         return error_response(401, "bad_code", BAD_CODE)
     token = secrets.token_urlsafe(32)
     hashed = token_hash(token)
@@ -185,8 +186,8 @@ async def post_pair(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     res = deps.dispatcher.apply_action(_request("device_pair", {
         "token_hash": hashed, "label": req.label, "client": req.client,
     }))
-    if res.status != "applied":
-        return error_response(400, "invalid_request", BAD_BODY)
+    if res.status != "applied":  # DB 쪽 실패: 코드는 그대로 살아 있어 다시 할 수 있다
+        return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
     device_id = int(res.body["result"]["id"])
     deps.devices.add(hashed, device_id)
     deps.pair_codes.mark_used({"id": device_id, "label": req.label})
@@ -212,7 +213,7 @@ def get_devices(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -
 
 async def delete_device(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     raw = request.match_info["id"]
-    if not raw.isdigit() or len(raw) > 18:
+    if not (raw.isascii() and raw.isdigit()) or len(raw) > 18:
         return error_response(404, "not_found", NO_DEVICE)
     assert deps.dispatcher is not None
     res = deps.dispatcher.apply_action(_request("device_revoke", {"id": int(raw)}))
@@ -226,11 +227,10 @@ def touch_device(deps: ApiDeps, device_id: int) -> None:
     """요청이 끝난 뒤 하루 한 번 `last_used_at`(4.4). 실패해도 요청에는 영향이 없다."""
     if deps.dispatcher is None:
         return
-    now = deps.clock.now()
-    today = logical_date(now, deps.settings.timezone, deps.settings.day_boundary)
-    if not deps.devices.claim_touch(device_id, today):
-        return
     try:
+        today = logical_date(deps.clock.now(), deps.settings.timezone, deps.settings.day_boundary)
+        if not deps.devices.claim_touch(device_id, today):
+            return
         res = deps.dispatcher.apply_action(_request("device_touch", {"id": device_id}))
         if res.status != "applied":
             log.warning("device_touch_failed")

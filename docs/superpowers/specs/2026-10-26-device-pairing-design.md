@@ -71,7 +71,7 @@ ADR 0007대로 쓰기는 Dispatcher 즉시 갈래로만 한다. 두뇌 도구가
 | `device_touch` | `last_used_at`을 쓴다 |
 
 - 처리기가 `secrets.token_urlsafe(32)`로 토큰을 만들고, `device_pair` 인자에는 `token_hash`·`label`·`client`만 넘긴다. 토큰 원문은 응답에만 담는다(Dispatcher 경로의 로그·기록에도 없다).
-- 기기 토큰 사전(`DeviceTokens`, 4.4)은 `build_be`가 만들어 `ApiDeps`와 Dispatcher에 같은 것을 넘긴다. 동작은 DB 커밋이 끝난 뒤 사전을 고친다.
+- 기기 토큰 사전(`DeviceTokens`, 4.4)은 `ApiDeps`에 둔다. `device_pair`·`device_revoke`는 `api/devices.py`의 처리기에서만 부르고, 처리기가 동작이 커밋된 뒤 사전을 고친다.
 
 ### 4.3 연결 코드
 
