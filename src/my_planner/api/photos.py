@@ -36,8 +36,9 @@ from my_planner.store.photos import (
     PhotoUnreadable,
     check_photo,
 )
+from my_planner.store.repos.activity import IdempotencyRepo
 from my_planner.store.repos.photos import PhotosRepo
-from my_planner.tools.actions import ActionRequest
+from my_planner.tools.actions import ActionRequest, ActionResult
 
 if TYPE_CHECKING:
     from my_planner.api.server import ApiDeps
@@ -45,10 +46,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 PHOTOS_PATH = "/api/v1/photos"  # `body_limit`의 경로 틀
-PHOTO_BODY_MAX = int(5.5 * 1024 * 1024)  # 5.3 합계 5.5MiB(머리·경계 포함)
+# 5.3 합계 5.5MiB(머리·경계 포함). 부분 상한의 합(5,000,000 + 256KiB + 글 둘 400)이 이보다 작아 처리기의 합계 검사는
+# 닿지 않는 안전판이다. 실제로 쓰이는 곳은 `body_limit`의 `Content-Length` 검사다
+PHOTO_BODY_MAX = int(5.5 * 1024 * 1024)
 FIELD_MAX = 200  # `origin`, `client_msg_id` 글 부분(`client_msg_id`는 다른 경로처럼 200자)
 CHUNK = 64 * 1024
-GB = 1024**3
+GB = 1024**3  # 2GB·5GB는 GiB(1024³)로 센다: Windows 탐색기가 보이는 값과 같다
 DISK_FULL_BELOW = 2 * GB  # 5.6 4번: 이 아래면 `POST /photos` 507
 DISK_LOW_BELOW = 5 * GB  # 5.6 4번: 이 아래면 `/health`의 `disk_low`
 ORIGINS = ("memo", "chat")
@@ -62,6 +65,7 @@ MSG_UPLOAD_FAILED = "사진을 올리지 못했어요. 다시 보내 주세요."
 MSG_DISK_FULL = "노트북 저장 공간이 부족해 사진을 올릴 수 없어요."
 BAD_BODY = "요청 형식이 맞지 않아요."  # `/actions`와 같은 글
 NO_PHOTO = "없는 사진이에요."
+TRY_LATER = "잠시 뒤에 다시 해 주세요."
 BAD_SIZE = "size는 full 또는 thumb이어야 해요."
 
 
@@ -108,7 +112,7 @@ async def _read_parts(request: web.Request, image_max: int) -> dict[str, bytes]:
             while chunk := await part.read_chunk(CHUNK):
                 total += len(chunk)
                 buf += chunk
-                if total > PHOTO_BODY_MAX:
+                if total > PHOTO_BODY_MAX:  # 닿지 않는 안전판(위 `PHOTO_BODY_MAX` 설명)
                     raise _too_large()
                 if len(buf) > limits[name]:
                     raise _too_large() if name in ("image", "thumb") else _bad()
@@ -161,15 +165,42 @@ def _photo_files(deps: ApiDeps) -> PhotoFiles:
     return files
 
 
+def _stored(deps: ApiDeps, cmid: str) -> bool:
+    """이 `client_msg_id`의 응답이 이미 있나(읽기 전용 연결). 있으면 즉시 갈래가 도구 없이 그대로 돌려준다."""
+    assert deps.read_conn is not None, "안전 모드가 아니면 읽기 연결이 있다"
+    conn = deps.read_conn()
+    try:
+        return IdempotencyRepo(conn, deps.clock).get(cmid) is not None
+    finally:
+        conn.close()
+
+
+def _store(deps: ApiDeps, args: dict[str, Any], cmid: str) -> ActionResult:
+    assert deps.dispatcher is not None
+    return deps.dispatcher.apply_action(
+        ActionRequest("store_photo", args, actor="user", channel="app", client_msg_id=cmid, endpoint="photos")
+    )
+
+
+def _answer(res: ActionResult) -> web.Response:
+    if res.status == "applied":
+        return web.json_response(dump(PhotoUploaded, res.body["result"]), status=201)
+    err = res.body.get("error") or {}
+    return error_response(res.http_status, err.get("code", "rejected"), err.get("message", MSG_UPLOAD_FAILED))
+
+
 async def post_photos(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
-    if deps.disk_free(deps.settings.paths.data_dir) < DISK_FULL_BELOW:
-        log.warning("photo_disk_full")
-        return error_response(507, "disk_full", MSG_DISK_FULL)
     image_max = deps.settings.api.max_photo_bytes
     try:
         image, thumb, origin, cmid, w, h = _check(await _read_parts(request, image_max), image_max)
     except _Refused as e:
         return error_response(e.status, e.code, e.message)
+    if deps.disk_free(deps.settings.paths.data_dir) < DISK_FULL_BELOW:
+        # 이미 저장한 요청을 다시 받은 것이면 파일을 쓰지 않고 처음 응답을 돌려준다(남은 공간과 무관)
+        if _stored(deps, cmid):
+            return _answer(_store(deps, {}, cmid))
+        log.warning("photo_disk_full")
+        return error_response(507, "disk_full", MSG_DISK_FULL)
     files = _photo_files(deps)
     try:
         tmp, digest = await asyncio.to_thread(_write, files, image, thumb)
@@ -182,19 +213,15 @@ async def post_photos(request: web.Request, deps: ApiDeps) -> web.StreamResponse
         "image_tmp": str(tmp[0]), "thumb_tmp": str(tmp[1]), "sha256": digest, "bytes": len(image),
         "width": w, "height": h, "origin": origin,
     }
-    assert deps.dispatcher is not None
     try:
-        res = deps.dispatcher.apply_action(
-            ActionRequest("store_photo", args, actor="user", channel="app", client_msg_id=cmid, endpoint="photos")
-        )
-    except (PhotoFileConflict, OSError) as e:  # 트랜잭션은 되돌려졌고 tmp·바꾼 파일은 `after_rollback`이 지웠다
+        return _answer(_store(deps, args, cmid))
+    except (PhotoFileConflict, OSError) as e:  # 트랜잭션은 되돌려졌다
         log.warning("photo_store_failed", extra={"error_type": type(e).__name__})
         return error_response(500, "internal", MSG_UPLOAD_FAILED)
-    if res.status != "applied":
-        _discard(files, tmp)  # 적용하지 않은 요청(하루 상한 등)의 tmp
-        err = res.body.get("error") or {}
-        return error_response(res.http_status, err.get("code", "rejected"), err.get("message", MSG_UPLOAD_FAILED))
-    return web.json_response(dump(PhotoUploaded, res.body["result"]), status=201)
+    finally:
+        # 5.2 3번: 어느 단계에서 끝나든(적용 안 함, 재생, 예외, 취소) 남은 tmp를 지운다. 적용했으면 이미 최종 이름으로
+        # 바뀌어 없다(`missing_ok`). 그 밖의 예외는 그대로 올라가 500(`call_json`)
+        _discard(files, tmp)
 
 
 def _find(conn: Any, deps: ApiDeps, photo_id: int, size: str) -> tuple[int, str] | None:
@@ -206,12 +233,13 @@ def _find(conn: Any, deps: ApiDeps, photo_id: int, size: str) -> tuple[int, str]
 
 
 def _read_file(root: Path, rel: str) -> bytes | None:
+    """파일 바이트. 없으면 None. 잠긴 파일(백신 등, 5.2)이나 그 밖의 읽기 실패는 `OSError`를 올린다."""
     path = (root / rel).resolve()
     if root not in path.parents:  # DB 값이어도 사진 폴더 밖은 열지 않는다
         return None
     try:
         return path.read_bytes()
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
         return None
 
 
@@ -231,7 +259,11 @@ async def get_photo(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     if found is None:
         return error_response(404, "not_found", NO_PHOTO)
     photo_id, rel = found
-    data = await asyncio.to_thread(_read_file, _photo_files(deps).root, rel)
+    try:
+        data = await asyncio.to_thread(_read_file, _photo_files(deps).root, rel)
+    except OSError as e:  # 잠긴 파일(`PermissionError`) 등: 잠시 뒤 다시. 경로는 남기지 않는다
+        log.warning("photo_read_failed", extra={"photo_id": photo_id, "error_type": type(e).__name__})
+        return error_response(503, "unavailable", TRY_LATER)
     if data is None:  # 행은 있는데 파일이 없다(5.6 3번, 10장): 경로는 남기지 않는다
         log.warning("photo_missing", extra={"photo_id": photo_id})
         return error_response(404, "not_found", NO_PHOTO)

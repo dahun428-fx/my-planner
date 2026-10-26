@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
+from pathlib import Path
 
 import aiohttp
 import jsonschema
@@ -141,6 +143,68 @@ async def test_post_photo_bad_form_400(env, kw):
     assert photo_count(env) == 0 and incoming(env) == []
 
 
+def raw_part(name: str, data: bytes, *, ctype: str = "image/jpeg", filename: str | None = "a.jpg") -> bytes:
+    disp = f'form-data; name="{name}"' + (f'; filename="{filename}"' if filename else "")
+    return f"Content-Disposition: {disp}\r\nContent-Type: {ctype}\r\n\r\n".encode() + data
+
+
+def raw_multipart(boundary: str, *parts: bytes) -> bytes:
+    b = boundary.encode()
+    return b"".join(b"--" + b + b"\r\n" + part + b"\r\n" for part in parts) + b"--" + b + b"--\r\n"
+
+
+def _good_parts() -> list[bytes]:
+    return [
+        raw_part("image", jpeg(1024, 768)), raw_part("thumb", jpeg(400, 300)),
+        raw_part("origin", b"memo", ctype="text/plain", filename=None),
+        raw_part("client_msg_id", b"raw-1", ctype="text/plain", filename=None),
+    ]
+
+
+def _nested() -> list[bytes]:
+    inner = raw_multipart("inner-boundary", raw_part("image", jpeg()))
+    return [*_good_parts()[:1], raw_part("thumb", inner, ctype="multipart/mixed; boundary=inner-boundary",
+                                         filename=None)]
+
+
+@pytest.mark.parametrize(
+    "parts",
+    [
+        [*_good_parts(), raw_part("image", jpeg(800, 600))],
+        [*_good_parts(), raw_part("caption", b"hello", ctype="text/plain", filename=None)],
+        [*_good_parts()[:2], raw_part("origin", b"\xff\xfe", ctype="text/plain", filename=None),
+         _good_parts()[3]],
+        _nested(),
+    ],
+    ids=["duplicate-image", "unknown-part", "origin-not-utf8", "nested-multipart"],
+)
+async def test_post_photo_bad_raw_multipart_400(env, parts):
+    boundary = "raw-boundary-0123"
+    resp = await env.post("/photos", data=raw_multipart(boundary, *parts),
+                          headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    assert resp.status == 400 and (await resp.json())["error"]["code"] == "invalid_request"
+    assert photo_count(env) == 0 and incoming(env) == []
+
+
+async def test_post_photo_good_raw_multipart_201(env):
+    """위 400 시험의 틀이 맞다는 것: 같은 틀에 맞는 부분만 넣으면 201."""
+    boundary = "raw-boundary-0123"
+    resp = await env.post("/photos", data=raw_multipart(boundary, *_good_parts()),
+                          headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    assert resp.status == 201
+
+
+async def test_post_photo_unexpected_error_removes_tmps(env, monkeypatch):
+    """5.2 3번: tmp를 쓴 뒤 어떤 단계에서 실패해도(예: DB 오류) `.incoming/`에 남지 않는다."""
+    def boom(_req):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(env.parts.dispatcher, "apply_action", boom)
+    status, body = await upload(env)
+    assert status == 500 and body["error"]["code"] == "internal"
+    assert incoming(env) == [] and photo_count(env) == 0
+
+
 async def test_post_photo_not_multipart_400(env):
     resp = await env.post("/photos", json={"image": "x"})
     assert resp.status == 400 and (await resp.json())["error"]["code"] == "invalid_request"
@@ -160,11 +224,14 @@ async def test_daily_photo_limit_429_on_logical_day(tmp_path):
         env.clock.advance(hours=13, minutes=30)  # 화 03:30: 아직 월요일(논리적 날짜)
         still, _ = await upload(env, jpeg(pad=10), client_msg_id="p-10")
         env.clock.advance(minutes=31)  # 화 04:01
+        stored_429 = env.conn.execute("SELECT COUNT(*) FROM api_idempotency WHERE client_msg_id = 'p-9'").fetchone()[0]
         next_day, _ = await upload(env, jpeg(pad=11), client_msg_id="p-11")
+        retried, again = await upload(env, jpeg(pad=9), client_msg_id="p-9")  # 어제 429였던 같은 요청
         count = photo_count(env)
     assert first == [201, 201]
     assert status == 429 and body["error"] == {"code": "photo_limit", "message": MSG_LIMIT}
-    assert left == [] and still == 429 and next_day == 201 and count == 3
+    assert left == [] and still == 429 and stored_429 == 0  # 429는 같은 요청 다시 받기 기록에 남기지 않는다
+    assert next_day == 201 and retried == 201 and again["bytes"] == len(jpeg(pad=9)) and count == 4
 
 
 async def test_disk_full_507_and_health_disk_low(env):
@@ -176,6 +243,8 @@ async def test_disk_full_507_and_health_disk_low(env):
     ok_status, _ = await upload(env, client_msg_id="p-low")  # 5GB 아래라도 2GB 위면 올린다
     env.deps.disk_free = lambda _path: DISK_FULL_BELOW - 1
     status, body = await upload(env, jpeg(pad=3), client_msg_id="p-full")
+    replay_status, _ = await upload(env, client_msg_id="p-low")  # 이미 저장한 요청의 재생은 공간과 무관
+    assert replay_status == 201
     assert plenty["disk_low"] is False and low["disk_low"] is True and low["status"] == plenty["status"]
     _validate("Health", low)
     assert ok_status == 201
@@ -210,8 +279,9 @@ async def test_chunked_body_over_64k_rejected_on_actions(env):
     }
 
 
-async def test_photo_route_body_limit_by_length_and_stream(env):
-    """사진 경로는 `Content-Length` 5.5MiB(미들웨어), 길이 없는 본문은 처리기가 세며 413."""
+async def test_photo_route_413_by_content_length_and_by_streamed_part_cap(env):
+    """사진 경로: `Content-Length`가 5.5MiB를 넘으면 미들웨어가 413. 길이 없는(chunked) 본문은 처리기가 세며 읽어
+    `image` 부분 상한(5,000,000)을 넘는 순간 413(합계 5.5MiB 검사는 부분 상한의 합보다 커서 닿지 않는다)."""
     big = os.urandom(PHOTO_BODY_MAX + 1024)
     f = aiohttp.FormData()
     f.add_field("image", big, filename="a.jpg", content_type="image/jpeg")
@@ -291,6 +361,25 @@ async def test_get_photo_missing_file_404_and_warns(env, caplog):
     warn = [r for r in caplog.records if r.msg == "photo_missing"]
     assert resp.status == 404 and len(warn) == 1 and warn[0].photo_id == pid
     assert rel not in f"{warn[0].__dict__}"
+
+
+async def test_get_photo_locked_file_503(env, caplog, monkeypatch):
+    """잠긴 파일(백신 등, 5.2): 처리하지 못한 500이 아니라 503과 `photo_read_failed`(id만, 경로 없음)."""
+    _, pid = await _memo_with_photo(env)
+    rel = env.conn.execute("SELECT path FROM photos WHERE id = ?", (pid,)).fetchone()[0]
+    real = Path.read_bytes
+
+    def locked(self):
+        if self.name.endswith(".jpg"):
+            raise PermissionError(13, "locked", str(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", locked)
+    with caplog.at_level(logging.WARNING):
+        resp = await env.get(f"/photos/{pid}")
+    warn = [r for r in caplog.records if r.msg == "photo_read_failed"]
+    assert resp.status == 503 and (await resp.json())["error"]["code"] == "unavailable"
+    assert len(warn) == 1 and warn[0].photo_id == pid and rel not in f"{warn[0].__dict__}"
 
 
 async def test_get_photo_token_only_in_header(env):

@@ -755,6 +755,11 @@ REJECT_CODES = frozenset({
 })
 
 
+def _error_code(res: ActionResult) -> str | None:
+    err = res.body.get("error")
+    return err.get("code") if isinstance(err, dict) else None
+
+
 def _tool_error(out: dict[str, Any]) -> ActionResult:
     code, message = out.get("code"), str(out["error"])
     if code in CONFLICT_CODES:
@@ -1019,7 +1024,9 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
                 _answer_in_savepoint(deps, req, gain)
                 if "xp" in res.body:
                     _add_xp(res.body, gain)
-            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
+            # 하루 상한 거절(`LIMIT_CODES`, 429)은 기록하지 않는다: 같은 `client_msg_id`로 다음 날 다시 보내면 올라가야 한다
+            if (req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY
+                    and _error_code(res) not in LIMIT_CODES):
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(
                     req.client_msg_id, req.endpoint, res.http_status, stored_body  # type: ignore[arg-type]
