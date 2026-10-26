@@ -127,7 +127,7 @@ async def test_primary_app_push_ok_no_telegram(tmp_path):
         "body": "좋은 아침이에요. 오늘은 산책 하나만 해 봐요.", "url": f"/checkins/{run.id}",
     }
     assert call.ttl == int((SAT_1200 - sent_at).total_seconds()) == 7170
-    assert call.topic == f"run-{run.id}"
+    assert call.topic is None  # 애플이 `run-<id>` Topic을 400으로 거절했다
     assert deliveries(env, run.id) == [("app", "full", "sent", 1, 0)]
     assert health["runs_today"][0]["delivered_via"] == ["app"]
     assert health["notify"] == {"primary": "app", "effective": "app"}
@@ -252,7 +252,7 @@ async def test_resend_after_5_minutes_only_if_nothing_delivered(tmp_path):
 
     assert first == [("app", "full", "not_sent", 0, 1), ("telegram", "fallback", "not_sent", 0, 0)]
     assert len(push.sent) == 4  # 처음 3회 + 재전송 1회
-    assert push.sent[-1].topic == f"run-{run.id}"  # 같은 회차를 다시 보내면 덮어쓴다
+    assert push.sent[-1].topic is None
     assert after.status is RunStatus.done and after.resent == 1
     assert ("app", "full", "sent", 1, 0) in last
     assert sent_today == 1
@@ -363,13 +363,12 @@ def test_push_payload_titles_and_body(tmp_path, conn):
     for loop, at in ((LoopKey.morning_brief, SAT_1000), (LoopKey.evening_checkin, kst(2026, 10, 24, 18, 0)),
                      (LoopKey.review, kst(2026, 10, 25, 18, 0)), (LoopKey.return_, kst(2026, 10, 24, 11, 0))):
         r = runs.ensure(loop, at)
-        payload, _, topic = push_payload(r, "\n\n" + "가" * 200, reply_until=SAT_1200, now=SAT_1000)
+        payload, _ = push_payload(r, "\n\n" + "가" * 200, reply_until=SAT_1200, now=SAT_1000)
         titles[loop] = payload["title"]
         assert len(payload["body"]) == 120 and payload["body"].endswith("…")
-        assert topic == f"run-{r.id}"
     assert titles == {LoopKey.morning_brief: "아침 브리핑", LoopKey.evening_checkin: "저녁 체크인",
                       LoopKey.review: "주간 회고", LoopKey.return_: "다시 이어서"}
-    _, ttl, _ = push_payload(runs.get(1), "x", reply_until=SAT_1000, now=SAT_1200)
+    _, ttl = push_payload(runs.get(1), "x", reply_until=SAT_1000, now=SAT_1200)
     assert ttl == 0  # 창이 지났으면 0
     import pytest
 
@@ -606,3 +605,21 @@ async def test_deliver_digest_primary_telegram_and_nowhere(tmp_path, conn):
     assert push.sent == [] and [o.text for o in tg.sent] == ["내일 일정 1개\n10:00 치과"]
     d, _ = _digest_delivery(tmp_path, conn, primary="telegram", telegram=FakeSender(fail=True))
     assert await d.deliver_digest("night", date(2026, 10, 27), "내일 일정 1개", "10:00 치과", "/x", ttl_s=3600) is None
+
+
+def test_push_reject_reason_keeps_only_short_alnum_reason():
+    from my_planner.harness.delivery import push_reject_reason
+
+    class R:
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            if isinstance(self.body, Exception):
+                raise self.body
+            return self.body
+
+    assert push_reject_reason(R({"reason": "BadWebPushTopic"})) == "BadWebPushTopic"
+    assert push_reject_reason(R({"reason": "https://web.push.apple.com/abc"})) is None  # 주소는 남기지 않는다
+    assert push_reject_reason(R(ValueError("not json"))) is None
+    assert push_reject_reason(R({})) is None

@@ -94,9 +94,19 @@ class WebPushSender:
         except WebPushException as e:
             status = getattr(e.response, "status_code", None)
             if isinstance(status, int):
+                log.warning("push_rejected", extra={"status": status, "reason": push_reject_reason(e.response)})
                 return status
             raise PushSendError("push_failed") from None  # 메시지(주소가 들어 있다)를 잇지 않는다
         return int(getattr(resp, "status_code", 201))
+
+
+def push_reject_reason(response: Any) -> str | None:
+    """거절 응답 본문의 `reason`(애플: `BadWebPushTopic`, `BadTtl` 등). 짧은 영숫자일 때만 돌려준다(주소가 섞이지 않게)."""
+    try:
+        reason = response.json().get("reason")
+    except Exception:  # noqa: BLE001 - 본문이 JSON이 아닐 수 있다(FCM 등)
+        return None
+    return reason if isinstance(reason, str) and reason.isalnum() and len(reason) <= 64 else None
 
 
 class PushSendError(Exception):
@@ -113,8 +123,11 @@ def _first_line(text: str) -> str:
     return line if len(line) <= BODY_MAX_CHARS else line[: BODY_MAX_CHARS - 1] + "…"
 
 
-def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -> tuple[dict[str, Any], int, str]:
-    """회차 푸시(6.4.8): (페이로드, TTL 초 = `now`(주입한 시계)부터 답장 창 끝까지, Topic `run-<id>`)."""
+def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -> tuple[dict[str, Any], int]:
+    """회차 푸시(6.4.8): (페이로드, TTL 초 = `now`(주입한 시계)부터 답장 창 끝까지).
+
+    `Topic` 헤더는 붙이지 않는다: 애플 푸시 서비스가 `run-<id>` Topic을 단 요청을 400으로 거절해 회차가 늘
+    텔레그램으로 갔다(2026-10-26 노트북 로그). Topic 없는 일정 알림·시험 푸시는 같은 구독에 잘 갔다."""
     payload = {
         "type": "checkin",
         "checkin_id": run.id,
@@ -123,7 +136,7 @@ def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -
         "url": f"/checkins/{run.id}",
     }
     ttl = max(0, int((reply_until - now).total_seconds()))
-    return payload, ttl, f"run-{run.id}"
+    return payload, ttl
 
 
 def notice_payload(text: str) -> dict[str, Any]:
@@ -213,8 +226,8 @@ class Delivery:
         self, run: Run, out: Outbound, *, reply_until: datetime, attempts: int = SEND_ATTEMPTS
     ) -> DeliveryOutcome:
         if self.effective() == "app":
-            payload, ttl, topic = push_payload(run, out.text, reply_until=reply_until, now=self.clock.now())
-            ok, failed = await self._push_all(payload, ttl=ttl, topic=topic, attempts=attempts, run_id=run.id)
+            payload, ttl = push_payload(run, out.text, reply_until=reply_until, now=self.clock.now())
+            ok, failed = await self._push_all(payload, ttl=ttl, topic=None, attempts=attempts, run_id=run.id)
             if ok:
                 return DeliveryOutcome("app", "full", True, push_ok=ok, push_failed=failed)
             log.warning("push_fallback_telegram", extra={"run_id": run.id, "push_failed": failed})
