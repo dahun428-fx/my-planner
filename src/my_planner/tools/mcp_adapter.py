@@ -553,7 +553,7 @@ _SPECS.update({
     ),
     "create_memo": (
         (
-            "사용자가 \"메모해줘\", \"적어둬\"처럼 부탁할 때만 메모를 만듭니다. body는 1~20,000자이고 첫 줄이 제목입니다. "
+            "사용자가 \"메모해줘\", \"적어둬\"처럼 부탁할 때만 메모를 만듭니다. body는 1~20,000자이고 첫 줄이 제목입니다. 메모 칩 차례에서는 body 없이 부릅니다. "
             "쓸 수 있는 서식은 목록 \"- \", 번호 \"1. \", 체크박스 \"- [ ]\", 굵게 \"**\"입니다. area는 영역 하나 또는 null. "
             "만든 메모는 고치거나 지울 수 없습니다(사용자가 앱에서 합니다)."
         ),
@@ -562,7 +562,8 @@ _SPECS.update({
                 "body": {"type": "string", "description": "1~20,000자, 첫 줄이 제목"},
                 "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
             },
-            ["body"],
+            # 필수가 아니다: 메모 칩 차례(SP9c 4.5)는 `body` 없이 부르면 원문을 쓴다. 그 밖에 빠지면 도구가 거절한다
+            [],
         ),
     ),
 })
@@ -725,6 +726,7 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
                 w.tool_input(call_id, name, args)
                 w.tool_output(call_id, to_api_times(_stream_output(tools, ctx, name, args, result)))
                 ctx.ui_drawn += 1
+                ctx.ui_drawn_names.append(name)
         elif "error" in result:
             w.tool_error(call_id, str(result["error"]))
         else:

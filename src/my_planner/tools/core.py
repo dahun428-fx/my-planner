@@ -154,6 +154,7 @@ MOVE_NOT_OPEN = "열린 할 일만 날짜를 옮길 수 있어요."  # SP6 8장(
 DATE_CHOICE_DAYS = 90
 PERIOD_DAY_BACK, PERIOD_DAY_AHEAD = 14, 56
 PERIOD_WEEK_BACK, PERIOD_WEEK_AHEAD = 2, 8
+
 DATE_CHOICE_SCHEDULED = "시각이 잡힌 할 일은 날짜 고르기로 옮기지 않아요. 대화로 정해 주세요."
 DATE_CHOICE_NOT_OPEN = "시각이 없는 열린 할 일만 날짜를 고를 수 있어요."
 DATE_CHOICE_RANGE = "후보 날짜는 오늘부터 90일 안이에요."
@@ -172,6 +173,11 @@ RESULT_CHANGES = {
     "task_updated": "updated",
     "tasks_confirmed": "confirmed",
 }
+
+
+def period_day_bounds(today: date) -> tuple[date, date]:
+    """`ui_period_list`의 `day` 허용 범위(6.4, 포함): 오늘 − 14일 ~ + 56일. 칩 카드 보장(SP9c 4.4)도 쓴다."""
+    return today - timedelta(days=PERIOD_DAY_BACK), today + timedelta(days=PERIOD_DAY_AHEAD)
 
 
 def _calendar_date(v: Any) -> date | None:
@@ -1264,7 +1270,7 @@ class Tools(
         start, _ = span
         today = self.today()
         if day is not None:
-            lo, hi = today - timedelta(days=PERIOD_DAY_BACK), today + timedelta(days=PERIOD_DAY_AHEAD)
+            lo, hi = period_day_bounds(today)
         else:
             this_monday = today - timedelta(days=today.weekday())
             lo, hi = this_monday - timedelta(weeks=PERIOD_WEEK_BACK), this_monday + timedelta(weeks=PERIOD_WEEK_AHEAD)

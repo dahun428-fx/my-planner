@@ -572,3 +572,49 @@ async def test_new_conversation_endpoint(tmp_path):
         b = int(resp.headers["x-conversation-id"])
     assert first.status == 200 and body == {"closed": [a]} and empty == {"closed": []}
     assert b != a
+
+
+# --- 퀵 칩 (SP9c 4.1, 4.3) ---
+
+
+@pytest.mark.parametrize("extra", [{"chip": "x"}, {"chip": "todo", "checkin_id": 3}, {"chip": ""}])
+async def test_chat_chip_bad_value_or_with_checkin_is_invalid_request(tmp_path, extra):
+    async with BeEnv.start(tmp_path, start=START) as env:
+        resp = await env.post("/chat", json={**env.chat_body("우유 사기"), **extra})
+        body = await resp.json()
+        calls = len(env.brain.calls)
+        pending = env.conn.execute("SELECT COUNT(*) FROM inbound_pending").fetchone()[0]
+
+    assert resp.status == 400 and body["error"]["code"] == "invalid_request"
+    assert calls == 0 and pending == 0
+
+
+async def test_chat_chip_skips_command_and_goes_to_brain(tmp_path):
+    from my_planner.harness import prompts
+
+    script = [FakeTurn([], "할 일로 넣었어요.")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        _, raw = await env.chat("/today 회의", chip="todo")
+        (call,) = env.brain.calls
+
+    assert _text(parse_sse(raw)) == "할 일로 넣었어요."
+    assert "## 메시지\n/today 회의" in call["prompt"]  # 명령 갈래가 아니라 두뇌로, 글 그대로
+    assert f"## 버튼\n{prompts.load('chip_todo.md')}\n\n{prompts.load('chip_common.md')}\n\n## 메시지" in call["prompt"]
+    ctx = call["run_ctx"]
+    assert ctx.chip == "todo" and ctx.chip_text is None  # 원문은 메모 칩에만
+
+
+async def test_chat_chip_block_comes_before_message_and_only_on_chip_turns(tmp_path):
+    from my_planner.harness import prompts
+
+    script = [FakeTurn([], "넣었어요."), FakeTurn([], "네.")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        await env.chat("내일 3시 치과", chip="event")
+        await env.chat("고마워요")
+        chip_prompt, plain_prompt = env.brain.prompts
+        plain_ctx = env.brain.calls[1]["run_ctx"]
+
+    block = f"## 버튼\n{prompts.load('chip_event.md')}\n\n{prompts.load('chip_common.md')}\n\n## 메시지\n내일 3시 치과"
+    assert block in chip_prompt and chip_prompt.count("## 버튼") == 1
+    assert "## 버튼" not in plain_prompt and "## 메시지\n고마워요" in plain_prompt
+    assert plain_ctx.chip is None and plain_ctx.chip_text is None

@@ -72,6 +72,11 @@ def memo_target(memo_id: int) -> str:
     return f"memo:{memo_id}"
 
 
+def _brain_result(m: Memo) -> dict[str, Any]:
+    """두뇌의 `create_memo` 결과: 본문 없이 id, 가린 제목, 영역."""
+    return {"id": m.id, "title": memo_title(redact(m.body)[0]), "area": m.area.value if m.area is not None else None}
+
+
 def summary_title(body: str) -> str:
     """활동 `summary`용 제목(앞 20자)."""
     return memo_title(body)[:SUMMARY_TITLE]
@@ -178,7 +183,8 @@ class MemoTools:
         """트랜잭션 안에서: 도구 호출 기록(`tool_events_log`), 활동 한 행, 확인 문구용 이벤트. 셋 다 제목 앞 20자만 쓰고
         본문은 넣지 않는다(6.1). 호출 기록이 있어야 두뇌 호출 도중 멈춘 메시지를 다시 처리할 때 두뇌를 다시 부르지 않고
         (같은 메모를 두 번 만들지 않고) 이 데이터로 확인 문구를 다시 만든다(`Dispatcher._finish_after_logged_tools`)."""
-        data = {"memo_id": m.id, "title": summary_title(m.body)}
+        # 두뇌가 바꾼 것은 가린 제목으로(메모 칩은 원문을 저장한다, SP9c 4.5). 앱(`/actions`)은 사용자 글 그대로
+        data = {"memo_id": m.id, "title": summary_title(redact(m.body)[0] if ctx.actor == "secretary" else m.body)}
         self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
         self._record(ctx, kind, memo_target(m.id), memo_line(kind, data["title"]), undo)
         ctx.events.append(ToolEvent(kind, None, data))
@@ -224,11 +230,21 @@ class MemoTools:
     @_tool
     def create_memo(self, ctx: RunContext, body: Any = None, area: Any = None) -> dict[str, Any]:
         """메모를 만든다. 두뇌가 만들면 `origin = 'chat'`, 앱(`/actions`)이면 `'user'`. 되돌릴 수 있다.
-        회차 차례(비서가 먼저 꺼낸 말)에서는 만들지 않는다: 사용자가 부탁할 때만(6.3)."""
+        회차 차례(비서가 먼저 꺼낸 말)에서는 만들지 않는다: 사용자가 부탁할 때만(6.3).
+        메모 칩 차례(`ctx.chip == "memo"`, SP9c 4.5)면 본문은 늘 `ctx.chip_text`(가리기·자르기 전 원문)다."""
         if self.memos is None:
             return _err(MSG_NO_MEMOS)
         if ctx.run_turn:
             return _err(MSG_RUN_TURN)
+        if ctx.chip == "memo" and ctx.chip_text is not None:
+            # 메모 칩 차례(SP9c 4.5): 두뇌가 본 글은 가리고 자른 글이라 원문 그대로를 저장한다(두뇌가 body를 넣어도).
+            # 메모는 하나만: 이 차례에 이미 만들었으면 만들지 않고 그 메모를 돌려준다
+            made = next((e.data for e in ctx.events if e.kind == "memo_created" and e.data), None)
+            if made is not None:
+                prev = self.memos.get(made["memo_id"])
+                if prev is not None:
+                    return _brain_result(prev)
+            body = ctx.chip_text
         try:
             text, a = _body(body), _area(area)
         except ValueError as e:
@@ -240,8 +256,8 @@ class MemoTools:
             m = self.memos.create(text, a, origin, self.clock.now())
             self._memo_change(ctx, "memo_created", m, {"memo_id": m.id})
         log.info("memo_created", extra={"memo_id": m.id, "origin": origin})
-        if ctx.actor == "secretary":  # 두뇌에는 본문을 돌려주지 않는다(6.3)
-            return {"id": m.id, "title": memo_title(m.body), "area": a.value if a is not None else None}
+        if ctx.actor == "secretary":  # 두뇌에는 본문을 돌려주지 않는다(6.3). 제목도 가린 글로
+            return _brain_result(m)
         return memo_result(m)
 
     # --- 즉시 갈래 동작(두뇌 도구 목록에 없다) ---

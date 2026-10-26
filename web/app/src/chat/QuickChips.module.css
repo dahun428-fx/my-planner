@@ -59,3 +59,45 @@
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
+/* SP9c 3 한 줄 쓰기 표시: 칩 줄 자리에 아이콘 + 머리표 + 닫기(누르는 곳 44px). 높이는 칩 줄과 같다. */
+.writing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: var(--space-2) var(--gutter) 0;
+  font-size: var(--fs-callout);
+  color: var(--text-2);
+}
+.writingLabel {
+  flex: 1;
+  min-width: 0;
+}
+.closeWrite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--small-control-h);
+  margin: 6px calc(-1 * var(--space-2)) 6px 0; /* the chip row's height */
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  position: relative;
+}
+.closeWrite::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
+}
+.closeWrite svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2;
+}
+.closeWrite:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

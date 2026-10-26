@@ -7,6 +7,7 @@ import { useCatalog } from "../ui/CatalogProvider";
 import { registryNames, UiPart } from "../ui/registry";
 import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
+import { isWriteKey } from "./quickChips";
 import styles from "./ChatSheet.module.css";
 
 // SP6 11.2: the chat cards join the registry with the chat sheet's bundle, before anything draws.
@@ -31,6 +32,12 @@ const userText = (m: UIMessage) =>
     .map((p) => p.text)
     .join("");
 
+// SP9c 3: a line written from an add chip on this device has a small grey label above the bubble.
+function chipLabel(m: UIMessage): string | null {
+  const chip = (m.metadata as { chip?: unknown } | undefined)?.chip;
+  return typeof chip === "string" && isWriteKey(chip) ? copy.chat.chipLabel[chip] : null;
+}
+
 // Spec 5.5.2: my text on the right in a dark bubble (plain, as typed), the secretary's as body text
 // in Markdown, parts in place.
 export function MessageView({
@@ -52,8 +59,10 @@ export function MessageView({
 }) {
   const { check, settled } = useCatalog();
   if (message.role === "user") {
+    const label = chipLabel(message);
     return (
       <div className={styles.mine} data-message={message.id}>
+        {label && <p className={styles.chipLabel}>{label}</p>}
         <p className={styles.bubble}>{userText(message)}</p>
       </div>
     );

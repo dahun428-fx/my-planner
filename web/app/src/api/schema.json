@@ -444,6 +444,24 @@
           ],
           "default": null
         },
+        "chip": {
+          "anyOf": [
+            {
+              "enum": [
+                "todo",
+                "event",
+                "memo",
+                "today",
+                "next"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "client_msg_id": {
           "maxLength": 200,
           "minLength": 1,

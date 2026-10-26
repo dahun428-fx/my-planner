@@ -31,6 +31,7 @@ from my_planner.domain import (
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
     ask_condition_for,
     build_notices,
@@ -124,6 +125,8 @@ class Inbound:
     message_id: str | None = None  # 앱: 받은 `message.id`(사용자 줄의 id, 6.4.6)
     # 앱: 목록에서 골라 이어 가는 대화(SP9 7.3 0번 규칙). 받은 대화가 처리 전에 닫혔으면 다시 고를 때 쓴다
     resume_conversation_id: int | None = None
+    # 앱: 퀵 칩(SP9c 4.2). `inbound_pending`에는 넣지 않는다(다시 넣은 메시지는 보통 메시지로 처리한다)
+    chip: str | None = None
 
 
 @dataclass
@@ -161,6 +164,9 @@ class Outbound:
     # 습관 버튼의 날짜(SP7 5.7): 저녁 체크인(합친 회차 포함)이고 활성 습관이 있으면 그 체크인의 날짜. 텔레그램 `hb:`
     # 줄(확인 줄 다음, 컨디션·사다리 줄 앞). 사다리 때문에 `ask_condition_for`를 지워도 이 값은 그대로다
     habit_date: date | None = None
+    # 퀵 칩 차례의 하네스 결과 카드 `(컴포넌트, props, 출력)`(SP9c 4.4). 정상 답 경로에서만 `_reply_out`이 싣는다.
+    # 앱 `harness_cards`가 맨 뒤에 `h_chip`으로 붙인다
+    chip_cards: list[tuple[str, dict[str, Any], dict[str, Any]]] = field(default_factory=list)
 
 
 class Sender(Protocol):
@@ -870,6 +876,8 @@ class Dispatcher:
             if await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)), update_ids):
                 log.info("message_rate_limited_window", extra={"update_ids": update_ids})
             return
+        # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
+        chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
         redacted_parts = [redact(m.text) for m in batch]
         text = "\n\n".join(t for t, _ in redacted_parts)
         limits = self.settings.limits
@@ -905,9 +913,11 @@ class Dispatcher:
         flow = self.review_flow
         review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
-        run_ctx = self._message_ctx(conv.id, lead)
+        run_ctx = self._message_ctx(conv.id, lead, chip_of)
         body = _join(
-            self._recorded_condition(), f"## 메시지\n{text}",
+            self._recorded_condition(),
+            chip_block(chip_of.chip) if chip_of.chip is not None else "",
+            f"## 메시지\n{text}",
             step_note(review_step, where="답"),
         )
         with self._awake.hold():
@@ -991,7 +1001,7 @@ class Dispatcher:
                 fell_back = True
                 if fork:
                     log.warning("fork_session_failed", extra={"conversation_id": conv.id})
-                run_ctx = self._message_ctx(conv.id, lead)
+                run_ctx = self._message_ctx(conv.id, lead, chip_of)
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
             capped = False
@@ -1054,7 +1064,15 @@ class Dispatcher:
             # 두 단계: 보내기 전에 답을 저장한다(brain_done). 바로 3회까지 보내고, 끝내 안 되면 처리 완료로 두지
             # 않는다. 다음 시작 때 저장한 답만 다시 보낸다(두뇌는 다시 부르지 않는다)
             self.state.save_inbound_reply(lead, redact(sent_text)[0], conv.id)
-            out = self._reply_out(_outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids)
+            # 퀵 칩(SP9c 4.4): 정상 답에만 빠진 결과 카드를 붙인다(오류·상한·대체 답에는 없다)
+            cards = (
+                chip_cards(run_ctx.chip, run_ctx, self.tools, self.clock.now())
+                if result.status == "ok" and app is not None and run_ctx.chip is not None and self.tools is not None
+                else []
+            )
+            out = self._reply_out(
+                _outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids, chip_cards=cards
+            )
             out.streamed = streamed
             if step is not None:
                 out.ladder = step.ladder
@@ -1234,24 +1252,28 @@ class Dispatcher:
         except Exception as e:  # noqa: BLE001 - 답 표시가 안 돼도 메시지에는 답한다
             log.warning("run_answer_record_error", extra={"run_id": run_id, "error_type": type(e).__name__})
 
-    def _message_ctx(self, conversation_id: int, lead: int) -> RunContext:
-        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1)를 싣는다."""
+    def _message_ctx(self, conversation_id: int, lead: int, chip: _Chip | None = None) -> RunContext:
+        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1), 퀵 칩(SP9c 4.2)을 싣는다."""
         app = self._cur
         if app is None:
             return RunContext(conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead)
+        chip = chip or _NO_CHIP
         return RunContext(
             conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead, channel="app",
-            stream=app.writer,
+            stream=app.writer, chip=chip.chip, chip_text=chip.text,
         )
 
     def _reply_out(
-        self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int]
+        self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int],
+        *, chip_cards: list[tuple[str, dict[str, Any], dict[str, Any]]] | None = None,
     ) -> Outbound:
-        """앱 답이면 통로, 쓰개, 확인 문구, 활동 id를 싣는다(M4). 텔레그램은 그대로(확인 문구는 이미 글에 있다)."""
+        """앱 답이면 통로, 쓰개, 확인 문구, 활동 id를 싣는다(M4). 텔레그램은 그대로(확인 문구는 이미 글에 있다).
+        `chip_cards`: 정상 답 경로의 퀵 칩 결과 카드(SP9c 4.4). 다른 경로는 넘기지 않는다."""
         app = self._cur
         if app is None:
             return out
         out.channel = "app"
+        out.chip_cards = list(chip_cards or [])
         out.writer = app.writer
         out.confirmation = confirmation or None
         out.activity_ids = list(activity_ids)
@@ -2416,6 +2438,36 @@ def _week_label(monday: date) -> str:
         f"{period_of(Cadence.week, monday)} "
         f"({monday.month}/{monday.day}~{sunday.month}/{sunday.day})"
     )
+
+
+# 칩 알림 끝에 공통 규칙(4.3, `chip_common.md`)을 붙이는 칩: 글로 무엇을 저장하는 칩만
+_SAVING_CHIPS = frozenset({"todo", "event", "memo"})
+
+
+def chip_block(chip: str) -> str:
+    """두뇌 차례 본문의 `## 버튼` 블록(SP9c 4.3). `## 메시지` 앞에 둔다."""
+    text = prompts.load(f"chip_{chip}.md")
+    if chip in _SAVING_CHIPS:
+        text = f"{text}\n\n{prompts.load('chip_common.md')}"
+    return f"## 버튼\n{text}"
+
+
+@dataclass(frozen=True)
+class _Chip:
+    """앱 차례의 퀵 칩(SP9c 4.2). `text`는 메모 칩일 때만 받은 글 그대로(가리기·자르기 전)."""
+
+    chip: str | None = None
+    text: str | None = None
+
+
+_NO_CHIP = _Chip()
+
+
+def _chip_of(m: Inbound) -> _Chip:
+    # 다시 넣은 메시지(`recovered`)는 칩이 없다(`inbound_pending`에 넣지 않는다, 4.2). 글은 이미 가린 글이기도 하다
+    if m.chip is None or m.recovered:
+        return _NO_CHIP
+    return _Chip(m.chip, m.text if m.chip == "memo" else None)
 
 
 def _join(*parts: str) -> str:

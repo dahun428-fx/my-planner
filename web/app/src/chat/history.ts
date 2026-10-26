@@ -4,11 +4,15 @@ import type { Conversations } from "../api/types.gen";
 import { validateModel } from "../api/validate";
 import { loadParts } from "./localParts";
 import type { ViewPart } from "./parts";
+import type { WireChip } from "./quickChips";
 
 const ELSEWHERE_MAX = 3;
 
-/** `checkin_id`: a message sent to a run from the check-in chip (SP9 9.5); the transport sends it as the request's. */
-export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number };
+/**
+ * `checkin_id`: a message sent to a run from the check-in chip (SP9 9.5); the transport sends it as the request's.
+ * `chip`: the quick chip a message was sent from on this device (SP9c 3); the BE's lines never have one.
+ */
+export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number; chip?: WireChip };
 type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string };
 
 export interface History {

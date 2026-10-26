@@ -250,11 +250,14 @@ export interface CalendarSettings {
 /**
  * `POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).
  *
+ * `chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "ChatRequestBody".
  */
 export interface ChatRequestBody {
   checkin_id?: number | null;
+  chip?: ("todo" | "event" | "memo" | "today" | "next") | null;
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;

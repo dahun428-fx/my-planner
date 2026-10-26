@@ -66,6 +66,14 @@ describe("buildChatBody", () => {
     expect(Object.keys(body)).not.toContain("resume_conversation_id");
   });
 
+  // SP9c 4.1: a chip message carries `chip` (from its metadata); any other message has no such key.
+  it("carries the message's chip, and no chip key otherwise", () => {
+    const chipMsg: UIMessage = { ...user(crypto.randomUUID(), "내일 오후 3시 치과"), metadata: { at: "2026-10-27T13:00:00Z", chip: "event" } };
+    expect(buildChatBody([chipMsg], { conversationId: 4, checkinId: null })).toMatchObject({ chip: "event", checkin_id: null });
+    const next = buildChatBody([chipMsg, assistant("m-1-1", "네"), user(crypto.randomUUID(), "고마워")], { conversationId: 4, checkinId: null });
+    expect(Object.keys(next)).not.toContain("chip");
+  });
+
   it("picks the last user message even when a reply follows it (regenerate)", () => {
     const last = user(crypto.randomUUID(), "다시");
     const body = buildChatBody([last, assistant("m-1-2", "")], { conversationId: 1, checkinId: null });
@@ -106,6 +114,63 @@ describe("makeTransport", () => {
     }
     expect(types).toEqual(["start", "finish"]);
     expect(seen).toEqual([{ auth: `Bearer ${TEST_TOKEN}`, body: { client_msg_id: msg.id, conversation_id: 2, checkin_id: null, message: msg } }]);
+  });
+
+  // SP9c 4.1: a BE from before the chips refuses the unknown `chip` key (400 invalid_request). The chip
+  // message then goes once more, the same client_msg_id, without it: a plain message there.
+  describe("a BE that does not know chip", () => {
+    const ok = () => new HttpResponse('data: {"type":"start"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
+    const refuse = (code: string) => HttpResponse.json({ error: { code, message: "x" } }, { status: 400 });
+    function serve(answer: (body: Record<string, unknown>) => Response) {
+      const seen: Record<string, unknown>[] = [];
+      server.use(
+        http.post(`${BASE}/chat`, async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          seen.push(body);
+          return answer(body);
+        }),
+      );
+      return seen;
+    }
+    const send = (msg: UIMessage) =>
+      makeTransport(() => ({ beUrl: TEST_BE_URL, token: TEST_TOKEN }), () => ({ conversationId: null, checkinId: null })).sendMessages({
+        chatId: "c",
+        messages: [msg],
+        abortSignal: undefined,
+        trigger: "submit-message",
+        messageId: undefined,
+      });
+    const chipMsg = (): UIMessage => ({ ...user(crypto.randomUUID(), "내일 오후 3시 치과"), metadata: { chip: "event" } });
+
+    it("a chip message refused with 400 invalid_request goes once more without chip, same client_msg_id", async () => {
+      const seen = serve((body) => ("chip" in body ? refuse("invalid_request") : ok()));
+      const msg = chipMsg();
+      const stream = await send(msg);
+      const reader = stream.getReader();
+      while (!(await reader.read()).done);
+      expect(seen).toHaveLength(2);
+      expect(seen[0]).toMatchObject({ client_msg_id: msg.id, chip: "event" });
+      expect(seen[1]).toMatchObject({ client_msg_id: msg.id });
+      expect(seen[1]).not.toHaveProperty("chip");
+    });
+
+    it("only once: a second 400 is the answer", async () => {
+      const seen = serve(() => refuse("invalid_request"));
+      await expect(send(chipMsg())).rejects.toThrow();
+      expect(seen).toHaveLength(2);
+    });
+
+    it("a message without chip is never sent again on a 400", async () => {
+      const seen = serve(() => refuse("invalid_request"));
+      await expect(send(user(crypto.randomUUID(), "안녕"))).rejects.toThrow();
+      expect(seen).toHaveLength(1);
+    });
+
+    it("another 400 code on a chip message is not sent again", async () => {
+      const seen = serve(() => refuse("validation_failed"));
+      await expect(send(chipMsg())).rejects.toThrow();
+      expect(seen).toHaveLength(1);
+    });
   });
 
   it("errors a stream that ends before finish", async () => {

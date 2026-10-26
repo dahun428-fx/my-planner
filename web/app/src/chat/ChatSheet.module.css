@@ -107,7 +107,16 @@
 }
 .mine {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+}
+/* SP9c 3: the add chip's label, a small grey line above my bubble. */
+.chipLabel {
+  flex-basis: 100%;
+  margin: 0 0 0.25rem;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--size-meta);
 }
 /* Mine: --raised, --text, 18/18/4/18 (the tail corner at the lower right), 12×18, at most 80%. */
 .bubble {

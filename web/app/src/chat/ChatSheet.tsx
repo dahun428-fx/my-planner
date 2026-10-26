@@ -25,8 +25,8 @@ import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
-import { QuickChips } from "./QuickChips";
-import { type Chip, quickChips } from "./quickChips";
+import { QuickChips, WRITING_ID } from "./QuickChips";
+import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
 import { sheetState } from "./sheetContext";
 import { type ChatCtx, InFlightError, makeTransport } from "./transport";
 
@@ -93,6 +93,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const [today, setToday] = useState<Today | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [starting, setStarting] = useState(false);
+  // SP9c 3: an add chip pressed: the input is a one-line write of that kind until it is sent or closed.
+  const [writing, setWriting] = useState<Chip | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
 
   const sending = useRef(false);
@@ -224,6 +226,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       sheetState.pickedConversationId = null;
       focusAfter.current = null;
       setView("chat");
+      setWriting(null);
     }
   }, [open, embedded]);
   useEffect(
@@ -272,7 +275,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const canSend = !readOnly && !loading && !busy;
 
   // `checkinId`: the message goes to that run (the check-in chip, SP9 9.5), without the picked conversation.
-  const send = (raw: string, checkinId?: number): boolean => {
+  // `chip`: the quick chip it came from (SP9c 4.1), kept in the message's metadata for its label.
+  const send = (raw: string, { checkinId, chip }: { checkinId?: number; chip?: WireChip } = {}): boolean => {
     const t = raw.trim();
     if (t === "" || sending.current || !canSend) return false;
     sending.current = true; // a second press before the answer starts is ignored
@@ -283,10 +287,34 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setPhase(null);
     if (!embedded) sheetState.freshSince = null; // said something: the latest conversation is this one again
     const metadata: Meta = { at: new Date().toISOString(), ...(checkinId === undefined ? {} : { checkin_id: checkinId }) };
+    if (chip) metadata.chip = chip;
     void sendMessage({ text: t, metadata });
     return true;
   };
-  const sendChip = (chip: Chip) => void send(chip.text, chip.checkinId);
+  // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
+  const pressChip = (chip: Chip) => {
+    if (chip.mode === "send") return void send(chip.text, { checkinId: chip.checkinId, chip: chip.wire });
+    setWriting(chip);
+    field.current?.focus();
+  };
+  const closeWrite = () => {
+    setWriting(null);
+    field.current?.focus();
+  };
+  // The input's text goes as a line of the open write, if there is one; after it the chip row comes back.
+  const sendInput = () => {
+    if (!send(text, { chip: writing?.wire })) return;
+    setText("");
+    setWriting(null);
+  };
+  // A card's button is a plain message, also during a write (which then ends).
+  const chooseLabel = (label: string) => {
+    if (send(label)) setWriting(null);
+  };
+  const openList = () => {
+    setWriting(null);
+    setView("list");
+  };
 
   // SP9 9.5 / 7.3: a row of the list is read with /messages; from then on every message carries it.
   const openPicked = (id: number) => {
@@ -309,6 +337,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       return;
     }
     clearView();
+    setWriting(null);
     sheetState.freshSince = new Date().toISOString();
     if (view === "list") focusAfter.current = "input"; // from the head, its icon keeps the focus
     setView("chat");
@@ -339,15 +368,17 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (send(text)) setText("");
+    sendInput();
   };
   // Enter sends, as the keyboard's send key says; Shift+Enter is a new line, and an Enter that ends
   // a Korean syllable (IME composition) is not a send. keyCode 229 covers Safari, which can
   // report isComposing false on the Enter that ends a composition.
+  // SP9c 3: Backspace in the empty input ends a one-line write.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.key === "Backspace" || e.keyCode === 8) && text === "" && writing) setWriting(null); // 8: some Android keyboards
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
     e.preventDefault();
-    if (send(text)) setText("");
+    sendInput();
   };
   // DESIGN.md: one row, two when the text breaks a line or no longer fits; past that it scrolls
   // inside. The rows attribute, never a style height (CSP).
@@ -399,7 +430,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       );
     }
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
-    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} onOpen={openScreen} onOpenPath={openPath} />);
+    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={chooseLabel} onOpen={openScreen} onOpenPath={openPath} />);
     if (i === historyCount - 1) rows.push(elsewhereLines);
     if (conv !== null) {
       prevConv = conv;
@@ -427,7 +458,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // SP9 9.5: the list button at the left of the head; "새 대화" at the right, left of 닫기.
   const chatHead = (
     <header className={styles.header}>
-      <button ref={listButton} type="button" className={styles.headIcon} aria-label={copy.chat.pastConversations} onClick={() => setView("list")}>
+      <button ref={listButton} type="button" className={styles.headIcon} aria-label={copy.chat.pastConversations} onClick={openList}>
         <Icon name="list" />
       </button>
       <div className={styles.heading}>
@@ -499,13 +530,15 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         {online && loadError !== null && <BlockError code={loadError} onRetry={load} />}
       </div>
       {reason && <p className={styles.reason}>{reason}</p>}
-      {!embedded && <QuickChips chips={chips} disabled={!canSend} onSend={sendChip} />}
+      {!embedded && <QuickChips chips={chips} disabled={!canSend} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
       <form className={styles.composer} onSubmit={onSubmit}>
         <textarea
           ref={field}
           className={styles.input}
           rows={fieldRows}
           aria-label={copy.chat.inputLabel}
+          placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
+          aria-describedby={writing ? WRITING_ID : undefined}
           value={text}
           disabled={readOnly || loading}
           enterKeyHint="send"

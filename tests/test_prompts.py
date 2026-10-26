@@ -157,3 +157,38 @@ def test_prompts_use_new_kind_names():
     assert not any(w in tools_text for w in old)
     assert "곡선에 높은 때로 남길까요?" in _system()
     assert "높은 때, 힘든 때, 전환점" in tools_text
+
+
+# --- SP9c 4.3: 퀵 칩 알림 ---
+
+SP9C_SPEC = (Path(__file__).parent.parent / "docs" / "superpowers" / "specs"
+             / "2026-10-26-sp9c-quick-chip-cards-design.md")
+
+
+def test_chip_prompts_are_spec_text():
+    """`chip_<키>.md`는 스펙 4.3의 그 키 문장 그대로(따옴표 밖)다. 키마다 하나, 금지어 없음."""
+    from typing import get_args
+
+    from my_planner.api.models import ChipKey
+    from my_planner.tools.ui import banned_words
+
+    text = SP9C_SPEC.read_text(encoding="utf-8")
+    section = text[text.index("\n### 4.3"):text.index("\n### 4.4")]
+    rows = dict(re.findall(r'^- `(\w+)`: "(.+)"$', section, re.MULTILINE))
+    assert set(rows) == set(get_args(ChipKey)) == {"todo", "event", "memo", "today", "next"}
+    for key, sentence in rows.items():
+        got = prompts.load(f"chip_{key}.md")
+        assert got == sentence, key
+        assert [w for w in banned_words() if w in got] == [], key
+
+
+def test_chip_common_rule_only_on_saving_chips():
+    """4.3 공통 규칙(`chip_common.md`)은 저장하는 칩(todo, event, memo)의 `## 버튼` 블록 끝에만, 빈 줄 하나 뒤에."""
+    from my_planner.harness.dispatcher import chip_block
+
+    common = prompts.load("chip_common.md")
+    assert common == "글이 할 일·일정·메모로 읽히지 않으면(인사, 질문) 저장하지 않고 평소처럼 답합니다."
+    for key in ("todo", "event", "memo"):
+        assert chip_block(key) == f"## 버튼\n{prompts.load(f'chip_{key}.md')}\n\n{common}", key
+    for key in ("today", "next"):
+        assert chip_block(key) == f"## 버튼\n{prompts.load(f'chip_{key}.md')}", key

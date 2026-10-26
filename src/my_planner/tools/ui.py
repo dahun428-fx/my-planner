@@ -454,10 +454,11 @@ def _where(loc: tuple[Any, ...]) -> str:
     return ".".join(str(p) for p in loc) or "props"
 
 
-def validate_props(component: str, props: Any) -> str | None:
+def validate_props(component: str, props: Any, *, harness: bool = False) -> str | None:
     """카탈로그에 맞으면 None, 아니면 사람용 오류 한 줄 `"{위치}: {code}"`(값은 담지 않는다).
 
-    순서: (1) 스키마와 쌓기 규칙 (2) B9 크기 (3) 두뇌 조각만 글 검사(10.3). 하네스 조각은 (3)을 하지 않는다."""
+    순서: (1) 스키마와 쌓기 규칙 (2) B9 크기 (3) 두뇌 조각만 글 검사(10.3). 하네스 조각은 (3)을 하지 않는다.
+    `harness`: 하네스가 두뇌 쪽 컴포넌트를 낸다(SP9c 4.4 칩 카드). 하네스 조각이므로 (3)을 하지 않는다."""
     entry = _COMPONENTS.get(component)
     if entry is None:
         return "알 수 없는 화면 조각이에요."
@@ -473,7 +474,7 @@ def validate_props(component: str, props: Any) -> str | None:
         return _fail("props" if code in _PROPS_LEVEL else _where(loc), code)
     if len(json.dumps(props, ensure_ascii=False).encode()) > PROPS_MAX_BYTES:
         return _fail("props", "too_large")
-    if origin == "brain":
+    if origin == "brain" and not harness:
         return _text_error(component, props)
     return None
 

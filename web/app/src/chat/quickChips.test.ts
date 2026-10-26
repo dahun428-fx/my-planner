@@ -60,6 +60,20 @@ describe("FIXED_CHIPS", () => {
     ]);
     expect(FIXED_CHIPS.every((c) => c.checkinId === undefined)).toBe(true);
   });
+
+  // SP9c 3: the add chips open a one-line write; 오늘 정리해줘 sends its sentence with `chip`.
+  it("the add chips write, the others send; only today and next carry a chip on the wire", () => {
+    expect(FIXED_CHIPS.map((c) => [c.key, c.mode, c.wire])).toEqual([
+      ["todo", "write", "todo"],
+      ["event", "write", "event"],
+      ["memo", "write", "memo"],
+      ["today", "send", "today"],
+    ]);
+    const checkin = frontChip(today({ checkins: [run()] }), at("2026-10-27T13:00:00Z"));
+    expect(checkin).toMatchObject({ key: "checkin", mode: "send" });
+    expect(checkin).not.toHaveProperty("wire");
+    expect(frontChip(today({ events: [event("2026-10-27T05:00:00Z")] }), at("2026-10-27T03:00:00Z"))).toMatchObject({ key: "next", mode: "send", wire: "next" });
+  });
 });
 
 describe("frontChip", () => {

@@ -1,6 +1,7 @@
 import "./zodJitless"; // first: before "ai" builds its schemas
 import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
 import type { Conn } from "../lib/connection";
+import type { WireChip } from "./quickChips";
 
 /**
  * What the next POST /chat carries besides the message (SP3-4 6.4.1). `resumeConversationId`: the
@@ -13,6 +14,8 @@ export interface ChatBody {
   conversation_id: number | null;
   checkin_id: number | null;
   resume_conversation_id?: number;
+  /** SP9c 4.1: the quick chip the message came from (`metadata.chip`). */
+  chip?: WireChip;
   message: UIMessage;
 }
 
@@ -21,6 +24,7 @@ function ownCheckinId(message: UIMessage): number | null {
   const meta = message.metadata as { checkin_id?: unknown } | undefined;
   return typeof meta?.checkin_id === "number" ? meta.checkin_id : null;
 }
+const ownChip = (message: UIMessage) => (message.metadata as { chip?: WireChip } | undefined)?.chip;
 
 /** The body ended before `finish` (or the connection broke while it was read): the answer may still be on the BE. */
 export class StreamCutError extends Error {
@@ -32,10 +36,27 @@ export class InFlightError extends Error {
   override name = "InFlightError";
 }
 
+// SP9c 4.1: a BE from before the chips refuses the unknown `chip` key (400 invalid_request). The body
+// without it, for one more try under the same client_msg_id; null when it is not that case.
+async function withoutChip(res: Response, body: RequestInit["body"]): Promise<string | null> {
+  if (res.status !== 400 || typeof body !== "string") return null;
+  const sent = JSON.parse(body) as Record<string, unknown>;
+  if (!("chip" in sent)) return null; // a message without a chip is never sent again
+  const err = (await res.clone().json().catch(() => null)) as { error?: { code?: unknown } } | null;
+  if (err?.error?.code !== "invalid_request") return null;
+  delete sent.chip;
+  return JSON.stringify(sent);
+}
+
 // A 409 from POST /chat is the in-flight answer (the other 409, an id used by /actions, cannot
 // happen: every message has a fresh id). It becomes InFlightError instead of a refusal.
 async function chatFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const res = await fetch(input, init);
+  let res = await fetch(input, init);
+  const plain = await withoutChip(res, init?.body);
+  if (plain !== null) {
+    void res.body?.cancel().catch(() => {});
+    res = await fetch(input, { ...init, body: plain });
+  }
   if (res.status !== 409) return res;
   void res.body?.cancel().catch(() => {});
   throw new InFlightError("answer still in flight");
@@ -51,6 +72,8 @@ export function buildChatBody(messages: UIMessage[], ctx: ChatCtx): ChatBody {
   const checkinId = ownCheckinId(message) ?? ctx.checkinId;
   const body: ChatBody = { client_msg_id: message.id, conversation_id: ctx.conversationId, checkin_id: checkinId, message };
   if (checkinId === null && ctx.resumeConversationId != null) body.resume_conversation_id = ctx.resumeConversationId;
+  const chip = ownChip(message);
+  if (chip !== undefined) body.chip = chip;
   return body;
 }
 

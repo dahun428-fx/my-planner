@@ -277,7 +277,8 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
 
     회차 차례의 확인(`out.confirms`)은 여기서 만들지 않는다: 앱은 체크인 상세 `cards`로 받는다(10.1 A5,
     `harness.checkins.checkin_cards`). 사용자 차례에서 두뇌가 물은 확인(SP9 8장 `set_checkin_time`,
-    `out.confirm_cards`)만 맨 뒤에 `ui_confirm`(출력 `{"ok": true}`)으로 붙인다.
+    `out.confirm_cards`)만 `ui_confirm`(출력 `{"ok": true}`)으로 붙이고, 그 뒤 맨 끝에 퀵 칩 결과 카드
+    (`out.chip_cards`, SP9c 4.4)를 `h_chip`으로 붙인다.
 
     초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
     `out.draft_todos`), 사건·챕터 초안 카드는 `{"ok": true, "data": {"milestones": […]}}`·`{"data": {"chapters": […]}}`
@@ -301,6 +302,9 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
         cards.append(("h_cond", "ui_condition_picker", {"date": out.ask_condition_for.isoformat()}, {"ok": True}))
     for props in out.confirm_cards:
         cards.append(("h_confirm", "ui_confirm", dict(props), {"ok": True}))
+    # 퀵 칩 결과 카드(SP9c 4.4): 확인 카드 다음 맨 뒤. 두뇌 쪽 컴포넌트지만 하네스 조각이다
+    for component, props, output in out.chip_cards:
+        cards.append(("h_chip", component, dict(props), output))
     return cards
 
 

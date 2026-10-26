@@ -498,7 +498,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).",
+      "description": "`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).\n\n`chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).",
       "properties": {
         "checkin_id": {
           "anyOf": [
@@ -511,6 +511,25 @@
           ],
           "default": null,
           "title": "Checkin Id"
+        },
+        "chip": {
+          "anyOf": [
+            {
+              "enum": [
+                "todo",
+                "event",
+                "memo",
+                "today",
+                "next"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chip"
         },
         "client_msg_id": {
           "maxLength": 200,

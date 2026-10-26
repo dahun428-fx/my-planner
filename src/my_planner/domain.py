@@ -101,6 +101,8 @@ class RunContext:
     stream: Any = None
     # 이 답에서 두뇌 화면 도구가 스트림에 쓴 조각 수(SP6 10.4 `mcp_adapter.UI_PARTS_PER_REPLY`). 하네스 조각은 세지 않는다
     ui_drawn: int = 0
+    # 그 조각들의 컴포넌트 이름(그린 순서, SP9c 4.4). 칩 카드 보장이 두뇌가 이미 그린 카드를 본다
+    ui_drawn_names: list[str] = field(default_factory=list)
     # 이 묶음의 도구가 쌓은 경험치와 넘긴 레벨(`status.xp.XpGain`, SP3-4 9.2). 레벨 오름 한 줄은 이것으로만 정한다
     xp: XpGain = field(default_factory=XpGain)
     # 두뇌 호출의 종류(SP8 6.3). `moments`면 도구는 `save_moments` 하나뿐이다(`mcp_adapter.tool_names_for`)
@@ -110,6 +112,9 @@ class RunContext:
     # 두뇌가 호출 중에 처음 본 세션 id(두뇌 구현이 적는다). 시간 초과·취소로 결과가 없어도 순간 호출 뒤
     # 세션 파일을 지울 수 있게(SP8 6.3, 계획 결정 18)
     brain_session_id: str | None = None
+    # 앱 퀵 칩(SP9c 4.2). `chip_text`는 메모 칩 차례에만, 가리기·자르기 전 원문(메모리로만, 저장·로그 없음, 4.5)
+    chip: str | None = None
+    chip_text: str | None = None
 
     @property
     def run_turn(self) -> bool:

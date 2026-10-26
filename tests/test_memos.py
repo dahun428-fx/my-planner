@@ -567,3 +567,110 @@ def test_memo_copy_has_no_banned_words():
     assert len(copy) == 5 + 1 + 12
     words = banned_words()
     assert [(c, w) for c in copy for w in words if w in c] == []
+
+
+# --- 메모 칩 (SP9c 4.5): 가리기·자르기 전 원문을 저장한다 ---
+
+CHIP_TEXT = "비밀번호 1234abcd 적어둬\n" + "가나다라마바사아자차" * 900  # 9,000자 꼬리: 두뇌에 가는 글은 8,000자에서 자른다
+
+
+def test_create_memo_chip_uses_chip_text(menv):
+    ctx = RunContext(conversation_id=7, run_id=None, inbound_id=1001, channel="app", chip="memo", chip_text=CHIP_TEXT)
+    out = menv.tools.create_memo(ctx)
+    assert menv.memos.get(out["id"]).body == CHIP_TEXT
+    again = RunContext(conversation_id=7, run_id=None, inbound_id=1004, channel="app", chip="memo", chip_text=CHIP_TEXT)
+    other = menv.tools.create_memo(again, body="딴 글", area="learning")  # 두뇌가 body를 넣어도 원문이 규칙
+    assert menv.memos.get(other["id"]).body == CHIP_TEXT and other["area"] == "learning"
+    # 칩 아닌 차례, 원문 없는 메모 칩 차례(다시 넣기)는 지금 거절 문구
+    assert menv.tools.create_memo(menv.chat()) == {"error": "메모가 비어 있어요."}
+    bare = RunContext(conversation_id=7, run_id=None, inbound_id=1002, channel="app", chip="memo")
+    assert menv.tools.create_memo(bare) == {"error": "메모가 비어 있어요."}
+    todo = RunContext(conversation_id=7, run_id=None, inbound_id=1003, channel="app", chip="todo", chip_text="x")
+    assert menv.memos.get(menv.tools.create_memo(todo, body="할 일 칩의 메모")["id"]).body == "할 일 칩의 메모"
+
+
+def test_create_memo_chip_result_and_records_are_redacted(menv):
+    """두뇌에 돌려주는 제목, 도구 호출 기록, 활동 요약, 확인 문구는 가린 글로(메모 칩의 원문이 두뇌·기록에 가지 않게)."""
+    from my_planner.tools.confirmations import render_confirmations
+
+    ctx = RunContext(conversation_id=7, run_id=None, inbound_id=1001, channel="app", chip="memo", chip_text=CHIP_TEXT)
+    out = menv.tools.create_memo(ctx)
+    assert out["title"] == "비밀번호 [가림] 적어둬"
+    (logged,) = menv.conn.execute("SELECT data_json FROM tool_events_log").fetchall()
+    (row,) = menv.rows()
+    confirmation = render_confirmations(ctx.events, menv.tools.today())
+    for text in (json.dumps(out, ensure_ascii=False), logged[0], row["summary"], confirmation):
+        assert "1234abcd" not in text and "[가림]" in text, text
+    # 앱(`/actions`, 사용자)의 활동 요약은 그대로(가리지 않는다)
+    menv.tools.create_memo(menv.button(), body="비밀번호 5678wxyz 적어둠")
+    assert "5678wxyz" in menv.rows()[-1]["summary"]
+
+
+def test_memo_chip_creates_only_one_memo_per_turn(menv):
+    """메모 칩 차례는 메모 하나: 두 번째 `create_memo`는 만들지 않고 그 메모의 id와 가린 제목을 돌려준다."""
+    ctx = RunContext(conversation_id=7, run_id=None, inbound_id=1001, channel="app", chip="memo", chip_text=CHIP_TEXT)
+    first = menv.tools.create_memo(ctx, area="learning")
+    second = menv.tools.create_memo(ctx, body="또 하나")
+    assert second == first == {"id": first["id"], "title": "비밀번호 [가림] 적어둬", "area": "learning"}
+    assert menv.conn.execute("SELECT COUNT(*) FROM memos").fetchone()[0] == 1
+    assert len(ctx.events) == 1 and len(menv.rows()) == 1
+    # 칩이 아닌 차례는 지금처럼 여러 개를 만든다
+    plain = menv.chat()
+    menv.tools.create_memo(plain, body="하나")
+    menv.tools.create_memo(plain, body="둘")
+    assert menv.conn.execute("SELECT COUNT(*) FROM memos").fetchone()[0] == 3
+
+
+def test_create_memo_schema_allows_missing_body():
+    """메모 칩 지시문은 `body` 없이 부르라고 한다: SDK가 스키마로 먼저 거절하지 않게 `body`는 필수가 아니다."""
+    from my_planner.tools.mcp_adapter import _SPECS
+
+    desc, schema = _SPECS["create_memo"]
+    assert "body" in schema["properties"] and "body" not in schema["required"]
+    assert "body는 1~20,000자이고 첫 줄이 제목입니다. 메모 칩 차례에서는 body 없이 부릅니다. " in desc
+
+
+@pytest.mark.parametrize("args", [{}, {"body": "딴 글"}])
+async def test_memo_chip_saves_original_text(tmp_path, args, caplog):
+    from be_env import BeEnv
+    from ui_stream import parse_sse
+
+    script = [FakeTurn([("create_memo", args)], "메모해 뒀어요.")]
+    caplog.set_level(logging.DEBUG)
+    async with BeEnv.start(tmp_path, start=MON_1400, script=script) as env:
+        _, raw = await env.chat(CHIP_TEXT, chip="memo")
+        (row,) = env.conn.execute("SELECT body, origin FROM memos").fetchall()
+        (call,) = env.brain.calls
+        stored = env.conn.execute("SELECT response_json FROM api_idempotency").fetchall()
+        tool_log = env.conn.execute("SELECT data_json FROM tool_events_log").fetchall()
+        summaries = [r["summary"] for r in env.activity()]
+
+    assert row["body"] == CHIP_TEXT and row["origin"] == "chat"
+    # 두뇌에 가는 글은 그대로 가리고 자른다
+    assert "1234abcd" not in call["prompt"] and "비밀번호 [가림] 적어둬" in call["prompt"]
+    assert call["prompt"].count("가나다라마바사아자차") < 800  # 8,000자에서 잘렸다
+    assert call["run_ctx"].chip == "memo" and call["run_ctx"].chip_text == CHIP_TEXT
+    # 두뇌가 받은 `create_memo` 결과(스트림의 도구 출력과 같다)와 기록·재생에도 원문이 없다
+    outs = [c for c in parse_sse(raw) if c["type"] == "tool-output-available"]
+    (tool_out,) = [c for c in outs if not c["toolCallId"].startswith("h_")]
+    assert tool_out["output"]["title"] == "비밀번호 [가림] 적어둬"
+    # 하네스 칩 카드(SP9c 4.4)도 가린 본문으로 그린다(스트림 글 검사는 아래 `raw`에서)
+    assert [c["toolCallId"] for c in outs if c["toolCallId"].startswith("h_")] == ["h_chip_1"]
+    for text in (raw.decode(), *(r[0] for r in stored), *(r[0] for r in tool_log), *summaries):
+        assert "1234abcd" not in text
+    logged = "\n".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
+    assert "1234abcd" not in logged and "가나다라마바사아자차" not in logged  # 로그에 원문이 없다
+
+
+async def test_memo_without_chip_and_no_body_is_refused(tmp_path):
+    from be_env import BeEnv
+    from ui_stream import parse_sse
+
+    script = [FakeTurn([("create_memo", {})], "메모하지 못했어요.")]
+    async with BeEnv.start(tmp_path, start=MON_1400, script=script) as env:
+        _, raw = await env.chat("비밀번호 1234abcd 적어둬")
+        count = env.conn.execute("SELECT COUNT(*) FROM memos").fetchone()[0]
+
+    assert count == 0
+    (err,) = [c for c in parse_sse(raw) if c["type"] == "tool-output-error"]
+    assert err["errorText"] == "메모가 비어 있어요."
