@@ -911,6 +911,19 @@ class ChatRequestBody(_Model):
         return self
 
 
+class ChatStopBody(_Model):
+    """`POST /chat/stop` 요청: 멈출 메시지의 `client_msg_id`(`POST /chat`에 보낸 것)."""
+
+    client_msg_id: str = Field(min_length=1, max_length=200)
+
+
+class ChatStopped(_Model):
+    """`POST /chat/stop` 응답. `stopped`: 기다리거나 답하던 것을 멈췄다. `done`: 이미 답을 마쳤다(그대로 둔다).
+    `unknown`: 받은 적 없는 id다."""
+
+    state: Literal["stopped", "done", "unknown"]
+
+
 class ActionXp(_Model):
     """이 요청에서 쌓인 경험치(9.1)와, 레벨이 올랐으면 새 레벨(9.2). 오르지 않았으면 `level_up`은 null."""
 
@@ -1212,6 +1225,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "SchemaBundle": SchemaBundle,
     "ActionRequestBody": ActionRequestBody,
     "ChatRequestBody": ChatRequestBody,
+    "ChatStopBody": ChatStopBody,
+    "ChatStopped": ChatStopped,
     "ActionApplied": ActionApplied,
     "ActionNeedsConfirm": ActionNeedsConfirm,
     "ActionRejected": ActionRejected,

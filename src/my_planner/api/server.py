@@ -31,7 +31,12 @@ from my_planner.api.calendar import (
     get_calendar_settings,
     post_calendar_settings,
 )
-from my_planner.api.chat import delete_conversation, post_chat, post_new_conversation
+from my_planner.api.chat import (
+    delete_conversation,
+    post_chat,
+    post_chat_stop,
+    post_new_conversation,
+)
 from my_planner.api.cors import CorsPolicy, cors_middleware
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
@@ -256,6 +261,7 @@ def write_handler(view: Callable[[web.Request, ApiDeps], Awaitable[web.StreamRes
 
 WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.StreamResponse]]], ...] = (
     ("/chat", post_chat),
+    ("/chat/stop", post_chat_stop),  # 답 멈추기
     ("/conversations/new", post_new_conversation),  # SP9 7.3
     ("/actions", post_actions),
     ("/activity/{id}/undo", post_undo),

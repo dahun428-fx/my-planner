@@ -8,6 +8,7 @@
 4. 대화를 받을 때 고르고(`route_app_message`), 가린 글을 `inbound_pending`(통로 `app`, 음수 id, 고른 대화)에 먼저
    쓴 뒤 두뇌 갈래에 넣는다(`submit_message`). `start`와 `data-status: queued`는 여기서 쓴다.
 5. 스트림을 연결에 흘려 보낸다. 15초 동안 새 조각이 없으면 `: ping`. 연결이 끊겨도 처리는 끝까지 간다(M7).
+   멈추는 길은 연결 끊기가 아니라 `POST /chat/stop`(`post_chat_stop`) 하나다.
 
 이 티켓은 두뇌 글을 끝난 뒤 글 블록 하나로 보낸다(S11 대체 경로, 조각 스트리밍은 06b). 로그에는 본문, 도구 인자,
 토큰을 남기지 않는다.
@@ -28,6 +29,8 @@ from my_planner.api.actions import BAD_BODY, read_json_object
 from my_planner.api.cors import CORS_HEADERS_KEY
 from my_planner.api.models import (
     ChatRequestBody,
+    ChatStopBody,
+    ChatStopped,
     ConversationsClosed,
     dump,
     error_response,
@@ -157,6 +160,25 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     ))
     log.info("chat_queued", extra={"conversation_id": conv.id, "inbound_id": inbound_id, "chip": req.chip})
     return await stream_sink(request, deps, sink, conv.id)
+
+
+async def post_chat_stop(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """`POST /chat/stop`: 그 `client_msg_id`의 답을 멈춘다(`Dispatcher.stop_message`, 쓰기는 디스패처로만, ADR 0007).
+
+    `{"state": "stopped" | "done" | "unknown"}`. 멈춘 답은 `STOPPED_REPLY`로 끝나고 같은 id의 `/chat`은 그것을
+    재생한다(두뇌를 다시 부르지 않는다). 로그에는 상태만 남긴다.
+    """
+    body = await read_json_object(request)
+    if body is None:
+        return error_response(400, "invalid_request", BAD_BODY)
+    try:
+        req = ChatStopBody.model_validate(body)
+    except ValidationError:
+        return error_response(400, "invalid_request", BAD_BODY)
+    assert deps.dispatcher is not None, "안전 모드가 아니면 디스패처가 있다"
+    state = deps.dispatcher.stop_message(req.client_msg_id)
+    log.info("chat_stopped", extra={"state": state})
+    return web.json_response(dump(ChatStopped, {"state": state}))
 
 
 # --- 대화 목록의 쓰기 (SP9 7.3, 7.7). 쓰기는 디스패처로만(ADR 0007) ---

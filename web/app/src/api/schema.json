@@ -499,6 +499,37 @@
       ],
       "type": "object"
     },
+    "ChatStopBody": {
+      "additionalProperties": false,
+      "properties": {
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_msg_id"
+      ],
+      "type": "object"
+    },
+    "ChatStopped": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "stopped",
+            "done",
+            "unknown"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
     "CheckinDetail": {
       "$defs": {
         "CheckinCard": {

@@ -477,6 +477,7 @@ CREATE TABLE status_titles (
 | GET | `/drafts` | 운영 앱용 | 없음 | 6.3.8 |
 | GET | `/schema` | 운영 앱(빌드 때) | 없음 | 6.4 |
 | POST | `/chat` | 운영 앱용 | 두뇌 갈래 | 6.4.1 |
+| POST | `/chat/stop` | 운영 앱용 | 두뇌 갈래(디스패처 `stop_message`) | 6.4.1 "멈추기" |
 | POST | `/actions` | 운영 앱용 | 즉시 갈래 | 6.4.2 |
 | POST | `/activity/{id}/undo` | 운영 앱용 | 즉시 갈래 | 6.4.3 |
 | GET | `/activity?since&limit&order&before` | 운영 앱용 | 없음 | 6.4.4 |
@@ -739,12 +740,18 @@ data: [DONE]
 | `finish` | 마지막 조각. 그 뒤 `[DONE]` |
 | `error` | 프로토콜 수준 문제(요청이 잘못돼 스트림 도중 끊을 때)만. 두뇌 오류, 하루 상한, 사용 한도, 로그인 문제는 SP1과 같은 고정 문구를 **글 조각**으로 보내고 정상 `finish`로 끝낸다 |
 
-- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다. 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 저장한 `confirmation`이 있으면 그 뒤에 `data-activity`(`activity_ids`는 그 메시지의 `activity.inbound_id`로 찾고, `undo_ids`는 지금 시각으로 판정, 6.4.4)로 보낸다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`·`confirmation`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
+- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다(멈추는 길은 아래 "멈추기" 하나다). 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 저장한 `confirmation`이 있으면 그 뒤에 `data-activity`(`activity_ids`는 그 메시지의 `activity.inbound_id`로 찾고, `undo_ids`는 지금 시각으로 판정, 6.4.4)로 보낸다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`·`confirmation`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
 - 명령이나 글이 아닌 메시지에 답하는데 열린 앱 대화가 없으면 `x-conversation-id`를 보내지 않는다.
 - 큐에서 기다리다 다른 대화로 다시 골라진 메시지도 `messageId`를 그대로 둔다.
 - 글 조각을 일부 보낸 뒤 두뇌 호출을 다시 하면 새 `start-step`과 새 글 id로 이어 간다. 재생에는 실제로 보낸 글만 쓴다.
 - 하루 상한, 사용 한도, 로그인 문제의 고정 문구 답은 원문 기록에 `[-]` 줄로 남는다.
 - 하루 두뇌 호출 상한 60회는 두 통로가 함께 쓴다.
+- **멈추기** `POST /chat/stop`: 요청 `{"client_msg_id": "6f0c…"}`(그 `/chat`에 보낸 것), 응답 `200 {"state": "stopped" | "done" | "unknown"}`. 인증·CORS는 다른 경로와 같고, 쓰기는 디스패처의 동기 함수 `stop_message`로만 한다(ADR 0007). 로그 `chat_stopped`에는 상태만 남긴다.
+  - **큐에서 기다림**: 두뇌를 부르지 않는다. 원문 기록에 사용자 줄과 비서 줄 `멈췄어요.`(`STOPPED_REPLY`)를 쓰고, `api_idempotency`(`reply_text` = `멈췄어요.`) 기록 + `inbound_pending` 행 삭제(M5)로 마친 뒤, 붙은 스트림(M8 포함)을 그 글 조각과 `finish`로 닫는다. `stopped`.
+  - **두뇌가 답하는 중**(재시도 사이 기다림 포함): 그 호출을 anyio 취소 범위로 끊는다(호출 시간 상한과 같은 길, SDK가 CLI 자식을 정리한다). 이미 한 쓰기는 남는다(활동 기록, 되돌리기). 답은 보통 답의 길로 마친다: 이미 보낸 글 + `멈췄어요.`(새 글 블록), 확인 문구는 `data-activity`, 하네스 화면 조각, 재생할 답(`reply_text` = 보낸 글 + 빈 줄 + `멈췄어요.`), 원문 기록. 두뇌 호출을 도중에 끊었으면 그 대화의 `session_id`를 비운다(세션 파일에 반쯤 쓴 차례가 남았을 수 있다): 다음 메시지는 새 세션 + 이 대화의 지난 내용(요약 또는 최근 원문)으로 시작한다. 앱 메시지는 묶지 않으므로(M2) 멈추는 것은 그 메시지 하나다. `stopped`.
+  - **행만 남았다**(처리 중 예외 뒤, 처리 자리가 없다): 다시 넣지 않고 큐에서 기다린 것과 같이 마친다. `stopped`.
+  - **이미 끝났다**(`api_idempotency`에 `chat` 답이 있다): 아무것도 바꾸지 않는다. `done`. **받은 적 없다**: `unknown`.
+  - 멈춘 뒤 같은 `client_msg_id`의 `/chat`은 저장한 멈춘 답을 재생한다(두뇌를 다시 부르지 않는다). 운영 앱은 멈춤을 끊김으로 보지 않는다: 다시 보내지 않고, 멈춤 요청이 실패해도(오프라인, 이 경로가 없는 옛 BE의 404) 앱에서는 멈춘다. 그때 BE는 끝까지 답하고, 그 답은 대화 기록(같은 비서 줄 id)으로 보인다.
 
 #### 6.4.2 `POST /actions` (운영 앱용)
 
