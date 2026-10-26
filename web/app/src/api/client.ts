@@ -26,6 +26,15 @@ export interface FetchOpts {
    * `bad_code` and an old BE's `unauthorized` mean different things). Use with `conn`.
    */
   anonymous?: boolean;
+  /** A `multipart/form-data` body instead of JSON (`POST /photos`, SP10 5.3); the browser sets its boundary. */
+  form?: FormData;
+  /**
+   * 429 codes that are a daily limit of this route, not the BE's auth rate limit (SP10 `photo_limit`,
+   * `photo_read_limit`): they come back as `error` with their code and leave the connection state alone.
+   */
+  limitCodes?: ReadonlySet<string>;
+  /** With `conn`: report the result to the connection provider all the same (a call on the saved connection). */
+  report?: boolean;
 }
 
 const TIMEOUT_MS = 10_000;
@@ -43,13 +52,13 @@ async function request<T>(method: string, path: string, opts: FetchOpts, conn: C
   try {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (!opts.anonymous) headers.Authorization = `Bearer ${conn.token}`;
-    if (opts.body !== undefined) headers["Content-Type"] = "application/json";
+    if (opts.body !== undefined && !opts.form) headers["Content-Type"] = "application/json";
     let res: Response;
     try {
       res = await fetch(`${conn.beUrl}/api/v1${path}`, {
         method,
         headers,
-        body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+        body: opts.form ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
         signal: ac.signal,
         cache: "no-store",
       });
@@ -61,7 +70,7 @@ async function request<T>(method: string, path: string, opts: FetchOpts, conn: C
     }
 
     if (res.status === 401 && !opts.anonymous) return { kind: "unauthorized" };
-    if (res.status === 429) return { kind: "rate_limited" };
+    if (res.status === 429 && !opts.limitCodes) return { kind: "rate_limited" };
 
     let json: unknown = null;
     if (res.status !== 204) {
@@ -74,6 +83,7 @@ async function request<T>(method: string, path: string, opts: FetchOpts, conn: C
     if (!res.ok) {
       const e = (json as { error?: { code?: unknown; message?: unknown } } | null)?.error;
       const code = typeof e?.code === "string" ? e.code : `http_${res.status}`;
+      if (res.status === 429 && !opts.limitCodes?.has(code)) return { kind: "rate_limited" };
       if (res.status === 503 && code === "safe_mode") return { kind: "safe_mode" };
       const out: ApiResult<T> = { kind: "error", status: res.status, code };
       if (typeof e?.message === "string") out.message = e.message;
@@ -96,7 +106,7 @@ export async function apiFetch<T>(
   const conn = opts.conn ?? loadConn();
   if (!conn) return { kind: "error", status: 0, code: "no_connection" };
   const result = await request<T>(method, path, opts, conn, { timedOut: false });
-  if (!opts.conn && !(result.kind === "error" && (result.code === "aborted" || result.code === "timeout"))) reportResult(result, conn);
+  if ((!opts.conn || opts.report) && !(result.kind === "error" && (result.code === "aborted" || result.code === "timeout"))) reportResult(result, conn);
   return result;
 }
 

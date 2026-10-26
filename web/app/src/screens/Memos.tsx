@@ -11,6 +11,8 @@ import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
 import { MoreButton } from "../components/MoreButton";
 import { OfflineNotice } from "../components/OfflineNotice";
+import { PhotoImage } from "../components/PhotoImage";
+import photoStyles from "../components/PhotoStrip.module.css";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { SwipeRow } from "../components/SwipeRow";
@@ -148,6 +150,8 @@ export function Memos() {
             <span className="visually-hidden">{copy.areas[m.area]}</span>
           </span>
         )}
+        {/* SP10 7.1: a memo with photos shows its first one small (40px) at the row's right. */}
+        {m.photos?.[0] && <PhotoImage id={m.photos[0].id} size="thumb" className={photoStyles.listThumb} />}
       </Link>
     </SwipeRow>
   );

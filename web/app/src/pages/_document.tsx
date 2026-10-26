@@ -4,7 +4,7 @@ import { PictogramSprite } from "../components/pictograms.gen";
 const connectSrc = process.env.NEXT_PUBLIC_CONNECT_SRC ?? "";
 
 const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; " +
+  "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: blob:; " +
   `connect-src 'self' ${connectSrc}; base-uri 'none'; form-action 'none'; ` +
   "worker-src 'self'; manifest-src 'self'";
 

@@ -45,7 +45,10 @@ export type ActionName =
   | "dismiss_missed_reminder"
   | "hide_moment"
   | "unhide_moment"
-  | "delete_moment";
+  | "delete_moment"
+  // SP10 5.3: a memo's photos (detach has undo; attach does not).
+  | "attach_photo"
+  | "detach_photo";
 
 // SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
 // message), and two devices editing one memo answer 409 memo_conflict (conflict shape). SP9 5.1: the
@@ -57,6 +60,9 @@ const REJECT_CODES = new Set([
   "remind_invalid",
   "start_not_in_weekdays",
   "too_many_events",
+  // SP10 5.3: the photo limits and a photo that is not there (the 8장 sentence as the message).
+  "too_many_photos",
+  "photo_not_found",
 ]);
 const CONFLICT_CODES = new Set(["conflict", "memo_conflict"]);
 
@@ -67,7 +73,7 @@ export type ActionOutcome =
    */
   | { kind: "applied"; activityId: number | null; undoId: number | null; confirmation: string; result: unknown }
   | { kind: "needs_confirm"; confirmToken: string; summary: string; expiresAt: string }
-  | { kind: "rejected"; message: string }
+  | { kind: "rejected"; message: string; code?: string }
   | { kind: "conflict" }
   | { kind: "failed"; result: ApiResult<never> };
 
@@ -108,7 +114,7 @@ export async function runAction(action: ActionName, args: object, opts: { confir
     confirm_token: opts.confirmToken ?? null,
   });
   if (r.kind === "error") {
-    if (r.status === 422 && REJECT_CODES.has(r.code)) return { kind: "rejected", message: r.message ?? "" };
+    if (r.status === 422 && REJECT_CODES.has(r.code)) return { kind: "rejected", message: r.message ?? "", code: r.code };
     if (r.status === 409 && CONFLICT_CODES.has(r.code)) return { kind: "conflict" };
   }
   if (r.kind !== "ok") return { kind: "failed", result: asFailure(r) };
