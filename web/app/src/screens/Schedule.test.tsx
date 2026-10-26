@@ -204,11 +204,49 @@ describe("Schedule (spec 9.2)", () => {
   });
 
   it("the month calendar shows no dots when it cannot read", async () => {
-    server.use(http.get(`${BASE}/events`, () => HttpResponse.json({ code: "x" }, { status: 500 })));
+    const asked: string[] = [];
+    server.use(
+      http.get(`${BASE}/events`, ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get("start") ?? "");
+        return HttpResponse.json({ code: "x" }, { status: 500 });
+      }),
+    );
     const user = userEvent.setup();
     renderWithProviders(<Schedule />, { route: "/schedule/" });
     await user.click(await screen.findByRole("button", { name: copy.schedule.month(10) }));
+    await waitFor(() => expect(asked).toContain("2026-09-28"));
+    await new Promise((r) => setTimeout(r, 20));
     const month = screen.getByRole("group", { name: copy.schedule.monthOf(2026, 10) });
+    expect(within(month).getAllByRole("button").filter((b) => b.hasAttribute("data-events"))).toHaveLength(0);
+  });
+
+  it("a late answer for the month left behind never dots the month shown", async () => {
+    const asked: string[] = [];
+    let releaseOct: () => void = () => {};
+    const octHeld = new Promise<void>((r) => (releaseOct = r));
+    server.use(
+      http.get(`${BASE}/events`, async ({ request }) => {
+        const u = new URL(request.url);
+        const start = u.searchParams.get("start") ?? "";
+        const end = u.searchParams.get("end") ?? "";
+        asked.push(`${start}..${end}`);
+        // 10월 칸(9/28~11/1)의 답만 늦게: 11/1(일)에 일정이 있다. 11월 칸(10/26~12/6)에도 11/1이 있다.
+        if (start === "2026-09-28") {
+          await octHeld;
+          return HttpResponse.json({ start, end, items: [ev(7, "2026-11-01", null, { title: "늦은 답" })] });
+        }
+        return HttpResponse.json({ start, end, items: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<Schedule />, { route: "/schedule/" });
+    await user.click(await screen.findByRole("button", { name: copy.schedule.month(10) }));
+    await waitFor(() => expect(asked).toContain("2026-09-28..2026-11-01"));
+    await user.click(screen.getByRole("button", { name: copy.schedule.nextMonth }));
+    await waitFor(() => expect(asked).toContain("2026-10-26..2026-12-06"));
+    releaseOct();
+    await new Promise((r) => setTimeout(r, 20));
+    const month = screen.getByRole("group", { name: copy.schedule.monthOf(2026, 11) });
     expect(within(month).getAllByRole("button").filter((b) => b.hasAttribute("data-events"))).toHaveLength(0);
   });
 
