@@ -28,6 +28,7 @@ import page from "../styles/page.module.css";
 import { useCatalog } from "../ui/CatalogProvider";
 import { CalendarSubscribe } from "./CalendarSubscribe";
 import { CheckinTimes } from "./CheckinTimes";
+import { DigestSettings } from "./DigestSettings";
 import styles from "./Settings.module.css";
 
 const PAUSE_DAYS = [1, 3, 7, 14] as const;
@@ -51,7 +52,7 @@ function shortHost(beUrl: string): string {
   return host.length > 28 ? `${host.slice(0, 14)}…${host.slice(-12)}` : host;
 }
 
-// Spec 5.5.7, F7 (off the tabs since SP9-07, "‹ 더보기" back): connection, check-in notifications, check-in times (SP9 9.7, editable), iPhone calendar subscription (9.7), pause, this device (theme, colour
+// Spec 5.5.7, F7 (off the tabs since SP9-07, "‹ 더보기" back): connection, check-in notifications, check-in times (SP9 9.7, editable), schedule digests (SP9b 5장), iPhone calendar subscription (9.7), pause, this device (theme, colour
 // preset), about. No chat launcher.
 export function Settings() {
   const toast = useToast();
@@ -347,6 +348,8 @@ export function Settings() {
       </Group>
 
       <CheckinTimes online={online} />
+
+      <DigestSettings online={online} />
 
       <CalendarSubscribe online={online} />
 

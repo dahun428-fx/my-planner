@@ -13,7 +13,8 @@ import paused from "../test/fixtures/health-paused.json";
 import notify from "../test/fixtures/notify.json";
 import notifyTelegram from "../test/fixtures/notify-effective-telegram.json";
 import checkinTimes from "../test/fixtures/checkin-times.json";
-import type { CheckinTimesUpdated } from "../api/types.gen";
+import digestSettings from "../test/fixtures/digest-settings.json";
+import type { CheckinTimesUpdated, DigestSettingsUpdated } from "../api/types.gen";
 import { device, storePushId, storedPushId, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
 import { renderWithProviders, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -354,6 +355,187 @@ describe("Settings", () => {
     expect(within(group).getByText("09:00 · 17:30")).toBeInTheDocument();
     expect(within(group).getByText("10:00 · 18:00")).toBeInTheDocument();
     expect(within(group).queryAllByRole("combobox")).toEqual([]);
+  });
+
+  // SP9b 5장: 일정 정리 알림 두 줄(스위치와 시간), 바꾸면 바로 저장하고 토스트, 끄면 시간이 흐림, 404면 칸 없음.
+  const digestGroup = async () =>
+    (await screen.findByRole("heading", { name: copy.digests.heading })).closest("section") as HTMLElement;
+
+  function serveDigestPut(answer: Partial<DigestSettingsUpdated> = {}) {
+    const puts: unknown[] = [];
+    server.use(
+      http.put(`${BASE}/settings/digests`, async ({ request }) => {
+        const body = (await request.json()) as { kind: "morning" | "night"; on: boolean; time: string };
+        puts.push(body);
+        return HttpResponse.json({
+          ...digestSettings,
+          [body.kind]: { on: body.on, time: body.time },
+          applies: "today",
+          activity_id: 12,
+          undo_id: 12,
+          ...answer,
+        });
+      }),
+    );
+    return puts;
+  }
+
+  it("digests: two rows with a switch and a time each, and the note", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await digestGroup();
+    const d = copy.digests;
+    const switches = await within(group).findAllByRole("switch");
+    expect(switches.map((s) => s.getAttribute("aria-label"))).toEqual([d.morning, d.night]);
+    expect(switches.map((s) => (s as HTMLInputElement).checked)).toEqual([true, true]);
+    const selects = within(group).getAllByRole("combobox");
+    expect(selects.map((s) => s.getAttribute("aria-label"))).toEqual([d.morning, d.night]);
+    expect(selects.map((s) => (s as HTMLSelectElement).value)).toEqual(["07:30", "21:30"]);
+    expect(within(group).getByText("일정이 있는 날만 보내요.")).toBeInTheDocument();
+    expect(within(group).queryByText(d.wakeStale)).toBeNull();
+    // 10분 단위, 아침 04:00~11:50, 밤 18:00~23:50
+    const morning = within(selects[0]).getAllByRole("option").map((o) => o.textContent);
+    expect([morning[0], morning.at(-1), morning.length]).toEqual(["04:00", "11:50", 48]);
+    const night = within(selects[1]).getAllByRole("option").map((o) => o.textContent);
+    expect([night[0], night.at(-1), night.length]).toEqual(["18:00", "23:50", 36]);
+  });
+
+  it("digests: the group sits right under check-in times", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const digests = await digestGroup();
+    expect(digests.previousElementSibling).toBe(await checkinGroup());
+  });
+
+  it("digests: picking a time saves it and says from when, with undo", async () => {
+    serve();
+    const puts = serveDigestPut({ applies: "tomorrow" });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.morning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "08:00");
+    expect(await screen.findByText(copy.digests.fromTomorrow)).toBeInTheDocument();
+    expect(puts).toEqual([{ kind: "morning", on: true, time: "08:00" }]);
+    expect((select as HTMLSelectElement).value).toBe("08:00");
+    expect(screen.getByRole("button", { name: copy.activity.undo })).toBeInTheDocument();
+  });
+
+  it("digests: turning one off saves it and dims its time", async () => {
+    serve();
+    const puts = serveDigestPut();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await digestGroup();
+    const sw = await within(group).findByRole("switch", { name: copy.digests.night });
+    await waitFor(() => expect(sw).toBeEnabled());
+    await user.click(sw);
+    expect(await screen.findByText(copy.digests.fromToday)).toBeInTheDocument();
+    expect(puts).toEqual([{ kind: "night", on: false, time: "21:30" }]);
+    expect(sw).not.toBeChecked();
+    const select = within(group).getByRole("combobox", { name: copy.digests.night });
+    expect(select).toBeDisabled();
+    expect(select.className).toMatch(/off/);
+    expect(within(group).getByRole("combobox", { name: copy.digests.morning })).toBeEnabled();
+  });
+
+  it("digests: an off row shows its time dimmed from the first read", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/digests`, () => HttpResponse.json({ ...digestSettings, morning: { on: false, time: "07:30" } })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await digestGroup();
+    expect(await within(group).findByRole("switch", { name: copy.digests.morning })).not.toBeChecked();
+    expect(within(group).getByRole("combobox", { name: copy.digests.morning })).toBeDisabled();
+  });
+
+  it("digests: undo from the toast reads the settings again", async () => {
+    serve();
+    serveDigestPut();
+    let gets = 0;
+    server.use(
+      http.get(`${BASE}/settings/digests`, () => {
+        gets += 1;
+        return HttpResponse.json(digestSettings);
+      }),
+      http.post(`${BASE}/activity/12/undo`, () => HttpResponse.json({ status: "undone", confirmation: "↩ 되돌림: 아침 일정 정리 알림" })),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.morning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "09:00");
+    await screen.findByText(copy.digests.fromToday);
+    const before = gets;
+    await user.click(screen.getByRole("button", { name: copy.activity.undo }));
+    await waitFor(() => expect(gets).toBeGreaterThan(before));
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("07:30"));
+  });
+
+  it("digests: the same value (applies null) shows no toast", async () => {
+    serve();
+    const puts = serveDigestPut({ applies: null, activity_id: null, undo_id: null });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.night });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "22:00");
+    await waitFor(() => expect(puts).toHaveLength(1));
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(screen.queryByText(copy.digests.fromToday)).toBeNull();
+    expect(screen.queryByText(copy.digests.fromTomorrow)).toBeNull();
+  });
+
+  it("digests: a failed save says so", async () => {
+    serve();
+    server.use(
+      http.put(`${BASE}/settings/digests`, () =>
+        HttpResponse.json({ error: { code: "digest_time_invalid", message: "x" } }, { status: 422 }),
+      ),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.morning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "08:00");
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+    expect((select as HTMLSelectElement).value).toBe("07:30");
+    expect(screen.queryByText(copy.digests.fromToday)).toBeNull();
+  });
+
+  it("digests: wake_updated false shows the register_task line", async () => {
+    serve();
+    serveDigestPut({ wake_updated: false });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await digestGroup();
+    const select = await within(group).findByRole("combobox", { name: copy.digests.night });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "22:00");
+    expect(await within(group).findByText(copy.digests.wakeStale)).toBeInTheDocument();
+  });
+
+  it("digests: GET wake_updated false shows the same line", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/digests`, () => HttpResponse.json({ ...digestSettings, wake_updated: false })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    expect(await within(await digestGroup()).findByText(copy.digests.wakeStale)).toBeInTheDocument();
+  });
+
+  it("digests: an older BE without the route draws no group", async () => {
+    serve();
+    let asked = false;
+    server.use(
+      http.get(`${BASE}/settings/digests`, () => {
+        asked = true;
+        return HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    await checkinGroup();
+    await waitFor(() => expect(asked).toBe(true));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole("heading", { name: copy.digests.heading })).toBeNull();
+    expect(screen.queryByText(copy.digests.note)).toBeNull();
   });
 
   // SP9 9.7: 아이폰 캘린더에 구독. 만들기 -> 주소와 복사, 다시 만들기는 확인 시트, 안내 문구.
