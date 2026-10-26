@@ -45,10 +45,14 @@ def memo_title(body: str) -> str:
     return UNTITLED
 
 
+def memo_lines(body: str) -> list[str]:
+    """서식을 뺀 비지 않은 줄 전부(첫 줄이 제목 줄). `memo_preview`와 칩 카드(SP9c 4.4)가 쓴다."""
+    return [s for s in (_plain_line(x) for x in body.splitlines()) if s]
+
+
 def memo_preview(body: str, n: int) -> str:
     """제목 줄 다음부터 서식을 뺀 줄들을 공백 하나로 이은 앞 `n`자(목록 둘째 줄, 6.4). 제목뿐이면 빈 문자열."""
-    lines = [s for s in (_plain_line(x) for x in body.splitlines()) if s]
-    return " ".join(lines[1:])[:n]
+    return " ".join(memo_lines(body)[1:])[:n]
 
 
 @dataclass(frozen=True)

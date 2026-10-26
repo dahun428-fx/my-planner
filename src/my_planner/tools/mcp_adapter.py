@@ -726,6 +726,7 @@ def call_tool(tools: Any, ctx: RunContext, name: str, args: dict[str, Any]) -> d
                 w.tool_input(call_id, name, args)
                 w.tool_output(call_id, to_api_times(_stream_output(tools, ctx, name, args, result)))
                 ctx.ui_drawn += 1
+                ctx.ui_drawn_names.append(name)
         elif "error" in result:
             w.tool_error(call_id, str(result["error"]))
         else:

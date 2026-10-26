@@ -31,6 +31,7 @@ from my_planner.domain import (
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
     ask_condition_for,
     build_notices,
@@ -163,6 +164,9 @@ class Outbound:
     # 습관 버튼의 날짜(SP7 5.7): 저녁 체크인(합친 회차 포함)이고 활성 습관이 있으면 그 체크인의 날짜. 텔레그램 `hb:`
     # 줄(확인 줄 다음, 컨디션·사다리 줄 앞). 사다리 때문에 `ask_condition_for`를 지워도 이 값은 그대로다
     habit_date: date | None = None
+    # 퀵 칩 차례의 하네스 결과 카드 `(컴포넌트, props, 출력)`(SP9c 4.4). 정상 답 경로에서만 `_reply_out`이 싣는다.
+    # 앱 `harness_cards`가 맨 뒤에 `h_chip`으로 붙인다
+    chip_cards: list[tuple[str, dict[str, Any], dict[str, Any]]] = field(default_factory=list)
 
 
 class Sender(Protocol):
@@ -1060,7 +1064,15 @@ class Dispatcher:
             # 두 단계: 보내기 전에 답을 저장한다(brain_done). 바로 3회까지 보내고, 끝내 안 되면 처리 완료로 두지
             # 않는다. 다음 시작 때 저장한 답만 다시 보낸다(두뇌는 다시 부르지 않는다)
             self.state.save_inbound_reply(lead, redact(sent_text)[0], conv.id)
-            out = self._reply_out(_outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids)
+            # 퀵 칩(SP9c 4.4): 정상 답에만 빠진 결과 카드를 붙인다(오류·상한·대체 답에는 없다)
+            cards = (
+                chip_cards(run_ctx.chip, run_ctx, self.tools, self.clock.now())
+                if result.status == "ok" and app is not None and run_ctx.chip is not None and self.tools is not None
+                else []
+            )
+            out = self._reply_out(
+                _outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids, chip_cards=cards
+            )
             out.streamed = streamed
             if step is not None:
                 out.ladder = step.ladder
@@ -1252,13 +1264,16 @@ class Dispatcher:
         )
 
     def _reply_out(
-        self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int]
+        self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int],
+        *, chip_cards: list[tuple[str, dict[str, Any], dict[str, Any]]] | None = None,
     ) -> Outbound:
-        """앱 답이면 통로, 쓰개, 확인 문구, 활동 id를 싣는다(M4). 텔레그램은 그대로(확인 문구는 이미 글에 있다)."""
+        """앱 답이면 통로, 쓰개, 확인 문구, 활동 id를 싣는다(M4). 텔레그램은 그대로(확인 문구는 이미 글에 있다).
+        `chip_cards`: 정상 답 경로의 퀵 칩 결과 카드(SP9c 4.4). 다른 경로는 넘기지 않는다."""
         app = self._cur
         if app is None:
             return out
         out.channel = "app"
+        out.chip_cards = list(chip_cards or [])
         out.writer = app.writer
         out.confirmation = confirmation or None
         out.activity_ids = list(activity_ids)

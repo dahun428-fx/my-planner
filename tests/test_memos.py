@@ -651,8 +651,11 @@ async def test_memo_chip_saves_original_text(tmp_path, args, caplog):
     assert call["prompt"].count("가나다라마바사아자차") < 800  # 8,000자에서 잘렸다
     assert call["run_ctx"].chip == "memo" and call["run_ctx"].chip_text == CHIP_TEXT
     # 두뇌가 받은 `create_memo` 결과(스트림의 도구 출력과 같다)와 기록·재생에도 원문이 없다
-    (tool_out,) = [c for c in parse_sse(raw) if c["type"] == "tool-output-available"]
+    outs = [c for c in parse_sse(raw) if c["type"] == "tool-output-available"]
+    (tool_out,) = [c for c in outs if not c["toolCallId"].startswith("h_")]
     assert tool_out["output"]["title"] == "비밀번호 [가림] 적어둬"
+    # 하네스 칩 카드(SP9c 4.4)도 가린 본문으로 그린다(스트림 글 검사는 아래 `raw`에서)
+    assert [c["toolCallId"] for c in outs if c["toolCallId"].startswith("h_")] == ["h_chip_1"]
     for text in (raw.decode(), *(r[0] for r in stored), *(r[0] for r in tool_log), *summaries):
         assert "1234abcd" not in text
     logged = "\n".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
