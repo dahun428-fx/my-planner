@@ -41,6 +41,11 @@ function dropPanel(el: HTMLElement) {
   const at = openPanels.indexOf(el);
   if (at >= 0) openPanels.splice(at, 1);
 }
+// `html[data-sheet-open]` holds the page still while any sheet is open (global.css).
+function markOpen() {
+  if (openPanels.length > 0) document.documentElement.dataset.sheetOpen = "";
+  else delete document.documentElement.dataset.sheetOpen;
+}
 
 // No animation where motion is reduced (or cannot be asked about): the sheet just goes.
 const motionOk = () =>
@@ -98,6 +103,7 @@ export function Sheet({ open, onClose, title, ariaLabel, tall = false, children,
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const el = panel.current;
     if (el) pushPanel(el);
+    markOpen();
     // A sheet that opened under another (its inner one's effect ran first) leaves the focus there.
     if (!el || openPanels[openPanels.length - 1] === el) (el?.querySelector<HTMLElement>(FOCUSABLE) ?? el)?.focus();
 
@@ -127,6 +133,7 @@ export function Sheet({ open, onClose, title, ariaLabel, tall = false, children,
     return () => {
       document.removeEventListener("keydown", onKey);
       if (el) dropPanel(el);
+      markOpen();
       (returnFocusTo?.current ?? opener)?.focus();
     };
   }, [open, returnFocusTo]);

@@ -298,6 +298,12 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* The page never rubber-bands: on iPhone a pull past the top or the end moved the whole screen. */
+  overscroll-behavior: none;
+}
+/* While a sheet is open the page behind it stays put; only the sheet's own body scrolls. */
+html[data-sheet-open] {
+  overflow: hidden;
 }
 html,
 body {
@@ -311,6 +317,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 body {
+  overscroll-behavior: none;
   min-height: 100vh;
   min-height: 100dvh;
   font-size: var(--fs-body);

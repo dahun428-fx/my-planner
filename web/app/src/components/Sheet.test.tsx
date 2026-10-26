@@ -23,6 +23,18 @@ function Nested({ onOuter, onInner, innerAtStart = false }: { onOuter(): void; o
 }
 
 describe("Sheet", () => {
+  it("holds the page still while any sheet is open", () => {
+    const { rerender, unmount } = render(<Nested onOuter={() => {}} onInner={() => {}} />);
+    const html = document.documentElement;
+    expect(html.dataset.sheetOpen).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "open inner" }));
+    fireEvent.keyDown(document, { key: "Escape" }); // the inner one goes, the outer one stays
+    expect(html.dataset.sheetOpen).toBe("");
+    rerender(<div />);
+    expect(html.dataset.sheetOpen).toBeUndefined();
+    unmount();
+  });
+
   it("escape in nested sheets closes only the inner one", () => {
     const onOuter = vi.fn();
     const onInner = vi.fn();

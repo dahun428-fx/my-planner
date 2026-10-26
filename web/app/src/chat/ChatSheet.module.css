@@ -82,6 +82,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-4) var(--gutter);
   display: flex;
   flex-direction: column;
@@ -254,6 +255,7 @@
   line-height: 1.4;
   resize: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 .input[data-ready] {
