@@ -9,6 +9,7 @@
 $DaysXml = @{
     weekday = '<Monday /><Tuesday /><Wednesday /><Thursday /><Friday />'
     weekend = '<Saturday /><Sunday />'
+    daily = '<Sunday /><Monday /><Tuesday /><Wednesday /><Thursday /><Friday /><Saturday />'
 }
 
 function ConvertTo-XmlText([string]$Value) {
@@ -32,7 +33,7 @@ function Register-FromXml([string]$TaskName, [string]$Xml) {
 }
 
 function Get-WakeTimes {
-    # config.toml의 [schedule]과 앱에서 바꾼 체크인 시간(DB, 읽기 전용)을 읽습니다(.env는 읽지 않음). 한 줄에 하나: "weekday HH:MM" / "weekend HH:MM"
+    # config.toml의 [schedule]과 앱에서 바꾼 체크인 시간과 일정 정리 알림 설정(DB, 읽기 전용)을 읽습니다(.env는 읽지 않음). 한 줄에 하나: "weekday HH:MM" / "weekend HH:MM" / "daily HH:MM"
     $saved = $env:MY_PLANNER_ROOT
     try {
         $env:MY_PLANNER_ROOT = $Root
@@ -43,7 +44,7 @@ function Get-WakeTimes {
     }
     $times = @()
     foreach ($line in $lines) {
-        if ("$line".Trim() -notmatch '^(weekday|weekend) ([0-2][0-9]:[0-5][0-9])$') {
+        if ("$line".Trim() -notmatch '^(weekday|weekend|daily) ([0-2][0-9]:[0-5][0-9])$') {
             throw "wake_times 출력 형식이 다릅니다: $line"
         }
         $times += [pscustomobject]@{ Kind = $Matches[1]; Time = $Matches[2] }
