@@ -953,7 +953,7 @@ data: [DONE]
 { "type": "checkin", "checkin_id": 341, "title": "저녁 체크인", "body": "오늘 하루 어땠어요? …", "url": "/checkins/341" }
 ```
 
-`type`은 `checkin`(회차) | `notice`(고정 안내, 시험). `title`은 루프 이름(부록 A), `body`는 회차 본문 첫 줄을 120자로 자른 것, `url`은 운영 앱 안의 경로다. 푸시 TTL은 그 회차의 답장 창 끝까지, `Topic`은 `run-<id>`(같은 회차를 다시 보내면 덮어쓴다).
+`type`은 `checkin`(회차) | `notice`(고정 안내, 시험). `title`은 루프 이름(부록 A), `body`는 회차 본문 첫 줄을 120자로 자른 것, `url`은 운영 앱 안의 경로다. 푸시 TTL은 그 회차의 답장 창 끝까지다. `Topic` 헤더는 붙이지 않는다(2026-10-26: 애플 푸시 서비스가 `run-<id>` Topic을 단 회차 푸시를 400으로 거절해 회차가 늘 텔레그램 대체로 갔다).
 
 #### 6.4.9 `GET /settings/notify`, `PUT /settings/notify` (운영 앱용)
 
