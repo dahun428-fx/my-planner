@@ -155,7 +155,10 @@ export interface ErrorDetail {
     | "too_many_events"
     | "range_too_long"
     | "digest_time_invalid"
-    | "bad_code";
+    | "bad_code"
+    | "too_many_photos"
+    | "photo_not_found"
+    | "photo_in_use";
   message: string;
 }
 /**

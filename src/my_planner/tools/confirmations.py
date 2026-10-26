@@ -32,7 +32,7 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
     """이벤트 하나의 확인 문구 한 줄(SP1 5.5). 문구가 없는 종류는 None. 활동의 `summary`도 이것이다(5.2)."""
     title = e.data.get("title", "")
     if e.kind in MEMO_KINDS:
-        return memo_line(e.kind, title)
+        return memo_line(e.kind, title, e.data.get("photos"))
     if e.kind in EVENT_KINDS:
         return event_line(e.kind, e.data)
     if e.kind in HABIT_KINDS:
@@ -159,9 +159,10 @@ _MEMO_LINES = {
 MEMO_KINDS = frozenset(_MEMO_LINES)
 
 
-def memo_line(kind: str, title: str) -> str:
-    """메모 확인 문구 한 줄. 본문은 넣지 않고 제목(`memo_title`)만."""
-    return _MEMO_LINES[kind].format(title)
+def memo_line(kind: str, title: str, photos: int | None = None) -> str:
+    """메모 확인 문구 한 줄. 본문은 넣지 않고 제목(`memo_title`)만. 사진을 붙여 만들면 `(사진 {n}장)`(SP10 8장)."""
+    line = _MEMO_LINES[kind].format(title)
+    return f"{line} (사진 {photos}장)" if photos else line
 
 
 HABIT_KINDS = frozenset({"habit_added", "habit_updated", "habit_status_set", "habit_checked", "habit_unchecked"})

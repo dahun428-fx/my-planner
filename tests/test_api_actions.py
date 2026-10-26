@@ -50,7 +50,7 @@ CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
 def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None),
-                  events=(None, None)):
+                  events=(None, None), photos=(None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
@@ -59,6 +59,7 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
     mo, mp, mu = memos  # 메모 셋(고정 안 함, 고정함은 `mp`), `mu`는 `updated_at`
     mv, mh, md = moments  # 이룬 순간 셋(보임, 숨김, 지울 것)
     ev, er = events  # 매일 일정 하나, 놓친 알림 행이 있는 일정
+    pf, pa = photos  # 사진 둘(붙지 않음, `mp`에 붙음)
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -93,6 +94,9 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "pin_memo": {"id": mo},
         "unpin_memo": {"id": mp},
         "delete_memo": {"id": mo},
+        # 사진(SP10 5.3)
+        "attach_photo": {"memo_id": mo, "photo_id": pf},
+        "detach_photo": {"memo_id": mp, "photo_id": pa},
         # 이룬 순간(SP8 6.4). 지우기는 앱에서 늘 확인을 받으므로 토큰을 따로 만든다
         "hide_moment": {"id": mv},
         "unhide_moment": {"id": mh},
@@ -141,9 +145,13 @@ async def test_every_public_action_applies(tmp_path, action):
             "INSERT INTO event_reminders (event_id, occurrence_date, remind_at, outcome, decided_at) "
             "VALUES (?, '2026-10-24', '2026-10-24T00:50:00+00:00', 'missed', '2026-10-24T03:00:00+00:00')", (er,),
         )
+        ps = env.parts.tools.photos
+        pf, pa = (ps.insert(env.conn, sha256=f"{i:064x}", path=f"2026/10/{i}.jpg", thumb_path=f"2026/10/{i}-t.jpg",
+                            bytes=10, width=10, height=10, origin="memo", now=now).id for i in (1, 2))
+        ps.attach(env.conn, mp.id, pa)
         env.conn.commit()
         cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()),
-                              (mv, mh, md), (ev, er))
+                              (mv, mh, md), (ev, er), (pf, pa))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         token = None

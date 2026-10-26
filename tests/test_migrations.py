@@ -298,7 +298,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 19 == _migration_count()
+    assert dbmod.LATEST_VERSION == 20 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -407,8 +407,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 19 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 19
+    assert migrate(conn) == 20 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 20
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -668,7 +668,7 @@ def test_hook_failure_rolls_back_version(tmp_path, monkeypatch):
     assert "events" not in tables
     assert conn.execute("SELECT deleted_at FROM tasks").fetchone()[0] is None
     monkeypatch.setitem(hooks.HOOKS, 17, hooks.after_017)
-    assert migrate(conn) == 19 and len(_events(conn)) == 1
+    assert migrate(conn) == 20 and len(_events(conn)) == 1
 
 
 def test_017_tz_argument_used(tmp_path):

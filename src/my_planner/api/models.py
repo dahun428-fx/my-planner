@@ -36,6 +36,7 @@ ErrorCode = Literal[
     "checkin_time_invalid", "memo_conflict", "too_many_memos", "too_many_pinned",
     "remind_invalid", "start_not_in_weekdays", "too_many_events", "range_too_long", "digest_time_invalid",
     "bad_code",
+    "too_many_photos", "photo_not_found", "photo_in_use",  # SP10 5.3
 ]
 
 

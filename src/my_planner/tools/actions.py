@@ -127,8 +127,9 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
 }
 
 # `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
-RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices"]
-NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices"})  # `api_idempotency.endpoint`에 없는 값
+# `photos`: 사진 올리기(SP10 5.2 `store_photo`, PH-02 `POST /photos`)
+RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices", "photos"]
+NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices", "photos"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
@@ -669,6 +670,9 @@ ACTIONS: dict[str, ActionSpec] = {
     "pin_memo": ActionSpec("pin_memo"),
     "unpin_memo": ActionSpec("unpin_memo"),
     "delete_memo": ActionSpec("delete_memo"),
+    # 사진(SP10 5.3). 확인 없음. 빼기만 되돌릴 수 있다. 둘 다 `memos.updated_at`을 바꾸지 않는다
+    "attach_photo": ActionSpec("attach_photo"),
+    "detach_photo": ActionSpec("detach_photo"),
     # 이룬 순간(SP8 6.4): 앱 상태창. 숨기기·다시 보이기는 low(되돌리기), 지우기는 앱에서 확인 뒤(되돌릴 수 없다)
     "hide_moment": ActionSpec("hide_moment", target=_moment_target),
     "unhide_moment": ActionSpec("unhide_moment", target=_moment_target),
@@ -694,6 +698,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "cmd_pause": ActionSpec(_cmd_pause, public=False, accepts=frozenset({"text"}), endpoint="chat", reply=True),
     "cmd_unpause": ActionSpec(_cmd_unpause, public=False, endpoint="chat", reply=True),
     "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
+    # 내부(`POST /photos`, SP10 5.2): `.incoming/` tmp 둘 → 행과 최종 파일. 활동·되돌리기 없음. `/actions`에서는 `400`
+    "store_photo": ActionSpec("store_photo", public=False, endpoint="photos"),
     # 내부(`api/push.py`: 6.4.8, 6.4.9). 되돌릴 수 없다
     "push_subscribe": ActionSpec(
         _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label", "device_id"}),
@@ -736,9 +742,11 @@ def _rejected(message: str, code: str = "rejected") -> ActionResult:
 
 
 # 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모, 5.1 스케줄). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
-CONFLICT_CODES = frozenset({"memo_conflict"})
+# 사진(SP10 5.3): `photo_in_use`는 409(5.3 표), `too_many_photos`·`photo_not_found`는 422
+CONFLICT_CODES = frozenset({"memo_conflict", "photo_in_use"})
 REJECT_CODES = frozenset({
     "too_many_memos", "too_many_pinned", "remind_invalid", "start_not_in_weekdays", "too_many_events",
+    "too_many_photos", "photo_not_found",
 })
 
 

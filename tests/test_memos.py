@@ -564,7 +564,7 @@ def test_memo_copy_has_no_banned_words():
     from my_planner.tools.ui import banned_words
 
     copy = [*_MEMO_LINES.values(), UNTITLED, *(v for k, v in vars(mt).items() if k.startswith("MSG_"))]
-    assert len(copy) == 5 + 1 + 12
+    assert len(copy) == 5 + 1 + 13
     words = banned_words()
     assert [(c, w) for c in copy for w in words if w in c] == []
 

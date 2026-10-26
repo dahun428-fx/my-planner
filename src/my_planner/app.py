@@ -72,6 +72,7 @@ from my_planner.platform.windows import (
     keep_awake,
 )
 from my_planner.store.db import integrity_ok, migrate, open_db, open_ro
+from my_planner.store.photos import PhotoFiles
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo, IdempotencyRepo
 from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.cards import CardsRepo
@@ -83,6 +84,7 @@ from my_planner.store.repos.events import EventsRepo
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
+from my_planner.store.repos.photos import PhotosRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
@@ -265,6 +267,7 @@ def build_be(
     habits = HabitsRepo(conn, clock)
     moments = MomentsRepo(conn, clock)
     memos = MemosRepo(conn, clock)
+    photos = PhotosRepo(settings.timezone, settings.day_boundary)
     body = BodyRepo(conn, clock)
     events = EventsRepo(conn, clock, settings.timezone)
     if push_sender is None and settings.vapid is not None:
@@ -297,6 +300,8 @@ def build_be(
         body=body,  # 몸 기록(SP8 7장): `POST /body`의 `record_body_days`, 56일 정리(`prune_records`)
         events=events,  # 스케줄 도구·동작(SP9 5장), 앞머리 `## 오늘 일정`
         conversations=convs,  # `find_conversations`(SP9 7.5): 제목·요약만
+        # 사진(SP10 5.1·5.2): 바이트는 `data/photos/`에만
+        photos=photos, photo_files=PhotoFiles(paths.data_dir / "photos"),
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다

@@ -17,6 +17,9 @@ _DEPTH: dict[int, int] = {}
 # 가장 바깥 트랜잭션이 커밋된 뒤에 부를 일(키: id(conn)). 깊이마다 목록 하나(맨 끝이 지금 SAVEPOINT):
 # 그 깊이가 롤백되면 그 목록을 버리고, 풀리면(RELEASE) 바깥 목록에 합친다(`after_commit`)
 _AFTER: dict[int, list[list[Callable[[], None]]]] = {}
+# 롤백되면 부를 일(`after_rollback`, SP10 5.2 파일 정리). `_AFTER`와 같은 깊이별 목록: 그 깊이가 롤백되면 그 목록을
+# 부르고, 풀리면 바깥 목록에 합치고, 가장 바깥이 커밋되면 버린다
+_UNDO: dict[int, list[list[Callable[[], None]]]] = {}
 log = logging.getLogger(__name__)
 _WRITE_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
 
@@ -65,6 +68,17 @@ def after_commit(conn: sqlite3.Connection, fn: Callable[[], None]) -> None:
         fn()
 
 
+def after_rollback(conn: sqlite3.Connection, fn: Callable[[], None]) -> None:
+    """`fn`을 지금 트랜잭션 깊이가 롤백될 때 부른다. 커밋되면 부르지 않는다. 트랜잭션 밖이면 아무것도 하지 않는다.
+
+    트랜잭션 밖의 일(파일 이름 바꾸기, SP10 5.2)을 행과 함께 되돌린다: 안쪽 SAVEPOINT에서 걸었으면 그 SAVEPOINT가
+    롤백될 때, 풀렸으면 바깥이 롤백될 때 부른다.
+    """
+    stack = _UNDO.get(id(conn))
+    if _DEPTH.get(id(conn), 0) and stack:
+        stack[-1].append(fn)
+
+
 def _run_after(fns: list[Callable[[], None]]) -> None:
     """커밋 뒤의 일을 하나씩. 하나가 실패해도 커밋은 이미 됐다: 종류만 남기고 나머지를 부른다."""
     for fn in fns:
@@ -93,17 +107,22 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         _DEPTH[key] = depth + 1
         stack = _AFTER.setdefault(key, [[]])
         stack.append([])
+        undo = _UNDO.setdefault(key, [[]])
+        undo.append([])
         try:
             yield
         except BaseException:
             conn.execute(f"ROLLBACK TO {name}")
             conn.execute(f"RELEASE {name}")
             stack.pop()  # 롤백된 SAVEPOINT에서 건 일은 버린다
+            _run_after(undo.pop())
             raise
         else:
             conn.execute(f"RELEASE {name}")
             done = stack.pop()
             stack[-1].extend(done)
+            kept = undo.pop()
+            undo[-1].extend(kept)
         finally:
             _DEPTH[key] = depth
         return
@@ -111,15 +130,20 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         conn.execute("BEGIN IMMEDIATE")
     _DEPTH[key] = 1
     _AFTER[key] = [[]]
+    _UNDO[key] = [[]]
     try:
         yield
         conn.commit()
     except BaseException:
         conn.rollback()
+        _DEPTH.pop(key, None)
+        _AFTER.pop(key, None)
+        _run_after(_UNDO.pop(key, [[]])[0])
         raise
     finally:
         _DEPTH.pop(key, None)
         stack = _AFTER.pop(key, [[]])
+        _UNDO.pop(key, None)
     _run_after(stack[0])
 
 
