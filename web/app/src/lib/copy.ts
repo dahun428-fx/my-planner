@@ -294,6 +294,11 @@ export const copy = {
       review: { label: "이번 주 돌아보기", text: "이번 주 돌아볼래요" },
       next: { label: "다음 일정 보기", text: "다음 일정 알려줘" },
     },
+    // SP9c 3 한 줄 쓰기: 스펙 5장 그대로(Dahun 확인 필요).
+    // (new) the input's example
+    write: { todo: "예: 금요일까지 보고서 초안", event: "예: 내일 오후 3시 치과", memo: "떠오른 걸 그대로 적어요" },
+    chipLabel: { todo: "할 일 추가", event: "일정 추가", memo: "메모" }, // (new) the indicator, and the grey label above my bubble
+    closeWrite: "한 줄 쓰기 닫기", // (new) the indicator's close button
     openFailed: "대화를 열지 못했어요. 다시 눌러 주세요.",
     launcherBlocked: {
       unauthorized: "열쇠를 다시 넣으면 말할 수 있어요",

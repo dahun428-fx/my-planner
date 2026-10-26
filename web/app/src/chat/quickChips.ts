@@ -1,4 +1,4 @@
-import type { CheckinSummary, Today } from "../api/types.gen";
+import type { ChatRequestBody, CheckinSummary, Today } from "../api/types.gen";
 import type { IconName } from "../components/icons";
 import { copy } from "../lib/copy";
 import { logicalDateOf } from "../lib/time";
@@ -6,21 +6,34 @@ import { logicalDateOf } from "../lib/time";
 // SP9 9.5 퀵 칩: 입력창 위 고정 칩 4개와, 때에 맞는 칩 1개(맨 앞). 판단 재료는 `GET /today`뿐이다(BE에 새 경로 없음).
 
 export type ChipKey = keyof typeof copy.chat.chips;
+/** `POST /chat`의 `chip`(SP9c 4.1). */
+export type WireChip = NonNullable<ChatRequestBody["chip"]>;
+/** 한 줄 쓰기 칩(SP9c 3): 할 일·일정·메모. */
+export type WriteKey = keyof typeof copy.chat.write;
 
 export interface Chip {
   key: ChipKey;
   label: string;
-  /** 누르면 내 말풍선으로 보내는 정해진 문장. */
+  /** 누르면 내 말풍선으로 보내는 정해진 문장(`send`). */
   text: string;
   icon: IconName;
+  /** SP9c 3: `write`는 보내지 않고 입력창을 한 줄 쓰기로 바꾼다. `send`는 문장을 바로 보낸다. */
+  mode: "write" | "send";
+  /** 요청에 싣는 `chip`. 체크인·회고 칩은 없다. */
+  wire?: WireChip;
   /** 체크인·회고 칩: 그 회차(`checkin_id`)로 보낸다. 이때는 `resume_conversation_id`를 싣지 않는다(Review Focus 5). */
   checkinId?: number;
 }
+
+export const isWriteKey = (key: string): key is WriteKey => key in copy.chat.write;
+const WIRE: readonly string[] = ["todo", "event", "memo", "today", "next"] satisfies WireChip[];
 
 const chip = (key: ChipKey, icon: IconName, checkinId?: number): Chip => ({
   key,
   icon,
   ...copy.chat.chips[key],
+  mode: isWriteKey(key) ? "write" : "send",
+  ...(WIRE.includes(key) ? { wire: key as WireChip } : {}),
   ...(checkinId === undefined ? {} : { checkinId }),
 });
 

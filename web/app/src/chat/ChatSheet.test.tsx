@@ -934,10 +934,10 @@ describe("ChatSheet quick chips (SP9 9.5)", () => {
   };
   const serveToday = (checkins: unknown[] = []) => server.use(http.get(`${BASE}/today`, () => HttpResponse.json({ ...todayJson, checkins })));
 
-  it("the fixed four above the input; a press sends the sentence as my bubble", async () => {
+  it("the fixed four above the input; 오늘 정리해줘 sends its sentence as my bubble, with chip today", async () => {
     history(5, []);
     serveToday();
-    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "무엇을 추가할까요?")));
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "오늘은 두 가지예요")));
     const user = userEvent.setup();
     renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await ready();
@@ -945,12 +945,15 @@ describe("ChatSheet quick chips (SP9 9.5)", () => {
     expect(within(row).getAllByRole("button").map((b) => b.textContent)).toEqual(["할 일 추가", "일정 추가", "메모하기", "오늘 정리해줘"]);
     // The row sits right above the input.
     expect(row.compareDocumentPosition(screen.getByRole("textbox", { name: copy.chat.inputLabel })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    await user.click(within(row).getByRole("button", { name: "할 일 추가" }));
+    await user.click(within(row).getByRole("button", { name: "오늘 정리해줘" }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect((bodies[0].message as { parts: { text: string }[] }).parts[0].text).toBe("할 일 추가할래요");
-    const mine = screen.getByText("할 일 추가할래요");
+    expect(bodies[0]).toMatchObject({ chip: "today", checkin_id: null });
+    expect((bodies[0].message as { parts: { text: string }[] }).parts[0].text).toBe("오늘 정리해줘");
+    const mine = within(screen.getByRole("log")).getByText("오늘 정리해줘");
     expect(mine.closest("[data-message]")).toBeInTheDocument();
-    expect(await screen.findByText("무엇을 추가할까요?")).toBeInTheDocument();
+    expect(await screen.findByText("오늘은 두 가지예요")).toBeInTheDocument();
+    // Only the add chips get a label above the bubble.
+    expect((mine.closest("[data-message]") as HTMLElement).querySelectorAll("p")).toHaveLength(1);
   });
 
   it("test_checkin_chip_sends_checkin_id_not_resume: the check-in chip goes to its run even while a picked conversation is shown", async () => {
@@ -977,6 +980,7 @@ describe("ChatSheet quick chips (SP9 9.5)", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ checkin_id: 341 });
     expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+    expect(bodies[0]).not.toHaveProperty("chip");
     expect((bodies[0].message as { parts: { text: string }[] }).parts[0].text).toBe("체크인 할게요");
     await screen.findByText("오늘 어땠어요?");
     // The next plain message goes back to the picked conversation.
@@ -1014,5 +1018,165 @@ describe("ChatSheet quick chips (SP9 9.5)", () => {
     renderWithProviders(<ChatSheet open embedded onClose={() => {}} conversationId={8} checkinId={341} />);
     await screen.findByText("체크인 대화예요");
     expect(screen.queryByRole("group", { name: copy.chat.chipsLabel })).toBeNull();
+  });
+});
+
+// SP9c 3: the add chips (할 일 추가, 일정 추가, 메모하기) open a one-line write in the input instead of sending.
+describe("ChatSheet one-line write (SP9c)", () => {
+  const row = () => screen.queryByRole("group", { name: copy.chat.chipsLabel });
+  const closeWrite = () => screen.queryByRole("button", { name: copy.chat.closeWrite });
+  async function openWrite(user: ReturnType<typeof userEvent.setup>, label: string) {
+    const input = await ready();
+    await user.click(within(row() as HTMLElement).getByRole("button", { name: label }));
+    return input;
+  }
+
+  it("일정 추가: no message goes; the indicator, the example and the focus; the sent line carries chip event and a label", async () => {
+    history(5, []);
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "일정에 넣었어요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "일정 추가");
+    expect(bodies).toHaveLength(0);
+    expect(row()).toBeNull();
+    expect(closeWrite()).toBeInTheDocument();
+    expect(screen.getByText("일정 추가")).toBeInTheDocument();
+    expect(input).toHaveAttribute("placeholder", "예: 내일 오후 3시 치과");
+    expect(input).toHaveFocus();
+    await user.type(input, "내일 오후 3시 치과");
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ chip: "event", checkin_id: null });
+    expect((bodies[0].message as { parts: { text: string }[] }).parts[0].text).toBe("내일 오후 3시 치과");
+    // My bubble is the text as typed, with a small label above it.
+    const bubble = within(screen.getByRole("log")).getByText("내일 오후 3시 치과");
+    const mine = bubble.closest("[data-message]") as HTMLElement;
+    expect(within(mine).getByText("일정 추가")).toBeInTheDocument();
+    expect(within(mine).getByText("일정 추가").compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The row comes back, the input loses the example.
+    expect(row()).toBeInTheDocument();
+    expect(closeWrite()).toBeNull();
+    expect(input).not.toHaveAttribute("placeholder");
+    expect(await screen.findByText("일정에 넣었어요")).toBeInTheDocument();
+  });
+
+  it("each add chip has its own example, and the memo label is 메모", async () => {
+    history(5, []);
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "남겼어요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "할 일 추가");
+    expect(input).toHaveAttribute("placeholder", "예: 금요일까지 보고서 초안");
+    await user.click(closeWrite() as HTMLElement);
+    await openWrite(user, "메모하기");
+    expect(input).toHaveAttribute("placeholder", "떠오른 걸 그대로 적어요");
+    // A memo can be several lines (Shift+Enter); the first is its title.
+    await user.type(input, "책 제목{Shift>}{Enter}{/Shift}사피엔스");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ chip: "memo" });
+    const mine = within(screen.getByRole("log")).getByText(/사피엔스/).closest("[data-message]") as HTMLElement;
+    expect(within(mine).getByText("메모")).toBeInTheDocument();
+  });
+
+  it("the close button goes back to the row and keeps the text; Backspace in an empty input closes too", async () => {
+    history(5, []);
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "네")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "할 일 추가");
+    await user.type(input, "보고서");
+    await user.click(closeWrite() as HTMLElement);
+    expect(row()).toBeInTheDocument();
+    expect(input).toHaveValue("보고서");
+    expect(input).not.toHaveAttribute("placeholder");
+    await openWrite(user, "할 일 추가");
+    // Backspace with text only deletes; in the empty input it ends the write.
+    await user.type(input, "{Backspace}{Backspace}{Backspace}");
+    expect(input).toHaveValue("");
+    expect(closeWrite()).toBeInTheDocument();
+    await user.type(input, "{Backspace}");
+    expect(closeWrite()).toBeNull();
+    expect(row()).toBeInTheDocument();
+    // A message after the write ended is a plain one.
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty("chip");
+  });
+
+  it("새 대화, the list and closing the sheet each end the write", async () => {
+    history(5, []);
+    server.use(
+      http.post(`${BASE}/conversations/new`, () => HttpResponse.json({ closed: [5] })),
+      http.get(`${BASE}/conversations`, () => HttpResponse.json({ items: [], next_before: null })),
+    );
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await openWrite(user, "일정 추가");
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(closeWrite()).toBeNull());
+    expect(row()).toBeInTheDocument();
+    await openWrite(user, "일정 추가");
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await user.click(screen.getByRole("button", { name: copy.chat.backToChat }));
+    await ready();
+    expect(closeWrite()).toBeNull();
+    await openWrite(user, "일정 추가");
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    expect(closeWrite()).toBeNull();
+    expect(row()).toBeInTheDocument();
+  });
+
+  // Spec 4.1: a BE from before the chips refuses `chip` (400 invalid_request); the line goes again
+  // without it, under the same client_msg_id, and is answered as a plain message.
+  it("an old BE: the chip line goes once more without chip and is answered", async () => {
+    history(5, []);
+    const bodies = serveChat(
+      () => HttpResponse.json({ error: { code: "invalid_request", message: "x" } }, { status: 400 }),
+      () => sseResponse(textAnswer("m-5-1", 5, "추가했어요")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "할 일 추가");
+    await user.type(input, "금요일까지 보고서 초안{Enter}");
+    expect(await screen.findByText("추가했어요")).toBeInTheDocument();
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({ chip: "todo" });
+    expect(bodies[1]).not.toHaveProperty("chip");
+    expect(bodies[1].client_msg_id).toBe(bodies[0].client_msg_id);
+    expect(screen.queryByText(copy.chat.notReceived)).toBeNull();
+  });
+
+  it("a plain message refused with 400 is not sent again", async () => {
+    history(5, []);
+    const bodies = serveChat(() => HttpResponse.json({ error: { code: "invalid_request", message: "x" } }, { status: 400 }));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await sendText(user, "안녕");
+    expect(await screen.findByText(copy.chat.notReceived)).toBeInTheDocument();
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("a reopened conversation (the BE's lines) has no label", async () => {
+    const items: HistoryItem[] = [];
+    history(5, items);
+    serveChat(() => sseResponse(textAnswer("m-5-1", 5, "일정에 넣었어요")));
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "일정 추가");
+    await user.type(input, "내일 오후 3시 치과{Enter}");
+    await screen.findByText("일정에 넣었어요");
+    expect(within(screen.getByRole("log")).getByText("일정 추가")).toBeInTheDocument();
+    items.push(
+      { id: "u-5-1", at: "2026-10-24T01:00:00Z", speaker: "user", text: "내일 오후 3시 치과" },
+      { id: "m-5-1", at: "2026-10-24T01:00:05Z", speaker: "secretary", text: "일정에 넣었어요" },
+    );
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await waitFor(() => expect(within(screen.getByRole("log")).getByText("내일 오후 3시 치과").closest("[data-message]")).toHaveAttribute("data-message", "u-5-1"));
+    expect(within(screen.getByRole("log")).queryByText("일정 추가")).toBeNull();
   });
 });
