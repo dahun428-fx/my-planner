@@ -568,6 +568,55 @@ describe("ChatSheet photos, fix round 1", () => {
     await waitFor(() => expect(viewer.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/));
     expect(be.gets).toEqual([]);
   });
+});
+
+// PH-07 fix round 2: the sheet stays mounted while closed (_app), so a refused message's own bytes
+// must go when it closes (or reads its conversation again), not only when it unmounts.
+describe("ChatSheet photos, fix round 2", () => {
+  const sheet = (open: boolean) => <ChatSheet open={open} onClose={() => {}} conversationId={null} />;
+
+  it("refuse, close, reopen: the refused photo's own bytes are let go", async () => {
+    photoBe();
+    serveChat(() => HttpResponse.json({ error: { code: "photo_not_found", message: "x" } }, { status: 400 }));
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(sheet(true));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    expect(await screen.findByText(copy.photos.uploadFailed, { selector: "span" })).toBeInTheDocument();
+    const held = photoCacheSize();
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).not.toBeNull();
+    rerender(sheet(false));
+    await waitFor(() => expect(photoCacheSize()).toBeLessThan(held));
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).toBeNull();
+    rerender(sheet(true));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).toBeNull();
+    expect(photoCacheSize()).toBeLessThan(held);
+  });
+
+  it("a refusal that lands after the sheet closed keeps nothing pinned", async () => {
+    photoBe();
+    let answer!: () => void;
+    const late = new Promise<void>((r) => (answer = r));
+    serveChat(async () => {
+      await late;
+      return HttpResponse.json({ error: { code: "photo_not_found", message: "x" } }, { status: 400 });
+    });
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(sheet(true));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await screen.findByRole("button", { name: copy.chat.stop });
+    // While it is out, its bytes are held (it may show again on reopening).
+    rerender(sheet(false));
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).not.toBeNull();
+    answer();
+    await waitFor(() => expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).toBeNull());
+  });
 
   it("Tab goes round the viewer's buttons, never to the sheet behind it", async () => {
     photoBe();

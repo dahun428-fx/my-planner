@@ -95,6 +95,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const online = state?.kind === "online";
   const connRef = useRef(conn);
   connRef.current = conn;
+  const openRef = useRef(open);
+  openRef.current = open;
   const onSentRef = useRef(onSent);
   onSentRef.current = onSent;
   const toast = useToast();
@@ -185,8 +187,15 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     also.clear();
   }, []);
   // A refused message's photos are never linked, so the BE never gives them out: their own bytes stay
-  // (its bubble can still show them big) until the sheet goes.
+  // (its bubble can still show them big) while that bubble is on screen: until the sheet closes or
+  // reads its conversation again (the BE has no such message), or unmounts. A message still being
+  // answered keeps its own `pinned` (it may show again on reopening); its end releases them.
   const refusedPins = useRef(new Set<number>());
+  const dropRefused = useCallback(() => {
+    const c = connRef.current ?? loadConn();
+    if (c) for (const id of refusedPins.current) dropLocalPhoto(c, id);
+    refusedPins.current.clear();
+  }, []);
   // Room in the tray for photos coming back (a failed camera send, a refused message). The camera
   // keeps a place for its photo while it is sent (`reserved`), so one always fits.
   const backToTray = useCallback(
@@ -202,11 +211,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       sending.current = false;
       setInFlight(false);
       setFailure(f);
-      if (f === "photo" || f === "photoLimit") {
+      if ((f === "photo" || f === "photoLimit") && openRef.current) {
         for (const id of pinned.current) refusedPins.current.add(id);
         pinned.current.clear();
         backToTray(lastSent.current);
       } else {
+        // Answered, given up on, or refused after the sheet was closed (nobody sees that bubble).
+        if (f === "photo" || f === "photoLimit") backToTray(lastSent.current);
         unpinAll();
       }
       lastSent.current = [];
@@ -311,6 +322,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // from the list when there is one, else the given one (or the latest).
   const seq = useRef(0);
   const load = useCallback(() => {
+    dropRefused(); // the history read now has no refused message to show
     const mine = ++seq.current;
     setLoading(true);
     setLoadError(null);
@@ -332,10 +344,14 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       setElsewhere(h.elsewhere);
       setFailure(null);
     });
-  }, [conversationId, setMessages]);
+  }, [conversationId, setMessages, dropRefused]);
   useEffect(() => {
     if (open && !sending.current) load();
   }, [open, load]);
+  // The sheet stays mounted while closed (_app): a refused message's own bytes go when it closes.
+  useEffect(() => {
+    if (!open) dropRefused();
+  }, [open, dropRefused]);
 
   // SP9 9.5: closing the sheet (or leaving it for another BE) forgets the pick and the list screen.
   useEffect(() => {
@@ -360,6 +376,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // An empty chat: the next message is a new conversation (no id, no pick).
   const clearView = useCallback(() => {
     seq.current += 1; // a history still coming is not shown
+    dropRefused();
     sheetState.pickedConversationId = null;
     ctx.current.conversationId = null;
     setLoading(false);
@@ -369,7 +386,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setElsewhere([]);
     setFailure(null);
     setLoadError(null);
-  }, [setMessages]);
+  }, [setMessages, dropRefused]);
 
   // Also on the way back from the list screen: the log is a fresh element then (review round 1).
   useEffect(() => {
@@ -542,9 +559,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   useEffect(
     () => () => {
       for (const p of trayRef.current) URL.revokeObjectURL(p.url);
-      unpinAll(refusedPins.current);
+      unpinAll();
+      dropRefused();
     },
-    [unpinAll],
+    [unpinAll, dropRefused],
   );
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
   const pressChip = (chip: Chip) => {
