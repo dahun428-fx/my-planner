@@ -43,6 +43,7 @@
   color: var(--muted);
 }
 .day {
+  position: relative;
   justify-self: center;
   width: 2.75rem;
   height: 2.75rem;
@@ -54,6 +55,22 @@
   font-size: var(--size-body);
   color: var(--text);
   cursor: pointer;
+}
+/* 일정 있는 날: 숫자 아래 작은 점(한 주 띠와 같은 크기·색). 오늘 칸 위에서는 글자색. */
+.dot {
+  position: absolute;
+  left: 50%;
+  bottom: 0.3125rem;
+  width: 0.3125rem;
+  height: 0.3125rem;
+  margin-left: -0.15625rem;
+  border-radius: var(--radius-pill);
+}
+.day[data-events="true"] .dot {
+  background: var(--muted);
+}
+.day[aria-current="date"][data-events="true"] .dot {
+  background: var(--on-primary);
 }
 .outside {
   color: var(--muted);

@@ -181,6 +181,37 @@ describe("Schedule (spec 9.2)", () => {
     expect(screen.getByRole("heading", { level: 1, name: copy.schedule.month(11) })).toBeInTheDocument();
   });
 
+  it("the month calendar dots the days with events across its whole grid, and reads again on the next month", async () => {
+    const asked = serve([...WEEK, ev(5, "2026-10-05", "08:00", { title: "검진" }), ev(6, "2026-11-20", null, { title: "여행" })]);
+    const user = userEvent.setup();
+    renderWithProviders(<Schedule />, { route: "/schedule/" });
+    await user.click(await screen.findByRole("button", { name: copy.schedule.month(10) }));
+    // 10월 칸은 9/28(월)~11/1(일), 11월 칸은 10/26(월)~12/6(일)
+    await waitFor(() => expect(asked).toContain("2026-09-28..2026-11-01"));
+    const cell = (y: number, m: number, d: number, w: string) =>
+      within(screen.getByRole("group", { name: copy.schedule.monthOf(y, m) })).getByRole("button", {
+        name: new RegExp(`^${copy.parts.dayLabel(m, d, w).replace(/[()]/g, "\\$&")}`),
+      });
+    await waitFor(() => expect(cell(2026, 10, 5, "월")).toHaveAttribute("data-events", "true"));
+    expect(cell(2026, 10, 5, "월")).toHaveAccessibleName(copy.schedule.hasEvents(copy.parts.dayLabel(10, 5, "월")));
+    expect(cell(2026, 10, 27, "화")).toHaveAttribute("data-events", "true");
+    expect(cell(2026, 10, 6, "화")).not.toHaveAttribute("data-events");
+    expect(cell(2026, 10, 6, "화")).toHaveAccessibleName(copy.parts.dayLabel(10, 6, "화"));
+    await user.click(screen.getByRole("button", { name: copy.schedule.nextMonth }));
+    await waitFor(() => expect(asked).toContain("2026-10-26..2026-12-06"));
+    await waitFor(() => expect(cell(2026, 11, 20, "금")).toHaveAttribute("data-events", "true"));
+    expect(cell(2026, 11, 5, "목")).not.toHaveAttribute("data-events");
+  });
+
+  it("the month calendar shows no dots when it cannot read", async () => {
+    server.use(http.get(`${BASE}/events`, () => HttpResponse.json({ code: "x" }, { status: 500 })));
+    const user = userEvent.setup();
+    renderWithProviders(<Schedule />, { route: "/schedule/" });
+    await user.click(await screen.findByRole("button", { name: copy.schedule.month(10) }));
+    const month = screen.getByRole("group", { name: copy.schedule.monthOf(2026, 10) });
+    expect(within(month).getAllByRole("button").filter((b) => b.hasAttribute("data-events"))).toHaveLength(0);
+  });
+
   it("swipe a repeating row left: 건너뛰기 skips that day only, with undo", async () => {
     serve();
     const bodies: Record<string, unknown>[] = [];
