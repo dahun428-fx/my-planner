@@ -291,6 +291,11 @@ export const copy = {
     stopped: "멈췄어요.",
     clearInput: "입력한 글 지우기", // (new) the × inside the field
     inputLabel: "비서에게 보낼 말",
+    // SP10 7.5: the camera button's name (the library one is copy.photos.button "사진"), the tray
+    // above the field and its ✕. The sentences are copy.photos (8장).
+    camera: "카메라", // (new)
+    tray: "보낼 사진", // (new)
+    unpick: (n: number, total: number) => `사진 ${n}/${total} 빼기`, // (new)
     undo: "되돌리기",
     undone: "되돌렸어요",
     // SP9 9.6: the one line of a change before R4b (no confirmation came, only undo ids).

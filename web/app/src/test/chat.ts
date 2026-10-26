@@ -67,7 +67,7 @@ export function serveChat(...answers: (() => Response | Promise<Response>)[]) {
   return bodies;
 }
 
-export type HistoryItem = { id?: string; at: string; speaker: "user" | "secretary"; text: string };
+export type HistoryItem = { id?: string; at: string; speaker: "user" | "secretary"; text: string; photos?: { id: number; width: number; height: number }[] };
 
 /** GET /conversations (newest first) and GET /conversations/{id}/messages, and GET /activity. */
 export function serveHistory(opts: {

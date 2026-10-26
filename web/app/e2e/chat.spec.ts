@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { copy } from "../src/lib/copy";
-import { mockBe, seedConn } from "./routes";
+import { APP_ORIGIN, BE_URL, markdownSse, mockBe, seedConn } from "./routes";
 
 // The chat input's buttons in the built app (CSP on): the stop button while an answer is slow to come.
 test("stop: the send button stops a slow answer, asks the BE, and the field is usable again", async ({ page }) => {
@@ -30,4 +30,81 @@ test("stop: the send button stops a slow answer, asks the BE, and the field is u
   await input.fill("다음");
   await expect(page.getByRole("button", { name: copy.chat.send })).toBeEnabled();
   expect(be.chatBodies).toHaveLength(1); // the stop is not a cut: nothing is sent again
+});
+
+// SP10 7.5 in the built app (CSP on): photos picked from the library wait in the tray, are shrunk in
+// the page, go up as JPEG (origin chat) one by one, and the message carries data-photo parts after
+// the text; my bubble shows them from blob: addresses.
+test("chat photos: pick two, tray, send uploads in order and sends data-photo parts, bubble grid, under CSP", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI}`));
+  });
+  await seedConn(page);
+  const be = await mockBe(page, { chat: [{ body: markdownSse("받았어요") }] });
+  const uploads: string[] = [];
+  let nextId = 12;
+  const headers = {
+    "Access-Control-Allow-Origin": APP_ORIGIN,
+    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+    "content-type": "application/json",
+  };
+  // Registered after mockBe, so this answers first; anything else falls back to it.
+  await page.route(`${BE_URL}/api/v1/**`, async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^\/api\/v1/, "");
+    if (req.method() === "POST" && path === "/photos") {
+      const body = req.postDataBuffer()?.toString("latin1") ?? "";
+      if (!/name="image"; filename="[^"]*"\r\nContent-Type: image\/jpeg/.test(body)) uploads.push("image not jpeg");
+      uploads.push(/name="origin"\r\n\r\n(\w+)/.exec(body)?.[1] ?? "no origin");
+      return route.fulfill({ status: 201, headers, body: JSON.stringify({ id: nextId++, width: 2048, height: 1365, bytes: 1000 }) });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: copy.chat.launcher }).click();
+  const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
+  await expect(input).toBeEnabled();
+  await expect(page.getByRole("button", { name: copy.chat.camera })).toBeVisible();
+  // Two photos drawn in the page, larger than 2,048 (as a phone's would be).
+  const png = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 3000;
+    c.height = 2000;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#88aa66";
+    ctx.fillRect(0, 0, 3000, 2000);
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  const file = (name: string) => ({ name, mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: copy.photos.button }).click();
+  const fc = await chooser;
+  expect(fc.isMultiple()).toBe(true);
+  await fc.setFiles([file("IMG_0001.png"), file("IMG_0002.png")]);
+  const tray = page.getByRole("list", { name: copy.chat.tray });
+  await expect(tray.locator("img")).toHaveCount(2);
+  await expect.poll(() => tray.locator("img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await input.fill("영수증 두 장");
+  await page.getByRole("button", { name: copy.chat.send }).click();
+  await expect(page.getByText("받았어요")).toBeVisible();
+  expect(uploads).toEqual(["chat", "chat"]);
+  const sent = be.chatBodies[0] as { message: { parts: unknown[] } };
+  expect(sent.message.parts).toEqual([
+    { type: "text", text: "영수증 두 장" },
+    { type: "data-photo", data: { photo_id: 12 } },
+    { type: "data-photo", data: { photo_id: 13 } },
+  ]);
+  await expect(tray).toHaveCount(0);
+  const grid = page.getByRole("list", { name: copy.photos.strip });
+  await expect(grid.locator("img")).toHaveCount(2);
+  await expect(grid.locator("img").first()).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => grid.locator("img").first().evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `securitypolicyviolation ${v}`));
+  expect(problems).toEqual([]);
 });

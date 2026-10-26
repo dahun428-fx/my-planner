@@ -65,4 +65,15 @@ describe("chat styles", () => {
     expect(rule(".input[data-ready]:focus-visible")).toMatch(/outline:\s*2px solid var\(--text\)/);
     expect(rule(".input[data-ready]:focus-visible")).toMatch(/outline-offset:\s*2px/);
   });
+
+  it("SP10 7.5: 카메라, 사진 and the tray's ✕ are 44px targets; the tray is 64px squares, 8px round", () => {
+    for (const sel of [".attachButton", ".trayRemove"]) {
+      expect(rule(sel)).toMatch(/width:\s*var\(--control-h\)/);
+      expect(rule(sel)).toMatch(/height:\s*var\(--control-h\)/);
+    }
+    expect(rule(".trayItem")).toMatch(/width:\s*64px/);
+    expect(rule(".trayItem")).toMatch(/height:\s*64px/);
+    expect(rule(".trayThumb")).toMatch(/border-radius:\s*8px/);
+    expect(rule(".photoGrid")).toMatch(/grid-template-columns:\s*repeat\(2, 96px\)/);
+  });
 });

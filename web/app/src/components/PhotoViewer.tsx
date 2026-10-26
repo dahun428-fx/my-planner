@@ -41,13 +41,16 @@ export function PhotoViewer({
   }, [open]);
   useEffect(() => {
     if (!open) return;
+    // Caught first (capture): over the chat sheet (SP10 7.5), Escape closes the viewer alone, not the sheet under it.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowLeft" && at > 0) onIndex(at - 1);
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      } else if (e.key === "ArrowLeft" && at > 0) onIndex(at - 1);
       else if (e.key === "ArrowRight" && at < photos.length - 1) onIndex(at + 1);
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [open, at, photos.length, onClose, onIndex]);
 
   if (!open) return null;

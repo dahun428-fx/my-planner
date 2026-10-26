@@ -2,12 +2,14 @@ import "./zodJitless"; // first: before "@ai-sdk/react" and "ai" build their sch
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { useRouter } from "next/router";
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { failureText } from "../api/actions";
-import { apiFetch, apiGet } from "../api/client";
+import { type ApiResult, apiFetch, apiGet } from "../api/client";
+import { dropLocalPhoto, keepLocalPhoto, uploadFailureText, uploadPhoto } from "../api/photos";
 import type { ConversationsClosed, Today } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Icon } from "../components/icons";
+import { PhotoViewer } from "../components/PhotoViewer";
 import { Sheet } from "../components/Sheet";
 import { CHAT_ACTIVITY_MS, useToast } from "../components/Toast";
 import { notifyDataChanged } from "../lib/push";
@@ -15,6 +17,7 @@ import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { newClientMsgId } from "../lib/ids";
+import { shrinkPhoto } from "../lib/shrinkPhoto";
 import { formatKst } from "../lib/time";
 import { screenHref } from "../ui/openScreen";
 import type { OpenScreen } from "../ui/primitives/types";
@@ -24,6 +27,7 @@ import { ConversationList } from "./ConversationList";
 import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
+import { PhotoTray, type TrayPhoto, TRAY_MAX, trayPhoto } from "./PhotoTray";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
 import { QuickChips, WRITING_ID } from "./QuickChips";
 import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
@@ -47,6 +51,28 @@ const isCut = (e: Error | null) => e instanceof TypeError || e?.name === "AbortE
 const isInFlight = (e: Error | null) => e instanceof InFlightError;
 
 const metaOf = (m: UIMessage): Meta => (isObj(m.metadata) ? (m.metadata as Meta) : {});
+
+// SP10 8장 응답→문구 (채팅 자리): the BE refused the message's photos before any answer. The
+// transport's error message is the refusal's body (`{"error": {"code"}}`).
+type Failure = "retry" | "notReceived" | "photo" | "photoLimit";
+function photoRefusal(e: Error | null): Failure | null {
+  if (!e) return null;
+  let code: unknown;
+  try {
+    code = (JSON.parse(e.message) as { error?: { code?: unknown } } | null)?.error?.code;
+  } catch {
+    return null;
+  }
+  if (code === "photo_not_found") return "photo";
+  if (code === "too_many_photos") return "photoLimit";
+  return null;
+}
+const FAILURE_TEXT: Record<Failure, string> = {
+  retry: copy.chat.notReceived,
+  notReceived: copy.chat.notReceived,
+  photo: copy.photos.uploadFailed,
+  photoLimit: copy.photos.sendLimit,
+};
 
 // --- the sheet ---
 
@@ -82,7 +108,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const picked = () => (embeddedRef.current ? null : sheetState.pickedConversationId);
 
   const [phase, setPhase] = useState<"queued" | "thinking" | null>(null);
-  const [failure, setFailure] = useState<"retry" | "notReceived" | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [inFlight, setInFlight] = useState(false);
   const [restored, setRestored] = useState<Record<string, ViewPart[]>>({});
   const [elsewhere, setElsewhere] = useState<string[]>([]);
@@ -99,6 +125,29 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // SP9c 3: an add chip pressed: the input is a one-line write of that kind until it is sent or closed.
   const [writing, setWriting] = useState<Chip | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
+  const textRef = useRef(text);
+  textRef.current = text;
+  const writingRef = useRef(writing);
+  writingRef.current = writing;
+
+  // SP10 7.5: photos picked from the library wait here (at most 4) until send; the camera's photo
+  // goes at once and lands here only when it could not be sent. `picking`: still being shrunk (they
+  // count toward the 4). `pinned`: photos just uploaded, shown from their own bytes until the BE has
+  // the message (it gives a photo out only once it is linked, 5.1). `lastSent`: the photos of the
+  // message in flight, back to the tray should the BE refuse them.
+  const [tray, setTrayState] = useState<TrayPhoto[]>([]);
+  const trayRef = useRef(tray);
+  const setTray = useCallback((next: (t: TrayPhoto[]) => TrayPhoto[]) => {
+    trayRef.current = next(trayRef.current);
+    setTrayState(trayRef.current);
+  }, []);
+  const picking = useRef(0);
+  const [uploading, setUploading] = useState(false);
+  const pinned = useRef(new Set<number>());
+  const lastSent = useRef<TrayPhoto[]>([]);
+  const [viewing, setViewing] = useState<{ ids: number[]; index: number } | null>(null);
+  const pickerInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
 
   const sending = useRef(false);
   const autoRetried = useRef(false);
@@ -128,11 +177,32 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     [],
   );
 
-  const settle = useCallback((f: "retry" | "notReceived" | null) => {
-    sending.current = false;
-    setInFlight(false);
-    setFailure(f);
+  // The message is answered (or refused, or given up on): its photos are the BE's to give out now.
+  const unpinAll = useCallback(() => {
+    const c = connRef.current ?? loadConn();
+    if (c) for (const id of pinned.current) dropLocalPhoto(c, id);
+    pinned.current.clear();
   }, []);
+  // Room in the tray for photos coming back (a failed camera send, a refused message); the rest are dropped.
+  const backToTray = useCallback(
+    (items: TrayPhoto[]) => {
+      const room = TRAY_MAX - trayRef.current.length - picking.current;
+      const back = items.slice(0, Math.max(0, room)).map((p) => trayPhoto(p.image, p.thumb));
+      if (back.length > 0) setTray((t) => [...t, ...back]);
+    },
+    [setTray],
+  );
+  const settle = useCallback(
+    (f: Failure | null) => {
+      sending.current = false;
+      setInFlight(false);
+      setFailure(f);
+      unpinAll();
+      if (f === "photo" || f === "photoLimit") backToTray(lastSent.current);
+      lastSent.current = [];
+    },
+    [unpinAll, backToTray],
+  );
 
   const { messages, setMessages, sendMessage, regenerate, status, stop } = useChat({
     transport,
@@ -157,6 +227,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         return;
       }
       if (isError || isAbort) {
+        // SP10 8장: the BE refused the photos (400 photo_not_found, 422 too_many_photos): they go back to the tray.
+        const refused = isError ? photoRefusal(lastError.current) : null;
+        if (refused) {
+          lastError.current = null;
+          settle(refused);
+          return;
+        }
         // Only the stop button aborts on purpose (above), so any other abort is a cut as well.
         const cut = isAbort || isCut(lastError.current);
         const later = isInFlight(lastError.current);
@@ -304,12 +381,17 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const busy = inFlight || status === "submitted" || status === "streaming";
   const readOnly = !online;
   const canSend = !readOnly && !loading && !busy;
+  // Read after the uploads (an await later): the render's own value may be old by then.
+  const canSendRef = useRef(canSend);
+  canSendRef.current = canSend;
 
   // `checkinId`: the message goes to that run (the check-in chip, SP9 9.5), without the picked conversation.
   // `chip`: the quick chip it came from (SP9c 4.1), kept in the message's metadata for its label.
-  const send = (raw: string, { checkinId, chip }: { checkinId?: number; chip?: WireChip } = {}): boolean => {
+  // `photoIds`: photos already uploaded (SP10 7.5), sent as data-photo parts after the text; with
+  // photos the text may be empty.
+  const send = (raw: string, { checkinId, chip, photoIds = [] }: { checkinId?: number; chip?: WireChip; photoIds?: number[] } = {}): boolean => {
     const t = raw.trim();
-    if (t === "" || sending.current || !canSend) return false;
+    if ((t === "" && photoIds.length === 0) || sending.current || !canSendRef.current) return false;
     sending.current = true; // a second press before the answer starts is ignored
     autoRetried.current = false;
     stopping.current = false;
@@ -323,9 +405,119 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     const id = newClientMsgId();
     sentId.current = id;
     sentAt.current = performance.now();
-    void sendMessage({ id, role: "user", parts: [{ type: "text", text: t }], metadata });
+    const parts: UIMessage["parts"] = [
+      ...(t === "" ? [] : [{ type: "text" as const, text: t }]),
+      ...photoIds.map((photo_id) => ({ type: "data-photo" as const, data: { photo_id } })),
+    ];
+    void sendMessage({ id, role: "user", parts, metadata });
     return true;
   };
+
+  // SP10 7.5: each photo is uploaded (origin chat, a new client_msg_id each time), in the order
+  // picked, then the message goes with the text written. One upload failing sends nothing. The
+  // camera's photo (`fromCamera`) goes back to the tray then; the tray's stay where they are.
+  const sendPhotos = async (items: TrayPhoto[], fromCamera: boolean) => {
+    if (sending.current || !canSendRef.current) {
+      if (fromCamera) backToTray(items);
+      return;
+    }
+    const raw = textRef.current;
+    const chip = writingRef.current?.wire;
+    sending.current = true; // a second press while the photos go up is ignored
+    setUploading(true);
+    const c = connRef.current ?? loadConn();
+    const ids: number[] = [];
+    let failed: ApiResult<unknown> | null = c ? null : { kind: "offline" };
+    for (const p of items) {
+      if (failed || !c) break;
+      const up = await uploadPhoto(c, { image: p.image, thumb: p.thumb, origin: "chat", clientMsgId: newClientMsgId() });
+      if (up.kind !== "ok") {
+        failed = up;
+        break;
+      }
+      // Shown in my bubble from these bytes: the BE gives it out once the message has it.
+      keepLocalPhoto(c, up.data.id, p.image, p.thumb);
+      ids.push(up.data.id);
+    }
+    sending.current = false;
+    setUploading(false);
+    if (failed || !c) {
+      if (c) for (const id of ids) dropLocalPhoto(c, id);
+      toastRef.current.show({ text: failed ? uploadFailureText(failed) : copy.photos.uploadFailed });
+      if (fromCamera) backToTray(items);
+      return;
+    }
+    for (const id of ids) pinned.current.add(id);
+    if (!send(raw, { chip, photoIds: ids })) {
+      unpinAll();
+      if (fromCamera) backToTray(items);
+      return;
+    }
+    lastSent.current = items;
+    if (!fromCamera) {
+      const sent = new Set(items.map((p) => p.key));
+      for (const p of items) URL.revokeObjectURL(p.url);
+      setTray((t) => t.filter((p) => !sent.has(p.key)));
+    }
+    setText((now) => (now === raw ? "" : now));
+    setWriting(null);
+  };
+
+  // "사진": the library, many at once; what does not fit in the 4 is not taken.
+  const pickPhotos = () => {
+    if (trayRef.current.length + picking.current >= TRAY_MAX) {
+      toastRef.current.show({ text: copy.photos.sendLimit });
+      return;
+    }
+    pickerInput.current?.click();
+  };
+  const shrinkFile = async (file: File): Promise<TrayPhoto | null> => {
+    try {
+      const s = await shrinkPhoto(file);
+      return trayPhoto(s.image, s.thumb);
+    } catch {
+      toastRef.current.show({ text: copy.photos.cannotOpen });
+      return null;
+    }
+  };
+  const onPicked = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = [...(e.target.files ?? [])];
+    e.target.value = "";
+    if (files.length === 0) return;
+    const room = Math.max(0, TRAY_MAX - trayRef.current.length - picking.current);
+    if (files.length > room) toastRef.current.show({ text: copy.photos.sendLimit });
+    const take = files.slice(0, room);
+    picking.current += take.length;
+    // One after another, so the tray (and the send) keeps the order they were picked in.
+    for (const f of take) {
+      const p = await shrinkFile(f);
+      picking.current -= 1;
+      if (p) setTray((t) => [...t, p]);
+    }
+  };
+  const unpick = (key: string) => {
+    const gone = trayRef.current.find((p) => p.key === key);
+    if (gone) URL.revokeObjectURL(gone.url);
+    setTray((t) => t.filter((p) => p.key !== key));
+  };
+  // "카메라": the phone's own camera; after "사진 사용" the photo goes at once (7.5).
+  const onCamera = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const p = await shrinkFile(file);
+    if (!p) return;
+    URL.revokeObjectURL(p.url); // not shown in the tray (should it come back there, it gets an address of its own)
+    await sendPhotos([p], true);
+  };
+  // The tray's addresses go with the sheet, and so do the pins of photos still unanswered.
+  useEffect(
+    () => () => {
+      for (const p of trayRef.current) URL.revokeObjectURL(p.url);
+      unpinAll();
+    },
+    [unpinAll],
+  );
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
   const pressChip = (chip: Chip) => {
     if (chip.mode === "send") return void send(chip.text, { checkinId: chip.checkinId, chip: chip.wire });
@@ -337,7 +529,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     field.current?.focus();
   };
   // The input's text goes as a line of the open write, if there is one; after it the chip row comes back.
+  // With photos waiting, they go up first and the text with them (SP10 7.5).
   const sendInput = () => {
+    if (trayRef.current.length > 0) return void sendPhotos(trayRef.current, false);
     if (!send(text, { chip: writing?.wire })) return;
     setText("");
     setWriting(null);
@@ -443,7 +637,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     el.rows = next;
     setFieldRows(next);
   }, [text]);
-  const ready = canSend && text.trim() !== "";
+  const ready = canSend && !uploading && (text.trim() !== "" || tray.length > 0);
   // The × inside the field: empties it in one press (a one-line write stays open), the focus back in it.
   const clearable = text !== "" && !readOnly && !loading;
   const clearInput = () => {
@@ -489,7 +683,18 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       );
     }
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
-    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={chooseLabel} onOpen={openScreen} onOpenPath={openPath} />);
+    rows.push(
+      <MessageView
+        key={m.id}
+        message={m}
+        parts={parts}
+        readOnly={readOnly || busy}
+        onChoose={chooseLabel}
+        onOpen={openScreen}
+        onOpenPath={openPath}
+        onOpenPhoto={(ids, index) => setViewing({ ids, index })}
+      />,
+    );
     if (i === historyCount - 1) rows.push(elsewhereLines);
     if (conv !== null) {
       prevConv = conv;
@@ -578,7 +783,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         )}
         {failure && (
           <p className={styles.failure}>
-            <span>{copy.chat.notReceived}</span>
+            <span>{FAILURE_TEXT[failure]}</span>
             {failure === "retry" && (
               <button type="button" className={styles.retry} disabled={readOnly} onClick={retry}>
                 {copy.chat.retry}
@@ -589,8 +794,36 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         {online && loadError !== null && <BlockError code={loadError} onRetry={load} />}
       </div>
       {reason && <p className={styles.reason}>{reason}</p>}
-      {!embedded && <QuickChips chips={chips} disabled={!canSend} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
+      {!embedded && <QuickChips chips={chips} disabled={!canSend || uploading} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
+      {!embedded && <PhotoTray photos={tray} onRemove={unpick} disabled={uploading} />}
       <form className={styles.composer} onSubmit={onSubmit}>
+        {!embedded && (
+          // SP10 7.5: left of the field, in the chat sheet only. No camera screen of the app's own
+          // (getUserMedia): the phone's camera opens through the file input.
+          <div className={styles.attach}>
+            <button
+              type="button"
+              className={`${styles.attachButton} pressable`}
+              aria-label={copy.chat.camera}
+              disabled={readOnly || loading}
+              onClick={() => cameraInput.current?.click()}
+            >
+              <Icon name="camera" />
+            </button>
+            <button
+              type="button"
+              className={`${styles.attachButton} pressable`}
+              aria-label={copy.photos.button}
+              aria-disabled={tray.length >= TRAY_MAX ? true : undefined}
+              disabled={readOnly || loading}
+              onClick={pickPhotos}
+            >
+              <Icon name="photo" />
+            </button>
+            <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden tabIndex={-1} onChange={(e) => void onCamera(e)} />
+            <input ref={pickerInput} type="file" accept="image/*" multiple hidden tabIndex={-1} onChange={(e) => void onPicked(e)} />
+          </div>
+        )}
         <div className={styles.field}>
           <textarea
             ref={field}
@@ -635,6 +868,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
           </button>
         )}
       </form>
+      <PhotoViewer
+        photos={viewing?.ids.map((id) => ({ id })) ?? []}
+        index={viewing?.index ?? null}
+        onIndex={(index) => setViewing((v) => (v ? { ...v, index } : v))}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 
