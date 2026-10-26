@@ -172,8 +172,54 @@ describe("Connect with a pairing code", () => {
     expect(localStorage.getItem("mp.tokenKind")).toBe("device");
   });
 
+  it("a /health that refuses the new token revokes that new device and saves nothing", async () => {
+    servePair();
+    const revoked: { id: string; auth: string | null }[] = [];
+    server.use(
+      http.get(`${BASE}/health`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })),
+      http.delete(`${BASE}/devices/:id`, ({ params, request }) => {
+        revoked.push({ id: String(params.id), auth: request.headers.get("Authorization") });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const { router } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    const user = userEvent.setup();
+    await typeAddress(user);
+    await user.type(box(1), "482913");
+    expect(await screen.findByText(copy.errors.block("internal"))).toBeInTheDocument();
+    await waitFor(() => expect(revoked).toEqual([{ id: "7", auth: `Bearer ${DEVICE_TOKEN}` }]));
+    expect(router.push).not.toHaveBeenCalled();
+    expect(localStorage.getItem("mp.token")).toBeNull();
+  });
+
+  it("a new connection revokes the device token it replaces, and goes on when that fails", async () => {
+    for (const answer of [204, 0]) {
+      saveConn({ beUrl: TEST_BE_URL, token: "old-device-token" }, { id: 5 });
+      servePair();
+      const revoked: { id: string; auth: string | null }[] = [];
+      server.use(
+        http.delete(`${BASE}/devices/:id`, ({ params, request }) => {
+          revoked.push({ id: String(params.id), auth: request.headers.get("Authorization") });
+          return answer === 0 ? HttpResponse.error() : new HttpResponse(null, { status: answer });
+        }),
+      );
+      const { router, unmount } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+      const user = userEvent.setup();
+      await typeAddress(user);
+      await user.type(box(1), "482913");
+      await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
+      expect(revoked).toEqual([{ id: "5", auth: "Bearer old-device-token" }]);
+      expect(localStorage.getItem("mp.token")).toBe(DEVICE_TOKEN);
+      expect(localStorage.getItem("mp.deviceId")).toBe("7");
+      unmount();
+      server.resetHandlers();
+      localStorage.clear();
+    }
+  });
+
   it("connecting with a key afterwards drops the device marks", async () => {
     saveConn({ beUrl: TEST_BE_URL, token: DEVICE_TOKEN }, { id: 7 });
+    server.use(http.delete(`${BASE}/devices/:id`, () => new HttpResponse(null, { status: 204 })));
     const { router } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: copy.connect.useKey }));
@@ -221,6 +267,15 @@ describe("Connect from the QR hash (spec 3.3)", () => {
     expect(posted).toEqual([]);
     expect(document.querySelectorAll("input")).toHaveLength(0);
     expect(localStorage.getItem("mp.token")).toBeNull();
+    expect(location.hash).toBe(""); // unread, but not left for tab sync to carry
+  });
+
+  it("the be value may come percent-encoded (as the sheet writes it)", async () => {
+    const { posted } = servePair();
+    window.history.replaceState(null, "", `/connect/#be=${encodeURIComponent(TEST_BE_URL)}&code=482913`);
+    const { router } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
+    expect(posted[0].url).toBe(`${BASE}/pair`);
   });
 });
 

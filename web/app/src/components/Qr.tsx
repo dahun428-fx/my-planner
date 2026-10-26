@@ -17,7 +17,7 @@ export function Qr({ text, label }: { text: string; label: string }) {
   }, [text]);
   const q = 4; // quiet zone, in modules
   return (
-    <svg className={styles.qr} viewBox={`${-q} ${-q} ${size + 2 * q} ${size + 2 * q}`} role="img" aria-label={label} data-qr={text}>
+    <svg className={styles.qr} viewBox={`${-q} ${-q} ${size + 2 * q} ${size + 2 * q}`} role="img" aria-label={label}>
       <path d={d} fill="currentColor" />
     </svg>
   );

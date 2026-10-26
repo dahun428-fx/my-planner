@@ -119,12 +119,47 @@ describe("Connect with push (iPhone home screen app)", () => {
     device(IPHONE_UA, { standalone: true });
     saveConn({ beUrl: TEST_BE_URL, token: "old-token" });
     storePushId(3);
+    servePush(); // posted again under the new key (same endpoint, same id)
     const { router } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
     const user = await fill();
     await user.click(screen.getByRole("button", { name: copy.connect.pushLater }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
     expect(sub.unsubscribe).not.toHaveBeenCalled();
     expect(storedPushId()).toEqual({ beUrl: TEST_BE_URL, id: 3 });
+  });
+
+  // Device pairing spec 5.4, 4.6: revoking the replaced device token turns its subscription off at the
+  // BE, so the browser's subscription is posted again under the new token.
+  it("a same-BE code connect revokes the old device, then posts the subscription with the new token", async () => {
+    const sub = fakeSub();
+    env = installPush({ permission: "granted", existing: sub });
+    device(IPHONE_UA, { standalone: true });
+    saveConn({ beUrl: TEST_BE_URL, token: "old-device-token" }, { id: 5 });
+    storePushId(3);
+    const order: string[] = [];
+    server.use(
+      http.post(`${BASE}/pair`, () => HttpResponse.json({ token: "new-device-token", device: { id: 7, label: "iPhone · 앱", client: "app" } }, { status: 201 })),
+      http.delete(`${BASE}/devices/:id`, ({ params, request }) => {
+        order.push(`delete ${params.id} ${request.headers.get("Authorization")}`);
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post(`${BASE}/push/subscriptions`, async ({ request }) => {
+        const body = (await request.json()) as { endpoint: string };
+        order.push(`subscribe ${body.endpoint} ${request.headers.get("Authorization")}`);
+        return HttpResponse.json({ id: 4 }, { status: 201 });
+      }),
+    );
+    const { router } = renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(copy.connect.urlLabel), TEST_BE_URL);
+    await user.type(screen.getByLabelText(copy.connect.digitLabel(1)), "482913");
+    await user.click(screen.getByRole("button", { name: copy.connect.pushLater }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
+    expect(env.requestPermission).not.toHaveBeenCalled();
+    expect(order).toEqual(["delete 5 Bearer old-device-token", `subscribe ${sub.endpoint} Bearer new-device-token`]);
+    expect(sub.unsubscribe).not.toHaveBeenCalled();
+    expect(storedPushId()).toEqual({ beUrl: TEST_BE_URL, id: 4 });
+    expect(localStorage.getItem("mp.deviceId")).toBe("7");
   });
 
   it("an address that cannot be used does not ask for permission", async () => {

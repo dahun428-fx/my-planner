@@ -550,6 +550,12 @@ h2 {
 .mode-switch {
   margin: 0 0 var(--panel-gap);
 }
+.clear-confirm {
+  margin: 0 0 var(--panel-gap);
+}
+.clear-confirm p {
+  margin: 0;
+}
 
 /* ---- nav on a phone: the links take their own row and scroll inside it, never the page ---- */
 @media (max-width: 480px) {

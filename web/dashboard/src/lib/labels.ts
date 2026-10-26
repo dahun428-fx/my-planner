@@ -163,6 +163,9 @@ export const SETTINGS_TEXT = {
   deviceLabel: (device: string | null) => `${device ?? "기기"} · 대시보드`,
   clear: "연결 지우기",
   clearing: "지우는 중",
+  clearConfirm: "이 기기에서 다시 쓰려면 새 코드가 필요해요.",
+  clearYes: "지우기",
+  clearNo: "그대로 두기",
   cleared: "이 브라우저의 연결을 지웠어요.",
   // DU-04: where the two values come from. The address shape is a pattern, never a real machine name.
   help: {

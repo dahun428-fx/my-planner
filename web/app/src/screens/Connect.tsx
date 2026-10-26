@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
-import { type ApiResult, getHealth, postPair } from "../api/client";
+import { type ApiResult, deleteDevice, getHealth, postPair } from "../api/client";
 import { LargeTitle } from "../components/LargeTitle";
 import { useToast } from "../components/Toast";
 import { useConnection } from "../lib/ConnectionProvider";
@@ -9,6 +9,8 @@ import {
   type Conn,
   defaultBeUrl,
   deviceLabel,
+  loadConn,
+  loadDeviceId,
   normalizeBeUrl,
   normalizeToken,
   parsePairHash,
@@ -17,7 +19,7 @@ import {
 } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { isIos, isStandalone } from "../lib/platform";
-import { askPermission, forgetPushForOtherBe, pushSupport, subscribePush } from "../lib/push";
+import { askPermission, forgetPushForOtherBe, pushSupport, reRegisterPush, subscribePush } from "../lib/push";
 import styles from "./Connect.module.css";
 
 type Line = { tone: "ok" | "bad"; text: string } | null;
@@ -79,7 +81,7 @@ export function Connect() {
 
   // Device checks need the browser, so they run after mount (the page is prerendered).
   // Then the address: the QR's `#be=` beats the build's default (it is the address a connected device
-  // really uses). The hash goes from the address bar at once; an iPhone/iPad Safari tab never reads it
+  // really uses). The hash goes from the address bar at once; an iPhone/iPad Safari tab never uses it
   // (3.3: the code would be spent on a tab whose storage the home screen app cannot see).
   useEffect(() => {
     const ios = isIos();
@@ -87,15 +89,16 @@ export function Connect() {
     setGuideOnly(ios && !standalone);
     setOfferPush(ios && standalone && pushSupport() === "ok");
     setHomeApp(ios && standalone);
-    if (ios && !standalone) return;
     const hash = parsePairHash(window.location.hash);
     if (hash) {
+      // Cleared in a Safari tab too, unread there: tab sync (iCloud) would carry the code on.
       try {
         window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
       } catch {
         // no history API: the hash stays, nothing else changes
       }
     }
+    if (ios && !standalone) return;
     const be = hash?.be ?? defaultBeUrl();
     if (be) {
       setUrl(be);
@@ -134,8 +137,20 @@ export function Connect() {
   // Saves a connection /health accepted, subscribes when asked, and goes today.
   async function finish(conn: Conn, permission: Promise<NotificationPermission> | null, device?: { id: number }) {
     await forgetPushForOtherBe(conn.beUrl);
+    // A device token this connection replaces is revoked at its BE first (spec 5.4), best effort.
+    const old = loadConn();
+    const oldId = loadDeviceId();
+    if (old && oldId !== null && old.token !== conn.token) {
+      try {
+        await deleteDevice(oldId, old);
+      } catch {
+        // any answer: the new connection is saved anyway
+      }
+    }
     saveConn(conn, device);
     saveLastHealthOk(new Date().toISOString());
+    // Same BE: the subscription this browser already has goes to the BE again under the new token.
+    if (!permission) await reRegisterPush();
     // Subscribe when asked; whatever the answer (denied, no push on this BE, a failure), go on:
     // settings shows this device's push state and can try again.
     if (permission) {
@@ -184,6 +199,8 @@ export function Connect() {
       const conn = { beUrl: norm.url, token: r.data.token };
       const h = await getHealth(conn);
       if (h.kind !== "ok") {
+        // Not saved, so the new device would stay on the list with nobody holding its token.
+        void deleteDevice(r.data.device.id, conn).catch(() => undefined);
         setLine({ tone: "bad", text: trouble(h) });
         return;
       }

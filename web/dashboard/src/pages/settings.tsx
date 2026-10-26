@@ -5,7 +5,7 @@ import { type ApiResult, getHealth } from "../lib/api";
 import { useConnection } from "../lib/ConnectionProvider";
 import { type Conn, defaultBeUrl, normalizeBeUrl } from "../lib/connection";
 import { SETTINGS_TEXT as T } from "../lib/labels";
-import { deviceName, type PairHash, postPair, readPairHash } from "../lib/pairing";
+import { deleteDevice, deviceName, type PairHash, postPair, readPairHash } from "../lib/pairing";
 
 // `saved`: the check ran after the connection was kept, so a failed answer says "저장했어요" above it.
 type Outcome = { kind: "error"; text: string } | { kind: "result"; result: ApiResult<unknown>; saved: boolean } | { kind: "cleared" } | null;
@@ -60,6 +60,8 @@ export default function Settings() {
   const [digits, setDigits] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [clearing, setClearing] = useState(false);
+  // A device token is revoked on clear, so "연결 지우기" asks once first; an API token clears at once.
+  const [confirming, setConfirming] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const boxes = useRef<(HTMLInputElement | null)[]>([]);
   const inFlight = useRef(false);
@@ -80,7 +82,7 @@ export default function Settings() {
     if (!ready || started.current) return;
     started.current = true;
     const h = hash.current ?? null;
-    const address = h?.be ?? (conn ? (conn.kind === "api" ? `${conn.beUrl}/api/v1` : conn.beUrl) : (defaultBeUrl() ?? ""));
+    const address = h?.be ?? (conn ? `${conn.beUrl}/api/v1` : (defaultBeUrl() ?? ""));
     setUrl(address);
     setUrlOpen(!normalizeBeUrl(address).ok);
     if (conn?.kind === "api") setToken(conn.token);
@@ -142,6 +144,8 @@ export default function Settings() {
       // off, 429, safe mode: the same notices as a typed token's check, with nothing saved
       if (r.kind !== "ok") return setOutcome({ kind: "result", result: r, saved: false });
       setDigits(EMPTY);
+      // the device token this browser held before is revoked, not left behind in the list (failure ignored)
+      if (conn?.kind === "device" && conn.deviceId !== undefined && conn.deviceId !== r.data.device.id) await deleteDevice(conn, conn.deviceId);
       await check({ beUrl: n.url, token: r.data.token, kind: "device", deviceId: r.data.device.id });
     } finally {
       inFlight.current = false;
@@ -201,6 +205,8 @@ export default function Settings() {
   }
 
   async function onClear() {
+    if (conn?.kind === "device" && !confirming) return setConfirming(true);
+    setConfirming(false);
     setClearing(true);
     try {
       await disconnect();
@@ -323,12 +329,25 @@ export default function Settings() {
           {T.cleared}
         </p>
       )}
-      {ready && conn && (
+      {ready && conn && !confirming && (
         <p className="mode-switch">
           <button type="button" className="text-button" onClick={() => void onClear()} disabled={clearing}>
             {clearing ? T.clearing : T.clear}
           </button>
         </p>
+      )}
+      {ready && conn && confirming && (
+        <div className="clear-confirm" role="group" aria-labelledby="clear-confirm">
+          <p id="clear-confirm">{T.clearConfirm}</p>
+          <p className="url-fixed">
+            <button type="button" className="text-button" onClick={() => void onClear()}>
+              {T.clearYes}
+            </button>
+            <button type="button" className="text-button" onClick={() => setConfirming(false)}>
+              {T.clearNo}
+            </button>
+          </p>
+        </div>
       )}
       <Help />
     </>

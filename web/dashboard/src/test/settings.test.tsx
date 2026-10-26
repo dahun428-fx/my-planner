@@ -362,11 +362,15 @@ describe("settings pairing code", () => {
       ["the BE revokes it", 204],
       ["the BE is off", 0],
       ["the device is already gone", 404],
-    ])("revokes a device token first and forgets it when %s", async (_why, status) => {
+    ])("asks once, then revokes a device token and forgets it when %s", async (_why, status) => {
       localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-device-token", kind: "device", deviceId: 7 }));
       server.use(deleteAnswer(status));
       renderSettings();
       await userEvent.click(await screen.findByRole("button", { name: "연결 지우기" }));
+      expect(screen.getByText("이 기기에서 다시 쓰려면 새 코드가 필요해요.")).toBeInTheDocument();
+      expect(deletes).toEqual([]);
+      expect(saved()).not.toBeNull();
+      await userEvent.click(screen.getByRole("button", { name: "지우기" }));
       expect(await screen.findByText("이 브라우저의 연결을 지웠어요.")).toBeInTheDocument();
       expect(deletes).toEqual([{ path: "/api/v1/devices/7", auth: "Bearer fake-device-token" }]);
       expect(saved()).toBeNull();
@@ -374,12 +378,52 @@ describe("settings pairing code", () => {
       expect(box(1)).toBeInTheDocument();
     });
 
+    it("keeps a device token when the question is turned down", async () => {
+      localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-device-token", kind: "device", deviceId: 7 }));
+      server.use(deleteAnswer(204));
+      renderSettings();
+      await userEvent.click(await screen.findByRole("button", { name: "연결 지우기" }));
+      await userEvent.click(screen.getByRole("button", { name: "그대로 두기" }));
+      expect(screen.queryByText("이 기기에서 다시 쓰려면 새 코드가 필요해요.")).toBeNull();
+      expect(screen.getByRole("button", { name: "연결 지우기" })).toBeInTheDocument();
+      expect(deletes).toEqual([]);
+      expect(saved()).toEqual({ beUrl: ORIGIN, token: "fake-device-token", kind: "device", deviceId: 7 });
+    });
+
+    it("revokes the device token a new code replaces, and still connects when that fails", async () => {
+      localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "old-device-token", kind: "device", deviceId: 3 }));
+      server.use(deleteAnswer(0), okPair());
+      renderSettings();
+      expect(await screen.findByText(ORIGIN)).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(box(1));
+      await user.paste("482913");
+      await waitFor(() => expect(router.push).toHaveBeenCalledWith("/"));
+      expect(deletes).toEqual([{ path: "/api/v1/devices/3", auth: "Bearer old-device-token" }]);
+      expect(saved()).toEqual({ beUrl: ORIGIN, token: "fake-device-token", kind: "device", deviceId: 7 });
+    });
+
+    it("leaves a replaced device token alone when the new code is wrong", async () => {
+      localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "old-device-token", kind: "device", deviceId: 3 }));
+      server.use(deleteAnswer(204), pairAnswers.badCode());
+      renderSettings();
+      expect(await screen.findByText(ORIGIN)).toBeInTheDocument();
+      const user = userEvent.setup();
+      await user.click(box(1));
+      await user.paste("482913");
+      expect(await screen.findByRole("alert")).toHaveTextContent("코드가 맞지 않거나");
+      expect(deletes).toEqual([]);
+      expect(saved().token).toBe("old-device-token");
+    });
+
     it("only forgets an API token", async () => {
       localStorage.setItem("mp.connection", JSON.stringify({ beUrl: ORIGIN, token: "fake-token-abc" }));
       server.use(deleteAnswer(204));
       renderSettings();
       await userEvent.click(await screen.findByRole("button", { name: "연결 지우기" }));
+      // no question: an API token can be typed in again
       expect(await screen.findByText("이 브라우저의 연결을 지웠어요.")).toBeInTheDocument();
+      expect(screen.queryByText("이 기기에서 다시 쓰려면 새 코드가 필요해요.")).toBeNull();
       expect(deletes).toEqual([]);
       expect(saved()).toBeNull();
     });

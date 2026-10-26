@@ -94,6 +94,10 @@ export function PairSheet({ open, onClose, beUrl, onUsed, pollMs = POLL_MS }: Pa
           setPhase({ kind: "expired" });
           return;
         }
+      } else if (r.kind === "unauthorized" || r.kind === "rate_limited" || r.kind === "safe_mode") {
+        // No more asking: each 401 counts in the BE's AuthLimiter, and these do not pass on their own.
+        setPhase({ kind: "failed", code: r.kind });
+        return;
       }
       timer = setTimeout(() => void poll(), pollMs);
     };
@@ -108,7 +112,7 @@ export function PairSheet({ open, onClose, beUrl, onUsed, pollMs = POLL_MS }: Pa
   const left = waiting ? Date.parse(waiting.expires_at) - now : 0;
   const ranOut = waiting !== null && left <= 0;
   const appUrl = typeof window === "undefined" ? "" : window.location.origin;
-  const hash = (code: string) => `#be=${beUrl}&code=${code}`;
+  const hash = (code: string) => `#be=${encodeURIComponent(beUrl)}&code=${code}`;
   const qrText = (code: string) =>
     qrFor === "dashboard" && dashboard ? `${dashboard}/settings/${hash(code)}` : `${appUrl}/connect/${hash(code)}`;
 

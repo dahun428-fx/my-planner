@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,8 +13,27 @@ import DevicesPage from "../pages/devices";
 import { Devices } from "./Devices";
 
 vi.mock("../lib/nav", () => ({ hardReplace: vi.fn() }));
+// The real QR library, with the text each QR was made from noted (the page itself keeps it nowhere).
+const qrTexts = vi.hoisted(() => [] as string[]);
+vi.mock("qrcode-generator", async (importOriginal) => {
+  const real = ((await importOriginal()) as { default: (t: number, e: string) => { addData(d: string, m?: string): void } }).default;
+  return {
+    default: (t: number, e: string) => {
+      const qr = real(t, e);
+      const add = qr.addData.bind(qr);
+      qr.addData = (d: string, m?: string) => {
+        qrTexts.push(d);
+        add(d, m);
+      };
+      return qr;
+    },
+  };
+});
+const lastQr = () => qrTexts[qrTexts.length - 1];
+const BE_ENC = encodeURIComponent(TEST_BE_URL);
 
 afterEach(() => {
+  qrTexts.length = 0;
   vi.mocked(hardReplace).mockClear();
   vi.unstubAllEnvs();
 });
@@ -140,7 +159,8 @@ describe("New device sheet", () => {
     expect(within(sheet).queryByText(copy.devices.dashboardAddress)).toBeNull();
     expect(within(sheet).queryByRole("radiogroup")).toBeNull();
     const qr = within(sheet).getByRole("img", { name: copy.devices.qrLabel });
-    expect(qr.getAttribute("data-qr")).toBe(`${window.location.origin}/connect/#be=${TEST_BE_URL}&code=482913`);
+    expect(qr.hasAttribute("data-qr")).toBe(false);
+    expect(lastQr()).toBe(`${window.location.origin}/connect/#be=${BE_ENC}&code=482913`);
     expect(qr.querySelector("path")?.getAttribute("d")).toMatch(/^M\d/);
   });
 
@@ -151,9 +171,8 @@ describe("New device sheet", () => {
     expect(within(sheet).getByText(copy.devices.dashboardAddress)).toBeInTheDocument();
     expect(within(sheet).getByText("dash.example.app")).toBeInTheDocument();
     await user.click(within(sheet).getByRole("radio", { name: copy.devices.qrDashboard }));
-    expect(within(sheet).getByRole("img", { name: copy.devices.qrLabel }).getAttribute("data-qr")).toBe(
-      `https://dash.example.app/settings/#be=${TEST_BE_URL}&code=482913`,
-    );
+    expect(within(sheet).getByRole("img", { name: copy.devices.qrLabel })).toBeInTheDocument();
+    expect(lastQr()).toBe(`https://dash.example.app/settings/#be=${BE_ENC}&code=482913`);
   });
 
   it("used: says which device and reads the list again", async () => {
@@ -169,6 +188,29 @@ describe("New device sheet", () => {
     await user.click(within(sheet).getByRole("button", { name: copy.devices.makeAgain }));
     expect(await within(sheet).findByText("105 377")).toBeInTheDocument();
     expect(calls.made).toBe(2);
+  });
+
+  it("stops asking on 401, 429 or safe mode and says so", async () => {
+    for (const answer of [
+      HttpResponse.json({ error: { code: "unauthorized", message: "x" } }, { status: 401 }),
+      HttpResponse.json({ error: { code: "too_many_auth_failures", message: "x" } }, { status: 429 }),
+      HttpResponse.json({ error: { code: "safe_mode", message: "x" } }, { status: 503 }),
+    ]) {
+      const { sheet, user } = await openSheet();
+      let polls = 0;
+      server.use(
+        http.get(`${BASE}/devices/pair`, () => {
+          polls += 1;
+          return answer.clone();
+        }),
+      );
+      expect(await within(sheet).findByText(/^코드를 만들지 못했어요/)).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 120));
+      expect(polls).toBe(1);
+      await user.keyboard("{Escape}");
+      cleanup();
+      server.resetHandlers();
+    }
   });
 
   it("코드 다시 만들기 replaces the code; closing stops asking", async () => {
