@@ -247,3 +247,111 @@ async def test_stop_row_without_slot_finishes_it(tmp_path):
     assert stored.body["reply_text"] == STOPPED_REPLY and pending == 0
     assert _text(parse_sse(replay)) == STOPPED_REPLY
     assert env.brain.calls == []
+
+
+async def test_stop_finish_error_keeps_the_worker(tmp_path, caplog):
+    """마무리(`_finish_stopped`)가 실패해도 작업자는 산다: 스트림은 일반 문구로 닫히고 다음 메시지에 답한다."""
+    from my_planner.harness.dispatcher import FALLBACK_REPLY
+
+    gate = asyncio.Event()
+    script = [FakeTurn([], "끝나지 않을 답", gate=gate), FakeTurn([], "다음 답")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        caplog.set_level(logging.INFO)
+        d = env.parts.dispatcher
+
+        async def broken(slot, stop):
+            raise RuntimeError("boom")
+
+        d._finish_stopped = broken
+        task = await _open_chat(env, "안녕", "cm-broken")
+        await _until(lambda: env.brain.calls)
+        await _stop(env, "cm-broken")
+        raw = await asyncio.wait_for(task, 5)
+        await env.drain()
+        _, after = await env.chat("다음")
+        worker_alive = d._worker is not None and not d._worker.done()
+
+    assert _text(parse_sse(raw)) == FALLBACK_REPLY
+    assert _text(parse_sse(after)) == "다음 답"
+    assert worker_alive
+    assert any(r.getMessage() == "message_stop_error" for r in caplog.records)
+
+
+async def test_stop_waiting_db_failure_leaves_the_slot(tmp_path):
+    """기다리는 메시지의 DB 마무리가 실패하면 자리를 그대로 두고 올린다: 작업자가 보통처럼 답한다."""
+    import sqlite3
+
+    import pytest
+
+    gate = asyncio.Event()
+    script = [FakeTurn([], "먼저 온 답", gate=gate), FakeTurn([], "기다린 답")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        d = env.parts.dispatcher
+        first = await _open_chat(env, "먼저", "cm-a")
+        await _until(lambda: env.brain.calls)
+        waiting = await _open_chat(env, "기다리는 것", "cm-b")
+        await _until(lambda: d.has_inflight("cm-b"))
+        real = d.state.finish_app_inbound
+
+        def fail(*a, **kw):
+            raise sqlite3.OperationalError("database is locked")
+
+        d.state.finish_app_inbound = fail
+        with pytest.raises(sqlite3.OperationalError):
+            d.stop_message("cm-b")
+        d.state.finish_app_inbound = real
+        still = d.has_inflight("cm-b")
+        dropped = set(d._dropped)
+        gate.set()
+        await first
+        raw = await waiting
+        await env.drain()
+        lines = env.parts.transcripts.messages(env.parts.idempotency.get("cm-b").conversation_id)
+
+    assert still and dropped == set()
+    assert _text(parse_sse(raw)) == "기다린 답"
+    assert STOPPED_REPLY not in [m.text for m in lines]  # 실패한 멈춤은 원문 기록에 남지 않는다
+
+
+async def test_stop_after_the_last_brain_call_is_done(tmp_path):
+    """마지막 두뇌 호출 뒤(그 답으로 마치는 중)의 멈추기는 `done`이고 답은 그대로 간다."""
+    gate = asyncio.Event()
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "진짜 답", gate=gate)]) as env:
+        d = env.parts.dispatcher
+        task = await _open_chat(env, "안녕", "cm-late")
+        await _until(lambda: env.brain.calls)
+        d._cur.past_stop = True  # 마지막 호출이 막 끝난 자리(실제로는 그 사이에 기다림이 없어 시험으로만 만든다)
+        got = await _stop(env, "cm-late")
+        gate.set()
+        raw = await task
+        await env.drain()
+
+    assert got == (200, {"state": "done"})
+    assert _text(parse_sse(raw)) == "진짜 답"
+
+
+async def test_stop_keeps_the_rate_limit_of_a_call_that_just_ended(tmp_path):
+    """끊기 전에 사용 한도로 끝난 호출: 멈춰도 `limited_until`을 적고, 세션은 비운다."""
+    from datetime import timedelta
+
+    from my_planner.harness.brain import BrainResult
+    from my_planner.store.repos.state import LIMITED_UNTIL_KEY
+
+    until = START + timedelta(hours=2)
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "안녕하세요.", session_id="s1")]) as env:
+        d = env.parts.dispatcher
+        _, first = await env.chat("안녕")
+        conv_id = parse_sse(first)[0]["messageMetadata"]["conversation_id"]
+
+        async def limited_run(prompt, *, session_id, run_ctx, **kw):
+            d.stop_message("cm-limit")  # 호출이 돌아오기 직전에 멈추기가 왔다
+            return BrainResult(text="", session_id=session_id, turns=0, status="rate_limited", retry_at=until)
+
+        env.brain.run = limited_run
+        _, raw = await env.chat("다시", client_msg_id="cm-limit", conversation_id=conv_id)
+        limited = d.state.get(LIMITED_UNTIL_KEY)
+        session = env.conn.execute("SELECT session_id FROM conversations WHERE id = ?", (conv_id,)).fetchone()[0]
+
+    assert _text(parse_sse(raw)) == STOPPED_REPLY
+    assert limited is not None
+    assert session is None

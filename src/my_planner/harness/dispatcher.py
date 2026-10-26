@@ -194,6 +194,8 @@ class _AppSlot:
     # 멈추기(`POST /chat/stop`): 멈춰 달라고 했다. 처리 중이면 멈출 수 있는 구간(`_stoppable`)의 취소 범위
     stopped: bool = False
     scope: anyio.CancelScope | None = None
+    brain_called: bool = False  # 이 메시지로 두뇌를 한 번이라도 불렀다(세션에 반쯤 쓴 차례가 남을 수 있다)
+    past_stop: bool = False  # 마지막 두뇌 호출 뒤: 멈출 곳이 더 없다(멈추기는 `"done"`)
 
     @property
     def inbound_id(self) -> int:
@@ -212,10 +214,17 @@ class _AppSlot:
         return app_secretary_message_id(cid, self.inbound_id) if cid is not None else None
 
 
+@dataclass
+class _StopBox:
+    """멈출 수 있는 구간이 낸 두뇌 결과(구간 안에서 적는다). 멈춘 뒤에도 사용 한도는 기록한다."""
+
+    result: BrainResult | None = None
+
+
 class _Stopped(Exception):
     """처리 중인 앱 답을 멈췄다(`POST /chat/stop`). 그때까지의 도구 맥락을 싣고 `_process`까지 올라간다.
 
-    `interrupted`: 두뇌 호출 도중에 끊었다(세션에 반쯤 쓴 차례가 남았을 수 있다).
+    `interrupted`: 이 메시지로 두뇌를 부른 뒤 멈췄다(세션에 반쯤 쓴 차례가 남았을 수 있다).
     """
 
     def __init__(self, ctx: RunContext, gain: XpGain, conversation_id: int, *, interrupted: bool) -> None:
@@ -706,12 +715,15 @@ class Dispatcher:
           적은 뒤 붙은 스트림을 그 답과 `finish`로 닫는다. `"stopped"`.
         - 처리 중이다: 멈출 수 있는 구간(두뇌 호출, 재시도 사이 기다림)을 취소한다. 마무리(이미 한 쓰기의 확인 문구,
           원문 기록, 재생할 답)는 작업자가 `_finish_stopped`로 한다. `"stopped"`.
-        - 이미 끝났다(재생할 답이 있다): 아무것도 하지 않는다. `"done"`. 모르는 id: `"unknown"`.
+        - 마지막 두뇌 호출이 끝나 그 답으로 마치는 중이거나, 이미 끝났다(재생할 답이 있다): 아무것도 하지 않는다.
+          `"done"`. 모르는 id: `"unknown"`.
         """
         slot = self._app.get(client_msg_id)
         if slot is not None and not slot.writer.finished:
-            slot.stopped = True
             if slot is self._cur:
+                if slot.past_stop:  # 마지막 두뇌 호출이 끝났다: 그 답으로 곧 마친다
+                    return "done"
+                slot.stopped = True
                 if slot.scope is not None:
                     slot.scope.cancel()
             else:
@@ -731,16 +743,20 @@ class Dispatcher:
         return "unknown"
 
     def _stop_waiting(self, slot: _AppSlot) -> None:
-        """큐에서 기다리던 앱 메시지를 두뇌 없이 멈춘 답으로 마친다. 큐의 항목은 꺼낼 때 버린다(`_dropped`)."""
+        """큐에서 기다리던 앱 메시지를 두뇌 없이 멈춘 답으로 마친다. 큐의 항목은 꺼낼 때 버린다(`_dropped`).
+
+        DB에 먼저 마친다. 그게 안 되면(예외) 자리를 그대로 두고 올린다: 작업자가 보통처럼 처리한다.
+        """
         m = slot.inbound
-        self._dropped.add(slot.inbound_id)
-        self._app.pop(_app_key(m), None)
         row = self.state.get_pending_inbound(slot.inbound_id)
         cid = self._finish_unstarted(
             slot.inbound_id, m.client_msg_id, slot.conversation_id, m.text, m.at,
             user_logged=row is not None and row.user_logged, message_id=slot.secretary_id(),
             id_conversation=slot.id_conversation, user_message_id=m.message_id,
         )
+        self._dropped.add(slot.inbound_id)
+        self._app.pop(_app_key(m), None)
+        slot.stopped = True
         slot.done = True
         slot.writer.metadata = self.chat_metadata(cid)
         write_reply(slot.writer, STOPPED_REPLY)  # 붙은 스트림 모두(M8 덧붙은 싱크 포함)에 답과 `finish`
@@ -751,8 +767,12 @@ class Dispatcher:
         user_message_id: str | None = None,
     ) -> int | None:
         """두뇌가 아직 보지 않은 앱 메시지를 멈춘 답으로 마친다: 원문 기록 두 줄(보통 답처럼 그 대화에, `@app`),
-        `api_idempotency` + 행 삭제(M5). 대화를 돌려준다."""
+        `api_idempotency` + 행 삭제(M5)를 먼저, 그다음 원문 기록. 대화를 돌려준다."""
         cid = conversation_id
+        self.state.finish_app_inbound(
+            inbound_id, client_msg_id=client_msg_id, conversation_id=cid, reply_text=STOPPED_REPLY,
+            message_id=message_id,
+        )
         if cid is not None and not self._deleted(cid):
             id_conv = id_conversation if id_conversation is not None else cid
             try:
@@ -766,40 +786,44 @@ class Dispatcher:
                 )
             except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
                 log.warning("reply_transcript_error", extra={"error_type": type(e).__name__})
-        self.state.finish_app_inbound(
-            inbound_id, client_msg_id=client_msg_id, conversation_id=cid, reply_text=STOPPED_REPLY,
-            message_id=message_id,
-        )
         log.info("message_stopped", extra={"update_ids": [inbound_id], "conversation_id": cid, "running": False})
         return cid
 
     @contextmanager
-    def _stoppable(self, ctx: RunContext, gain: XpGain, conversation_id: int, *, brain: bool) -> Iterator[None]:
+    def _stoppable(self, ctx: RunContext, gain: XpGain, conversation_id: int, *, brain: bool) -> Iterator[_StopBox]:
         """앱 답에서 멈출 수 있는 구간(두뇌 호출, 재시도 사이 기다림). 멈춰 달라고 했으면 `_Stopped`를 올린다.
 
         anyio 취소 범위로 끊는다: 두뇌 호출 시간 상한(`_call_brain`의 `fail_after`)과 같은 길이라, SDK가 CLI 자식을
         정리하는 차폐 구간이 끝까지 돌고 '입력 중' 작업도 `finally`에서 거둔다. 텔레그램 메시지에는 아무것도 하지 않는다.
+
+        두뇌를 한 번이라도 부른 뒤 멈췄으면 `interrupted`(세션을 비운다). 호출이 끊기기 전에 사용 한도로 끝났으면
+        그 재개 시각은 멈춰도 기록한다(로그인·결제 상태는 `_call_brain`이 이미 적었다). 호출 구간은 결과를 `box`에 적는다.
         """
+        box = _StopBox()
         slot = self._cur
         if slot is None:
-            yield
+            yield box
             return
         if slot.stopped:  # 앞 구간(요약 호출 등) 사이에 멈췄다
-            raise _Stopped(ctx, gain, conversation_id, interrupted=False)
+            raise _Stopped(ctx, gain, conversation_id, interrupted=slot.brain_called)
+        if brain:
+            slot.brain_called = True
         with anyio.CancelScope() as scope:
             slot.scope = scope
             try:
-                yield
+                yield box
             finally:
                 slot.scope = None
         if slot.stopped:  # 끊었거나, 끊기 전에 막 끝났다: 멈춘 것으로 본다(앱에 "stopped"라고 했다)
-            raise _Stopped(ctx, gain, conversation_id, interrupted=brain and scope.cancelled_caught)
+            if box.result is not None and box.result.status == "rate_limited":
+                self._set_limited(box.result.retry_at)
+            raise _Stopped(ctx, gain, conversation_id, interrupted=slot.brain_called)
 
     async def _finish_stopped(self, slot: _AppSlot, stop: _Stopped) -> None:
         """처리 중에 멈춘 앱 답을 마친다. 이미 한 쓰기는 그대로 둔다(활동 기록에 있고 되돌릴 수 있다).
 
         보통 답과 같은 길이다: 이미 나간 글 + `STOPPED_REPLY`를 재생할 답으로 적고(확인 문구는 `data-activity`),
-        원문 기록에 남긴다. 두뇌 호출을 도중에 끊었으면 그 대화의 세션을 비운다: 세션 파일에 반쯤 쓴 차례가 남았을
+        원문 기록에 남긴다. 두뇌를 부른 뒤 멈췄으면 그 대화의 세션을 비운다: 세션 파일에 반쯤 쓴 차례가 남았을
         수 있어, 다음 메시지는 새 세션 + 이 대화의 지난 내용(요약 또는 최근 원문)으로 시작한다.
         """
         ctx, cid = stop.ctx, stop.conversation_id
@@ -961,7 +985,10 @@ class Dispatcher:
             await self._handle_messages(batch)
         except _Stopped as stop:
             assert slot is not None  # 앱 메시지에서만 난다
-            await self._finish_stopped(slot, stop)
+            try:
+                await self._finish_stopped(slot, stop)
+            except Exception:  # 작업자가 죽지 않게. 스트림은 아래 `_release_app`이 일반 문구로 닫는다
+                log.exception("message_stop_error", extra={"update_ids": [slot.inbound_id]})
         except Exception:
             ids = [i for m in batch for i in m.update_ids]
             log.exception("message_handling_error", extra={"update_ids": ids})
@@ -1121,8 +1148,10 @@ class Dispatcher:
                 if not thinking:
                     app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
                 app.writer.start_step()
-            with self._stoppable(run_ctx, answer_xp, conv.id, brain=True):
-                result = await self._call_brain(prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork)
+            with self._stoppable(run_ctx, answer_xp, conv.id, brain=True) as box:
+                result = box.result = await self._call_brain(
+                    prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork,
+                )
             # 가르기가 답을 냈는데 원래 세션 id를 그대로 돌려줬다: 갈라지지 않고 원래 세션을 이었다. 가르기 실패로
             # 본다(그 세션은 쓰지 않고, 다음 메시지부터 대체 경로). 바로 대체 경로로 다시 부르는 것은 도구가 쓰지
             # 않았고 글이 아직 클라이언트에 나가지 않았을 때만이다(답이 둘이 되거나 같은 쓰기를 두 번 하지 않게).
@@ -1153,8 +1182,8 @@ class Dispatcher:
                 if fork:
                     log.warning("fork_session_failed", extra={"conversation_id": conv.id})
                 run_ctx = self._message_ctx(conv.id, lead, chip_of)
-                with self._stoppable(run_ctx, answer_xp, conv.id, brain=True):
-                    result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
+                with self._stoppable(run_ctx, answer_xp, conv.id, brain=True) as box:
+                    result = box.result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
             capped = False
             for delay in MESSAGE_RETRY_DELAYS_S:
@@ -1168,11 +1197,13 @@ class Dispatcher:
                 with self._stoppable(run_ctx, answer_xp, conv.id, brain=False):
                     await self._sleep(delay)
                 # run_ctx는 그대로 쓴다(여기까지 온 호출들은 도구 이벤트가 없다)
-                with self._stoppable(run_ctx, answer_xp, conv.id, brain=True):
-                    result = await self._call_brain(
+                with self._stoppable(run_ctx, answer_xp, conv.id, brain=True) as box:
+                    result = box.result = await self._call_brain(
                         prompt, session_id=None if fell_back else session_id, run_ctx=run_ctx,
                         fork_session=fork and not fell_back,
                     )
+            if app is not None:
+                app.past_stop = True  # 마지막 두뇌 호출 뒤: 여기부터 멈추기는 "done"
             if fork and not fell_back and self._not_forked(fork, session_id, result):
                 self._mark_no_fork(conv.id)  # 재시도가 낸 답도 갈라지지 않았다
             if fork and not fell_back:
