@@ -15,6 +15,7 @@ export function More({ hasStatus = HAS_STATUS_PAGE }: { hasStatus?: boolean }) {
     { title: copy.more.habits, href: "/habits/" },
     ...(hasStatus ? [{ title: copy.more.status, href: "/status/" }] : []),
     { title: copy.more.connect, href: "/connect/" },
+    { title: copy.more.devices, href: "/devices/" }, // device pairing spec 5.1
   ];
   return (
     <main className={page.main}>

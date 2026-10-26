@@ -16,7 +16,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +33,16 @@ from my_planner.api.calendar import (
 )
 from my_planner.api.chat import delete_conversation, post_chat, post_new_conversation
 from my_planner.api.cors import CorsPolicy, cors_middleware
+from my_planner.api.devices import (
+    DeviceTokens,
+    PairCodes,
+    delete_device,
+    get_devices,
+    get_pair_status,
+    post_pair,
+    post_pair_code,
+    touch_device,
+)
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
 from my_planner.api.push import (
@@ -83,6 +93,8 @@ log = logging.getLogger(__name__)
 
 API_PREFIX = "/api/v1"
 HEALTH_PATH = f"{API_PREFIX}/health"
+PAIR_PATH = f"{API_PREFIX}/pair"  # Bearer 없이 연결 코드로 인증한다(기기 연결 스펙 4.4)
+API_TOKEN_ONLY = frozenset({f"{API_PREFIX}/internal/notify"})  # 기기 토큰을 받지 않는 경로(4.4)
 UNMATCHED_ROUTE = "(unmatched)"
 MASKED_QUERY = "?key=***"
 
@@ -103,10 +115,16 @@ class ApiDeps:
     safe_mode: bool = False
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep  # `/chat`의 15초 `: ping`(시험이 바꾼다)
     body_token: str | None = None  # `POST /body`만 받는 토큰(SP8 7.2). None이면 그 경로를 등록하지 않는다
+    devices: DeviceTokens = field(default_factory=DeviceTokens)  # 기기 토큰 사전(기기 연결 스펙 4.4). `build_app`이 채운다
+    pair_codes: PairCodes = field(init=False)  # 연결 코드(4.3). 메모리에만
+
+    def __post_init__(self) -> None:
+        self.pair_codes = PairCodes(self.clock)
 
 
 DEPS_KEY = web.AppKey("deps", ApiDeps)
 LIMITER_KEY = web.AppKey("auth_limiter", AuthLimiter)
+DEVICE_ID_KEY = web.RequestKey("device_id", int)  # 기기 토큰으로 온 요청의 기기(4.4)
 
 
 def route_template(request: web.Request) -> str:
@@ -163,15 +181,31 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
         return blocked
     if route_template(request) == CALENDAR_PATH:
         return await handler(request)  # 캘린더 구독: Bearer 대신 처리기가 `?key=`를 비교한다(SP9 5.7). 위에서 429는 거른 뒤
+    route = route_template(request)
+    if route == PAIR_PATH and request.method == "POST":
+        return await handler(request)  # 연결 코드가 인증이다(기기 연결 스펙 4.4). 틀린 코드는 처리기가 실패로 센다
+    header = request.headers.get("Authorization")
     # 경로 틀로 기대 토큰을 고른다(SP8 7.2): `/body`는 `BODY_TOKEN`만, 그 밖은 `API_TOKEN`만. 다른 쪽 토큰은 맞아도 401.
     # `/body`가 등록되지 않았으면(토큰 없음) 틀이 `(unmatched)`라 `API_TOKEN`을 기대하고, 지나면 라우팅이 404다
-    expected = (deps.body_token or "") if route_template(request) == BODY_PATH else deps.token
-    if not bearer_ok(request.headers.get("Authorization"), expected):
-        if limiter.record_failure():
-            log.warning("api_auth_blocked")
-        log.info("api_auth_failed", extra={"route": route_template(request)})
-        return error_response(401, "unauthorized", "인증이 필요해요.")  # 이유를 더 적지 않는다
-    return await handler(request)
+    expected = (deps.body_token or "") if route == BODY_PATH else deps.token
+    if bearer_ok(header, expected):
+        return await handler(request)
+    # 기기 토큰(4.4): `/body`, `/internal/notify`, 캘린더(위에서 넘김)는 받지 않는다
+    device_id = None
+    if route != BODY_PATH and route not in API_TOKEN_ONLY and header and header.startswith("Bearer "):
+        device_id = deps.devices.lookup(header[len("Bearer "):])
+    if device_id is not None:
+        request[DEVICE_ID_KEY] = device_id
+        resp = await handler(request)
+        touch_device(deps, device_id)
+        return resp
+    # 안전 모드에는 기기 사전이 비어 있다: `/health`는 Bearer 형식이면 값을 보지 않고 실패로 세지 않는다(4.4)
+    if deps.safe_mode and request.path == HEALTH_PATH and header and header.startswith("Bearer ") and header[7:]:
+        return await handler(request)
+    if limiter.record_failure():
+        log.warning("api_auth_blocked")
+    log.info("api_auth_failed", extra={"route": route})
+    return error_response(401, "unauthorized", "인증이 필요해요.")  # 이유를 더 적지 않는다
 
 
 @web.middleware
@@ -242,6 +276,7 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/settings/checkin-times", get_checkin_times),
     ("/settings/digests", get_digest_settings),
     ("/settings/calendar", get_calendar_settings),
+    ("/devices", get_devices),  # 기기 연결 스펙 4.5
 )
 
 
@@ -264,6 +299,8 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
     ("/settings/calendar", post_calendar_settings),
     ("/client-errors", post_client_error),
     ("/internal/notify", post_internal_notify),
+    ("/devices/pair", post_pair_code),  # 기기 연결 스펙 4.5
+    ("/pair", post_pair),
 )
 
 
@@ -299,6 +336,14 @@ def build_app(deps: ApiDeps) -> web.Application:
     app.router.add_put(API_PREFIX + "/settings/digests", write_handler(put_digest_settings))
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
     app.router.add_delete(API_PREFIX + "/conversations/{id}", write_handler(delete_conversation))  # SP9 7.7
+    app.router.add_get(API_PREFIX + "/devices/pair", write_handler(get_pair_status))  # 메모리만 읽는다
+    app.router.add_delete(API_PREFIX + "/devices/{id}", write_handler(delete_device))
+    if deps.read_conn is not None and not deps.safe_mode:  # 끊지 않은 기기 토큰(4.4)
+        conn = deps.read_conn()
+        try:
+            deps.devices.load(conn)
+        finally:
+            conn.close()
     if body_route_open(deps):  # 아이폰 단축어(SP8 7.2). 토큰이 없으면 경로도 없다
         app.router.add_post(BODY_PATH, write_handler(post_body))
     return app

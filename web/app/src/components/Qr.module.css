@@ -1,0 +1,11 @@
+/* Dark modules on a light ground in both themes: phone cameras read that best. */
+.qr {
+  display: block;
+  width: 12rem;
+  height: 12rem;
+  margin: 0 auto;
+  border-radius: var(--radius-field);
+  background: #fff;
+  color: #000;
+  shape-rendering: crispEdges;
+}

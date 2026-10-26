@@ -51,8 +51,7 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
       parsed = false;
     }
     if (!res.ok) {
-      const e = isObj(body) && isObj(body.error) ? body.error : null;
-      const code = e && typeof e.code === "string" && /^[a-z0-9_]{1,40}$/.test(e.code) ? e.code : `http_${res.status}`;
+      const code = errorCode(body, res.status);
       if (res.status === 503 && code === "safe_mode") return { kind: "safe_mode" };
       return { kind: "broken", code };
     }
@@ -62,6 +61,12 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
     clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+/** The `error.code` of a BE error body (a short snake_case word), else `http_<status>`. */
+export function errorCode(body: unknown, status: number): string {
+  const e = isObj(body) && isObj(body.error) ? body.error : null;
+  return e && typeof e.code === "string" && /^[a-z0-9_]{1,40}$/.test(e.code) ? e.code : `http_${status}`;
 }
 
 /** `/health` answers 200 with Health, or with `{status: "safe_mode"}` in DB safe mode (6.3.1). */

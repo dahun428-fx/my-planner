@@ -149,6 +149,24 @@ export const SETTINGS_TEXT = {
   },
   tokenMissing: "토큰을 넣어 주세요.",
   tokenInvalid: "토큰에는 영문, 숫자, 기호만 들어가요.",
+  // Device pairing spec 5.3, 6: the default way in is the six digit code made on a connected device.
+  code: "연결 코드",
+  codeLead: "연결된 기기의 '새 기기 연결'에서 나온 숫자 6자리를 넣어 주세요.",
+  codeDigit: (n: number) => `연결 코드 ${n}번째 숫자`,
+  connecting: "연결 중",
+  changeUrl: "주소 바꾸기",
+  useToken: "토큰으로 연결",
+  useCode: "연결 코드로 연결",
+  badCode: "코드가 맞지 않거나 만료됐어요. 연결된 기기에서 새 코드를 만들어 주세요.",
+  oldBe: "BE를 먼저 업데이트해야 해요. 지금은 토큰으로 연결해 주세요.",
+  // Spec 6.2: the name the connected devices list shows for this browser.
+  deviceLabel: (device: string | null) => `${device ?? "기기"} · 대시보드`,
+  clear: "연결 지우기",
+  clearing: "지우는 중",
+  clearConfirm: "이 기기에서 다시 쓰려면 새 코드가 필요해요.",
+  clearYes: "지우기",
+  clearNo: "그대로 두기",
+  cleared: "이 브라우저의 연결을 지웠어요.",
   // DU-04: where the two values come from. The address shape is a pattern, never a real machine name.
   help: {
     summary: "주소와 토큰은 어디서 찾나요?",

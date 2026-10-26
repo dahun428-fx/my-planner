@@ -151,7 +151,8 @@
                 "start_not_in_weekdays",
                 "too_many_events",
                 "range_too_long",
-                "digest_time_invalid"
+                "digest_time_invalid",
+                "bad_code"
               ],
               "title": "Code",
               "type": "string"
@@ -2483,6 +2484,76 @@
       "title": "CurveHistory",
       "type": "object"
     },
+    "DeviceList": {
+      "$defs": {
+        "DeviceItem": {
+          "additionalProperties": false,
+          "properties": {
+            "client": {
+              "enum": [
+                "app",
+                "dashboard"
+              ],
+              "title": "Client",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "this_device": {
+              "title": "This Device",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "client",
+            "created_at",
+            "last_used_at",
+            "this_device"
+          ],
+          "title": "DeviceItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /devices`: 끊지 않은 기기, 만든 순서. API 토큰은 나오지 않는다.",
+      "properties": {
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/DeviceItem"
+          },
+          "title": "Devices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "devices"
+      ],
+      "title": "DeviceList",
+      "type": "object"
+    },
     "DigestSettingPutBody": {
       "additionalProperties": false,
       "description": "`PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면\n`422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다).",
@@ -2899,7 +2970,8 @@
                 "start_not_in_weekdays",
                 "too_many_events",
                 "range_too_long",
-                "digest_time_invalid"
+                "digest_time_invalid",
+                "bad_code"
               ],
               "title": "Code",
               "type": "string"
@@ -4634,6 +4706,161 @@
         "push_subscriptions"
       ],
       "title": "NotifySettings",
+      "type": "object"
+    },
+    "PairBody": {
+      "additionalProperties": false,
+      "description": "`POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).",
+      "properties": {
+        "client": {
+          "enum": [
+            "app",
+            "dashboard"
+          ],
+          "title": "Client",
+          "type": "string"
+        },
+        "code": {
+          "pattern": "^[0-9]{6}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "client",
+        "label"
+      ],
+      "title": "PairBody",
+      "type": "object"
+    },
+    "PairCreated": {
+      "additionalProperties": false,
+      "description": "`POST /devices/pair` `201`: 연결 코드(숫자 6자리)와 만료 시각 (기기 연결 스펙 4.5).",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "expires_at"
+      ],
+      "title": "PairCreated",
+      "type": "object"
+    },
+    "PairResult": {
+      "$defs": {
+        "PairedDevice": {
+          "additionalProperties": false,
+          "properties": {
+            "client": {
+              "enum": [
+                "app",
+                "dashboard"
+              ],
+              "title": "Client",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "client"
+          ],
+          "title": "PairedDevice",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`POST /pair` `201`: 기기 토큰(이 응답에만 한 번 나온다)과 기기.",
+      "properties": {
+        "device": {
+          "$ref": "#/$defs/PairedDevice"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "device"
+      ],
+      "title": "PairResult",
+      "type": "object"
+    },
+    "PairStatus": {
+      "$defs": {
+        "DeviceRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label"
+          ],
+          "title": "DeviceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /devices/pair`: 지금 코드의 상태. `used`면 그 코드로 연결한 기기.",
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "waiting",
+            "used",
+            "expired",
+            "none"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "PairStatus",
       "type": "object"
     },
     "Priorities": {

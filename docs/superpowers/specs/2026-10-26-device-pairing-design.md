@@ -71,7 +71,7 @@ ADR 0007대로 쓰기는 Dispatcher 즉시 갈래로만 한다. 두뇌 도구가
 | `device_touch` | `last_used_at`을 쓴다 |
 
 - 처리기가 `secrets.token_urlsafe(32)`로 토큰을 만들고, `device_pair` 인자에는 `token_hash`·`label`·`client`만 넘긴다. 토큰 원문은 응답에만 담는다(Dispatcher 경로의 로그·기록에도 없다).
-- 기기 토큰 사전(`DeviceTokens`, 4.4)은 `build_be`가 만들어 `ApiDeps`와 Dispatcher에 같은 것을 넘긴다. 동작은 DB 커밋이 끝난 뒤 사전을 고친다.
+- 기기 토큰 사전(`DeviceTokens`, 4.4)은 `ApiDeps`에 둔다. `device_pair`·`device_revoke`는 `api/devices.py`의 처리기에서만 부르고, 처리기가 동작이 커밋된 뒤 사전을 고친다.
 
 ### 4.3 연결 코드
 
@@ -174,7 +174,7 @@ ADR 0007대로 쓰기는 Dispatcher 즉시 갈래로만 한다. 두뇌 도구가
 
 ## 6. 대시보드
 
-- 설정 화면(`/settings/`)의 연결 칸을 5.3과 같은 `연결 코드` 모드로 바꾼다(`client: "dashboard"`, 자동 제출). 토큰 모드는 아래 링크로 남긴다. 해시 규칙도 5.3과 같다.
+- 설정 화면(`/settings/`)의 연결 칸을 5.3과 같은 `연결 코드` 모드로 바꾼다(`client: "dashboard"`, 자동 제출). 토큰 모드는 아래 링크로 남긴다. 해시 규칙은 5.3과 같되, 대시보드는 홈 화면 앱이 없어(저장소가 갈리지 않는다) 아이폰·아이패드 Safari 탭에서도 해시를 읽는다. 기기 토큰 연결을 지울 때는 확인을 한 번 받는다.
 - 대시보드는 읽기 전용이므로(ADR 0008) 코드를 만들거나 기기 목록을 보는 화면은 없다. 끊기는 앱에서 한다. 설정의 `연결 지우기`는 5.4처럼 기기 토큰이면 `DELETE /devices/{this}`를 먼저 부른다(BE 쓰기지만 자기 연결을 지우는 일이라 읽기 전용 원칙의 예외로 둔다).
 
 ### 6.1 BE 주소 미리 채우기

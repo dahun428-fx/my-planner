@@ -6,6 +6,7 @@
 `seed-life <파일> [--dry-run]`은 검토한 인생 곡선 시드를 가져온다(12장, `curve/seed.py`). 출력은 개수뿐이다.
 `seed-life --update-history <파일> [--dry-run]`은 이미 가져온 시드의 빈 히스토리 칸(사건 영역, 챕터 사다리)만
 채운다(SP8 8.1).
+`pair`는 새 기기에 넣을 연결 코드(6자리, 5분, 한 번)를 돌고 있는 BE에서 받아 출력한다(기기 연결 스펙 4.7).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import secrets
 import sys
 from collections.abc import Sequence
 
-USAGE = ("사용법: python -m my_planner [gen-token | gen-vapid | schema | "
+USAGE = ("사용법: python -m my_planner [gen-token | gen-vapid | schema | pair | "
          "seed-life [--update-history] <파일> [--dry-run]]")
 EXIT_USAGE = 2
 
@@ -70,6 +71,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         print(json.dumps(schema_bundle(), ensure_ascii=False, indent=2, sort_keys=True))
         return 0
+    if args == ["pair"]:
+        return pair()
     if args[0] == "seed-life":
         return seed_life(args[1:])
     print(USAGE, file=sys.stderr)
@@ -101,3 +104,62 @@ def seed_life(argv: Sequence[str]) -> int:
     ns = parser.parse_args(list(argv))
     run = run_update_history if ns.update_history else run_seed_life
     return run(resolve_root(), ns.file, dry_run=ns.dry_run, out=sys.stdout)
+
+
+PAIR_TIMEOUT_S = 10
+
+
+def _post_local(url: str, token: str) -> tuple[int, dict[str, object]]:
+    """`127.0.0.1`의 BE에 `POST`. 프록시를 거치지 않는다. 닿지 않으면 `OSError`."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(url, data=b"", method="POST", headers={"Authorization": f"Bearer {token}"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(req, timeout=PAIR_TIMEOUT_S) as resp:
+            status, raw = resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        status, raw = e.code, e.read()
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except ValueError:  # JSON이 아니거나 UTF-8이 아닌 본문
+        body = {}
+    return status, body if isinstance(body, dict) else {}
+
+
+def pair() -> int:
+    """연결 코드를 만든다. 토큰은 출력하지 않는다. 결과별 문구와 끝 코드는 기기 연결 스펙 4.7 표."""
+    from my_planner.config import load_settings, resolve_root
+
+    try:
+        settings = load_settings(resolve_root())
+    except (OSError, ValueError):  # 파일 없음·TOML 오류·검증 실패(pydantic ValidationError는 ValueError)
+        print("설정을 읽지 못했어요. config.toml과 .env를 확인해 주세요.", file=sys.stderr)
+        return 1
+    token = settings.api_token.get_secret_value() if settings.api_token is not None else ""
+    if not token:
+        print(".env에 API_TOKEN이 없어요.", file=sys.stderr)
+        return 1
+    url = f"http://127.0.0.1:{settings.api.port}/api/v1/devices/pair"
+    try:
+        status, body = _post_local(url, token)
+    except OSError:
+        print("BE가 꺼져 있어요. 작업을 켜고 다시 해 주세요.", file=sys.stderr)
+        return 1
+    code = body.get("code")
+    if status == 201 and isinstance(code, str) and len(code) == 6:
+        print(f"연결 코드: {code[:3]} {code[3:]} (5분 동안, 한 번만)")
+        return 0
+    error = body.get("error")
+    error_code = error.get("code") if isinstance(error, dict) else None
+    if status == 401:
+        print(".env의 API_TOKEN이 BE와 달라요.", file=sys.stderr)
+    elif status == 429:
+        print("잠시 뒤에 다시 해 주세요.", file=sys.stderr)
+    elif status == 503 and error_code == "safe_mode":
+        print("BE가 안전 모드예요. 상태부터 확인해 주세요.", file=sys.stderr)
+    else:
+        print(f"코드를 만들지 못했어요 ({status}).", file=sys.stderr)
+    return 1

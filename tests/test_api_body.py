@@ -190,7 +190,9 @@ async def test_body_token_401_on_every_other_route(env):
         if r.resource is not None and r.method != "HEAD"  # HEAD는 aiohttp가 GET마다 더한 것(같은 처리기)
     })
     assert ("POST", BODY_PATH) in routes and PUBLIC_ROUTES <= set(routes) and len(routes) > 20
-    for method, path in [*(x for x in routes if x != ("POST", BODY_PATH)), ("GET", "/api/v1/nope")]:
+    # `POST /pair`는 Bearer 없이 연결 코드로 인증한다(기기 연결 스펙 4.4): `test_api_devices.py`가 본다
+    skip = {("POST", BODY_PATH), ("POST", "/api/v1/pair")}
+    for method, path in [*(x for x in routes if x not in skip), ("GET", "/api/v1/nope")]:
         url = path.replace("{id}", "1")
         resp = await env.request(method, url, token=BODY, json={})
         assert resp.status == 401, (method, path)

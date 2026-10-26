@@ -2,6 +2,8 @@ import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
 
 // Static export only (spec 13.1): Pages Router, no API routes, no server rendering of data.
 // NEXT_PUBLIC_CONNECT_SRC is the CSP connect-src list (tailnet wildcard, not a secret, spec 14).
+// NEXT_PUBLIC_DEFAULT_BE_URL (optional) prefills the settings screen's BE address (device pairing spec 6.1);
+// it is not checked here: a value normalizeBeUrl refuses leaves the field empty, it never stops the build.
 /** @param {string} phase */
 export default function config(phase) {
   if (phase === PHASE_PRODUCTION_BUILD) {

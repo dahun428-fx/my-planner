@@ -235,6 +235,33 @@ export async function ensurePushSubscription(): Promise<"ok" | "needs_tap"> {
   return made.kind === "subscribed" || made.kind === "unavailable" ? "ok" : "needs_tap";
 }
 
+/**
+ * After a new connection to the same BE is saved (connect screen): the subscription this browser
+ * holds is posted again with the new token. The BE's upsert turns it back on and moves it to the new
+ * device (revoking the replaced device token turned it off, device pairing spec 4.6). Never throws.
+ */
+export async function reRegisterPush(): Promise<void> {
+  try {
+    if (pushSupport() !== "ok") return;
+    const rec = loadPushRecord();
+    const beUrl = loadConn()?.beUrl;
+    if (!rec || !beUrl || rec.beUrl !== beUrl) return;
+    const sub = await currentSubscription();
+    if (!sub) return;
+    const json = sub.toJSON();
+    const p256dh = json.keys?.p256dh;
+    const auth = json.keys?.auth;
+    if (!json.endpoint || !p256dh || !auth) return;
+    const r = await apiFetch<PushSubscribed>("POST", "/push/subscriptions", {
+      body: { endpoint: json.endpoint, keys: { p256dh, auth }, label: copy.settings.deviceLabel },
+      model: "PushSubscribed",
+    });
+    if (r.kind === "ok" && loadConn()?.beUrl === beUrl) savePushId(beUrl, r.data.id);
+  } catch {
+    // best effort: settings shows this device's push state and can turn it on again
+  }
+}
+
 /** "이 기기 연결 해제": tell the BE (only the one that gave the id), drop the browser subscription, forget the id. Never throws. */
 export async function unsubscribePush(): Promise<void> {
   const id = loadPushId();

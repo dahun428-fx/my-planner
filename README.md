@@ -276,12 +276,13 @@ sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
 - Root Directory: `web/app`. 빌드 설정은 `web/app/vercel.json`이 고정합니다(Framework 없음, `npm run build`, 출력 `out`).
 - 환경 변수는 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나뿐입니다. CSP `connect-src`에 들어가고, 연결 화면이 받아들이는 주소 범위도 이 값으로 정해집니다(`*`는 이름 한 칸만 맞습니다). 없으면 빌드가 멈추고, 틀리면 연결 화면이 "이 앱에서 쓸 수 있는 주소가 아니에요"를 띄웁니다. 값을 바꾸면 다시 배포합니다. 토큰은 빌드나 환경 변수에 넣지 않습니다.
 - 운영 주소를 바꾸면 `config.toml`의 `[api] cors_origins`도 새 주소로 바꿉니다. 미리보기 배포 주소는 허용하지 않으므로 미리보기에서는 BE에 닿지 않습니다.
+- 선택 환경 변수 두 개(기기 연결 코드): `NEXT_PUBLIC_DEFAULT_BE_URL=https://<기계>.<tailnet>.ts.net`을 넣으면 연결 화면의 BE 주소가 미리 채워집니다. `NEXT_PUBLIC_DASHBOARD_URL=https://my-planner-dashboard-seven.vercel.app`을 넣으면 "새 기기 연결" 시트에 대시보드 주소와 QR이 나옵니다. 운영(main)에는 운영 BE, 개발(develop)에는 개발 BE(`:8443`) 주소를 넣습니다. 기계 이름은 정적 파일에 드러나지만 tailnet 밖에서는 닿지 않습니다.
 
 **폰에서 연결하기**
 
 1. 폰에 Tailscale을 켜고, Safari로 앱 주소를 엽니다.
 2. 공유 → 홈 화면에 추가로 설치하고, 홈 화면 아이콘으로 엽니다. Safari 탭과 홈 화면 앱은 저장 공간이 따로라서, 연결은 홈 화면 앱에서 합니다(iOS 웹 푸시도 설치한 앱에서만 됩니다).
-3. 연결 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣습니다. 토큰은 이 기기 안에만 남습니다.
+3. 연결 화면에서 6자리 연결 코드를 넣습니다(아래 "다른 기기 연결하기"). 연결된 기기가 하나도 없으면 노트북에서 코드를 만듭니다. "열쇠로 연결"을 누르면 예전처럼 BE 주소와 `API_TOKEN`을 넣을 수도 있습니다. 토큰은 이 기기 안에만 남습니다.
 4. 설정 › 이 기기 알림에서 허용하기를 누르고 "시험 알림 보내기"로 확인합니다. VAPID 키가 없으면 알림은 텔레그램으로 갑니다(위 "토큰과 푸시 키").
 
 ## 대시보드
@@ -291,7 +292,7 @@ sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
 **Vercel 프로젝트 설정**
 
 - 운영 앱과 **다른 프로젝트**로 만들고, Root Directory는 `web/dashboard`입니다. 빌드 설정은 `web/dashboard/vercel.json`이 고정합니다(Framework 없음, `npm run build`, 출력 `out`).
-- 환경 변수는 운영 앱과 같은 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net` 하나뿐입니다. CSP `connect-src`에 들어가며, 없으면 빌드가 멈추고 틀리면 BE에 닿지 않습니다. 값을 바꾸면 다시 배포합니다. BE 주소와 토큰은 넣지 않습니다(정적 파일은 누구나 받을 수 있습니다). Vercel 분석은 켜지 않습니다.
+- 환경 변수는 운영 앱과 같은 `NEXT_PUBLIC_CONNECT_SRC=https://*.<tailnet>.ts.net`이 꼭 필요합니다. CSP `connect-src`에 들어가며, 없으면 빌드가 멈추고 틀리면 BE에 닿지 않습니다. 값을 바꾸면 다시 배포합니다. 선택으로 `NEXT_PUBLIC_DEFAULT_BE_URL`(운영 앱과 같은 값)을 넣으면 연결 칸의 BE 주소가 미리 채워집니다. 토큰은 넣지 않습니다(정적 파일은 누구나 받을 수 있습니다). Vercel 분석은 켜지 않습니다.
 - 배포 주소가 정해지면 `config.toml`의 `[api] cors_origins`에 그 주소를 **더합니다**(운영 앱 주소는 그대로 둡니다). 그 뒤 작업을 다시 켭니다.
 
   ```toml
@@ -302,7 +303,7 @@ sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
 **연결하기**
 
 1. 폰이나 노트북에서 Tailscale을 켜고 대시보드 주소를 엽니다.
-2. 설정 화면에 BE 주소 `https://<기계>.<tailnet>.ts.net`과 `API_TOKEN`을 넣고 "연결 확인"을 누릅니다. 둘은 그 브라우저 안에만 남습니다.
+2. 설정 화면에 6자리 연결 코드를 넣습니다(아래 "다른 기기 연결하기"). 예전처럼 BE 주소와 `API_TOKEN`을 넣는 칸도 링크로 남아 있습니다. 연결은 그 브라우저 안에만 남습니다.
 3. 처음 연결할 때 데스크톱이나 Android Chrome이 로컬 네트워크 접근 권한 창을 띄울 수 있습니다(사설망 접근, PNA). 뜨면 허용합니다. 브라우저와 버전에 따라 안 뜰 수도 있습니다.
 4. 화면 위 연결 표시줄에 "BE 꺼짐"이 보이면 BE에 닿지 않는 것입니다. 노트북이 꺼졌거나 잠들었는지, my-planner가 돌고 있는지, 폰과 노트북의 Tailscale이 켜져 있는지 봅니다. 마지막으로 응답한 시각이 함께 나옵니다.
 
@@ -336,6 +337,20 @@ sqlite3 state\planner.db "DELETE FROM app_state WHERE key='moments_paused'"
 4. 노트북 밖에 만든 사본(클라우드 파일, 메신저 등)은 직접 지웁니다.
 
 종료 코드: `0` 끝남, `3` my-planner가 실행 중, `4` 이미 가져옴, `5` `meta.reviewed`가 `true`가 아님, `6` 읽을 수 없거나 JSON이 아닌 파일, 또는 DB가 항목을 거절함(이때는 아무것도 저장되지 않습니다).
+
+## 다른 기기 연결하기
+
+새 컴퓨터나 새 브라우저는 6자리 **연결 코드**로 붙입니다. 코드는 5분 동안 한 번만 쓸 수 있고, 쓰면 BE가 그 기기만의 토큰을 줍니다. 그 기기에도 Tailscale이 켜져 있어야 합니다(같은 계정).
+
+1. 코드 만들기: 폰 운영 앱 › 더 보기 › 연결된 기기 › "새 기기 연결". 연결된 기기가 하나도 없으면 노트북 저장소 폴더에서
+   ```powershell
+   .venv\Scripts\python.exe -m my_planner pair
+   ```
+   BE가 돌고 있어야 합니다. 출력은 `연결 코드: 482 913 (5분 동안, 한 번만)`처럼 코드만 나옵니다.
+2. 새 기기에서 운영 앱이나 대시보드 주소를 열고 코드를 넣습니다. BE 주소가 비어 있으면 `https://<기계>.<tailnet>.ts.net`을 넣습니다.
+3. 끊기: 연결된 기기 화면에서 그 줄을 누르고 "연결 끊기". 끊은 기기는 바로 연결 화면으로 돌아가고, 그 기기의 푸시 알림도 꺼집니다. 기기를 잃어버렸으면 "다른 기기 모두 끊기"를 씁니다.
+
+`API_TOKEN`으로 연결한 기기는 그대로 쓸 수 있고 목록에는 나오지 않습니다. `API_TOKEN`을 바꾸면 그 기기들만 다시 넣고, 코드로 연결한 기기는 그대로입니다. 코드를 10번 틀리면 1분 동안 모든 요청이 막힙니다.
 
 ## 데이터는 어디에 남나요
 

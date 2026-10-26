@@ -24,8 +24,15 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, "maxTouchPoints");
 });
 
-async function fill(url: string, token: string) {
+// The key form is behind "열쇠로 연결" since device pairing (spec 5.3); these tests are about it.
+async function keyMode() {
   const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: copy.connect.useKey }));
+  return user;
+}
+
+async function fill(url: string, token: string) {
+  const user = await keyMode();
   await user.type(await screen.findByLabelText(copy.connect.urlLabel), url);
   await user.type(screen.getByLabelText(copy.connect.tokenLabel), token);
   return user;
@@ -58,9 +65,11 @@ describe("Connect", () => {
 
   it("start stays off until both fields hold more than spaces", async () => {
     renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    const user = await keyMode();
     const start = await screen.findByRole("button", { name: copy.connect.start });
     expect(start).toBeDisabled();
-    const user = await fill("   ", "  ");
+    await user.type(screen.getByLabelText(copy.connect.urlLabel), "   ");
+    await user.type(screen.getByLabelText(copy.connect.tokenLabel), "  ");
     expect(start).toBeDisabled();
     await user.type(screen.getByLabelText(copy.connect.urlLabel), URL_IN);
     expect(start).toBeDisabled();
@@ -135,6 +144,7 @@ describe("Connect", () => {
 
   it("token field is password", async () => {
     renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
+    await keyMode();
     expect(await screen.findByLabelText(copy.connect.tokenLabel)).toHaveAttribute("type", "password");
     expect(screen.getByLabelText(copy.connect.urlLabel)).toHaveAttribute("type", "url");
   });
