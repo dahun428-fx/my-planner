@@ -1,7 +1,7 @@
 """채팅에 사진 (SP10 스펙 5.5): 받은 메시지 본문의 사진 표시와 두뇌 입력.
 
-- 원문 기록·`inbound` 본문은 `[사진 #12] [사진 #13] {글}`만(사진 바이트·경로 없음, 6장). 사진 id는 늘 오름차순이라
-  다시 보내기·시작 때 다시 넣기(`PhotosRepo.for_message`, id 순)가 같은 본문과 같은 입력을 만든다.
+- 원문 기록·`inbound` 본문은 `[사진 #12] [사진 #13] {글}`만(사진 바이트·경로 없음, 6장). 사진은 보낸 순서이고,
+  다시 보내기·시작 때 다시 넣기(`PhotosRepo.for_message`, 넣은 순서)가 같은 본문과 같은 입력을 만든다.
 - 두뇌 입력: 사진마다 `{"type": "text", "text": "[사진 #12]"}` 바로 뒤 이미지 블록, 맨 끝에 글 블록(지시문·앞머리·
   `## 메시지` 전체). 메시지 글이 없으면 `(사진 {n}장)`이다. 그래서 두뇌가 `create_memo(photo_ids=[12])`를 부를 수 있다.
 """
@@ -30,13 +30,20 @@ def photo_body(photo_ids: Sequence[int], text: str) -> str:
     return f"{marks} {text}" if text else marks
 
 
-def message_text(body: str, photo_ids: Sequence[int]) -> str:
-    """본문에서 앞의 사진 표시를 뗀 메시지 글. 사진만 있었으면 `(사진 {n}장)`(5.5)."""
+def message_text(body: str, photo_ids: Sequence[int], *, count: int | None = None) -> str:
+    """본문에서 앞의 사진 표시를 뗀 메시지 글. 사진만 있었으면 `(사진 {n}장)`(5.5). `count`: 두뇌에 실제로 넣은
+    사진 수(읽힌 사진만). 0이면 사진만 있던 메시지는 빈 글이다."""
     if not photo_ids:
         return body
+    text = strip_marks(body, photo_ids)
+    n = len(photo_ids) if count is None else count
+    return text if text.strip() or n == 0 else f"(사진 {n}장)"
+
+
+def strip_marks(body: str, photo_ids: Sequence[int]) -> str:
+    """본문 앞의 `[사진 #id]` 표시(그 사진들 그대로일 때만)를 뗀 글. 사진만이면 `""`."""
     marks = photo_body(photo_ids, "")
-    text = body.removeprefix(marks).removeprefix(" ") if body.startswith(marks) else body
-    return text if text.strip() else f"(사진 {len(photo_ids)}장)"
+    return body.removeprefix(marks).removeprefix(" ") if marks and body.startswith(marks) else body
 
 
 def leading_photo_ids(text: str) -> list[int]:

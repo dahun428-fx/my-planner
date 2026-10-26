@@ -561,7 +561,9 @@ class ConversationsClosed(_Model):
 
 
 class MessageItem(_Model):
-    """대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`."""
+    """대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.
+    `photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를
+    뗀 글이다(사진만이면 빈 문자열)."""
 
     id: str
     at: str
@@ -569,8 +571,8 @@ class MessageItem(_Model):
     text: str
     tools: list[str]
     channel: ChannelName
-    # 앱 사용자 메시지에 붙은 사진(SP10 5.3, `text` 앞의 `[사진 #id]` 순). 다른 줄은 빈 목록. 배포 순서가 엇갈려도 모양
-    # 검사를 넘게 required가 아니다(BE는 늘 싣는다)
+    # 앱 사용자 메시지에 붙은 사진(SP10 5.3, 보낸 순서). 사진이 있는 줄은 `text`에서 앞의 `[사진 #id]` 표시를 뗀다
+    # (사진만이면 ""). 다른 줄은 빈 목록. 배포 순서가 엇갈려도 모양 검사를 넘게 required가 아니다(BE는 늘 싣는다)
     photos: list[PhotoRef] = []
 
 

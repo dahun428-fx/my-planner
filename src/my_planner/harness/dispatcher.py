@@ -339,6 +339,8 @@ INBOUND_MAX_ATTEMPTS = 3  # 다시 넣기 상한(SP1 5.2-4, `loop.runner`와 같
 _DEFAULT_APP_SENDER = AppReplySender()
 
 FALLBACK_REPLY = "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요."
+# 사진만 보냈는데 한 장도 열 수 없을 때(SP10 8장 "이 사진은 열 수 없어요."). 두뇌를 부르지 않는다
+PHOTO_UNOPENABLE_REPLY = "이 사진은 열 수 없어요."
 MAX_TURNS_REPLY = "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
 # 앱에서 멈춘 답(`POST /chat/stop`). 이미 나간 글이 있으면 그 뒤에 붙는다. 앱 `copy.chat.stopped`와 같은 글
 STOPPED_REPLY = "멈췄어요."
@@ -1100,10 +1102,21 @@ class Dispatcher:
             return
         # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
         chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
-        # 사진(SP10 5.5): 두뇌가 보는 메시지 글에는 사진 표시를 떼고(각 이미지 앞 글 블록에 있다), 글이 없으면 `(사진 n장)`
-        redacted_parts = [redact(message_text(m.text, m.photo_ids)) for m in batch]
+        # 사진(SP10 5.5): 부를 때 파일에서 읽는다. 읽힌 사진만 두뇌 입력에 넣고 `(사진 n장)`도 그 수로 센다
+        images = await self._message_images([i for m in batch for i in m.photo_ids])
+        loaded = {pid for pid, _ in images}
+        if any(m.photo_ids for m in batch) and not images and all(
+            not message_text(m.text, m.photo_ids, count=0).strip() for m in batch
+        ):
+            # 사진만 보냈는데 한 장도 열 수 없다(파일 없음, 처리 전에 대화를 지움): 두뇌를 부르지 않는다(8장 문구)
+            if await self._fixed_reply(batch, PHOTO_UNOPENABLE_REPLY, update_ids):
+                log.info("message_photos_unopenable", extra={"update_ids": update_ids})
+            return
+        # 두뇌가 보는 메시지 글에는 사진 표시를 떼고(각 이미지 앞 글 블록에 있다), 글이 없으면 `(사진 n장)`
+        redacted_parts = [
+            redact(message_text(m.text, m.photo_ids, count=sum(i in loaded for i in m.photo_ids))) for m in batch
+        ]
         text = "\n\n".join(t for t, _ in redacted_parts)
-        photo_ids = [i for m in batch for i in m.photo_ids]
         limits = self.settings.limits
         truncated = len(text) > limits.input_max_chars
         if truncated:
@@ -1181,7 +1194,6 @@ class Dispatcher:
             if not rolled and not resumed and app is not None and conv.kind is not ConversationKind.run:
                 # 세션 없이 다시 연 앱 대화(앞선 호출이 세션을 못 얻었다): resume 실패와 같은 지난 내용. 새 대화는 빈 글
                 rolled = self._past_text(conv, len(batch))
-            images = await self._message_images(photo_ids)
             prompt: str | UserContent = photo_content(_join(
                 notices,
                 "" if resumed else instructions,

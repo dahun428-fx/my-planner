@@ -43,7 +43,7 @@ from my_planner.clock import logical_date, period_bounds, period_of, to_iso
 from my_planner.curve.history import curve_history
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
-from my_planner.harness.chat_photos import leading_photo_ids
+from my_planner.harness.chat_photos import leading_photo_ids, strip_marks
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
 from my_planner.harness.summaries import LIST_SUMMARY_CHARS
 from my_planner.status.snapshot import status_snapshot
@@ -579,24 +579,26 @@ def get_conversation_messages(conn: sqlite3.Connection, deps: ApiDeps, request: 
     if conv is None or conv.deleted_at is not None or deps.transcripts is None:  # 지운 대화는 404(SP9 7.6)
         raise ApiError(404, "not_found", "없는 대화예요.")
     lines = deps.transcripts.messages(conversation_id)
-    # 사용자 줄의 사진(SP10 5.3): 줄 앞 `[사진 #id]` 가운데 이 대화의 메시지에 붙은 사진만(5.5 원문 기록 표시)
-    attached = _photos(deps).for_conversation(conn, conversation_id) if any(
+    # 사용자 줄의 사진(SP10 5.3): 줄 앞 `[사진 #id]` 표시가 이 대화의 아직 쓰지 않은 받은 메시지 하나의 사진과 똑같을
+    # 때만 그 사진들(보낸 순서). 그 줄의 글에서는 표시를 뗀다(사진만이면 ""). 글로 친 `[사진 #N]`은 사진이 되지 않는다
+    unused = _photos(deps).for_conversation(conn, conversation_id) if any(
         m.speaker == "사용자" and m.channel == "app" for m in lines
     ) else {}
 
-    def photos(m: Any) -> list[dict[str, Any]]:
-        if m.speaker != "사용자" or m.channel != "app" or not attached:
-            return []
-        return [photo_ref(attached[i]) for i in leading_photo_ids(m.text) if i in attached]
-
-    items = [
-        {
+    def item(m: Any) -> dict[str, Any]:
+        text, photos = m.text, []
+        marks = leading_photo_ids(m.text) if m.speaker == "사용자" and m.channel == "app" else []
+        if marks:
+            hit = next((k for k, ps in unused.items() if [p.id for p in ps] == marks), None)
+            if hit is not None:
+                photos = [photo_ref(p) for p in unused.pop(hit)]
+                text = strip_marks(m.text, marks)
+        return {
             "id": m.id, "at": m.at, "speaker": "user" if m.speaker == "사용자" else "secretary",
-            "text": m.text, "tools": m.tools, "channel": m.channel, "photos": photos(m),
+            "text": text, "tools": m.tools, "channel": m.channel, "photos": photos,
         }
-        for m in lines
-    ]
-    return dump(Messages, {"items": items})
+
+    return dump(Messages, {"items": [item(m) for m in lines]})
 
 
 # --- 카탈로그와 스키마 ---

@@ -1,6 +1,6 @@
 # SP10 사진 남기기 · Claude가 읽고 기록 상세 설계 (추가 기능)
 
-- 상태: 초안 v2.5 (2026-10-26 Dahun 결정 D1~D3과 15장 Q1~Q5 모두 확정, "추천대로")
+- 상태: 초안 v2.6 (2026-10-26 Dahun 결정 D1~D3과 15장 Q1~Q5 모두 확정, "추천대로")
 - 작성일: 2026-10-26
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP5 운영 앱](2026-10-24-sp5-ops-app-design.md), [SP6 채팅 생성형 UI](2026-10-24-sp6-chat-generative-ui-design.md), [SP9 메모·대화](2026-10-25-sp9-app-tabs-memo-schedule-design.md) 6장·7장·9.4·9.5
 - 다음 단계: [SP11 로컬 OCR 서비스](2026-10-26-sp11-local-ocr-service-design.md) (온프레미스 OCR, 부가 서비스 구조 [ADR 0016](../../adr/0016-add-on-services-run-beside-be.md)). SP11은 이 문서 5.4의 `PhotoReader` 자리에 끼운다.
@@ -320,6 +320,7 @@ BE(`pytest`, 두뇌는 기존 가짜 두뇌):
 
 ## 변경 기록
 
+- v2.6 (2026-10-26): PH-04 리뷰 반영. 사진이 붙은 채팅 메시지는 `/`로 시작해도 명령으로 해석하지 않는다(퀵 칩과 같다).
 - v2.5 (2026-10-26): PH-01 리뷰 반영. 이전 번호 020(019는 기기 연결), 020에서 `api_idempotency` CHECK에 `'photos'`, 붙이기 확인 문구, `photo_not_found` 코드 자리.
 - v2.4 (2026-10-26): 스파이크 S1·S2·S4 결과 반영(6장, 4.2).
 - v2.3 (2026-10-26): Dahun이 15장 Q1~Q5를 추천대로 확정.

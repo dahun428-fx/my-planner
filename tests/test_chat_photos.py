@@ -154,19 +154,19 @@ async def test_photo_only_message_goes_to_brain_and_transcript_has_marker(env):
 async def test_brain_input_labels_each_image(env):
     a, b = await _photo(env), await _photo(env, w=800, h=600)
     env.brain.script.append(FakeTurn([], "두 장 봤어요."))
-    _, chunks = await _send(env, _parts("이거 둘 정리해 줘", b, a))  # 보낸 순서와 상관없이 id 순
+    _, chunks = await _send(env, _parts("이거 둘 정리해 줘", b, a, b))  # 보낸 순서, 겹친 것은 처음 하나
     prompt = env.brain.calls[0]["prompt"]
     lines = env.parts.transcripts.messages(_conv_of(chunks))
 
     assert isinstance(prompt, list) and len(prompt) == 5
-    assert prompt[0] == {"type": "text", "text": f"[사진 #{a}]"}
-    assert prompt[1] == _image(env, a)
-    assert prompt[2] == {"type": "text", "text": f"[사진 #{b}]"}
-    assert prompt[3] == _image(env, b)
+    assert prompt[0] == {"type": "text", "text": f"[사진 #{b}]"}
+    assert prompt[1] == _image(env, b)
+    assert prompt[2] == {"type": "text", "text": f"[사진 #{a}]"}
+    assert prompt[3] == _image(env, a)
     last = prompt[4]
     assert last["type"] == "text" and "## 메시지\n이거 둘 정리해 줘" in last["text"]
     assert "[사진 #" not in last["text"]  # 글 블록에는 표시를 다시 넣지 않는다(각 이미지 앞에 있다)
-    assert lines[0].text == f"[사진 #{a}] [사진 #{b}] 이거 둘 정리해 줘"
+    assert lines[0].text == f"[사진 #{b}] [사진 #{a}] 이거 둘 정리해 줘"
 
 
 async def test_text_only_message_prompt_stays_string(env):
@@ -202,7 +202,7 @@ async def test_resubmit_reloads_photos(env):
     """두뇌 처리 중 예외 뒤 같은 `client_msg_id`로 다시 보내면 `for_message`로 사진을 다시 실어 같은 입력을 만든다."""
     a, b = await _photo(env), await _photo(env)
     env.brain.script += [FakeTurn([], "", raises=RuntimeError("꾸민 오류")), FakeTurn([], "이번엔 됐어요.")]
-    body = env.chat_body(parts=_parts("정리", a, b), client_msg_id="cm-photo")
+    body = env.chat_body(parts=_parts("정리", b, a), client_msg_id="cm-photo")  # 보낸 순서(id 역순)도 그대로
     first = await env.post("/chat", json=body)
     first_raw = await first.read()
     await env.drain()
@@ -213,10 +213,10 @@ async def test_resubmit_reloads_photos(env):
     p0, p1 = env.brain.calls[0]["prompt"], env.brain.calls[1]["prompt"]
 
     assert FALLBACK_REPLY in first_raw.decode("utf-8")
-    assert left is not None and left.text == f"[사진 #{a}] [사진 #{b}] 정리"
+    assert left is not None and left.text == f"[사진 #{b}] [사진 #{a}] 정리"
     assert "이번엔 됐어요." in raw.decode("utf-8")
     assert p1[:4] == p0[:4] == [
-        {"type": "text", "text": f"[사진 #{a}]"}, _image(env, a), {"type": "text", "text": f"[사진 #{b}]"}, _image(env, b),
+        {"type": "text", "text": f"[사진 #{b}]"}, _image(env, b), {"type": "text", "text": f"[사진 #{a}]"}, _image(env, a),
     ]
     assert "## 메시지\n정리" in p1[4]["text"]
     assert len(_links(env)) == 2  # 다시 보내도 연결은 그대로(INSERT OR IGNORE)
@@ -255,6 +255,31 @@ async def test_missing_photo_file_is_left_out_of_brain_input(env, caplog):
     assert status == 200
     assert isinstance(prompt, str) and "## 메시지\n이것 봐" in prompt
     assert p.path not in caplog.text  # 경로는 로그에 없다(6장)
+
+
+async def test_only_loaded_photos_are_counted(env):
+    """두 장 가운데 한 장의 파일이 없으면 읽힌 사진만 넣고 `(사진 1장)`으로 센다."""
+    a, b = await _photo(env), await _photo(env)
+    gone = env.parts.tools.photos.get(env.conn, b)
+    (env.parts.tools.photo_files.root / gone.path).unlink()
+    env.brain.script.append(FakeTurn([], "한 장 봤어요."))
+    status, _ = await _send(env, _parts(None, a, b))
+    prompt = env.brain.calls[0]["prompt"]
+    assert status == 200 and len(prompt) == 3
+    assert prompt[:2] == [{"type": "text", "text": f"[사진 #{a}]"}, _image(env, a)]
+    assert "## 메시지\n(사진 1장)" in prompt[2]["text"] and f"#{b}" not in prompt[2]["text"]
+
+
+async def test_photo_only_message_with_no_openable_photo_skips_brain(env):
+    """사진만 보냈는데 한 장도 열 수 없으면 두뇌를 부르지 않고 "이 사진은 열 수 없어요."(8장)로 답한다."""
+    pid = await _photo(env)
+    p = env.parts.tools.photos.get(env.conn, pid)
+    (env.parts.tools.photo_files.root / p.path).unlink()
+    status, chunks = await _send(env, _parts(None, pid))
+    pending = env.conn.execute("SELECT COUNT(*) FROM inbound_pending").fetchone()[0]
+    assert status == 200
+    assert "".join(c["delta"] for c in chunks if c["type"] == "text-delta") == "이 사진은 열 수 없어요."
+    assert env.brain.calls == [] and pending == 0
 
 
 # --- create_memo(photo_ids) (5.5, Review Focus 3) ---
@@ -381,8 +406,24 @@ async def test_messages_have_photos(env):
 
     assert [i["speaker"] for i in items] == ["user", "secretary", "user", "secretary"]
     assert items[0]["photos"] == [{"id": a, "width": 1024, "height": 768}, {"id": b, "width": 600, "height": 800}]
-    assert items[0]["text"] == f"[사진 #{a}] [사진 #{b}] 두 장"
+    assert items[0]["text"] == "두 장"  # 사진이 있는 줄은 표시를 뗀다
     assert items[1]["photos"] == [] and items[2]["photos"] == [] and items[3]["photos"] == []
+    assert items[2]["text"] == "글만"
+
+
+async def test_messages_photo_only_text_is_empty_and_typed_marks_are_text(env):
+    """사진만 보낸 줄의 글은 "". 글로 친 `[사진 #a]`(사진 없는 메시지)는 사진이 되지 않고 글 그대로다."""
+    a = await _photo(env)
+    env.brain.script += [FakeTurn([], "봤어요."), FakeTurn([], "장난이군요."), FakeTurn([], "또요.")]
+    _, chunks = await _send(env, _parts(None, a))
+    conv = _conv_of(chunks)
+    await env.chat(f"[사진 #{a}] 장난", conversation_id=conv)
+    await env.chat(f"[사진 #{a}]", conversation_id=conv)
+    items = (await (await env.get(f"/conversations/{conv}/messages")).json())["items"]
+    users = [i for i in items if i["speaker"] == "user"]
+    assert users[0]["photos"] == [{"id": a, "width": 1024, "height": 768}] and users[0]["text"] == ""
+    assert users[1]["photos"] == [] and users[1]["text"] == f"[사진 #{a}] 장난"
+    assert users[2]["photos"] == [] and users[2]["text"] == f"[사진 #{a}]"  # 그 메시지의 사진은 이미 썼다
 
 
 # --- 프롬프트 규칙, 문구 (4.3, 5.5, 8장) ---

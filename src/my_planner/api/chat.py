@@ -93,12 +93,13 @@ def message_text(parts: list[dict[str, Any]]) -> str:
 
 
 def message_photos(parts: list[dict[str, Any]]) -> list[int]:
-    """`parts`의 `{"type": "data-photo", "data": {"photo_id": 12}}`(SP10 5.5)에서 사진 id를 고른다. 오름차순, 중복은 하나로.
+    """`parts`의 `{"type": "data-photo", "data": {"photo_id": 12}}`(SP10 5.5)에서 사진 id를 고른다. 보낸 순서, 중복은
+    처음 것 하나로.
 
     `photo_id`가 양의 정수가 아니면 400 `photo_not_found`, 5장 이상이면 422 `too_many_photos`(`_PhotoRefused`).
     DB 검사(있는 사진인가, `origin`, 이미 붙었나)는 `_check_photos`가 한다.
     """
-    ids: set[int] = set()
+    ids: dict[int, None] = {}  # 넣은 순서를 지키는 집합
     for p in parts:
         if p.get("type") != "data-photo":
             continue
@@ -106,10 +107,10 @@ def message_photos(parts: list[dict[str, Any]]) -> list[int]:
         pid = data.get("photo_id") if isinstance(data, dict) else None
         if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
             raise _PhotoRefused(400, "photo_not_found", PHOTO_NOT_FOUND)
-        ids.add(pid)
+        ids.setdefault(pid)
     if len(ids) > MESSAGE_PHOTOS_MAX:
         raise _PhotoRefused(422, "too_many_photos", TOO_MANY_PHOTOS)
-    return sorted(ids)
+    return list(ids)
 
 
 def _check_photos(d: Dispatcher, photo_ids: list[int]) -> None:

@@ -122,10 +122,10 @@ class PhotosRepo:
         return {r["memo_id"]: _photo(r) for r in rows}
 
     def for_message(self, conn: sqlite3.Connection, inbound_id: int) -> list[Photo]:
-        """사진 id 순(보낸 순서)."""
+        """보낸 순서(연결을 넣은 순서, `rowid`). 다시 보내기·시작 때 다시 넣기가 처음과 같은 입력을 만든다(5.5)."""
         rows = conn.execute(
             "SELECT p.* FROM message_photos xp JOIN photos p ON p.id = xp.photo_id WHERE xp.inbound_id = ? "
-            "ORDER BY p.id", (inbound_id,),
+            "ORDER BY xp.rowid", (inbound_id,),
         ).fetchall()
         return [_photo(r) for r in rows]
 
@@ -141,13 +141,17 @@ class PhotosRepo:
         ).fetchone()[0]
         return n == len(ids)
 
-    def for_conversation(self, conn: sqlite3.Connection, conversation_id: int) -> dict[int, Photo]:
-        """그 대화의 메시지에 붙은 사진(id로). `GET /conversations/{id}/messages`의 `photos`(5.3)."""
+    def for_conversation(self, conn: sqlite3.Connection, conversation_id: int) -> dict[int, list[Photo]]:
+        """그 대화의 받은 메시지마다 붙은 사진(`{inbound_id: [Photo…]}`, 보낸 순서). 메시지 목록의 `photos`(5.3)."""
         rows = conn.execute(
-            "SELECT p.* FROM message_photos xp JOIN photos p ON p.id = xp.photo_id WHERE xp.conversation_id = ?",
+            "SELECT xp.inbound_id AS inbound_id, p.* FROM message_photos xp JOIN photos p ON p.id = xp.photo_id "
+            "WHERE xp.conversation_id = ? ORDER BY xp.rowid",
             (conversation_id,),
         ).fetchall()
-        return {r["id"]: _photo(r) for r in rows}
+        out: dict[int, list[Photo]] = {}
+        for r in rows:
+            out.setdefault(r["inbound_id"], []).append(_photo(r))
+        return out
 
     def free_chat_photo(self, conn: sqlite3.Connection, photo_id: int) -> bool:
         """채팅 `data-photo`(5.5)로 받을 수 있나: `origin = 'chat'`이고 아직 어느 메시지에도 메모에도 붙지 않았다."""
