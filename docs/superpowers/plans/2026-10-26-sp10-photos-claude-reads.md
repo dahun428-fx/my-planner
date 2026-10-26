@@ -12,7 +12,7 @@
 
 **Tech Stack:** SP9와 같다(Python 3.12, aiohttp, SQLite, Claude Agent SDK / Next.js 15 Pages Router 정적 내보내기, AI SDK `useChat`, Vitest, Playwright). BE 새 의존성 없음(그림 처리는 앱).
 
-**Spec:** [`docs/superpowers/specs/2026-10-26-sp10-photos-claude-reads-design.md`](../specs/2026-10-26-sp10-photos-claude-reads-design.md) (v2.1). 결정 [ADR 0017](../../adr/0017-photos-as-files-claude-reads-first.md). 상위: [SP9](../specs/2026-10-25-sp9-app-tabs-memo-schedule-design.md), [SP3-4](../specs/2026-10-24-sp3-4-life-curve-dashboard-design.md)(API 계약 정본), [SP5](../specs/2026-10-24-sp5-ops-app-design.md). 다음 단계 [SP11](../specs/2026-10-26-sp11-local-ocr-service-design.md).
+**Spec:** [`docs/superpowers/specs/2026-10-26-sp10-photos-claude-reads-design.md`](../specs/2026-10-26-sp10-photos-claude-reads-design.md) (v2.2). 결정 [ADR 0017](../../adr/0017-photos-as-files-claude-reads-first.md). 상위: [SP9](../specs/2026-10-25-sp9-app-tabs-memo-schedule-design.md), [SP3-4](../specs/2026-10-24-sp3-4-life-curve-dashboard-design.md)(API 계약 정본), [SP5](../specs/2026-10-24-sp5-ops-app-design.md). 다음 단계 [SP11](../specs/2026-10-26-sp11-local-ocr-service-design.md).
 - 스펙과 이 계획이 다르면 스펙이 맞다. 티켓은 스펙을 다시 쓰지 않고 절을 가리킨다.
 
 ## Global Constraints
@@ -202,7 +202,7 @@ export function shiftAnchor(prev: string, next: string, anchor: number): number;
 
 ### PH-07 앱: 채팅 사진
 
-- [ ] `PhotoTray`(대기 4장, ✕), 사진만 있어도 보내기(`send()`의 빈 글 조건), 보내기 때 올리기 → `sendMessage({parts, metadata})`, 말풍선 사진 격자, 다시 연 대화의 `photos`, 올리기 실패 시 보내지 않음(7.5).
+- [ ] 채팅 버튼 둘: 카메라(`capture="environment"`, 찍으면 바로 올리고 보냄, 실패하면 대기 줄에 남김)와 사진(`multiple`). `PhotoTray`(대기 4장, ✕), 사진만 있어도 보내기(`send()`의 빈 글 조건), 보내기 때 올리기 → `sendMessage({parts, metadata})`, 말풍선 사진 격자, 다시 연 대화의 `photos`, 올리기 실패 시 보내지 않음(7.5).
 - [ ] 테스트: 스펙 12장 앱 항목 중 채팅 쪽, 보낸 본문의 `parts`에 `data-photo`, 사진만 보내기.
 - 검증: 앱 명령 → 모두 통과, `npm run e2e -- chat` → 통과.
 
