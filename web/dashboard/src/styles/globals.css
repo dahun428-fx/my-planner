@@ -1,59 +1,19 @@
-/* Dashboard base and components. Tokens live in tokens.css; nothing here is a raw colour. Every rule is
-   global (imported once by _app) so no page carries its own stylesheet (check-csp, style-src 'self'). */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-html,
+/* Dashboard screens on the shared design system A "종이와 잉크" (DESIGN.md). The tokens, the base element
+   styles, the type role sizes, .num, .visually-hidden, .area-dot and the reduced-motion rule come from
+   global.css (the copy of web/shared/global.css); tokens.css adds the chart names. Nothing here is a raw
+   colour or a type size of its own. Every rule is global (imported once by _app) so no page carries its own
+   stylesheet (check-csp, style-src 'self'). */
+
+/* The header carries the top safe area itself, so its paper also sits under the notch. */
 body {
-  margin: 0;
-  word-break: keep-all;
-  background: var(--ground);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: 100%;
-  line-height: 1.5;
-}
-body {
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-}
-a {
-  color: var(--hue);
-}
-button,
-input {
-  font: inherit;
-  color: inherit;
-}
-:focus-visible {
-  outline: 2px solid var(--hue);
-  outline-offset: 2px;
-}
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.num {
-  font-variant-numeric: tabular-nums;
+  padding-top: 0;
 }
 
 /* ---- shell: nav + connection band on every screen ---- */
 .top {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--z-bar);
   background: var(--ground);
   padding-top: env(safe-area-inset-top);
 }
@@ -69,18 +29,19 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--gap);
-  min-height: 52px;
+  gap: var(--space-3);
+  min-height: var(--row);
 }
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+  min-height: var(--control-h);
   color: var(--text);
   font-size: var(--fs-nav);
   font-weight: 700;
+  line-height: var(--lh-headline);
   text-decoration: none;
-  letter-spacing: -0.01em;
 }
 .mark {
   width: 20px;
@@ -96,7 +57,7 @@ input {
 }
 .nav ul {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -104,11 +65,13 @@ input {
 .nav ul a {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
   min-height: var(--control-h);
-  padding: 0 12px;
-  border-radius: var(--radius-control);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
   color: var(--muted);
-  font-size: var(--fs-body);
+  font-size: var(--fs-callout);
+  line-height: var(--lh-callout);
   text-decoration: none;
 }
 .nav ul a[aria-current="page"] {
@@ -121,33 +84,40 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--gap);
-  min-height: var(--row);
-  font-size: var(--fs-meta);
-  color: var(--text);
+  gap: var(--space-3);
+  min-height: var(--control-h);
+  border-bottom: 1px solid var(--rule);
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 .band[data-state="off"] {
   color: var(--muted);
 }
 .band[data-state="off"] .band-text {
   background: var(--offline-bg);
-  border-radius: var(--radius-control);
-  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
 }
 .band-text {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-variant-numeric: tabular-nums;
 }
+/* A text button: ink, not --hue (that is for links and what the secretary did). */
 .text-button {
   min-height: var(--control-h);
-  padding: 0 4px;
+  min-width: var(--control-h);
+  padding: 0 var(--space-1);
   border: 0;
   background: none;
-  color: var(--hue);
-  font-size: var(--fs-meta);
+  color: var(--text);
+  font-size: var(--fs-label);
   font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px; /* a type offset, not space */
   cursor: pointer;
 }
 .text-button:disabled {
@@ -161,7 +131,7 @@ input {
   flex: none;
   width: 8px;
   height: 8px;
-  margin: 0 6px 1px 0;
+  margin: 0 var(--space-2) 1px 0; /* 1px: onto the text baseline */
   border-radius: 50%;
   background: var(--neutral);
   vertical-align: middle;
@@ -180,42 +150,45 @@ input {
 }
 .dot[data-tone="neutral"] {
   background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--neutral);
+  box-shadow: inset 0 0 0 1.5px var(--control);
 }
 
 /* ---- screen ---- */
 .main {
-  padding-top: 8px;
-  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  padding-top: var(--space-2);
+  padding-bottom: calc(var(--space-7) + env(safe-area-inset-bottom));
 }
 h1 {
-  margin: 8px 0 16px;
+  margin: var(--space-4) 0 var(--space-5);
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: var(--lh-display);
+  letter-spacing: var(--track-display);
+}
+/* A panel's title (DESIGN.md 대시보드: 패널 제목 title). */
+h2 {
+  margin: 0 0 var(--space-3);
   font-size: var(--fs-title);
   font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-}
-h2 {
-  margin: 0 0 8px;
-  font-size: var(--fs-section);
-  font-weight: 600;
+  line-height: var(--lh-title);
+  letter-spacing: var(--track-title);
 }
 .lead {
-  margin: -8px 0 16px;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-5);
   color: var(--muted);
-  font-size: var(--fs-body);
+  font-size: var(--fs-callout);
+  line-height: var(--lh-callout);
 }
+/* Panel: surface, 16px corners, 20px inside. No shadow, no card in a card. */
 .panel {
-  margin: 0 0 var(--gap);
-  padding: var(--pad);
+  margin: 0 0 var(--panel-gap);
+  padding: var(--space-5);
   background: var(--surface);
   border-radius: var(--radius-panel);
-  font-size: var(--fs-body);
 }
 .row {
   margin: 0;
-  padding: 10px 0;
-  word-break: keep-all;
+  padding: var(--space-3) 0;
   overflow-wrap: anywhere;
 }
 .part {
@@ -232,11 +205,37 @@ h2 {
 }
 .meta {
   color: var(--muted);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
 }
 .empty {
   margin: 0;
   color: var(--muted);
+}
+
+/* Two columns at 720px and wider only (DESIGN.md Layout); one column puts the to-dos first. */
+.panels {
+  display: grid;
+  gap: var(--panel-gap);
+  margin-bottom: var(--panel-gap);
+}
+.panels > .panel,
+.panels > [role="tabpanel"] > .panel {
+  margin: 0;
+}
+/* minmax(0, 1fr): a chart drawn at its first guessed width must not push a column past the gutter. */
+.panels,
+.curve-pair {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 720px) {
+  .panels {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .panels > .panel-wide {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ---- today's runs: time, name, state; two lines below 480px ---- */
@@ -249,11 +248,14 @@ h2 {
   display: grid;
   grid-template-columns: 3.25rem 1fr auto;
   align-items: baseline;
-  gap: 4px 12px;
-  padding: 10px 0;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) 0;
 }
 .run + .run {
   border-top: 1px solid var(--rule);
+}
+.run:first-child {
+  padding-top: 0;
 }
 .run:last-child {
   padding-bottom: 0;
@@ -266,6 +268,8 @@ h2 {
 }
 .run-state {
   text-align: right;
+  color: var(--text-2);
+  font-size: var(--fs-callout);
 }
 @media (max-width: 480px) {
   .run {
@@ -275,19 +279,19 @@ h2 {
     grid-column: 2;
     text-align: left;
     color: var(--muted);
-    font-size: var(--fs-meta);
+    font-size: var(--fs-caption);
   }
 }
 
-/* ---- usage bars ---- */
+/* ---- usage bars: 6px, --raised under --primary ---- */
 .meter + .meter {
-  margin-top: 14px;
+  margin-top: var(--space-4);
 }
 .meter-head {
   display: flex;
   justify-content: space-between;
-  gap: var(--gap);
-  margin-bottom: 6px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .meter-head .num {
   font-weight: 600;
@@ -295,32 +299,31 @@ h2 {
 .meter-bar {
   display: block;
   width: 100%;
-  height: 6px;
+  height: var(--bar-h);
 }
 .meter-track {
-  fill: var(--raised);
+  fill: var(--bar-track);
 }
 .meter-fill {
-  fill: var(--primary);
+  fill: var(--bar-fill);
 }
 .meter-fill[data-tone="hue"] {
   fill: var(--hue);
 }
 .meter + .row {
-  margin-top: 14px;
-  padding-top: 12px;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--rule);
 }
 
 /* ---- states ---- */
 .notice {
-  margin: 0 0 var(--gap);
-  padding: 14px var(--pad);
+  margin: 0 0 var(--panel-gap);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--notice-border);
   border-radius: var(--radius-panel);
   background: var(--notice-bg);
   color: var(--notice-ink);
-  font-size: var(--fs-body);
 }
 .notice[data-kind="offline"],
 .notice[data-kind="ok"] {
@@ -328,40 +331,74 @@ h2 {
   background: var(--surface);
   color: var(--text);
 }
+.panel .notice {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
 .notice p {
   margin: 0;
 }
 .notice p + p {
-  margin-top: 6px;
+  margin-top: var(--space-2);
 }
 /* DU-02: what to check while the BE does not answer */
+.offline-card {
+  padding: var(--space-5);
+}
 .offline-card .offline-title {
+  font-size: var(--fs-headline);
   font-weight: 600;
+  line-height: var(--lh-headline);
 }
 .offline-checks {
-  margin: 8px 0 4px;
-  padding-left: 1.4em;
+  margin: var(--space-3) 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  counter-reset: check;
 }
-.offline-checks li + li {
-  margin-top: 4px;
+.offline-checks li {
+  position: relative;
+  padding: var(--space-3) 0 var(--space-3) 2rem;
+  border-top: 1px solid var(--rule);
+  counter-increment: check;
+}
+.offline-checks li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+.offline-checks li::before {
+  content: counter(check);
+  position: absolute;
+  left: 0;
+  top: var(--space-3);
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 1.5px solid var(--control);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: 1.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .offline-card a {
   display: inline-flex;
   align-items: center;
-  min-height: var(--row);
-  color: var(--text);
+  min-height: var(--control-h);
 }
 
 /* DU-04: where the address and token come from */
 .help {
-  margin-top: var(--gap);
+  margin-top: var(--panel-gap);
 }
 .help summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: var(--row);
-  margin: calc(-1 * var(--pad)) 0;
+  margin: calc(-1 * var(--space-5)) 0;
   font-weight: 600;
   cursor: pointer;
   list-style: none;
@@ -372,7 +409,8 @@ h2 {
 .help summary::-webkit-details-marker {
   display: none;
 }
-.help summary::after {
+.help summary::after,
+.brief summary::after {
   content: "";
   width: 7px;
   height: 7px;
@@ -385,21 +423,26 @@ h2 {
   transform: rotate(-135deg);
 }
 .help-body p {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-2);
 }
 .help-title {
-  margin: 14px 0 4px;
-  font-size: var(--fs-section);
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+  letter-spacing: var(--track-body);
 }
 .help-code {
-  margin: 0 0 6px;
-  padding: 10px 12px;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-3);
   border-radius: var(--radius-field);
   background: var(--raised);
   overflow-x: auto;
-  font-size: var(--fs-meta);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
 }
 .help-shape {
+  font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
 .skeleton {
@@ -413,47 +456,105 @@ h2 {
 /* ---- settings form ---- */
 .form {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 .field {
   display: grid;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .field span {
-  font-size: var(--fs-meta);
+  color: var(--text-2);
+  font-size: var(--fs-label);
   font-weight: 600;
+  line-height: var(--lh-label);
 }
 .field input {
   width: 100%;
-  min-height: var(--control-h);
-  padding: 0 12px;
-  border: 1px solid var(--control);
+  min-height: 48px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
   border-radius: var(--radius-field);
   background: var(--surface);
-  font-size: 1rem; /* 16px keeps iOS from zooming the field */
+  font-size: var(--fs-body); /* 17px, over the 16px that keeps iOS from zooming the field */
+}
+.field input:focus-visible {
+  border-color: var(--primary);
 }
 .field input::placeholder {
   color: var(--muted);
 }
+/* The main button: ink fill, 48px, 12px corners ("press is 12px or a pill"). */
 .button {
   justify-self: start;
-  min-height: var(--control-h);
-  padding: 0 20px;
+  min-height: 48px;
+  padding: 0 var(--space-6);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-field);
   background: var(--primary);
   color: var(--on-primary);
+  font-size: var(--fs-callout);
   font-weight: 600;
   cursor: pointer;
+  transition: transform var(--dur-press) var(--ease);
+}
+.button:active:not(:disabled) {
+  transform: scale(var(--press-scale));
 }
 .button:disabled {
   opacity: 0.6;
   cursor: default;
 }
 .field-error {
-  margin: 0 0 var(--gap);
+  margin: 0 0 var(--panel-gap);
   color: var(--negative);
-  font-size: var(--fs-body);
+}
+/* Device pairing spec 5.3: six digit boxes, a gap after the third like the code `482 913` the app shows.
+   Six 44px boxes and their gaps fit a 320px phone inside the panel. */
+.code-boxes {
+  display: flex;
+  gap: var(--space-2);
+}
+.field .code-box {
+  width: 44px;
+  min-width: 0;
+  padding: var(--space-3) 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.code-box:nth-child(4) {
+  margin-left: var(--space-3);
+}
+.url-fixed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+/* A quiet action: "주소 바꾸기", "토큰으로 연결", "연결 지우기". Still a 44px tap target. */
+.text-button {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--hue); /* the link colour */
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.text-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.mode-switch {
+  margin: 0 0 var(--panel-gap);
+}
+.clear-confirm {
+  margin: 0 0 var(--panel-gap);
+}
+.clear-confirm p {
+  margin: 0;
 }
 
 /* ---- nav on a phone: the links take their own row and scroll inside it, never the page ---- */
@@ -467,13 +568,19 @@ h2 {
   }
   .nav ul {
     flex: 1 0 100%;
-    margin: 0 -12px;
-    padding: 0 12px;
+    margin: 0 calc(-1 * var(--space-3));
+    padding: 0 var(--space-3);
     overflow-x: auto;
     scrollbar-width: none;
   }
   .nav ul a {
     white-space: nowrap;
+  }
+  /* Room after the last link, so the row reads as one that scrolls rather than one cut off. */
+  .nav ul::after {
+    content: "";
+    flex: none;
+    width: var(--gutter);
   }
 }
 
@@ -483,43 +590,43 @@ h2 {
   align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 4px var(--gap);
-  margin-bottom: 12px;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-3);
 }
 .panel-head h2 {
   margin: 0;
 }
 .hint {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 .panel .hint {
-  margin-top: 14px;
+  margin-top: var(--space-4);
 }
 .skeleton.short {
   height: 96px;
 }
 .bar-track {
-  fill: var(--raised);
+  fill: var(--bar-track);
 }
 
-/* ---- tabs: one segmented track, as wide as its options ---- */
+/* ---- tabs: one segmented track, as wide as its options; every option 44px ---- */
 .tabs {
   display: inline-flex;
-  gap: 4px;
-  margin: 0 0 var(--gap);
-  padding: 4px;
-  border-radius: var(--radius-control);
+  gap: var(--space-1);
+  margin: 0 0 var(--panel-gap);
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
   background: var(--raised);
 }
 .tab {
-  min-height: 36px;
+  min-height: var(--control-h);
   min-width: 5.5rem;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--muted);
-  font-size: var(--fs-body);
+  font-size: var(--fs-callout);
   font-weight: 600;
   cursor: pointer;
 }
@@ -534,29 +641,29 @@ h2 {
   }
   .tab {
     flex: 1;
-    min-height: var(--control-h);
   }
 }
 
 /* ---- to-do lines (read only) ---- */
 .tgroups {
   display: grid;
-  gap: 14px;
+  gap: var(--space-4);
 }
 .tgroup {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .tgroup-name {
   margin: 0;
   color: var(--muted);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-label);
   font-weight: 600;
+  line-height: var(--lh-label);
 }
 @media (min-width: 481px) {
   .tgroup {
     grid-template-columns: 6rem 1fr;
-    gap: 12px;
+    gap: var(--space-3);
     align-items: baseline;
   }
 }
@@ -567,8 +674,8 @@ h2 {
 }
 .todo {
   display: flex;
-  gap: 8px;
-  padding: 3px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
   overflow-wrap: anywhere;
 }
 .todo-lead {
@@ -581,15 +688,15 @@ h2 {
 }
 
 .brief {
-  margin-top: 14px;
+  margin-top: var(--space-4);
   border-top: 1px solid var(--rule);
 }
 .brief summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: var(--row);
-  margin-bottom: calc(-1 * var(--pad));
+  margin-bottom: calc(-1 * var(--space-5));
   cursor: pointer;
   list-style: none;
 }
@@ -600,12 +707,6 @@ h2 {
   display: none;
 }
 .brief summary::after {
-  content: "";
-  width: 7px;
-  height: 7px;
-  margin-left: auto;
-  border-right: 1.6px solid var(--muted);
-  border-bottom: 1.6px solid var(--muted);
   transform: rotate(-45deg);
 }
 .brief[open] summary::after {
@@ -616,7 +717,7 @@ h2 {
 }
 .brief-text {
   margin: 0;
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-field);
   background: var(--raised);
   white-space: pre-line;
@@ -625,10 +726,10 @@ h2 {
 
 /* ---- the week: seven cells, empty days included ---- */
 .week-prios {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 .week-empty {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 .days {
   margin: 0;
@@ -638,9 +739,9 @@ h2 {
 .day {
   display: grid;
   grid-template-columns: 5rem 1fr;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: baseline;
-  padding: 10px 0;
+  padding: var(--space-3) 0;
 }
 .day + .day {
   border-top: 1px solid var(--rule);
@@ -650,7 +751,7 @@ h2 {
 }
 .day-name {
   color: var(--muted);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-label);
   font-weight: 600;
 }
 .day[aria-current="date"] .day-name {
@@ -660,29 +761,30 @@ h2 {
   font-weight: 400;
 }
 .day-empty {
-  color: var(--neutral);
+  color: var(--muted);
 }
 .day .todo:first-child {
   padding-top: 0;
 }
 
-/* ---- condition dots: y lane, plot, x lane; empty days are blank columns ---- */
+/* ---- condition dots: y lane, plot, x lane; empty days are blank columns. A dot is filled with its step
+   of the ramp inside a thin ink ring, so a light step still reads 3:1 on the panel. ---- */
 .cdots {
   display: grid;
   grid-template-columns: 1rem 1fr;
-  column-gap: 10px;
+  column-gap: var(--space-3);
 }
 .cdots-y,
 .cdots-frame {
   height: 152px;
-  padding: 6px 0;
+  padding: var(--space-2) 0;
 }
 .cdots-y {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  color: var(--muted);
-  font-size: 0.75rem;
+  color: var(--chart-axis);
+  font-size: var(--fs-caption);
   text-align: right;
 }
 .cdots-y span {
@@ -698,23 +800,45 @@ h2 {
   overflow: visible;
 }
 .cdots-grid {
-  stroke: var(--rule);
+  stroke: var(--chart-grid);
   stroke-width: 1px;
+  stroke-dasharray: 2 3;
 }
 .cdots-grid[data-score="1"] {
-  stroke: var(--control);
+  stroke: var(--chart-edge);
+  stroke-dasharray: none;
+}
+.cdots-ring {
+  stroke: var(--chart-ink);
+  stroke-width: 10px;
+  stroke-linecap: round;
 }
 .cdots-dot {
-  stroke: var(--primary);
+  stroke: var(--chart-ink);
   stroke-width: 8px;
   stroke-linecap: round;
+}
+.cdots-dot[data-score="1"] {
+  stroke: var(--ramp-1);
+}
+.cdots-dot[data-score="2"] {
+  stroke: var(--ramp-2);
+}
+.cdots-dot[data-score="3"] {
+  stroke: var(--ramp-3);
+}
+.cdots-dot[data-score="4"] {
+  stroke: var(--ramp-4);
+}
+.cdots-dot[data-score="5"] {
+  stroke: var(--ramp-5);
 }
 .cdots-x {
   grid-column: 2;
   display: flex;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 0.75rem;
+  margin-top: var(--space-2);
+  color: var(--chart-axis);
+  font-size: var(--fs-caption);
 }
 .cdots-x span {
   flex: 1 1 0;
@@ -727,24 +851,24 @@ h2 {
   justify-content: flex-end;
 }
 
-/* ---- status window ---- */
+/* ---- status window: the level in display, a 6px XP bar, area scores as an ink bar, the number and a ramp dot ---- */
 .hero {
   display: grid;
-  gap: 18px;
+  gap: var(--space-5);
 }
 .xp-head,
 .hp-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--gap);
-  margin-bottom: 8px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 .xp-level {
-  font-size: 2rem;
+  font-size: var(--fs-display);
   font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  line-height: var(--lh-display);
+  letter-spacing: var(--track-display);
 }
 .xp-amount,
 .hp-value {
@@ -753,23 +877,43 @@ h2 {
 .xp-bar {
   display: block;
   width: 100%;
-  height: 10px;
+  height: var(--bar-h);
 }
-.xp-fill,
-.stat-fill {
-  fill: var(--primary);
+.xp-fill {
+  fill: var(--bar-fill);
 }
+/* HP is today's condition (1-5): the cells it reached are filled with that step of the ramp inside an ink
+   ring; the rest are empty --control outlines, so on and off differ in shape as well as colour. */
 .hp-bar {
   display: block;
   width: 100%;
   max-width: 200px;
-  height: 10px;
+  height: var(--hp-bar-h);
+  overflow: visible;
 }
 .hp-cell {
-  fill: var(--raised);
+  fill: none;
+  stroke: var(--control);
+  stroke-width: 1px;
 }
+/* A 1px ink ring, as on the condition dots: a light step still reads 3:1 on the panel. */
 .hp-cell[data-on="true"] {
-  fill: var(--primary);
+  stroke: var(--chart-ink);
+}
+.hp-bar[data-score="1"] .hp-cell[data-on="true"] {
+  fill: var(--ramp-1);
+}
+.hp-bar[data-score="2"] .hp-cell[data-on="true"] {
+  fill: var(--ramp-2);
+}
+.hp-bar[data-score="3"] .hp-cell[data-on="true"] {
+  fill: var(--ramp-3);
+}
+.hp-bar[data-score="4"] .hp-cell[data-on="true"] {
+  fill: var(--ramp-4);
+}
+.hp-bar[data-score="5"] .hp-cell[data-on="true"] {
+  fill: var(--ramp-5);
 }
 
 .stats {
@@ -779,21 +923,141 @@ h2 {
 }
 .stat {
   display: grid;
-  grid-template-columns: 4rem 1fr minmax(1.5rem, auto);
+  grid-template-columns: 5.5rem 1fr minmax(1.5rem, auto);
   align-items: center;
-  column-gap: 12px;
-  padding: 8px 0;
+  column-gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--rule);
 }
 .stat:first-child {
   padding-top: 0;
+  border-top: 0;
 }
 .stat:last-child {
   padding-bottom: 0;
 }
+/* The area as a tag: its colour dot, then its name in --text-2 (DESIGN.md 태그). */
+.stat-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--fs-callout);
+}
 .stat-bar {
   display: block;
   width: 100%;
+  height: var(--stat-bar-h);
+  overflow: visible;
+}
+.stat-fill {
+  fill: var(--bar-fill);
+}
+/* The recent bonus: empty cells after the base, a 1px ink outline (shape tells it from the fill, not colour). */
+.stat-bonus {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.stat-sub {
+  grid-column: 2 / -1;
+  margin-top: var(--space-1);
+}
+.stat-body {
+  grid-column: 2 / -1;
+  margin-top: var(--space-1);
+}
+/* 요즘 손이 간 영역: a pictogram (in its area colour) with the name, the bonus at the right, counts below. */
+.with-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.recent-areas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recent-area {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--rule);
+}
+.recent-area:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.recent-area:last-child {
+  padding-bottom: 0;
+}
+.recent-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-callout);
+  font-weight: 600;
+}
+.recent-name .pictogram {
+  color: var(--area);
+}
+.recent-bonus {
+  font-weight: 600;
+}
+.recent-counts {
+  grid-column: 1 / -1;
+}
+/* 이룬 순간: a day head, then a pictogram (area colour) beside each line. */
+.moment-day + .moment-day {
+  margin-top: var(--space-3);
+}
+.moments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.moment {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+.moment .pictogram {
+  flex: none;
+  margin-top: 2px;
+  color: var(--area, var(--muted));
+}
+.moment-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* The area score's ramp step: an 8px dot beside the number, ringed in ink so a light step still reads 3:1. */
+.stat-step {
+  display: inline-block;
+  width: 8px;
   height: 8px;
+  margin: 0 var(--space-2) 1px 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--chart-ink);
+  vertical-align: middle;
+}
+.stat-step[data-step="1"] {
+  background: var(--ramp-1);
+}
+.stat-step[data-step="2"] {
+  background: var(--ramp-2);
+}
+.stat-step[data-step="3"] {
+  background: var(--ramp-3);
+}
+.stat-step[data-step="4"] {
+  background: var(--ramp-4);
+}
+.stat-step[data-step="5"] {
+  background: var(--ramp-5);
 }
 .stat-value {
   text-align: right;
@@ -806,25 +1070,29 @@ h2 {
 .stat-debuff,
 .stat-quest {
   grid-column: 2 / -1;
-  font-size: var(--fs-meta);
+  font-size: var(--fs-caption);
 }
 .stat-debuff {
-  margin-top: 6px;
+  margin-top: var(--space-1);
   color: var(--muted);
   font-weight: 600;
 }
 .stat-quest {
-  margin-top: 6px;
-  padding: 8px 12px;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-field);
   background: var(--raised);
   color: var(--text);
 }
 
 .sub-heading {
-  margin: 16px 0 6px;
-  font-size: var(--fs-section);
+  margin: var(--space-5) 0 var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: var(--fs-label);
   font-weight: 600;
+  line-height: var(--lh-label);
 }
 .quests {
   margin: 0;
@@ -834,8 +1102,8 @@ h2 {
 .quest {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 4px 0;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
   overflow-wrap: anywhere;
 }
 .quest-title {
@@ -852,7 +1120,7 @@ h2 {
   align-self: center;
   width: 6px;
   height: 6px;
-  margin: 0 3px;
+  margin: 0 var(--space-2);
   border-radius: 50%;
   background: var(--neutral);
 }
@@ -864,40 +1132,41 @@ h2 {
   overflow-wrap: anywhere;
 }
 .panel > .row h2 {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
-/* ---- life curve: ink lines on a tone-step panel; chapters a strip, milestones a lane above the 0~10 plot ---- */
+/* ---- life curve: a 2px ink ladder on the panel, one grid layer, no fill under the line; chapters a strip,
+   milestones a lane above the 0~10 plot ---- */
 .curve-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px var(--gap);
-  margin: 0 0 var(--gap);
+  gap: var(--space-1) var(--space-5);
+  margin: 0 0 var(--panel-gap);
 }
 .zoom-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .zoom-row .tabs {
   margin: 0;
 }
 .zooms .tab {
   min-width: 3.25rem;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
 }
 .check {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: var(--control-h);
-  font-size: var(--fs-body);
+  font-size: var(--fs-callout);
   cursor: pointer;
 }
 .check input {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   margin: 0;
   accent-color: var(--primary);
 }
@@ -913,22 +1182,22 @@ h2 {
   }
   .zooms .tab {
     min-width: 0;
-    padding: 0 4px;
+    padding: 0 var(--space-1);
   }
 }
 .curve-panel {
-  padding: 12px 12px 14px;
+  padding: var(--space-4) var(--space-3) var(--space-4);
 }
 .curve-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0 4px 6px;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 var(--space-1) var(--space-2);
 }
 .curve-key {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   white-space: nowrap;
 }
 .curve-swatch {
@@ -940,16 +1209,15 @@ h2 {
   width: 8px;
 }
 .curve-swatch line {
-  stroke: var(--text);
+  stroke: var(--chart-ink);
   stroke-width: 2px;
 }
 .curve-key[data-key="future"] .curve-swatch line {
-  stroke: var(--muted);
+  stroke: var(--chart-future);
   stroke-dasharray: 3 3;
 }
 .curve-swatch circle {
-  fill: var(--muted);
-  opacity: 0.45;
+  fill: var(--condition-dot);
 }
 .curve-figure {
   position: relative;
@@ -970,16 +1238,18 @@ h2 {
   font-family: var(--font);
   font-variant-numeric: tabular-nums;
 }
-.curve-axis text {
-  fill: var(--muted);
-  font-size: 12px;
+/* Recharts 3 draws the tick letters in their own layer, outside the axis group, with a fill of its own. */
+.curve-axis text,
+.curve-figure .recharts-cartesian-axis-tick-value {
+  fill: var(--chart-axis);
+  font-size: var(--fs-caption);
 }
 .curve-grid {
-  stroke: var(--rule);
+  stroke: var(--chart-grid);
   stroke-width: 1px;
 }
 .curve-band.tone-0 .recharts-reference-area-rect {
-  fill: var(--raised);
+  fill: var(--chart-band);
   fill-opacity: 1;
 }
 .curve-band.tone-1 .recharts-reference-area-rect {
@@ -988,11 +1258,11 @@ h2 {
 }
 .curve-chapter-label {
   fill: var(--text);
-  font-size: 12px;
+  font-size: var(--fs-label);
   font-weight: 600;
 }
 .curve-edge line {
-  stroke: var(--control);
+  stroke: var(--chart-edge);
   stroke-width: 1px;
   stroke-dasharray: 2 3;
 }
@@ -1000,24 +1270,24 @@ h2 {
   fill: var(--condition-dot);
 }
 .curve-now .recharts-curve {
-  stroke: var(--text);
+  stroke: var(--chart-ink);
   stroke-width: 2px;
   fill: none;
 }
 .curve-future .recharts-curve {
-  stroke: var(--muted);
+  stroke: var(--chart-future);
   stroke-width: 2px;
   stroke-dasharray: 5 4;
   fill: none;
 }
 .curve-dot-now {
-  fill: var(--text);
+  fill: var(--chart-ink);
   stroke: var(--surface);
   stroke-width: 1.5px;
 }
 .curve-dot-future {
   fill: var(--surface);
-  stroke: var(--muted);
+  stroke: var(--chart-future);
   stroke-width: 1.5px;
 }
 .curve-tap {
@@ -1033,49 +1303,49 @@ h2 {
   fill: transparent;
 }
 .curve-marker-glyph {
-  fill: var(--text);
+  fill: var(--chart-ink);
   stroke: var(--surface);
   stroke-width: 1px;
   stroke-linejoin: round;
 }
 .curve-marker[data-estimate] .curve-marker-glyph {
   fill: var(--surface);
-  stroke: var(--text);
+  stroke: var(--chart-ink);
   stroke-width: 1.5px;
 }
 .curve-marker-ring {
   fill: none;
-  stroke: var(--text);
+  stroke: var(--chart-ink);
   stroke-width: 1.5px;
 }
 .curve-marker:focus-visible .curve-marker-hit {
-  stroke: var(--hue);
+  stroke: var(--text);
   stroke-width: 2px;
 }
 .curve-marker[data-sensitive] .curve-marker-hit {
-  stroke: var(--control);
+  stroke: var(--chart-edge);
   stroke-width: 1px;
   stroke-dasharray: 2 2;
 }
 .curve-empty {
   display: grid;
-  gap: 6px;
-  padding: 4px;
+  gap: var(--space-2);
+  padding: var(--space-1);
 }
-/* DU-05: the next review days on a faint line, dates only */
+/* DU-05: the next review days on a faint line, dates only. The secretary asks then: a --hue ring. */
 .upcoming {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 20px;
-  margin: 4px 0 2px;
-  padding: 10px 0 0;
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-3) 0 0;
   list-style: none;
-  border-top: 1px dashed var(--control);
+  border-top: 1px dashed var(--chart-edge);
 }
 .upcoming-mark {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .upcoming-mark::before {
   content: "";
@@ -1091,39 +1361,37 @@ h2 {
 }
 .upcoming-what {
   color: var(--muted);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-caption);
 }
 .curve-figure + .curve-empty,
 .curve + .curve-empty,
 .milestone + .curve-empty {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 .milestone {
-  margin: 8px 0 0;
-  padding: 12px 14px;
-  border-radius: 12px;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-field);
   background: var(--raised);
 }
 .milestone-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--gap);
+  gap: var(--space-3);
 }
 .milestone-meta {
   margin: 0;
 }
-.milestone-head .text-button {
-  min-height: 32px;
-}
 .milestone-title {
-  margin: 2px 0 0;
-  font-size: var(--fs-nav);
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-headline);
   font-weight: 600;
+  line-height: var(--lh-headline);
   overflow-wrap: anywhere;
 }
 .milestone-note {
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   overflow-wrap: anywhere;
 }
 .skeleton.tall {
@@ -1131,49 +1399,54 @@ h2 {
 }
 .curve-pair {
   display: grid;
-  gap: 0 var(--gap);
+  gap: 0 var(--panel-gap);
 }
-@media (min-width: 640px) {
+@media (min-width: 720px) {
   .curve-pair {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: start;
   }
 }
+/* Radar (삶의 수레바퀴): six axes, --rule cells, this quarter 1.5px ink, the one before 1px dashed --muted.
+   Each axis name in its area colour, each vertex an area dot. No fill. */
 .radar {
   display: flex;
   justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .radar-grid {
-  stroke: var(--rule);
+  stroke: var(--chart-grid);
   fill: none;
 }
 .radar-tick {
-  fill: var(--muted);
-  font-size: 12px;
+  fill: var(--area, var(--chart-axis));
+  font-size: var(--fs-caption);
+  font-weight: 600;
 }
 .radar-tick-value {
   fill: var(--text);
-  font-weight: 600;
 }
 .radar-down {
   fill: var(--text);
   font-weight: 700;
 }
 .radar-now .recharts-polygon {
-  stroke: var(--text);
-  stroke-width: 2px;
-  fill: var(--text);
-  fill-opacity: 0.08;
+  stroke: var(--chart-ink);
+  stroke-width: 1.5px;
+  fill: none;
 }
 .radar-prev .recharts-polygon {
-  stroke: var(--muted);
-  stroke-width: 1.5px;
+  stroke: var(--chart-future);
+  stroke-width: 1px;
   stroke-dasharray: 4 3;
   fill: none;
 }
 .radar-dot {
-  fill: var(--text);
-  stroke: none;
+  fill: var(--area, var(--chart-ink));
+  stroke: var(--surface);
+  stroke-width: 1.5px;
 }
 .reassures {
   margin: 0;
@@ -1181,8 +1454,7 @@ h2 {
   list-style: none;
 }
 .reassure {
-  padding: 10px 0;
-  word-break: keep-all;
+  padding: var(--space-3) 0;
 }
 .reassure + .reassure {
   border-top: 1px solid var(--rule);
@@ -1195,15 +1467,17 @@ h2 {
   font-weight: 600;
 }
 .reassure-copy {
-  margin: 2px 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--muted);
+  font-size: var(--fs-callout);
+  line-height: var(--lh-callout);
 }
 .reassure:not([data-compared]) .reassure-head {
   font-weight: 400;
   color: var(--muted);
 }
 .reassure-more {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   border-top: 1px solid var(--rule);
 }
 .reassure-more summary {
@@ -1213,14 +1487,251 @@ h2 {
   cursor: pointer;
 }
 .reassure-more .reassure:first-child {
-  padding-top: 4px;
+  padding-top: var(--space-1);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition: none !important;
-    animation: none !important;
+/* ---- life curve tabs and the history list: a list on the paper, no boxes; area colour only as a dot or a small tag ---- */
+.curve-tabs {
+  margin-bottom: var(--panel-gap);
+}
+.tab.with-icon {
+  justify-content: center;
+}
+.history-subtitle {
+  margin: 0 0 var(--space-3);
+}
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.history-controls .tabs {
+  margin: 0;
+}
+.history-filters .tab {
+  min-width: 0;
+  padding: 0 var(--space-3);
+}
+.history-chapter {
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--rule);
+}
+.history-chapter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.history-chapter-title {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+  overflow-wrap: anywhere;
+}
+.history-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+}
+.history-memo {
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+.history-events {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.history-none {
+  margin-top: var(--space-2);
+}
+.history-event-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--row);
+  padding: var(--space-2) 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.history-kind {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--raised);
+}
+.history-event-body {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.history-event-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-3);
+}
+.history-event-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.history-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+.history-tags .stat-name .pictogram {
+  color: var(--area);
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-pill);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: var(--lh-label);
+}
+.tag.history-assistant {
+  color: var(--hue);
+}
+.history-folded {
+  padding: var(--space-1) 0;
+}
+
+/* ---- history: hidden-event line, side column, glance strip, side summary (SP8 8.5, 8.6) ---- */
+.history-event-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.history-event-line .history-event-row {
+  flex: 1;
+  min-width: 0;
+}
+.history-hide {
+  flex: none;
+}
+.history-hidden {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 var(--space-6);
+}
+@media (min-width: 720px) {
+  .history-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    align-items: start;
   }
+}
+.glance {
+  margin: 0 0 var(--space-4);
+}
+.glance-title {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
+}
+.glance-sub {
+  margin: var(--space-1) 0 var(--space-2);
+}
+.glance-svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+.glance-band {
+  fill: var(--raised);
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.glance-band-dashed {
+  stroke-dasharray: 4 3;
+}
+.glance-ladder {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.glance-mark {
+  color: var(--text);
+}
+.glance-tick {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.glance-tick-label {
+  fill: var(--muted);
+  font-size: var(--fs-caption);
+}
+.history-summary {
+  margin: var(--space-4) 0;
+}
+.history-summary-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.history-summary-lines li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--rule);
+  overflow-wrap: anywhere;
+}
+.history-summary-lines .pictogram {
+  flex: none;
+  margin-top: 2px;
+}
+.history-help {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  background: var(--raised);
+  border-radius: var(--radius-panel);
+  color: var(--text-2);
+}
+.history-help .pictogram {
+  flex: none;
+  color: var(--hue);
+  margin-top: 2px;
+}
+.history-summary-text {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+.history-summary-value {
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: var(--lh-headline);
 }

@@ -140,6 +140,23 @@ def test_ci_conclusion_reads_ci_push_runs_only() -> None:
         gh.ci_conclusion("s1")  # 조회 실패는 "unknown"이 아니라 예외
 
 
+def test_ci_conclusion_is_success_if_any_completed_run_for_the_sha_succeeded() -> None:
+    gh, server, http = make()
+    server.runs += [  # develop에서 통과한 SHA를 main으로 ff: main의 푸시 실행은 건너뛰거나 실패할 수 있다
+        {"id": 1, "name": "ci", "head_sha": "s1", "event": "push", "status": "completed", "conclusion": "success",
+         "created_at": "2026-10-26T00:00:00Z"},
+        {"id": 2, "name": "ci", "head_sha": "s1", "event": "push", "status": "completed", "conclusion": "skipped",
+         "created_at": "2026-10-26T01:00:00Z"},
+        {"id": 3, "name": "ci", "head_sha": "s2", "event": "push", "status": "completed", "conclusion": "failure",
+         "created_at": "2026-10-26T00:00:00Z"},
+        {"id": 4, "name": "ci", "head_sha": "s2", "event": "push", "status": "in_progress", "conclusion": None,
+         "created_at": "2026-10-26T01:00:00Z"},
+    ]
+    assert gh.ci_conclusion("s1") == "success"
+    assert "branch" not in http.requests[-1].query
+    assert gh.ci_conclusion("s2") == "pending"  # 성공이 없으면 가장 새 실행
+
+
 def test_commit_state_by_context_prefix() -> None:
     gh, server, _ = make()
     server.statuses["s"] = [
@@ -154,6 +171,50 @@ def test_repairs_in_range_reads_commit_messages() -> None:
     gh, server, _ = make()
     server.compares[("a", "b")] = ["fix x\n\nRepairs #12", "docs", "y (#40)\n\nRepairs #7\nRepairs #12", "Repairs #123x"]
     assert gh.repairs_in_range("a", "b") == [12, 7]
+
+
+def test_repair_commits_maps_issue_to_latest_repairs_commit() -> None:
+    gh, server, _ = make()
+    server.compares[("a", "b")] = [("c1", "fix\n\nRepairs #12"), ("c2", "docs"), ("c3", "fix again\n\nRepairs #12\nRepairs #7")]
+    assert gh.repair_commits("a", "b") == {12: "c3", 7: "c3"}
+    assert list(gh.repair_commits("a", "b")) == [12, 7]  # 처음 나온 순서
+
+
+def test_compare_reads_every_page_past_250_commits() -> None:
+    """최종 리뷰 M-5: compare는 한 번에 250개까지. 노트북이 오래 꺼져 있던 뒤의 `Repairs #N`도 읽는다."""
+    gh, _, http = make()
+    first = [{"sha": f"c{i}", "commit": {"message": "x"}} for i in range(100)]
+    second = [{"sha": f"c{i}", "commit": {"message": "x"}} for i in range(100, 200)]
+    third = [{"sha": "c200", "commit": {"message": "fix\n\nRepairs #9"}}]
+    path = f"/repos/{REPO}/compare/a...b"
+    http.queue("GET", path, *(FakeResponse(200, {"total_commits": 201, "commits": p}) for p in (first, second, third)))
+    assert gh.repair_commits("a", "b") == {9: "c200"}
+    assert [r.query["page"] for r in http.calls("GET", path)] == ["1", "2", "3"]
+
+
+def test_vercel_state_exact_context_by_vercel_bot_newest_first() -> None:
+    gh, server, http = make()
+    bot = {"login": "vercel[bot]"}
+    server.statuses["s"] = [  # 오래된 것부터 넣는다(목록 API는 새 것부터 준다)
+        {"context": "Vercel – my-planner", "state": "pending", "creator": bot},
+        {"context": "Vercel – my-planner-dashboard", "state": "failure", "creator": bot},
+        {"context": "Vercel – my-planner", "state": "success", "creator": bot},
+        {"context": "Vercel – my-planner", "state": "failure", "creator": {"login": "mallory"}},
+    ]
+    assert gh.vercel_state("s", "Vercel – my-planner") == "success"
+    assert gh.vercel_state("s", "Vercel – my-planner-dashboard") == "failure"
+    assert gh.vercel_state("s", "Vercel") is None  # 접두로는 맞지 않는다
+    assert gh.vercel_state("none", "Vercel – my-planner") is None
+    assert http.requests[-1].path == f"/repos/{REPO}/commits/none/statuses"
+
+
+def test_commits_after_and_path_commits() -> None:
+    gh, server, http = make()
+    server.compares[("r", "h")] = [("c1", "x"), ("h", "y")]
+    assert gh.commits_after("r", "h") == ["c1", "h"]
+    server.path_commits["web/app"] = ["c9", "c1"]
+    assert gh.path_commits("web/app") == ["c9", "c1"]
+    assert http.requests[-1].query == {"sha": "main", "path": "web/app", "per_page": "100"}
 
 
 def test_pr_for_issue_finds_merged_repair_pr() -> None:

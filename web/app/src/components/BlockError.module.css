@@ -3,7 +3,7 @@
   flex-wrap: wrap;
   align-items: center;
   min-height: var(--row);
-  padding: 0.5rem var(--pad);
+  padding: 0.5rem var(--row-pad-x, var(--pad));
   box-sizing: border-box;
   font-size: var(--size-meta);
   color: var(--muted);

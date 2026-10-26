@@ -1,0 +1,24 @@
+/* SP9 9.1: a 32px circle on --raised; its hit area is the 44px control height (SP5 9장). */
+.more {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--small-control-h);
+  height: var(--small-control-h);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--text);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.more::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2);
+}
+.more:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

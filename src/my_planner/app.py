@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import hmac
 import logging
 import os
 import sqlite3
@@ -44,6 +45,7 @@ from my_planner.harness.brain import Brain, ClaudeBrain
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.delivery import Delivery, PushSender, WebPushSender
 from my_planner.harness.dispatcher import Dispatcher, Outbound, Sender
+from my_planner.harness.moments import claude_config_dir as default_claude_config_dir
 from my_planner.harness.stream import AppReplySender
 from my_planner.logging_setup import setup_logging
 from my_planner.loop.runner import (
@@ -53,10 +55,15 @@ from my_planner.loop.runner import (
     expire_curve_drafts,
     expire_drafts,
     grant_rest_days_daily,
+    memos_daily,
     prune_api_state_daily,
+    prune_records_daily,
     prune_updates_daily,
+    queue_moments_daily,
     recover_on_start,
+    reerase_deleted_daily,
     resubmit_inbound,
+    retry_summaries_daily,
 )
 from my_planner.platform.windows import (
     AlreadyRunning,
@@ -66,12 +73,16 @@ from my_planner.platform.windows import (
 )
 from my_planner.store.db import integrity_ok, migrate, open_db, open_ro
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo, IdempotencyRepo
+from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.events import EventsRepo
 from my_planner.store.repos.habits import HabitsRepo
+from my_planner.store.repos.memos import MemosRepo
+from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
@@ -212,6 +223,10 @@ class BeParts:
     curve: CurveRepo
     status: StatusRepo
     habits: HabitsRepo | None = None  # 습관(SP7)
+    moments: MomentsRepo | None = None  # 이룬 순간(SP8)
+    body: BodyRepo | None = None  # 몸 기록(SP8 7장)
+    memos: MemosRepo | None = None  # 메모(SP9 6장)
+    events: EventsRepo | None = None  # 스케줄(SP9 5장)
 
 
 def build_be(
@@ -225,10 +240,12 @@ def build_be(
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     keep_awake: Callable[[], AbstractContextManager[Any]] = nullcontext,
     push_sender: PushSender | None = None,
+    claude_config_dir: Path | None = None,
 ) -> BeParts:
     """저장소, 도구, 두뇌, 디스패처, 러너, 버튼 처리기를 조립한다(텔레그램 앱과 API는 밖에서 붙인다).
 
     `push_sender`: 웹 푸시 전송(시험은 가짜). 없으면 VAPID가 있을 때 `WebPushSender`. VAPID가 없으면 푸시는 꺼진다.
+    `claude_config_dir`: 하루 끝 순간 호출 뒤 세션 파일을 지울 CLI 설정 폴더(SP8 6.3). None이면 지우지 않는다(시험).
     """
     paths = settings.paths
     state = StateRepo(conn, clock)
@@ -246,6 +263,10 @@ def build_be(
     curve = CurveRepo(conn, clock)
     status = StatusRepo(conn, clock)
     habits = HabitsRepo(conn, clock)
+    moments = MomentsRepo(conn, clock)
+    memos = MemosRepo(conn, clock)
+    body = BodyRepo(conn, clock)
+    events = EventsRepo(conn, clock, settings.timezone)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -270,6 +291,12 @@ def build_be(
         status=status,
         review_date_for=lambda ctx: review_date_for(convs, runs, settings, ctx),
         habits=habits,  # 습관 도구(SP7 5.4), `data/exports/habits.md`(5.8)
+        moments=moments,  # 하루 끝 순간 호출의 `save_moments`(SP8 6.3). 내보내기는 없다
+        state=state, settings=settings, runs=runs,  # 체크인 시간 바꾸기(SP9 8장)
+        memos=memos,  # 메모 도구·동작(SP9 6장). `memos.md`는 하루 한 번 작업이 쓴다
+        body=body,  # 몸 기록(SP8 7장): `POST /body`의 `record_body_days`, 56일 정리(`prune_records`)
+        events=events,  # 스케줄 도구·동작(SP9 5장), 앞머리 `## 오늘 일정`
+        conversations=convs,  # `find_conversations`(SP9 7.5): 제목·요약만
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -295,10 +322,13 @@ def build_be(
         confirms=confirms,
         app_sender=AppReplySender(),  # 앱 답(`POST /chat`의 스트림, SP3-4 7.5 M4)
         delivery=delivery,
+        claude_config_dir=claude_config_dir,
     )
     runner = Runner(
         clock=clock, settings=settings, runs=runs, state=state, dispatcher=dispatcher, router=router,
         on_resume=on_resume, sleep=sleep, checkins=settings.runtime.role == "prod",  # dev는 회차·따라잡기 끔
+        events=events, reminder_delivery=delivery,  # 일정 알림 1분 tick(SP9 5.3): 두뇌 없이 주 통로로
+        summaries=dispatcher,  # 닫힌 앱 대화의 요약 큐(SP9 7.2)
     )
     # 제안한 지 limits.draft_ttl_days(기본 3일) 지난 초안은 조용히 dropped. 하루 한 번 작업은 즉시 갈래로(4.3)
     runner.register_daily(expire_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
@@ -306,6 +336,12 @@ def build_be(
     runner.register_daily(expire_curve_drafts(dispatcher, clock, days=settings.limits.draft_ttl_days))
     runner.register_daily(grant_rest_days_daily(dispatcher))  # X9 쉬는 날(어제까지, 최대 14일)
     runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
+    runner.register_daily(prune_records_daily(dispatcher))  # 60일 지난 status_moment_days(SP8 6.4)
+    runner.register_daily(memos_daily(dispatcher))  # 30일 지난 지운 메모 완전 삭제, memos.md(SP9 6.1)
+    # 하루 끝 이룬 순간: 정리할 날을 골라 디스패처에 가장 낮은 차례로(SP8 6.2). 두뇌는 디스패처가 부른다
+    runner.register_daily(queue_moments_daily(dispatcher, moments, state))
+    runner.register_daily(retry_summaries_daily(dispatcher))  # 요약이 안 된 최근 7일의 앱 대화(SP9 7.2)
+    runner.register_daily(reerase_deleted_daily(dispatcher))  # 최근 30일 안에 지운 대화의 원문 다시 지우기(SP9 7.7)
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))
     runner.register_daily(prune_updates_daily(state, clock))  # 처리한 update_id는 2일 뒤 지운다
     runner.register_daily(cleanup_logs_daily(paths.state_dir / "logs", keep=settings.retention.log_days))
@@ -328,7 +364,8 @@ def build_be(
         state=state, convs=convs, runs=runs, tasks=tasks, conditions=conditions, transcripts=transcripts,
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
-        pushes=pushes, curve=curve, status=status, habits=habits,
+        pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos, body=body,
+        events=events,
     )
 
 
@@ -377,6 +414,23 @@ def _api_token(settings: Settings) -> str | None:
     return token
 
 
+def _body_token(settings: Settings, api_token: str) -> str | None:
+    """`POST /body`를 열 토큰(SP8 7.2). 없거나 43자 미만이거나 `API_TOKEN`과 같으면 경고 한 줄을 남기고 None: 그 경로만
+    열지 않는다(다른 경로는 그대로). 값은 남기지 않는다."""
+    token = settings.body_token.get_secret_value() if settings.body_token is not None else ""
+    reason = None
+    if not token:
+        reason = "missing"
+    elif len(token) < API_TOKEN_MIN_CHARS:
+        reason = "too_short"
+    elif hmac.compare_digest(token.encode("utf-8"), api_token.encode("utf-8")):
+        reason = "same_as_api"
+    if reason is not None:
+        log.warning("body_token_missing", extra={"reason": reason})
+        return None
+    return token
+
+
 async def _open_api(
     settings: Settings,
     clock: Clock,
@@ -395,6 +449,7 @@ async def _open_api(
     deps = ApiDeps(
         settings=settings, clock=clock, token=token, read_conn=read_conn, dispatcher=dispatcher, errors=errors,
         polling_state=polling_state, started_at=errors.started_at, transcripts=transcripts, safe_mode=safe_mode,
+        body_token=_body_token(settings, token),
     )
     try:
         return await start_api(build_app(deps), settings.api.host, settings.api.port)
@@ -433,7 +488,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
         return
     conn = checked
     try:
-        log.info("db_ready", extra={"schema_version": migrate(conn)})
+        log.info("db_ready", extra={"schema_version": migrate(conn, tz=settings.timezone)})
         # 조립: Sender, Brain, Dispatcher. Bot을 앱보다 먼저 만들어 서로를 기다리지 않게 한다.
         bot = None if dev else Bot(_bot_token(settings))
         restarting: list[asyncio.Task[None]] = []  # 진행 중인 폴링 재시작(종료가 끝날 때까지 기다린다)
@@ -471,6 +526,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
             ),
             on_resume=None if bot is None else restart_polling,
             keep_awake=keep_awake,
+            claude_config_dir=default_claude_config_dir(),  # 순간 호출 뒤 세션 파일 지우기(SP8 6.3, 결정 18)
         )
         runner, dispatcher = parts.runner, parts.dispatcher
         # 4. 남은 회차 복구: queued/running → interrupted와 재실행 규칙, failed 회차는 전송만 한 번 더.
@@ -523,6 +579,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 ticking.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await ticking
+                await runner.drain_reminders()  # 보내는 중인 일정 알림을 기다리고, 못 끝낸 것은 failed로(DB를 닫기 전)
                 # 진행 중인 폴링 재시작은 끝나기를 기다린다(안 됐어도 종료는 계속). 끝나면 목록에서 빠지므로 복사한다
                 for task in list(restarting):  # noqa: PERF101
                     with contextlib.suppress(Exception):

@@ -1,7 +1,7 @@
 """사람이 읽는 내보내기 `data/exports/tasks.md` (ADR 0003), `data/curve/chapters.md` (SP3-4 스펙 5.4),
-`data/exports/habits.md` (SP7 스펙 5.8).
+`data/exports/habits.md` (SP7 스펙 5.8), `data/exports/memos.md` (SP9 스펙 6.1).
 
-변경 도구가 부를 때마다 다시 만든다."""
+변경 도구가 부를 때마다 다시 만든다. 메모만 하루 한 번 작업이 만든다."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 from my_planner.domain import TaskStatus
 from my_planner.store.repos.curve import CurveRepo, Milestone
 from my_planner.store.repos.habits import Habit, HabitsRepo
+from my_planner.store.repos.memos import Memo, MemosRepo, memo_title
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 
@@ -69,7 +70,7 @@ def _write(path: Path, lines: list[str]) -> None:
 
 
 SENSITIVE_MASK = "(민감)"
-_KIND = {"high": "고점", "low": "저점", "turning_point": "전환점"}
+_KIND = {"high": "높은 때", "low": "힘든 때", "turning_point": "전환점"}  # `confirmations.KIND_LABELS`와 같다(SP8 8.7)
 
 
 def _milestone_line(m: Milestone) -> str:
@@ -119,4 +120,29 @@ def export_habits(habits: HabitsRepo, path: Path, today: date) -> None:
     for status, heading in _HABIT_GROUPS:
         rows = [_habit_export_line(h, len(habits.checks_between(h.id, start, today))) for h in habits.list((status,))]
         lines += [f"## {heading}", "", *(rows or ["(없음)"]), ""]
+    _write(path, lines)
+
+
+def _memo_heading(m: Memo) -> str:
+    bits = [f"### #{m.id} {memo_title(m.body)}"]
+    if m.area is not None:
+        bits.append(_AREA_LABELS[m.area.value])
+    if m.origin == "chat":
+        bits.append("비서")
+    return " · ".join(bits)
+
+
+def export_memos(memos: MemosRepo, path: Path) -> None:
+    """살아 있는 메모 전체(SP9 6.1, ADR 0003 사람이 읽는 사본): "고정됨" 묶음 먼저, 그다음 "메모", 고친 시각 최근순.
+    하루 한 번 작업만 부른다. 지운 메모는 넣지 않는다. 시각 줄은 두지 않는다(같은 데이터면 같은 파일)."""
+    live = memos.all_live()
+    lines = ["# 메모", "", "_이 파일은 자동으로 다시 만들어져요. 직접 고치지 마세요._", ""]
+    for heading, group in (("고정됨", [m for m in live if m.pinned]), ("메모", [m for m in live if not m.pinned])):
+        if heading == "고정됨" and not group:
+            continue
+        lines += [f"## {heading}", ""]
+        for m in group:
+            lines += [_memo_heading(m), "", m.body.rstrip("\n"), ""]
+        if not group:
+            lines += ["(없음)", ""]
     _write(path, lines)

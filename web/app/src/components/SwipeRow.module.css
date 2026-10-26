@@ -2,12 +2,20 @@
   position: relative;
   overflow: hidden;
 }
-.wrap + .wrap {
+/* The hairline between rows starts at --rule-inset (a to-do's title in a paper group). */
+.wrap + .wrap::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--rule-inset, 0);
   border-top: 1px solid var(--rule);
+  pointer-events: none;
 }
 .surface {
   position: relative;
-  background: var(--surface);
+  background: var(--row-bg, var(--surface));
   touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
@@ -47,7 +55,7 @@
 }
 .menuItem {
   min-height: var(--row);
-  padding: 0 var(--pad);
+  padding: 0 var(--row-pad-x, var(--pad));
   border: 0;
   border-top: 1px solid var(--rule);
   background: transparent;
@@ -65,7 +73,7 @@
   inset: 0 0 0 auto;
   width: var(--control-h);
   border: 0;
-  background: var(--surface);
+  background: var(--row-bg, var(--surface));
   color: var(--text);
   font: inherit;
   opacity: 0;
@@ -76,4 +84,22 @@
   opacity: 1;
   outline: 2px solid var(--text);
   outline-offset: -2px;
+}
+/* moreVisible: a quiet dots icon at rest, level with a one-line row's middle and with the first line when the
+   text wraps (the row keeps padding-right: var(--control-h) for it). */
+.moreShown {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: calc((var(--row) - 1.5rem) / 2) 0 0;
+  color: var(--muted);
+  opacity: 1;
+}
+.moreShown:focus:not(:focus-visible) {
+  outline: none;
+}
+@media (hover: hover) {
+  .moreShown:hover {
+    color: var(--text);
+  }
 }

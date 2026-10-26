@@ -6,6 +6,7 @@ from be_env import BeEnv
 from test_dispatcher_messages import kst
 
 from my_planner.api.models import schema_bundle
+from my_planner.store.db import transaction
 from my_planner.store.exports import export_tasks
 from my_planner.tools.actions import ACTIONS
 
@@ -48,12 +49,16 @@ async def test_complete_task_applied_shape(tmp_path):
 CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
-def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)):
+def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None),
+                  events=(None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
     m1, m2, h1, h2 = curve
     hb, hc = habits  # 습관 둘(체크 안 함, 오늘 체크함)
+    mo, mp, mu = memos  # 메모 셋(고정 안 함, 고정함은 `mp`), `mu`는 `updated_at`
+    mv, mh, md = moments  # 이룬 순간 셋(보임, 숨김, 지울 것)
+    ev, er = events  # 매일 일정 하나, 놓친 알림 행이 있는 일정
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -80,6 +85,23 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "set_habit_status": {"id": hb, "status": "paused"},
         "check_habit": {"id": hb},
         "uncheck_habit": {"id": hc},
+        # 체크인 시간(SP9 8장): 앱에서는 바로 적용
+        "set_checkin_time": {"loop": "evening_checkin", "day_type": "weekend", "time": "19:00"},
+        # 메모(SP9 6.4)
+        "create_memo": {"body": "새 메모"},
+        "update_memo": {"id": mo, "body": "고친 메모", "updated_at": mu},
+        "pin_memo": {"id": mo},
+        "unpin_memo": {"id": mp},
+        "delete_memo": {"id": mo},
+        # 이룬 순간(SP8 6.4). 지우기는 앱에서 늘 확인을 받으므로 토큰을 따로 만든다
+        "hide_moment": {"id": mv},
+        "unhide_moment": {"id": mh},
+        "delete_moment": {"id": md},
+        # 스케줄(SP9 5.6): 앱에서 누른 것은 확인 없이
+        "create_event": {"title": "치과", "date": "2026-10-27", "time": "14:00"},
+        "update_event": {"id": ev, "time": "15:00"},
+        "delete_event": {"id": ev, "scope": "one", "date": "2026-10-25"},
+        "dismiss_missed_reminder": {"event_id": er, "date": "2026-10-24"},  # 활동은 남기지 않는다
     }
 
 
@@ -100,20 +122,48 @@ async def test_every_public_action_applies(tmp_path, action):
         hs = env.parts.habits
         hb, hc = (hs.add(t, "health", "daily", None, env.clock.now()).id for t in ("꾸민 습관", "꾸민 습관 둘"))
         hs.check(hc, env.parts.tools.today(), env.clock.now())
-        cases = _public_cases((a, b, c, d), card, curve, (hb, hc))
+        ms = env.parts.memos
+        mo, mp = (ms.create(t, None, "user", env.clock.now()) for t in ("꾸민 메모", "꾸민 메모 둘"))
+        ms.pin(mp.id, env.clock.now())
+        mv, mh, md = (m.id for m in env.parts.moments.save_day(
+            env.parts.tools.today(), [(f"꾸민 순간 {i}", None, ["chat"]) for i in (1, 2, 3)], env.clock.now()))
+        with transaction(env.conn):
+            env.parts.moments.hide(mh, env.clock.now())
+        from datetime import date, time
+
+        evs = env.parts.events
+        now = env.clock.now()
+        ev = evs.create({"title": "꾸민 일정", "start_date": date(2026, 10, 24), "start_time": time(9, 0),
+                         "repeat": "daily", "remind_min": 10, "origin": "user"}, now).id
+        er = evs.create({"title": "놓친 일정", "start_date": date(2026, 10, 24), "start_time": time(10, 0),
+                         "remind_min": 10, "origin": "user"}, now).id
+        env.conn.execute(
+            "INSERT INTO event_reminders (event_id, occurrence_date, remind_at, outcome, decided_at) "
+            "VALUES (?, '2026-10-24', '2026-10-24T00:50:00+00:00', 'missed', '2026-10-24T03:00:00+00:00')", (er,),
+        )
+        env.conn.commit()
+        cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()),
+                              (mv, mh, md), (ev, er))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
+        token = None
+        if action == "delete_moment":
+            _, ask = await env.action(action, args)
+            token = ask["confirm_token"]
         if action == "decline_confirm":
             await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [a]})
             _, nc = await env.action("set_priorities", {"cadence": "quarter", "period": "2026-Q4", "task_ids": [b]})
             args = {"confirm_token": nc["confirm_token"]}
         before = len(env.activity())
-        status, body = await env.action(action, args)
+        status, body = await env.action(action, args, confirm_token=token)
         after = env.activity()
 
     assert status == 200, body
     _validate("ActionApplied", body)
     assert body["status"] == "applied"
+    if action == "dismiss_missed_reminder":  # 줄 닫기는 데이터를 바꾸지 않는 표시라 활동이 없다
+        assert len(after) == before and body["result"]["dismissed"] is True
+        return
     assert len(after) == before + 1 and body["activity_id"] == after[-1]["id"]
     assert (after[-1]["actor"], after[-1]["channel"]) == ("user", "app")
 
@@ -425,3 +475,37 @@ async def test_drop_token_stale_after_set_priorities_touches_task(tmp_path, whic
     assert set(targets) == {"priorities:day:2026-10-24", f"task:{a}", f"task:{b}"}
     assert status == 409 and err["error"]["code"] == "conflict"
     assert resolution == "stale" and state == "open"
+
+
+# --- SP6 G-BE2: 앱 통로 `move_task` (SP6 8장, Review Focus 3). 시각 있는 할 일의 옮기기 확인은 SP9-05에서 없어졌다 ---
+
+
+async def test_app_move_task_unscheduled_applies(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env, "꾸민 산책")
+        status, body = await env.action("move_task", {"id": tid, "planned_for": "2026-10-27"})
+        planned = env.parts.tasks.get(tid).planned_for.isoformat()
+    assert status == 200 and body["status"] == "applied" and body["undo_id"] == body["activity_id"]
+    assert planned == "2026-10-27"
+
+
+@pytest.mark.parametrize("state", ["done", "dropped"])
+async def test_move_task_rejects_non_open(tmp_path, state):
+    """그린 뒤 다른 곳에서 끝내거나 뺀 할 일의 날짜 후보 누름: `rejected`이고 할 일은 그대로다. 두뇌도 같다."""
+    from my_planner.domain import RunContext
+
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tid = await _add(env, "꾸민 할 일")
+        await env.action("complete_task" if state == "done" else "drop_task", {"id": tid})
+        n_before = len(env.activity())
+        status, body = await env.action("move_task", {"id": tid, "planned_for": "2026-10-27"})
+        brain = env.parts.tools.move_task(RunContext(conversation_id=1, run_id=None, channel="app"),
+                                          id=tid, planned_for="2026-10-27")
+        t = env.parts.tasks.get(tid)
+        n_after = len(env.activity())
+
+    assert status == 422
+    _validate("ActionRejected", body)
+    assert body["error"]["message"] == "열린 할 일만 날짜를 옮길 수 있어요."
+    assert brain == {"error": "열린 할 일만 날짜를 옮길 수 있어요."}
+    assert t.status.value == state and t.planned_for is None and n_after == n_before

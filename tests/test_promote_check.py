@@ -18,7 +18,6 @@ _spec.loader.exec_module(pc)
 
 CONFIG = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
 APP_CTX = "Vercel – my-planner"
-DASH_CTX = "Vercel – my-planner-dashboard"
 DEV = "dahun428-fx"
 # 2026-10-28(수) 14:00 KST: 차단 구간 밖
 NOW = datetime(2026, 10, 28, 5, 0, tzinfo=UTC)
@@ -45,12 +44,13 @@ def inputs(commits, **kw):
         "commits": commits,
         "ci": {c.sha: "success" for c in commits},
         "windows": {c.sha: "skipped" for c in commits},
+        "web": {c.sha: {j: ("success" if any(f.startswith(pc.WEB_JOBS[j]) for f in c.files) else "skipped")
+                        for j in pc.WEB_JOBS} for c in commits},
         "statuses": {head: {pc.STAGING_CONTEXT: ok()}},
         "now": NOW,
         "blackouts": pc.blackouts(CONFIG, NOW),
         "require_staging_be": True,
         "dev_login": DEV,
-        "vercel_contexts": {"web/app/": APP_CTX, "web/dashboard/": DASH_CTX},
     }
     base.update(kw)
     return pc.Inputs(**base)
@@ -126,24 +126,35 @@ def test_without_staging_be_waits_30_minutes():
     assert pc.decide(inputs([commit("a1", "docs/x.md", ago=30)], require_staging_be=False)).action == "promote"
 
 
-def test_vercel_checked_on_last_commit_touching_folder():
-    cs = [commit("a1", "web/app/src/x.ts"), commit("a2", "src/a.py")]
-    st = {"a2": {pc.STAGING_CONTEXT: ok()}}
-    w = {"a1": "skipped", "a2": "success"}
-    # a2는 web/app을 안 바꿔 Vercel이 건너뜀: S에 상태가 없어도 a1을 본다
-    assert pc.decide(inputs(cs, statuses=st, windows=w)).action == "wait"
-    st["a1"] = {APP_CTX: pc.Status("success", pc.VERCEL_LOGIN)}
-    assert pc.decide(inputs(cs, statuses=st, windows=w)).action == "promote"
-    st["a1"] = {APP_CTX: pc.Status("failure", pc.VERCEL_LOGIN)}
-    assert pc.decide(inputs(cs, statuses=st, windows=w)).action == "blocked"
-    st["a1"] = {APP_CTX: pc.Status("success", DEV)}  # 위조: vercel[bot]이 아님
-    assert pc.decide(inputs(cs, statuses=st, windows=w)).action == "wait"
-
-
-def test_dashboard_context():
-    cs = [commit("a1", "web/dashboard/src/x.ts")]
-    st = {"a1": {pc.STAGING_CONTEXT: ok(), DASH_CTX: pc.Status("success", pc.VERCEL_LOGIN)}}
+def test_vercel_staging_not_checked():
+    """develop은 자동 배포하지 않는다(스펙 5.1): Vercel 상태가 없거나 한도 실패여도 승격한다."""
+    cs = [commit("a1", "web/app/src/x.ts"), commit("a2", "web/dashboard/src/y.ts")]
+    assert pc.decide(inputs(cs, statuses={"a2": {pc.STAGING_CONTEXT: ok()}})).action == "promote"
+    st = {"a1": {APP_CTX: pc.Status("failure", "vercel[bot]")}, "a2": {pc.STAGING_CONTEXT: ok()}}
     assert pc.decide(inputs(cs, statuses=st)).action == "promote"
+
+
+def test_web_job_checked_on_last_web_commit_not_head():
+    # a1의 web-app이 실패한 채 들어오고 a2(문서)는 web-app을 건너뛰어 머리 CI는 성공: 막아야 한다
+    cs = [commit("a1", "web/app/src/x.ts"), commit("a2", "docs/x.md")]
+    web = {"a1": {"web-app": "failure", "web-dashboard": "skipped"}, "a2": {"web-app": "skipped", "web-dashboard": "skipped"}}
+    d = pc.decide(inputs(cs, web=web))
+    assert d.action == "blocked"
+    assert "web-app" in d.reason
+    web["a1"]["web-app"] = None
+    assert pc.decide(inputs(cs, web=web)).action == "wait"
+    # 고친 웹 커밋이 뒤에 오면 그 실행을 본다
+    cs.append(commit("a3", "web/app/src/x.ts"))
+    web["a3"] = {"web-app": "success", "web-dashboard": "skipped"}
+    assert pc.decide(inputs(cs, web=web)).action == "promote"
+
+
+def test_shared_css_checks_both_web_jobs():
+    cs = [commit("a1", "web/shared/global.css")]
+    web = {"a1": {"web-app": "success", "web-dashboard": "failure"}}
+    d = pc.decide(inputs(cs, web=web))
+    assert d.action == "blocked"
+    assert "web-dashboard" in d.reason
 
 
 @pytest.mark.parametrize(
@@ -168,9 +179,8 @@ def test_blackout_boundaries_for_be_changes(at, blocked):
 
 def test_blackout_ignored_for_web_and_tests_only():
     at = kst(28, 9, 0)
-    st = {"a1": {pc.STAGING_CONTEXT: ok(), APP_CTX: pc.Status("success", pc.VERCEL_LOGIN)}}
     cs = [commit("a1", "web/app/src/x.ts", "tests/test_a.py")]
-    i = inputs(cs, now=at, blackouts=pc.blackouts(CONFIG, at), statuses=st, windows={"a1": "success"})
+    i = inputs(cs, now=at, blackouts=pc.blackouts(CONFIG, at), windows={"a1": "success"})
     assert pc.decide(i).action == "promote"
 
 

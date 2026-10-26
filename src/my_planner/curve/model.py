@@ -161,12 +161,13 @@ def curve_view(
         "zoom": zoom, "from": from_.isoformat(), "to": to.isoformat(),
         "chapters": [
             {"id": c.id, "title": c.title, "theme": c.theme, "start": c.start_month, "end": c.end_month,
-             "sketch": c.sketch, "certainty": c.certainty}
+             "sketch": c.sketch, "certainty": c.certainty, "ladder_remembered": c.ladder_remembered}
             for c in chapters
         ],
         "milestones": [
             {"id": m.id, "date": m.date_text, "precision": m.precision, "kind": m.kind, "title": m.title,
-             "note": m.note, "chapter_id": m.chapter_id, "sensitive": m.sensitive, "certainty": m.certainty}
+             "note": m.note, "chapter_id": m.chapter_id, "sensitive": m.sensitive, "certainty": m.certainty,
+             "kind_certainty": m.kind_certainty, "area": m.area, "origin": m.origin}
             for m in milestones
         ],
         "ladder": [{"period": x.period, "now": x.now, "future": x.future, "note": x.note} for x in ladder],

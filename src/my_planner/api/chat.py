@@ -4,10 +4,11 @@
 1. 같은 `client_msg_id`의 처리가 끝났으면 저장한 답을 재생한다(두뇌 없이, `api_idempotency.response_json`).
 2. 처리 중이면(큐에서 기다리거나 두뇌가 답하는 중) 새 요청을 그 처리의 스트림에 붙인다(M8).
 3. 글이 없으면(그림 등) SP1 `NON_TEXT_REPLY`, `/`로 시작하면 텔레그램과 같은 명령(`bot.commands.run_command`).
-   `/plan [주제]`만 앱 계획 대화를 열고 두뇌 갈래로 간다.
+   `/plan [주제]`만 앱 계획 대화를 열고 두뇌 갈래로 간다. 퀵 칩(`chip`, SP9c 4.1)이 있으면 명령을 해석하지 않는다.
 4. 대화를 받을 때 고르고(`route_app_message`), 가린 글을 `inbound_pending`(통로 `app`, 음수 id, 고른 대화)에 먼저
    쓴 뒤 두뇌 갈래에 넣는다(`submit_message`). `start`와 `data-status: queued`는 여기서 쓴다.
 5. 스트림을 연결에 흘려 보낸다. 15초 동안 새 조각이 없으면 `: ping`. 연결이 끊겨도 처리는 끝까지 간다(M7).
+   멈추는 길은 연결 끊기가 아니라 `POST /chat/stop`(`post_chat_stop`) 하나다.
 
 이 티켓은 두뇌 글을 끝난 뒤 글 블록 하나로 보낸다(S11 대체 경로, 조각 스트리밍은 06b). 로그에는 본문, 도구 인자,
 토큰을 남기지 않는다.
@@ -26,7 +27,14 @@ from pydantic import ValidationError
 
 from my_planner.api.actions import BAD_BODY, read_json_object
 from my_planner.api.cors import CORS_HEADERS_KEY
-from my_planner.api.models import ChatRequestBody, error_response
+from my_planner.api.models import (
+    ChatRequestBody,
+    ChatStopBody,
+    ChatStopped,
+    ConversationsClosed,
+    dump,
+    error_response,
+)
 from my_planner.bot.commands import (
     STATEFUL_COMMANDS,
     CommandDeps,
@@ -112,13 +120,15 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         _transcribe_direct(deps, NON_TEXT_MARK, NON_TEXT_REPLY)
         d.record_chat_reply(cmid, NON_TEXT_REPLY)
         return await _direct_reply(request, deps, d, sink, NON_TEXT_REPLY, req.conversation_id, req.checkin_id)
-    cmd = command_of(text) if d.tools is not None else None
+    # 퀵 칩(SP9c 4.1)이면 명령을 해석하지 않는다: `/`로 시작해도 그대로 메시지다
+    cmd = command_of(text) if d.tools is not None and req.chip is None else None
     if cmd is not None and cmd != "/plan":
         assert d.tools is not None
         cdeps = CommandDeps(
             tasks=d.tools.tasks, conditions=d.conditions, state=d.state, router=d.router, clock=deps.clock,
             settings=deps.settings, apply=d.apply_action, status=d.tools.status, curve=d.tools.curve,
             habits=d.tools.habits,  # `/habits`는 글만(앱에는 습관 블록이 있다, SP7 5.7)
+            events=d.tools.events,
         )
         reply = run_command(cmd, text, cdeps, channel="app", client_msg_id=cmid)
         if cmd not in STATEFUL_COMMANDS:  # 상태를 바꾸는 명령은 즉시 갈래가 이미 적었다
@@ -131,11 +141,14 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         text = plan_topic(text)
 
     # 4. 대화를 받을 때 고르고, 저장한 뒤 두뇌 갈래에 넣는다
-    conv = d.route_app_message(now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan)
+    conv = d.route_app_message(
+        now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan,
+        resume_conversation_id=req.resume_conversation_id,
+    )
     inbound_id = d.state.next_app_inbound_id()
     d.state.add_pending_inbound(
         inbound_id, redact(text)[0], now, now, channel="app", client_msg_id=cmid, checkin_id=req.checkin_id,
-        conversation_id=conv.id,
+        conversation_id=conv.id, resume_conversation_id=req.resume_conversation_id,
     )
     writer = UiMessageWriter(sink, app_secretary_message_id(conv.id, inbound_id))
     writer.start({**d.chat_metadata(conv.id), "checkin_id": req.checkin_id})
@@ -143,9 +156,52 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     d.submit_message(Inbound(
         text=text, at=now, sent_at=now, update_ids=[inbound_id], channel="app", client_msg_id=cmid,
         checkin_id=req.checkin_id, sink=sink, conversation_id=conv.id, message_id=req.message.id,
+        resume_conversation_id=req.resume_conversation_id, chip=req.chip,
     ))
-    log.info("chat_queued", extra={"conversation_id": conv.id, "inbound_id": inbound_id})
+    log.info("chat_queued", extra={"conversation_id": conv.id, "inbound_id": inbound_id, "chip": req.chip})
     return await stream_sink(request, deps, sink, conv.id)
+
+
+async def post_chat_stop(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """`POST /chat/stop`: 그 `client_msg_id`의 답을 멈춘다(`Dispatcher.stop_message`, 쓰기는 디스패처로만, ADR 0007).
+
+    `{"state": "stopped" | "done" | "unknown"}`. 멈춘 답은 `STOPPED_REPLY`로 끝나고 같은 id의 `/chat`은 그것을
+    재생한다(두뇌를 다시 부르지 않는다). 로그에는 상태만 남긴다.
+    """
+    body = await read_json_object(request)
+    if body is None:
+        return error_response(400, "invalid_request", BAD_BODY)
+    try:
+        req = ChatStopBody.model_validate(body)
+    except ValidationError:
+        return error_response(400, "invalid_request", BAD_BODY)
+    assert deps.dispatcher is not None, "안전 모드가 아니면 디스패처가 있다"
+    state = deps.dispatcher.stop_message(req.client_msg_id)
+    log.info("chat_stopped", extra={"state": state})
+    return web.json_response(dump(ChatStopped, {"state": state}))
+
+
+# --- 대화 목록의 쓰기 (SP9 7.3, 7.7). 쓰기는 디스패처로만(ADR 0007) ---
+
+NO_CONVERSATION = "없는 대화예요."
+
+
+async def post_new_conversation(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """`POST /conversations/new`: 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화다. `{"closed": [id…]}`."""
+    assert deps.dispatcher is not None
+    closed = deps.dispatcher.new_conversation()
+    return web.json_response(dump(ConversationsClosed, {"closed": closed}))
+
+
+async def delete_conversation(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    """`DELETE /conversations/{id}`: 앱 대화를 지운다(되돌릴 수 없다). 열린 대화면 먼저 닫는다. 없으면 404."""
+    raw = request.match_info["id"]
+    if not raw.isascii() or not raw.isdigit() or len(raw) > 18:
+        return error_response(404, "not_found", NO_CONVERSATION)
+    assert deps.dispatcher is not None
+    if not deps.dispatcher.delete_conversation(int(raw)):
+        return error_response(404, "not_found", NO_CONVERSATION)
+    return web.Response(status=204)
 
 
 def _message_id(conversation_id: int | None, inbound_id: int | None) -> str | None:

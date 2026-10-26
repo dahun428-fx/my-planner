@@ -717,3 +717,188 @@ def test_checkins_off_no_return_run_after_long_gap(tmp_path, conn, state):
     env.runner.tick()
     assert env.dispatcher.submitted == []
     assert env.runs.between(kst(2026, 10, 1, 0, 0), woke) == []
+
+
+# --- 일정 정리 알림 (SP9b 3.1) ---
+
+
+def _digest_runner(tmp_path, conn, now, last_seen, *, checkins=True, delivery=None, events=True):
+    from test_event_reminders import LONG_AGO
+
+    from my_planner.store.repos.events import EventsRepo
+    from my_planner.store.repos.state import StateRepo
+
+    clock = FakeClock(now)
+    state = StateRepo(conn, clock)
+    state.set("installed_at", to_iso(LONG_AGO))
+    if last_seen is not None:
+        state.set("last_seen_at", to_iso(last_seen))
+    ev = EventsRepo(conn, clock, "Asia/Seoul")
+    runner = Runner(clock=clock, settings=make_settings(tmp_path), runs=RunsRepo(conn, clock), state=state,
+                    dispatcher=FakeDispatcher(), checkins=checkins, events=ev if events else None,
+                    reminder_delivery=delivery)
+    runner.reminder_delays = ()
+    return runner, ev, state
+
+
+class _DigestSink:
+    def __init__(self, result="app"):
+        self.digests, self.reminders, self.result = [], [], result
+        self.clock = FakeClock(kst(2026, 10, 26, 7, 30))
+
+    async def deliver_digest(self, kind, day, title, body, url, *, ttl_s):
+        self.digests.append((kind, day, title, body, url))
+        return self.result
+
+    async def deliver_reminder(self, title, body, url, **kw):
+        self.reminders.append(title)
+        return "app"
+
+
+def _ev(ev, title, d, at, remind=None):
+    from test_event_reminders import make
+
+    return make(ev, title=title, d=d, at=at, remind=remind)
+
+
+async def _drain_all(runner):
+    import asyncio
+
+    await asyncio.gather(*runner.reminder_tasks)
+
+
+async def test_digest_sent_from_tick_in_dev_role(tmp_path, conn):
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    sink = _DigestSink()
+    runner, ev, state = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), checkins=False, delivery=sink)
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    runner.tick()
+    await _drain_all(runner)
+    assert sink.digests == [("morning", date(2026, 10, 26), "오늘 일정 1개", "14:00 치과", "/schedule/?date=2026-10-26")]
+    assert state.get_digest_last()["morning"] == date(2026, 10, 26)
+
+
+async def test_digest_and_reminder_same_tick_and_drain_waits(tmp_path, conn):
+    import asyncio
+
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    started = asyncio.Event()
+
+    class Slow(_DigestSink):
+        async def deliver_digest(self, *a, **k):
+            started.set()
+            await asyncio.sleep(0.05)
+            return await super().deliver_digest(*a, **k)
+
+    sink = Slow()
+    runner, ev, _ = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=sink)
+    _ev(ev, "회의", date(2026, 10, 26), "07:40", remind=10)  # 일정 알림도 07:30
+    runner.tick()
+    assert len(runner.reminder_tasks) == 2
+    await started.wait()
+    await runner.drain_reminders(timeout=5)
+    assert sink.reminders == ["회의"] and len(sink.digests) == 1
+
+
+async def test_digest_error_does_not_block_reminders(tmp_path, conn, monkeypatch, caplog):
+    import logging
+
+    from my_planner.loop import runner as runner_mod
+
+    def boom(**kw):
+        raise RuntimeError("bad")
+
+    monkeypatch.setattr(runner_mod, "judge_digests", boom)
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    sink = _DigestSink()
+    runner, ev, state = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=sink)
+    _ev(ev, "회의", date(2026, 10, 26), "07:40", remind=10)
+    caplog.set_level(logging.INFO)
+    runner.tick()
+    await _drain_all(runner)
+    assert sink.reminders == ["회의"] and sink.digests == []
+    assert "digest_error" in [r.getMessage() for r in caplog.records]
+    assert state.get("last_seen_at") == to_iso(now)
+
+
+async def test_remind_error_does_not_block_digest(tmp_path, conn, monkeypatch):
+    from my_planner.loop import runner as runner_mod
+
+    def boom(**kw):
+        raise RuntimeError("bad")
+
+    monkeypatch.setattr(runner_mod, "remind_events", boom)
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    sink = _DigestSink()
+    runner, ev, _ = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=sink)
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    runner.tick()
+    await _drain_all(runner)
+    assert len(sink.digests) == 1
+
+
+def test_digest_skipped_without_last_seen_or_events(tmp_path, conn):
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    runner, ev, state = _digest_runner(tmp_path, conn, now, None, delivery=_DigestSink())
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    runner.tick()  # 첫 tick: 공백을 알 수 없다
+    assert state.get_digest_last() == {"morning": None, "night": None}
+    runner, _, state = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), events=False)
+    runner.tick()
+    assert state.get_digest_last() == {"morning": None, "night": None}
+
+
+def test_digest_outside_loop_logs_no_loop(tmp_path, conn, caplog):
+    import logging
+
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    runner, ev, state = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=_DigestSink())
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    caplog.set_level(logging.INFO)
+    runner.tick()  # 동기 호출: 이벤트 루프 밖
+    assert [r.count for r in caplog.records if r.getMessage() == "digests_no_loop"] == [1]
+    assert state.get_digest_last()["morning"] == date(2026, 10, 26) and not runner.reminder_tasks
+
+
+async def test_digest_without_delivery_logs_no_loop(tmp_path, conn, caplog):
+    import logging
+
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    runner, ev, _ = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=None)
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    caplog.set_level(logging.INFO)
+    runner.tick()
+    assert "digests_no_loop" in [r.getMessage() for r in caplog.records] and not runner.reminder_tasks
+
+
+async def test_digest_reads_settings_each_tick_and_broken_json_uses_config(tmp_path, conn):
+    import json
+
+    from my_planner.store.repos.state import DIGEST_SETTINGS_KEY
+
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    sink = _DigestSink()
+    runner, ev, state = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=sink)
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    state.set(DIGEST_SETTINGS_KEY, json.dumps({"morning": {"on": False, "time": "07:30"}}))
+    runner.tick()
+    await _drain_all(runner)
+    assert sink.digests == [] and state.get_digest_last()["morning"] is None
+    state.set(DIGEST_SETTINGS_KEY, "{broken")  # 깨지면 config 값(켜짐 07:30)
+    state.set("last_seen_at", to_iso(now - timedelta(minutes=1)))
+    runner.tick()
+    await _drain_all(runner)
+    assert len(sink.digests) == 1
+
+
+async def test_digest_sends_while_paused(tmp_path, conn):
+    from my_planner.store.repos.state import PAUSE_UNTIL_KEY
+
+    now = kst(2026, 10, 26, 7, 30) + timedelta(seconds=30)
+    sink = _DigestSink()
+    runner, ev, state = _digest_runner(tmp_path, conn, now, now - timedelta(minutes=1), delivery=sink)
+    state.set(PAUSE_UNTIL_KEY, to_iso(now + timedelta(days=2)))
+    _ev(ev, "치과", date(2026, 10, 26), "14:00")
+    runner.tick()
+    await _drain_all(runner)
+    assert len(sink.digests) == 1

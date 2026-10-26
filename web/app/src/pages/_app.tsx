@@ -13,22 +13,45 @@ import { ensurePushSubscription, registerServiceWorker } from "../lib/push";
 import { pruneDeviceData } from "../lib/snapshot";
 import { applyPalette, applyTheme, loadPalette, loadTheme } from "../lib/theme";
 import { CatalogProvider } from "../ui/CatalogProvider";
-import "../styles/tokens.css";
-import "../styles/globals.css";
+// The design system (DESIGN.md): the generated copy of web/shared/global.css (`npm run sync:design`).
+import "../styles/global.css";
 // Every screen's styles go out with _app as one stylesheet. Otherwise Next's pages router carries a
 // page's CSS as inline <style> tags when the app moves between tabs, which style-src 'self' blocks.
 import "../screens/Activity";
 import "../screens/Checkin";
 import "../screens/Connect";
 import "../screens/Habits";
-import "../screens/Settings";
+import "../screens/More";
+import "../screens/Status";
 import "../screens/Today";
 import "../screens/Todos";
 import "../components/LargeTitle";
+import "../components/MoreButton";
 import "../components/TabBar";
 import "../styles/page.module.css";
+// SP9 9.4: the memo screens' stylesheets only (CSP, as above). Their code stays in the page chunks,
+// out of the first screen's 180KB.
+import "../screens/Memos.module.css";
+import "../screens/MemoEditor.module.css";
+// SP9 9.2: the schedule tab's stylesheets only, for the same reason (its code stays in /schedule/'s chunk).
+import "../screens/Schedule.module.css";
+import "../screens/MonthCalendar.module.css";
+import "../screens/EventSheet.module.css";
+// SP9-07: settings left the tabs, so like the memo and schedule screens only its stylesheets come with
+// _app (its own and the palette picker's, which no other screen uses); its code is /settings/'s chunk.
+import "../components/PalettePicker.module.css";
+import "../screens/Settings.module.css";
+// Device pairing spec 5.1: the devices screen's and its QR's stylesheets only (CSP, as above); their
+// code (and the QR library) stays in /devices/'s chunk.
+import "../screens/Devices.module.css";
+import "../components/Qr.module.css";
+// SP9 9.5: the chat sheet's list and quick chip stylesheets only (CSP, as above); their code stays in the
+// chat sheet's chunk, out of the first screen's 180KB.
+import "../chat/ConversationList.module.css";
+import "../chat/QuickChips.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
+import "../ui/chat/cards.module.css";
 
 // A crash inside the chat sheet takes down only the sheet, never the screen behind it.
 class ChatBoundary extends ReactComponent<{ onError(error: unknown): void; children: ReactNode }, { failed: boolean }> {

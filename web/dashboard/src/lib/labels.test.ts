@@ -11,6 +11,7 @@ import {
   TIME_TEXT,
   checkinLabel,
   loopLabel,
+  momentDay,
   runStatusLabel,
   skipLabel,
 } from "./labels";
@@ -87,5 +88,13 @@ describe("v1.1 words", () => {
     ["a percentage", /%|\ud37c\uc13c\ud2b8/],
   ])("have no %s", (_what, pattern) => {
     expect(fresh.filter((t) => pattern.test(t))).toEqual([]);
+  });
+});
+
+describe("momentDay (SP8 appendix A)", () => {
+  it("writes month, day and weekday", () => {
+    expect(momentDay("2026-10-24")).toBe("10월 24일 (토)");
+    expect(momentDay("2026-10-25")).toBe("10월 25일 (일)");
+    expect(momentDay("2026-01-05")).toBe("1월 5일 (월)");
   });
 });

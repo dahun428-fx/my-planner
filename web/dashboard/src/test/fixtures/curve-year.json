@@ -10,7 +10,8 @@
       "start": "2023-01",
       "end": "2025-02",
       "sketch": null,
-      "certainty": "fact"
+      "certainty": "fact",
+      "ladder_remembered": 6
     },
     {
       "id": 1,
@@ -19,7 +20,8 @@
       "start": "2025-03",
       "end": null,
       "sketch": "↗",
-      "certainty": "estimate"
+      "certainty": "estimate",
+      "ladder_remembered": null
     }
   ],
   "milestones": [
@@ -32,7 +34,10 @@
       "note": null,
       "chapter_id": null,
       "sensitive": false,
-      "certainty": "fact"
+      "certainty": "fact",
+      "kind_certainty": "fact",
+      "area": null,
+      "origin": "seed"
     },
     {
       "id": 1,
@@ -43,7 +48,10 @@
       "note": "꾸민 메모: 작은 카페 벽에 세 점",
       "chapter_id": 1,
       "sensitive": false,
-      "certainty": "fact"
+      "certainty": "fact",
+      "kind_certainty": "fact",
+      "area": "learning",
+      "origin": "seed"
     },
     {
       "id": 2,
@@ -54,7 +62,10 @@
       "note": null,
       "chapter_id": 1,
       "sensitive": false,
-      "certainty": "fact"
+      "certainty": "fact",
+      "kind_certainty": "fact",
+      "area": "quality_of_life",
+      "origin": "chat"
     },
     {
       "id": 3,
@@ -65,7 +76,10 @@
       "note": null,
       "chapter_id": null,
       "sensitive": false,
-      "certainty": "fact"
+      "certainty": "fact",
+      "kind_certainty": "estimate",
+      "area": "health",
+      "origin": "seed"
     }
   ],
   "ladder": [

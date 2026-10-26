@@ -18,6 +18,7 @@ from my_planner.store.exports import week_bounds
 from my_planner.store.repos.conditions import Condition, ConditionsRepo
 from my_planner.store.repos.curve import CurveRepo
 from my_planner.store.repos.habits import Habit, HabitsRepo
+from my_planner.store.repos.moments import Moment
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 WEEKDAY = "월화수목금토일"
@@ -26,7 +27,7 @@ AREA_ORDER = {a: i for i, a in enumerate(Area)}
 
 @dataclass
 class TodoGroup:
-    name: str  # priority | scheduled | open
+    name: str  # priority | scheduled(SP9부터 죽은 갈래) | open
     tasks: list[Task]
 
 
@@ -53,12 +54,17 @@ class WeekView:
     end: date
     priorities: list[Task]
     days: list[DayView]  # 할 일이 없는 날도 포함, 7일
+    undated: list[Task] = field(default_factory=list)  # 날짜 없는 열린 일(비서가 날짜 없이 추가한 일 포함)
 
 
 def today_view(
     tasks: TasksRepo, conditions: ConditionsRepo | None, now: datetime, tz: str | tzinfo, boundary: time
 ) -> TodayView:
-    """묶음 순서: 우선순위 → 일정 → 열린 할 일(이미 나온 것은 뺀다, 전에 잡은 일 포함)."""
+    """묶음 순서: 우선순위 → 일정 → 열린 할 일(이미 나온 것은 뺀다, 전에 잡은 일 포함).
+
+    SP9 5.4: "일정" 묶음(`group = "scheduled"`)은 이제 죽은 갈래다. 017 훅이 시각 있는 열린 할 일을 일정으로 옮겼고,
+    도구·다시 열기·되돌리기는 열린 할 일에 `scheduled_at`을 두지 않는다. 대시보드가 이 묶음을 읽어 남겨 둔다.
+    그날 일정은 스케줄(`/today.events`)에 있다."""
     today = logical_date(now, tz, boundary)
     groups: list[TodoGroup] = []
 
@@ -68,7 +74,7 @@ def today_view(
         groups.append(TodoGroup("priority", prios))
 
     open_tasks = tasks.list(status=TaskStatus.open)
-    scheduled = sorted(
+    scheduled = sorted(  # 죽은 갈래(위 설명)
         (t for t in open_tasks if t.scheduled_at and logical_date(t.scheduled_at, tz, boundary) == today),
         key=lambda t: t.scheduled_at,  # type: ignore[arg-type,return-value]
     )
@@ -95,7 +101,47 @@ def week_view(tasks: TasksRepo, now: datetime, tz: str | tzinfo, boundary: time)
         d = mon + timedelta(days=i)
         # 시각이 있는 일이 먼저 나오도록 repo가 정렬해 준다
         days.append(DayView(d, WEEKDAY[d.weekday()], d == today, [t for t in open_tasks if t.planned_for == d]))
-    return WeekView(period_of(Cadence.week, today), mon, sun, prios, days)
+    # 날짜 없는 열린 할 일. 이번 주 우선순위(이미 위에 나온다)와 첫 걸음(부모 목표 아래 것)은 뺀다.
+    shown = {t.id for t in prios}
+    undated = [t for t in tasks.list(status=TaskStatus.open)
+               if t.planned_for is None and t.parent_id is None and t.id not in shown]
+    return WeekView(period_of(Cadence.week, today), mon, sun, prios, days, undated)
+
+
+def period_view(tasks: TasksRepo, start: date, end: date, today: date) -> list[DayView]:
+    """하루·한 주 보기(SP6 6.4, 10.2): `start`~`end`의 날마다 **`planned_for`가 그날이고 `open`·`done`인 할 일**을
+    한 번씩. 오늘도 같다(`today_view`와 달리 전에 잡은 열린 할 일을 끌어오지 않는다). 순서는 시각 있는 `open`(시각 순)
+    → 시각 없는 `open` → `done`. 초안·소프트 삭제·`dropped`는 빠진다. `today`는 `is_today`에만 쓴다."""
+    # 상태를 목록으로 주면 `done`도 완료한 날이 아니라 `planned_for`로 거른다(`TasksRepo.list`)
+    rows = tasks.list(status=[TaskStatus.open, TaskStatus.done], from_=start, to=end)
+    days: list[DayView] = []
+    d = start
+    while d <= end:
+        mine = [t for t in rows if t.planned_for == d]
+        timed = sorted((t for t in mine if t.status is TaskStatus.open and t.scheduled_at is not None),
+                       key=lambda t: (t.scheduled_at, t.id))  # type: ignore[arg-type,return-value]
+        untimed = [t for t in mine if t.status is TaskStatus.open and t.scheduled_at is None]
+        done = [t for t in mine if t.status is TaskStatus.done]
+        days.append(DayView(d, WEEKDAY[d.weekday()], d == today, [*timed, *untimed, *done]))
+        d += timedelta(days=1)
+    return days
+
+
+def period_outside(tasks: TasksRepo, ids: Iterable[int], start: date, end: date) -> list[tuple[str, Task]]:
+    """`ids` 가운데 `period_view`에 나오지 않는 할 일과 그 이유(SP6 6.4 `outside`), `ids` 순서. 이유는 `dropped`(뺀 것)
+    → `no_date`(`planned_for` 없음) → `moved`(날짜가 기간 밖) 가운데 먼저 맞는 하나. 소프트 삭제한 것과 초안은 뺀다."""
+    out: list[tuple[str, Task]] = []
+    for i in dict.fromkeys(ids):
+        t = tasks.get(i)
+        if t is None or t.status is TaskStatus.draft:
+            continue
+        if t.status is TaskStatus.dropped:
+            out.append(("dropped", t))
+        elif t.planned_for is None:
+            out.append(("no_date", t))
+        elif not start <= t.planned_for <= end:
+            out.append(("moved", t))
+    return out
 
 
 def conditions_view(conditions: ConditionsRepo, from_: date, to: date) -> dict[str, Any]:
@@ -265,3 +311,29 @@ def habit_history(habits: HabitsRepo, h: Habit, today: date, weeks: int) -> dict
         "checked_dates": [d.isoformat() for d in days],
         "weeks": [{"week": w, "count": n} for w, n in per_week.items()],
     }
+
+
+# --- 이룬 순간 (SP8 스펙 6.5) ---
+
+MOMENT_SOURCE_KINDS = ("task", "habit", "condition", "chat")
+
+
+def moment_dict(m: Moment) -> dict[str, Any]:
+    """공통 `Moment` 모양(6.5). `sources`는 참조의 종류만 중복 없이 준다(id는 주지 않는다: 그 사이 지운 할 일일 수 있다)."""
+    kinds = dict.fromkeys(k for s in m.sources if (k := s.split(":", 1)[0]) in MOMENT_SOURCE_KINDS)
+    return {
+        "id": m.id,
+        "date": m.date.isoformat(),
+        "text": m.text,
+        "area": m.area,
+        "sources": list(kinds),
+        "hidden": m.hidden_at is not None,
+    }
+
+
+def moment_counts(ms: Sequence[Moment]) -> list[dict[str, Any]]:
+    """날짜와 개수만(`[{"date", "count"}]`, 최근 날짜부터). 텔레그램 통로 두뇌와 회고 앞머리가 쓴다: 글은 없다(6.7, 10.3)."""
+    counts: dict[date, int] = {}
+    for m in ms:
+        counts[m.date] = counts.get(m.date, 0) + 1
+    return [{"date": d.isoformat(), "count": n} for d, n in sorted(counts.items(), reverse=True)]

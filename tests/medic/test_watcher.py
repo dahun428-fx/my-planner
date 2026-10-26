@@ -14,7 +14,14 @@ from my_planner_medic.github import GitHub
 from my_planner_medic.store import MedicStore
 from my_planner_medic.watcher import Watcher, _trim_rows
 
-from .fakes import FakeClock, FakeGitHub, FakeHttp, FakeResponse, make_config
+from .fakes import (
+    FakeClock,
+    FakeGitHub,
+    FakeHttp,
+    FakeNotifier,
+    FakeResponse,
+    make_config,
+)
 
 REPO = "o/r"
 ISSUES = f"/repos/{REPO}/issues"
@@ -77,7 +84,7 @@ def make_env(tmp_path: Path, start: datetime = START, **cfg: Any) -> Env:
     values.update(cfg)
     config = make_config(tmp_path, **values)
     store = MedicStore(tmp_path / "state" / "medic.db")
-    w = Watcher(config, store, GitHub(http, "gh-secret", REPO), http, clock)
+    w = Watcher(config, store, GitHub(http, "gh-secret", REPO), http, clock, FakeNotifier())
     (tmp_path / "state" / "logs").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "logs" / "my-planner.jsonl").write_text("", encoding="utf-8")
     return Env(tmp_path, clock, server, http, store, w, hb)
@@ -188,6 +195,19 @@ def test_recurrence_within_24h_reopens_with_label(env: Env) -> None:
     assert len(env.http.calls("POST", f"{ISSUES}/{n}/labels")) == 1  # 한 번만 다시 연다
 
 
+def test_recurrence_reopen_clears_merged_and_relabels(env: Env) -> None:
+    """닫힌 수리 이슈에는 `merged`(그리고 지난 `recurred`)가 남아 있다. 남기면 repair 게이트·sweep이 건너뛰고,
+    이미 달린 `recurred`는 `labeled`를 다시 만들지 않는다(티켓 10 계약)."""
+    n = _file_and_resolve(env)
+    env.server.issues[n]["labels"] += [{"name": "merged"}, {"name": "recurred"}]
+    env.clock.advance(hours=1)
+    env.log(env.exc())
+    env.tick()
+    assert "merged" not in env.server.labels(n)
+    assert "recurred" in env.server.labels(n)
+    assert len(env.http.calls("DELETE", f"{ISSUES}/{n}/labels/recurred")) == 1  # 떼고 다시 달아 이벤트를 만든다
+
+
 def test_recurrence_after_24h_opens_new(env: Env) -> None:
     n = _file_and_resolve(env)
     env.clock.advance(hours=25)
@@ -285,7 +305,7 @@ def test_warn_window_persists_across_ticks_and_restarts(env: Env) -> None:
     assert len(saved["slow_reply"]) == 12
     assert all(isinstance(t, str) for t in saved["slow_reply"])
     # medic 재시작: 새 Watcher, 같은 DB
-    env.watcher = Watcher(env.watcher._cfg, env.store, env.watcher._gh, env.http, env.clock)
+    env.watcher = Watcher(env.watcher._cfg, env.store, env.watcher._gh, env.http, env.clock, FakeNotifier())
     env.clock.advance(minutes=2)
     env.log(*[_warn(env, env.clock.now()) for _ in range(8)])
     env.tick()
@@ -502,3 +522,79 @@ def test_trim_rows_keeps_non_info_first_then_newest_info_in_order() -> None:
     many = [_row(i, "ERROR") for i in range(25)] + [_row(i, "INFO") for i in range(25, 30)]
     assert [r["msg"] for r in _trim_rows(many)] == [f"e{i}" for i in range(5, 25)]
     assert _trim_rows(rows[:3]) == rows[:3]
+
+
+def test_ci_main_resolve_sends_one_result_notice(tmp_path: Path) -> None:
+    e = make_env(tmp_path)
+    notifier = FakeNotifier()
+    e.watcher = Watcher(e.watcher._cfg, e.store, e.watcher._gh, e.http, e.clock, notifier)
+    e.tick()
+    c = e.server.add_issue("[incident] ci:main", ["incident"])
+    e.server.branches["main"] = "h2"
+    e.server.runs.append({"name": "ci", "head_sha": "h2", "event": "push", "status": "completed",
+                          "conclusion": "success", "id": 2})
+    e.tick(30)
+    assert e.store.get("ci:main").state == "resolved"
+    assert notifier.fixed_calls == [("main의 CI가 다시 성공했어요", f"https://github.com/{REPO}/issues/{c}")]
+    e.tick(2)
+    assert len(notifier.fixed_calls) == 1
+    assert notifier.flushes >= 2  # 회차마다 쌓인 알림을 살핀다
+
+
+def test_watcher_ticks_web_verifier(tmp_path: Path) -> None:
+    from my_planner_medic.signals import Signal
+
+    e = make_env(tmp_path)
+    notifier = FakeNotifier()
+    e.watcher = Watcher(e.watcher._cfg, e.store, e.watcher._gh, e.http, e.clock, notifier)
+    e.tick()
+    fp = "vercel:Vercel – app"
+    n = e.server.add_issue(f"[incident] {fp}", ["incident", "merged"])
+    e.store.upsert_signal(Signal(fp, "vercel", "health", e.clock.now()), e.clock.now())
+    e.store.set_state(fp, "merged", issue_number=n)
+    e.server.branches["main"] = "h1"
+    e.server.statuses["h1"] = [{"context": "Vercel – app", "state": "success", "creator": {"login": "vercel[bot]"}}]
+    e.tick(2)
+    assert e.store.get(fp).state == "resolved"
+    assert len(notifier.fixed_calls) == 1
+
+
+def test_heartbeat_only_posts_heartbeat_without_reading_health(tmp_path: Path) -> None:
+    env = make_env(tmp_path, start=datetime(2026, 10, 25, 16, 0, tzinfo=UTC))
+    env.store.kv_set("deployed_sha", "abc1234")
+    env.watcher.heartbeat()
+    hb = env.heartbeat_issue
+    assert env.server.issues[hb]["body"].startswith("last_seen: 2026-10-25T16:00:00Z, sha: abc1234")
+    assert not [r for r in env.http.requests if r.path.endswith("/health")]
+
+
+# --- medic-dev: watch_incidents / heartbeat 끄기 (릴리스 흐름 스펙 5.3) -----------
+
+
+def _issue_calls(env: Env) -> list[Any]:
+    return [r for r in env.http.requests if r.url.startswith("https://api.github.com") and "/issues" in r.path]
+
+
+def test_watch_incidents_false_makes_no_issue_calls(tmp_path: Path) -> None:
+    env = make_env(tmp_path, watch_incidents=False, heartbeat=False)
+    env.server.add_issue("[incident] ci:main", ["incident"])  # 가져오기·닫기 대상이 될 만한 이슈
+    env.tick()  # 첫 회차: 로그 위치를 잡는다
+    env.log(env.exc())
+    env.tick(2)
+    env.tick(40)  # 가져오기(30분)·하트비트(30분) 주기를 넘긴다
+    assert _issue_calls(env) == []
+    assert not [r for r in env.http.requests if "/repos/" in r.path]  # 저장소 API 호출 자체가 없다
+    inc = env.store.get(EXC_FP)  # 로그 신호 수집과 로컬 상태는 그대로
+    assert inc is not None and inc.state == "open" and inc.issue_number is None
+
+
+def test_heartbeat_false_writes_no_heartbeat(tmp_path: Path) -> None:
+    env = make_env(tmp_path, heartbeat=False)
+    env.tick()  # 첫 회차: 로그 위치를 잡는다
+    env.log(env.exc())
+    env.tick(2)
+    assert env.server.issues[env.heartbeat_issue]["body"] == ""
+    assert env.store.kv_get("last_heartbeat_at") is None
+    assert len(env.incident_posts()) == 1  # 장애 동기화는 그대로
+    env.watcher.heartbeat()  # enabled = false 경로도 하트비트를 쓰지 않는다
+    assert env.server.issues[env.heartbeat_issue]["body"] == ""

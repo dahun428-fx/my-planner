@@ -39,17 +39,20 @@ async def test_today_matches_today_text_same_order(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT) as env:
         a = mk(env, "수채화 밑그림", planned_for="2026-10-24")
         b = mk(env, "도서관 반납", planned_for="2026-10-24")
-        c = mk(env, "치과 정기 검진", planned_for="2026-10-24", scheduled_at=kst(2026, 10, 24, 15, 0))
+        c = _ev(env, "치과 정기 검진", "2026-10-24", "15:00")  # SP9: 시각이 있는 일은 일정이다
         d = mk(env, "지난 주에 잡은 빨래", planned_for="2026-10-22")
         mk(env, "다음 주 장보기", planned_for="2026-10-28")
         env.parts.tasks.set_priorities(Cadence.day, "2026-10-24", [b.id, a.id])
         body = await get_json(env, "/today")
-        text = today_text(env.parts.tasks, env.clock.now(), env.settings.timezone, env.settings.day_boundary)
+        text = today_text(env.parts.tasks, env.clock.now(), env.settings.timezone, env.settings.day_boundary,
+                          env.parts.events)
 
     assert body["date"] == "2026-10-24" and body["weekday"] == "토"
     got = [(x["group"], x["todo"]["id"]) for x in body["todos"]]
-    assert got == [("priority", b.id), ("priority", a.id), ("scheduled", c.id), ("open", d.id)]
-    titles_in_order(text, [x["todo"]["title"] for x in body["todos"]])
+    assert got == [("priority", b.id), ("priority", a.id), ("open", d.id)]  # 시각 있는 일은 일정(`events`)
+    assert [e["event_id"] for e in body["events"]] == [c.id]
+    titles = [x["todo"]["title"] for x in body["todos"]]
+    titles_in_order(text, [*titles[:2], "15:00 치과 정기 검진", *titles[2:]])
     assert "다음 주 장보기" not in text and all(x["todo"]["title"] != "다음 주 장보기" for x in body["todos"])
     assert body["todos"][0]["todo"]["priority"] == {"cadence": "day", "period": "2026-10-24", "rank": 1}
     assert body["brief"] is None and body["condition"] is None and body["cards"] == []
@@ -73,6 +76,35 @@ async def test_week_has_all_7_days_and_matches_week_text(tmp_path):
     assert [x["id"] for x in body["priorities"]] == [p.id]
     ordered = [body["priorities"][0]["title"]] + [x["title"] for d in body["days"] for x in d["todos"]]
     titles_in_order(text, list(dict.fromkeys(ordered)))  # 우선순위에 나온 일은 날짜 칸에도 있다
+
+
+async def test_week_lists_undated_and_periods_list_their_todos(tmp_path):
+    # 비서가 날짜 없이, 또는 이번 주 밖으로 추가한 할 일도 앱 어딘가에 보여야 한다
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        wk = mk(env, "이번 주 일", planned_for="2026-10-23")
+        nxt = mk(env, "10월 28일 일", planned_for="2026-10-28")
+        nov = mk(env, "11월 일", planned_for="2026-11-10")
+        none = mk(env, "언젠가 할 일")
+        goal = mk(env, "이번 주 목표")  # 날짜 없는 이번 주 우선순위: 우선순위 칸에만
+        env.parts.tasks.set_priorities(Cadence.week, "2026-W43", [goal.id])
+        env.parts.tasks.create(title="첫 걸음", areas=[Area.career], planned_for=None, scheduled_at=None,
+                               parent_id=none.id, note="", status=TaskStatus.open)
+        mk(env, "초안", status=TaskStatus.draft)
+        mk(env, "초안 다음 주", status=TaskStatus.draft, planned_for="2026-10-28")
+        gone = mk(env, "뺀 일", planned_for="2026-10-29")
+        env.parts.tasks.set_status(gone.id, TaskStatus.dropped)
+        week = await get_json(env, "/week")
+        month = await get_json(env, "/priorities?cadence=month")
+        nov_month = await get_json(env, "/priorities?cadence=month&period=2026-11")
+        quarter = await get_json(env, "/priorities?cadence=quarter")
+        weekp = await get_json(env, "/priorities?cadence=week")
+        await get_json(env, "/priorities?cadence=week&period=2025-W53", status=400)  # 2025년에는 53주가 없다
+
+    assert [x["id"] for x in week["undated"]] == [none.id]
+    assert [x["id"] for x in month["todos"]] == [wk.id, nxt.id]  # 날짜순, 초안·뺀 일 없음
+    assert [x["id"] for x in nov_month["todos"]] == [nov.id]
+    assert [x["id"] for x in quarter["todos"]] == [wk.id, nxt.id, nov.id]
+    assert [x["id"] for x in weekp["todos"]] == [wk.id]
 
 
 async def test_today_checkins_equal_checkins_list(tmp_path):
@@ -359,7 +391,10 @@ async def test_conversations_list_and_messages(tmp_path):
         again = await get_json(env, f"/conversations/{cid}/messages")
 
     (conv,) = convs["items"]
-    assert set(conv) == {"id", "kind", "channel", "run_id", "opened_at", "last_message_at", "closed_at"}
+    assert set(conv) == {
+        "id", "kind", "channel", "run_id", "opened_at", "last_message_at", "closed_at", "title", "summary",
+    }
+    assert (conv["title"], conv["summary"], convs["next_before"]) == (None, None, None)  # 텔레그램 대화는 요약 없음
     assert conv["channel"] == "telegram" and conv["kind"] == "chat" and conv["closed_at"] is None
     assert conv["opened_at"].endswith("Z")
     assert tg["items"] == convs["items"] and app["items"] == []
@@ -533,3 +568,138 @@ async def test_expired_draft_hidden_in_cards_and_drafts_alike(tmp_path):
     assert before["cards"][0]["component"] == "ui_todo_draft" and drafts_before["items"]
     assert "ui_todo_draft" not in [c["component"] for c in after["cards"]]
     assert drafts_after["items"] == []
+
+
+# --- 메모 (SP9 6.4) ---
+
+
+def _memo(env, body, minutes, *, pinned=False, area=None, origin="user"):
+    repo = env.parts.memos
+    m = repo.create(body, area, origin, SAT + timedelta(minutes=minutes))
+    if pinned:
+        repo.pin(m.id, SAT + timedelta(minutes=minutes))
+    return m.id
+
+
+async def test_api_memos_list_pinned_first(tmp_path):
+    from test_api_actions import _validate
+
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        old_pin = _memo(env, "고정한 옛 메모", 1, pinned=True)
+        a = _memo(env, "읽을 책\n- [ ] 사피엔스\n- [ ] **총균쇠**", 2, area="learning", origin="chat")
+        b = _memo(env, "- [ ]\n\n장보기", 3)
+        new_pin = _memo(env, "고정한 새 메모", 4, pinned=True)
+        body = await get_json(env, "/memos")
+        searched = await get_json(env, "/memos?q=사피")
+        one = await get_json(env, f"/memos/{a}")
+        missing = await env.get("/memos/999")
+        bad = [(await env.get(p)).status for p in ("/memos?limit=0", "/memos?limit=101", "/memos?before=x")]
+
+    _validate("MemoList", body)
+    assert [x["id"] for x in body["items"]] == [new_pin, old_pin, b, a] and body["next_before"] is None
+    item = next(x for x in body["items"] if x["id"] == a)
+    assert item == {"id": a, "title": "읽을 책", "preview": "사피엔스 총균쇠", "area": "learning", "pinned": False,
+                    "origin": "chat", "updated_at": "2026-10-24T04:02:00Z"}
+    assert next(x for x in body["items"] if x["id"] == b)["title"] == "장보기"
+    assert [x["id"] for x in searched["items"]] == [a]
+    _validate("Memo", one)
+    assert one["body"] == "읽을 책\n- [ ] 사피엔스\n- [ ] **총균쇠**" and one["created_at"] == "2026-10-24T04:02:00Z"
+    assert missing.status == 404 and bad == [400, 400, 400]
+
+
+async def test_api_memos_second_page_has_no_pinned(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        pins = [_memo(env, f"고정 {i}", i, pinned=True) for i in range(2)]
+        rest = [_memo(env, f"메모 {i}", 10 + i) for i in range(5)]  # 최근순: rest[4] … rest[0]
+        first = await get_json(env, "/memos?limit=2")
+        second = await get_json(env, f"/memos?limit=2&before={first['next_before']}")
+        third = await get_json(env, f"/memos?limit=2&before={second['next_before']}")
+
+    assert [x["id"] for x in first["items"]] == [pins[1], pins[0], rest[4], rest[3]]
+    assert [x["id"] for x in second["items"]] == [rest[2], rest[1]]
+    assert [x["id"] for x in third["items"]] == [rest[0]] and third["next_before"] is None
+    assert not any(x["pinned"] for x in second["items"] + third["items"])
+
+
+# --- 스케줄 (SP9 5.6) ---
+
+
+def _ev(env, title, d, t=None, **kw):
+    from datetime import time as _t
+
+    fields = {"title": title, "start_date": date.fromisoformat(d), "start_time": _t.fromisoformat(t) if t else None,
+              "all_day": t is None, "remind_min": 10 if t else 0, "origin": "user", **kw}
+    return env.parts.events.create(fields, env.clock.now())
+
+
+async def test_today_events_use_logical_day_0100_belongs_to_previous(tmp_path):
+    """Review Focus 1: 10/27 01:00 일정은 현지 날짜 10/27, 논리적 날짜 10/26. 오늘 화면은 논리적 날짜,
+    `/events`(스케줄 띠)는 현지 날짜."""
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 27, 1, 30)) as env:  # 논리적 날짜 10/26(월)
+        _ev(env, "꾸민 낮 일정", "2026-10-26", "14:00")
+        late = _ev(env, "꾸민 새벽 일정", "2026-10-27", "01:00")
+        _ev(env, "꾸민 전날 새벽", "2026-10-26", "02:00")  # 논리적 날짜 10/25
+        _ev(env, "꾸민 하루 종일", "2026-10-26")
+        _ev(env, "꾸민 다음 날 하루 종일", "2026-10-27")  # 하루 종일은 현지 날짜 = 논리적 날짜
+        today = await get_json(env, "/today")
+        strip = await get_json(env, "/events?start=2026-10-27&end=2026-10-27")
+
+    assert today["date"] == "2026-10-26"
+    assert [e["title"] for e in today["events"]] == ["꾸민 하루 종일", "꾸민 낮 일정", "꾸민 새벽 일정"]
+    item = today["events"][2]
+    assert item == {
+        "event_id": late.id, "date": "2026-10-27", "start": "2026-10-26T16:00:00Z", "end": None, "all_day": False,
+        "title": "꾸민 새벽 일정", "area": None, "remind_min": 10, "repeat": "none", "origin": "user",
+    }
+    assert today["missed_reminders"] == []
+    assert [e["title"] for e in strip["items"]] == ["꾸민 다음 날 하루 종일", "꾸민 새벽 일정"]
+
+
+async def test_api_events_range_over_62_422(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        _ev(env, "꾸민 매일", "2026-10-24", "08:00", repeat="daily")
+        ok = await get_json(env, "/events?start=2026-10-24&end=2026-12-24")  # 62일(포함)
+        too_long = await get_json(env, "/events?start=2026-10-24&end=2026-12-25", status=422)
+        await get_json(env, "/events?start=2026-10-24", status=400)
+        await get_json(env, "/events?start=2026-10-25&end=2026-10-24", status=400)
+    assert len(ok["items"]) == 62 and (ok["start"], ok["end"]) == ("2026-10-24", "2026-12-24")
+    assert too_long["error"] == {"code": "range_too_long", "message": "기간은 62일까지 볼 수 있어요."}
+
+
+async def test_api_event_detail_and_404(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        e = _ev(env, "꾸민 팀 회의", "2026-10-26", "10:00", repeat="weekly", weekdays=1 | 4, note="꾸민 메모")
+        env.parts.events.skip(e.id, date(2026, 10, 28))
+        gone = _ev(env, "꾸민 지운 일정", "2026-10-26", "11:00")
+        env.parts.events.delete(gone.id, env.clock.now())
+        body = await get_json(env, f"/events/{e.id}")
+        missing = await get_json(env, f"/events/{gone.id}", status=404)
+    assert body["weekdays"] == ["mon", "wed"] and body["skipped_dates"] == ["2026-10-28"]
+    assert body["note"] == "꾸민 메모" and body["time"] == "10:00" and body["created_at"].endswith("Z")
+    assert missing["error"]["message"] == "없는 일정이에요."
+
+
+async def test_conversations_title_summary_search_and_pages(tmp_path):
+    """SP9 7.6: 앱 대화의 제목과 요약 앞 120자, `q`(제목·요약), `before`(쪽 넘기기). 지운 대화는 빠진다."""
+    async with BeEnv.start(tmp_path, start=SAT) as env:
+        convs = env.parts.convs
+        ids = []
+        for i, (title, summary) in enumerate([("치과 예약", "가" * 300), ("책 고르기", "사피엔스"), ("운동", "")]):
+            c = convs.open("chat", SAT.date(), channel="app")
+            env.clock.advance(timedelta(minutes=1))
+            convs.touch(c.id)
+            convs.close(c.id)
+            convs.set_summary(c.id, title, summary, env.clock.now())
+            ids.append(c.id)
+        page1 = await get_json(env, "/conversations?channel=app&limit=2")
+        page2 = await get_json(env, f"/conversations?channel=app&limit=2&before={page1['next_before']}")
+        found = await get_json(env, "/conversations?q=사피엔스")
+        short = await get_json(env, "/conversations?q=치과")
+        bad = [(await env.get(p)).status for p in ("/conversations?before=nope", "/conversations?q=" + "가" * 101)]
+    assert [i["id"] for i in page1["items"]] == [ids[2], ids[1]] and page1["next_before"]
+    assert [i["id"] for i in page2["items"]] == [ids[0]] and page2["next_before"] is None
+    first = page2["items"][0]
+    assert first["title"] == "치과 예약" and first["summary"] == "가" * 120
+    assert page1["items"][0]["summary"] is None  # 빈 요약(짧은 대화)은 null
+    assert [i["id"] for i in found["items"]] == [ids[1]] and [i["id"] for i in short["items"]] == [ids[0]]
+    assert bad == [400, 400]

@@ -17,6 +17,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SecretStr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -65,10 +66,33 @@ class ReviewSchedule(_Model):
         return v
 
 
+class DigestConfig(_Model):
+    """일정 정리 알림(SP9b 4장)의 기본값. `app_state.digest_settings`에 없는 칸은 이 값을 쓴다.
+
+    시각은 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(SP9b 1장). 벗어나면 config 로드 오류다.
+    """
+
+    morning: time = time(7, 30)
+    night: time = time(21, 30)
+    morning_on: bool = True
+    night_on: bool = True
+
+    @field_validator("morning", "night")
+    @classmethod
+    def _in_range(cls, v: time, info: ValidationInfo) -> time:
+        # 범위는 판정 모듈 한 곳에서 정한다. 그 모듈은 config를 실행 중에 가져오지 않는다(순환 없음)
+        from my_planner.loop.digests import validate_digest_time
+
+        if validate_digest_time(info.field_name, v) is None:  # type: ignore[arg-type]
+            raise ValueError(f"schedule.digest.{info.field_name}는 범위 안 10분 단위여야 한다")
+        return v
+
+
 class ScheduleConfig(_Model):
     morning_brief: DailyTimes = DailyTimes(weekday=time(9, 0), weekend=time(10, 0))
     evening_checkin: DailyTimes = DailyTimes(weekday=time(17, 30), weekend=time(18, 0))
     review: ReviewSchedule = ReviewSchedule()
+    digest: DigestConfig = DigestConfig()  # 일정 정리 알림(SP9b 4장)
 
 
 class ReplyWindowConfig(_Model):
@@ -91,12 +115,16 @@ class LimitsConfig(_Model):
     daily_brain_calls: int = 60
     max_turns: int = 10
     daily_proactive_messages: int = 3
+    daily_event_reminders: int = 30  # 일정 알림 하루 상한(SP9 5.3). 비서가 먼저 보내는 말(위)에 세지 않는다
     chat_resume_minutes: int = 30
     plan_idle_hours: int = 2
     draft_ttl_days: int = 3
     stale_message_hours: int = 6
     input_max_chars: int = 8000
     brain_timeout_s: float = 300  # 두뇌 호출 한 번의 상한(초). 넘으면 status="error", error="timeout"
+    daily_summaries: int = 15  # 대화 요약 하루 상한(SP9 7.2). `daily_brain_calls`에도 센다
+    rollup_user_messages: int = 30  # 사용자 메시지가 이보다 많아지면 다음 호출 전에 말아 넣는다(SP9 7.4)
+    rollup_tail_lines: int = 6  # 말아 넣은 새 세션·resume 실패에 붙이는 최근 원문 줄 수(SP9 7.3, 7.4)
     reply_window: ReplyWindowConfig = ReplyWindowConfig()
     catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
 
@@ -169,6 +197,8 @@ class Settings(_Model):
     api: ApiConfig = ApiConfig()
     notify: NotifyConfig = NotifyConfig()
     api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
+    # .env의 BODY_TOKEN(SP8 7.2). `POST /body`만 된다. 없거나 짧거나 API_TOKEN과 같으면 그 경로만 열지 않는다
+    body_token: SecretStr | None = None
     vapid: VapidConfig | None = None  # .env의 VAPID_*. 없으면 푸시만 꺼진다(`/push/*`는 404, 실제 통로는 telegram)
     runtime: RuntimeConfig = RuntimeConfig()
 
@@ -187,6 +217,7 @@ class _Secrets(BaseSettings):
     telegram_bot_token: SecretStr = Field(validation_alias="TELEGRAM_BOT_TOKEN")
     owner_telegram_id: int = Field(validation_alias="OWNER_TELEGRAM_ID")
     api_token: SecretStr | None = Field(default=None, validation_alias="API_TOKEN")
+    body_token: SecretStr | None = Field(default=None, validation_alias="BODY_TOKEN")
     vapid_public_key: str | None = Field(default=None, validation_alias="VAPID_PUBLIC_KEY")
     vapid_private_key: SecretStr | None = Field(default=None, validation_alias="VAPID_PRIVATE_KEY")
     vapid_subject: str | None = Field(default=None, validation_alias="VAPID_SUBJECT")
@@ -219,7 +250,8 @@ def resolve_root() -> Path:
 def load_settings(root: Path) -> Settings:
     root = Path(root).resolve()
     data: dict[str, Any] = read_overlaid(root / "config.toml", root / "config.local.toml")
-    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "vapid", "paths"):  # 합친 결과에 건다
+    # 합친 결과에 건다
+    for key in ("telegram_bot_token", "owner_telegram_id", "api_token", "body_token", "vapid", "paths"):
         if key in data:
             raise ValueError(f"config.toml에 {key}를 두지 않는다")
     runtime = data.get("runtime")
@@ -229,6 +261,7 @@ def load_settings(root: Path) -> Settings:
         telegram_bot_token=secrets.telegram_bot_token,
         owner_telegram_id=secrets.owner_telegram_id,
         api_token=secrets.api_token,
+        body_token=secrets.body_token,
         vapid=secrets.vapid(),
         paths=PathsConfig.for_root(root),
         **data,

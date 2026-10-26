@@ -13,23 +13,52 @@ export interface ApiModels {
   ActionRejected: ActionRejected;
   ActionRequestBody: ActionRequestBody;
   ActivityResponse: ActivityResponse;
+  BodyPostBody: BodyPostBody;
+  BodySaved: BodySaved;
+  CalendarPutBody: CalendarPutBody;
+  CalendarSettings: CalendarSettings;
   ChatRequestBody: ChatRequestBody;
+  ChatStopBody: ChatStopBody;
+  ChatStopped: ChatStopped;
   CheckinDetail: CheckinDetail;
   CheckinList: CheckinList;
   CheckinSummary: CheckinSummary;
+  CheckinTimePutBody: CheckinTimePutBody;
+  CheckinTimes: CheckinTimes;
+  CheckinTimesUpdated: CheckinTimesUpdated;
   ClientErrorBody: ClientErrorBody;
   Conditions: Conditions;
   Conversations: Conversations;
+  ConversationsClosed: ConversationsClosed;
   Curve: Curve;
+  CurveHistory: CurveHistory;
+  DeviceList: DeviceList;
+  DigestSettingPutBody: DigestSettingPutBody;
+  DigestSettings: DigestSettings;
+  DigestSettingsUpdated: DigestSettingsUpdated;
+  DigestSlot: DigestSlot;
   Drafts: Drafts;
   Error: Error;
+  EventDetail: EventDetail;
+  EventItem: EventItem;
+  EventList: EventList;
   Habit: Habit;
   HabitHistory: HabitHistory;
   HabitsList: HabitsList;
   Health: Health;
+  Memo: Memo;
+  MemoItem: MemoItem;
+  MemoList: MemoList;
   Messages: Messages;
+  MissedReminder: MissedReminder;
+  Moment: Moment;
+  MomentsList: MomentsList;
   NotifyPutBody: NotifyPutBody;
   NotifySettings: NotifySettings;
+  PairBody: PairBody;
+  PairCreated: PairCreated;
+  PairResult: PairResult;
+  PairStatus: PairStatus;
   Priorities: Priorities;
   PushSubscribeBody: PushSubscribeBody;
   PushSubscribed: PushSubscribed;
@@ -116,7 +145,17 @@ export interface ErrorDetail {
     | "too_many_auth_failures"
     | "safe_mode"
     | "internal"
-    | "unavailable";
+    | "unavailable"
+    | "checkin_time_invalid"
+    | "memo_conflict"
+    | "too_many_memos"
+    | "too_many_pinned"
+    | "remind_invalid"
+    | "start_not_in_weekdays"
+    | "too_many_events"
+    | "range_too_long"
+    | "digest_time_invalid"
+    | "bad_code";
   message: string;
 }
 /**
@@ -160,16 +199,77 @@ export interface ActivityItem {
   undone_at: string | null;
 }
 /**
+ * `POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodyPostBody".
+ */
+export interface BodyPostBody {
+  /**
+   * @minItems 1
+   * @maxItems 7
+   */
+  days:
+    | [BodyDayIn]
+    | [BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn]
+    | [BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn, BodyDayIn];
+}
+/**
+ * 몸 기록 하루(SP8 7.3). `date`는 한국 달력의 오늘 이하, 오늘 − 13일 이상. 둘 중 하나는 있어야 하고 `null`은 받지
+ * 않는다(빼면 그 값은 그대로 둔다). 검증은 `api/body.parse_body_days`가 한다(이 모델은 스키마 문서다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodyDayIn".
+ */
+export interface BodyDayIn {
+  date: string;
+  sleep_minutes?: number;
+  steps?: number;
+}
+/**
+ * `POST /body` 응답: 저장한 날 수. 값은 돌려주지 않는다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodySaved".
+ */
+export interface BodySaved {
+  saved: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CalendarPutBody".
+ */
+export interface CalendarPutBody {
+  rotate?: boolean;
+}
+/**
+ * `GET`/`POST /settings/calendar` (SP9 5.7). `url`은 구독 주소(비밀: 키가 들어 있다). 아직 안 만들었으면 null.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CalendarSettings".
+ */
+export interface CalendarSettings {
+  url: string | null;
+}
+/**
  * `POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).
+ *
+ * `chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "ChatRequestBody".
  */
 export interface ChatRequestBody {
   checkin_id?: number | null;
+  chip?: ("todo" | "event" | "memo" | "today" | "next") | null;
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;
+  resume_conversation_id?: number | null;
 }
 /**
  * AI SDK `UIMessage`(마지막 사용자 메시지 하나). `parts`의 `text`만 읽는다(6.4.1). 모르는 필드는 버린다.
@@ -186,6 +286,25 @@ export interface ChatMessage {
     [k: string]: unknown;
   }[];
   role: "user";
+}
+/**
+ * `POST /chat/stop` 요청: 멈출 메시지의 `client_msg_id`(`POST /chat`에 보낸 것).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ChatStopBody".
+ */
+export interface ChatStopBody {
+  client_msg_id: string;
+}
+/**
+ * `POST /chat/stop` 응답. `stopped`: 기다리거나 답하던 것을 멈췄다. `done`: 이미 답을 마쳤다(그대로 둔다).
+ * `unknown`: 받은 적 없는 id다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ChatStopped".
+ */
+export interface ChatStopped {
+  state: "stopped" | "done" | "unknown";
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -255,6 +374,55 @@ export interface CheckinSummary {
   state: "pending" | "answered" | "missed";
 }
 /**
+ * `PUT /settings/checkin-times`: 바꿀 칸 하나. 아침 05:00~11:30, 저녁 15:00~23:30, 10분 단위.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CheckinTimePutBody".
+ */
+export interface CheckinTimePutBody {
+  day_type: "weekday" | "weekend";
+  loop: "morning_brief" | "evening_checkin";
+  time: string;
+}
+/**
+ * `GET /settings/checkin-times`: 네 칸(평일 아침, 평일 저녁, 주말 아침, 주말 저녁)과, 마지막 깨우기 작업 다시
+ * 등록이 됐는지(`wake_updated`: PUT, 확인 카드, 되돌리기 어느 쪽에서 바꿨든 같은 값).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CheckinTimes".
+ */
+export interface CheckinTimes {
+  items: CheckinTimeItem[];
+  wake_updated: boolean;
+}
+/**
+ * 체크인 시간 한 칸(SP9 8장). `time`은 앞으로의 값("HH:MM"), `from`은 그 값이 적용되는 첫 날(논리적 날짜,
+ * 바꾼 적이 없으면 null), `effective_today`는 오늘(논리적 날짜) 적용되는 값.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CheckinTimeItem".
+ */
+export interface CheckinTimeItem {
+  day_type: "weekday" | "weekend";
+  effective_today: string;
+  from: string | null;
+  loop: "morning_brief" | "evening_checkin";
+  time: string;
+}
+/**
+ * `PUT /settings/checkin-times`의 답: 지금 네 칸(과 `wake_updated`), 바꾼 칸의 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CheckinTimesUpdated".
+ */
+export interface CheckinTimesUpdated {
+  activity_id: number | null;
+  applies: "today" | "tomorrow";
+  items: CheckinTimeItem[];
+  undo_id: number | null;
+  wake_updated: boolean;
+}
+/**
  * `POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -305,13 +473,18 @@ export interface ConditionItem {
   score: number;
 }
 /**
+ * `GET /conversations?channel=&q=&before=&limit=`(SP9 7.6). 지운 대화는 없다. `next_before`: 다음 쪽 커서.
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Conversations".
  */
 export interface Conversations {
   items: ConversationItem[];
+  next_before?: string | null;
 }
 /**
+ * 대화 한 줄(6.4.6). SP9 7.6: 비서가 붙인 `title`(20자)과 `summary`(앞 120자). 앱 대화에만 있고 없으면 null.
+ *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "ConversationItem".
  */
@@ -323,6 +496,17 @@ export interface ConversationItem {
   last_message_at: string;
   opened_at: string;
   run_id: number | null;
+  summary?: string | null;
+  title?: string | null;
+}
+/**
+ * `POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ConversationsClosed".
+ */
+export interface ConversationsClosed {
+  closed: number[];
 }
 /**
  * `GET /curve` (6.3.5).
@@ -359,6 +543,7 @@ export interface CurveChapter {
   certainty: "fact" | "estimate";
   end: string | null;
   id: number;
+  ladder_remembered: number | null;
   sketch: string | null;
   start: string;
   theme: string | null;
@@ -390,12 +575,15 @@ export interface CurveLadder {
  * via the `definition` "CurveMilestone".
  */
 export interface CurveMilestone {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
   certainty: "fact" | "estimate";
   chapter_id: number | null;
   date: string;
   id: number;
   kind: "high" | "low" | "turning_point";
+  kind_certainty: "fact" | "estimate";
   note: string | null;
+  origin: "seed" | "chat" | "review";
   precision: "year" | "month" | "day";
   sensitive: boolean;
   title: string;
@@ -411,6 +599,189 @@ export interface CurveReassurance {
   gap: number | null;
   ladder_now: number;
   period: string;
+}
+/**
+ * `GET /curve/history` (SP8 8.2). 챕터는 `start` 최근부터, 사건은 `sort_date` 최근부터.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "CurveHistory".
+ */
+export interface CurveHistory {
+  chapters: HistoryChapter[];
+  since_year: number | null;
+  summary: HistorySummary;
+  unassigned: HistoryUnassigned;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryChapter".
+ */
+export interface HistoryChapter {
+  certainty: "fact" | "estimate";
+  end: string | null;
+  events: HistoryEvent[];
+  hidden_sensitive: HiddenSensitive;
+  id: number;
+  ladder: HistoryLadder | null;
+  sketch: string | null;
+  start: string;
+  theme: string | null;
+  title: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryEvent".
+ */
+export interface HistoryEvent {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  certainty: "fact" | "estimate";
+  date: string;
+  id: number;
+  kind: "high" | "low" | "turning_point";
+  kind_certainty: "fact" | "estimate";
+  note: string | null;
+  origin: "seed" | "chat" | "review";
+  precision: "year" | "month" | "day";
+  sensitive: boolean;
+  title: string;
+}
+/**
+ * 가린 민감 사건의 개수와 해(오름차순, 중복 없음). 제목·메모는 본문에 없다(8.5).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HiddenSensitive".
+ */
+export interface HiddenSensitive {
+  count: number;
+  years: number[];
+}
+/**
+ * `remembered`는 기억한 정수, `recorded`는 그 기간 월별 사다리 평균(소수 한 자리). 둘 다 `float` 하나다(결정 16).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryLadder".
+ */
+export interface HistoryLadder {
+  source: "remembered" | "recorded";
+  value: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistorySummary".
+ */
+export interface HistorySummary {
+  chapters: number;
+  events: number;
+  highest: HistoryHighest | null;
+  longest: HistoryLongest | null;
+  records_since: number | null;
+  turning_points: HistoryTurningPoints;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryHighest".
+ */
+export interface HistoryHighest {
+  chapter_id: number;
+  ladder: number;
+  title: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryLongest".
+ */
+export interface HistoryLongest {
+  chapter_id: number;
+  title: string;
+  years: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryTurningPoints".
+ */
+export interface HistoryTurningPoints {
+  count: number;
+  years: number[];
+}
+/**
+ * 확정한 챕터에 들지 않은 사건("시기를 정하지 않은 사건").
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "HistoryUnassigned".
+ */
+export interface HistoryUnassigned {
+  events: HistoryEvent[];
+  hidden_sensitive: HiddenSensitive;
+}
+/**
+ * `GET /devices`: 끊지 않은 기기, 만든 순서. API 토큰은 나오지 않는다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DeviceList".
+ */
+export interface DeviceList {
+  devices: DeviceItem[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DeviceItem".
+ */
+export interface DeviceItem {
+  client: "app" | "dashboard";
+  created_at: string;
+  id: number;
+  label: string;
+  last_used_at: string | null;
+  this_device: boolean;
+}
+/**
+ * `PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면
+ * `422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSettingPutBody".
+ */
+export interface DigestSettingPutBody {
+  kind: "morning" | "night";
+  on: boolean;
+  time: string;
+}
+/**
+ * `GET /settings/digests`: 아침 알림(오늘 일정), 밤 알림(내일 일정), 마지막 깨우기 작업 다시 등록이 됐는지
+ * (`wake_updated`: 체크인 시간과 같은 값).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSettings".
+ */
+export interface DigestSettings {
+  morning: DigestSlot;
+  night: DigestSlot;
+  wake_updated: boolean;
+}
+/**
+ * 일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 "HH:MM"(04:00 경계와 상관없다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSlot".
+ */
+export interface DigestSlot {
+  on: boolean;
+  time: string;
+}
+/**
+ * `PUT /settings/digests`의 답: 지금 두 종류(와 `wake_updated`), 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).
+ * 같은 값이라 바뀐 것이 없으면 `applies`, `activity_id`, `undo_id`가 모두 null이다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSettingsUpdated".
+ */
+export interface DigestSettingsUpdated {
+  activity_id: number | null;
+  applies: ("today" | "tomorrow") | null;
+  morning: DigestSlot;
+  night: DigestSlot;
+  undo_id: number | null;
+  wake_updated: boolean;
 }
 /**
  * `GET /drafts` (6.3.8): 만료 전 초안만.
@@ -465,6 +836,64 @@ export interface TodoPriority {
  */
 export interface Error {
   error: ErrorDetail;
+}
+/**
+ * `GET /events/{id}` (SP9 5.6): 정의 하나. `date`는 첫 날(현지), `time`은 현지 `HH:MM`(하루 종일은 null),
+ * `weekdays`는 매주 반복의 요일(그 밖에는 null), `repeat_until`은 마지막이 될 수 있는 날(포함, null이면 끝없음).
+ * `skipped_dates`: 이번만 건너뛴 날. 동작(`create_event`, `update_event`)의 칸 이름과 같다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "EventDetail".
+ */
+export interface EventDetail {
+  all_day: boolean;
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  created_at: string;
+  date: string;
+  duration_min: number | null;
+  id: number;
+  note: string;
+  origin: "user" | "chat" | "migrated";
+  remind_min: (0 | 10 | 30 | 60 | 1440) | null;
+  repeat: "none" | "daily" | "weekly" | "monthly";
+  repeat_until: string | null;
+  skipped_dates: string[];
+  time: string | null;
+  title: string;
+  updated_at: string;
+  weekdays: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[] | null;
+}
+/**
+ * 그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은
+ * null, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,
+ * null 알림 없음.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "EventItem".
+ */
+export interface EventItem {
+  all_day: boolean;
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  date: string;
+  end: string | null;
+  event_id: number;
+  origin: "user" | "chat" | "migrated";
+  remind_min: (0 | 10 | 30 | 60 | 1440) | null;
+  repeat: "none" | "daily" | "weekly" | "monthly";
+  start: string | null;
+  title: string;
+}
+/**
+ * `GET /events?start=&end=` (SP9 5.6): 기간(현지 날짜, 포함, 최대 62일, 넘으면 422 `range_too_long`) 안의 그날
+ * 일정. 날짜, 하루 종일 먼저, 시작 시각순. 건너뛴 날은 없다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "EventList".
+ */
+export interface EventList {
+  end: string;
+  items: EventItem[];
+  start: string;
 }
 /**
  * 공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든
@@ -610,6 +1039,50 @@ export interface HealthVersion {
   ui_catalog: string;
 }
 /**
+ * `GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "Memo".
+ */
+export interface Memo {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  body: string;
+  created_at: string;
+  id: number;
+  origin: "user" | "chat";
+  pinned: boolean;
+  title: string;
+  updated_at: string;
+}
+/**
+ * `GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 "제목 없는 메모"). `preview`: 제목 줄 다음부터
+ * 서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "MemoItem".
+ */
+export interface MemoItem {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  id: number;
+  origin: "user" | "chat";
+  pinned: boolean;
+  preview: string;
+  title: string;
+  updated_at: string;
+}
+/**
+ * `GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모가 고친 시각
+ * 최근순. `limit`(1~100, 기본 50)은 고정 아닌 메모만 센다(고정 10개까지는 첫 쪽에 더 붙는다). `next_before`는 고정
+ * 아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "MemoList".
+ */
+export interface MemoList {
+  items: MemoItem[];
+  next_before: string | null;
+}
+/**
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Messages".
  */
@@ -631,6 +1104,45 @@ export interface MessageItem {
   tools: string[];
 }
 /**
+ * 오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`
+ * (알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "MissedReminder".
+ */
+export interface MissedReminder {
+  date: string;
+  event_id: number;
+  outcome: "missed" | "failed" | "skipped";
+  start: string | null;
+  title: string;
+}
+/**
+ * 이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "Moment".
+ */
+export interface Moment {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  date: string;
+  hidden: boolean;
+  id: number;
+  sources: ("task" | "habit" | "condition" | "chat")[];
+  text: string;
+}
+/**
+ * `GET /moments` (SP8 6.5). `to` = `before`의 전날(없으면 오늘), `from` = `to − (days − 1)`.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "MomentsList".
+ */
+export interface MomentsList {
+  from: string;
+  items: Moment[];
+  to: string;
+}
+/**
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "NotifyPutBody".
  */
@@ -649,7 +1161,66 @@ export interface NotifySettings {
   push_subscriptions: number;
 }
 /**
- * `GET /priorities` (6.3.7).
+ * `POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairBody".
+ */
+export interface PairBody {
+  client: "app" | "dashboard";
+  code: string;
+  label: string;
+}
+/**
+ * `POST /devices/pair` `201`: 연결 코드(숫자 6자리)와 만료 시각 (기기 연결 스펙 4.5).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairCreated".
+ */
+export interface PairCreated {
+  code: string;
+  expires_at: string;
+}
+/**
+ * `POST /pair` `201`: 기기 토큰(이 응답에만 한 번 나온다)과 기기.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairResult".
+ */
+export interface PairResult {
+  device: PairedDevice;
+  token: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairedDevice".
+ */
+export interface PairedDevice {
+  client: "app" | "dashboard";
+  id: number;
+  label: string;
+}
+/**
+ * `GET /devices/pair`: 지금 코드의 상태. `used`면 그 코드로 연결한 기기.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PairStatus".
+ */
+export interface PairStatus {
+  device?: DeviceRef | null;
+  state: "waiting" | "used" | "expired" | "none";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DeviceRef".
+ */
+export interface DeviceRef {
+  id: number;
+  label: string;
+}
+/**
+ * `GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
+ * 날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Priorities".
@@ -658,6 +1229,7 @@ export interface Priorities {
   cadence: "week" | "month" | "quarter" | "year";
   items: Todo[];
   period: string;
+  todos?: Todo[];
 }
 /**
  * `POST /push/subscriptions` 요청: 브라우저 `PushSubscription.toJSON()` + `label` (6.4.8). 모르는 필드는 버린다.
@@ -749,22 +1321,39 @@ export interface SchemaBundle {
   };
 }
 /**
- * `GET /status` (6.3.6).
+ * `GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Status".
  */
 export interface Status {
+  body: StatusBody | null;
   daily_quests: DailyQuest[];
   hp: StatusHp;
   level: number;
   main_quests: MainQuest[];
+  moments: Moment[];
+  moments_hidden: number;
   recent_xp: RecentXp[];
   stats: StatusStat[];
   titles: StatusTitle[];
   xp_for_next: number;
   xp_into_level: number;
   xp_total: number;
+}
+/**
+ * `GET /status`의 `body` (SP8 7.5): 지난 7일 몸 기록. 지난 56일에 행이 없으면 `body`가 null이다.
+ *
+ * `days_7`: 지난 7일 중 행이 있는 날 수. 평균은 그 값이 있는 날만의 정수 평균(없으면 null).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StatusBody".
+ */
+export interface StatusBody {
+  days_7: number;
+  last_date: string;
+  sleep_avg_7: number | null;
+  steps_avg_7: number | null;
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -818,14 +1407,28 @@ export interface RecentXp {
  * via the `definition` "StatusStat".
  */
 export interface StatusStat {
+  activity: StatActivity;
   area: "career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life";
+  bonus: number;
   debuff: boolean;
+  effective_score: number | null;
   label: string;
   period: string | null;
   prev_period: string | null;
   prev_score: number | null;
   recovery_quest: string | null;
   score: number | null;
+}
+/**
+ * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StatActivity".
+ */
+export interface StatActivity {
+  body_days: number;
+  habit_checks: number;
+  tasks: number;
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -839,7 +1442,8 @@ export interface StatusTitle {
   title: string;
 }
 /**
- * `GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.
+ * `GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의
+ * 그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Today".
@@ -851,7 +1455,9 @@ export interface Today {
   condition: ConditionItem | null;
   date: string;
   day_boundary: string;
+  events?: EventItem[];
   habits: Habit[];
+  missed_reminders?: MissedReminder[];
   todos: TodayTodo[];
   weekday: string;
 }
@@ -971,7 +1577,8 @@ export interface VapidPublicKey {
   public_key: string;
 }
 /**
- * `GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다.
+ * `GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,
+ * 이번 주 우선순위는 뺀다).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Week".
@@ -981,6 +1588,7 @@ export interface Week {
   end: string;
   priorities: Todo[];
   start: string;
+  undated?: Todo[];
   week: string;
 }
 /**

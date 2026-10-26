@@ -17,6 +17,7 @@ from datetime import datetime as _datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
+from my_planner.probe import command_probe_on
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 from my_planner.store.views import WEEKDAY, today_view, week_view
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from my_planner.harness.conversations import ConversationRouter
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.curve import CurveRepo
+    from my_planner.store.repos.events import EventsRepo, Occurrence
     from my_planner.store.repos.habits import HabitsRepo
     from my_planner.store.repos.status import StatusRepo
     from my_planner.tools.actions import ActionRequest, ActionResult
@@ -45,7 +47,9 @@ HELP_TEXT = (
     "그 밖에는 그냥 말씀해 주세요. 할 일 추가, 옮기기, 완료, 우선순위 정하기를 도와 드려요."
 )
 
-COMMANDS = ("/today", "/week", "/status", "/habits", "/help", "/pause", "/unpause", "/plan", "/done")
+COMMANDS = ("/today", "/week", "/status", "/habits", "/help", "/pause", "/unpause", "/plan", "/done", "/medic_probe")
+
+PROBE_OFF_REPLY = "개발용 명령이에요. 지금은 꺼져 있어요."
 
 PAUSE_MIN_DAYS, PAUSE_MAX_DAYS = 1, 14
 PAUSE_USAGE = "쉴 날 수를 1~14 사이로 함께 적어 주세요. 예: /pause 3"
@@ -99,39 +103,51 @@ def _numbered(items: list[Task]) -> str:
     return "\n".join(f"{i}. {t.title}" for i, t in enumerate(items, start=1))
 
 
-def today_text(tasks: TasksRepo, now: _datetime, tz: str | tzinfo, boundary: time) -> str:
-    """`store.views.today_view`를 글로 바꾸기만 한다(`GET /today`와 같은 뷰)."""
+def _event_line(o: Occurrence, tz: str | tzinfo) -> str:
+    when = "하루 종일" if o.all_day else f"{local(o.start, tz):%H:%M}"  # type: ignore[arg-type]
+    return f"- {when} {o.title}"
+
+
+def today_text(
+    tasks: TasksRepo, now: _datetime, tz: str | tzinfo, boundary: time, events: EventsRepo | None = None
+) -> str:
+    """`store.views.today_view`를 글로 바꾸기만 한다(`GET /today`와 같은 뷰). "일정"은 스케줄(`events`)의 오늘
+    (논리적 날짜) 그날 일정이다(SP9 5.6, `/today.events`와 같다)."""
     view = today_view(tasks, None, now, tz, boundary)
     out = [f"오늘 ({_md(view.date)} {view.weekday})"]
-    for g in view.groups:
-        if g.name == "priority":
-            out.append("우선순위\n" + _numbered(g.tasks))
-        elif g.name == "scheduled":
-            out.append("일정\n" + "\n".join(f"- {local(t.scheduled_at, tz):%H:%M} {t.title}" for t in g.tasks))  # type: ignore[arg-type]
-        else:
-            lines = [
-                f"- {t.title}" + (f" ({_md(t.planned_for)})" if t.planned_for < view.date else "")  # type: ignore[operator,arg-type]
-                for t in g.tasks
-            ]
-            out.append("열린 할 일\n" + "\n".join(lines))
+    groups = {g.name: g.tasks for g in view.groups}  # "scheduled"는 죽은 갈래(`today_view`): 일정은 스케줄에서
+    if groups.get("priority"):
+        out.append("우선순위\n" + _numbered(groups["priority"]))
+    todays = events.on_logical_date(view.date, boundary) if events is not None else []
+    if todays:
+        out.append("일정\n" + "\n".join(_event_line(o, tz) for o in todays))
+    if groups.get("open"):
+        lines = [
+            f"- {t.title}" + (f" ({_md(t.planned_for)})" if t.planned_for < view.date else "")  # type: ignore[operator,arg-type]
+            for t in groups["open"]
+        ]
+        out.append("열린 할 일\n" + "\n".join(lines))
     if len(out) == 1:
         out.append("아직 비어 있어요. 하고 싶은 일을 말씀해 주세요.")
     return "\n\n".join(out)
 
 
-def week_text(tasks: TasksRepo, now: _datetime, tz: str | tzinfo, boundary: time) -> str:
-    """`store.views.week_view`를 글로 바꾸기만 한다(`GET /week`와 같은 뷰). 할 일이 없는 날은 글에서만 뺀다."""
+def week_text(
+    tasks: TasksRepo, now: _datetime, tz: str | tzinfo, boundary: time, events: EventsRepo | None = None
+) -> str:
+    """`store.views.week_view`를 글로 바꾸기만 한다(`GET /week`와 같은 뷰). 날마다 그날 일정(현지 날짜, 스케줄 띠와
+    같다)을 할 일 앞에 붙인다. 일정도 할 일도 없는 날은 글에서만 뺀다."""
     view = week_view(tasks, now, tz, boundary)
+    by_day: dict[date, list[Occurrence]] = {}
+    for o in events.occurrences(view.start, view.end) if events is not None else []:
+        by_day.setdefault(o.date, []).append(o)
     out = [f"이번 주 ({_md(view.start)}~{_md(view.end)})"]
     if view.priorities:
         out.append("우선순위\n" + _numbered(view.priorities))
     for day in view.days:
-        if not day.tasks:
+        lines = [_event_line(o, tz) for o in by_day.get(day.date, [])] + [f"- {t.title}" for t in day.tasks]
+        if not lines:
             continue
-        lines = []
-        for t in day.tasks:
-            at = f"{local(t.scheduled_at, tz):%H:%M} " if t.scheduled_at else ""
-            lines.append(f"- {at}{t.title}")
         mark = " (오늘)" if day.is_today else ""
         out.append(f"{_md(day.date)} {day.weekday}{mark}\n" + "\n".join(lines))
     if len(out) == 1:
@@ -278,6 +294,7 @@ class CommandDeps:
     status: StatusRepo | None = None  # `/status`(11.4). 없으면 "상태창을 읽을 수 없어요."
     curve: CurveRepo | None = None
     habits: HabitsRepo | None = None  # `/habits`(SP7 5.7). 없으면 "습관을 다룰 수 없어요."
+    events: EventsRepo | None = None  # `/today`·`/week`의 일정(SP9 5.6). 없으면 일정 줄 없음
 
 
 def _tz(deps: CommandDeps) -> str | tzinfo:
@@ -299,9 +316,13 @@ def run_command(
     now = deps.clock.now()
     if cmd == "/help":
         return HELP_TEXT
+    if cmd == "/medic_probe":  # 개발용 결함 주입(SP6 스펙 12장, `my_planner.probe`). 도움말에는 없다
+        if command_probe_on():
+            raise KeyError("probe")
+        return PROBE_OFF_REPLY
     if cmd in ("/today", "/week"):
         render = today_text if cmd == "/today" else week_text
-        return render(deps.tasks, now, _tz(deps), _boundary(deps))
+        return render(deps.tasks, now, _tz(deps), _boundary(deps), deps.events)
     if cmd == "/status":
         return _status_reply(deps, now)
     if cmd == "/habits":

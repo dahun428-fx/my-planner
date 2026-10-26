@@ -15,7 +15,14 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from aiohttp import web
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 # 시각 변환의 정본은 `my_planner.timefmt`다. API 쪽 가져오기가 그대로 되도록 다시 내보낸다
 from my_planner.domain import SkipReason
@@ -26,6 +33,9 @@ log = logging.getLogger(__name__)
 ErrorCode = Literal[
     "invalid_request", "unauthorized", "not_found", "conflict", "superseded", "undo_expired", "too_large",
     "rejected", "not_undoable", "too_many_auth_failures", "safe_mode", "internal", "unavailable",
+    "checkin_time_invalid", "memo_conflict", "too_many_memos", "too_many_pinned",
+    "remind_invalid", "start_not_in_weekdays", "too_many_events", "range_too_long", "digest_time_invalid",
+    "bad_code",
 ]
 
 
@@ -57,7 +67,7 @@ async def call_json(
 ) -> web.StreamResponse:
     """처리기를 부르고, aiohttp 예외(없는 경로 등)와 예상 못 한 예외를 6.1 오류 모양으로 바꾼다.
 
-    예상 못 한 예외는 로그에 종류만 남긴다(본문, 경로 값, 토큰 없이).
+    예상 못 한 예외는 로그에 종류와 프레임만 남긴다(본문, 경로 값, 토큰, 예외 메시지 없이).
     """
     try:
         return await handler(request)
@@ -66,8 +76,9 @@ async def call_json(
             raise
         code, message = _HTTP_CODES.get(e.status, ("invalid_request", "요청을 처리할 수 없어요."))
         return error_response(e.status, code, message)
-    except Exception as e:  # noqa: BLE001 - 무엇이든 500으로. 예외 메시지는 남기지 않는다
-        log.error("api_internal_error", extra={"error_type": type(e).__name__})
+    except Exception as e:  # 무엇이든 500으로. 예외 메시지는 남기지 않는다
+        # 예외 종류와 프레임(파일:줄 함수)만 남는다(logging_setup). medic이 이것으로 장애 지문을 만든다
+        log.exception("api_internal_error", extra={"error_type": type(e).__name__})
         return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
 
 
@@ -226,7 +237,7 @@ class TodayBrief(_Model):
 
 
 class TodayTodo(_Model):
-    group: Literal["priority", "scheduled", "open"]
+    group: Literal["priority", "scheduled", "open"]  # "scheduled"는 SP9부터 죽은 갈래(열린 할 일에 시각이 없다)
     todo: Todo
 
 
@@ -317,8 +328,108 @@ class HabitHistory(_Model):
     weeks: list[HabitWeek]
 
 
+class MemoItem(_Model):
+    """`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 "제목 없는 메모"). `preview`: 제목 줄 다음부터
+    서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다."""
+
+    id: int
+    title: str
+    preview: str
+    area: AreaName | None
+    pinned: bool
+    origin: Literal["user", "chat"]
+    updated_at: str
+
+
+class MemoList(_Model):
+    """`GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모가 고친 시각
+    최근순. `limit`(1~100, 기본 50)은 고정 아닌 메모만 센다(고정 10개까지는 첫 쪽에 더 붙는다). `next_before`는 고정
+    아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null."""
+
+    items: list[MemoItem]
+    next_before: str | None
+
+
+class Memo(_Model):
+    """`GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`)."""
+
+    id: int
+    title: str
+    body: str
+    area: AreaName | None
+    pinned: bool
+    origin: Literal["user", "chat"]
+    created_at: str
+    updated_at: str
+
+
+RemindMin = Literal[0, 10, 30, 60, 1440]
+WeekdayName = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+class EventItem(_Model):
+    """그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은
+    null, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,
+    null 알림 없음."""
+
+    event_id: int
+    date: str
+    start: str | None
+    end: str | None
+    all_day: bool
+    title: str
+    area: AreaName | None
+    remind_min: RemindMin | None
+    repeat: Literal["none", "daily", "weekly", "monthly"]
+    origin: Literal["user", "chat", "migrated"]
+
+
+class EventList(_Model):
+    """`GET /events?start=&end=` (SP9 5.6): 기간(현지 날짜, 포함, 최대 62일, 넘으면 422 `range_too_long`) 안의 그날
+    일정. 날짜, 하루 종일 먼저, 시작 시각순. 건너뛴 날은 없다."""
+
+    start: str
+    end: str
+    items: list[EventItem]
+
+
+class EventDetail(_Model):
+    """`GET /events/{id}` (SP9 5.6): 정의 하나. `date`는 첫 날(현지), `time`은 현지 `HH:MM`(하루 종일은 null),
+    `weekdays`는 매주 반복의 요일(그 밖에는 null), `repeat_until`은 마지막이 될 수 있는 날(포함, null이면 끝없음).
+    `skipped_dates`: 이번만 건너뛴 날. 동작(`create_event`, `update_event`)의 칸 이름과 같다."""
+
+    id: int
+    title: str
+    date: str
+    time: str | None
+    all_day: bool
+    duration_min: int | None
+    repeat: Literal["none", "daily", "weekly", "monthly"]
+    weekdays: list[WeekdayName] | None
+    repeat_until: str | None
+    remind_min: RemindMin | None
+    area: AreaName | None
+    note: str
+    origin: Literal["user", "chat", "migrated"]
+    skipped_dates: list[str]
+    created_at: str
+    updated_at: str
+
+
+class MissedReminder(_Model):
+    """오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`
+    (알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null)."""
+
+    event_id: int
+    date: str
+    start: str | None
+    title: str
+    outcome: Literal["missed", "failed", "skipped"]
+
+
 class Today(_Model):
-    """`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`."""
+    """`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의
+    그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3."""
 
     date: str
     weekday: str
@@ -329,6 +440,8 @@ class Today(_Model):
     checkins: list[CheckinSummary]
     cards: list[AppCard]
     habits: list[Habit]
+    events: list[EventItem] = Field(default_factory=list)  # 기본값: 앞선 BE에는 없어서 앱이 required로 읽지 않게
+    missed_reminders: list[MissedReminder] = Field(default_factory=list)  # 기본값: 위와 같다(스펙 14)
 
 
 class WeekDay(_Model):
@@ -339,13 +452,15 @@ class WeekDay(_Model):
 
 
 class Week(_Model):
-    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다."""
+    """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,
+    이번 주 우선순위는 뺀다)."""
 
     week: str
     start: str
     end: str
     priorities: list[Todo]
     days: list[WeekDay]
+    undated: list[Todo] = Field(default_factory=list)  # 기본값: 앞선 BE에는 없어서 앱이 required로 읽지 않게
 
 
 class Conditions(_Model):
@@ -361,11 +476,13 @@ class Conditions(_Model):
 
 
 class Priorities(_Model):
-    """`GET /priorities` (6.3.7)."""
+    """`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
+    날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다."""
 
     cadence: Literal["week", "month", "quarter", "year"]
     period: str
     items: list[Todo]
+    todos: list[Todo] = Field(default_factory=list)  # 기본값: 앞선 BE에는 없어서 앱이 required로 읽지 않게
 
 
 class DraftItem(_Model):
@@ -383,6 +500,8 @@ class Drafts(_Model):
 
 
 class ConversationItem(_Model):
+    """대화 한 줄(6.4.6). SP9 7.6: 비서가 붙인 `title`(20자)과 `summary`(앞 120자). 앱 대화에만 있고 없으면 null."""
+
     id: int
     kind: Literal["run", "chat", "plan"]
     channel: ChannelName
@@ -390,10 +509,22 @@ class ConversationItem(_Model):
     opened_at: str
     last_message_at: str
     closed_at: str | None
+    # 늘 보내지만 스키마에서는 선택 칸이다: SP9 전의 BE 응답도 앱의 검사를 지난다(SP9 14장 관대한 읽기)
+    title: str | None = None
+    summary: str | None = None
 
 
 class Conversations(_Model):
+    """`GET /conversations?channel=&q=&before=&limit=`(SP9 7.6). 지운 대화는 없다. `next_before`: 다음 쪽 커서."""
+
     items: list[ConversationItem]
+    next_before: str | None = None
+
+
+class ConversationsClosed(_Model):
+    """`POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id."""
+
+    closed: list[int]
 
 
 class MessageItem(_Model):
@@ -422,6 +553,12 @@ class CurveChapter(_Model):
     end: str | None
     sketch: str | None
     certainty: Literal["fact", "estimate"]
+    ladder_remembered: int | None  # SP8 8.1: 그 시기를 돌아보며 기억하는 사다리 칸(0~10)
+
+
+CurveOrigin = Literal["seed", "chat", "review"]
+Certainty = Literal["fact", "estimate"]
+MilestoneKind = Literal["high", "low", "turning_point"]
 
 
 class CurveMilestone(_Model):
@@ -434,6 +571,9 @@ class CurveMilestone(_Model):
     chapter_id: int | None
     sensitive: bool
     certainty: Literal["fact", "estimate"]
+    kind_certainty: Certainty  # SP8 8.2
+    area: AreaName | None
+    origin: CurveOrigin
 
 
 class CurveLadder(_Model):
@@ -481,9 +621,103 @@ class Curve(_Model):
     reassurance: list[CurveReassurance]
 
 
+# --- 인생 히스토리 (SP8 8.2) ---
+
+
+class HistoryLadder(_Model):
+    """`remembered`는 기억한 정수, `recorded`는 그 기간 월별 사다리 평균(소수 한 자리). 둘 다 `float` 하나다(결정 16)."""
+
+    value: float
+    source: Literal["remembered", "recorded"]
+
+
+class HiddenSensitive(_Model):
+    """가린 민감 사건의 개수와 해(오름차순, 중복 없음). 제목·메모는 본문에 없다(8.5)."""
+
+    count: int
+    years: list[int]
+
+
+class HistoryEvent(_Model):
+    id: int
+    date: str
+    precision: Literal["year", "month", "day"]
+    kind: MilestoneKind
+    kind_certainty: Certainty
+    title: str
+    note: str | None
+    area: AreaName | None
+    origin: CurveOrigin
+    certainty: Certainty
+    sensitive: bool
+
+
+class HistoryChapter(_Model):
+    id: int
+    title: str
+    theme: str | None
+    start: str
+    end: str | None
+    sketch: str | None
+    certainty: Certainty
+    ladder: HistoryLadder | None
+    events: list[HistoryEvent]
+    hidden_sensitive: HiddenSensitive
+
+
+class HistoryUnassigned(_Model):
+    """확정한 챕터에 들지 않은 사건("시기를 정하지 않은 사건")."""
+
+    events: list[HistoryEvent]
+    hidden_sensitive: HiddenSensitive
+
+
+class HistoryHighest(_Model):
+    chapter_id: int
+    title: str
+    ladder: float
+
+
+class HistoryTurningPoints(_Model):
+    count: int
+    years: list[int]
+
+
+class HistoryLongest(_Model):
+    chapter_id: int
+    title: str
+    years: int
+
+
+class HistorySummary(_Model):
+    chapters: int
+    events: int
+    highest: HistoryHighest | None
+    turning_points: HistoryTurningPoints
+    longest: HistoryLongest | None
+    records_since: int | None
+
+
+class CurveHistory(_Model):
+    """`GET /curve/history` (SP8 8.2). 챕터는 `start` 최근부터, 사건은 `sort_date` 최근부터."""
+
+    since_year: int | None
+    chapters: list[HistoryChapter]
+    unassigned: HistoryUnassigned
+    summary: HistorySummary
+
+
 class StatusHp(_Model):
     date: str
     score: int | None
+
+
+class StatActivity(_Model):
+    """지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0."""
+
+    tasks: int
+    habit_checks: int
+    body_days: int
 
 
 class StatusStat(_Model):
@@ -495,6 +729,9 @@ class StatusStat(_Model):
     prev_period: str | None
     debuff: bool
     recovery_quest: str | None
+    bonus: float  # 0.0~2.0, 소수 한 자리. 바탕(`score`) 위에 따로 얹는다(SP8 5.3)
+    effective_score: float | None  # min(10, score + bonus). `score`가 없으면 null
+    activity: StatActivity
 
 
 class FirstSteps(_Model):
@@ -532,8 +769,40 @@ class RecentXp(_Model):
     amount: int
 
 
+class Moment(_Model):
+    """이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음)."""
+
+    id: int
+    date: str
+    text: str
+    area: AreaName | None
+    sources: list[Literal["task", "habit", "condition", "chat"]]
+    hidden: bool
+
+
+class MomentsList(_Model):
+    """`GET /moments` (SP8 6.5). `to` = `before`의 전날(없으면 오늘), `from` = `to − (days − 1)`."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    items: list[Moment]
+
+
+class StatusBody(_Model):
+    """`GET /status`의 `body` (SP8 7.5): 지난 7일 몸 기록. 지난 56일에 행이 없으면 `body`가 null이다.
+
+    `days_7`: 지난 7일 중 행이 있는 날 수. 평균은 그 값이 있는 날만의 정수 평균(없으면 null)."""
+
+    last_date: str
+    days_7: int
+    steps_avg_7: int | None
+    sleep_avg_7: int | None
+
+
 class Status(_Model):
-    """`GET /status` (6.3.6)."""
+    """`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5."""
 
     level: int
     xp_total: int
@@ -545,6 +814,9 @@ class Status(_Model):
     daily_quests: list[DailyQuest]
     titles: list[StatusTitle]
     recent_xp: list[RecentXp]
+    moments: list[Moment]
+    moments_hidden: int
+    body: StatusBody | None
 
 
 class UiComponent(_Model):
@@ -577,6 +849,34 @@ class ActionRequestBody(_Model):
     confirm_token: str | None = None
 
 
+def _no_default(schema: dict[str, Any]) -> None:
+    schema.pop("default", None)
+
+
+class BodyDayIn(_Model):
+    """몸 기록 하루(SP8 7.3). `date`는 한국 달력의 오늘 이하, 오늘 − 13일 이상. 둘 중 하나는 있어야 하고 `null`은 받지
+    않는다(빼면 그 값은 그대로 둔다). 검증은 `api/body.parse_body_days`가 한다(이 모델은 스키마 문서다)."""
+
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    # 빠질 수 있지만 `null`은 아니다: 스키마에는 기본값을 적지 않는다(`steps?: number`)
+    steps: StrictInt = Field(default=None, ge=0, le=100_000, json_schema_extra=_no_default)  # type: ignore[assignment]
+    sleep_minutes: StrictInt = Field(  # type: ignore[assignment]
+        default=None, ge=0, le=1_440, json_schema_extra=_no_default,
+    )
+
+
+class BodyPostBody(_Model):
+    """`POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2)."""
+
+    days: list[BodyDayIn] = Field(min_length=1, max_length=7)
+
+
+class BodySaved(_Model):
+    """`POST /body` 응답: 저장한 날 수. 값은 돌려주지 않는다."""
+
+    saved: int
+
+
 class ChatMessage(BaseModel):
     """AI SDK `UIMessage`(마지막 사용자 메시지 하나). `parts`의 `text`만 읽는다(6.4.1). 모르는 필드는 버린다."""
 
@@ -587,13 +887,42 @@ class ChatMessage(BaseModel):
     parts: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
+# 입력창의 퀵 칩(SP9c 4.1). 두뇌 차례 본문에 `## 버튼` 블록(`harness/prompts/chip_<키>.md`)을 붙인다
+ChipKey = Literal["todo", "event", "memo", "today", "next"]
+
+
 class ChatRequestBody(_Model):
-    """`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지)."""
+    """`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).
+
+    `chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).
+    """
 
     client_msg_id: str = Field(min_length=1, max_length=200)
     conversation_id: int | None = None
     checkin_id: int | None = None
+    # 목록에서 골라 연 대화(SP9 7.3 0번 규칙). 앱은 그 화면을 떠나거나 "새 대화"를 누를 때까지 모든 메시지에 싣는다
+    resume_conversation_id: int | None = None
     message: ChatMessage
+    chip: ChipKey | None = None
+
+    @model_validator(mode="after")
+    def _chip_not_with_checkin(self) -> ChatRequestBody:
+        if self.chip is not None and self.checkin_id is not None:
+            raise ValueError("chip과 checkin_id는 같이 올 수 없다")
+        return self
+
+
+class ChatStopBody(_Model):
+    """`POST /chat/stop` 요청: 멈출 메시지의 `client_msg_id`(`POST /chat`에 보낸 것)."""
+
+    client_msg_id: str = Field(min_length=1, max_length=200)
+
+
+class ChatStopped(_Model):
+    """`POST /chat/stop` 응답. `stopped`: 기다리거나 답하던 것을 멈췄다. `done`: 이미 답을 마쳤다(그대로 둔다).
+    `unknown`: 받은 적 없는 id다."""
+
+    state: Literal["stopped", "done", "unknown"]
 
 
 class ActionXp(_Model):
@@ -729,6 +1058,69 @@ class PushSubscribed(_Model):
     id: int
 
 
+DeviceClient = Literal["app", "dashboard"]
+
+
+class PairCreated(_Model):
+    """`POST /devices/pair` `201`: 연결 코드(숫자 6자리)와 만료 시각 (기기 연결 스펙 4.5)."""
+
+    code: str
+    expires_at: str
+
+
+class DeviceRef(_Model):
+    id: int
+    label: str
+
+
+class PairStatus(_Model):
+    """`GET /devices/pair`: 지금 코드의 상태. `used`면 그 코드로 연결한 기기."""
+
+    state: Literal["waiting", "used", "expired", "none"]
+    device: DeviceRef | None = None
+
+
+class PairBody(BaseModel):
+    """`POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    code: str = Field(pattern=r"^[0-9]{6}$", repr=False)
+    client: DeviceClient
+    # C0·C1 제어 문자, 줄·문단 구분자, 방향 제어 문자를 막는다(목록에 그대로 보인다)
+    label: str = Field(
+        min_length=1, max_length=40, pattern=r"^[^\x00-\x1f\x7f-\x9f\u200e\u200f\u2028-\u202e\u2066-\u2069]+$"
+    )
+
+
+class PairedDevice(_Model):
+    id: int
+    label: str
+    client: DeviceClient
+
+
+class PairResult(_Model):
+    """`POST /pair` `201`: 기기 토큰(이 응답에만 한 번 나온다)과 기기."""
+
+    token: str
+    device: PairedDevice
+
+
+class DeviceItem(_Model):
+    id: int
+    label: str
+    client: DeviceClient
+    created_at: str
+    last_used_at: str | None
+    this_device: bool
+
+
+class DeviceList(_Model):
+    """`GET /devices`: 끊지 않은 기기, 만든 순서. API 토큰은 나오지 않는다."""
+
+    devices: list[DeviceItem]
+
+
 class PushTestResult(_Model):
     """`POST /push/test`: 받은 구독 수, 못 받은 구독 수."""
 
@@ -746,6 +1138,94 @@ class NotifySettings(_Model):
 
 class NotifyPutBody(_Model):
     primary: Literal["telegram", "app"]
+
+
+class CalendarSettings(_Model):
+    """`GET`/`POST /settings/calendar` (SP9 5.7). `url`은 구독 주소(비밀: 키가 들어 있다). 아직 안 만들었으면 null."""
+
+    url: str | None
+
+
+class CalendarPutBody(_Model):
+    rotate: bool = False
+
+
+CheckinLoop = Literal["morning_brief", "evening_checkin"]
+CheckinDayType = Literal["weekday", "weekend"]
+
+
+class CheckinTimeItem(_Model):
+    """체크인 시간 한 칸(SP9 8장). `time`은 앞으로의 값("HH:MM"), `from`은 그 값이 적용되는 첫 날(논리적 날짜,
+    바꾼 적이 없으면 null), `effective_today`는 오늘(논리적 날짜) 적용되는 값."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    loop: CheckinLoop
+    day_type: CheckinDayType
+    time: str
+    from_: str | None = Field(alias="from")
+    effective_today: str
+
+
+class CheckinTimes(_Model):
+    """`GET /settings/checkin-times`: 네 칸(평일 아침, 평일 저녁, 주말 아침, 주말 저녁)과, 마지막 깨우기 작업 다시
+    등록이 됐는지(`wake_updated`: PUT, 확인 카드, 되돌리기 어느 쪽에서 바꿨든 같은 값)."""
+
+    items: list[CheckinTimeItem]
+    wake_updated: bool  # 마지막 깨우기 작업 다시 등록이 됐는지(안 됐으면 설정 화면에 안내 줄)
+
+
+class CheckinTimePutBody(_Model):
+    """`PUT /settings/checkin-times`: 바꿀 칸 하나. 아침 05:00~11:30, 저녁 15:00~23:30, 10분 단위."""
+
+    loop: CheckinLoop
+    day_type: CheckinDayType
+    time: str
+
+
+class CheckinTimesUpdated(CheckinTimes):
+    """`PUT /settings/checkin-times`의 답: 지금 네 칸(과 `wake_updated`), 바꾼 칸의 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다)."""
+
+    applies: Literal["today", "tomorrow"]
+    activity_id: int | None
+    undo_id: int | None
+
+
+DigestKindName = Literal["morning", "night"]
+
+
+class DigestSlot(_Model):
+    """일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 "HH:MM"(04:00 경계와 상관없다)."""
+
+    on: bool
+    time: str
+
+
+class DigestSettings(_Model):
+    """`GET /settings/digests`: 아침 알림(오늘 일정), 밤 알림(내일 일정), 마지막 깨우기 작업 다시 등록이 됐는지
+    (`wake_updated`: 체크인 시간과 같은 값)."""
+
+    morning: DigestSlot
+    night: DigestSlot
+    wake_updated: bool
+
+
+class DigestSettingPutBody(_Model):
+    """`PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면
+    `422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다)."""
+
+    kind: DigestKindName
+    on: bool = Field(strict=True)
+    time: str
+
+
+class DigestSettingsUpdated(DigestSettings):
+    """`PUT /settings/digests`의 답: 지금 두 종류(와 `wake_updated`), 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).
+    같은 값이라 바뀐 것이 없으면 `applies`, `activity_id`, `undo_id`가 모두 null이다."""
+
+    applies: Literal["today", "tomorrow"] | None
+    activity_id: int | None
+    undo_id: int | None
 
 
 class ClientErrorBody(_Model):
@@ -793,16 +1273,24 @@ MODELS: dict[str, type[BaseModel]] = {
     "Priorities": Priorities,
     "Drafts": Drafts,
     "Curve": Curve,
+    "CurveHistory": CurveHistory,
     "Status": Status,
+    "Moment": Moment,
+    "MomentsList": MomentsList,
+    "BodyPostBody": BodyPostBody,
+    "BodySaved": BodySaved,
     "CheckinList": CheckinList,
     "CheckinSummary": CheckinSummary,
     "CheckinDetail": CheckinDetail,
     "Conversations": Conversations,
+    "ConversationsClosed": ConversationsClosed,
     "Messages": Messages,
     "UiCatalog": UiCatalog,
     "SchemaBundle": SchemaBundle,
     "ActionRequestBody": ActionRequestBody,
     "ChatRequestBody": ChatRequestBody,
+    "ChatStopBody": ChatStopBody,
+    "ChatStopped": ChatStopped,
     "ActionApplied": ActionApplied,
     "ActionNeedsConfirm": ActionNeedsConfirm,
     "ActionRejected": ActionRejected,
@@ -812,12 +1300,33 @@ MODELS: dict[str, type[BaseModel]] = {
     "VapidPublicKey": VapidPublicKey,
     "PushSubscribeBody": PushSubscribeBody,
     "PushSubscribed": PushSubscribed,
+    "PairCreated": PairCreated,
+    "PairStatus": PairStatus,
+    "PairBody": PairBody,
+    "PairResult": PairResult,
+    "DeviceList": DeviceList,
     "PushTestResult": PushTestResult,
     "NotifySettings": NotifySettings,
     "NotifyPutBody": NotifyPutBody,
+    "CalendarSettings": CalendarSettings,
+    "CalendarPutBody": CalendarPutBody,
+    "CheckinTimes": CheckinTimes,
+    "CheckinTimePutBody": CheckinTimePutBody,
+    "CheckinTimesUpdated": CheckinTimesUpdated,
+    "DigestSlot": DigestSlot,
+    "DigestSettings": DigestSettings,
+    "DigestSettingPutBody": DigestSettingPutBody,
+    "DigestSettingsUpdated": DigestSettingsUpdated,
     "Habit": Habit,
     "HabitsList": HabitsList,
     "HabitHistory": HabitHistory,
+    "Memo": Memo,
+    "MemoItem": MemoItem,
+    "MemoList": MemoList,
+    "EventItem": EventItem,
+    "EventList": EventList,
+    "EventDetail": EventDetail,
+    "MissedReminder": MissedReminder,
     "ClientErrorBody": ClientErrorBody,
     "RecoveryNoticeBody": RecoveryNoticeBody,
     "RecoveryNoticeSent": RecoveryNoticeSent,

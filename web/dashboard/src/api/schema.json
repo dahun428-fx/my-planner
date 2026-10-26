@@ -142,7 +142,17 @@
                 "too_many_auth_failures",
                 "safe_mode",
                 "internal",
-                "unavailable"
+                "unavailable",
+                "checkin_time_invalid",
+                "memo_conflict",
+                "too_many_memos",
+                "too_many_pinned",
+                "remind_invalid",
+                "start_not_in_weekdays",
+                "too_many_events",
+                "range_too_long",
+                "digest_time_invalid",
+                "bad_code"
               ],
               "title": "Code",
               "type": "string"
@@ -349,6 +359,105 @@
       "title": "ActivityResponse",
       "type": "object"
     },
+    "BodyPostBody": {
+      "$defs": {
+        "BodyDayIn": {
+          "additionalProperties": false,
+          "description": "몸 기록 하루(SP8 7.3). `date`는 한국 달력의 오늘 이하, 오늘 − 13일 이상. 둘 중 하나는 있어야 하고 `null`은 받지\n않는다(빼면 그 값은 그대로 둔다). 검증은 `api/body.parse_body_days`가 한다(이 모델은 스키마 문서다).",
+          "properties": {
+            "date": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "Date",
+              "type": "string"
+            },
+            "sleep_minutes": {
+              "maximum": 1440,
+              "minimum": 0,
+              "title": "Sleep Minutes",
+              "type": "integer"
+            },
+            "steps": {
+              "maximum": 100000,
+              "minimum": 0,
+              "title": "Steps",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "date"
+          ],
+          "title": "BodyDayIn",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2).",
+      "properties": {
+        "days": {
+          "items": {
+            "$ref": "#/$defs/BodyDayIn"
+          },
+          "maxItems": 7,
+          "minItems": 1,
+          "title": "Days",
+          "type": "array"
+        }
+      },
+      "required": [
+        "days"
+      ],
+      "title": "BodyPostBody",
+      "type": "object"
+    },
+    "BodySaved": {
+      "additionalProperties": false,
+      "description": "`POST /body` 응답: 저장한 날 수. 값은 돌려주지 않는다.",
+      "properties": {
+        "saved": {
+          "title": "Saved",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "saved"
+      ],
+      "title": "BodySaved",
+      "type": "object"
+    },
+    "CalendarPutBody": {
+      "additionalProperties": false,
+      "properties": {
+        "rotate": {
+          "default": false,
+          "title": "Rotate",
+          "type": "boolean"
+        }
+      },
+      "title": "CalendarPutBody",
+      "type": "object"
+    },
+    "CalendarSettings": {
+      "additionalProperties": false,
+      "description": "`GET`/`POST /settings/calendar` (SP9 5.7). `url`은 구독 주소(비밀: 키가 들어 있다). 아직 안 만들었으면 null.",
+      "properties": {
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Url"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "CalendarSettings",
+      "type": "object"
+    },
     "ChatRequestBody": {
       "$defs": {
         "ChatMessage": {
@@ -390,7 +499,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).",
+      "description": "`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).\n\n`chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).",
       "properties": {
         "checkin_id": {
           "anyOf": [
@@ -403,6 +512,25 @@
           ],
           "default": null,
           "title": "Checkin Id"
+        },
+        "chip": {
+          "anyOf": [
+            {
+              "enum": [
+                "todo",
+                "event",
+                "memo",
+                "today",
+                "next"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chip"
         },
         "client_msg_id": {
           "maxLength": 200,
@@ -424,6 +552,18 @@
         },
         "message": {
           "$ref": "#/$defs/ChatMessage"
+        },
+        "resume_conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resume Conversation Id"
         }
       },
       "required": [
@@ -431,6 +571,43 @@
         "message"
       ],
       "title": "ChatRequestBody",
+      "type": "object"
+    },
+    "ChatStopBody": {
+      "additionalProperties": false,
+      "description": "`POST /chat/stop` 요청: 멈출 메시지의 `client_msg_id`(`POST /chat`에 보낸 것).",
+      "properties": {
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Client Msg Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_msg_id"
+      ],
+      "title": "ChatStopBody",
+      "type": "object"
+    },
+    "ChatStopped": {
+      "additionalProperties": false,
+      "description": "`POST /chat/stop` 응답. `stopped`: 기다리거나 답하던 것을 멈췄다. `done`: 이미 답을 마쳤다(그대로 둔다).\n`unknown`: 받은 적 없는 id다.",
+      "properties": {
+        "state": {
+          "enum": [
+            "stopped",
+            "done",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "ChatStopped",
       "type": "object"
     },
     "CheckinDetail": {
@@ -947,6 +1124,222 @@
       "title": "CheckinSummary",
       "type": "object"
     },
+    "CheckinTimePutBody": {
+      "additionalProperties": false,
+      "description": "`PUT /settings/checkin-times`: 바꿀 칸 하나. 아침 05:00~11:30, 저녁 15:00~23:30, 10분 단위.",
+      "properties": {
+        "day_type": {
+          "enum": [
+            "weekday",
+            "weekend"
+          ],
+          "title": "Day Type",
+          "type": "string"
+        },
+        "loop": {
+          "enum": [
+            "morning_brief",
+            "evening_checkin"
+          ],
+          "title": "Loop",
+          "type": "string"
+        },
+        "time": {
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "loop",
+        "day_type",
+        "time"
+      ],
+      "title": "CheckinTimePutBody",
+      "type": "object"
+    },
+    "CheckinTimes": {
+      "$defs": {
+        "CheckinTimeItem": {
+          "additionalProperties": false,
+          "description": "체크인 시간 한 칸(SP9 8장). `time`은 앞으로의 값(\"HH:MM\"), `from`은 그 값이 적용되는 첫 날(논리적 날짜,\n바꾼 적이 없으면 null), `effective_today`는 오늘(논리적 날짜) 적용되는 값.",
+          "properties": {
+            "day_type": {
+              "enum": [
+                "weekday",
+                "weekend"
+              ],
+              "title": "Day Type",
+              "type": "string"
+            },
+            "effective_today": {
+              "title": "Effective Today",
+              "type": "string"
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin"
+              ],
+              "title": "Loop",
+              "type": "string"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "loop",
+            "day_type",
+            "time",
+            "from",
+            "effective_today"
+          ],
+          "title": "CheckinTimeItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /settings/checkin-times`: 네 칸(평일 아침, 평일 저녁, 주말 아침, 주말 저녁)과, 마지막 깨우기 작업 다시\n등록이 됐는지(`wake_updated`: PUT, 확인 카드, 되돌리기 어느 쪽에서 바꿨든 같은 값).",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CheckinTimeItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "wake_updated": {
+          "title": "Wake Updated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "wake_updated"
+      ],
+      "title": "CheckinTimes",
+      "type": "object"
+    },
+    "CheckinTimesUpdated": {
+      "$defs": {
+        "CheckinTimeItem": {
+          "additionalProperties": false,
+          "description": "체크인 시간 한 칸(SP9 8장). `time`은 앞으로의 값(\"HH:MM\"), `from`은 그 값이 적용되는 첫 날(논리적 날짜,\n바꾼 적이 없으면 null), `effective_today`는 오늘(논리적 날짜) 적용되는 값.",
+          "properties": {
+            "day_type": {
+              "enum": [
+                "weekday",
+                "weekend"
+              ],
+              "title": "Day Type",
+              "type": "string"
+            },
+            "effective_today": {
+              "title": "Effective Today",
+              "type": "string"
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            },
+            "loop": {
+              "enum": [
+                "morning_brief",
+                "evening_checkin"
+              ],
+              "title": "Loop",
+              "type": "string"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "loop",
+            "day_type",
+            "time",
+            "from",
+            "effective_today"
+          ],
+          "title": "CheckinTimeItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`PUT /settings/checkin-times`의 답: 지금 네 칸(과 `wake_updated`), 바꾼 칸의 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).",
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activity Id"
+        },
+        "applies": {
+          "enum": [
+            "today",
+            "tomorrow"
+          ],
+          "title": "Applies",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/CheckinTimeItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "undo_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Undo Id"
+        },
+        "wake_updated": {
+          "title": "Wake Updated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "wake_updated",
+        "applies",
+        "activity_id",
+        "undo_id"
+      ],
+      "title": "CheckinTimesUpdated",
+      "type": "object"
+    },
     "ClientErrorBody": {
       "additionalProperties": false,
       "description": "`POST /client-errors` 요청 (SP6 3.3). 에러 메시지는 받지 않는다(모르는 키는 거부).",
@@ -1086,6 +1479,7 @@
       "$defs": {
         "ConversationItem": {
           "additionalProperties": false,
+          "description": "대화 한 줄(6.4.6). SP9 7.6: 비서가 붙인 `title`(20자)과 `summary`(앞 120자). 앱 대화에만 있고 없으면 null.",
           "properties": {
             "channel": {
               "enum": [
@@ -1137,6 +1531,30 @@
                 }
               ],
               "title": "Run Id"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Summary"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Title"
             }
           },
           "required": [
@@ -1153,6 +1571,7 @@
         }
       },
       "additionalProperties": false,
+      "description": "`GET /conversations?channel=&q=&before=&limit=`(SP9 7.6). 지운 대화는 없다. `next_before`: 다음 쪽 커서.",
       "properties": {
         "items": {
           "items": {
@@ -1160,12 +1579,42 @@
           },
           "title": "Items",
           "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Before"
         }
       },
       "required": [
         "items"
       ],
       "title": "Conversations",
+      "type": "object"
+    },
+    "ConversationsClosed": {
+      "additionalProperties": false,
+      "description": "`POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id.",
+      "properties": {
+        "closed": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Closed",
+          "type": "array"
+        }
+      },
+      "required": [
+        "closed"
+      ],
+      "title": "ConversationsClosed",
       "type": "object"
     },
     "Curve": {
@@ -1228,6 +1677,17 @@
               "title": "Id",
               "type": "integer"
             },
+            "ladder_remembered": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ladder Remembered"
+            },
             "sketch": {
               "anyOf": [
                 {
@@ -1266,7 +1726,8 @@
             "start",
             "end",
             "sketch",
-            "certainty"
+            "certainty",
+            "ladder_remembered"
           ],
           "title": "CurveChapter",
           "type": "object"
@@ -1365,6 +1826,25 @@
         "CurveMilestone": {
           "additionalProperties": false,
           "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
             "certainty": {
               "enum": [
                 "fact",
@@ -1401,6 +1881,14 @@
               "title": "Kind",
               "type": "string"
             },
+            "kind_certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Kind Certainty",
+              "type": "string"
+            },
             "note": {
               "anyOf": [
                 {
@@ -1411,6 +1899,15 @@
                 }
               ],
               "title": "Note"
+            },
+            "origin": {
+              "enum": [
+                "seed",
+                "chat",
+                "review"
+              ],
+              "title": "Origin",
+              "type": "string"
             },
             "precision": {
               "enum": [
@@ -1439,7 +1936,10 @@
             "note",
             "chapter_id",
             "sensitive",
-            "certainty"
+            "certainty",
+            "kind_certainty",
+            "area",
+            "origin"
           ],
           "title": "CurveMilestone",
           "type": "object"
@@ -1582,6 +2082,692 @@
         "reassurance"
       ],
       "title": "Curve",
+      "type": "object"
+    },
+    "CurveHistory": {
+      "$defs": {
+        "HiddenSensitive": {
+          "additionalProperties": false,
+          "description": "가린 민감 사건의 개수와 해(오름차순, 중복 없음). 제목·메모는 본문에 없다(8.5).",
+          "properties": {
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "years": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Years",
+              "type": "array"
+            }
+          },
+          "required": [
+            "count",
+            "years"
+          ],
+          "title": "HiddenSensitive",
+          "type": "object"
+        },
+        "HistoryChapter": {
+          "additionalProperties": false,
+          "properties": {
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Certainty",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/$defs/HistoryEvent"
+              },
+              "title": "Events",
+              "type": "array"
+            },
+            "hidden_sensitive": {
+              "$ref": "#/$defs/HiddenSensitive"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "ladder": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryLadder"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sketch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sketch"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "theme": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Theme"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "theme",
+            "start",
+            "end",
+            "sketch",
+            "certainty",
+            "ladder",
+            "events",
+            "hidden_sensitive"
+          ],
+          "title": "HistoryChapter",
+          "type": "object"
+        },
+        "HistoryEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Certainty",
+              "type": "string"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "high",
+                "low",
+                "turning_point"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "kind_certainty": {
+              "enum": [
+                "fact",
+                "estimate"
+              ],
+              "title": "Kind Certainty",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "origin": {
+              "enum": [
+                "seed",
+                "chat",
+                "review"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "precision": {
+              "enum": [
+                "year",
+                "month",
+                "day"
+              ],
+              "title": "Precision",
+              "type": "string"
+            },
+            "sensitive": {
+              "title": "Sensitive",
+              "type": "boolean"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "precision",
+            "kind",
+            "kind_certainty",
+            "title",
+            "note",
+            "area",
+            "origin",
+            "certainty",
+            "sensitive"
+          ],
+          "title": "HistoryEvent",
+          "type": "object"
+        },
+        "HistoryHighest": {
+          "additionalProperties": false,
+          "properties": {
+            "chapter_id": {
+              "title": "Chapter Id",
+              "type": "integer"
+            },
+            "ladder": {
+              "title": "Ladder",
+              "type": "number"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "chapter_id",
+            "title",
+            "ladder"
+          ],
+          "title": "HistoryHighest",
+          "type": "object"
+        },
+        "HistoryLadder": {
+          "additionalProperties": false,
+          "description": "`remembered`는 기억한 정수, `recorded`는 그 기간 월별 사다리 평균(소수 한 자리). 둘 다 `float` 하나다(결정 16).",
+          "properties": {
+            "source": {
+              "enum": [
+                "remembered",
+                "recorded"
+              ],
+              "title": "Source",
+              "type": "string"
+            },
+            "value": {
+              "title": "Value",
+              "type": "number"
+            }
+          },
+          "required": [
+            "value",
+            "source"
+          ],
+          "title": "HistoryLadder",
+          "type": "object"
+        },
+        "HistoryLongest": {
+          "additionalProperties": false,
+          "properties": {
+            "chapter_id": {
+              "title": "Chapter Id",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "years": {
+              "title": "Years",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "chapter_id",
+            "title",
+            "years"
+          ],
+          "title": "HistoryLongest",
+          "type": "object"
+        },
+        "HistorySummary": {
+          "additionalProperties": false,
+          "properties": {
+            "chapters": {
+              "title": "Chapters",
+              "type": "integer"
+            },
+            "events": {
+              "title": "Events",
+              "type": "integer"
+            },
+            "highest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryHighest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "longest": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HistoryLongest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "records_since": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Records Since"
+            },
+            "turning_points": {
+              "$ref": "#/$defs/HistoryTurningPoints"
+            }
+          },
+          "required": [
+            "chapters",
+            "events",
+            "highest",
+            "turning_points",
+            "longest",
+            "records_since"
+          ],
+          "title": "HistorySummary",
+          "type": "object"
+        },
+        "HistoryTurningPoints": {
+          "additionalProperties": false,
+          "properties": {
+            "count": {
+              "title": "Count",
+              "type": "integer"
+            },
+            "years": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Years",
+              "type": "array"
+            }
+          },
+          "required": [
+            "count",
+            "years"
+          ],
+          "title": "HistoryTurningPoints",
+          "type": "object"
+        },
+        "HistoryUnassigned": {
+          "additionalProperties": false,
+          "description": "확정한 챕터에 들지 않은 사건(\"시기를 정하지 않은 사건\").",
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/$defs/HistoryEvent"
+              },
+              "title": "Events",
+              "type": "array"
+            },
+            "hidden_sensitive": {
+              "$ref": "#/$defs/HiddenSensitive"
+            }
+          },
+          "required": [
+            "events",
+            "hidden_sensitive"
+          ],
+          "title": "HistoryUnassigned",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /curve/history` (SP8 8.2). 챕터는 `start` 최근부터, 사건은 `sort_date` 최근부터.",
+      "properties": {
+        "chapters": {
+          "items": {
+            "$ref": "#/$defs/HistoryChapter"
+          },
+          "title": "Chapters",
+          "type": "array"
+        },
+        "since_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Since Year"
+        },
+        "summary": {
+          "$ref": "#/$defs/HistorySummary"
+        },
+        "unassigned": {
+          "$ref": "#/$defs/HistoryUnassigned"
+        }
+      },
+      "required": [
+        "since_year",
+        "chapters",
+        "unassigned",
+        "summary"
+      ],
+      "title": "CurveHistory",
+      "type": "object"
+    },
+    "DeviceList": {
+      "$defs": {
+        "DeviceItem": {
+          "additionalProperties": false,
+          "properties": {
+            "client": {
+              "enum": [
+                "app",
+                "dashboard"
+              ],
+              "title": "Client",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "last_used_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Used At"
+            },
+            "this_device": {
+              "title": "This Device",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "client",
+            "created_at",
+            "last_used_at",
+            "this_device"
+          ],
+          "title": "DeviceItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /devices`: 끊지 않은 기기, 만든 순서. API 토큰은 나오지 않는다.",
+      "properties": {
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/DeviceItem"
+          },
+          "title": "Devices",
+          "type": "array"
+        }
+      },
+      "required": [
+        "devices"
+      ],
+      "title": "DeviceList",
+      "type": "object"
+    },
+    "DigestSettingPutBody": {
+      "additionalProperties": false,
+      "description": "`PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면\n`422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "morning",
+            "night"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "on": {
+          "title": "On",
+          "type": "boolean"
+        },
+        "time": {
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "on",
+        "time"
+      ],
+      "title": "DigestSettingPutBody",
+      "type": "object"
+    },
+    "DigestSettings": {
+      "$defs": {
+        "DigestSlot": {
+          "additionalProperties": false,
+          "description": "일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 \"HH:MM\"(04:00 경계와 상관없다).",
+          "properties": {
+            "on": {
+              "title": "On",
+              "type": "boolean"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "on",
+            "time"
+          ],
+          "title": "DigestSlot",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /settings/digests`: 아침 알림(오늘 일정), 밤 알림(내일 일정), 마지막 깨우기 작업 다시 등록이 됐는지\n(`wake_updated`: 체크인 시간과 같은 값).",
+      "properties": {
+        "morning": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "night": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "wake_updated": {
+          "title": "Wake Updated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "morning",
+        "night",
+        "wake_updated"
+      ],
+      "title": "DigestSettings",
+      "type": "object"
+    },
+    "DigestSettingsUpdated": {
+      "$defs": {
+        "DigestSlot": {
+          "additionalProperties": false,
+          "description": "일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 \"HH:MM\"(04:00 경계와 상관없다).",
+          "properties": {
+            "on": {
+              "title": "On",
+              "type": "boolean"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "on",
+            "time"
+          ],
+          "title": "DigestSlot",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`PUT /settings/digests`의 답: 지금 두 종류(와 `wake_updated`), 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).\n같은 값이라 바뀐 것이 없으면 `applies`, `activity_id`, `undo_id`가 모두 null이다.",
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activity Id"
+        },
+        "applies": {
+          "anyOf": [
+            {
+              "enum": [
+                "today",
+                "tomorrow"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Applies"
+        },
+        "morning": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "night": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "undo_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Undo Id"
+        },
+        "wake_updated": {
+          "title": "Wake Updated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "morning",
+        "night",
+        "wake_updated",
+        "applies",
+        "activity_id",
+        "undo_id"
+      ],
+      "title": "DigestSettingsUpdated",
+      "type": "object"
+    },
+    "DigestSlot": {
+      "additionalProperties": false,
+      "description": "일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 \"HH:MM\"(04:00 경계와 상관없다).",
+      "properties": {
+        "on": {
+          "title": "On",
+          "type": "boolean"
+        },
+        "time": {
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "on",
+        "time"
+      ],
+      "title": "DigestSlot",
       "type": "object"
     },
     "Drafts": {
@@ -1812,7 +2998,17 @@
                 "too_many_auth_failures",
                 "safe_mode",
                 "internal",
-                "unavailable"
+                "unavailable",
+                "checkin_time_invalid",
+                "memo_conflict",
+                "too_many_memos",
+                "too_many_pinned",
+                "remind_invalid",
+                "start_not_in_weekdays",
+                "too_many_events",
+                "range_too_long",
+                "digest_time_invalid",
+                "bad_code"
               ],
               "title": "Code",
               "type": "string"
@@ -1840,6 +3036,437 @@
         "error"
       ],
       "title": "ErrorBody",
+      "type": "object"
+    },
+    "EventDetail": {
+      "additionalProperties": false,
+      "description": "`GET /events/{id}` (SP9 5.6): 정의 하나. `date`는 첫 날(현지), `time`은 현지 `HH:MM`(하루 종일은 null),\n`weekdays`는 매주 반복의 요일(그 밖에는 null), `repeat_until`은 마지막이 될 수 있는 날(포함, null이면 끝없음).\n`skipped_dates`: 이번만 건너뛴 날. 동작(`create_event`, `update_event`)의 칸 이름과 같다.",
+      "properties": {
+        "all_day": {
+          "title": "All Day",
+          "type": "boolean"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "duration_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration Min"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat",
+            "migrated"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "remind_min": {
+          "anyOf": [
+            {
+              "enum": [
+                0,
+                10,
+                30,
+                60,
+                1440
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Remind Min"
+        },
+        "repeat": {
+          "enum": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "title": "Repeat",
+          "type": "string"
+        },
+        "repeat_until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Repeat Until"
+        },
+        "skipped_dates": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Skipped Dates",
+          "type": "array"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "weekdays": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "mon",
+                  "tue",
+                  "wed",
+                  "thu",
+                  "fri",
+                  "sat",
+                  "sun"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Weekdays"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "date",
+        "time",
+        "all_day",
+        "duration_min",
+        "repeat",
+        "weekdays",
+        "repeat_until",
+        "remind_min",
+        "area",
+        "note",
+        "origin",
+        "skipped_dates",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "EventDetail",
+      "type": "object"
+    },
+    "EventItem": {
+      "additionalProperties": false,
+      "description": "그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은\nnull, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,\nnull 알림 없음.",
+      "properties": {
+        "all_day": {
+          "title": "All Day",
+          "type": "boolean"
+        },
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "End"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat",
+            "migrated"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "remind_min": {
+          "anyOf": [
+            {
+              "enum": [
+                0,
+                10,
+                30,
+                60,
+                1440
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Remind Min"
+        },
+        "repeat": {
+          "enum": [
+            "none",
+            "daily",
+            "weekly",
+            "monthly"
+          ],
+          "title": "Repeat",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "date",
+        "start",
+        "end",
+        "all_day",
+        "title",
+        "area",
+        "remind_min",
+        "repeat",
+        "origin"
+      ],
+      "title": "EventItem",
+      "type": "object"
+    },
+    "EventList": {
+      "$defs": {
+        "EventItem": {
+          "additionalProperties": false,
+          "description": "그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은\nnull, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,\nnull 알림 없음.",
+          "properties": {
+            "all_day": {
+              "title": "All Day",
+              "type": "boolean"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "event_id": {
+              "title": "Event Id",
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat",
+                "migrated"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "remind_min": {
+              "anyOf": [
+                {
+                  "enum": [
+                    0,
+                    10,
+                    30,
+                    60,
+                    1440
+                  ],
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Remind Min"
+            },
+            "repeat": {
+              "enum": [
+                "none",
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "title": "Repeat",
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "end",
+            "all_day",
+            "title",
+            "area",
+            "remind_min",
+            "repeat",
+            "origin"
+          ],
+          "title": "EventItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /events?start=&end=` (SP9 5.6): 기간(현지 날짜, 포함, 최대 62일, 넘으면 422 `range_too_long`) 안의 그날\n일정. 날짜, 하루 종일 먼저, 시작 시각순. 건너뛴 날은 없다.",
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/EventItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "start": {
+          "title": "Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "items"
+      ],
+      "title": "EventList",
       "type": "object"
     },
     "Habit": {
@@ -2563,6 +4190,235 @@
       "title": "Health",
       "type": "object"
     },
+    "Memo": {
+      "additionalProperties": false,
+      "description": "`GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "body": {
+          "title": "Body",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "pinned": {
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "body",
+        "area",
+        "pinned",
+        "origin",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "Memo",
+      "type": "object"
+    },
+    "MemoItem": {
+      "additionalProperties": false,
+      "description": "`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 \"제목 없는 메모\"). `preview`: 제목 줄 다음부터\n서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다.",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "origin": {
+          "enum": [
+            "user",
+            "chat"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "pinned": {
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "preview": {
+          "title": "Preview",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "preview",
+        "area",
+        "pinned",
+        "origin",
+        "updated_at"
+      ],
+      "title": "MemoItem",
+      "type": "object"
+    },
+    "MemoList": {
+      "$defs": {
+        "MemoItem": {
+          "additionalProperties": false,
+          "description": "`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 \"제목 없는 메모\"). `preview`: 제목 줄 다음부터\n서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다.",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "pinned": {
+              "title": "Pinned",
+              "type": "boolean"
+            },
+            "preview": {
+              "title": "Preview",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "updated_at": {
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "preview",
+            "area",
+            "pinned",
+            "origin",
+            "updated_at"
+          ],
+          "title": "MemoItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /memos?q=&limit=&before=` (SP9 6.4). 첫 쪽은 고정 메모 전부가 먼저, 그다음 고정 아닌 메모가 고친 시각\n최근순. `limit`(1~100, 기본 50)은 고정 아닌 메모만 센다(고정 10개까지는 첫 쪽에 더 붙는다). `next_before`는 고정\n아닌 메모가 더 있을 때만(다음 쪽에는 고정 메모가 없다), 아니면 null.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MemoItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Before"
+        }
+      },
+      "required": [
+        "items",
+        "next_before"
+      ],
+      "title": "MemoList",
+      "type": "object"
+    },
     "Messages": {
       "$defs": {
         "MessageItem": {
@@ -2633,6 +4489,211 @@
       "title": "Messages",
       "type": "object"
     },
+    "MissedReminder": {
+      "additionalProperties": false,
+      "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null).",
+      "properties": {
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "integer"
+        },
+        "outcome": {
+          "enum": [
+            "missed",
+            "failed",
+            "skipped"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "date",
+        "start",
+        "title",
+        "outcome"
+      ],
+      "title": "MissedReminder",
+      "type": "object"
+    },
+    "Moment": {
+      "additionalProperties": false,
+      "description": "이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).",
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "hidden": {
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "sources": {
+          "items": {
+            "enum": [
+              "task",
+              "habit",
+              "condition",
+              "chat"
+            ],
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "text",
+        "area",
+        "sources",
+        "hidden"
+      ],
+      "title": "Moment",
+      "type": "object"
+    },
+    "MomentsList": {
+      "$defs": {
+        "Moment": {
+          "additionalProperties": false,
+          "description": "이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "hidden": {
+              "title": "Hidden",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "sources": {
+              "items": {
+                "enum": [
+                  "task",
+                  "habit",
+                  "condition",
+                  "chat"
+                ],
+                "type": "string"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "text",
+            "area",
+            "sources",
+            "hidden"
+          ],
+          "title": "Moment",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /moments` (SP8 6.5). `to` = `before`의 전날(없으면 오늘), `from` = `to − (days − 1)`.",
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Moment"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "items"
+      ],
+      "title": "MomentsList",
+      "type": "object"
+    },
     "NotifyPutBody": {
       "additionalProperties": false,
       "properties": {
@@ -2682,6 +4743,161 @@
         "push_subscriptions"
       ],
       "title": "NotifySettings",
+      "type": "object"
+    },
+    "PairBody": {
+      "additionalProperties": false,
+      "description": "`POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).",
+      "properties": {
+        "client": {
+          "enum": [
+            "app",
+            "dashboard"
+          ],
+          "title": "Client",
+          "type": "string"
+        },
+        "code": {
+          "pattern": "^[0-9]{6}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "client",
+        "label"
+      ],
+      "title": "PairBody",
+      "type": "object"
+    },
+    "PairCreated": {
+      "additionalProperties": false,
+      "description": "`POST /devices/pair` `201`: 연결 코드(숫자 6자리)와 만료 시각 (기기 연결 스펙 4.5).",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "expires_at": {
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "expires_at"
+      ],
+      "title": "PairCreated",
+      "type": "object"
+    },
+    "PairResult": {
+      "$defs": {
+        "PairedDevice": {
+          "additionalProperties": false,
+          "properties": {
+            "client": {
+              "enum": [
+                "app",
+                "dashboard"
+              ],
+              "title": "Client",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "client"
+          ],
+          "title": "PairedDevice",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`POST /pair` `201`: 기기 토큰(이 응답에만 한 번 나온다)과 기기.",
+      "properties": {
+        "device": {
+          "$ref": "#/$defs/PairedDevice"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "device"
+      ],
+      "title": "PairResult",
+      "type": "object"
+    },
+    "PairStatus": {
+      "$defs": {
+        "DeviceRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "label"
+          ],
+          "title": "DeviceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /devices/pair`: 지금 코드의 상태. `used`면 그 코드로 연결한 기기.",
+      "properties": {
+        "device": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state": {
+          "enum": [
+            "waiting",
+            "used",
+            "expired",
+            "none"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "PairStatus",
       "type": "object"
     },
     "Priorities": {
@@ -2830,7 +5046,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /priorities` (6.3.7).",
+      "description": "`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.\n날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다.",
       "properties": {
         "cadence": {
           "enum": [
@@ -2852,6 +5068,13 @@
         "period": {
           "title": "Period",
           "type": "string"
+        },
+        "todos": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "title": "Todos",
+          "type": "array"
         }
       },
       "required": [
@@ -3204,6 +5427,70 @@
           "title": "MainQuest",
           "type": "object"
         },
+        "Moment": {
+          "additionalProperties": false,
+          "description": "이룬 순간 하나(SP8 6.5). `sources`는 참조의 종류만(id 없음).",
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "hidden": {
+              "title": "Hidden",
+              "type": "boolean"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "sources": {
+              "items": {
+                "enum": [
+                  "task",
+                  "habit",
+                  "condition",
+                  "chat"
+                ],
+                "type": "string"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "text",
+            "area",
+            "sources",
+            "hidden"
+          ],
+          "title": "Moment",
+          "type": "object"
+        },
         "RecentXp": {
           "additionalProperties": false,
           "properties": {
@@ -3226,6 +5513,75 @@
             "amount"
           ],
           "title": "RecentXp",
+          "type": "object"
+        },
+        "StatActivity": {
+          "additionalProperties": false,
+          "description": "지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.",
+          "properties": {
+            "body_days": {
+              "title": "Body Days",
+              "type": "integer"
+            },
+            "habit_checks": {
+              "title": "Habit Checks",
+              "type": "integer"
+            },
+            "tasks": {
+              "title": "Tasks",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "tasks",
+            "habit_checks",
+            "body_days"
+          ],
+          "title": "StatActivity",
+          "type": "object"
+        },
+        "StatusBody": {
+          "additionalProperties": false,
+          "description": "`GET /status`의 `body` (SP8 7.5): 지난 7일 몸 기록. 지난 56일에 행이 없으면 `body`가 null이다.\n\n`days_7`: 지난 7일 중 행이 있는 날 수. 평균은 그 값이 있는 날만의 정수 평균(없으면 null).",
+          "properties": {
+            "days_7": {
+              "title": "Days 7",
+              "type": "integer"
+            },
+            "last_date": {
+              "title": "Last Date",
+              "type": "string"
+            },
+            "sleep_avg_7": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sleep Avg 7"
+            },
+            "steps_avg_7": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps Avg 7"
+            }
+          },
+          "required": [
+            "last_date",
+            "days_7",
+            "steps_avg_7",
+            "sleep_avg_7"
+          ],
+          "title": "StatusBody",
           "type": "object"
         },
         "StatusHp": {
@@ -3257,6 +5613,9 @@
         "StatusStat": {
           "additionalProperties": false,
           "properties": {
+            "activity": {
+              "$ref": "#/$defs/StatActivity"
+            },
             "area": {
               "enum": [
                 "career",
@@ -3269,9 +5628,24 @@
               "title": "Area",
               "type": "string"
             },
+            "bonus": {
+              "title": "Bonus",
+              "type": "number"
+            },
             "debuff": {
               "title": "Debuff",
               "type": "boolean"
+            },
+            "effective_score": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Effective Score"
             },
             "label": {
               "title": "Label",
@@ -3341,7 +5715,10 @@
             "prev_score",
             "prev_period",
             "debuff",
-            "recovery_quest"
+            "recovery_quest",
+            "bonus",
+            "effective_score",
+            "activity"
           ],
           "title": "StatusStat",
           "type": "object"
@@ -3386,8 +5763,18 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /status` (6.3.6).",
+      "description": "`GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5.",
       "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatusBody"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "daily_quests": {
           "items": {
             "$ref": "#/$defs/DailyQuest"
@@ -3408,6 +5795,17 @@
           },
           "title": "Main Quests",
           "type": "array"
+        },
+        "moments": {
+          "items": {
+            "$ref": "#/$defs/Moment"
+          },
+          "title": "Moments",
+          "type": "array"
+        },
+        "moments_hidden": {
+          "title": "Moments Hidden",
+          "type": "integer"
         },
         "recent_xp": {
           "items": {
@@ -3453,7 +5851,10 @@
         "main_quests",
         "daily_quests",
         "titles",
-        "recent_xp"
+        "recent_xp",
+        "moments",
+        "moments_hidden",
+        "body"
       ],
       "title": "Status",
       "type": "object"
@@ -3687,6 +6088,120 @@
           "title": "ConditionItem",
           "type": "object"
         },
+        "EventItem": {
+          "additionalProperties": false,
+          "description": "그날 일정 한 줄 (SP9 5.6, `GET /events`, `/today.events`). `date`는 현지 날짜, `start`·`end`는 UTC(하루 종일은\nnull, 길이가 없으면 `end`는 null). `remind_min`: 0 정시(하루 종일은 그날 09:00), 10·30·60분 전, 1440 하루 전,\nnull 알림 없음.",
+          "properties": {
+            "all_day": {
+              "title": "All Day",
+              "type": "boolean"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "end": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            },
+            "event_id": {
+              "title": "Event Id",
+              "type": "integer"
+            },
+            "origin": {
+              "enum": [
+                "user",
+                "chat",
+                "migrated"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "remind_min": {
+              "anyOf": [
+                {
+                  "enum": [
+                    0,
+                    10,
+                    30,
+                    60,
+                    1440
+                  ],
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Remind Min"
+            },
+            "repeat": {
+              "enum": [
+                "none",
+                "daily",
+                "weekly",
+                "monthly"
+              ],
+              "title": "Repeat",
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "end",
+            "all_day",
+            "title",
+            "area",
+            "remind_min",
+            "repeat",
+            "origin"
+          ],
+          "title": "EventItem",
+          "type": "object"
+        },
         "Habit": {
           "additionalProperties": false,
           "description": "공통 습관 모양 (SP7 스펙 5.5). `checked`: 요청 날짜(기본 오늘)에 체크했는가. `week_count`: 그 날짜가 든\nISO 주(`%G-W%V`)의 체크 수. 주 목표를 채웠는지는 앱이 계산한다(보상은 없다).",
@@ -3759,6 +6274,53 @@
             "week_count"
           ],
           "title": "Habit",
+          "type": "object"
+        },
+        "MissedReminder": {
+          "additionalProperties": false,
+          "description": "오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`\n(알림을 못 보냈어요)이고 닫지 않은 것. `start`는 UTC(하루 종일은 null).",
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "event_id": {
+              "title": "Event Id",
+              "type": "integer"
+            },
+            "outcome": {
+              "enum": [
+                "missed",
+                "failed",
+                "skipped"
+              ],
+              "title": "Outcome",
+              "type": "string"
+            },
+            "start": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "event_id",
+            "date",
+            "start",
+            "title",
+            "outcome"
+          ],
+          "title": "MissedReminder",
           "type": "object"
         },
         "TodayBrief": {
@@ -3970,7 +6532,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`.",
+      "description": "`GET /today` (6.3.2). `habits`: 활성 습관, `sort_order` 순(SP7 5.5). 없으면 `[]`. `events`: 오늘(논리적 날짜)의\n그날 일정(SP9 5.6, 새벽 00:00~03:59에 시작하는 일정은 전날에 든다). `missed_reminders`: SP9 5.3.",
       "properties": {
         "brief": {
           "anyOf": [
@@ -4015,11 +6577,25 @@
           "title": "Day Boundary",
           "type": "string"
         },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/EventItem"
+          },
+          "title": "Events",
+          "type": "array"
+        },
         "habits": {
           "items": {
             "$ref": "#/$defs/Habit"
           },
           "title": "Habits",
+          "type": "array"
+        },
+        "missed_reminders": {
+          "items": {
+            "$ref": "#/$defs/MissedReminder"
+          },
+          "title": "Missed Reminders",
           "type": "array"
         },
         "todos": {
@@ -4714,7 +7290,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다.",
+      "description": "`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,\n이번 주 우선순위는 뺀다).",
       "properties": {
         "days": {
           "items": {
@@ -4737,6 +7313,13 @@
         "start": {
           "title": "Start",
           "type": "string"
+        },
+        "undated": {
+          "items": {
+            "$ref": "#/$defs/Todo"
+          },
+          "title": "Undated",
+          "type": "array"
         },
         "week": {
           "title": "Week",

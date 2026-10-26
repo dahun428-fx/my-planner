@@ -291,7 +291,9 @@ async def test_run_conversation_channel_follows_full_body(tmp_path):
     assert f"비서 [{conv.id}] (morning_brief) @app" in text
     assert tg is not None and tg.forked_from == conv.id
     second = env.brain.calls[1]
-    assert (second["session_id"], second["fork_session"]) == ("s-run", True)
+    # 앱 쪽 회차 대화에서 갈라 연 텔레그램 쪽은 앱 세션을 잇지 않고 회차 본문으로 새로 시작한다(SP8 6.7, 11장)
+    assert (second["session_id"], second["fork_session"]) == (None, False)
+    assert f"## 회차 메시지\n{BRIEF}" in second["prompt"]
 
 
 async def test_notice_goes_to_effective_channel_and_safe_mode_telegram_only(tmp_path, monkeypatch):
@@ -476,3 +478,131 @@ def test_web_push_sender_encrypts_signs_and_maps_status(tmp_path, monkeypatch, c
         assert type(e).__name__ == "ConnectionError"
     else:
         raise AssertionError("예외가 나야 한다")
+
+
+# --- SP8 계획 결정 10: 회고가 텔레그램 대체로 가도 순간의 글은 없다 ---
+
+
+async def test_review_fallback_to_telegram_has_no_moment_text(tmp_path):
+    """앱 통로 회고에서 푸시가 모두 실패하면 본문 전체가 텔레그램으로 간다(D4). 그래서 회고 앞머리에는 순간의 글을
+    두지 않는다: 두뇌에 준 프롬프트에도, 텔레그램으로 간 본문에도, 푸시 본문에도 시험 글이 없다."""
+    secret = "꾸며 낸 순간: 일요일 아침에 빵을 구웠어요"
+    reply = "한 주 수고했어요. 이번 주에 이룬 순간이 이틀 있었어요."
+    push = FakePushSender({EP_A: [500] * 3})
+    sun_review = kst(2026, 10, 25, 18, 0)
+    async with BeEnv.start(tmp_path, start=_start(sun_review), script=[FakeTurn([], reply)], push=push) as env:
+        await env.subscribe(EP_A)
+        now = env.clock.now()
+        env.parts.moments.save_day(date(2026, 10, 24), [(secret, "quality_of_life", ["chat"])], now)
+        env.parts.moments.save_day(date(2026, 10, 22), [("꾸며 낸 순간: 목요일 일", None, ["chat"])], now)
+        await env.tick()
+        prompt = env.brain.prompts[0]
+        done = env.parts.runs.with_status(RunStatus.done)
+
+    assert LoopKey.review in {r.loop for r in done}  # 저녁 체크인과 합친 주간 회고
+    sent = [d for r in done for d in deliveries(env, r.id)]
+    assert sent == [("app", "full", "not_sent", 0, 1), ("telegram", "fallback", "sent", 0, 0)]
+    assert [o.text for o in env.sender.sent] == [reply]
+    assert "## 이번 주 이룬 순간\n- 10/22 1개\n- 10/24 1개" in prompt
+    for text in (prompt, *(o.text for o in env.sender.sent), *(str(c.payload) for c in push.sent)):
+        assert "꾸며 낸" not in text
+
+
+async def test_telegram_reply_to_app_review_has_no_moment_text(tmp_path):
+    """SP8 6.7, 11장: 푸시로 간 회차에 앱에서 답하며 두뇌가 `get_status`로 순간의 글을 받았다. 같은 회차에 텔레그램으로
+    답하면 텔레그램 쪽은 앱 세션을 갈라 잇지 않고(`fork_session` 없음), 앱 대화의 원문(가르기 대체 경로)도 붙이지 않는다."""
+    secret = "꾸며 낸 순간: 금요일에 화분을 옮겼어요"
+    push = FakePushSender()
+    script = [
+        FakeTurn([], BRIEF, session_id="s-run"),
+        FakeTurn([("get_status", {})], f"어제 남긴 순간이 있어요. {secret}", session_id="s-run"),
+        FakeTurn([], "텔레그램에서 이어 가요", session_id="s-tg"),
+        FakeTurn([], "또 이어 가요", session_id="s-tg"),
+    ]
+    async with BeEnv.start(tmp_path, start=_start(), script=script, push=push) as env:
+        await env.subscribe(EP_A)
+        env.parts.moments.save_day(date(2026, 10, 23), [(secret, None, ["chat"])], env.clock.now())
+        await env.tick()
+        run = morning(env)
+        env.clock.advance(minutes=5)
+        resp, raw = await env.chat("어제 뭐 했지?", checkin_id=run.id)
+        env.clock.advance(minutes=5)
+        await env.telegram("꾸민 텔레그램 답")
+        env.clock.advance(minutes=2)
+        await env.telegram("꾸민 텔레그램 답 둘")
+        tg = env.parts.convs.run_conversation(run.id, "telegram")
+        transcript = (env.settings.paths.data_dir / "transcripts" / "2026" / "10" / "2026-10-24.md").read_text("utf-8")
+
+    assert resp.status == 200 and secret in raw.decode("utf-8")  # 앱 통로에서는 글을 받는다
+    assert secret in transcript  # 원래(앱) 대화의 비서 줄에 남았다: 대체 경로가 붙이면 텔레그램으로 샌다
+    assert tg is not None and tg.forked_from == run.conversation_id
+    tele = env.brain.calls[2:]
+    assert [(c["session_id"], c["fork_session"]) for c in tele] == [(None, False), ("s-tg", False)]
+    assert all(c["run_ctx"].channel == "telegram" for c in tele)
+    assert f"## 회차 메시지\n{BRIEF}" in tele[0]["prompt"]
+    for c in tele:
+        assert secret not in c["prompt"] and "꾸며 낸" not in c["prompt"]
+    assert all("꾸며 낸" not in o.text for o in env.sender.sent)
+
+
+# --- 일정 정리 알림 (SP9b 2.1) ---
+
+
+def _digest_delivery(tmp_path, conn, *, push=None, telegram=None, primary="app", subs=(EP_A,)):
+    clock = FakeClock(kst(2026, 10, 26, 7, 30))
+    state = StateRepo(conn, clock)
+    pushes = PushRepo(conn, clock)
+    for ep in subs:
+        pushes.upsert(ep, FAKE_P256DH, FAKE_AUTH, None)
+    state.set(NOTIFY_PRIMARY_KEY, primary)
+    tg = telegram or FakeSender()
+
+    async def inline(fn, *a, **k):
+        return fn(*a, **k)
+
+    d = Delivery(telegram=tg, push=push or FakePushSender(), pushes=pushes, state=state, clock=clock,
+                 settings=make_settings(tmp_path, vapid=FAKE_VAPID), to_thread=inline, sleep=fake_sleep(clock))
+    return d, tg
+
+
+DIGEST_BODY = "하루 종일 휴가\n09:00 팀 회의\n14:00 치과"
+
+
+def test_digest_payload_keeps_newlines_and_tag():
+    from my_planner.harness.delivery import digest_payload
+
+    p = digest_payload("morning", date(2026, 10, 27), "오늘 일정 3개", DIGEST_BODY, "/schedule/?date=2026-10-27")
+    assert p == {"type": "digest", "checkin_id": None, "title": "오늘 일정 3개", "body": DIGEST_BODY,
+                 "url": "/schedule/?date=2026-10-27", "tag": "digest:morning:2026-10-27"}
+    long = "\n".join(["09:00 " + "가" * 20 + "…"] * 3 + ["외 9개"])
+    assert digest_payload("night", date(2026, 10, 28), "내일 일정 12개", long, "/x")["body"] == long  # 자르지 않는다
+    assert digest_payload("night", date(2026, 10, 28), "t", "b", "/x")["tag"] == "digest:night:2026-10-28"
+
+
+async def test_deliver_digest_push_each_subscription_with_ttl(tmp_path, conn):
+    push = FakePushSender()
+    d, tg = _digest_delivery(tmp_path, conn, push=push, subs=(EP_A, EP_B))
+    ch = await d.deliver_digest("morning", date(2026, 10, 26), "오늘 일정 3개", DIGEST_BODY,
+                                "/schedule/?date=2026-10-26", ttl_s=5000)
+    assert ch == "app" and tg.sent == []
+    assert [(c.endpoint, c.ttl, c.topic, c.payload["type"]) for c in push.sent] == [
+        (EP_A, 5000, None, "digest"), (EP_B, 5000, None, "digest"),
+    ]
+
+
+async def test_deliver_digest_falls_back_to_telegram_multiline(tmp_path, conn):
+    push = FakePushSender()
+    push.always(EP_A, 500)
+    d, tg = _digest_delivery(tmp_path, conn, push=push)
+    ch = await d.deliver_digest("morning", date(2026, 10, 26), "오늘 일정 3개", DIGEST_BODY, "/x", ttl_s=3600)
+    assert ch == "telegram" and len(push.sent) == 1  # 구독마다 한 번
+    assert [o.text for o in tg.sent] == ["오늘 일정 3개\n" + DIGEST_BODY]
+
+
+async def test_deliver_digest_primary_telegram_and_nowhere(tmp_path, conn):
+    push = FakePushSender()
+    d, tg = _digest_delivery(tmp_path, conn, push=push, primary="telegram")
+    assert await d.deliver_digest("night", date(2026, 10, 27), "내일 일정 1개", "10:00 치과", "/x", ttl_s=3600) == "telegram"
+    assert push.sent == [] and [o.text for o in tg.sent] == ["내일 일정 1개\n10:00 치과"]
+    d, _ = _digest_delivery(tmp_path, conn, primary="telegram", telegram=FakeSender(fail=True))
+    assert await d.deliver_digest("night", date(2026, 10, 27), "내일 일정 1개", "10:00 치과", "/x", ttl_s=3600) is None

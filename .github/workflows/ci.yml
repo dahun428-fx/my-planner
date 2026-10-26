@@ -52,10 +52,15 @@ jobs:
               - 'config.toml'
             workflow:
               - '.github/workflows/ci.yml'
+            # web/shared/global.css와 DESIGN.md가 바뀌면 두 사본 시험(sync-design.test.mjs)이 돌아야 한다
             web:
               - 'web/app/**'
+              - 'web/shared/**'
+              - 'DESIGN.md'
             dashboard:
               - 'web/dashboard/**'
+              - 'web/shared/**'
+              - 'DESIGN.md'
 
   # be 작업은 둘로 나눈다. 작업 수준 `if:`에서는 matrix를 쓸 수 없고, 단계에서만 건너뛰면
   # Windows 러너가 떠서 분량을 쓰기 때문이다. 건너뛴 작업은 GitHub이 통과로 본다.
@@ -76,7 +81,7 @@ jobs:
           pip install -r requirements.lock
           pip install -e ".[dev]" --no-deps
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests .github/scripts
       - name: Test
         run: python -m pytest -q
 
@@ -105,9 +110,22 @@ jobs:
           pip install -r requirements.lock
           pip install -e ".[dev]" --no-deps
       - name: Lint
-        run: ruff check src tests
+        run: ruff check src tests .github/scripts
       - name: Test
         run: python -m pytest -q
+
+  # 워크플로 문법·표현식·주입 검사(SP6 계획의 결정 6). 러너의 shellcheck로 run: 셸도 본다
+  actionlint:
+    name: actionlint
+    needs: changes
+    if: needs.changes.outputs.already_green != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint
+        run: |
+          bash <(curl -sSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
 
   web-app:
     name: web-app

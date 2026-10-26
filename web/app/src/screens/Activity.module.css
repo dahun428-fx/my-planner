@@ -2,8 +2,22 @@
   /* Room for the tab bar and the launcher above it (5.3). */
   padding-bottom: calc(var(--row) + 3.5rem + env(safe-area-inset-bottom) + var(--gap));
 }
+/* SP9 9.1: off the tabs, the "‹ 더보기" back link above the title (as Habits). */
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
 .line {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   font-size: var(--size-meta);
   color: var(--muted);
 }
@@ -57,6 +71,7 @@
   opacity: 0.4;
   cursor: default;
 }
+.back:focus-visible,
 .undo:focus-visible,
 .more:focus-visible,
 .noticeAction:focus-visible {
@@ -66,7 +81,7 @@
 .moreWrap {
   display: flex;
   justify-content: center;
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
 }
 .more {
   min-height: var(--control-h);
@@ -84,20 +99,23 @@
   cursor: default;
 }
 .block {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--section-gap);
 }
+/* A section head as in a paper group (DESIGN.md 섹션 머리). */
 .blockHeading {
-  margin: 0 0 0.5rem;
-  padding: 0 0.25rem;
-  font-size: var(--size-section);
+  margin: 0 0 0.75rem;
+  padding: 0 0 0.375rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-label);
   font-weight: 600;
-  color: var(--text);
+  line-height: var(--lh-label);
+  color: var(--muted);
 }
 .blockItem + .blockItem {
   margin-top: 0.5rem;
 }
 .notice {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   padding: 0.75rem var(--pad);
   background: var(--notice-bg);
   border: 1px solid var(--notice-border);

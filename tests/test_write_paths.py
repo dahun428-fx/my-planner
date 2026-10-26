@@ -22,21 +22,24 @@ import test_api_e2e
 
 from my_planner.store.db import is_write, open_db
 
-# 도구 함수(`tools/core.py`, 습관 `tools/habits.py`), 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의
-# `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
+# 도구 함수(`tools/core.py`, 습관 `tools/habits.py`, 이룬 순간 `tools/moments.py`, 메모 `tools/memos.py`, 몸 기록
+# `tools/body.py`, 스케줄 `tools/events.py`), 즉시 갈래(`tools/actions.py`),
+# 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
+    "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body", "my_planner.tools.events",
 })
+MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
 DISPATCHER = "my_planner.harness.dispatcher"
 LOOP = "my_planner.loop.*"
 SEED = "my_planner.curve.seed"  # 잠금을 잡은 별도 프로세스(4.3, 12장)
 # 도구를 부를 수 있는 문: 즉시 갈래 하나와 두뇌 갈래 하나(4.3 1행)
 GATES = frozenset({("my_planner.tools.actions", "apply_action"), (DISPATCHER, "Dispatcher._call_brain")})
 # 도구 쓰기의 입구(가장 바깥 `my_planner` 프레임의 모듈, 4.3): 디스패처 작업 루프(두뇌 갈래), `/actions`·`/undo`,
-# 푸시 구독·주 통로, 앱 명령(`/chat`), 텔레그램 버튼·명령, 하루 한 번 작업
+# 푸시 구독·주 통로, 앱 명령(`/chat`), 텔레그램 버튼·명령, 하루 한 번 작업, 몸 기록(`/body`, SP8 7.2)
 ENTRIES = frozenset({
     DISPATCHER, "my_planner.api.actions", "my_planner.api.push", "my_planner.api.chat", "my_planner.bot.callbacks",
-    "my_planner.bot.telegram_io", "my_planner.loop.runner",
+    "my_planner.bot.telegram_io", "my_planner.loop.runner", "my_planner.api.body",
 })
 HTTP_PLUMBING = frozenset({"my_planner.api.server", "my_planner.api.cors", "my_planner.api.models"})
 READ_API = "my_planner.api.read"
@@ -53,6 +56,12 @@ ALLOWED: dict[str, set[str]] = {
     "tool_events_log": set(TOOLS),
     "habits": set(TOOLS),
     "habit_checks": set(TOOLS),
+    # SP9 6.1: 메모는 도구 함수(두뇌 `create_memo`, 즉시 갈래 동작)와 하루 한 번 정리(`memos_daily`, 즉시 갈래)만
+    "memos": set(TOOLS),
+    # SP9 5.2: 일정은 도구 함수(두뇌 도구, 즉시 갈래 동작)만. 017 훅의 옮기기는 `migrate` 안이라 세지 않는다
+    "events": set(TOOLS),
+    "event_skips": set(TOOLS),
+    "event_reminders": set(TOOLS),  # 앞으로의 알림 행 지우기(고치기), 놓친 알림 닫기. 알림 tick은 SP9-06
     "curve_chapters": {*TOOLS, SEED},
     "curve_milestones": {*TOOLS, SEED},
     "curve_ladder_scores": {*TOOLS, SEED},
@@ -61,6 +70,12 @@ ALLOWED: dict[str, set[str]] = {
     "curve_questions": {*TOOLS, SEED},
     # 칭호(9.4): 사건을 확정하는 도구, 시드(12장)
     "status_titles": {*TOOLS, SEED},
+    # SP8 6.1: 순간은 `save_moments`(두뇌 갈래)만. 날 행은 그 도구, 정리(`prune_records`, 즉시 갈래), 하루 끝 작업의
+    # 고르기·판정(`harness/moments.py`)
+    "status_moments": set(TOOLS),
+    "status_moment_days": {*TOOLS, MOMENTS_JOB},
+    # SP8 7.2: 몸 기록은 `record_body_days`(즉시 갈래, `/body`)와 56일 정리(`prune_records`, 즉시 갈래)만
+    "body_days": set(TOOLS),
     # 4.3 2행: 변경과 같은 트랜잭션(`tools/activity.py`), 되돌리기 표시(`apply_action`, U5)
     "activity": set(TOOLS),
     "activity_targets": set(TOOLS),
@@ -78,6 +93,8 @@ ALLOWED: dict[str, set[str]] = {
     "inbound_pending": {"my_planner.api.chat", "my_planner.bot.telegram_io", DISPATCHER},
     # 4.3 10행: 앱 요청이 여는 대화는 `route_app_message`(디스패처 → 대화 라우터). 그 밖은 SP1 그대로
     "conversations": {"my_planner.harness.conversations", DISPATCHER},
+    # SP9 7.1: 대화의 세션 id(새 id를 받는 디스패처, 다시 연 대화는 라우터), 지우기는 디스패처
+    "conversation_sessions": {"my_planner.harness.conversations", DISPATCHER},
     # 4.3 마지막 행: 운영 상태(SP1처럼 루프와 디스패처가 직접)
     "usage_state": {LOOP, DISPATCHER},
     "telegram_updates": {LOOP, DISPATCHER, "my_planner.bot.telegram_io"},
@@ -93,6 +110,8 @@ ALLOWED: dict[str, set[str]] = {
         "my_planner.api.chat",
         # 12장: `app_state.life_seed_imported_at`
         SEED,
+        # SP8 6.2: `moments_since`(처음 작업이 돈 날의 전날)
+        MOMENTS_JOB,
     },
 }
 
@@ -209,6 +228,34 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     assert ("status_xp_ledger", "my_planner.tools.actions") in rec.seen  # X9
     assert ("curve_milestones", SEED) in rec.seen and ("run_deliveries", "my_planner.harness.delivery") in rec.seen
     assert ("inbound_pending", "my_planner.api.chat") in rec.seen
+    # SP8: 순간은 두뇌 갈래의 도구만, 날 행은 하루 끝 작업도
+    assert ("status_moments", "my_planner.tools.moments") in rec.seen
+    assert ("status_moment_days", MOMENTS_JOB) in rec.seen and ("app_state", MOMENTS_JOB) in rec.seen
+    assert ("status_moments", "my_planner.tools.moments", DISPATCHER, True) in rec.tool_calls
+    # SP8 7.2: 몸 기록은 `/body` 입구에서 즉시 갈래를 지나 쓰고, 정리는 하루 한 번 작업이 즉시 갈래로
+    assert ("body_days", "my_planner.tools.body", "my_planner.api.body", True) in rec.tool_calls
+    assert ("body_days", "my_planner.tools.actions", "my_planner.loop.runner", True) in rec.tool_calls
+
+
+async def test_sp8_write_paths(tmp_path, monkeypatch):
+    """SP8 이야기(`tests/test_sp8_story.py`)의 쓰기도 4.3의 길만 지난다: 순간은 두뇌 갈래의 `save_moments`, 숨기기·지우기는
+    `/actions`, 날 행과 `moments_since`는 하루 끝 작업(`harness/moments.py`), 몸 기록은 `/body`의 즉시 갈래."""
+    from sp8_story_flow import sp8_story
+
+    rec = Recorder()
+    monkeypatch.setattr(be_env, "ON_WRITE", rec)
+    await sp8_story(tmp_path)
+
+    assert rec.unparsed == []
+    assert sorted((t, m) for t, m in rec.seen if not _allowed(t, m)) == []
+    assert not any(m.startswith(READ_API) for _, m in rec.seen) and rec.from_read == set()
+    assert rec.bypasses() == []
+    moments = {(e, g) for t, _, e, g in rec.tool_calls if t == "status_moments"}
+    assert moments == {(DISPATCHER, True), ("my_planner.api.actions", True)}  # 저장(두뇌 갈래), 숨기기·지우기(`/actions`)
+    assert ("status_moment_days", MOMENTS_JOB) in rec.seen and ("app_state", MOMENTS_JOB) not in rec.seen  # 이미 적힌 since
+    assert ("status_moment_days", "my_planner.tools.moments", DISPATCHER, True) in rec.tool_calls
+    assert ("body_days", "my_planner.tools.body", "my_planner.api.body", True) in rec.tool_calls
+    assert ("habit_checks", "my_planner.tools.habits", "my_planner.api.actions", True) in rec.tool_calls
 
 
 @pytest.mark.parametrize("table", sorted(ALLOWED))

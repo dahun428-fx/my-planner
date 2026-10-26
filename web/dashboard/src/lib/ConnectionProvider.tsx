@@ -1,7 +1,8 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Health } from "../api/types.gen";
 import { type ApiResult, getHealth } from "./api";
-import { type Conn, type LastHealthOk, loadConnection, loadLastHealthOk, saveConnection, saveLastHealthOk } from "./connection";
+import { type Conn, type LastHealthOk, clearConnection, loadConnection, loadLastHealthOk, saveConnection, saveLastHealthOk } from "./connection";
+import { deleteDevice } from "./pairing";
 import { usePolling } from "./polling";
 
 // One `/health` poll for the whole dashboard: the connection band and the status screen read it
@@ -18,6 +19,8 @@ export interface ConnectionState {
   retryMs: number | null;
   check(): Promise<void>;
   connect(c: Conn): void;
+  /** "연결 지우기": a device token is revoked first (device pairing spec 5.4, failure ignored), then forgotten. */
+  disconnect(): Promise<void>;
 }
 
 /** DU-03: how long to wait between `/health` checks while the BE does not answer. */
@@ -34,6 +37,7 @@ const Ctx = createContext<ConnectionState>({
   retryMs: null,
   check: async () => {},
   connect: () => {},
+  disconnect: async () => {},
 });
 
 export function ConnectionProvider({ children, intervalMs = 60_000 }: { children: ReactNode; intervalMs?: number }) {
@@ -83,6 +87,12 @@ export function ConnectionProvider({ children, intervalMs = 60_000 }: { children
     [conn, refresh],
   );
 
+  const disconnect = useCallback(async () => {
+    if (conn?.kind === "device" && conn.deviceId !== undefined) await deleteDevice(conn, conn.deviceId);
+    clearConnection();
+    setConn(null);
+  }, [conn]);
+
   const value = useMemo<ConnectionState>(
     () => ({
       ready,
@@ -93,8 +103,9 @@ export function ConnectionProvider({ children, intervalMs = 60_000 }: { children
       retryMs: ready && conn ? retryMs : null,
       check: refresh,
       connect,
+      disconnect,
     }),
-    [ready, conn, result, lastOk, backOnline, retryMs, refresh, connect],
+    [ready, conn, result, lastOk, backOnline, retryMs, refresh, connect, disconnect],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

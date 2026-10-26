@@ -59,3 +59,66 @@ def test_timezone_falls_back_to_fixed_kst_without_tzdata(monkeypatch: pytest.Mon
 
 def test_zone_bad_name_value_error_falls_back() -> None:
     assert tz_mod.zone("../etc").utcoffset(None).total_seconds() == 0
+
+
+# --- 앱에서 바꾼 체크인 시각 (SP9 8장): state/planner.db app_state.schedule_override ---
+
+
+def _write_override(root, value: str) -> None:  # type: ignore[no-untyped-def]
+    import sqlite3
+
+    (root / "state").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(root / "state" / "planner.db")
+    conn.execute("CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    conn.execute("INSERT INTO app_state VALUES ('schedule_override', ?)", (value,))
+    conn.commit()
+    conn.close()
+
+
+def test_next_slot_reads_override(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    _write_override(tmp_path, '{"morning_brief": {"weekday": {"time": "07:30", "from": null, "prev": null}}}')
+    assert next_slot(make_config(root=tmp_path), kst(2026, 10, 26, 6)) == (kst(2026, 10, 26, 7, 30), "morning_brief")
+
+
+def test_next_slot_override_from_prev(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # 월(10/26)은 prev 08:00, 화(10/27)부터 10:00
+    _write_override(
+        tmp_path, '{"morning_brief": {"weekday": {"time": "10:00", "from": "2026-10-27", "prev": "08:00"}}}'
+    )
+    cfg = make_config(root=tmp_path)
+    assert next_slot(cfg, kst(2026, 10, 26, 6))[0] == kst(2026, 10, 26, 8)
+    assert next_slot(cfg, kst(2026, 10, 26, 20))[0] == kst(2026, 10, 27, 10)
+
+
+def test_next_slot_review_follows_weekend_evening(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    _write_override(tmp_path, '{"evening_checkin": {"weekend": {"time": "20:00", "from": null, "prev": null}}}')
+    cfg = make_config(root=tmp_path)
+    # 일 19:00 이후 첫 회차는 20:00 저녁, 20:00 직후엔 다음 날 아침(회고도 20:00으로 옮겨졌다)
+    assert next_slot(cfg, kst(2026, 11, 1, 19)) == (kst(2026, 11, 1, 20), "evening_checkin")
+    assert next_slot(cfg, kst(2026, 11, 1, 20))[0] == kst(2026, 11, 2, 9)
+
+
+def test_next_slot_missing_db_uses_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    assert next_slot(make_config(root=tmp_path), kst(2026, 10, 26, 8))[0] == kst(2026, 10, 26, 9)
+
+
+def test_next_slot_corrupt_db_uses_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "planner.db").write_bytes(b"not a sqlite file at all" * 10)
+    assert next_slot(make_config(root=tmp_path), kst(2026, 10, 26, 8))[0] == kst(2026, 10, 26, 9)
+
+
+def test_next_slot_bad_json_uses_config(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    _write_override(tmp_path, "{nope")
+    assert next_slot(make_config(root=tmp_path), kst(2026, 10, 26, 8))[0] == kst(2026, 10, 26, 9)
+
+
+def test_tick_stalled_uses_override(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from my_planner_medic.signals import _tick_stalled
+
+    _write_override(tmp_path, '{"evening_checkin": {"weekday": {"time": "21:00", "from": null, "prev": null}}}')
+    health = {"last_tick_at": kst(2026, 10, 26, 17).isoformat(), "runs_today": []}
+    # config 기준(17:30)이면 15분 유예가 지나 멈춤이지만, 바꾼 21:00 기준으로는 아직 아니다
+    assert _tick_stalled(health, kst(2026, 10, 26, 20), make_config()) is True  # /repo: DB 없음
+    assert _tick_stalled(health, kst(2026, 10, 26, 20), make_config(root=tmp_path)) is False
+    assert _tick_stalled(health, kst(2026, 10, 26, 21, 20), make_config(root=tmp_path)) is True

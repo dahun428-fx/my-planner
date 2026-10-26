@@ -16,7 +16,14 @@
       "prev_score": null,
       "prev_period": null,
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": null,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "finance",
@@ -26,7 +33,14 @@
       "prev_score": null,
       "prev_period": null,
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": null,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "health",
@@ -36,7 +50,14 @@
       "prev_score": null,
       "prev_period": null,
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": null,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "relationships",
@@ -46,7 +67,14 @@
       "prev_score": null,
       "prev_period": null,
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": null,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "learning",
@@ -56,7 +84,14 @@
       "prev_score": null,
       "prev_period": null,
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": null,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     },
     {
       "area": "quality_of_life",
@@ -66,11 +101,21 @@
       "prev_score": null,
       "prev_period": null,
       "debuff": false,
-      "recovery_quest": null
+      "recovery_quest": null,
+      "bonus": 0.0,
+      "effective_score": null,
+      "activity": {
+        "tasks": 0,
+        "habit_checks": 0,
+        "body_days": 0
+      }
     }
   ],
   "main_quests": [],
   "daily_quests": [],
   "titles": [],
-  "recent_xp": []
+  "recent_xp": [],
+  "moments": [],
+  "moments_hidden": 0,
+  "body": null
 }

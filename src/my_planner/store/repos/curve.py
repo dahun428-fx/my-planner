@@ -10,6 +10,7 @@ import calendar
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 
 from my_planner.clock import Clock, from_iso, to_iso
 from my_planner.store.db import transaction
@@ -31,6 +32,7 @@ class Chapter:
     draft_since: str | None
     created_at: datetime
     updated_at: datetime
+    ladder_remembered: int | None = None  # 015: 그 시기를 돌아보며 기억하는 사다리 칸(SP8 8.1)
 
 
 @dataclass
@@ -55,6 +57,7 @@ class Milestone:
     created_at: datetime
     confirmed_at: datetime | None
     updated_at: datetime
+    area: str | None = None  # 015: 대표 영역 하나(SP8 8.1)
 
     @property
     def end_date(self) -> date:
@@ -103,12 +106,18 @@ def _question(r: sqlite3.Row) -> Question:
     )
 
 
+def _col(r: sqlite3.Row, name: str) -> Any:
+    """015 칸: 아직 015를 적용하지 않은 DB를 읽기 전용으로 볼 때(`seed-life --update-history --dry-run`)는 None."""
+    return r[name] if name in r.keys() else None  # noqa: SIM118 - Row의 `in`은 값을 본다
+
+
 def _chapter(r: sqlite3.Row) -> Chapter:
     return Chapter(
         id=r["id"], seed_key=r["seed_key"], title=r["title"], theme=r["theme"], start_month=r["start_month"],
         end_month=r["end_month"], sketch=r["sketch"], certainty=r["certainty"], status=r["status"],
         origin=r["origin"], source_ref=r["source_ref"], draft_since=r["draft_since"],
         created_at=from_iso(r["created_at"]), updated_at=from_iso(r["updated_at"]),
+        ladder_remembered=_col(r, "ladder_remembered"),
     )
 
 
@@ -121,7 +130,7 @@ def _milestone(r: sqlite3.Row) -> Milestone:
         conversation_id=r["conversation_id"], source_ref=r["source_ref"], draft_since=r["draft_since"],
         created_at=from_iso(r["created_at"]),
         confirmed_at=from_iso(r["confirmed_at"]) if r["confirmed_at"] else None,
-        updated_at=from_iso(r["updated_at"]),
+        updated_at=from_iso(r["updated_at"]), area=_col(r, "area"),
     )
 
 
@@ -229,6 +238,12 @@ class CurveRepo:
             return None
         return date.fromisoformat(r["m"] + "-01")
 
+    def earliest_ladder_period(self) -> str | None:
+        """`now`가 있는 가장 이른 월별 사다리 기록의 달(`YYYY-MM`). 5년 뒤만 있는 달은 세지 않는다. 없으면 None
+        (SP8 8.2 `records_since`)."""
+        r = self.conn.execute("SELECT MIN(period) AS p FROM curve_ladder_scores WHERE now IS NOT NULL").fetchone()
+        return r["p"] if r is not None else None
+
     def get_milestone(self, id: int) -> Milestone | None:
         r = self.conn.execute("SELECT * FROM curve_milestones WHERE id = ?", (id,)).fetchone()
         return _milestone(r) if r else None
@@ -269,17 +284,17 @@ class CurveRepo:
     def add_chapter(
         self, *, title: str, start_month: str, status: str, origin: str, end_month: str | None = None,
         theme: str | None = None, sketch: str | None = None, certainty: str = "fact", seed_key: str | None = None,
-        source_ref: str | None = None,
+        source_ref: str | None = None, ladder_remembered: int | None = None,
     ) -> Chapter:
         """챕터 한 행. 초안이면 `draft_since` = 지금(만료 시계의 시작)."""
         now = self._now()
         with transaction(self.conn):
             cur = self.conn.execute(
                 "INSERT INTO curve_chapters (seed_key, title, theme, start_month, end_month, sketch, certainty, "
-                "status, origin, source_ref, draft_since, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "status, origin, source_ref, draft_since, created_at, updated_at, ladder_remembered) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (seed_key, title, theme, start_month, end_month, sketch, certainty, status, origin, source_ref,
-                 now if status == "draft" else None, now, now),
+                 now if status == "draft" else None, now, now, ladder_remembered),
             )
         got = self.get_chapter(int(cur.lastrowid))  # type: ignore[arg-type]
         assert got is not None
@@ -289,6 +304,7 @@ class CurveRepo:
         self, *, date_text: str, kind: str, title: str, status: str, origin: str, note: str | None = None,
         chapter_id: int | None = None, sensitive: bool = False, certainty: str = "fact",
         kind_certainty: str = "fact", conversation_id: int | None = None, source_ref: str | None = None,
+        area: str | None = None,
     ) -> Milestone:
         """사건 한 행. `precision`·`sort_date`는 `date_text`에서(형식이 틀리면 `ValueError`). 초안이면 `draft_since` = 지금,
         확정이면 `confirmed_at` = 지금."""
@@ -298,14 +314,40 @@ class CurveRepo:
             cur = self.conn.execute(
                 "INSERT INTO curve_milestones (chapter_id, date_text, precision, sort_date, kind, kind_certainty, "
                 "title, note, sensitive, certainty, status, origin, conversation_id, source_ref, draft_since, "
-                "created_at, confirmed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "created_at, confirmed_at, updated_at, area) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (chapter_id, date_text, precision, sort_date.isoformat(), kind, kind_certainty, title, note,
                  1 if sensitive else 0, certainty, status, origin, conversation_id, source_ref,
-                 now if status == "draft" else None, now, now if status == "confirmed" else None, now),
+                 now if status == "draft" else None, now, now if status == "confirmed" else None, now, area),
             )
         got = self.get_milestone(int(cur.lastrowid))  # type: ignore[arg-type]
         assert got is not None
         return got
+
+    def fill_history(self, milestone_areas: dict[int, str], chapter_ladders: dict[int, int]) -> tuple[int, int]:
+        """`seed-life --update-history`(SP8 8.1): 비어 있는(`NULL`) 칸만 채운다. 이미 값이 있으면 덮어쓰지 않는다.
+        채운 (사건 수, 챕터 수). `updated_at`은 바꾸지 않는다(사용자가 고친 것이 아니다)."""
+        areas = ladders = 0
+        with transaction(self.conn):
+            for mid, area in milestone_areas.items():
+                cur = self.conn.execute(
+                    "UPDATE curve_milestones SET area = ? WHERE id = ? AND area IS NULL", (area, mid))
+                areas += cur.rowcount
+            for cid, value in chapter_ladders.items():
+                cur = self.conn.execute(
+                    "UPDATE curve_chapters SET ladder_remembered = ? WHERE id = ? AND ladder_remembered IS NULL",
+                    (value, cid))
+                ladders += cur.rowcount
+        return areas, ladders
+
+    def seed_milestones(self) -> list[Milestone]:
+        """시드에서 가져온 사건(`origin = 'seed'`), 상태와 상관없이 id순."""
+        rows = self.conn.execute("SELECT * FROM curve_milestones WHERE origin = 'seed' ORDER BY id").fetchall()
+        return [_milestone(r) for r in rows]
+
+    def chapter_by_seed_key(self, seed_key: str) -> Chapter | None:
+        r = self.conn.execute("SELECT * FROM curve_chapters WHERE seed_key = ?", (seed_key,)).fetchone()
+        return _chapter(r) if r else None
 
     def confirm_milestones(self, ids: list[int]) -> list[Milestone]:
         """초안만 확정한다(`confirmed_at` = 지금, `draft_since` = NULL). 확정한 사건을 그 순서로 돌려준다."""

@@ -1,5 +1,5 @@
 /* Six swatches in one row (390px wide: about 59px each). The swatch's colours come from its own
-   data-palette (tokens.css): its ground, with its secretary hue in the lower half. */
+   data-palette (global.css): its ground, with its secretary hue in the lower half. */
 .group {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

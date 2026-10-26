@@ -1,0 +1,5 @@
+{
+  "morning": { "on": true, "time": "07:30" },
+  "night": { "on": true, "time": "21:30" },
+  "wake_updated": true
+}

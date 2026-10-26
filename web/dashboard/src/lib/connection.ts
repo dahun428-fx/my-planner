@@ -1,7 +1,12 @@
-// The BE URL and API token live only in this browser's localStorage (spec 13.1, 14). Every read and
+// The BE URL and token live only in this browser's localStorage (spec 13.1, 14). Every read and
 // write is wrapped: blocked storage (a private window, a strict browser) reads as "nothing".
 
-export type Conn = { beUrl: string; token: string };
+/**
+ * `kind` says where the token came from: `device` is a pairing code's token (device pairing spec 5.4), whose
+ * `deviceId` is revoked on "연결 지우기"; `api` is the API token typed in. Saved values from before pairing have
+ * no kind and read as `api`.
+ */
+export type Conn = { beUrl: string; token: string; kind?: "device" | "api"; deviceId?: number };
 export type LastHealthOk = { at: string; lastTickAt: string | null };
 
 const K_CONN = "mp.connection";
@@ -41,6 +46,13 @@ export function normalizeBeUrl(input: string, allowed: string = process.env.NEXT
   return { ok: true, url: u.origin };
 }
 
+/** Device pairing spec 6.1: the optional build constant fills the address, only when normalizeBeUrl takes it. */
+export function defaultBeUrl(raw: string | undefined = process.env.NEXT_PUBLIC_DEFAULT_BE_URL): string | null {
+  if (!raw || !raw.trim()) return null;
+  const n = normalizeBeUrl(raw);
+  return n.ok ? n.url : null;
+}
+
 // ---- storage ---------------------------------------------------------------------------------
 
 function read(key: string): unknown {
@@ -63,13 +75,27 @@ function write(key: string, value: unknown): void {
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v !== "";
 
+const isId = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+
 export function loadConnection(): Conn | null {
   const v = read(K_CONN);
-  return isObj(v) && nonEmpty(v.beUrl) && nonEmpty(v.token) ? { beUrl: v.beUrl, token: v.token } : null;
+  if (!isObj(v) || !nonEmpty(v.beUrl) || !nonEmpty(v.token)) return null;
+  // a device token without its id cannot be revoked from here: it reads as a plain token
+  if (v.kind === "device" && isId(v.deviceId)) return { beUrl: v.beUrl, token: v.token, kind: "device", deviceId: v.deviceId };
+  return { beUrl: v.beUrl, token: v.token, kind: "api" };
 }
 
 export function saveConnection(c: Conn): void {
-  write(K_CONN, { beUrl: c.beUrl, token: c.token });
+  const device = c.kind === "device" && isId(c.deviceId);
+  write(K_CONN, device ? { beUrl: c.beUrl, token: c.token, kind: "device", deviceId: c.deviceId } : { beUrl: c.beUrl, token: c.token, kind: "api" });
+}
+
+export function clearConnection(): void {
+  try {
+    localStorage.removeItem(K_CONN);
+  } catch {
+    // blocked storage kept nothing to clear
+  }
 }
 
 /** When this browser last got a good `/health` (spec 13.1 "마지막 응답"), and the BE's last tick then. */

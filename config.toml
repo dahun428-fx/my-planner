@@ -17,16 +17,28 @@ weekend = "18:00"
 day = "sun"
 time = "18:00"
 
+# 일정 정리 알림 (SP9b): 아침은 오늘 일정, 밤은 내일 일정. 일정이 없는 날은 보내지 않는다
+# 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위. 앱 설정에서 바꾸면 그 값이 먼저다(app_state.digest_settings)
+[schedule.digest]
+morning = "07:30"
+night = "21:30"
+morning_on = true
+night_on = true
+
 [limits]
 daily_brain_calls = 60          # 하루 두뇌 호출 상한
 max_turns = 10                  # 호출당 턴 상한
 daily_proactive_messages = 3    # 비서가 먼저 보내는 메시지 하루 상한
+daily_event_reminders = 30      # 일정 알림 하루 상한(위 상한에 세지 않는다, SP9 5.3)
 chat_resume_minutes = 30        # chat 대화 이어가기
 plan_idle_hours = 2             # 계획 모드 유휴 만료
 draft_ttl_days = 3              # 초안 만료
 stale_message_hours = 6         # 이보다 오래된 메시지는 "몇 시간 전" 알림
 input_max_chars = 8000          # 두뇌에 넘기는 입력 상한
 brain_timeout_s = 300           # 두뇌 호출 한 번의 상한(초). 넘으면 오류로 보고 재시도 규칙을 따른다
+daily_summaries = 15            # 앱 대화 요약 하루 상한(위 두뇌 호출 상한에도 센다, SP9 7.2)
+rollup_user_messages = 30       # 한 대화의 사용자 메시지가 이보다 많아지면 요약 + 최근 줄로 새 세션(말아 넣기, SP9 7.4)
+rollup_tail_lines = 6           # 말아 넣기·resume 실패 때 붙이는 최근 원문 줄 수
 
 # 답장 창: 이 시각까지 답하면 같은 회차 대화로 잇는다
 [limits.reply_window]

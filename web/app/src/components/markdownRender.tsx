@@ -1,8 +1,23 @@
 import { compiler, type MarkdownToJSX, RuleType } from "markdown-to-jsx/react";
 import { createElement, type ReactNode } from "react";
+import { escapeMemoMarkdown } from "../lib/memoText";
 import type { MarkdownClasses } from "./Markdown";
 
-export type RenderMarkdown = (text: string, classes: MarkdownClasses) => ReactNode;
+/**
+ * SP9 6.2 memo mode: the task boxes can be pressed. `lines` are the body's checklist line numbers
+ * (`checklistLines`), the n-th box drawn is line `lines[n]`. If the renderer drew another number of
+ * boxes than there are lines (markup the line scan reads differently), a press does nothing rather
+ * than flip the wrong line.
+ */
+export interface MemoTasks {
+  lines: number[];
+  /** The label of each box: its line's words after the box. */
+  labels: string[];
+  disabled: boolean;
+  onToggle(lineIndex: number): void;
+}
+
+export type RenderMarkdown = (text: string, classes: MarkdownClasses, memo?: MemoTasks) => ReactNode;
 
 function isWebLink(target: string | null): target is string {
   if (!target) return false;
@@ -15,7 +30,8 @@ function isWebLink(target: string | null): target is string {
 }
 
 /** Markdown to React elements; loaded on demand by Markdown.tsx. */
-export const renderMarkdown: RenderMarkdown = (text, classes) => {
+export const renderMarkdown: RenderMarkdown = (text, classes, memo) => {
+  const drawn = { count: 0 };
   const align = { left: classes.alignLeft, center: classes.alignCenter, right: classes.alignRight };
   const renderRule: MarkdownToJSX.Options["renderRule"] = (next, node, children, state) => {
     switch (node.type) {
@@ -39,8 +55,24 @@ export const renderMarkdown: RenderMarkdown = (text, classes) => {
         );
       case RuleType.footnoteReference:
         return <sup key={state.key}>{node.text}</sup>;
-      case RuleType.gfmTask:
-        return <input key={state.key} type="checkbox" className={classes.task} checked={node.completed} disabled readOnly />;
+      case RuleType.gfmTask: {
+        if (!memo) return <input key={state.key} type="checkbox" className={classes.task} checked={node.completed} disabled readOnly />;
+        const n = drawn.count++;
+        const line = memo.lines[n];
+        return (
+          <input
+            key={state.key}
+            type="checkbox"
+            className={classes.task}
+            checked={node.completed}
+            aria-label={memo.labels[n] || undefined}
+            disabled={memo.disabled || line === undefined}
+            onChange={() => {
+              if (line !== undefined && drawn.count === memo.lines.length) memo.onToggle(line);
+            }}
+          />
+        );
+      }
       // Drawn here rather than by next(): its aligned cells would carry style="text-align:…",
       // which style-src 'self' blocks.
       case RuleType.table: {
@@ -85,7 +117,8 @@ export const renderMarkdown: RenderMarkdown = (text, classes) => {
         return next();
     }
   };
-  return compiler(text, {
+  // A memo shows everything but its own format as typed (6.2): the rest is escaped before compiling.
+  return compiler(memo ? escapeMemoMarkdown(text) : text, {
     // Every element the compiler makes goes through here, including the footnotes it adds outside
     // renderRule (<footer><div id=…>): the model's text never sets a DOM id or a style.
     createElement: (tag, props, ...kids) => {

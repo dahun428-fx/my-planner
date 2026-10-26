@@ -73,6 +73,28 @@ def period_of(cadence: Cadence | str, d: date) -> str:
     return f"{d.year}"
 
 
+def period_bounds(cadence: Cadence | str, period: str) -> tuple[date, date]:
+    """`period_of`의 거꾸로: 기간 이름의 첫날과 마지막 날(둘 다 포함). 없는 기간(`2025-W53`)은 ValueError."""
+    c = Cadence(cadence)
+    if c is Cadence.day:
+        d = date.fromisoformat(period)
+        return d, d
+    if c is Cadence.week:
+        y, w = period.split("-W")
+        start = date.fromisocalendar(int(y), int(w), 1)
+        return start, start + timedelta(days=6)
+    if c is Cadence.month:
+        y, m = (int(x) for x in period.split("-"))
+        start, first_months = date(y, m, 1), 1
+    elif c is Cadence.quarter:
+        y, q = period.split("-Q")
+        start, first_months = date(int(y), (int(q) - 1) * 3 + 1, 1), 3
+    else:
+        start, first_months = date(int(period), 1, 1), 12
+    m = start.month - 1 + first_months
+    return start, date(start.year + m // 12, m % 12 + 1, 1) - timedelta(days=1)
+
+
 def is_weekend(d: date) -> bool:
     return d.weekday() >= 5
 

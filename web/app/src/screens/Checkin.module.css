@@ -33,7 +33,7 @@
   line-height: 1.5;
 }
 .card {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
 }
 .todos {
   margin: 0;
@@ -95,7 +95,7 @@
   color: var(--muted);
 }
 .reply {
-  margin: 0 var(--pad);
+  margin: 0 var(--gutter);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -119,12 +119,12 @@
   cursor: pointer;
 }
 .line {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   font-size: var(--size-meta);
   color: var(--muted);
 }
 .notice {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   padding: 0.75rem var(--pad);
   background: var(--notice-bg);
   border: 1px solid var(--notice-border);

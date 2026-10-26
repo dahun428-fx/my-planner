@@ -5,23 +5,38 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from my_planner.clock import logical_date, period_of
 from my_planner.domain import Area, Cadence, TaskStatus
+from my_planner.status.activity import (
+    WINDOW_DAYS,
+    Bonus,
+    activity_counts,
+    area_bonus,
+    area_points,
+    effective_score,
+    window_start,
+)
 from my_planner.status.xp import (
     AREA_LABELS,
     DEFAULT_RECOVERY_QUESTS,
     progress,
     title_name,
 )
+from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.curve import CurveRepo
+from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
+from my_planner.store.views import moment_dict
 
 RECENT_XP = 5
+MOMENTS_DAYS = 14  # `GET /status`의 `moments`: 오늘을 포함한 지난 14일(SP8 6.5)
+MOMENTS_MAX = 20
 
 
 def _prev_quarter(period: str) -> str:
@@ -29,8 +44,21 @@ def _prev_quarter(period: str) -> str:
     return f"{year}-Q{q - 1}" if q > 1 else f"{year - 1}-Q4"
 
 
-def _stats(curve: CurveRepo, today: date) -> list[dict[str, Any]]:
-    """영역마다 자기 가장 최근 분기 점수(9.3). 디버프는 같은 영역의 바로 앞 분기 점수가 있고 더 높을 때만."""
+def _bonuses(status: StatusRepo, today: date, tz: str | tzinfo, boundary: time) -> dict[str, Bonus]:
+    """지난 28일 활동 보너스(SP8 스펙 5장). 할 일은 `T − 28`의 하루 시작부터 넉넉히 읽고 창은 순수 함수가 거른다."""
+    zone = ZoneInfo(tz) if isinstance(tz, str) else tz
+    from_utc = datetime.combine(today - timedelta(days=WINDOW_DAYS), boundary, tzinfo=zone).astimezone(UTC)
+    rows = status.activity_rows(from_utc, window_start(today), today)
+    points = area_points(rows.tasks, rows.checks, rows.body, today, tz=tz, boundary=boundary)
+    counts = activity_counts(rows.tasks, rows.checks, rows.body, today, tz=tz, boundary=boundary)
+    return area_bonus(points, today, counts)
+
+
+def _stats(curve: CurveRepo, today: date, bonuses: dict[str, Bonus]) -> list[dict[str, Any]]:
+    """영역마다 자기 가장 최근 분기 점수(9.3). 디버프는 같은 영역의 바로 앞 분기 점수가 있고 더 높을 때만.
+
+    보너스는 바탕(`score`) 위에 따로 얹는다(SP8 5.1): `score`의 뜻과 디버프 계산은 그대로다.
+    """
     latest = curve.latest_area_scores(period_of(Cadence.quarter, today))
     out = []
     for area in Area:
@@ -46,8 +74,18 @@ def _stats(curve: CurveRepo, today: date) -> list[dict[str, Any]]:
                 (cur.recovery_quest or curve.area_default(area.value) or DEFAULT_RECOVERY_QUESTS[area.value])
                 if debuff and cur else None
             ),
+            **_bonus_fields(cur.score if cur else None, bonuses[area.value]),
         })
     return out
+
+
+def _bonus_fields(base: int | None, b: Bonus) -> dict[str, Any]:
+    eff = effective_score(base, b.bonus)
+    return {
+        "bonus": float(b.bonus),
+        "effective_score": float(eff) if eff is not None else None,
+        "activity": {"tasks": b.counts.tasks, "habit_checks": b.counts.habit_checks, "body_days": b.counts.body_days},
+    }
 
 
 def _quests(
@@ -90,7 +128,8 @@ def _quests(
 
 def status_snapshot(
     *, now: datetime, tz: str | tzinfo, boundary: time, status: StatusRepo, curve: CurveRepo, tasks: TasksRepo,
-    conditions: ConditionsRepo, include_sensitive: bool = False,
+    conditions: ConditionsRepo, include_sensitive: bool = False, moments: MomentsRepo | None = None,
+    body: BodyRepo | None = None,
 ) -> dict[str, Any]:
     today = logical_date(now, tz, boundary)
     xp_total = status.total()
@@ -100,7 +139,7 @@ def status_snapshot(
     return {
         "level": level, "xp_total": xp_total, "xp_into_level": into, "xp_for_next": for_next,
         "hp": {"date": today.isoformat(), "score": todays.score if todays else None},
-        "stats": _stats(curve, today),
+        "stats": _stats(curve, today, _bonuses(status, today, tz, boundary)),
         "main_quests": main_quests,
         "daily_quests": daily_quests,
         "titles": [
@@ -109,4 +148,15 @@ def status_snapshot(
             for t in status.titles(include_sensitive=include_sensitive)
         ],
         "recent_xp": [{"at": x.at, "label": x.label, "amount": x.amount} for x in status.recent(RECENT_XP)],
+        **_moments(moments, today),
+        "body": body.summary(today) if body is not None else None,  # 지난 7일 몸 기록(SP8 7.5). 56일에 행이 없으면 None
     }
+
+
+def _moments(repo: MomentsRepo | None, today: date) -> dict[str, Any]:
+    """`moments`(지난 14일, 숨기지 않은 것, 최근 날짜부터, 최대 20)와 `moments_hidden`(같은 14일의 숨긴 수, SP8 6.5)."""
+    if repo is None:
+        return {"moments": [], "moments_hidden": 0}
+    from_ = today - timedelta(days=MOMENTS_DAYS - 1)
+    shown = repo.between(from_, today, include_hidden=False)[:MOMENTS_MAX]
+    return {"moments": [moment_dict(m) for m in shown], "moments_hidden": repo.hidden_count(from_, today)}

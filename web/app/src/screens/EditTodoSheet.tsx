@@ -41,12 +41,15 @@ function EditForm({ edit, onClose, onDone, guard }: { edit: Edit; onClose(): voi
   const clean = isDate ? value : value.trim();
   const ok = clean !== "" && clean !== initial;
 
+  // SP9 5.4: to-dos have no time any more, so `move_task` no longer asks first (it is applied at once).
   const save = async () => {
     if (!ok || lock.current) return;
     lock.current = true;
     setBusy(true);
     try {
-      const out = isDate ? await run("move_task", { id: edit.todo.id, planned_for: clean }) : await run("update_task", { id: edit.todo.id, title: clean });
+      const out = isDate
+        ? await run("move_task", { id: edit.todo.id, planned_for: clean })
+        : await run("update_task", { id: edit.todo.id, title: clean });
       if (out === null) return;
       if (out.kind === "applied") await onDone();
       else if (out.kind === "conflict" || out.kind === "needs_confirm") await guard(out);

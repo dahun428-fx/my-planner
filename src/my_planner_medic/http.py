@@ -8,6 +8,7 @@ from __future__ import annotations
 import http.client
 import json as _json
 import logging
+import re
 import urllib.error
 import urllib.request
 from email.message import Message
@@ -48,15 +49,32 @@ def _headers(msg: Message | None) -> dict[str, str]:
     return {k.lower(): v for k, v in msg.items()} if msg is not None else {}
 
 
+_SECRET_SEGMENT = re.compile(r"^bot.+")  # 텔레그램: /bot<토큰>/sendMessage
+
+
 def _where(url: str) -> str:
+    """로그용 호스트·경로. 경로에 비밀이 들어 있을 수 있는 칸(텔레그램 봇 토큰)은 가린다."""
     parts = urlsplit(url)
-    return f"{parts.hostname}{parts.path}"
+    path = "/".join("bot***" if _SECRET_SEGMENT.match(seg) else seg for seg in parts.path.split("/"))
+    return f"{parts.hostname}{path}"
+
+
+class SameHostAuthRedirect(urllib.request.HTTPRedirectHandler):
+    """다른 호스트로 넘기는 리디렉션에는 `Authorization`(토큰)을 싣지 않는다(최종 리뷰 M-9).
+
+    urllib 기본 처리기는 요청 머리를 그대로 새 URL로 옮긴다."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urlsplit(newurl).hostname != urlsplit(req.full_url).hostname:
+            new.remove_header("Authorization")
+        return new
 
 
 class UrllibHttp:
     def __init__(self) -> None:
-        self._direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        self._default = urllib.request.build_opener()
+        self._direct = urllib.request.build_opener(urllib.request.ProxyHandler({}), SameHostAuthRedirect)
+        self._default = urllib.request.build_opener(SameHostAuthRedirect)
 
     def request(
         self,

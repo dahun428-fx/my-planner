@@ -177,6 +177,45 @@ describe("Checkin", () => {
     expect(bodies[0].client_msg_id).not.toBe(bodies[1].client_msg_id);
   });
 
+  it("tomorrow on scheduled todo opens confirm sheet", async () => {
+    // SP6 8 (BE-2): the evening list's "내일로" asks first for a to-do with a time.
+    const SUMMARY = "날짜를 옮겨요: 장보기 → 10월 25일 (일)";
+    serve();
+    const bodies = actions((b) => (b.confirm_token ? applied() : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: SUMMARY, expires_at: "2026-10-24T09:00:00Z" })));
+    const user = userEvent.setup();
+    renderWithProviders(<Checkin id={341} />);
+    await user.click(await screen.findByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText(SUMMARY)).toBeInTheDocument();
+    expect(screen.queryByText(copy.actions.failed)).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.keep }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(bodies).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const again = await screen.findByRole("dialog");
+    await waitFor(() => expect(within(again).getByText(SUMMARY)).toBeInTheDocument());
+    await user.click(within(again).getByRole("button", { name: copy.todos.change }));
+    await waitFor(() => expect(bodies).toHaveLength(3));
+    expect(bodies[2]).toMatchObject({ action: "move_task", args: { id: 13, planned_for: "2026-10-25" }, confirm_token: "ct-9" });
+    expect(bodies[2].client_msg_id).not.toBe(bodies[1].client_msg_id);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("confirm then rejected says why and reads again", async () => {
+    const hits = serve();
+    actions((b) => (b.confirm_token ? HttpResponse.json({ error: { code: "rejected", message: "열린 할 일만 날짜를 옮길 수 있어요." } }, { status: 422 }) : HttpResponse.json({ status: "needs_confirm", confirm_token: "ct-9", summary: "날짜를 옮겨요: 운동 30분 → 10월 25일 (일)", expires_at: "2026-10-24T09:00:00Z" })));
+    const user = userEvent.setup();
+    renderWithProviders(<Checkin id={341} />);
+    await user.click(await screen.findByRole("button", { name: copy.checkin.tomorrowLabel("장보기") }));
+    const sheet = await screen.findByRole("dialog");
+    const before = hits.today;
+    await user.click(within(sheet).getByRole("button", { name: copy.todos.change }));
+    expect(await screen.findByText("열린 할 일만 날짜를 옮길 수 있어요.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(hits.today).toBeGreaterThan(before));
+  });
+
   it("double tap sends one request and reads again after the answer", async () => {
     const hits = serve();
     let release: () => void = () => {};

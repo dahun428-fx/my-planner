@@ -1,7 +1,7 @@
 // The browser calls the BE directly (ADR 0008). One result type for every screen, mapped from the
 // common states table of spec 13.1. Shapes are checked by hand: a field the BE adds later is ignored,
 // a field a screen needs that is missing or of the wrong type is `broken("shape")`.
-import type { Conditions, Curve, Health, SafeModeHealth, Status, Today, Week } from "../api/types.gen";
+import type { Conditions, Curve, CurveHistory, Health, SafeModeHealth, Status, Today, Week } from "../api/types.gen";
 import type { Conn } from "./connection";
 
 export type ApiResult<T> =
@@ -51,8 +51,7 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
       parsed = false;
     }
     if (!res.ok) {
-      const e = isObj(body) && isObj(body.error) ? body.error : null;
-      const code = e && typeof e.code === "string" && /^[a-z0-9_]{1,40}$/.test(e.code) ? e.code : `http_${res.status}`;
+      const code = errorCode(body, res.status);
       if (res.status === 503 && code === "safe_mode") return { kind: "safe_mode" };
       return { kind: "broken", code };
     }
@@ -62,6 +61,12 @@ export async function fetchApi<T>(conn: Conn, path: string, isT: (v: unknown) =>
     clearTimeout(timer);
     opts.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+/** The `error.code` of a BE error body (a short snake_case word), else `http_<status>`. */
+export function errorCode(body: unknown, status: number): string {
+  const e = isObj(body) && isObj(body.error) ? body.error : null;
+  return e && typeof e.code === "string" && /^[a-z0-9_]{1,40}$/.test(e.code) ? e.code : `http_${status}`;
 }
 
 /** `/health` answers 200 with Health, or with `{status: "safe_mode"}` in DB safe mode (6.3.1). */
@@ -254,5 +259,57 @@ export function isCurve(v: unknown): v is Curve {
       v.reassurance,
       (r) => isObj(r) && str(r.period) && int(r.ladder_now) && numOrNull(r.condition_average) && numOrNull(r.condition_scaled) && int(r.days_logged) && numOrNull(r.gap),
     )
+  );
+}
+
+// ---- 히스토리 (SP8 8.2) -----------------------------------------------------------------------------
+
+const AREA_CODES = ["career", "finance", "health", "relationships", "learning", "quality_of_life"];
+const hiddenOk = (h: unknown) => isObj(h) && int(h.count) && arr(h.years, int);
+const eventOk = (e: unknown) =>
+  isObj(e) &&
+  int(e.id) &&
+  str(e.date) &&
+  (e.precision === "year" || e.precision === "month" || e.precision === "day") &&
+  (e.kind === "high" || e.kind === "low" || e.kind === "turning_point") &&
+  (e.kind_certainty === "fact" || e.kind_certainty === "estimate") &&
+  str(e.title) &&
+  strOrNull(e.note) &&
+  (e.area === null || (str(e.area) && AREA_CODES.includes(e.area))) &&
+  (e.origin === "seed" || e.origin === "chat" || e.origin === "review") &&
+  (e.certainty === "fact" || e.certainty === "estimate") &&
+  typeof e.sensitive === "boolean";
+
+export function isCurveHistory(v: unknown): v is CurveHistory {
+  return (
+    isObj(v) &&
+    intOrNull(v.since_year) &&
+    arr(
+      v.chapters,
+      (c) =>
+        isObj(c) &&
+        int(c.id) &&
+        str(c.title) &&
+        strOrNull(c.theme) &&
+        str(c.start) &&
+        strOrNull(c.end) &&
+        strOrNull(c.sketch) &&
+        (c.certainty === "fact" || c.certainty === "estimate") &&
+        (c.ladder === null || (isObj(c.ladder) && num(c.ladder.value) && (c.ladder.source === "remembered" || c.ladder.source === "recorded"))) &&
+        arr(c.events, eventOk) &&
+        hiddenOk(c.hidden_sensitive),
+    ) &&
+    isObj(v.unassigned) &&
+    arr(v.unassigned.events, eventOk) &&
+    hiddenOk(v.unassigned.hidden_sensitive) &&
+    isObj(v.summary) &&
+    int(v.summary.chapters) &&
+    int(v.summary.events) &&
+    (v.summary.highest === null || (isObj(v.summary.highest) && int(v.summary.highest.chapter_id) && str(v.summary.highest.title) && num(v.summary.highest.ladder))) &&
+    (v.summary.longest === null || (isObj(v.summary.longest) && int(v.summary.longest.chapter_id) && str(v.summary.longest.title) && int(v.summary.longest.years))) &&
+    isObj(v.summary.turning_points) &&
+    int(v.summary.turning_points.count) &&
+    arr(v.summary.turning_points.years, int) &&
+    intOrNull(v.summary.records_since)
   );
 }

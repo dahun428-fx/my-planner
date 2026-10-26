@@ -125,5 +125,18 @@
     }
   ],
   "cards": [],
-  "habits": []
+  "habits": [
+    {
+      "id": 1,
+      "title": "저녁에 걷기",
+      "area": "health",
+      "kind": "daily",
+      "target_per_week": null,
+      "status": "active",
+      "checked": false,
+      "week_count": 4
+    }
+  ],
+  "events": [],
+  "missed_reminders": []
 }

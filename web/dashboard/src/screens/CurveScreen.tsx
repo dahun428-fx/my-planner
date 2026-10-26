@@ -1,15 +1,20 @@
+import { useRouter } from "next/router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Curve, CurveMilestone } from "../api/types.gen";
+import type { Curve, CurveHistory, CurveMilestone } from "../api/types.gen";
 import { AreaRadar } from "../components/AreaRadar";
 import { CurveChart } from "../components/CurveChart";
 import { MilestonePopover } from "../components/MilestonePopover";
 import { Reassurance } from "../components/Reassurance";
 import { StateNotice } from "../components/StateNotice";
+import { Pictogram } from "../components/pictograms.gen";
 import { Upcoming, type UpcomingMark } from "../components/Upcoming";
-import { type ApiResult, fetchApi, isCurve } from "../lib/api";
+import { type ApiResult, fetchApi, isCurve, isCurveHistory } from "../lib/api";
 import { useConnection } from "../lib/ConnectionProvider";
 import type { Zoom } from "../lib/curveLayout";
-import { CURVE_TEXT as T } from "../lib/labels";
+import { memory, resetMemory } from "../lib/curveMemory";
+import { CURVE_TEXT as T, HISTORY_TEXT as H } from "../lib/labels";
+import { useIsPhone } from "../lib/useIsPhone";
+import { HistoryView } from "./HistoryView";
 import { usePolling } from "../lib/polling";
 import { nextMonthlyReview, nextQuarterReview, reviewDayLabel, seoulLogicalToday } from "../lib/reviews";
 
@@ -29,14 +34,9 @@ export function curvePath(zoom: Zoom, sensitive: boolean): string {
   return `/curve?${q.toString()}`;
 }
 
-// "민감한 사건 보기" lasts only while this tab has the dashboard open (13.4): module memory, never storage.
-// Leaving for another screen and coming back keeps it; a reload or a new tab starts with it off.
-const memory: { zoom: Zoom; sensitive: boolean } = { zoom: "month", sensitive: false };
-
 /** For tests: start again as a fresh tab would. */
 export function resetCurveMemory() {
-  memory.zoom = "month";
-  memory.sensitive = false;
+  resetMemory();
 }
 
 function Loading() {
@@ -128,7 +128,7 @@ const WIDE_PATH = curvePath("year", false);
  * radar reads its quarters from. When the chosen zoom is that same request, the wide answer is reused.
  * Read only.
  */
-export function CurveScreen() {
+function CurvePane() {
   const { ready, conn, backOnline } = useConnection();
   const [zoom, setZoomState] = useState<Zoom>(memory.zoom);
   const [sensitive, setSensitiveState] = useState(memory.sensitive);
@@ -159,7 +159,6 @@ export function CurveScreen() {
 
   return (
     <>
-      <h1>{T.title}</h1>
       <div className="curve-controls">
         <div className="zoom-row">
           <span className="zoom-label meta" aria-hidden="true">
@@ -179,6 +178,77 @@ export function CurveScreen() {
         </label>
       </div>
       {!ready || !conn || shown === null ? <Loading /> : shown.kind === "ok" ? <CurveView curve={shown.data.curve} wide={wideCurve} /> : <StateNotice result={shown} />}
+    </>
+  );
+}
+
+type Tab = "curve" | "history";
+const tabFrom = (q: unknown): Tab => (q === "history" ? "history" : "curve");
+
+/**
+ * 히스토리 탭 (SP8 8.3, 8.5): `GET /curve/history`, and once `include_sensitive=true` when the view needs the hidden
+ * events (a chapter's "보기", or "민감한 사건 보기" already on). Read only.
+ */
+function HistoryPane() {
+  const { ready, conn, backOnline } = useConnection();
+  // Sensitive events are asked for once, when "민감한 사건 보기" is already on, or when the view needs them
+  // ("보기" on a chapter, or the toggle turned off). The answer stays; the view decides what it shows of it.
+  const [withSensitive, setWithSensitive] = useState(memory.sensitive);
+  const path = withSensitive ? "/curve/history?include_sensitive=true" : "/curve/history";
+  const auth = ready && conn ? `${conn.beUrl}\n${conn.token}` : "";
+  const load = useCallback(async (): Promise<ApiResult<CurveHistory>> => (conn ? fetchApi(conn, path, isCurveHistory) : NONE), [conn, path]);
+  const { result } = usePolling(load, 60_000, auth ? `${auth}\n${path}` : "", { wake: backOnline });
+  // The request changes, the polling starts over with no answer: keep the last good one on screen meanwhile.
+  const lastOk = useRef<CurveHistory | null>(null);
+  if (result?.kind === "ok") lastOk.current = result.data;
+  const needSensitive = useCallback(() => setWithSensitive(true), []);
+  // Nothing is open and everything is hidden again: ask for the plain answer and let go of the raw one.
+  const dropSensitive = useCallback(() => {
+    lastOk.current = null;
+    setWithSensitive(false);
+  }, []);
+  const isPhone = useIsPhone();
+  const shown = result ?? (lastOk.current ? ({ kind: "ok", data: lastOk.current } as const) : null);
+  return (
+    <div>
+      {!ready || !conn || shown === null ? (
+        <Loading />
+      ) : shown.kind === "ok" ? (
+        <HistoryView history={shown.data} isPhone={isPhone} onNeedSensitive={needSensitive} onDropSensitive={dropSensitive} />
+      ) : (
+        <StateNotice result={shown} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * (c) 인생곡선 with its two tabs `곡선 | 히스토리`. The chosen tab is kept in the address (`?tab=history`), so a
+ * reload shows the same tab; the curve is the default.
+ */
+export function CurveScreen() {
+  const router = useRouter();
+  const queryTab = router.isReady ? tabFrom(router.query.tab) : null;
+  const [tab, setTab] = useState<Tab>(queryTab ?? "curve");
+  useEffect(() => {
+    if (queryTab !== null) setTab(queryTab);
+  }, [queryTab]);
+  const choose = (next: Tab) => {
+    setTab(next);
+    void router.replace({ query: { tab: next } }, undefined, { shallow: true });
+  };
+  return (
+    <>
+      <h1>{T.title}</h1>
+      <div className="tabs curve-tabs" role="group" aria-label={H.tabsLabel}>
+        {(["curve", "history"] as const).map((id) => (
+          <button key={id} type="button" className="tab with-icon" aria-pressed={id === tab} onClick={() => choose(id)}>
+            <Pictogram name={id === "curve" ? "curve" : "list"} size={16} />
+            {H.tabs[id]}
+          </button>
+        ))}
+      </div>
+      {!router.isReady ? <Loading /> : tab === "history" ? <HistoryPane /> : <CurvePane />}
     </>
   );
 }

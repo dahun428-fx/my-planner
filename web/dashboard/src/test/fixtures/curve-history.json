@@ -1,0 +1,125 @@
+{
+  "since_year": 2019,
+  "chapters": [
+    {
+      "id": 1,
+      "title": "꾸민 새 출발",
+      "theme": "꾸민 주제",
+      "start": "2025-03",
+      "end": null,
+      "sketch": "↗",
+      "certainty": "estimate",
+      "ladder": {
+        "value": 5.1,
+        "source": "recorded"
+      },
+      "events": [
+        {
+          "id": 2,
+          "date": "2026-02-14",
+          "precision": "day",
+          "kind": "turning_point",
+          "kind_certainty": "fact",
+          "title": "꾸민 이사 결정",
+          "note": null,
+          "area": "quality_of_life",
+          "origin": "chat",
+          "certainty": "fact",
+          "sensitive": false
+        },
+        {
+          "id": 1,
+          "date": "2025-09",
+          "precision": "month",
+          "kind": "high",
+          "kind_certainty": "fact",
+          "title": "꾸민 첫 전시",
+          "note": "꾸민 메모: 작은 카페 벽에 세 점",
+          "area": "learning",
+          "origin": "seed",
+          "certainty": "fact",
+          "sensitive": false
+        }
+      ],
+      "hidden_sensitive": {
+        "count": 0,
+        "years": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "꾸민 배움의 해",
+      "theme": "꾸민 주제",
+      "start": "2023-01",
+      "end": "2025-02",
+      "sketch": null,
+      "certainty": "fact",
+      "ladder": {
+        "value": 6.0,
+        "source": "remembered"
+      },
+      "events": [],
+      "hidden_sensitive": {
+        "count": 0,
+        "years": []
+      }
+    }
+  ],
+  "unassigned": {
+    "events": [
+      {
+        "id": 3,
+        "date": "2026-06",
+        "precision": "month",
+        "kind": "low",
+        "kind_certainty": "estimate",
+        "title": "꾸민 긴 감기",
+        "note": null,
+        "area": "health",
+        "origin": "seed",
+        "certainty": "fact",
+        "sensitive": false
+      },
+      {
+        "id": 4,
+        "date": "2019",
+        "precision": "year",
+        "kind": "high",
+        "kind_certainty": "fact",
+        "title": "꾸민 첫 자전거",
+        "note": null,
+        "area": null,
+        "origin": "seed",
+        "certainty": "fact",
+        "sensitive": false
+      }
+    ],
+    "hidden_sensitive": {
+      "count": 1,
+      "years": [
+        2025
+      ]
+    }
+  },
+  "summary": {
+    "chapters": 2,
+    "events": 4,
+    "highest": {
+      "chapter_id": 2,
+      "title": "꾸민 배움의 해",
+      "ladder": 6.0
+    },
+    "turning_points": {
+      "count": 1,
+      "years": [
+        2026
+      ]
+    },
+    "longest": {
+      "chapter_id": 2,
+      "title": "꾸민 배움의 해",
+      "years": 2
+    },
+    "records_since": 2025
+  }
+}

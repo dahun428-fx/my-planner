@@ -10,7 +10,8 @@
       "start": "2025-03",
       "end": null,
       "sketch": "↗",
-      "certainty": "estimate"
+      "certainty": "estimate",
+      "ladder_remembered": null
     }
   ],
   "milestones": [
@@ -23,7 +24,10 @@
       "note": null,
       "chapter_id": null,
       "sensitive": false,
-      "certainty": "fact"
+      "certainty": "fact",
+      "kind_certainty": "estimate",
+      "area": "health",
+      "origin": "seed"
     }
   ],
   "ladder": [

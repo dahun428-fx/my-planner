@@ -24,6 +24,13 @@ const CORS = {
   "Access-Control-Expose-Headers": "x-conversation-id, x-vercel-ai-ui-message-stream",
 };
 
+/** `GET /moments` (SP8 6.5): the status fixture's moments, and with `include_hidden` the one it counts as hidden. */
+function momentsList(includeHidden: boolean): Record<string, unknown> {
+  const { moments } = fixture("status") as { moments: Record<string, unknown>[] };
+  const hidden = { id: 50, date: "2026-10-22", text: "조용히 숨긴 순간이에요", area: "learning", sources: ["task"], hidden: true };
+  return { from: "2026-10-12", to: "2026-10-25", items: includeHidden ? [...moments, hidden] : moments };
+}
+
 /** A 200-character todo title: rows must wrap, never scroll sideways (spec 9장). */
 export const LONG_TITLE = "아주 긴 할 일 제목 ".repeat(20).slice(0, 200);
 
@@ -85,6 +92,8 @@ function week(): Record<string, unknown> {
 export type MockOptions = {
   /** SSE bodies for POST /chat, in turn (the last repeats): a golden's file name, or `{ body }`. */
   chat?: (string | { body: string })[];
+  /** POST /chat gets no answer at all (an answer that is slow to come): for the stop button. */
+  chatHangs?: boolean;
 };
 
 /** An answer in Markdown, streamed in small pieces: emphasis, a list, a table, a code block, a link. */
@@ -114,11 +123,19 @@ export function markdownSse(text = MARKDOWN_ANSWER): string {
   ].join("");
 }
 
+/** The chat sheet's conversation list (SP9 9.5): today, yesterday, a check-in, an old one with a 200-character title. */
+const CONVERSATIONS = [
+  { id: 12, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-24T05:00:00Z", last_message_at: "2026-10-24T05:10:00Z", closed_at: null, title: "치과 예약", summary: "내일 14:00 치과를 일정에 넣었어요. 알림은 30분 전이에요." },
+  { id: 11, kind: "run", channel: "app", run_id: 339, opened_at: "2026-10-23T12:00:00Z", last_message_at: "2026-10-23T12:20:00Z", closed_at: "2026-10-23T19:00:00Z", title: "저녁 돌아보기", summary: "컨디션 3, 운동은 내일로 옮겼어요." },
+  { id: 7, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-02T01:00:00Z", last_message_at: "2026-10-02T01:30:00Z", closed_at: "2026-10-02T02:00:00Z", title: LONG_TITLE, summary: LONG_TITLE },
+];
+
 /** Answers every BE call from the fixtures; returns the POST /chat bodies it saw. */
 export async function mockBe(page: Page, opts: MockOptions = {}) {
   const chat = opts.chat ?? ["chat_propose_tasks.sse"];
   const sseHeaders = JSON.parse(golden("headers.json")) as Record<string, string>;
   const chatBodies: unknown[] = [];
+  const stopBodies: unknown[] = [];
 
   const json = (route: Route, body: unknown, status = 200) =>
     route.fulfill({ status, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -134,6 +151,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/health") return json(route, fixture("health"));
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") return json(route, today());
+    if (get && path === "/status") return json(route, fixture("status"));
+    if (get && path === "/moments") return json(route, momentsList(q.get("include_hidden") === "true"));
     if (get && path === "/week") return json(route, week());
     if (get && path === "/drafts") return json(route, fixture("drafts"));
     if (get && path === "/priorities") return json(route, fixture(`priorities-${q.get("cadence") ?? "month"}`));
@@ -150,17 +169,26 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
       const h = habitHistory(Number(habitPath[1]));
       if (h) return json(route, h);
     }
-    if (get && path === "/conversations") return json(route, { items: [] });
+    // The sheet's first read (limit=3) finds nothing; the list screen (SP9 9.5) finds CONVERSATIONS.
+    if (get && path === "/conversations") return json(route, { items: q.get("limit") === "3" ? [] : CONVERSATIONS, next_before: null });
+    if (get && path === "/memos") return json(route, { items: [], next_before: null });
+    if (get && path === "/events") return json(route, { start: q.get("start"), end: q.get("end"), items: [] }); // SP9 9.2
     if (get && path === "/settings/notify") return json(route, fixture("notify"));
+    if (get && path === "/settings/digests") return json(route, fixture("digest-settings")); // SP9b 5장
     if (get && path === "/push/vapid-public-key") return json(route, { public_key: "BFixtureKeyNotReal" });
+    if (req.method() === "POST" && path === "/chat/stop") {
+      stopBodies.push(req.postDataJSON());
+      return json(route, { state: "stopped" });
+    }
     if (req.method() === "POST" && path === "/chat") {
       chatBodies.push(req.postDataJSON());
+      if (opts.chatHangs) return new Promise<void>(() => {}); // never answered; the page aborts it
       const next = chat[Math.min(chatBodies.length - 1, chat.length - 1)];
       return route.fulfill({ status: 200, headers: { ...CORS, ...sseHeaders }, body: typeof next === "string" ? golden(next) : next.body });
     }
     return json(route, { error: { code: "not_found", message: `no fixture for ${req.method()} ${path}` } }, 404);
   });
-  return { chatBodies };
+  return { chatBodies, stopBodies };
 }
 
 /** The BE stops answering (network error), as when the laptop sleeps (spec 5.5.4). */

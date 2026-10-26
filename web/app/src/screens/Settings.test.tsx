@@ -1,17 +1,21 @@
 import "fake-indexeddb/auto";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { clear, get, set } from "idb-keyval";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hardReplace } from "../lib/nav";
 import { copy } from "../lib/copy";
+import { saveConn } from "../lib/connection";
 import { PALETTES } from "../lib/theme";
 import { formatKst } from "../lib/time";
 import degraded from "../test/fixtures/health-degraded.json";
 import paused from "../test/fixtures/health-paused.json";
 import notify from "../test/fixtures/notify.json";
 import notifyTelegram from "../test/fixtures/notify-effective-telegram.json";
+import checkinTimes from "../test/fixtures/checkin-times.json";
+import digestSettings from "../test/fixtures/digest-settings.json";
+import type { CheckinTimesUpdated, DigestSettingsUpdated } from "../api/types.gen";
 import { device, storePushId, storedPushId, FAKE_VAPID, fakeSub, installPush, IPHONE_UA, type PushEnv, resetDevice } from "../test/push";
 import { renderWithProviders, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -73,6 +77,13 @@ function serve(opts: { notifyAnswer?: object; vapid?: boolean; hold?: boolean } 
 const pushRow = () => screen.findByTestId("device-push");
 
 describe("Settings", () => {
+  it("off the tabs since SP9-07: \"‹ 더보기\" back above the title, no more button (spec 9.1)", async () => {
+    serve(); // every side request answered (an unanswered one is an MSW error)
+    renderWithProviders(<Settings />);
+    expect(await screen.findByRole("link", { name: "‹ 더보기" })).toHaveAttribute("href", "/more/");
+    expect(screen.queryByRole("link", { name: "더보기" })).not.toBeInTheDocument();
+  });
+
   it("primary channel change shows effective telegram", async () => {
     const calls = serve({ notifyAnswer: notifyTelegram });
     renderWithProviders(<Settings />, { route: "/settings/" });
@@ -253,17 +264,408 @@ describe("Settings", () => {
     expect(await screen.findByText(copy.settings.testNoDevices)).toBeInTheDocument();
   });
 
-  it("schedule is read-only constants", async () => {
+  // SP9 9.7: 체크인 시간 네 줄, 고르면 바로 바꾸고 토스트, 주말 저녁 안내, 깨우기 작업 안내 줄.
+  const checkinGroup = async () =>
+    (await screen.findByRole("heading", { name: copy.checkinTimes.heading })).closest("section") as HTMLElement;
+
+  function serveCheckinPut(answer: Partial<CheckinTimesUpdated> = {}) {
+    const puts: unknown[] = [];
+    server.use(
+      http.put(`${BASE}/settings/checkin-times`, async ({ request }) => {
+        const body = (await request.json()) as { loop: string; day_type: string; time: string };
+        puts.push(body);
+        const items = checkinTimes.items.map((i) =>
+          i.loop === body.loop && i.day_type === body.day_type ? { ...i, time: body.time, from: "2026-10-27" } : i,
+        );
+        return HttpResponse.json({ items, applies: "tomorrow", wake_updated: true, activity_id: 9, undo_id: 9, ...answer });
+      }),
+    );
+    return puts;
+  }
+
+  it("check-in times: four rows with the current times and the weekend-evening note", async () => {
     serve();
     renderWithProviders(<Settings />, { route: "/settings/" });
-    const group = (await screen.findByRole("heading", { name: copy.settings.schedule })).closest("section") as HTMLElement;
-    expect(within(group).getByText(copy.settings.weekdays)).toBeInTheDocument();
+    const group = await checkinGroup();
+    const c = copy.checkinTimes;
+    const selects = await within(group).findAllByRole("combobox");
+    expect(selects.map((s) => s.getAttribute("aria-label"))).toEqual([c.weekdayMorning, c.weekdayEvening, c.weekendMorning, c.weekendEvening]);
+    expect(selects.map((s) => (s as HTMLSelectElement).value)).toEqual(["09:00", "17:30", "10:00", "18:00"]);
+    expect(within(group).getByText(c.reviewNote)).toBeInTheDocument();
+    expect(within(group).queryByText(c.wakeStale)).toBeNull();
+    // 10분 단위, 아침 05:00~11:30, 저녁 15:00~23:30
+    const morning = within(selects[0]).getAllByRole("option").map((o) => o.textContent);
+    expect(morning[0]).toBe("05:00");
+    expect(morning.at(-1)).toBe("11:30");
+    expect(morning).toHaveLength(40);
+    const evening = within(selects[1]).getAllByRole("option").map((o) => o.textContent);
+    expect([evening[0], evening.at(-1), evening.length]).toEqual(["15:00", "23:30", 52]);
+  });
+
+  it("check-in times: picking a time saves it and says from when", async () => {
+    serve();
+    const puts = serveCheckinPut();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await checkinGroup();
+    const select = await within(group).findByRole("combobox", { name: copy.checkinTimes.weekdayMorning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "09:30");
+    expect(await screen.findByText(copy.checkinTimes.fromTomorrow)).toBeInTheDocument();
+    expect(puts).toEqual([{ loop: "morning_brief", day_type: "weekday", time: "09:30" }]);
+    expect((select as HTMLSelectElement).value).toBe("09:30");
+    expect(screen.getByRole("button", { name: copy.activity.undo })).toBeInTheDocument();
+  });
+
+  it("check-in times: from today toast", async () => {
+    serve();
+    serveCheckinPut({ applies: "today" });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await checkinGroup()).findByRole("combobox", { name: copy.checkinTimes.weekendEvening });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "20:00");
+    expect(await screen.findByText(copy.checkinTimes.fromToday)).toBeInTheDocument();
+  });
+
+  it("check-in times: wake_updated false shows the register_task line", async () => {
+    serve();
+    serveCheckinPut({ wake_updated: false });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await checkinGroup();
+    const select = await within(group).findByRole("combobox", { name: copy.checkinTimes.weekdayEvening });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "18:00");
+    expect(await within(group).findByText(copy.checkinTimes.wakeStale)).toBeInTheDocument();
+  });
+
+  it("check-in times: GET wake_updated false shows the same line (a change from a card or undo)", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/checkin-times`, () => HttpResponse.json({ ...checkinTimes, wake_updated: false })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await checkinGroup();
+    expect(await within(group).findByText(copy.checkinTimes.wakeStale)).toBeInTheDocument();
+  });
+
+  it("check-in times: an older BE without the route shows the SP1 times read-only", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/checkin-times`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = (await screen.findByText(copy.settings.scheduleNote)).closest("section") as HTMLElement;
     expect(within(group).getByText("09:00 · 17:30")).toBeInTheDocument();
-    expect(within(group).getByText(copy.settings.weekend)).toBeInTheDocument();
     expect(within(group).getByText("10:00 · 18:00")).toBeInTheDocument();
-    expect(within(group).getByText(copy.settings.scheduleNote)).toBeInTheDocument();
-    expect(within(group).queryAllByRole("button")).toEqual([]);
-    expect(within(group).queryAllByRole("textbox")).toEqual([]);
+    expect(within(group).queryAllByRole("combobox")).toEqual([]);
+  });
+
+  // SP9b 5장: 일정 정리 알림 두 줄(스위치와 시간), 바꾸면 바로 저장하고 토스트, 끄면 시간이 흐림, 404면 칸 없음.
+  const digestGroup = async () =>
+    (await screen.findByRole("heading", { name: copy.digests.heading })).closest("section") as HTMLElement;
+
+  function serveDigestPut(answer: Partial<DigestSettingsUpdated> = {}) {
+    const puts: unknown[] = [];
+    server.use(
+      http.put(`${BASE}/settings/digests`, async ({ request }) => {
+        const body = (await request.json()) as { kind: "morning" | "night"; on: boolean; time: string };
+        puts.push(body);
+        return HttpResponse.json({
+          ...digestSettings,
+          [body.kind]: { on: body.on, time: body.time },
+          applies: "today",
+          activity_id: 12,
+          undo_id: 12,
+          ...answer,
+        });
+      }),
+    );
+    return puts;
+  }
+
+  it("digests: two rows with a switch and a time each, and the note", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await digestGroup();
+    const d = copy.digests;
+    const switches = await within(group).findAllByRole("switch");
+    expect(switches.map((s) => s.getAttribute("aria-label"))).toEqual([d.morning, d.night]);
+    expect(switches.map((s) => (s as HTMLInputElement).checked)).toEqual([true, true]);
+    const selects = within(group).getAllByRole("combobox");
+    expect(selects.map((s) => s.getAttribute("aria-label"))).toEqual([d.morning, d.night]);
+    expect(selects.map((s) => (s as HTMLSelectElement).value)).toEqual(["07:30", "21:30"]);
+    expect(within(group).getByText("일정이 있는 날만 보내요.")).toBeInTheDocument();
+    expect(within(group).queryByText(d.wakeStale)).toBeNull();
+    // 10분 단위, 아침 04:00~11:50, 밤 18:00~23:50
+    const morning = within(selects[0]).getAllByRole("option").map((o) => o.textContent);
+    expect([morning[0], morning.at(-1), morning.length]).toEqual(["04:00", "11:50", 48]);
+    const night = within(selects[1]).getAllByRole("option").map((o) => o.textContent);
+    expect([night[0], night.at(-1), night.length]).toEqual(["18:00", "23:50", 36]);
+  });
+
+  it("digests: the group sits right under check-in times", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const digests = await digestGroup();
+    expect(digests.previousElementSibling).toBe(await checkinGroup());
+  });
+
+  it("digests: picking a time saves it and says from when, with undo", async () => {
+    serve();
+    const puts = serveDigestPut({ applies: "tomorrow" });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.morning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "08:00");
+    expect(await screen.findByText(copy.digests.fromTomorrow)).toBeInTheDocument();
+    expect(puts).toEqual([{ kind: "morning", on: true, time: "08:00" }]);
+    expect((select as HTMLSelectElement).value).toBe("08:00");
+    expect(screen.getByRole("button", { name: copy.activity.undo })).toBeInTheDocument();
+  });
+
+  it("digests: turning one off saves it and dims its time", async () => {
+    serve();
+    const puts = serveDigestPut();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await digestGroup();
+    const sw = await within(group).findByRole("switch", { name: copy.digests.night });
+    await waitFor(() => expect(sw).toBeEnabled());
+    await user.click(sw);
+    expect(await screen.findByText(copy.digests.fromToday)).toBeInTheDocument();
+    expect(puts).toEqual([{ kind: "night", on: false, time: "21:30" }]);
+    expect(sw).not.toBeChecked();
+    const select = within(group).getByRole("combobox", { name: copy.digests.night });
+    expect(select).toBeDisabled();
+    expect(select.className).toMatch(/off/);
+    expect(within(group).getByRole("combobox", { name: copy.digests.morning })).toBeEnabled();
+  });
+
+  it("digests: an off row shows its time dimmed from the first read", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/digests`, () => HttpResponse.json({ ...digestSettings, morning: { on: false, time: "07:30" } })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await digestGroup();
+    expect(await within(group).findByRole("switch", { name: copy.digests.morning })).not.toBeChecked();
+    expect(within(group).getByRole("combobox", { name: copy.digests.morning })).toBeDisabled();
+  });
+
+  it("digests: undo from the toast reads the settings again", async () => {
+    serve();
+    serveDigestPut();
+    let gets = 0;
+    server.use(
+      http.get(`${BASE}/settings/digests`, () => {
+        gets += 1;
+        return HttpResponse.json(digestSettings);
+      }),
+      http.post(`${BASE}/activity/12/undo`, () => HttpResponse.json({ status: "undone", confirmation: "↩ 되돌림: 아침 일정 정리 알림" })),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.morning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "09:00");
+    await screen.findByText(copy.digests.fromToday);
+    const before = gets;
+    await user.click(screen.getByRole("button", { name: copy.activity.undo }));
+    await waitFor(() => expect(gets).toBeGreaterThan(before));
+    await waitFor(() => expect((select as HTMLSelectElement).value).toBe("07:30"));
+  });
+
+  it("digests: the same value (applies null) shows no toast", async () => {
+    serve();
+    const puts = serveDigestPut({ applies: null, activity_id: null, undo_id: null });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.night });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "22:00");
+    await waitFor(() => expect(puts).toHaveLength(1));
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(screen.queryByText(copy.digests.fromToday)).toBeNull();
+    expect(screen.queryByText(copy.digests.fromTomorrow)).toBeNull();
+  });
+
+  it("digests: a failed save says so", async () => {
+    serve();
+    server.use(
+      http.put(`${BASE}/settings/digests`, () =>
+        HttpResponse.json({ error: { code: "digest_time_invalid", message: "x" } }, { status: 422 }),
+      ),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const select = await within(await digestGroup()).findByRole("combobox", { name: copy.digests.morning });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "08:00");
+    expect(await screen.findByText(copy.actions.failed)).toBeInTheDocument();
+    expect((select as HTMLSelectElement).value).toBe("07:30");
+    expect(screen.queryByText(copy.digests.fromToday)).toBeNull();
+  });
+
+  it("digests: wake_updated false shows the register_task line", async () => {
+    serve();
+    serveDigestPut({ wake_updated: false });
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await digestGroup();
+    const select = await within(group).findByRole("combobox", { name: copy.digests.night });
+    await waitFor(() => expect(select).toBeEnabled());
+    await user.selectOptions(select, "22:00");
+    expect(await within(group).findByText(copy.digests.wakeStale)).toBeInTheDocument();
+  });
+
+  it("digests: GET wake_updated false shows the same line", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/digests`, () => HttpResponse.json({ ...digestSettings, wake_updated: false })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    expect(await within(await digestGroup()).findByText(copy.digests.wakeStale)).toBeInTheDocument();
+  });
+
+  it("digests: an older BE without the route draws no group", async () => {
+    serve();
+    let asked = false;
+    server.use(
+      http.get(`${BASE}/settings/digests`, () => {
+        asked = true;
+        return HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    await checkinGroup();
+    await waitFor(() => expect(asked).toBe(true));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByRole("heading", { name: copy.digests.heading })).toBeNull();
+    expect(screen.queryByText(copy.digests.note)).toBeNull();
+  });
+
+  // SP9 9.7: 아이폰 캘린더에 구독. 만들기 -> 주소와 복사, 다시 만들기는 확인 시트, 안내 문구.
+  const calendarGroup = async () =>
+    (await screen.findByRole("heading", { name: copy.calendar.heading })).closest("section") as HTMLElement;
+  const URL1 = "https://gp76.tail1234.ts.net/api/v1/calendar.ics?key=KEY-ONE";
+  const URL2 = "https://gp76.tail1234.ts.net/api/v1/calendar.ics?key=KEY-TWO";
+
+  it("calendar: no address yet shows the make button and the guidance line", async () => {
+    serve();
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const group = await calendarGroup();
+    expect(await within(group).findByRole("button", { name: copy.calendar.create })).toBeInTheDocument();
+    expect(within(group).getByText(copy.calendar.help)).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: copy.calendar.recreate })).toBeNull();
+  });
+
+  it("calendar: make shows the address and a copy button that copies it", async () => {
+    serve();
+    const posts: unknown[] = [];
+    let made: string | null = null;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: made })),
+      http.post(`${BASE}/settings/calendar`, async ({ request }) => {
+        posts.push(await request.json());
+        made = URL1;
+        return HttpResponse.json({ url: URL1 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup(); // installs its own clipboard stub: ours goes in after it
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const group = await calendarGroup();
+    await user.click(await within(group).findByRole("button", { name: copy.calendar.create }));
+    expect(await within(group).findByText(URL1)).toBeInTheDocument();
+    expect(posts).toEqual([{ rotate: false }]);
+    expect(within(group).queryByRole("button", { name: copy.calendar.create })).toBeNull();
+    await user.click(within(group).getByRole("button", { name: copy.calendar.copy }));
+    expect(writeText).toHaveBeenCalledWith(URL1);
+    expect(await screen.findByText(copy.calendar.copied)).toBeInTheDocument();
+  });
+
+  it("calendar: an existing address is shown on load; copy failing says so", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: URL1 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: async () => { throw new Error("denied"); } }, configurable: true });
+    const group = await calendarGroup();
+    expect(await within(group).findByText(URL1)).toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: copy.calendar.copy }));
+    expect(await screen.findByText(copy.calendar.copyFailed)).toBeInTheDocument();
+  });
+
+  it("calendar: make again asks first; keeping changes nothing, confirming rotates", async () => {
+    serve();
+    const posts: unknown[] = [];
+    let current = URL1;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ url: current })),
+      http.post(`${BASE}/settings/calendar`, async ({ request }) => {
+        posts.push(await request.json());
+        current = URL2;
+        return HttpResponse.json({ url: URL2 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await calendarGroup();
+    await within(group).findByText(URL1);
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText(copy.calendar.recreateSummary)).toBeInTheDocument();
+    expect(posts).toEqual([]);
+    await user.click(within(sheet).getByRole("button", { name: copy.settings.cancel }));
+    expect(posts).toEqual([]);
+    expect(within(group).getByText(URL1)).toBeInTheDocument();
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.calendar.recreate }));
+    expect(await within(group).findByText(URL2)).toBeInTheDocument();
+    expect(posts).toEqual([{ rotate: true }]);
+    expect(within(group).queryByText(URL1)).toBeNull();
+  });
+
+  it("calendar: a slow read that started before the rotate cannot put the old address back", async () => {
+    serve();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let current = URL1;
+    let slow = false;
+    let stale = false;
+    server.use(
+      http.get(`${BASE}/settings/calendar`, async () => {
+        const seen = current; // what the BE says when the read starts
+        if (slow) {
+          stale = true;
+          await gate;
+        }
+        return HttpResponse.json({ url: seen });
+      }),
+      http.post(`${BASE}/settings/calendar`, () => {
+        current = URL2;
+        return HttpResponse.json({ url: URL2 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    const group = await calendarGroup();
+    await within(group).findByText(URL1);
+    slow = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange"))); // a poll starts and hangs
+    await waitFor(() => expect(stale).toBe(true));
+    slow = false;
+    await user.click(within(group).getByRole("button", { name: copy.calendar.recreate }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.calendar.recreate }));
+    expect(await within(group).findByText(URL2)).toBeInTheDocument();
+    release(); // the old read answers now, after the rotate
+    await new Promise((r) => setTimeout(r, 50));
+    expect(within(group).getByText(URL2)).toBeInTheDocument();
+    expect(within(group).queryByText(URL1)).toBeNull();
+  });
+
+  it("calendar: an older BE without the route leaves the section out", async () => {
+    serve();
+    server.use(http.get(`${BASE}/settings/calendar`, () => HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 })));
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    await checkinGroup();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: copy.calendar.heading })).toBeNull());
   });
 
   it("pause sheet offers 1 3 7 14", async () => {
@@ -363,6 +765,51 @@ describe("Settings", () => {
     expect(localStorage.getItem("mp.token")).toBeNull();
   });
 
+  // Device pairing spec 5.4: a device token is revoked at the BE first; the device is cleared either way.
+  it("disconnect with a device token revokes this device at the BE, and clears even when that fails", async () => {
+    for (const answer of [204, 0]) {
+      serve();
+      const revoked: { id: string; auth: string | null }[] = [];
+      server.use(
+        http.delete(`${BASE}/devices/:id`, ({ params, request }) => {
+          revoked.push({ id: String(params.id), auth: request.headers.get("Authorization") });
+          return answer === 0 ? HttpResponse.error() : new HttpResponse(null, { status: answer });
+        }),
+      );
+      const { unmount } = renderWithProviders(<Settings />, { route: "/settings/" });
+      saveConn({ beUrl: TEST_BE_URL, token: "device-token" }, { id: 7 });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: copy.settings.disconnect }));
+      const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
+      await user.click(within(sheet).getByRole("button", { name: copy.settings.disconnectConfirm }));
+      await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
+      expect(revoked).toEqual([{ id: "7", auth: "Bearer device-token" }]);
+      for (const k of ["mp.beUrl", "mp.token", "mp.tokenKind", "mp.deviceId"]) expect(localStorage.getItem(k)).toBeNull();
+      unmount();
+      vi.mocked(hardReplace).mockClear();
+      server.resetHandlers();
+    }
+  });
+
+  it("disconnect with the key asks the BE to revoke nothing", async () => {
+    serve();
+    const revoked: string[] = [];
+    server.use(
+      http.delete(`${BASE}/devices/:id`, ({ params }) => {
+        revoked.push(String(params.id));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: copy.settings.disconnect }));
+    const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
+    await user.click(within(sheet).getByRole("button", { name: copy.settings.disconnectConfirm }));
+    await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
+    expect(revoked).toEqual([]);
+    expect(localStorage.getItem("mp.token")).toBeNull();
+  });
+
   it("degraded telegram line only here", async () => {
     serve();
     server.use(http.get(`${BASE}/health`, () => HttpResponse.json(degraded)));
@@ -393,23 +840,24 @@ describe("Settings", () => {
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 
-  it("colour presets: six swatches, ink chosen, a tap applies at once", async () => {
+  it("colour presets: six swatches, paper first and chosen, a tap applies at once", async () => {
     serve();
     renderWithProviders(<Settings />, { route: "/settings/" });
     const user = userEvent.setup();
     const group = await screen.findByRole("radiogroup", { name: copy.settings.palette });
     const radios = within(group).getAllByRole("radio");
     expect(radios.map((r) => r.textContent)).toEqual(PALETTES.map((p) => copy.settings.palettes[p]));
-    // Each swatch draws its own palette (data-palette on the swatch, colours from tokens.css).
+    expect(radios[0]).toHaveTextContent(copy.settings.palettes.paper);
+    // Each swatch draws its own palette (data-palette on the swatch, colours from global.css).
     expect(radios.map((r) => r.querySelector("[data-palette]")?.getAttribute("data-palette"))).toEqual([...PALETTES]);
-    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.paper })).toHaveAttribute("aria-checked", "true");
     expect(radios.filter((r) => r.getAttribute("aria-checked") === "true")).toHaveLength(1);
 
     await user.click(within(group).getByRole("radio", { name: copy.settings.palettes.forest }));
     expect(document.documentElement.dataset.palette).toBe("forest");
     expect(localStorage.getItem("mp.palette")).toBe("forest");
     expect(within(group).getByRole("radio", { name: copy.settings.palettes.forest })).toHaveAttribute("aria-checked", "true");
-    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "false");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.paper })).toHaveAttribute("aria-checked", "false");
 
     // One tab stop; arrow keys move the choice.
     expect(radios.filter((r) => r.tabIndex === 0)).toEqual([within(group).getByRole("radio", { name: copy.settings.palettes.forest })]);
@@ -420,7 +868,7 @@ describe("Settings", () => {
     expect(document.documentElement.dataset.palette).toBe("lavender");
     await user.keyboard("{Home}");
     expect(document.documentElement.hasAttribute("data-palette")).toBe(false);
-    expect(within(group).getByRole("radio", { name: copy.settings.palettes.ink })).toHaveAttribute("aria-checked", "true");
+    expect(within(group).getByRole("radio", { name: copy.settings.palettes.paper })).toHaveAttribute("aria-checked", "true");
   });
 
   it("the saved palette shows as chosen", async () => {
@@ -437,7 +885,7 @@ describe("Settings", () => {
     const group = (await screen.findByRole("heading", { name: copy.settings.about })).closest("section") as HTMLElement;
     expect(within(group).getByText("0.1.0")).toBeInTheDocument();
     expect(await within(group).findByText("0.2.0")).toBeInTheDocument();
-    expect(within(group).getByText("2026-10-24.2")).toBeInTheDocument();
+    expect(within(group).getByText("2026-10-24.4")).toBeInTheDocument();
   });
 
   it("no chat launcher", async () => {

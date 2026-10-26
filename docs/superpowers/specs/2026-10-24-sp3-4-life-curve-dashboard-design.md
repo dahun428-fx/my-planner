@@ -470,11 +470,14 @@ CREATE TABLE status_titles (
 | GET | `/week` | 대시보드, 운영 앱 | 없음 | 6.3.3 |
 | GET | `/conditions?from&to` | 대시보드, 운영 앱 | 없음 | 6.3.4 |
 | GET | `/curve?zoom&from&to&include_sensitive` | 대시보드, 운영 앱 | 없음 | 6.3.5 |
+| GET | `/curve/history?include_sensitive` | 대시보드 | 없음 | SP8 8.2 |
 | GET | `/status` | 대시보드, 운영 앱 | 없음 | 6.3.6 |
+| GET | `/moments?before&days&include_hidden` | 운영 앱용 | 없음 | SP8 6.5 |
 | GET | `/priorities?cadence&period` | 운영 앱용 | 없음 | 6.3.7 |
 | GET | `/drafts` | 운영 앱용 | 없음 | 6.3.8 |
 | GET | `/schema` | 운영 앱(빌드 때) | 없음 | 6.4 |
 | POST | `/chat` | 운영 앱용 | 두뇌 갈래 | 6.4.1 |
+| POST | `/chat/stop` | 운영 앱용 | 두뇌 갈래(디스패처 `stop_message`) | 6.4.1 "멈추기" |
 | POST | `/actions` | 운영 앱용 | 즉시 갈래 | 6.4.2 |
 | POST | `/activity/{id}/undo` | 운영 앱용 | 즉시 갈래 | 6.4.3 |
 | GET | `/activity?since&limit&order&before` | 운영 앱용 | 없음 | 6.4.4 |
@@ -488,8 +491,9 @@ CREATE TABLE status_titles (
 | GET, PUT | `/settings/notify` | 운영 앱용 | PUT은 즉시 갈래 | 6.4.9 |
 | POST | `/client-errors` | 운영 앱·대시보드용 | 없음(로그 `client_error`만) | SP6 3.3 |
 | POST | `/internal/notify` | 자동 복구 감시자용 | 없음(고정 안내 길, 푸시 결과만 기록) | SP6 6장 |
+| POST | `/body` | 아이폰 단축어(`BODY_TOKEN`만, `API_TOKEN`은 401) | 즉시 갈래(`record_body_days`, `endpoint = body`) | SP8 7.2 |
 
-대시보드는 표의 `GET` 여섯 개와 `POST /client-errors`만 쓴다.
+대시보드는 표의 `GET` 일곱 개(SP8에서 `/curve/history`를 더함)와 `POST /client-errors`만 쓴다.
 
 ### 6.3 읽기 (대시보드와 운영 앱 공통)
 
@@ -589,10 +593,12 @@ CREATE TABLE status_titles (
 ```json
 { "week": "2026-W43", "start": "2026-10-19", "end": "2026-10-25",
   "priorities": [ {…Todo} ],
-  "days": [ {"date": "2026-10-24", "weekday": "토", "is_today": true, "todos": [ {…Todo} ]} ] }
+  "days": [ {"date": "2026-10-24", "weekday": "토", "is_today": true, "todos": [ {…Todo} ]} ],
+  "undated": [ {…Todo} ] }
 ```
 
 할 일이 없는 날도 `days`에 넣는다(`todos: []`). 대시보드가 빈 날을 같은 칸으로 그리기 위해서다.
+`undated`(2026-10-25 추가)는 날짜 없는 열린 할 일이다(초안, 첫 걸음, 이번 주 우선순위는 뺀다. 앞선 BE에는 없으니 앱은 없으면 `[]`로 읽는다). 이것이 없을 때는 날짜 없이 들어간 할 일이 앱 어디에도 보이지 않았다. 텔레그램 `/week`는 그대로다.
 
 #### 6.3.4 `GET /conditions?from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -610,9 +616,10 @@ CREATE TABLE status_titles (
 {
   "zoom": "month", "from": "2024-11-01", "to": "2026-10-31",
   "chapters": [ {"id": 1, "title": "…", "theme": "…", "start": "2019-03", "end": null,
-                 "sketch": "↑", "certainty": "estimate"} ],
+                 "sketch": "↑", "certainty": "estimate", "ladder_remembered": null} ],
   "milestones": [ {"id": 7, "date": "2023-05", "precision": "month", "kind": "turning_point",
-                   "title": "…", "note": null, "chapter_id": 1, "sensitive": false, "certainty": "fact"} ],
+                   "title": "…", "note": null, "chapter_id": 1, "sensitive": false, "certainty": "fact",
+                   "kind_certainty": "fact", "area": "career", "origin": "chat"} ],
   "ladder": [ {"period": "2026-10", "now": 6, "future": 8, "note": null} ],
   "areas": [ {"period": "2026-Q4", "scores": {"career": 6, "finance": 5, "health": 4,
               "relationships": 7, "learning": 6, "quality_of_life": 5}} ],
@@ -626,6 +633,7 @@ CREATE TABLE status_titles (
 - `chapters`, `milestones`는 범위와 겹치는 **확정** 행만. `include_sensitive=false`(기본)면 `sensitive=1` 사건을 뺀다. `true`면 넣고 `sensitive: true`로 표시한다.
 - `ladder`는 달마다 하나. `areas`는 분기마다 하나(빠진 영역은 `scores`에 키가 없다). 묶음과 상관없이 원래 주기로 준다. FE가 x축 위치를 정한다.
 - `condition`은 `zoom` 단위로 묶은 평균이다(`curve/model.py bucket_conditions`, 기록 있는 날만 평균). `bucket` 이름은 `period_of(cadence, d)`의 형식이고, `day`는 날짜다.
+- SP8에서 더한 필드(필드 추가라 `/api/v1` 그대로): 챕터 `ladder_remembered`(기억한 사다리 0~10 또는 `null`), 사건 `kind_certainty`, `area`(대표 영역 하나 또는 `null`), `origin`(`seed` | `chat` | `review`). [SP8 스펙](2026-10-25-sp8-status-records-history-design.md) 8.1·8.2. 히스토리 탭의 모양은 `GET /curve/history`(SP8 8.2)다.
 - `reassurance`: 사다리 `now`가 있는 달마다(5년 뒤만 있는 달은 뺀다), 그 달의 컨디션 평균을 0~10으로 옮긴 값(`condition_scaled = (average − 1) × 2.5`)과 차이(`gap = condition_scaled − ladder_now`, 소수 한 자리). 그 달 컨디션 기록이 7일 미만이면 `condition_*`과 `gap`은 `null`이다(근거가 적다). 8.3 참고.
 
 #### 6.3.6 `GET /status`
@@ -638,7 +646,9 @@ CREATE TABLE status_titles (
   "hp": {"date": "2026-10-24", "score": 4},
   "stats": [ {"area": "health", "label": "건강", "score": 4, "period": "2026-Q4",
               "prev_score": 6, "prev_period": "2026-Q3", "debuff": true,
-              "recovery_quest": "저녁에 20분 걷기"} ],
+              "recovery_quest": "저녁에 20분 걷기",
+              "bonus": 1.5, "effective_score": 5.5,
+              "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0}} ],
   "main_quests": [ {"task_id": 31, "title": "…", "rank": 1, "period": "2026-Q4",
                     "first_steps": {"open": 2, "done": 3}} ],
   "daily_quests": [ {"task_id": 52, "title": "…", "parent_id": 31, "parent_title": "…", "planned_for": "2026-10-24"} ],
@@ -647,7 +657,7 @@ CREATE TABLE status_titles (
 }
 ```
 
-필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
+필드 계산은 9장. 영역 점수가 하나도 없으면 `stats`의 `score`가 `null`이고 `debuff`는 `false`다. `bonus`·`effective_score`·`activity`는 SP8에서 더한 필드다(필드 추가라 `/api/v1` 그대로, `score`·`debuff`의 뜻은 바뀌지 않는다): 지난 28일 영역 활동에서 읽을 때마다 계산하는 보너스(0.0~2.0), `min(10, score + bonus)`(`score`가 없으면 `null`), 가중하지 않은 개수다. 계산은 [SP8 스펙](2026-10-25-sp8-status-records-history-design.md) 5장. 텔레그램 `/status` 글은 이 세 필드를 쓰지 않는다(SP8 D7). `titles`의 민감 사건 칭호는 `GET /curve`와 같이 기본으로 빼고, `?include_sensitive=true`일 때만 넣는다.
 
 #### 6.3.7 `GET /priorities?cadence=week|month|quarter|year&period=…` (운영 앱용)
 
@@ -655,11 +665,14 @@ CREATE TABLE status_titles (
 
 ```json
 { "cadence": "quarter", "period": "2026-Q4",
-  "items": [ {…Todo}, {…Todo} ] }
+  "items": [ {…Todo}, {…Todo} ],
+  "todos": [ {…Todo} ] }
 ```
 
 - `cadence`는 필수이고 `week` | `month` | `quarter` | `year`다(오늘 우선순위는 `GET /today`의 `priority` 묶음). `period`는 선택이고, 없으면 지금 기간(`period_of(cadence, 오늘 논리적 날짜)`)이다. `period`는 `priorities.period` 형식(`2026-W43`, `2026-10`, `2026-Q4`, `2026`)이어야 하고, 주기와 맞지 않으면 `400 invalid_request`다.
 - `items`는 그 기간의 `priorities` 행을 `rank` 순서대로 `Todo`(6.3)로 준다. 초안과 소프트 삭제한 할 일을 가리키는 행은 뺀다. 우선순위가 없으면 `items: []`다.
+- 형식은 맞아도 없는 기간(53주가 없는 해의 `W53`)도 `400 invalid_request`다.
+- `todos`(2026-10-25 추가, 없으면 `[]`)는 그 기간(`period_bounds`, 첫날~마지막 날)에 하려는 열린 할 일을 날짜순으로 준다(초안 뺌). 앱은 탭에서 우선순위 아래 "{기간} 할 일"로 줄마다 날짜를 붙여 보인다. 이것이 없을 때는 이번 달 탭에 우선순위만 나와 "10월 28일 할 일"이 보이지 않았다.
 
 #### 6.3.8 `GET /drafts` (운영 앱용)
 
@@ -727,12 +740,18 @@ data: [DONE]
 | `finish` | 마지막 조각. 그 뒤 `[DONE]` |
 | `error` | 프로토콜 수준 문제(요청이 잘못돼 스트림 도중 끊을 때)만. 두뇌 오류, 하루 상한, 사용 한도, 로그인 문제는 SP1과 같은 고정 문구를 **글 조각**으로 보내고 정상 `finish`로 끝낸다 |
 
-- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다. 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 저장한 `confirmation`이 있으면 그 뒤에 `data-activity`(`activity_ids`는 그 메시지의 `activity.inbound_id`로 찾고, `undo_ids`는 지금 시각으로 판정, 6.4.4)로 보낸다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`·`confirmation`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
+- **끊김**: 브라우저 연결이 끊겨도 두뇌 호출과 쓰기는 끝까지 간다(멈추는 길은 아래 "멈추기" 하나다). 답은 원문 기록과 `GET /conversations/{id}/messages`(6.4.6)로 받는다. 같은 `client_msg_id`로 다시 보내면 두뇌를 다시 부르지 않고 저장한 답을 글 조각 하나로 돌려준다. 저장한 `confirmation`이 있으면 그 뒤에 `data-activity`(`activity_ids`는 그 메시지의 `activity.inbound_id`로 찾고, `undo_ids`는 지금 시각으로 판정, 6.4.4)로 보낸다. 처리가 끝났으면 `api_idempotency.response_json.reply_text`·`confirmation`, 아직 처리 중이면 M8이다(`inbound_pending.reply_text`는 M5에서 행과 함께 지워지므로 재생의 근거로 쓰지 않는다). 처리 중이면 `data-status: queued`를 보내고 끝날 때까지 기다린다.
 - 명령이나 글이 아닌 메시지에 답하는데 열린 앱 대화가 없으면 `x-conversation-id`를 보내지 않는다.
 - 큐에서 기다리다 다른 대화로 다시 골라진 메시지도 `messageId`를 그대로 둔다.
 - 글 조각을 일부 보낸 뒤 두뇌 호출을 다시 하면 새 `start-step`과 새 글 id로 이어 간다. 재생에는 실제로 보낸 글만 쓴다.
 - 하루 상한, 사용 한도, 로그인 문제의 고정 문구 답은 원문 기록에 `[-]` 줄로 남는다.
 - 하루 두뇌 호출 상한 60회는 두 통로가 함께 쓴다.
+- **멈추기** `POST /chat/stop`: 요청 `{"client_msg_id": "6f0c…"}`(그 `/chat`에 보낸 것), 응답 `200 {"state": "stopped" | "done" | "unknown"}`. 인증·CORS는 다른 경로와 같고, 쓰기는 디스패처의 동기 함수 `stop_message`로만 한다(ADR 0007). 로그 `chat_stopped`에는 상태만 남긴다.
+  - **큐에서 기다림**: 두뇌를 부르지 않는다. 원문 기록에 사용자 줄과 비서 줄 `멈췄어요.`(`STOPPED_REPLY`)를 쓰고, `api_idempotency`(`reply_text` = `멈췄어요.`) 기록 + `inbound_pending` 행 삭제(M5)로 마친 뒤, 붙은 스트림(M8 포함)을 그 글 조각과 `finish`로 닫는다. `stopped`.
+  - **두뇌가 답하는 중**(재시도 사이 기다림 포함): 그 호출을 anyio 취소 범위로 끊는다(호출 시간 상한과 같은 길, SDK가 CLI 자식을 정리한다). 이미 한 쓰기는 남는다(활동 기록, 되돌리기). 답은 보통 답의 길로 마친다: 이미 보낸 글 + `멈췄어요.`(새 글 블록), 확인 문구는 `data-activity`, 하네스 화면 조각, 재생할 답(`reply_text` = 보낸 글 + 빈 줄 + `멈췄어요.`), 원문 기록. 이 메시지로 두뇌를 한 번이라도 불렀으면 그 대화의 `session_id`를 비운다(세션 파일에 반쯤 쓴 차례가 남았을 수 있다). 끊기 직전 호출이 사용 한도로 끝났으면 `limited_until`은 그대로 기록한다: 다음 메시지는 새 세션 + 이 대화의 지난 내용(요약 또는 최근 원문)으로 시작한다. 앱 메시지는 묶지 않으므로(M2) 멈추는 것은 그 메시지 하나다. `stopped`.
+  - **행만 남았다**(처리 중 예외 뒤, 처리 자리가 없다): 다시 넣지 않고 큐에서 기다린 것과 같이 마친다. `stopped`.
+  - **마지막 두뇌 호출 뒤**(그 답으로 마치는 중)이거나 **이미 끝났다**(`api_idempotency`에 `chat` 답이 있다): 아무것도 바꾸지 않는다. `done`. **받은 적 없다**: `unknown`.
+  - 멈춘 뒤 같은 `client_msg_id`의 `/chat`은 저장한 멈춘 답을 재생한다(두뇌를 다시 부르지 않는다). 운영 앱은 멈춤을 끊김으로 보지 않는다: 다시 보내지 않고, 멈춤 요청이 실패해도(오프라인, 이 경로가 없는 옛 BE의 404) 앱에서는 멈춘다. 그때 BE는 끝까지 답하고, 그 답은 대화 기록(같은 비서 줄 id)으로 보인다.
 
 #### 6.4.2 `POST /actions` (운영 앱용)
 
@@ -746,7 +765,7 @@ data: [DONE]
 |---|---|---|
 | `add_task` | title, areas, planned_for?, scheduled_at?, parent_id?, note? | low |
 | `update_task` | id, title?, areas?, note?, scheduled_at? | low |
-| `move_task` | id, planned_for | low |
+| `move_task` | id, planned_for | low. 시각이 있는 할 일의 날짜를 바꾸면 `confirm`(앱 통로만, 텔레그램 버튼은 바로. SP6 8장). 열린(`open`) 할 일만 옮긴다(아니면 `rejected` "열린 할 일만 날짜를 옮길 수 있어요.") |
 | `complete_task` | id | low |
 | `reopen_task` | id | low |
 | `drop_task` | id | low. 그 할 일이 지금 기간 우선순위이거나 열린 첫 걸음이 있으면 `confirm` |
@@ -761,6 +780,9 @@ data: [DONE]
 | `unpin_card` | id | low |
 | `reorder_cards` | ids (새 순서) | low |
 | `decline_confirm` | confirm_token | low, 되돌릴 수 없음. 확인 카드의 "그대로 두기". 아무것도 바꾸지 않고 토큰을 `declined`로 닫는다 |
+| `hide_moment` | id (이룬 순간, SP8 6.4) | low. 이미 숨겼으면 `{"already": true}`. 없는 순간은 `404 not_found`(정수가 아닌 `id`도 같은 `404`, 세 순간 동작 모두) |
+| `unhide_moment` | id | low. 숨기지 않은 순간은 `{"already": true}`. 없는 순간은 `404 not_found` |
+| `delete_moment` | id | `confirm`(앱: "이 순간을 지울까요? 되돌릴 수 없어요."), 되돌릴 수 없음(행을 지운다). 없는 순간은 `404 not_found` |
 
 `propose_tasks`, `add_milestone`, `propose_chapter`, `grant_xp`는 없다. 제안과 경험치 부여는 비서(두뇌)의 일이다.
 
@@ -771,6 +793,7 @@ data: [DONE]
 | 적용 | 200 | `{"status": "applied", "activity_id": 913, "undo_id": 913, "result": {…도구 결과}, "confirmation": "✓ 완료: 운동", "xp": {"gained": 10, "level_up": null}}` |
 | 확인 필요 | 200 | `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "이번 분기 우선순위 3개를 바꿔요", "expires_at": "…"}`. 같은 요청에 `confirm_token`을 넣어 다시 보내면 적용한다. 토큰은 `pending_confirms`에 두고 10분 유효하다. 회차 차례에서 생긴 토큰(10.1)도 같은 길로 확인한다: `{"action": <토큰의 action>, "args": <토큰의 args>, "confirm_token": …}`. 이미 쓰였거나 만료된 토큰은 `409 conflict` |
 | 거절 | 422 | `{"status": "rejected", "activity_id": null, "error": {"code": "rejected", "message": "<도구 오류 문구>"}}` |
+| 없는 대상 | 404 | `{"error": {"code": "not_found", "message": "없는 순간이에요."}}`. 도구 결과에 `error_code: "not_found"`가 있을 때만(SP8 6.4, 이룬 순간 동작). 그 밖의 도구 오류는 위의 422 |
 
 - `needs_confirm`은 `/actions`에서 **앱 통로 요청에만** 적용한다. 텔레그램 버튼과 `scheduler`는 SP1처럼 바로 적용한다(누름이 곧 승인이다).
 - `undo_id`는 되돌릴 수 있을 때만 있고, 값은 `activity_id`와 같다(따로 만들지 않는다). `risk = confirm`으로 적용한 변경은 `undo_id`가 없다.
@@ -808,6 +831,10 @@ data: [DONE]
 | `condition_recorded`, `ladder_recorded`, `area_scores_recorded` | 이전 행으로, 없었으면 행 삭제 |
 | `milestones_confirmed`, `chapters_confirmed` | `draft`로, `draft_since` = 되돌린 시각(3일을 다시 센다. 오래된 사건의 확정을 되돌려도 다음 날 사라지지 않는다). 칭호도 지운다(칭호는 원장이 아니다) |
 | `card_pinned`, `card_unpinned`, `cards_reordered` | 반대로 |
+| `moment_hidden` | `hidden_at = NULL`(다시 보임). 그 뒤 같은 순간(`moment:<id>`)을 다시 보이거나 지웠으면 U3 `409 superseded`(SP8 6.5) |
+| `moment_unhidden` | 이전 `hidden_at`으로(다시 숨김). U3은 위와 같다 |
+| `moment_deleted` | 되돌릴 수 없음(`422 not_undoable`, 행을 지웠다) |
+| `moments_saved` | 되돌릴 수 없음(`422 not_undoable`, 하루 끝 작업. 숨기기·지우기로 고친다) |
 
 응답: `200 {"status": "undone", "activity_id": 920, "undone": 913, "confirmation": "↩ 되돌림: 운동 완료"}`.
 
@@ -948,13 +975,14 @@ data: [DONE]
 
 SP1 5.3 표에 통로를 더한 것이다. 위에서부터 처음 맞는 규칙을 쓴다.
 
+0. **앱이 `resume_conversation_id`를 보냄**(SP9 스펙 7.3, 목록에서 고른 대화): 그 대화가 앱 통로이고 지우지 않았으면 1~5번보다 먼저 그 대화 쪽으로 간다. `checkin_id`가 함께 와도 0번이 먼저다(앱은 체크인 칩·체크인 화면의 메시지에 `checkin_id`만 싣는다). 이미 이어 갈 수 있으면(열린 `chat`은 30분과 상관없이, 2시간 안의 `plan`) 다시 열기 없이 그 대화. 닫힌 `chat`은 열린 다른 앱 `chat`·`plan`을 닫고 다시 연다. `run`은 답장 창 안이면 1번처럼 그 회차의 앱 쪽 회차 대화, 창이 지났으면(또는 닫힌 `plan`이면) 그 대화를 잇는 새 `chat`(`continued_from`, 첫 호출 앞머리에 그 대화의 요약)이고, 그 새 `chat`이 열려 있는 동안 같은 id는 그리로 간다. 텔레그램 대화, 없는 대화, 지운 대화면 1번부터.
 1. **앱이 `checkin_id`를 보냄**: 그 회차가 보낸 시각 기준 답장 창 안이면 그 회차의 **앱 쪽 회차 대화**로. 없으면 아래 "가르기"로 만든다. 창 밖이면 2번부터.
 2. 같은 통로에 열린 `plan` 대화(2시간)가 있으면 그것.
 3. **회차 대화**: 보낸 시각 이전에 열린 가장 최근 `run` 대화를 **통로와 상관없이** 하나 본다(SP1 스펙 갭 7 규칙 1~4: 전달이 끝났고 답장 창 안). 맞으면 그 회차의 **이 통로 쪽** 회차 대화로 간다. 이 통로 쪽이 없으면 가르기로 만든다.
 4. 같은 통로의 30분 이내 `chat` 대화.
 5. 새 `chat` 대화(이 통로).
 
-**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다.
+**가르기**(회차 대화를 다른 통로로 이어 가기): 회차의 두뇌 호출은 한 번, 그 회차를 전한 통로의 `run` 대화에서 일어난다(7.3). 다른 통로에서 그 회차에 답하면 그 통로에 `kind = run`, 같은 `run_id`, `forked_from = 원래 대화`인 대화를 열고, 첫 두뇌 호출을 `resume = 원래 session_id`, `fork_session = True`로 한다(S11). 그래서 두뇌는 회차 내용을 알고 시작하지만 그 뒤 세션은 통로마다 따로다. 가르기가 안 되면(같은 session id를 돌려주는 것도 안 된 것으로 친다) SP1 resume 실패 대체 경로를 쓰되(최근 줄은 합쳐 20줄), 원래 대화의 회차 본문(`runs.outbound_text`)을 앞에 붙인다. **예외(SP8 6.7)**: 원래 대화가 앱 쪽이고 새 대화가 텔레그램 쪽이면 가르지 않고 원래 대화의 원문도 붙이지 않는다(회차 본문과 이 대화의 원문만). 앱 대화의 `get_status`가 준 이룬 순간의 글이 텔레그램 통로 두뇌로 넘어가지 않게 한다.
 
 ### 7.3 회차 전달과 하루 3회 상한
 
@@ -1108,7 +1136,7 @@ SP1 5.8 머리글 끝에 통로를 붙이되, **앱 통로의 머리글에만** 
 
 | # | 규칙 |
 |---|---|
-| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다 |
+| A1 | **회차 차례**: 회차를 실행하는 두뇌 호출(`_RunJob`, `RunContext.run_id`가 있고 `inbound_id`가 없음. 묶음에 사용자 메시지가 없음)이다. 통로와 상관없이 적용한다. SP9(스펙 5.5, ADR 0015): 회차 차례의 `create_event`(그리고 시각류를 바꾸는 `update_event`, `delete_event`)는 `ui_confirm`이다. 할 일은 `scheduled_at`을 받지 않으므로 아래 A2의 `scheduled_at` 바꾸는 `update_task`·시각 있는 할 일의 `move_task` 확인은 없어졌다 |
 | A2 | 회차 차례에서 아래 도구는 **아무것도 바꾸지 않고** `{"status": "needs_confirm", "confirm_token": "ct_…", "summary": "<확인 문구 한 줄>"}`을 돌려준다. `pending_confirms`(`origin = run_turn`, 만료 = 그 회차 답장 창 끝)에 남기고 ToolEvent `confirm_requested`를 쌓는다: `drop_task`, `set_priorities`(모든 주기), `scheduled_at`을 바꾸는 `update_task`, `scheduled_at`이 있는 할 일의 `move_task`(날짜를 옮기면 `scheduled_at`도 바뀐다, SP1 5.5) |
 | A3 | **사용자 메시지에 답하는 차례**(`inbound_id`가 있음)에서는 위 도구가 SP1 그대로 바로 적용된다. 사용자의 요청이 곧 승인이다. 회차 대화에 사용자가 답한 차례도 여기다 |
 | A4 | `add_task`는 어느 차례에서든 바로 적용한다(SP1: 사용자가 직접 말한 할 일에만 쓴다). 비서의 제안은 SP1처럼 `propose_tasks` 초안이다 |

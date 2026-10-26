@@ -1,6 +1,9 @@
 import { Fragment, useCallback, useId } from "react";
-import type { Status, StatusStat } from "../api/types.gen";
-import { StatBar } from "../components/StatBar";
+import type { Status, StatusBody, StatusStat } from "../api/types.gen";
+import { BodyLine } from "../components/BodyLine";
+import { MomentsPanel } from "../components/MomentsPanel";
+import { RecentAreas } from "../components/RecentAreas";
+import { StatBar, rampStep } from "../components/StatBar";
 import { StateNotice } from "../components/StateNotice";
 import { HpCells } from "../components/HpCells";
 import { XpBar } from "../components/XpBar";
@@ -16,20 +19,32 @@ function shortPeriod(prev: string, current: string | null): string {
   return current !== null && prev.slice(0, 4) === current.slice(0, 4) ? prev.slice(5) : prev;
 }
 
-function StatRow({ stat: s, latest }: { stat: StatusStat; latest: string | null }) {
+function StatRow({ stat: s, latest, body }: { stat: StatusStat; latest: string | null; body: StatusBody | null }) {
   const older = s.score !== null && s.period !== null && s.period !== latest;
   return (
     <li className="stat" data-area={s.area} data-debuff={s.debuff || undefined}>
-      <span className="stat-name">{s.label}</span>
-      <StatBar label={s.label} score={s.score} />
+      <span className="stat-name">
+        <span className="area-dot" aria-hidden="true" />
+        {s.label}
+      </span>
+      <StatBar label={s.label} score={s.score} bonus={s.bonus} />
       <span className="stat-value num">
-        {s.score === null ? <span className="meta">{T.noScore}</span> : s.score}
+        {s.score !== null && <span className="stat-step" data-step={rampStep(s.score)} aria-hidden="true" />}
+        {s.score === null || s.effective_score === null ? (
+          <span className="meta">{T.noScore}</span>
+        ) : s.bonus > 0 ? (
+          s.effective_score.toFixed(1)
+        ) : (
+          s.effective_score
+        )}
         {older && <span className="meta"> {T.olderPeriod(s.period!)}</span>}
       </span>
+      <span className="stat-sub meta">{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
       {s.debuff && s.prev_score !== null && s.prev_period !== null && (
         <span className="stat-debuff">{T.debuff(shortPeriod(s.prev_period, s.period), s.prev_score)}</span>
       )}
       {s.debuff && s.recovery_quest && <span className="stat-quest">{T.recovery(s.recovery_quest)}</span>}
+      {s.area === "health" && <BodyLine body={body} />}
     </li>
   );
 }
@@ -54,8 +69,8 @@ export function StatusView({ status: s }: { status: Status }) {
   const latest = scored.length > 0 ? scored.map((x) => x.period!).sort().at(-1)! : null;
   const offersQuest = s.daily_quests.length > 0 || s.stats.some((x) => x.debuff && x.recovery_quest);
   return (
-    <>
-      <section className="panel hero" aria-label={T.level(s.level)}>
+    <div className="panels">
+      <section className="panel panel-wide hero" aria-label={T.level(s.level)}>
         <XpBar level={s.level} into={s.xp_into_level} forNext={s.xp_for_next} />
         <HpCells score={s.hp.score} />
       </section>
@@ -67,11 +82,15 @@ export function StatusView({ status: s }: { status: Status }) {
         ) : (
           <ul className="stats">
             {s.stats.map((x) => (
-              <StatRow key={x.area} stat={x} latest={latest} />
+              <StatRow key={x.area} stat={x} latest={latest} body={s.body} />
             ))}
           </ul>
         )}
       </section>
+
+      <RecentAreas stats={s.stats} />
+
+      <MomentsPanel moments={s.moments} />
 
       <section className="panel" aria-labelledby={questsId}>
         <h2 id={questsId}>{T.mainQuests}</h2>
@@ -107,7 +126,7 @@ export function StatusView({ status: s }: { status: Status }) {
         {offersQuest && <p className="hint meta">{T.take}</p>}
       </section>
 
-      <section className="panel" aria-label={`${T.titles}, ${T.recentXp}`}>
+      <section className="panel panel-wide" aria-label={`${T.titles}, ${T.recentXp}`}>
         <div className="row">
           <h2>{T.titles}</h2>
           {s.titles.length === 0 ? <p className="empty">{T.titlesEmpty}</p> : <p className="line">{s.titles.map((t) => t.title).join(" · ")}</p>}
@@ -123,7 +142,7 @@ export function StatusView({ status: s }: { status: Status }) {
           )}
         </div>
       </section>
-    </>
+    </div>
   );
 }
 

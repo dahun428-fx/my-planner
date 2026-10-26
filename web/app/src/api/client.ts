@@ -1,5 +1,5 @@
 import { type Conn, loadConn, reportResult } from "../lib/connection";
-import type { Health } from "./types.gen";
+import type { DeviceList, Health, PairBody, PairCreated, PairResult, PairStatus } from "./types.gen";
 import { type ModelName, validateModel } from "./validate";
 
 export type ApiResult<T> =
@@ -21,6 +21,11 @@ export interface FetchOpts {
    * out of it says nothing about the connection: the answer is `error` "timeout", not offline.
    */
   timeoutMs?: number;
+  /**
+   * No `Authorization` header, and a 401 keeps its error code (`POST /pair`, device pairing spec 5.3:
+   * `bad_code` and an old BE's `unauthorized` mean different things). Use with `conn`.
+   */
+  anonymous?: boolean;
 }
 
 const TIMEOUT_MS = 10_000;
@@ -36,7 +41,8 @@ async function request<T>(method: string, path: string, opts: FetchOpts, conn: C
   if (opts.signal?.aborted) ac.abort();
 
   try {
-    const headers: Record<string, string> = { Authorization: `Bearer ${conn.token}`, Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (!opts.anonymous) headers.Authorization = `Bearer ${conn.token}`;
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
     let res: Response;
     try {
@@ -54,7 +60,7 @@ async function request<T>(method: string, path: string, opts: FetchOpts, conn: C
       return { kind: "offline" };
     }
 
-    if (res.status === 401) return { kind: "unauthorized" };
+    if (res.status === 401 && !opts.anonymous) return { kind: "unauthorized" };
     if (res.status === 429) return { kind: "rate_limited" };
 
     let json: unknown = null;
@@ -106,4 +112,29 @@ export async function getHealth(conn?: Conn): Promise<ApiResult<Health>> {
     return validateModel("SafeModeHealth", r.data) ? { kind: "safe_mode" } : { kind: "error", status: 200, code: "shape" };
   }
   return validateModel("Health", r.data) ? { kind: "ok", data: r.data as Health } : { kind: "error", status: 200, code: "shape" };
+}
+
+// ---- device pairing (spec 4.5, 5) -----------------------------------------------------------------
+
+// `POST /pair` with the code instead of a key. A 401 comes back as `error` with its code
+// (`bad_code`, or `unauthorized` from a BE that has no `/pair` yet).
+export function postPair(beUrl: string, body: PairBody): Promise<ApiResult<PairResult>> {
+  return apiFetch<PairResult>("POST", "/pair", { conn: { beUrl, token: "" }, body, model: "PairResult", anonymous: true });
+}
+
+export function getDevices(): Promise<ApiResult<DeviceList>> {
+  return apiGet<DeviceList>("/devices", "DeviceList");
+}
+
+// `conn` when the caller holds the connection itself (disconnecting: not reported to the provider).
+export function deleteDevice(id: number, conn?: Conn): Promise<ApiResult<null>> {
+  return apiFetch<null>("DELETE", `/devices/${id}`, { conn });
+}
+
+export function createPairCode(): Promise<ApiResult<PairCreated>> {
+  return apiFetch<PairCreated>("POST", "/devices/pair", { model: "PairCreated" });
+}
+
+export function getPairStatus(signal?: AbortSignal): Promise<ApiResult<PairStatus>> {
+  return apiFetch<PairStatus>("GET", "/devices/pair", { model: "PairStatus", signal });
 }

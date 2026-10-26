@@ -75,14 +75,26 @@ export function checkHtml(html) {
   return { problems, inlineScripts, inlineStyles };
 }
 
+/** The pictogram sprite (pages/_document) is drawn once, as the first element of <body>; null when it is. */
+export function checkSprite(html) {
+  const sprites = [...html.matchAll(/class\s*=\s*["']?pictogram-sprite(?![\w-])/gi)].length;
+  if (sprites !== 1) return `has ${sprites} sprites`;
+  const body = html.match(/<body\b[^>]*>\s*/i);
+  const rest = body ? html.slice(body.index + body[0].length) : "";
+  return /^<svg\b[^>]*class\s*=\s*["']?pictogram-sprite(?![\w-])/i.test(rest) ? null : "is not the first child of <body>";
+}
+
 export function checkDir(dir) {
   const files = htmlFiles(dir);
   const problems = [];
   for (const file of files) {
     const rel = relative(dir, file).split("\\").join("/");
-    for (const p of checkHtml(readFileSync(file, "utf8")).problems) {
+    const html = readFileSync(file, "utf8");
+    for (const p of checkHtml(html).problems) {
       problems.push(`${rel}:${p.line}: ${p.what}`);
     }
+    const sprite = checkSprite(html);
+    if (sprite) problems.push(`pictogram sprite: ${rel} ${sprite}`);
   }
   return { files: files.length, problems };
 }

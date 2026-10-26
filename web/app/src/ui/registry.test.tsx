@@ -54,7 +54,7 @@ describe("UiPart", () => {
   });
 
   it("ui_habit_check_registered", async () => {
-    expect(registryNames).toContain("ui_habit_check");
+    expect(registryNames()).toContain("ui_habit_check");
     const habits = [makeHabit(1, "물 마시기", { week_count: 4, checked: true })];
     renderWithProviders(<UiPart name="ui_habit_check" props={{ date: "2026-10-24" }} data={{ habits }} ctx={makeCtx({ where: "checkin" })} />);
     expect(await screen.findByRole("checkbox", { name: copy.parts.checkLabel("물 마시기") })).toBeChecked();

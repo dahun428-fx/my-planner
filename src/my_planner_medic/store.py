@@ -141,9 +141,37 @@ class MedicStore:
         )
         self._db.commit()
 
+    def kv_delete(self, key: str) -> None:
+        self._db.execute("DELETE FROM kv WHERE key=?", (key,))
+        self._db.commit()
+
     def kv_json_get(self, key: str) -> Any | None:
         raw = self.kv_get(key)
         return None if raw is None else json.loads(raw)
 
     def kv_json_set(self, key: str, value: Any) -> None:
         self.kv_set(key, json.dumps(value, ensure_ascii=False))
+
+    # --- 알림 (스펙 6장). `sent_at`이 NULL이면 상한에 막혀 쌓인(또는 보내지 못한) 알림이다 -------
+
+    def sent_notices(self, logical_date: str) -> int:
+        """그 논리적 날짜에 보낸 알림 수(쌓인 것은 세지 않는다)."""
+        row = self._db.execute(
+            "SELECT COUNT(*) FROM notices WHERE logical_date=? AND sent_at IS NOT NULL", (logical_date,)
+        ).fetchone()
+        return int(row[0])
+
+    def add_notice(self, logical_date: str, text: str, sent_at: str | None) -> None:
+        self._db.execute(
+            "INSERT INTO notices(logical_date, text, sent_at) VALUES(?, ?, ?)", (logical_date, text, sent_at)
+        )
+        self._db.commit()
+
+    def spilled_notices(self) -> list[tuple[int, str]]:
+        """쌓인 알림 (id, 문구), 쌓인 순서."""
+        rows = self._db.execute("SELECT id, text FROM notices WHERE sent_at IS NULL ORDER BY id").fetchall()
+        return [(int(r[0]), str(r[1])) for r in rows]
+
+    def mark_notices_sent(self, ids: list[int], sent_at: str) -> None:
+        self._db.executemany("UPDATE notices SET sent_at=? WHERE id=?", [(sent_at, i) for i in ids])
+        self._db.commit()

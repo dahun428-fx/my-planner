@@ -4,6 +4,7 @@ import { clear } from "idb-keyval";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { saveConn } from "../lib/connection";
+import catalogJson from "../test/fixtures/catalog.json";
 import health from "../test/fixtures/health.json";
 import { renderWithProviders, TEST_TOKEN } from "../test/render";
 import { server } from "../test/server";
@@ -26,7 +27,7 @@ describe("CatalogProvider", () => {
       http.get(`${OTHER}/ui/catalog`, () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })),
     );
     renderWithProviders(<Version />);
-    expect(await screen.findByText("2026-10-24.2")).toBeInTheDocument();
+    expect(await screen.findByText(catalogJson.version)).toBeInTheDocument();
     act(() => saveConn({ beUrl: "https://other.example.ts.net", token: TEST_TOKEN }));
     await waitFor(() => expect(screen.getByText("no-catalog")).toBeInTheDocument());
   });

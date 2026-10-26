@@ -7,6 +7,7 @@ import catalogJson from "../test/fixtures/catalog.json";
 import { TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
 import { type Catalog, loadCatalog, makePropsCheck } from "./catalog";
+import { registerChatParts } from "./chat/registerChatParts";
 import { registryNames } from "./registry";
 
 const catalog = catalogJson as Catalog;
@@ -32,7 +33,7 @@ describe("catalog", () => {
     const hits = serve();
     await set("catalog", { ...catalog, beUrl: TEST_BE_URL });
     const got = await loadCatalog(catalog.version);
-    expect(got?.version).toBe("2026-10-24.2");
+    expect(got?.version).toBe(catalogJson.version);
     expect(hits.n).toBe(0);
   });
 
@@ -57,7 +58,7 @@ describe("catalog", () => {
     serve(() => HttpResponse.error());
     await set("catalog", { ...catalog, beUrl: TEST_BE_URL });
     const got = await loadCatalog("2026-10-25.1");
-    expect(got?.version).toBe("2026-10-24.2");
+    expect(got?.version).toBe(catalogJson.version);
   });
 
   it("a catalog kept for another BE (or with no BE noted) is not used", async () => {
@@ -109,8 +110,14 @@ describe("catalog", () => {
   });
 
   it("catalog names match registry", () => {
-    expect(catalog.version).toBe("2026-10-24.2");
-    expect(Object.keys(catalog.components).sort()).toEqual([...registryNames].sort());
-    expect(registryNames).toHaveLength(11);
+    // The chat bundle's four (SP6 11.2) and ui_events (SP9 9.8) join the first screen's eleven once the sheet has loaded.
+    registerChatParts();
+    expect(Object.keys(catalog.components).sort()).toEqual([...registryNames()].sort());
+    expect(registryNames()).toHaveLength(16);
+  });
+
+  it("catalog version has the BE's form", () => {
+    // The fixture is the BE's catalog() as is (10.5: YYYY-MM-DD.n); no test pins a version string.
+    expect(catalog.version).toMatch(/^\d{4}-\d{2}-\d{2}\.\d+$/);
   });
 });

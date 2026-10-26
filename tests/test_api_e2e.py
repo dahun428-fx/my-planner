@@ -33,8 +33,7 @@ async def test_health_after_morning_brief(tmp_path):
 
 async def test_today_after_chat_and_checkin(tmp_path):
     # 월요일 09:00:30. 낮에 텔레그램으로 일정을 넣고, 저녁 체크인이 초안 둘을 제안한다
-    add = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-10-27",
-                        "scheduled_at": "2026-10-27T14:00:00+09:00"})
+    add = ("create_event", {"title": "치과", "date": "2026-10-27", "time": "14:00"})
     propose = ("propose_tasks", {"tasks": [{"title": "물 마시기", "areas": ["health"]},
                                            {"title": "스트레칭", "areas": ["health"]}]})
     script = [FakeTurn([add], "치과 넣었어요"), FakeTurn([propose], "오늘 어떠셨어요?")]
@@ -58,8 +57,9 @@ async def test_today_after_chat_and_checkin(tmp_path):
         after = await (await env.get(f"/checkins/{item['id']}")).json()
 
     assert today["date"] == "2026-10-27"
-    (dentist,) = [x for x in today["todos"] if x["todo"]["title"] == "치과"]
-    assert dentist["group"] == "scheduled" and dentist["todo"]["scheduled_at"] == "2026-10-27T05:00:00Z"
+    (dentist,) = today["events"]  # SP9: 시각이 있는 일은 일정이다(오늘 일정)
+    assert (dentist["title"], dentist["start"], dentist["remind_min"]) == ("치과", "2026-10-27T05:00:00Z", 10)
+    assert "치과" not in str(today["todos"]) and today["missed_reminders"] == []
     assert after["state"] == "missed"
     assert "물 마시기" not in str(today["todos"])  # 초안은 오늘 목록에 없다
 
@@ -340,7 +340,7 @@ async def test_curve_write_path(tmp_path):
         expired = [r["kind"] for r in env.activity() if r["kind"] == "milestone_drafts_expired"]
 
     assert draft == ([], [])
-    assert code == 200 and body["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 고점)\n칭호: 「꾸민 여행」의 순간"
+    assert code == 200 and body["confirmation"] == "✓ 저장: 꾸민 여행 (2019, 높은 때)\n칭호: 「꾸민 여행」의 순간"
     assert confirmed == (["꾸민 여행"], ["「꾸민 여행」의 순간"])
     assert resp.status == 200
     assert undone == ([], [])
@@ -403,7 +403,7 @@ async def test_story_to_curve(tmp_path):
         left = (env.parts.curve.get_milestone(mid), env.parts.curve.get_milestone(rest))
 
     assert pressed == "confirmed"
-    assert answer == "✓ 저장: 제주 여행 (2019, 고점)\n칭호: 「제주 여행」의 순간"
+    assert answer == "✓ 저장: 제주 여행 (2019, 높은 때)\n칭호: 「제주 여행」의 순간"
     assert [(m["title"], m["date"], m["kind"]) for m in curve["milestones"]] == [("제주 여행", "2019", "high")]
     assert [t["title"] for t in status["titles"]] == ["「제주 여행」의 순간"]
     assert left[0] is not None and left[0].status == "confirmed" and left[1] is None
@@ -484,6 +484,38 @@ async def test_week_of_xp(tmp_path):
     assert telegram.startswith("상태창\n레벨 2 · 경험치 155/200")
     assert after["xp_total"] == 310
     assert (after["recent_xp"][0]["label"], after["recent_xp"][0]["amount"]) == ("쉬는 날", 5)
+
+
+async def test_date_choice_then_move_from_app(tmp_path):
+    """SP6 G-BE2 수용(6.2): 날짜가 분명하지 않은 할 일 → 날짜를 빼고 추가(하네스가 오늘로 채운다) + 날짜 고르기 → 후보
+    누름이 `/actions move_task`로 그 날짜에 둔다. 두뇌는 다시 불리지 않는다. 내용은 꾸며 낸 것이다."""
+    from ui_stream import parse_sse
+
+    add = ("add_task", {"title": "꾸민 치과 예약", "areas": ["health"]})
+    choice = ("ui_date_choice", {"task_id": 1, "question": "치과 예약은 언제 할까요?",
+                                 "candidates": [{"date": "2026-10-27", "note": "오후가 비어요"}, {"date": "2026-10-28"}]})
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 24, 13, 0), script=[FakeTurn([add, choice], "날짜를 골라 주세요.")]) as env:
+        _, raw = await env.chat("다음 주에 치과 예약 추가해 줘")
+        chunks = parse_sse(raw)
+        names = {c["toolCallId"]: c["toolName"] for c in chunks if c["type"] == "tool-input-available"}
+        (part,) = [c["output"] for c in chunks if c["type"] == "tool-output-available"
+                   and names[c["toolCallId"]] == "ui_date_choice"]
+        todo = part["data"]["todo"]
+        status, body = await env.action("move_task", {"id": todo["id"], "planned_for": "2026-10-27"})
+        brain_calls = len(env.brain.calls)
+        env.clock.set(kst(2026, 10, 27, 9, 0))  # 그날이 되면 오늘·이번 주 화면에 있다
+        today = await (await env.get("/today")).json()
+        week = await (await env.get("/week")).json()
+
+    assert "ui_result" not in names.values()
+    assert [c for c in chunks if c["type"] == "data-activity"]
+    assert todo["planned_for"] == "2026-10-24" and todo["status"] == "open"  # 빼면 오늘(SP6 1장 1)
+    assert status == 200 and body["status"] == "applied"
+    assert body["result"]["planned_for"] == "2026-10-27"
+    assert brain_calls == 1  # 누름은 두뇌를 다시 부르지 않는다
+    assert [t["todo"]["id"] for t in today["todos"]] == [todo["id"]] and today["date"] == "2026-10-27"
+    (tue,) = [d for d in week["days"] if d["date"] == "2026-10-27"]
+    assert [t["id"] for t in tue["todos"]] == [todo["id"]]
 
 
 # --- SP7-09: 습관 끝에서 끝까지 (SP7 스펙 1장 완료 조건 1~7) ---
@@ -618,3 +650,42 @@ async def test_habit_copy_has_no_banned_words(tmp_path):
     assert len(s["telegram"]) >= 3 and len(s["answers"]) == 1 and len(s["prompts"]) == 2
     hits = [(w, c) for c in copy for w in HABIT_BANNED if w in c]
     assert hits == []
+
+
+async def test_end_of_day_moments(tmp_path):
+    """하루 끝 이룬 순간(SP8 6.2~6.3, 1장 조건 3): 앱에서 말한 날 → 다음 날 04:01 tick → `save_moments` 하나로 저장."""
+    moment = {"text": "포트폴리오 사례 하나를 끝까지 다듬었어요", "area": "career", "sources": ["chat"]}
+    script = [FakeTurn([], "축하해요!"), FakeTurn([("save_moments", {"date": "2026-10-25", "moments": [moment]})], "")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 13, 0), script=script, moments=True) as env:
+        env.parts.runner.checkins = False  # 회차 없이 하루 한 번 작업만
+        await env.chat("드디어 사례 하나 끝냈다")
+        env.clock.set(kst(2026, 10, 26, 4, 1))
+        await env.tick()
+        rows = env.conn.execute("SELECT date, slot, text, area FROM status_moments").fetchall()
+        day = env.conn.execute("SELECT state, saved FROM status_moment_days WHERE date = '2026-10-25'").fetchone()
+        kinds = [c["run_ctx"].kind for c in env.brain.calls]
+
+    assert kinds == ["chat", "moments"]
+    assert [tuple(r) for r in rows] == [("2026-10-25", 1, moment["text"], "career")]
+    assert tuple(day) == ("done", 1)
+
+
+async def test_body_from_shortcut(tmp_path):
+    """몸 기록(SP8 7장, 1장 조건 8): 단축어가 `BODY_TOKEN`으로 지난 3일을 보냄 → `body_days` → 건강 보너스와 `body`.
+    56일이 지난 행은 하루 한 번 작업이 지운다(`prune_records`). 숫자는 꾸며 낸 것이다."""
+    body_token = "body-token-" + "e" * 40
+    days = {"days": [{"date": "2026-10-23", "steps": 6500}, {"date": "2026-10-24", "steps": 4200, "sleep_minutes": 430},
+                     {"date": "2026-10-25", "sleep_minutes": 380}]}
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 9, 0), body_token=body_token) as env:
+        env.parts.runner.checkins = False
+        resp = await env.post("/body", token=body_token, json=days)
+        assert (resp.status, await resp.json()) == (200, {"saved": 3})
+        status = await (await env.get("/status")).json()
+        env.clock.set(kst(2026, 12, 20, 4, 1))  # 10/25 + 56일
+        await env.tick()
+        left = env.conn.execute("SELECT COUNT(*) FROM body_days").fetchone()[0]
+
+    health = next(s for s in status["stats"] if s["area"] == "health")
+    assert (health["bonus"], health["activity"]["body_days"]) == (0.2, 2)  # 0.5 × (27 + 26) / 28 / 5
+    assert status["body"] == {"last_date": "2026-10-25", "days_7": 3, "steps_avg_7": 5350, "sleep_avg_7": 405}
+    assert left == 1  # 10/23, 10/24는 지웠고 10/25(56일 전)는 남는다

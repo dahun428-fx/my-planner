@@ -84,17 +84,19 @@ export function ConditionDots({
               {shown.map((c) => {
                 const x = dayIndex(c.date) - start + 0.5;
                 return (
-                  <line
-                    key={c.date}
-                    className="cdots-dot"
-                    data-date={c.date}
-                    data-score={c.score}
-                    x1={x}
-                    x2={x}
-                    y1={5 - c.score}
-                    y2={5 - c.score}
-                    vectorEffect="non-scaling-stroke"
-                  />
+                  <g key={c.date}>
+                    <line className="cdots-ring" x1={x} x2={x} y1={5 - c.score} y2={5 - c.score} vectorEffect="non-scaling-stroke" />
+                    <line
+                      className="cdots-dot"
+                      data-date={c.date}
+                      data-score={c.score}
+                      x1={x}
+                      x2={x}
+                      y1={5 - c.score}
+                      y2={5 - c.score}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
                 );
               })}
             </svg>

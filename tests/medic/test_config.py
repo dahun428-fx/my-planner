@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from datetime import time
 from pathlib import Path
 
-from my_planner_medic.config import load_config
+from my_planner_medic.config import MedicConfig, load_config
 
 TOKEN = "t" * 43
 GH = "ghp_secretgithubtoken"
@@ -116,3 +117,73 @@ def test_medic_local_toml_overlays_medic_toml(tmp_path: Path) -> None:
 def test_without_local_files_unchanged(tmp_path: Path) -> None:
     _write_root(tmp_path)
     assert load_config(tmp_path).api_base == "http://127.0.0.1:8787/api/v1"
+
+
+# --- medic-dev (릴리스 흐름 스펙 5.3) ---------------------------------------
+
+
+def _dev_overlay(root: Path) -> None:
+    (root / "config.medic.local.toml").write_text(
+        'branch = "develop"\nbe_task_name = "my-planner-dev"\nverify_minutes = 30\n'
+        "watch_incidents = false\nheartbeat = false\npost_commit_status = true\n",
+        encoding="utf-8",
+    )
+
+
+def test_new_fields_default_to_production_values(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    cfg = load_config(tmp_path)
+    assert (cfg.watch_incidents, cfg.heartbeat, cfg.post_commit_status) == (True, True, False)
+
+
+def test_local_medic_overlay_sets_dev_fields(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    _dev_overlay(tmp_path)
+    cfg = load_config(tmp_path)
+    assert cfg.branch == "develop"
+    assert cfg.be_task_name == "my-planner-dev"
+    assert cfg.verify_minutes == 30
+    assert cfg.watch_incidents is False
+    assert cfg.heartbeat is False
+    assert cfg.post_commit_status is True
+    assert cfg.max_notices_per_day == 5  # 덮지 않은 키는 config.medic.toml 값 그대로
+
+
+def test_dev_role_drops_telegram(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    (tmp_path / "config.local.toml").write_text('[runtime]\nrole = "dev"\n', encoding="utf-8")
+    cfg = load_config(tmp_path)
+    assert cfg.telegram_token is None
+    assert cfg.owner_telegram_id is None
+    assert cfg.github_token == GH  # 텔레그램만 뺀다
+
+
+def test_prod_role_keeps_telegram(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    (tmp_path / "config.local.toml").write_text('[runtime]\nrole = "prod"\n', encoding="utf-8")
+    cfg = load_config(tmp_path)
+    assert (cfg.telegram_token, cfg.owner_telegram_id) == (TG, "42")
+    (tmp_path / "config.local.toml").unlink()
+    cfg = load_config(tmp_path)  # role이 없으면 "prod"
+    assert (cfg.telegram_token, cfg.owner_telegram_id) == (TG, "42")
+
+
+def test_runtime_that_is_not_a_table_does_not_crash(tmp_path: Path) -> None:
+    _write_root(tmp_path)
+    (tmp_path / "config.local.toml").write_text('runtime = "dev"\n', encoding="utf-8")
+    assert load_config(tmp_path).telegram_token == TG
+
+
+def test_vercel_contexts_match_shipped_toml() -> None:
+    """웹 확인의 Vercel 컨텍스트 기본값은 배포하는 config.medic.toml과 같다.
+
+    승격 검사는 2026-10-25부터 Vercel 스테이징 상태를 보지 않는다(배포 흐름 스펙 5.1).
+    """
+    import tomllib
+
+    root = Path(__file__).resolve().parents[2]
+    defaults = {f.name: f.default for f in fields(MedicConfig)}
+    shipped = tomllib.loads((root / "config.medic.toml").read_text(encoding="utf-8"))
+    assert defaults["vercel_context_app"] == shipped["vercel_context_app"]
+    assert defaults["vercel_context_dashboard"] == shipped["vercel_context_dashboard"]
+    assert "\u2013" in defaults["vercel_context_app"]  # en dash

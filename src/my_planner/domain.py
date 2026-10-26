@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -69,6 +70,8 @@ Channel = Literal["telegram", "app"]  # 대화 통로 (SP3-4 스펙 5.1)
 ActivityChannel = Literal["app", "telegram", "scheduler"]  # 활동 통로 (5.2)
 Actor = Literal["secretary", "user"]  # 활동 행위자 (5.2)
 Risk = Literal["low", "confirm"]  # 활동 위험 (5.2, 6.4.2)
+# 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음)
+RunKind = Literal["chat", "run", "moments", "summary"]
 
 
 @dataclass
@@ -96,8 +99,22 @@ class RunContext:
     undo_ids: list[int] = field(default_factory=list)  # 그 가운데 되돌릴 수 있는 것
     # 앱 채팅의 조각 쓰개(`harness.stream.UiMessageWriter`, 6.4.1). 있으면 도구마다 `tool-*` 조각을 쓴다
     stream: Any = None
+    # 이 답에서 두뇌 화면 도구가 스트림에 쓴 조각 수(SP6 10.4 `mcp_adapter.UI_PARTS_PER_REPLY`). 하네스 조각은 세지 않는다
+    ui_drawn: int = 0
+    # 그 조각들의 컴포넌트 이름(그린 순서, SP9c 4.4). 칩 카드 보장이 두뇌가 이미 그린 카드를 본다
+    ui_drawn_names: list[str] = field(default_factory=list)
     # 이 묶음의 도구가 쌓은 경험치와 넘긴 레벨(`status.xp.XpGain`, SP3-4 9.2). 레벨 오름 한 줄은 이것으로만 정한다
     xp: XpGain = field(default_factory=XpGain)
+    # 두뇌 호출의 종류(SP8 6.3). `moments`면 도구는 `save_moments` 하나뿐이다(`mcp_adapter.tool_names_for`)
+    kind: RunKind = "chat"
+    moments_date: date | None = None  # 하루 끝 작업이 정리하는 그 날(M1)
+    moments_refs: frozenset[str] = frozenset()  # 그 입력에 나온 참조(`task:<id>`, `habit:<id>`, `condition`, `chat`, M2)
+    # 두뇌가 호출 중에 처음 본 세션 id(두뇌 구현이 적는다). 시간 초과·취소로 결과가 없어도 순간 호출 뒤
+    # 세션 파일을 지울 수 있게(SP8 6.3, 계획 결정 18)
+    brain_session_id: str | None = None
+    # 앱 퀵 칩(SP9c 4.2). `chip_text`는 메모 칩 차례에만, 가리기·자르기 전 원문(메모리로만, 저장·로그 없음, 4.5)
+    chip: str | None = None
+    chip_text: str | None = None
 
     @property
     def run_turn(self) -> bool:

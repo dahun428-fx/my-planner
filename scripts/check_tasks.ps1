@@ -9,11 +9,13 @@
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1
   powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1 -Root E:\my-planner -NoWake
+  powershell -ExecutionPolicy Bypass -File scripts\check_tasks.ps1 -NoMedic
 #>
 [CmdletBinding()]
 param(
     [string]$Root = '',
-    [switch]$NoWake
+    [switch]$NoWake,
+    [switch]$NoMedic
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,8 +23,9 @@ Set-StrictMode -Version Latest
 
 $MainTask = 'my-planner'
 $WakeTask = 'my-planner-wake'
+$MedicTask = 'my-planner-medic'
 # MSFT_TaskWeeklyTrigger.DaysOfWeek 비트: 일 1, 월 2, 화 4, 수 8, 목 16, 금 32, 토 64
-$DaysMask = @{ weekday = 62; weekend = 65 }
+$DaysMask = @{ weekday = 62; weekend = 65; daily = 127 }
 
 # Windows PowerShell 5.1은 param 기본값을 계산할 때 $PSScriptRoot가 비어 있다
 if (-not $Root) { $Root = Split-Path -Parent $PSScriptRoot }
@@ -102,7 +105,32 @@ if ($null -ne $main) {
     Test-Value "$p State is Running" 'Running' $main.State
 }
 
-# 2. 깨우기 작업
+# 2. 구조 작업 medic
+if ($NoMedic) {
+    $absent = $null -eq (Find-Task $MedicTask)
+    Test-Value "$MedicTask not registered (-NoMedic)" 'True' $absent
+} else {
+    $medic = Find-Task $MedicTask
+    Test-Value "$MedicTask registered" 'True' ($null -ne $medic)
+    if ($null -ne $medic) {
+        $p = $MedicTask
+        Test-Common $p $medic 'scripts\medic_boot.py'
+        Test-Value "$p ExecutionTimeLimit" 'PT0S' $medic.Settings.ExecutionTimeLimit
+        Test-Value "$p Action.WorkingDirectory" $Root @($medic.Actions)[0].WorkingDirectory
+        $mTriggers = @($medic.Triggers)
+        $mLogon = @($mTriggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' })
+        $mTime = @($mTriggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskTimeTrigger' })
+        Test-Value "$p Triggers.Count" 2 $mTriggers.Count
+        Test-Value "$p LogonTrigger.Count" 1 $mLogon.Count
+        Test-Value "$p TimeTrigger.Count" 1 $mTime.Count
+        if ($mTime.Count -eq 1) {
+            Test-Value "$p TimeTrigger.Repetition.Interval" 'PT5M' $mTime[0].Repetition.Interval
+        }
+        Test-Value "$p State is Running" 'Running' $medic.State
+    }
+}
+
+# 3. 깨우기 작업
 if ($NoWake) {
     $absent = $null -eq (Find-Task $WakeTask)
     Test-Value "$WakeTask not registered (-NoWake)" 'True' $absent

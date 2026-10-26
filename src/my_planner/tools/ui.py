@@ -18,12 +18,13 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import PydanticCustomError
 
-UI_CATALOG_VERSION = "2026-10-24.4"
+UI_CATALOG_VERSION = "2026-10-24.5"  # SP9-05: ui_events
 
 AreaName = Literal["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 
 _DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
 _WEEK_PATTERN = r"^\d{4}-W\d{2}$"
+_INSTANT_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$"
 _UNIQUE = {"uniqueItems": True}  # 정수 목록의 서로 다름은 앱 검사기도 본다(빈 곳 10)
 
 
@@ -108,6 +109,27 @@ class HabitCheckProps(_Props):
     """오늘 습관 줄 묶음(SP7 스펙 9장). 지금 값은 BE가 `data.habits`로 붙인다. 달력에 없는 날짜는 도구가 거른다."""
 
     date: str = Field(pattern=_DATE_PATTERN)
+
+
+class EventsItem(_Props):
+    """그날 일정 한 줄(SP9 9.8): BE `EventItem`(5.6)과 같은 모양. `start`·`end`는 시간대 붙은 ISO 8601(하루 종일은 null)."""
+
+    event_id: int
+    date: str = Field(pattern=_DATE_PATTERN)
+    start: str | None = Field(default=None, pattern=_INSTANT_PATTERN)
+    end: str | None = Field(default=None, pattern=_INSTANT_PATTERN)
+    all_day: bool
+    title: str = _text(1, 100)
+    area: AreaName | None = None
+    remind_min: Literal[0, 10, 30, 60, 1440] | None = None
+    repeat: Literal["none", "daily", "weekly", "monthly"]
+    origin: Literal["user", "chat", "migrated"]
+
+
+class EventsProps(_Props):
+    """완성 카드 `ui_events`(SP9 9.8): 그날 일정 1~10개(시각, 제목, 영역 점, 반복 표시). 누르면 스케줄 탭 그날로."""
+
+    items: list[EventsItem] = Field(min_length=1, max_length=10)
 
 
 # --- SP6 기본 부품 열 가지 (스펙 5장) ---
@@ -328,6 +350,7 @@ _COMPONENTS: dict[str, tuple[Origin, type[_Props]]] = {
     "ui_period_list": ("brain", PeriodListProps),
     "ui_block": ("brain", BlockProps),
     "ui_habit_check": ("brain", HabitCheckProps),
+    "ui_events": ("brain", EventsProps),  # SP9 9.8. 앱 통로 두뇌 도구(`APP_ONLY_TOOLS`)
     "ui_todo_draft": ("harness", TodoDraftProps),
     "ui_condition_picker": ("harness", ConditionPickerProps),
     "ui_ladder_picker": ("harness", LadderPickerProps),
@@ -431,10 +454,11 @@ def _where(loc: tuple[Any, ...]) -> str:
     return ".".join(str(p) for p in loc) or "props"
 
 
-def validate_props(component: str, props: Any) -> str | None:
+def validate_props(component: str, props: Any, *, harness: bool = False) -> str | None:
     """카탈로그에 맞으면 None, 아니면 사람용 오류 한 줄 `"{위치}: {code}"`(값은 담지 않는다).
 
-    순서: (1) 스키마와 쌓기 규칙 (2) B9 크기 (3) 두뇌 조각만 글 검사(10.3). 하네스 조각은 (3)을 하지 않는다."""
+    순서: (1) 스키마와 쌓기 규칙 (2) B9 크기 (3) 두뇌 조각만 글 검사(10.3). 하네스 조각은 (3)을 하지 않는다.
+    `harness`: 하네스가 두뇌 쪽 컴포넌트를 낸다(SP9c 4.4 칩 카드). 하네스 조각이므로 (3)을 하지 않는다."""
     entry = _COMPONENTS.get(component)
     if entry is None:
         return "알 수 없는 화면 조각이에요."
@@ -450,7 +474,7 @@ def validate_props(component: str, props: Any) -> str | None:
         return _fail("props" if code in _PROPS_LEVEL else _where(loc), code)
     if len(json.dumps(props, ensure_ascii=False).encode()) > PROPS_MAX_BYTES:
         return _fail("props", "too_large")
-    if origin == "brain":
+    if origin == "brain" and not harness:
         return _text_error(component, props)
     return None
 

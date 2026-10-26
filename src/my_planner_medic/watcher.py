@@ -23,6 +23,7 @@ from .config import MedicConfig
 from .github import RECORD, GitHub, GitHubUnavailable
 from .http import Http
 from .logs import LogCursor, read_new_lines
+from .notify import NotifierLike
 from .redact import allowed_health, allowed_log_row, issue_body, safe_token
 from .schedule import next_run
 from .signals import (
@@ -34,6 +35,7 @@ from .signals import (
 )
 from .store import Incident, MedicStore, iso_utc
 from .tz import zone
+from .webverify import WebVerifier
 
 log = logging.getLogger(__name__)
 
@@ -44,10 +46,11 @@ RECUR_WINDOW = timedelta(hours=24)
 IMPORT_EVERY = timedelta(minutes=30)
 ROWS_KEEP = 20
 ROWS_WINDOW = timedelta(minutes=30)
-ACTIONS_TZ = "Asia/Seoul"  # heartbeat.yml의 "오늘"(스펙 3.5)
+ACTIONS_TZ = "Asia/Seoul"  # watch.yml의 "오늘"(스펙 3.5)
 ACTIVE_STATES = ("open", "repairing", "merged", "deploying", "gave_up")
 CI_MAIN = "ci:main"
 FIXED_COMMENT = "고쳤어요: `main`의 CI가 다시 성공했어요 ({sha})."
+CI_FIXED_TITLE = "main의 CI가 다시 성공했어요"  # 결과 알림 "고쳤어요"의 제목(수리 PR이 없을 때)
 _STALE_RE = re.compile(r"^stale-(\d{4}-\d{2}-\d{2})$")
 _TITLE_PREFIX = "[incident] "
 _ACTIONS_KIND = "actions"
@@ -83,12 +86,17 @@ def _is_imported(fp: str) -> bool:
 
 
 class Watcher:
-    def __init__(self, cfg: MedicConfig, store: MedicStore, gh: GitHub, http: Http, clock: Clock) -> None:
+    def __init__(
+        self, cfg: MedicConfig, store: MedicStore, gh: GitHub, http: Http, clock: Clock,
+        notifier: NotifierLike,
+    ) -> None:
         self._cfg = cfg
         self._store = store
         self._gh = gh
         self._http = http
         self._clock = clock
+        self._notifier = notifier
+        self._web = WebVerifier(cfg, store, gh, notifier, clock)
         self.suppressed = False  # 업데이터가 배포·배포 롤백 동안 켠다
         self._log_dir = cfg.root / "state" / "logs"
         if zone(cfg.timezone) is UTC and cfg.timezone not in ("UTC", "Etc/UTC"):
@@ -111,6 +119,18 @@ class Watcher:
         for sig in signals:
             self._record(sig, records, rows, now)
         self._sync(now, health)
+        self._notifier.flush_spill()  # 쌓인 알림은 다음 아침 회차 뒤 첫 tick에(스펙 6장)
+        if self._cfg.watch_incidents:  # 웹 확인은 GitHub 이슈·상태를 부른다(medic-dev는 끔)
+            self._web.tick()  # 5.1: 웹 장애의 해결 확인
+
+    def heartbeat(self) -> None:
+        """`enabled = false`일 때: 감시 없이 하트비트만(죽은 것으로 보이지 않게)."""
+        if not self._cfg.heartbeat:
+            return
+        try:
+            self._heartbeat(self._clock.now(), self._store.kv_get("deployed_sha") or "unknown")
+        except GitHubUnavailable as exc:
+            log.warning("github_unavailable %s (%d)", exc.kind, exc.status)
 
     def _wake_grace(self, now: datetime) -> bool:
         last = _parse(self._store.kv_get("last_tick_at"))
@@ -226,10 +246,13 @@ class Watcher:
     # --- GitHub ----------------------------------------------------------
 
     def _sync(self, now: datetime, health: dict[str, Any] | None) -> None:
+        if not self._cfg.watch_incidents:  # medic-dev: 개발용 PAT에는 Issues 권한이 없다. 하트비트도 이슈다
+            return
         sha = self._store.kv_get("deployed_sha") or "unknown"
         try:
             try:
-                self._heartbeat(now, sha)
+                if self._cfg.heartbeat:
+                    self._heartbeat(now, sha)
             except GitHubUnavailable as exc:
                 if not exc.rejected:
                     raise  # 연결·인증·한도·5xx: 이번 회차의 GitHub 일을 멈춘다
@@ -274,6 +297,11 @@ class Watcher:
                 n = self._gh.open_incident(inc.fingerprint, part, self._body(inc, health, sha))
             self._synced(inc, now, n)
         elif inc.detail.get("reopen"):
+            if not record:
+                # 닫힌 수리 이슈의 `merged`가 남으면 repair 게이트·sweep이 건너뛴다. 지난 `recurred`는 떼고 다시 달아야
+                # `labeled` 이벤트가 다시 온다(webverify와 같은 방법)
+                self._gh.remove_label(inc.issue_number, "merged")
+                self._gh.remove_label(inc.issue_number, "recurred")
             self._gh.reopen(inc.issue_number, [] if record else ["recurred"])
             self._gh.update_body(inc.issue_number, self._body(inc, health, sha))
             self._synced(inc, now, inc.issue_number)
@@ -347,3 +375,16 @@ class Watcher:
         self._gh.comment(inc.issue_number, FIXED_COMMENT.format(sha=safe_token(sha)[:12]))
         self._gh.close(inc.issue_number)
         self._store.set_state(CI_MAIN, "resolved", resolved_at=iso_utc(now))
+        self._notify_ci_fixed(inc.issue_number)
+
+    def _notify_ci_fixed(self, n: int) -> None:
+        """결과 알림 한 번(6장 "고침" 틀). 수리 PR이 있으면 그 제목·링크, 없으면 위 제목과 이슈 링크."""
+        try:
+            try:
+                pr = self._gh.pr_for_issue(n)
+            except GitHubUnavailable:
+                pr = None
+            title, url = pr or (CI_FIXED_TITLE, self._gh.issue_url(n))
+            self._notifier.fixed(title, url)
+        except Exception as exc:  # noqa: BLE001 - 알림 때문에 상태가 어긋나면 안 된다
+            log.warning("notify_failed %s", type(exc).__name__)

@@ -1,16 +1,61 @@
+import "fake-indexeddb/auto";
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
 import { markdownChunk } from "../components/Markdown";
 import { renderWithProviders } from "../test/render";
 import { MessageView } from "./MessageView";
+import type { ViewPart } from "./parts";
 
 const answer = { id: "m-1-1", role: "assistant" as const, parts: [] };
+const result = (restored: boolean): ViewPart => ({
+  kind: "ui",
+  toolCallId: "c1",
+  name: "ui_result",
+  restored,
+  props: { task_ids: [53] },
+  data: {
+    today: "2026-10-24",
+    items: [
+      {
+        todo: { id: 53, title: "치과 예약", status: "open", planned_for: "2026-10-27", scheduled_at: null },
+        change: "moved",
+        before: { status: null, planned_for: "2026-10-25", scheduled_at: null, title: null },
+        after: { status: "open", planned_for: "2026-10-27", scheduled_at: null, title: null },
+        activity_ids: [931],
+        undo_id: 931,
+      },
+    ],
+  },
+});
 
 describe("MessageView", () => {
-  it("the undo in a confirmation box is off while the sheet is read-only", () => {
-    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: "추가했어요", undoIds: [3] }]} readOnly />);
-    expect(screen.getByRole("button", { name: copy.chat.undo })).toBeDisabled();
+  it("a change is one line, with no button (SP9 9.6)", () => {
+    const confirmation = "✓ 할 일 3개를 내일로 옮겼어요"; // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation, undoIds: [3], activityIds: [3] }]} />);
+    const line = document.querySelector("[data-activity]")!;
+    expect(line).toHaveTextContent(confirmation);
+    expect(line.tagName).toBe("P");
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("a confirmation without the mark gets one (9.6: \"✓ {confirmation}\")", () => {
+    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: "컨디션 7 기록했어요.", undoIds: [], activityIds: [4] }]} />);
+    expect(document.querySelector("[data-activity]")!.textContent).toBe("✓ 컨디션 7 기록했어요."); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: "→ 내일로: 장보기", undoIds: [], activityIds: [5] }]} />);
+    expect(document.querySelectorAll("[data-activity]")[1]!.textContent).toBe("→ 내일로: 장보기"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
+  });
+
+  it("before R4b (no confirmation, only undo ids) the change is still one line of text", () => {
+    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: null, undoIds: [3], activityIds: [3] }]} />);
+    expect(document.querySelector("[data-activity]")).toHaveTextContent(copy.chat.changed);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("no confirmation and nothing to undo draws nothing", () => {
+    renderWithProviders(<MessageView message={answer} parts={[{ kind: "activity", confirmation: null, undoIds: [], activityIds: [1] }]} />);
+    expect(document.querySelector("[data-activity]")).toBeNull();
   });
 
   it("the secretary's text is Markdown; my own stays plain", async () => {
@@ -26,5 +71,40 @@ describe("MessageView", () => {
     expect(container.querySelector('[data-message="m-1-0"] strong, [data-message="m-1-0"] b')).toBeNull();
     expect(container.querySelector('[data-message="m-1-1"] strong')).toHaveTextContent("비서 말");
     expect(screen.getByRole("link", { name: "링크" })).toHaveAttribute("target", "_blank");
+  });
+
+  it("hides the line a ui_result shows, also for an item without undo_id", async () => {
+    const r = result(false) as Extract<ViewPart, { kind: "ui" }>;
+    const items = (r.data!.items as { undo_id: number | null }[]).map((it) => ({ ...it, undo_id: null }));
+    renderWithProviders(<MessageView message={answer} parts={[{ ...r, data: { ...r.data!, items } } as ViewPart, { kind: "activity", confirmation: "옮겼어요", undoIds: [], activityIds: [931] }]} />);
+    expect(await screen.findByText("치과 예약")).toBeInTheDocument();
+    expect(document.querySelector("[data-activity]")).toBeNull();
+  });
+
+  it("hides a confirmation box its ui_result covers", async () => {
+    renderWithProviders(<MessageView message={answer} parts={[result(false), { kind: "activity", confirmation: "옮겼어요", undoIds: [931], activityIds: [931] }]} />);
+    expect(await screen.findByText("치과 예약")).toBeInTheDocument();
+    expect(document.querySelector("[data-activity]")).toBeNull();
+  });
+
+  it("restored message keeps", async () => {
+    renderWithProviders(<MessageView message={answer} parts={[result(true), { kind: "activity", confirmation: "옮겼어요", undoIds: [931], activityIds: [931] }]} />);
+    expect(await screen.findByText("치과 예약")).toBeInTheDocument();
+    expect(document.querySelector("[data-activity]")).toHaveTextContent("옮겼어요");
+  });
+
+  it("an open button moves through onOpen", async () => {
+    const onOpen = vi.fn();
+    const part: ViewPart = { kind: "ui", toolCallId: "c2", name: "ui_period_list", props: { day: "2026-10-24" }, data: { today: "2026-10-24", days: [{ date: "2026-10-24", weekday: "토", is_today: true, todos: [] }], outside: [] } };
+    renderWithProviders(<MessageView message={answer} parts={[part]} onOpen={onOpen} />);
+    await userEvent.click(await screen.findByRole("button", { name: copy.parts.openTodos }));
+    expect(onOpen).toHaveBeenCalledWith("todos_day");
+  });
+
+  it("a result that fails the catalog keeps the box", async () => {
+    const bad = { ...result(false), props: { task_ids: [53, 53] } } as ViewPart; // not unique: the schema refuses it
+    renderWithProviders(<MessageView message={answer} parts={[bad, { kind: "activity", confirmation: "옮겼어요", undoIds: [931], activityIds: [931] }]} />);
+    expect(await screen.findByText(copy.parts.unknown)).toBeInTheDocument();
+    expect(document.querySelector("[data-activity]")).toHaveTextContent("옮겼어요");
   });
 });

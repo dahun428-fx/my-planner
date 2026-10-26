@@ -117,7 +117,7 @@ async def test_confirm_milestones_by_natural_language(tmp_path):
         await env.telegram("응 저장해")
         status = await (await env.get("/status")).json()
 
-    assert env.sender.sent[-1].text == "곡선에 남겼어요.\n\n✓ 저장: 제주 여행 (2019, 고점)\n칭호: 「제주 여행」의 순간"
+    assert env.sender.sent[-1].text == "곡선에 남겼어요.\n\n✓ 저장: 제주 여행 (2019, 높은 때)\n칭호: 「제주 여행」의 순간"
     assert [t["title"] for t in status["titles"]] == ["「제주 여행」의 순간"]
     assert env.sender.sent[-1].draft_milestone_ids == []
 
@@ -162,7 +162,8 @@ async def test_get_curve_masks_sensitive_title(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         tools = env.parts.tools
         a = tools.add_milestone(_ctx(), date="2019", kind="high", title="꾸민 공개", note="꾸민 메모")["id"]
-        b = tools.add_milestone(_ctx(), date="2020", kind="low", title="꾸민 비밀", sensitive=True)["id"]
+        b = tools.add_milestone(_ctx(), date="2020", kind="low", title="꾸민 비밀", sensitive=True,
+                                area="health")["id"]
         tools.confirm_milestones(_ctx(), ids=[a, b])
         tools.record_ladder_score(_ctx(), now=6, note="꾸민 사다리 메모")
         body = tools.get_curve(_ctx(), zoom="year", **{"from": "2019-01-01", "to": "2026-12-31"})
@@ -170,6 +171,7 @@ async def test_get_curve_masks_sensitive_title(tmp_path):
         text = json.dumps(body, ensure_ascii=False)
 
     assert [(m["title"], m["sensitive"]) for m in body["milestones"]] == [("꾸민 공개", False), ("(민감)", True)]
+    assert body["milestones"][1]["area"] is None  # 민감 사건은 영역도 가린다
     assert "꾸민 비밀" not in text and "메모" not in text
     assert all("note" not in m for m in body["milestones"]) and all("note" not in x for x in body["ladder"])
     assert [x["now"] for x in body["ladder"]] == [6]
@@ -194,16 +196,18 @@ async def test_get_status_equals_snapshot(tmp_path):
         t.pop("granted_at")
     for x in (*got["recent_xp"], *snap["recent_xp"]):
         x.pop("at")
+    snap.pop("moments_hidden")  # 두뇌에는 지난 7일의 보이는 순간만 준다(SP8 10.3). 14일 숨긴 수는 `GET /status`만
     assert got == snap
     assert got["titles"][0]["title"] == "「꾸민 결심」을 지나온 사람"
 
 
-async def test_tool_counts_28_and_35(tmp_path):
-    """S12, 10장: 텔레그램 대화 28개(SP1 12 + 곡선 10 + 습관 6, SP7 5.4 H8), 앱 대화 35개(+ 화면 3, 습관 1, 카드 3)."""
+async def test_tool_counts_28_and_39(tmp_path):
+    """S12, 10장: 텔레그램 대화 28개(SP1 12 + 곡선 10 + 습관 6, SP7 5.4 H8), 앱 대화 39개(+ 화면 3, 습관 1, 카드 3,
+    SP6 G-BE2 화면 4)."""
     assert TOOL_NAMES[12:22] == CURVE_TOOLS
-    assert len(tool_names_for("telegram")) == 28
-    assert len(tool_names_for("app")) == 35
-    assert tool_names_for("app") == TOOL_NAMES + APP_ONLY_TOOLS
+    assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 49  # SP6 G-BE2 화면 도구 넷 +4, SP9-09 `find_conversations`, SP9-02 `set_checkin_time`, SP9-03 메모 3, SP9-05 일정 4·`ui_events`(앱에만)
+    assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         names = [t.name for t in build_planner_tools(env.parts.tools, _ctx())]
     assert names == TOOL_NAMES
@@ -269,3 +273,53 @@ async def test_kill_after_curve_tool_then_restart_does_not_rerun(tmp_path, conn,
     assert second.brain.calls == [] and len(rows) == 1
     assert [o.text for o in second.sender.sent] == [FALLBACK_REPLY]  # 초안에는 확인 문구가 없다
     assert second.sender.sent[0].draft_milestone_ids == [rows[0]["id"]]  # 버튼은 도구 기록에서 다시 만든다
+
+
+# --- SP8 8.1: 사건 영역, 챕터 사다리 ---
+
+
+async def test_add_milestone_area_validated(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        ok = tools.add_milestone(_ctx(), date="2019", kind="high", title="꾸민 여행", area="quality_of_life")
+        none = tools.add_milestone(_ctx(), date="2020", kind="low", title="꾸민 감기")
+        bad = [tools.add_milestone(_ctx(), date="2019", kind="high", title="꾸민 것", area=v)
+               for v in ("hobby", "Career", 3, True, ["career"], "")]
+        handlers = {t.name: t.handler for t in build_planner_tools(tools, _ctx())}
+        via_mcp = await handlers["add_milestone"]({"date": "2021", "kind": "turning_point", "title": "꾸민 이사",
+                                                   "area": "finance"})
+        areas = dict(env.conn.execute("SELECT title, area FROM curve_milestones").fetchall())
+
+    assert areas == {"꾸민 여행": "quality_of_life", "꾸민 감기": None, "꾸민 이사": "finance"}
+    assert "error" not in ok and "error" not in none and via_mcp["is_error"] is False
+    assert all(b == {"error": "area는 career, finance, health, relationships, learning, quality_of_life "
+                              "가운데 하나예요."} for b in bad)
+
+
+async def test_propose_chapter_ladder_validated(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        zero = tools.propose_chapter(_ctx(), title="꾸민 바닥", start="2015-01", end="2016-12", ladder=0)
+        ten = tools.propose_chapter(_ctx(), title="꾸민 꼭대기", start="2017-01", ladder=10)
+        none = tools.propose_chapter(_ctx(), title="꾸민 모름", start="2018-01")
+        bad = [tools.propose_chapter(_ctx(), title="꾸민 것", start="2019-01", ladder=v)
+               for v in (11, -1, 6.5, 6.0, "6", True)]
+        got = dict(env.conn.execute("SELECT title, ladder_remembered FROM curve_chapters").fetchall())
+
+    assert all("error" not in x for x in (zero, ten, none))
+    assert got == {"꾸민 바닥": 0, "꾸민 꼭대기": 10, "꾸민 모름": None}
+    assert all(b == {"error": "ladder는 0~10 사이의 정수예요."} for b in bad)
+
+
+async def test_confirm_milestones_event_and_summary_carry_area(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        tools = env.parts.tools
+        a = tools.add_milestone(_ctx(), date="2019", kind="high", title="제주 여행", area="quality_of_life")["id"]
+        b = tools.add_milestone(_ctx(), date="2020-05", kind="low", title="꾸민 비밀", sensitive=True, area="health")["id"]
+        ctx = _ctx()
+        tools.confirm_milestones(ctx, ids=[a, b])
+        (act,) = [r for r in env.activity() if r["kind"] == "milestones_confirmed"]
+
+    data = [e.data for e in ctx.events if e.kind == "milestones_confirmed"]
+    assert [d["area"] for d in data] == ["quality_of_life", "health"]
+    assert act["summary"] == "✓ 저장: 제주 여행 (2019, 높은 때, 삶의 질), (민감) (2020-05, 힘든 때)"

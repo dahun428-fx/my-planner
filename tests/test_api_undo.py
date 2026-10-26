@@ -71,8 +71,12 @@ def _state(env):
         "WHERE t.deleted_at IS NULL ORDER BY a.task_id, a.area")]
     prios = [tuple(r) for r in q("SELECT cadence, period, rank, task_id FROM priorities ORDER BY 1, 2, 3")]
     conds = [tuple(r) for r in q("SELECT date, score, note, recorded_at FROM conditions ORDER BY date")]
+    events = [dict(r) for r in q("SELECT * FROM events WHERE deleted_at IS NULL ORDER BY id")]
+    for e in events:
+        del e["updated_at"]
+    skips = [tuple(r) for r in q("SELECT event_id, occurrence_date FROM event_skips ORDER BY 1, 2")]
     return {"tasks": tasks, "areas": areas, "priorities": prios, "conditions": conds, "habits": habits,
-            "habit_checks": checks}
+            "habit_checks": checks, "events": events, "event_skips": skips}
 
 
 def _ledger(env):
@@ -87,13 +91,14 @@ async def _case_task_added(env):
 
 
 async def _case_task_updated(env):
-    a = await _add(env, scheduled_at="2026-10-24T18:00")
-    return "update_task", {"id": a, "title": "아침 운동", "note": "꾸민 메모", "areas": ["health", "learning"],
-                           "scheduled_at": "2026-10-25T07:00"}, "아침 운동 바꿈"
+    a = await _add(env, planned_for="2026-10-24")
+    return "update_task", {"id": a, "title": "아침 운동", "note": "꾸민 메모", "areas": ["health", "learning"]}, (
+        "아침 운동 바꿈")
 
 
 async def _case_task_moved(env):
-    a = await _add(env, scheduled_at="2026-10-24T18:00")
+    # 앱 통로에서 시각 있는 할 일을 옮기면 확인을 거친다(SP6 8장). 시각 있는 옮김의 되돌리기는 아래 텔레그램 시험
+    a = await _add(env, planned_for="2026-10-24")
     return "move_task", {"id": a, "planned_for": "2026-10-26"}, "운동 옮김"
 
 
@@ -182,6 +187,36 @@ async def _case_habit_unchecked(env):
     return HABIT + "uncheck_habit", {"id": h}, "운동 습관 체크 취소"
 
 
+async def _event(env, **extra):
+    body = await _apply(env, "create_event", {"title": "팀 회의", "date": "2026-10-26", "time": "10:00", **extra})
+    env.clock.advance(minutes=2)
+    return body["result"]["id"]
+
+
+async def _case_event_created(env):
+    return "create_event", {"title": "치과", "date": "2026-10-27", "time": "14:00", "note": "꾸민 메모"}, "치과 일정 추가"
+
+
+async def _case_event_updated(env):
+    e = await _event(env)
+    return "update_event", {"id": e, "time": "11:00", "remind_min": 30, "title": "주간 회의"}, "주간 회의 일정 바꿈"
+
+
+async def _case_event_skipped(env):
+    e = await _event(env, repeat="weekly", weekdays=["mon"])
+    return "delete_event", {"id": e, "scope": "one", "date": "2026-11-02"}, "팀 회의 이번만 건너뜀"
+
+
+async def _case_event_repeat_ended(env):
+    e = await _event(env, repeat="weekly", weekdays=["mon", "wed"])
+    return "delete_event", {"id": e, "scope": "following", "date": "2026-11-02"}, "팀 회의 반복 끝냄"
+
+
+async def _case_event_deleted(env):
+    e = await _event(env, repeat="daily")
+    return "delete_event", {"id": e, "scope": "all"}, "팀 회의 일정 지움"
+
+
 CASES = {
     "task_added": _case_task_added,
     "task_updated": _case_task_updated,
@@ -197,6 +232,12 @@ CASES = {
     "habit_status_set": _case_habit_status_set,
     "habit_checked": _case_habit_checked,
     "habit_unchecked": _case_habit_unchecked,
+    # 스케줄(SP9 5.2)
+    "event_created": _case_event_created,
+    "event_updated": _case_event_updated,
+    "event_skipped": _case_event_skipped,
+    "event_repeat_ended": _case_event_repeat_ended,
+    "event_deleted": _case_event_deleted,
 }
 
 
@@ -383,7 +424,8 @@ async def test_u3_superseded_chain(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT_1300) as env:
         a = await _add(env, planned_for="2026-10-24")
         done = await _apply(env, "complete_task", {"id": a})
-        moved = await _apply(env, "move_task", {"id": a, "planned_for": "2026-10-25"})  # 같은 시각, 더 나중 행
+        # 같은 시각, 더 나중 행(끝난 할 일은 옮길 수 없어 메모를 고친다, SP6 8장)
+        moved = await _apply(env, "update_task", {"id": a, "note": "꾸민 메모"})
         s1, b1 = await undo(env, done["undo_id"])
         s2, _ = await undo(env, moved["undo_id"])
         s3, b3 = await undo(env, done["undo_id"])  # 되돌리기 자체도 활동이다
@@ -897,3 +939,48 @@ async def test_undo_check_of_deleted_habit_superseded(tmp_path):
     assert restored[0] == 409 and restored[1]["error"]["code"] == "superseded"
     assert rechecked[0] == 409 and rechecked[1]["error"]["code"] == "superseded"
     assert checks == []
+
+
+# --- 이룬 순간 (SP8 6.5: `moment_hidden`, `moment_unhidden`) ---
+
+MOMENT_TEXT = "꾸며 낸 순간: 책 한 장을 읽었어요"
+
+
+def _seed_moment(env):
+    (m,) = env.parts.moments.save_day(SAT_1300.date(), [(MOMENT_TEXT, "learning", ["chat"])], env.clock.now())
+    return m.id
+
+
+async def test_undo_hide_after_delete_superseded(tmp_path):
+    """Review Focus 4: 숨긴 순간을 지운 뒤 알림 줄의 되돌리기(24시간 안) → U3 `409 superseded`, 행은 다시 생기지 않는다."""
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        mid = _seed_moment(env)
+        hidden = await _apply(env, "hide_moment", {"id": mid})
+        env.clock.advance(minutes=2)
+        _, ask = await env.action("delete_moment", {"id": mid})
+        status, deleted = await env.action("delete_moment", {"id": mid}, confirm_token=ask["confirm_token"])
+        env.clock.advance(minutes=2)
+        code, body = await undo(env, hidden["undo_id"])
+        rows = env.conn.execute("SELECT COUNT(*) FROM status_moments").fetchone()[0]
+        original = _row(env, hidden["activity_id"])
+
+    assert (status, deleted["status"]) == (200, "applied")
+    assert (code, body["error"]["code"]) == (409, "superseded")
+    assert rows == 0
+    assert original["undone_at"] is None
+
+
+async def test_hide_and_unhide_block_each_other_u3(tmp_path):
+    async with BeEnv.start(tmp_path, start=SAT_1300) as env:
+        mid = _seed_moment(env)
+        hidden = await _apply(env, "hide_moment", {"id": mid})
+        env.clock.advance(minutes=1)
+        shown = await _apply(env, "unhide_moment", {"id": mid})
+        env.clock.advance(minutes=1)
+        code, body = await undo(env, hidden["undo_id"])  # 그 뒤 다시 보이기가 같은 대상을 바꿨다
+        ok_code, ok = await undo(env, shown["undo_id"])  # 나중 것은 되돌릴 수 있다: 다시 숨김
+        hidden_at = env.conn.execute("SELECT hidden_at FROM status_moments WHERE id = ?", (mid,)).fetchone()[0]
+
+    assert (code, body["error"]["code"]) == (409, "superseded")
+    assert (ok_code, ok["status"]) == (200, "undone")
+    assert hidden_at is not None

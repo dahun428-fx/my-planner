@@ -5,8 +5,13 @@
 - 단일 작성자: BE와 같은 잠금(`state/my-planner.lock`)을 잡는다. 못 잡으면 코드 3.
 - 한 번만: 끝나면 `app_state.life_seed_imported_at`을 적고, 이 값이 있으면 다시 가져오지 않는다(코드 4).
 - 개인 정보: 출력은 개수뿐이다. 제목, 메모, 퀘스트, 질문, 파일 내용은 출력하지도 로그에 남기지도 않는다.
-- 영역 점수(`areas[].score`)와 `ladder`는 읽지 않는다(회고에서 사용자가 답할 때 생긴다).
-- 칭호: 가져온 고점·전환점마다 하나. 경험치는 주지 않고 활동 기록·칭호 이벤트도 남기지 않는다.
+- 영역 점수(`areas[].score`)와 최상위 `ladder`는 읽지 않는다(회고에서 사용자가 답할 때 생긴다). 챕터의 기억한 사다리
+  `chapters[].ladder?`(정수 0~10)와 사건의 대표 영역 `events[].area?`는 가져온다(SP8 8.1, 틀리면 그 항목 `invalid`).
+
+`seed-life --update-history <파일> [--dry-run]`(SP8 8.1)은 이미 가져온 DB의 빈 칸(사건 `area`, 챕터
+`ladder_remembered`)만 같은 파일에서 채운다. 같은 잠금, 같은 확인 규칙, 같은 출력 규칙(개수만)이고 한 번만 돈다
+(`app_state.life_seed_history_updated_at`, 다시 돌리면 코드 4). 시드를 아직 가져오지 않았으면 코드 7.
+- 칭호: 가져온 높은 때·전환점마다 하나. 경험치는 주지 않고 활동 기록·칭호 이벤트도 남기지 않는다.
 """
 
 from __future__ import annotations
@@ -37,10 +42,12 @@ EXIT_RUNNING = 3
 EXIT_ALREADY = 4
 EXIT_NOT_REVIEWED = 5
 EXIT_BAD_FILE = 6
+EXIT_NOT_IMPORTED = 7  # `--update-history`인데 시드를 아직 가져오지 않았다(SP8 계획 결정 15)
 
 LOCK_FILE = "my-planner.lock"  # app.LOCK_FILE와 같다(app은 텔레그램·SDK를 불러와서 여기서 가져오지 않는다)
 DB_FILE = "planner.db"  # app.DB_FILE와 같다
 IMPORTED_AT_KEY = "life_seed_imported_at"
+HISTORY_UPDATED_AT_KEY = "life_seed_history_updated_at"
 
 RUNNING_MESSAGE = "my-planner가 실행 중이에요. 작업 스케줄러에서 멈춘 뒤 다시 실행해 주세요."  # 부록 A
 ALREADY_MESSAGE = "이미 시드를 가져왔어요. 다시 가져오지 않아요."
@@ -49,9 +56,13 @@ BAD_FILE_MESSAGE = "시드 파일을 읽을 수 없어요(없는 파일이거나
 DB_REJECTED_MESSAGE = "시드 항목 가운데 DB에 넣을 수 없는 것이 있어요. 아무것도 가져오지 않았어요."
 DONE_MESSAGE = "가져왔어요."
 DRY_RUN_MESSAGE = "--dry-run: 아무것도 쓰지 않았어요."
+HISTORY_ALREADY_MESSAGE = "이미 채웠어요."  # SP8 부록 A
+NOT_IMPORTED_MESSAGE = "아직 가져온 시드가 없어요. 먼저 seed-life로 가져와 주세요."  # SP8 계획 문구 표
 
-SkipReason = Literal["sensitive_unconfirmed", "storage_unconfirmed", "invalid"]
+SkipReason = Literal["sensitive_unconfirmed", "storage_unconfirmed", "invalid", "ambiguous"]
+# 가져오기의 이유. `ambiguous`(같은 `date + title` 항목이 둘 이상)는 `--update-history`만 쓴다
 SKIP_REASONS: tuple[SkipReason, ...] = ("sensitive_unconfirmed", "storage_unconfirmed", "invalid")
+HISTORY_SKIP_REASONS: tuple[SkipReason, ...] = (*SKIP_REASONS, "ambiguous")
 
 _CERTAINTY = {"사실": "fact", "추정": "estimate", "fact": "fact", "estimate": "estimate"}
 _KIND = {"high": "high", "low": "low", "turning": "turning_point"}
@@ -68,6 +79,7 @@ REQUIRED_KEYS = {
 _MONTH_RE = re.compile(r"\d{4}-\d{2}", re.ASCII)
 _EVENT_DATE_RE = re.compile(r"\d{4}(-\d{2})?", re.ASCII)  # 12장: 'YYYY' | 'YYYY-MM'
 MAX_QUEST = 80  # curve_area_defaults.recovery_quest CHECK
+LADDER_MIN, LADDER_MAX = 0, 10  # curve_chapters.ladder_remembered CHECK (015)
 
 
 class SeedFileError(Exception):
@@ -83,6 +95,7 @@ class SeedChapter:
     theme: str | None
     certainty: str
     source_ref: str | None
+    ladder: int | None = None  # 그 시기를 돌아보며 기억하는 사다리 칸(SP8 8.1)
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,7 @@ class SeedEvent:
     certainty: str
     kind_certainty: str
     source_ref: str | None
+    area: str | None = None  # 대표 영역 하나(SP8 8.1)
 
 
 @dataclass
@@ -191,7 +205,28 @@ def _chapter(item: dict[str, Any]) -> SeedChapter:
     return SeedChapter(
         seed_key=key, title=_text(item, "title", max_len=MAX_TITLE), start_month=start, end_month=end,
         theme=_opt_text(item, "note"), certainty=_certainty(item, "certainty"), source_ref=_opt_text(item, "source"),
+        ladder=_ladder(item),
     )
+
+
+def _ladder(item: dict[str, Any]) -> int | None:
+    """`chapters[].ladder?`: 정수 0~10. `true`, `6.0`, 문자열은 틀린 값이다."""
+    v = item.get("ladder")
+    if v is None:
+        return None
+    if not isinstance(v, int) or isinstance(v, bool) or not LADDER_MIN <= v <= LADDER_MAX:
+        raise _Invalid("ladder")
+    return v
+
+
+def _area(item: dict[str, Any]) -> str | None:
+    """`events[].area?`: 6개 영역 코드 가운데 하나."""
+    v = item.get("area")
+    if v is None:
+        return None
+    if not isinstance(v, str) or v not in _AREAS:
+        raise _Invalid("area")
+    return v
 
 
 def _event(item: dict[str, Any], chapter_keys: set[str]) -> SeedEvent:
@@ -212,7 +247,7 @@ def _event(item: dict[str, Any], chapter_keys: set[str]) -> SeedEvent:
         date_text=date_text, kind=_KIND[kind], title=_text(item, "title", max_len=MAX_TITLE),
         note=_opt_text(item, "note"), chapter_key=chapter if chapter in chapter_keys else None,
         sensitive=item["sensitive"] is True, certainty=_certainty(item, "certainty"),
-        kind_certainty=_certainty(item, "kind_certainty"), source_ref=_opt_text(item, "source"),
+        kind_certainty=_certainty(item, "kind_certainty"), source_ref=_opt_text(item, "source"), area=_area(item),
     )
 
 
@@ -309,7 +344,7 @@ def plan_import(seed: dict[str, Any]) -> SeedPlan:
 
 
 def apply_seed(conn: sqlite3.Connection, plan: SeedPlan, clock: Clock) -> dict[str, int]:
-    """한 트랜잭션. 모두 `confirmed`/`seed`. 고점·전환점마다 칭호(경험치 없음). 끝에 `life_seed_imported_at`."""
+    """한 트랜잭션. 모두 `confirmed`/`seed`. 높은 때·전환점마다 칭호(경험치 없음). 끝에 `life_seed_imported_at`."""
     curve = CurveRepo(conn, clock)
     status = StatusRepo(conn, clock)
     now = clock.now()
@@ -320,14 +355,14 @@ def apply_seed(conn: sqlite3.Connection, plan: SeedPlan, clock: Clock) -> dict[s
             row = curve.add_chapter(
                 title=c.title, start_month=c.start_month, end_month=c.end_month, status="confirmed", origin="seed",
                 theme=c.theme, sketch=plan.sketches.get(c.seed_key), certainty=c.certainty, seed_key=c.seed_key,
-                source_ref=c.source_ref,
+                source_ref=c.source_ref, ladder_remembered=c.ladder,
             )
             ids[c.seed_key] = row.id
         for e in plan.events:
             m = curve.add_milestone(
                 date_text=e.date_text, kind=e.kind, title=e.title, note=e.note, status="confirmed", origin="seed",
                 chapter_id=ids.get(e.chapter_key) if e.chapter_key else None, sensitive=e.sensitive,
-                certainty=e.certainty, kind_certainty=e.kind_certainty, source_ref=e.source_ref,
+                certainty=e.certainty, kind_certainty=e.kind_certainty, source_ref=e.source_ref, area=e.area,
             )
             if m.kind in ("high", "turning_point") and status.add_title(m.id, now):
                 titles += 1
@@ -425,6 +460,152 @@ def run_seed_life(
             except OSError:
                 pass  # 내보내기는 다음 변경 때 다시 만든다(5.4). DB는 이미 커밋됐다
             say(DONE_MESSAGE)
+            return EXIT_OK
+        finally:
+            conn.close()
+    return EXIT_BAD_FILE  # pragma: no cover (ExitStack가 예외를 삼키지 않는다)
+
+
+# --- `--update-history` (SP8 8.1) ---
+
+
+@dataclass
+class HistoryPlan:
+    milestone_areas: dict[int, str] = field(default_factory=dict)  # 사건 id → 영역(지금 `area IS NULL`인 것만)
+    chapter_ladders: dict[int, int] = field(default_factory=dict)  # 챕터 id → 기억한 사다리(지금 NULL인 것만)
+    skipped: Counter[SkipReason] = field(default_factory=Counter)
+
+
+def _valid_items(
+    seed: dict[str, Any], section: str, skipped: Counter[SkipReason], parse: Callable[[dict[str, Any]], Any],
+) -> list[Any]:
+    """`plan_import`와 같은 확인 규칙(필수 키 → 민감·`storage`는 `confirmed: true`) → 값 검사. 건너뛴 것은 센다."""
+    out = []
+    for item in _items(seed, section, skipped):
+        if not isinstance(item, dict):
+            skipped["invalid"] += 1
+            continue
+        if reason := _gate(section, item):
+            skipped[reason] += 1
+            continue
+        try:
+            out.append(parse(item))
+        except _Invalid:
+            skipped["invalid"] += 1
+    return out
+
+
+def plan_history_update(seed: dict[str, Any], curve: CurveRepo) -> HistoryPlan:
+    """무엇을 채우고 무엇을 왜 건너뛰는지(쓰지 않는다). 챕터와 사건 묶음만 본다.
+
+    - 챕터 `ladder`: `seed_key`로 찾고 DB 칸이 NULL일 때만.
+    - 사건 `area`: `origin = 'seed'`이고 `area IS NULL`인 사건을 `date_text`와 `title`이 같은 시드 항목으로 찾는다.
+      같은 `date + title`이 시드에 둘 이상이거나 DB에 둘 이상이면 그 항목은 `ambiguous`.
+    - DB에서 짝을 찾지 못하거나 이미 값이 있는 칸은 채울 것이 없을 뿐 건너뜀으로 세지 않는다.
+    """
+    plan = HistoryPlan()
+    skipped = plan.skipped
+
+    chapters: list[SeedChapter] = _valid_items(seed, "chapters", skipped, _chapter)
+    keys = Counter(c.seed_key for c in chapters)
+    for c in chapters:
+        if keys[c.seed_key] > 1:
+            skipped["invalid"] += 1  # seed_key는 UNIQUE(가져오기와 같다)
+            continue
+        if c.ladder is None:
+            continue
+        row = curve.chapter_by_seed_key(c.seed_key)
+        if row is not None and row.ladder_remembered is None:
+            plan.chapter_ladders[row.id] = c.ladder
+
+    events: list[SeedEvent] = _valid_items(seed, "events", skipped, lambda item: _event(item, set()))
+    in_seed = Counter((e.date_text, e.title) for e in events)
+    in_db: dict[tuple[str, str], list[Any]] = {}
+    for m in curve.seed_milestones():
+        in_db.setdefault((m.date_text, m.title), []).append(m)
+    for e in events:
+        if e.area is None:
+            continue
+        key = (e.date_text, e.title)
+        found = in_db.get(key, [])
+        if in_seed[key] > 1 or len(found) > 1:
+            skipped["ambiguous"] += 1
+            continue
+        if found and found[0].area is None:
+            plan.milestone_areas[found[0].id] = e.area
+    return plan
+
+
+def history_lines(plan: HistoryPlan) -> list[str]:
+    """개수만(SP8 부록 A 시드 명령). 항목 내용은 넣지 않는다."""
+    s = plan.skipped
+    return [
+        f"채울 것: 사건 영역 {len(plan.milestone_areas)}, 챕터 사다리 {len(plan.chapter_ladders)}",
+        (f"건너뛸 것: {sum(s[r] for r in HISTORY_SKIP_REASONS)} (sensitive_unconfirmed {s['sensitive_unconfirmed']}, "
+         f"storage_unconfirmed {s['storage_unconfirmed']}, invalid {s['invalid']}, ambiguous {s['ambiguous']})"),
+    ]
+
+
+def run_update_history(
+    root: Path | str,
+    file: Path | str,
+    *,
+    dry_run: bool,
+    out: TextIO | None = None,
+    lock_factory: Callable[[Path], AbstractContextManager[Any]] = SingleInstanceLock,
+    clock: Clock | None = None,
+) -> int:
+    """잠금(3) → 파일(6) → 검토 표시(5) → 시드를 가져오지 않음(7) → 이미 채움(4) → 계획 출력 → 쓰기와 표시."""
+    out = out if out is not None else sys.stdout
+    clock = clock or SystemClock()
+    paths = PathsConfig.for_root(Path(root))
+
+    def say(line: str) -> None:
+        print(line, file=out)
+
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(lock_factory(paths.state_dir / LOCK_FILE))
+        except AlreadyRunning:
+            say(RUNNING_MESSAGE)
+            return EXIT_RUNNING
+        try:
+            seed = load_seed(file)
+        except SeedFileError:
+            say(BAD_FILE_MESSAGE)
+            return EXIT_BAD_FILE
+        if not is_reviewed(seed):
+            say(NOT_REVIEWED_MESSAGE)
+            return EXIT_NOT_REVIEWED
+        db_path = paths.state_dir / DB_FILE
+        if not db_path.exists():  # DB가 없으면 가져온 시드도 없다. DB를 새로 만들지 않는다
+            say(NOT_IMPORTED_MESSAGE)
+            return EXIT_NOT_IMPORTED
+        conn = open_ro(db_path) if dry_run else open_db(db_path)
+        try:
+            if not dry_run:
+                migrate(conn)
+            if not _imported(conn):
+                say(NOT_IMPORTED_MESSAGE)
+                return EXIT_NOT_IMPORTED
+            row = conn.execute("SELECT value FROM app_state WHERE key = ?", (HISTORY_UPDATED_AT_KEY,)).fetchone()
+            if row is not None and row[0] is not None:
+                say(HISTORY_ALREADY_MESSAGE)
+                return EXIT_ALREADY
+            curve = CurveRepo(conn, clock)
+            plan = plan_history_update(seed, curve)
+            for line in history_lines(plan):
+                say(line)
+            if dry_run:
+                say(DRY_RUN_MESSAGE)
+                return EXIT_OK
+            try:
+                with transaction(conn):
+                    curve.fill_history(plan.milestone_areas, plan.chapter_ladders)
+                    StateRepo(conn, clock).set(HISTORY_UPDATED_AT_KEY, to_iso(clock.now()))
+            except sqlite3.Error:
+                say(DB_REJECTED_MESSAGE)  # 한 트랜잭션이라 모두 되돌려졌다. 예외 글은 내지 않는다
+                return EXIT_BAD_FILE
             return EXIT_OK
         finally:
             conn.close()

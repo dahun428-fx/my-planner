@@ -12,3 +12,6 @@ max_notices_per_day = 5
 keep_pre_deploy = 5
 keep_failed = 3
 repo = "dahun428-fx/my-planner"
+# 웹 확인이 보는 Vercel 커밋 상태 컨텍스트(만든 계정 vercel[bot], 정확히 같은 이름만). 대시는 en dash(–).
+vercel_context_app = "Vercel – my-planner"
+vercel_context_dashboard = "Vercel – my-planner-dashboard"

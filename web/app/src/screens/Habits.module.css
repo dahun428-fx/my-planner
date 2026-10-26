@@ -33,7 +33,7 @@
   cursor: default;
 }
 .empty {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
   padding: 0 0.25rem;
   font-size: var(--size-body);
   line-height: 1.5;
@@ -83,7 +83,7 @@
   cursor: default;
 }
 .archived {
-  margin: 0 var(--pad) var(--gap);
+  margin: 0 var(--gutter) var(--gap);
 }
 .fold {
   display: flex;

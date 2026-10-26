@@ -1,11 +1,15 @@
 """원문 기록 `data/transcripts/YYYY/MM/YYYY-MM-DD.md` (스펙 5.8). 덧붙이기만 한다.
 
-본문은 쓰기 전에 호출하는 쪽이 `redact()`를 거친다.
+본문은 쓰기 전에 호출하는 쪽이 `redact()`를 거친다. 유일한 예외는 대화 지우기(SP9 7.7, `erase_conversation`)다:
+그 대화의 줄을 `[지운 대화]` 한 줄로 바꿔 파일마다 다시 쓴다(임시 파일 + `os.replace`).
 """
 
 from __future__ import annotations
 
+import logging
+import os
 import re
+import time as _time
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, tzinfo
 from pathlib import Path
@@ -13,6 +17,8 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import local, logical_date
+
+log = logging.getLogger(__name__)
 
 Speaker = Literal["사용자", "비서"]
 Channel = Literal["telegram", "app"]
@@ -87,16 +93,50 @@ class TranscriptStore:
         with path.open("a", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(lines))
 
-    def read_range(self, start: date, end: date, *, max_chars: int = 20000) -> str:
-        """논리적 날짜 `start`~`end`(포함)의 원문 기록. 없는 날은 건너뛴다. 너무 길면 앞부분만."""
+    def read_range(
+        self, start: date, end: date, *, max_chars: int = 20000, drop_app_secretary: bool = False,
+        only_conversation: int | None = None,
+    ) -> str:
+        """논리적 날짜 `start`~`end`(포함)의 원문 기록. 없는 날은 건너뛴다. 너무 길면 앞부분만.
+
+        `drop_app_secretary`: 앱 대화의 비서 항목(머리글 끝 ` @app`)을 뺀다. 텔레그램 통로 두뇌의 `read_transcript`가
+        쓴다: 앱 대화의 비서는 `get_status`로 받은 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 1장 조건 7, 11장).
+        `only_conversation`: 그 대화의 항목만 남긴다. 앱 통로 두뇌의 `read_transcript`가 쓴다: 다른 대화의 원문은
+        주지 않는다(SP9 7.5, ADR 0014). 그날 그 대화의 항목이 없으면 그날 머리말도 넣지 않는다.
+        """
         parts: list[str] = []
         d = start
         while d <= end:
             path = self.root / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.isoformat()}.md"
             if path.exists():
-                parts.append(f"# {d.isoformat()}\n\n" + path.read_text(encoding="utf-8"))
+                text = path.read_text(encoding="utf-8")
+                if drop_app_secretary:
+                    text = _without_app_secretary(text)
+                if only_conversation is not None:
+                    text = _only_conversation(text, str(only_conversation))
+                if text.strip():
+                    parts.append(f"# {d.isoformat()}\n\n" + text)
             d += timedelta(days=1)
         return "\n".join(parts)[:max_chars]
+
+    def user_lines(self, day: date) -> list[tuple[str, str]]:
+        """논리적 날짜 `day` 파일의 `사용자` 줄만 `(HH:MM, 본문)`으로, 오래된 것부터(두 통로, 이미 가린 글).
+
+        하루 끝 순간 입력(SP8 6.3)이 쓴다. 비서 줄과 도구 줄은 넣지 않는다.
+        """
+        path = self.root / f"{day.year:04d}" / f"{day.month:02d}" / f"{day.isoformat()}.md"
+        if not path.exists():
+            return []
+        return [
+            (
+                e.hhmm,
+                "\n".join(
+                    line[1:] if line.startswith(_HEADER_ESCAPE + "### ") else line for line in e.body_lines
+                ).strip(),
+            )
+            for e in _parse(path)
+            if e.speaker == "사용자"
+        ]
 
     def messages(self, conversation_id: int) -> list[TranscriptMessage]:
         """그 대화의 모든 줄을 원문 기록 순서(날짜 파일 순, 파일 안에서는 위에서부터)로 (스펙 6.4.6).
@@ -155,6 +195,92 @@ class TranscriptStore:
         return list(reversed(found[skip_last:]))
 
 
+ERASED_LINE = "[지운 대화]"  # 지운 대화의 줄 자리(SP9 7.7). 이어진 줄은 한 줄로 합친다. 읽을 때는 항목의 끝이다
+
+
+def _day_path(root: Path, d: date) -> Path:
+    return root / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.isoformat()}.md"
+
+
+def _erase_text(text: str, conversation: str) -> tuple[str, int]:
+    """그 대화의 항목(머리글부터 다음 머리글 전까지)을 `[지운 대화]` 한 줄로. 이어진 것은 하나로. (새 글, 지운 항목 수)."""
+    out: list[str] = []
+    marker = ERASED_LINE + "\n\n"
+    skipping = False
+    count = 0
+    for line in text.splitlines(keepends=True):
+        bare = line.rstrip("\n")
+        m = _HEADER.match(bare)
+        if m is not None and m["conv"] == conversation:
+            count += 1
+            if not (out and out[-1] == marker):
+                out.append(marker)
+            skipping = True
+            continue
+        if m is not None or bare == ERASED_LINE:
+            skipping = False
+            if bare == ERASED_LINE and out and out[-1] == marker:
+                skipping = True  # 앞서 지운 자리와 붙었다: 한 줄로
+                continue
+        if not skipping:
+            out.append(line)
+    return "".join(out), count
+
+
+ERASE_RETRY_DELAYS: tuple[float, ...] = (0.2, 0.5, 1.0)  # 파일을 다른 프로그램이 잡고 있을 때 다시 해 보는 간격(초)
+
+
+@dataclass(frozen=True)
+class EraseResult:
+    erased: int  # 지운 항목 수
+    failed: tuple[date, ...]  # 다시 해 봐도 못 바꾼 날(하루 한 번 작업이 다시 해 본다)
+
+
+def _erase_day(path: Path, conversation: str) -> int:
+    text, n = _erase_text(path.read_text(encoding="utf-8"), conversation)
+    if n:
+        tmp = path.with_name(path.name + ".tmp")
+        with tmp.open("w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        try:
+            os.replace(tmp, path)
+        except OSError:
+            tmp.unlink(missing_ok=True)  # 임시 파일을 남기지 않는다(다음에 다시 만든다)
+            raise
+    return n
+
+
+def erase_conversation(transcripts_dir: Path, conversation_id: int, from_day: date, to_day: date) -> EraseResult:
+    """논리적 날짜 `from_day`~`to_day`(포함) 파일에서 그 대화의 줄을 `[지운 대화]`로 바꾼다(SP9 7.7).
+
+    파일마다 같은 폴더의 임시 파일에 쓰고 `os.replace`로 바꿔 넣는다(쓰다 멈춰도 반쯤 쓴 파일이 남지 않는다).
+    파일마다 따로 한다: `OSError`(Windows에서 편집기·백신·동기화가 파일을 잡고 있을 때)면 `ERASE_RETRY_DELAYS`
+    간격으로 다시 해 보고, 그래도 안 되면 그날을 `failed`에 넣고 다음 날 파일로 간다. 이미 지운 날은 0(여러 번 해도 같다).
+    """
+    root = Path(transcripts_dir)
+    total = 0
+    failed: list[date] = []
+    d = from_day
+    while d <= to_day:
+        path = _day_path(root, d)
+        for attempt in range(len(ERASE_RETRY_DELAYS) + 1):
+            if not path.exists():
+                break
+            try:
+                total += _erase_day(path, str(conversation_id))
+                break
+            except OSError as e:
+                if attempt == len(ERASE_RETRY_DELAYS):
+                    log.warning("transcript_erase_error", extra={
+                        "conversation_id": conversation_id, "day": d.isoformat(), "error_type": type(e).__name__,
+                    })
+                    failed.append(d)
+                else:
+                    _time.sleep(ERASE_RETRY_DELAYS[attempt])
+        d += timedelta(days=1)
+    return EraseResult(total, tuple(failed))
+
+
 # 본문 줄이 `### `로 시작하면 머리글로 읽히지 않게 앞에 폭 없는 공백(U+200B)을 붙인다
 _HEADER_ESCAPE = "\u200b"
 
@@ -182,6 +308,37 @@ class _Entry:
     tools: list[str]
 
 
+def _without_app_secretary(text: str) -> str:
+    """머리글이 `비서`이고 ` @app`인 항목(머리글과 본문, 다음 머리글 전까지)을 뺀 원문. 나머지 줄은 그대로."""
+    out: list[str] = []
+    skip = False
+    for line in text.splitlines(keepends=True):
+        m = _HEADER.match(line.rstrip("\n"))
+        if m:
+            skip = m["speaker"] == "비서" and m["app"] is not None
+        elif line.rstrip("\n") == ERASED_LINE:
+            skip = False
+        if not skip:
+            out.append(line)
+    return "".join(out)
+
+
+def _only_conversation(text: str, conversation: str) -> str:
+    """머리글의 대화가 `conversation`인 항목(머리글과 본문, 다음 머리글이나 `[지운 대화]` 전까지)만 남긴 원문."""
+    out: list[str] = []
+    keep = False
+    for line in text.splitlines(keepends=True):
+        m = _HEADER.match(line.rstrip("\n"))
+        if m:
+            keep = m["conv"] == conversation
+        elif line.rstrip("\n") == ERASED_LINE:
+            keep = False
+            continue
+        if keep:
+            out.append(line)
+    return "".join(out)
+
+
 def _parse(path: Path) -> list[_Entry]:
     out: list[_Entry] = []
     cur: _Entry | None = None
@@ -190,6 +347,8 @@ def _parse(path: Path) -> list[_Entry]:
         if m:
             cur = _Entry(m["hhmm"], m["speaker"], m["conv"], m["id"], m["app"] is not None, [], [])
             out.append(cur)
+        elif line == ERASED_LINE:
+            cur = None  # 지운 대화 자리: 앞 항목의 본문에 붙지 않는다(SP9 7.7)
         elif cur is not None:
             if line.startswith(_TOOL_PREFIX):
                 cur.tools.append(line[len(_TOOL_PREFIX):].strip())

@@ -147,6 +147,49 @@ describe("sw.js", () => {
     expect(show).toHaveBeenCalledWith("Notice", { body: "fake notice", tag: "notice", data: { url: "/" } });
   });
 
+  // SP9b 2.2: a digest carries its own tag (one per kind and day), so it never replaces other notices.
+  it("digest uses the payload tag and opens its schedule url", async () => {
+    const { sandbox, fire } = load({ windows: [] });
+    const e = pushEvent({
+      type: "digest",
+      checkin_id: null,
+      title: "오늘 일정 3개",
+      body: "하루 종일 휴가\n09:00 팀 회의\n14:00 치과",
+      url: "/schedule/?date=2026-10-27",
+      tag: "digest:morning:2026-10-27",
+    });
+    fire("push", e);
+    await Promise.all(e.waits);
+    const show = (sandbox.registration as { showNotification: ReturnType<typeof vi.fn> }).showNotification;
+    expect(show).toHaveBeenCalledWith("오늘 일정 3개", {
+      body: "하루 종일 휴가\n09:00 팀 회의\n14:00 치과",
+      tag: "digest:morning:2026-10-27",
+      data: { url: "/schedule/?date=2026-10-27" },
+    });
+    const c = clickEvent(show.mock.calls[0][1].data.url);
+    fire("notificationclick", c);
+    await Promise.all(c.waits);
+    expect((sandbox.clients as { openWindow: ReturnType<typeof vi.fn> }).openWindow).toHaveBeenCalledWith("/schedule/?date=2026-10-27");
+  });
+
+  it.each([undefined, "", 7])("digest without a usable tag (%s) falls back to notice", async (tag) => {
+    const { sandbox, fire } = load();
+    const e = pushEvent({ type: "digest", checkin_id: null, title: "t", body: "b", url: "/schedule/?date=2026-10-27", tag });
+    fire("push", e);
+    await Promise.all(e.waits);
+    const show = (sandbox.registration as { showNotification: ReturnType<typeof vi.fn> }).showNotification;
+    expect(show.mock.calls[0][1]).toMatchObject({ tag: "notice" });
+  });
+
+  it("a tag on another type is not used", async () => {
+    const { sandbox, fire } = load();
+    const e = pushEvent({ type: "notice", checkin_id: null, title: "t", body: "b", url: "/", tag: "digest:morning:2026-10-27" });
+    fire("push", e);
+    await Promise.all(e.waits);
+    const show = (sandbox.registration as { showNotification: ReturnType<typeof vi.fn> }).showNotification;
+    expect(show.mock.calls[0][1]).toMatchObject({ tag: "notice" });
+  });
+
   it("shows a notification even for a payload it cannot read", async () => {
     const { sandbox, fire } = load();
     const e = { ...extendable(), data: { json: () => { throw new SyntaxError("bad"); } } };
@@ -319,7 +362,10 @@ describe("sw.js", () => {
     fire("install", e);
     await Promise.all(e.waits);
     const cached = [...caches.store.get("app-b1")!.keys()].map((k) => new URL(k).pathname).sort();
-    expect(cached).toEqual(["/", "/_next/static/chunks/a.js", "/activity/", "/checkin/", "/connect/", "/habits/", "/settings/", "/todos/"]);
+    expect(cached).toEqual([
+      "/", "/_next/static/chunks/a.js", "/activity/", "/checkin/", "/connect/", "/devices/", "/habits/", "/memos/", "/memos/view/",
+      "/more/", "/schedule/", "/settings/", "/status/", "/todos/",
+    ]);
   });
 
   it("install still succeeds when the shell cannot be cached (push must keep working)", async () => {

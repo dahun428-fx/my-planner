@@ -15,6 +15,7 @@ test("chat part renders under CSP", async ({ page }) => {
   // The policy really arrives as a response header (serve-csp), not only as the <meta>.
   const csp = (await res!.headerValue("content-security-policy")) ?? "";
   expect(csp).toContain("script-src 'self'");
+  expect(csp).toContain("font-src 'self'");
   expect(csp).toContain("connect-src 'self' https://*.example.ts.net");
   expect(csp).toContain("frame-ancestors 'none'");
   await page.getByRole("button", { name: copy.chat.launcher }).click();
@@ -44,6 +45,7 @@ test("no CSP violations", async ({ page }) => {
     ["/", copy.today.title],
     ["/todos/", copy.todos.title],
     ["/activity/", copy.activity.title],
+    ["/memos/", copy.memos.title],
     ["/settings/", copy.settings.title],
     ["/checkin/?id=341", copy.loops.evening_checkin],
   ];
@@ -62,6 +64,66 @@ test("no CSP violations", async ({ page }) => {
   await expect(page.getByText(copy.parts.draftHeading)).toBeVisible();
   problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `chat: securitypolicyviolation ${v}`));
 
+  expect(problems).toEqual([]);
+});
+
+// SP6 13장 "CSP 실행": G-BE2's chat_gallery answer (every brain part in one answer) draws the four
+// new cards from their primitives under the real CSP.
+async function openGallery(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: copy.chat.launcher }).click();
+  const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
+  await expect(input).toBeEnabled();
+  await input.fill("전부 보여 줘");
+  await page.getByRole("button", { name: copy.chat.send }).click();
+  await expect(page.getByText("꾸민 갤러리예요.")).toBeVisible();
+}
+
+test("SP6 cards render under CSP", async ({ page }) => {
+  await mockBe(page, { chat: ["chat_gallery.sse"] });
+  await openGallery(page);
+  const log = page.getByRole("log");
+  // ui_date_choice: a button per candidate date.
+  await expect(log.getByRole("button", { name: "10월 28일 (수) 오전이 비어요" })).toBeVisible();
+  await expect(log.getByRole("button", { name: "10월 29일 (목)" })).toBeVisible();
+  // ui_result: the change pill.
+  await expect(log.getByText(copy.parts.changeChip.moved, { exact: true })).toBeVisible();
+  // ui_period_list: a day head of the week.
+  await expect(log.getByText(copy.parts.dayHead(26, "월"), { exact: true })).toBeVisible();
+  // ui_block: its title and its progress bar.
+  await expect(log.getByRole("heading", { name: "이번 주 운동" })).toBeVisible();
+  await expect(log.locator("progress").first()).toBeAttached();
+  await expect(page.getByText(copy.parts.unknown)).toHaveCount(0);
+});
+
+test("SP6 gallery has no CSP violations", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("console", (m) => {
+    if (/content.security.policy|CSP/i.test(m.text())) problems.push(`console ${m.type()}: ${m.text()}`);
+  });
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI} at ${e.sourceFile}:${e.lineNumber}:${e.columnNumber}`));
+  });
+  await mockBe(page, { chat: ["chat_gallery.sse"] });
+  await openGallery(page);
+  await expect(page.getByRole("log").getByRole("heading", { name: "이번 주 운동" })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `chat: securitypolicyviolation ${v}`));
+  // Then Today and Todos, in the same page (a client move keeps the cards' stylesheet loaded).
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("log")).toHaveCount(0);
+  for (const [tab, title] of [
+    [copy.tabs.todos, copy.todos.title],
+    [copy.tabs.today, copy.today.title],
+  ] as const) {
+    await page.getByRole("navigation").getByRole("link", { name: tab }).click();
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+  }
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `screens: securitypolicyviolation ${v}`));
   expect(problems).toEqual([]);
 });
 
@@ -125,10 +187,11 @@ test("screens keep their styles after moving between tabs", async ({ page }) => 
   await mockBe(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: copy.today.title })).toBeVisible();
-  const tabs: [string, string][] = [
+  // SP9 9.2: the schedule tab's large title is the month it shows ("10월").
+  const tabs: [string, string | RegExp][] = [
     [copy.tabs.todos, copy.todos.title],
-    [copy.tabs.activity, copy.activity.title],
-    [copy.tabs.settings, copy.settings.title],
+    [copy.tabs.schedule, new RegExp(`^${copy.schedule.month(0).replace("0", "\\d+")}$`)],
+    [copy.tabs.memos, copy.memos.title],
     [copy.tabs.today, copy.today.title],
   ];
   for (const [tab, title] of tabs) {
@@ -142,4 +205,30 @@ test("screens keep their styles after moving between tabs", async ({ page }) => 
   }
   problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)));
   expect(problems).toEqual([]);
+});
+
+// DESIGN.md Typography: Pretendard Variable comes from this origin (font-src 'self'), only the
+// subsets the screen's letters need. The weight of the first load is printed for the PR.
+test("Pretendard loads from this origin on the first screen", async ({ page }) => {
+  const fonts: string[] = [];
+  page.on("requestfinished", (r) => {
+    if (r.url().includes("/fonts/pretendard/")) fonts.push(r.url());
+  });
+  await mockBe(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: copy.today.title })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => document.fonts.ready);
+  expect(await page.evaluate(() => document.fonts.check('700 34px "Pretendard Variable"', "오늘"))).toBe(true);
+  const family = await page.getByRole("heading", { level: 1 }).evaluate((el) => getComputedStyle(el).fontFamily);
+  expect(family).toMatch(/^"Pretendard Variable"/);
+  expect(fonts.length).toBeGreaterThan(0);
+  expect(fonts.every((u) => new URL(u).origin === new URL(page.url()).origin)).toBe(true);
+  const bytes = await page.evaluate(() =>
+    performance
+      .getEntriesByType("resource")
+      .filter((e) => e.name.includes("/fonts/pretendard/"))
+      .reduce((n, e) => n + (e as PerformanceResourceTiming).encodedBodySize, 0),
+  );
+  console.log(`fonts on the first screen: ${fonts.length} files, ${(bytes / 1024).toFixed(1)} KB`);
 });

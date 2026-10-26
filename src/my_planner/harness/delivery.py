@@ -5,6 +5,7 @@
 - `app`(D3): 켜진 구독 모두에 6.4.8 페이로드를 보낸다. 하나라도 받으면 끝이고 텔레그램에는 보내지 않는다.
 - 대체(D4): 어느 구독도 받지 못하면 텔레그램에 전체 메시지(`mode = fallback`). 구독마다 바로 3회(1초·2초 간격)
   보내 본다. 404/410은 다시 보내지 않고 끈다. 회차 하나의 시도가 끝내 안 되면 연속 실패 1이고, 연속 5번이면 끈다.
+- 일정 알림(`type: reminder`, SP9 5.3)과 일정 정리 알림(`type: digest`, SP9b 2.1)도 같은 통로 규칙이다.
 - 고정 안내(D8)도 실제 통로로 간다(`type: notice`). 안전 모드 안내는 이 모듈을 거치지 않는다(텔레그램만, `app.py`).
 
 `pywebpush`는 동기 함수라 보내기는 `to_thread`(기본 `asyncio.to_thread`)로 하고, 구독 기록(`PushRepo`)은
@@ -19,7 +20,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from my_planner.domain import Channel, LoopKey
@@ -54,6 +55,7 @@ PUSH_TEST_TEXT = "알림이 잘 오는지 시험으로 보냈어요."
 BODY_MAX_CHARS = 120  # 본문 첫 줄을 이 길이로 자른다(6.4.8)
 NOTICE_TTL_S = 24 * 60 * 60
 NOTICE_URL = "/"
+REMINDER_TTL_S = 60 * 60  # 일정 알림은 한 시간이 지나면 낡았다(SP9 5.3)
 GONE_STATUSES = frozenset({404, 410})  # 구독이 만료됐다: 다시 보내지 않고 끈다
 
 PushResult = Literal["ok", "gone", "failed"]
@@ -127,6 +129,19 @@ def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -
 def notice_payload(text: str) -> dict[str, Any]:
     """고정 안내·시험 푸시(`type: notice`)."""
     return {"type": "notice", "checkin_id": None, "title": NOTICE_TITLE, "body": _first_line(text), "url": NOTICE_URL}
+
+
+def reminder_payload(title: str, body: str, url: str, event_id: int | None = None) -> dict[str, Any]:
+    """일정 알림(`type: reminder`, SP9 5.3): 제목은 일정 제목, 누르면 `url`(앱 `/schedule/?date=…`)."""
+    return {"type": "reminder", "checkin_id": None, "title": title, "body": _first_line(body), "url": url,
+            "event_id": event_id}
+
+
+def digest_payload(kind: str, day: date, title: str, body: str, url: str) -> dict[str, Any]:
+    """일정 정리 알림(`type: digest`, SP9b 2.1). `body`는 줄바꿈을 그대로 둔다(줄 수와 길이는 판정이 이미 묶는다).
+    `tag`는 `digest:{kind}:{담은 날}`: 같은 날 같은 종류는 폰에서 하나로 겹친다(sw가 BE와 따로 배포돼 태그는 여기서 정한다)."""
+    return {"type": "digest", "checkin_id": None, "title": title, "body": body, "url": url,
+            "tag": f"digest:{kind}:{day.isoformat()}"}
 
 
 @dataclass
@@ -227,6 +242,42 @@ class Delivery:
             await self.telegram.send(Outbound(text=text))
         except Exception as e:  # noqa: BLE001 - 안내가 안 가도 다음 기회에 다시 보낸다
             log.warning("notice_send_error", extra={"error_type": type(e).__name__})
+            return None
+        return "telegram"
+
+    # --- 일정 알림 (SP9 5.3) ---
+
+    async def deliver_reminder(
+        self, title: str, body: str, url: str, *, event_id: int | None = None, ttl_s: int = REMINDER_TTL_S
+    ) -> Channel | None:
+        """`deliver_notice`와 같은 통로 규칙: 주 통로가 `app`이면 `type: reminder` 푸시, 아무도 못 받으면 텔레그램에
+        같은 한 줄. 받은 통로, 어디에도 못 보냈으면 None."""
+        if self.effective() == "app":
+            ok, _ = await self._push_all(reminder_payload(title, body, url, event_id), ttl=ttl_s, topic=None, attempts=1)
+            if ok:
+                return "app"
+            log.warning("reminder_push_fallback_telegram")
+        try:
+            await self.telegram.send(Outbound(text=f"{title} · {body}"))
+        except Exception as e:  # noqa: BLE001 - 못 갔으면 부르는 쪽이 `failed`로 적는다
+            log.warning("reminder_send_error", extra={"error_type": type(e).__name__})
+            return None
+        return "telegram"
+
+    # --- 일정 정리 알림 (SP9b 2.1) ---
+
+    async def deliver_digest(self, kind: str, day: date, title: str, body: str, url: str, *, ttl_s: int) -> Channel | None:
+        """`deliver_reminder`와 같은 통로 규칙: 주 통로가 `app`이면 `type: digest` 푸시, 아무도 못 받으면 텔레그램에
+        제목, 줄바꿈, 본문(여러 줄 그대로). 받은 통로, 어디에도 못 보냈으면 None. `ttl_s`는 부르는 쪽이 정한다."""
+        if self.effective() == "app":
+            ok, _ = await self._push_all(digest_payload(kind, day, title, body, url), ttl=ttl_s, topic=None, attempts=1)
+            if ok:
+                return "app"
+            log.warning("digest_push_fallback_telegram", extra={"kind": kind})
+        try:
+            await self.telegram.send(Outbound(text=f"{title}\n{body}"))
+        except Exception as e:  # noqa: BLE001 - 못 갔으면 부르는 쪽이 다시 해 본다
+            log.warning("digest_send_error", extra={"kind": kind, "error_type": type(e).__name__})
             return None
         return "telegram"
 

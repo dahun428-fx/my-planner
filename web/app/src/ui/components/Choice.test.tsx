@@ -37,6 +37,6 @@ describe("Choice", () => {
     const css = strip("../primitives/primitives.module.css");
     const pill = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(([, sel]) => sel.trim() === ".pill")?.[2] ?? "";
     expect(pill).toMatch(/min-height:\s*var\(--control-h\)/);
-    expect(strip("../../styles/tokens.css")).toMatch(/--control-h:\s*44px/);
+    expect(strip("../../styles/global.css")).toMatch(/--control-h:\s*44px/);
   });
 });

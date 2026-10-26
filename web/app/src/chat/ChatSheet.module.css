@@ -1,4 +1,5 @@
-/* Spec 5.5.2: the chat sheet. Tokens only; nothing here is raised (only the launcher is, 5.3). */
+/* Spec 5.5.2 and DESIGN.md 채팅: an asymmetric conversation. The secretary's words are open text
+   across the width, mine a --raised bubble at the right. Tokens only. */
 .frame,
 .embedded {
   flex: 1;
@@ -15,7 +16,6 @@
   border-bottom: 1px solid var(--rule);
 }
 .close {
-  justify-self: start;
   min-height: 2.75rem;
   min-width: 2.75rem;
   padding: 0 0.5rem;
@@ -25,7 +25,48 @@
   font-size: var(--size-body);
   cursor: pointer;
 }
-/* 5.5.2: one row, "닫기" · "비서" · "앱 대화". */
+/* SP9 9.5: one row, the list button · "비서" over "앱 대화" · "새 대화" and "닫기". On the list
+   screen: "‹ 비서" · "지난 대화" · "닫기". Icon buttons are 44px. */
+.headIcon {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.headIcon:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.back {
+  justify-self: start;
+  min-height: var(--control-h);
+  padding: 0 0.5rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--size-body);
+  cursor: pointer;
+}
+.heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.headEnd {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+}
 .title {
   margin: 0;
   text-align: center;
@@ -33,9 +74,7 @@
   font-weight: 600;
 }
 .subtitle {
-  justify-self: end;
   margin: 0;
-  padding: 0 0.5rem;
   color: var(--muted);
   font-size: var(--size-meta);
 }
@@ -43,10 +82,17 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.75rem var(--pad);
+  padding: var(--space-4) var(--gutter);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+}
+/* 12px between messages, 20px when the speaker changes. */
+.list > * + * {
+  margin-top: var(--panel-gap);
+}
+.list > .mine + .theirs,
+.list > .theirs + .mine {
+  margin-top: var(--speaker-gap);
 }
 .time,
 .divider {
@@ -61,50 +107,52 @@
 }
 .mine {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
+/* SP9c 3: the add chip's label, a small grey line above my bubble. */
+.chipLabel {
+  flex-basis: 100%;
+  margin: 0 0 0.25rem;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--size-meta);
+}
+/* Mine: --raised, --text, 18/18/4/18 (the tail corner at the lower right), 12×18, at most 80%. */
 .bubble {
   margin: 0;
   max-width: 80%;
-  padding: 0.5rem 0.75rem;
-  border-radius: 1.125rem;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--size-section);
+  padding: 0.75rem 1.125rem;
+  border-radius: var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble);
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-body);
+  line-height: var(--lh-callout);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .theirs {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--panel-gap);
 }
-/* The secretary's text: a Markdown block (components/Markdown sets the line breaks). */
+/* The secretary's text: no bubble, the full width, body 17/1.6 Markdown. */
 .text {
-  font-size: var(--size-section);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 .part {
   min-width: 0;
 }
-.activity,
-.activityBare {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: var(--size-meta);
-}
+/* SP9 9.6: a change is one line of secondary text, no box and no button. */
 .activity {
-  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
-  border-radius: var(--radius-field);
-  background: var(--raised);
+  margin: 0;
+  font-size: var(--size-meta);
+  line-height: 1.4;
   color: var(--text-2);
-}
-.activityText {
-  flex: 1;
   overflow-wrap: anywhere;
   white-space: pre-line; /* a confirmation can end with "\n레벨 N이 됐어요." */
 }
-.undo,
 .retry {
   min-height: 2.75rem;
   padding: 0 0.5rem;
@@ -115,13 +163,9 @@
   font-weight: 600;
   cursor: pointer;
 }
-.undo:disabled,
 .retry:disabled {
   color: var(--muted);
   cursor: default;
-}
-.note {
-  color: var(--muted);
 }
 .status,
 .reason {
@@ -130,7 +174,7 @@
   font-size: var(--size-meta);
 }
 .reason {
-  padding: 0.5rem var(--pad) 0;
+  padding: 0.5rem var(--gutter) 0;
 }
 .dots {
   margin: 0;
@@ -177,47 +221,107 @@
   color: var(--text-2);
   font-size: var(--size-meta);
 }
+/* DESIGN.md 입력창: min 48px, 12px radius, --surface with a 1px --border that turns 1.5px --primary
+   only while sending is possible (data-ready). One or two rows (the rows attribute), then it
+   scrolls inside. The 36px send circle sits in a 44px button. */
 .composer {
   flex: none;
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0.5rem var(--pad) 0.5rem;
+  gap: var(--space-2);
+  align-items: flex-end;
+  padding: var(--space-2) var(--gutter);
   border-top: 1px solid var(--rule);
+}
+/* The field and the × that empties it: the × is a 44px button at the field's trailing edge, centred
+   on the first line; the field keeps that much room at its right so the text never runs under it. */
+.field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
 }
 .input {
   flex: 1;
   min-width: 0;
-  min-height: 2.75rem;
-  padding: 0 0.875rem;
-  border: 1px solid var(--control);
-  border-radius: var(--radius-pill);
+  min-height: 3rem;
+  padding: 0.75rem var(--control-h) 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: var(--size-body);
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.send {
-  min-height: 2.75rem;
-  min-width: 2.75rem;
-  padding: 0 0.875rem;
+.input[data-ready] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 0.5px var(--primary);
+}
+.clear {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: var(--size-section);
-  font-weight: 600;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
 }
+.send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  margin-bottom: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--on-primary);
+  cursor: pointer;
+}
+.sendMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--primary);
+}
 .send:disabled {
-  background: var(--raised);
   color: var(--text-2);
   cursor: default;
 }
+.send:disabled .sendMark {
+  background: var(--raised);
+}
 .close:focus-visible,
-.undo:focus-visible,
+.headIcon:focus-visible,
+.back:focus-visible,
 .retry:focus-visible,
-.send:focus-visible,
-.input:focus-visible {
+.clear:focus-visible,
+.send:focus-visible {
   outline: 2px solid var(--text);
+}
+/* The field's focus is its outline going dark, not a second ring around the ready one. */
+.input:focus-visible {
+  outline: none;
+  border-color: var(--text-2);
+}
+.input[data-ready]:focus-visible {
+  border-color: var(--primary);
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }

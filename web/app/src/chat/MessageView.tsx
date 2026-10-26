@@ -1,44 +1,28 @@
+import { registerChatParts } from "../ui/chat/registerChatParts";
 import type { UIMessage } from "ai";
-import { useState } from "react";
-import { type UndoBlockReason, useUndo } from "../api/actions";
 import { Markdown } from "../components/Markdown";
 import { copy } from "../lib/copy";
-import { UiPart } from "../ui/registry";
+import type { OpenScreen } from "../ui/primitives/types";
+import { useCatalog } from "../ui/CatalogProvider";
+import { registryNames, UiPart } from "../ui/registry";
+import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
+import { isWriteKey } from "./quickChips";
 import styles from "./ChatSheet.module.css";
 
-type UndoState = { kind: "idle" } | { kind: "done" } | { kind: "blocked"; reason: UndoBlockReason };
+// SP6 11.2: the chat cards join the registry with the chat sheet's bundle, before anything draws.
+registerChatParts();
 
-// The grey box of a data-activity part (12장 R4b) and its undo. Before R4b there is no
-// confirmation: then only the undo button shows. Read-only (offline, an answer coming) turns the
-// undo off like every other write.
-function ActivityBox({ confirmation, undoId, readOnly }: { confirmation: string | null; undoId: number | null; readOnly: boolean }) {
-  const { undo: send, busy } = useUndo();
-  const [undo, setUndo] = useState<UndoState>({ kind: "idle" });
-
-  const run = async (id: number) => {
-    if (readOnly) return;
-    const out = await send(id);
-    if (out?.kind === "undone" || out?.kind === "already_undone") setUndo({ kind: "done" });
-    else if (out?.kind === "blocked") setUndo({ kind: "blocked", reason: out.reason });
-  };
-
-  let trailing: React.ReactNode = null;
-  if (undo.kind === "done") trailing = <span className={styles.note}>{copy.chat.undone}</span>;
-  else if (undo.kind === "blocked") trailing = <span className={styles.note}>{copy.activity.undoBlocked[undo.reason]}</span>;
-  else if (undoId !== null) {
-    trailing = (
-      <button type="button" className={styles.undo} disabled={readOnly || busy.has(undoId)} onClick={() => void run(undoId)}>
-        {copy.chat.undo}
-      </button>
-    );
-  }
-  if (confirmation === null && trailing === null) return null;
+// SP9 9.6: a data-activity part (12장 R4b) is one line, "✓ …" in the secondary text colour, with
+// no button (a confirmation that does not already start with a mark ✓ → ✗ ↩, e.g. "컨디션 7 기록했어요.", gets one): the undo is the toast's for 6 s, then the activity screen's. Before R4b no
+// confirmation comes, only undo ids: then a fixed line says something changed. Nothing came at all
+// (no confirmation, nothing to undo): no line.
+export function ActivityLine({ confirmation, undoable = false }: { confirmation: string | null; undoable?: boolean }) {
+  if (confirmation === null && !undoable) return null;
   return (
-    <div className={confirmation !== null ? styles.activity : styles.activityBare} data-activity="">
-      {confirmation !== null && <span className={styles.activityText}>{confirmation}</span>}
-      {trailing}
-    </div>
+    <p className={styles.activity} data-activity="">
+      {confirmation === null ? copy.chat.changed : /^[✓→✗↩]/.test(confirmation) ? confirmation : `✓ ${confirmation}`}
+    </p>
   );
 }
 
@@ -48,6 +32,12 @@ const userText = (m: UIMessage) =>
     .map((p) => p.text)
     .join("");
 
+// SP9c 3: a line written from an add chip on this device has a small grey label above the bubble.
+function chipLabel(m: UIMessage): string | null {
+  const chip = (m.metadata as { chip?: unknown } | undefined)?.chip;
+  return typeof chip === "string" && isWriteKey(chip) ? copy.chat.chipLabel[chip] : null;
+}
+
 // Spec 5.5.2: my text on the right in a dark bubble (plain, as typed), the secretary's as body text
 // in Markdown, parts in place.
 export function MessageView({
@@ -55,33 +45,46 @@ export function MessageView({
   parts,
   readOnly = false,
   onChoose,
+  onOpen,
+  onOpenPath,
 }: {
   message: UIMessage;
   parts: ViewPart[];
   readOnly?: boolean;
   onChoose?(label: string): void;
+  /** SP6 8: an `open` button on a part (the sheet moves there and closes). */
+  onOpen?(screen: OpenScreen): void;
+  /** SP9 9.8: a `ui_events` row opens the schedule tab on its day (the sheet moves there and closes). */
+  onOpenPath?(path: string): void;
 }) {
+  const { check, settled } = useCatalog();
   if (message.role === "user") {
+    const label = chipLabel(message);
     return (
       <div className={styles.mine} data-message={message.id}>
+        {label && <p className={styles.chipLabel}>{label}</p>}
         <p className={styles.bubble}>{userText(message)}</p>
       </div>
     );
   }
+  // 11.4 (SP9 9.6): a line that ui_result already shows is left out, but never in a restored message.
+  // A ui_result hides the line only when it really draws (UiPart's own test: known name, props the catalog takes).
+  const restored = parts.some((p) => p.kind === "ui" && p.restored === true);
+  const shown = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
   return (
     <div className={styles.theirs} data-message={message.id}>
-      {parts.map((p, i) => {
+      {shown.map((p, i) => {
         if (p.kind === "text") {
           return <Markdown key={i} text={p.text} className={styles.text} />;
         }
         if (p.kind === "ui") {
           return (
             <div key={p.toolCallId} className={styles.part}>
-              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose }} />
+              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose, onOpen, onOpenPath }} />
             </div>
           );
         }
-        return <ActivityBox key={i} confirmation={p.confirmation} undoId={p.undoIds[0] ?? null} readOnly={readOnly} />;
+        return <ActivityLine key={i} confirmation={p.confirmation} undoable={p.undoIds.length > 0} />;
       })}
     </div>
   );
