@@ -189,6 +189,11 @@ class PhotoFiles:
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
             return None
 
+    def exists(self, rel: str) -> bool:
+        """최종 파일이 있는가(5.6 3번 없는 파일). 사진 폴더 밖이면 False."""
+        path = (self.root / rel).resolve()
+        return self.root in path.parents and path.is_file()
+
     def remove(self, *rel_paths: str) -> None:
         """상대 경로의 파일을 지운다(하루 한 번 작업). 없으면 그만. `PermissionError`면 세 번까지 다시 해 보고 올린다."""
         for rel in rel_paths:

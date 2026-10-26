@@ -175,6 +175,10 @@ class PhotosRepo:
         ).fetchall()
         return [_photo(r) for r in rows]
 
+    def file_rows(self, conn: sqlite3.Connection) -> list[tuple[int, str, str]]:
+        """모든 행의 (id, 큰 사진 경로, 작은 사진 경로). 하루 한 번 작업의 없는 파일·고아 파일 찾기(5.6 2·3번)."""
+        return [(r[0], r[1], r[2]) for r in conn.execute("SELECT id, path, thumb_path FROM photos ORDER BY id")]
+
     def uploaded_on(self, conn: sqlite3.Connection, logical_day: date) -> int:
         """그 논리적 날짜(경계 04:00)에 올린 사진 수(하루 100장, 5.1)."""
         start = datetime.combine(logical_day, self.boundary, self.tz)
@@ -252,6 +256,14 @@ class PhotosRepo:
         """대화 지우기(SP9 7.7, SP10 5.5): 그 대화의 `message_photos`를 지운다. 메모 연결은 그대로. 지운 행 수."""
         with transaction(conn):
             return conn.execute("DELETE FROM message_photos WHERE conversation_id = ?", (conversation_id,)).rowcount
+
+    def delete_rows(self, conn: sqlite3.Connection, photo_ids: list[int]) -> int:
+        """완전히 지울 사진(`purgeable`)의 행을 지운다(5.6 1번). 남은 연결 행은 CASCADE. 파일은 부르는 쪽이 커밋 뒤에
+        지운다. 지운 행 수."""
+        if not photo_ids:
+            return 0
+        with transaction(conn):
+            return conn.executemany("DELETE FROM photos WHERE id = ?", [(i,) for i in photo_ids]).rowcount
 
     def set_read_text(self, conn: sqlite3.Connection, photo_id: int, text: str) -> None:
         with transaction(conn):

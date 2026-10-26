@@ -424,22 +424,25 @@ def _prune_records(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> d
 
 
 def _memos_daily(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
-    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고 `data/exports/memos.md`를 다시 쓴다. 활동은 없다.
-    내보내기가 안 돼도 지우기는 그대로다(다음 날 다시 쓴다)."""
+    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고, 사진을 정리하고(SP10 5.6 1~3번),
+    `data/exports/memos.md`를 다시 쓴다(사진 줄, 5.6 5번). 활동은 없다. 내보내기가 안 돼도 지우기는 그대로다(다음 날 다시 쓴다)."""
     from my_planner.store.exports import export_memos
     from my_planner.tools.memos import DELETED_KEEP
 
     tools = deps.tools
     if tools.memos is None:
         return {"purged": 0, "exported": False}
-    purged = tools.memos.purge_deleted(deps.clock.now() - DELETED_KEEP)
+    now = deps.clock.now()
+    purged = tools.memos.purge_deleted(now - DELETED_KEEP)
+    # SP10 5.6: 메모 완전 지우기 뒤에 사진 정리 — CASCADE로 연결이 풀린 사진이 같은 실행에서 함께 지워진다
+    photos = tools.photos_daily(now)
     try:
-        export_memos(tools.memos, tools.memos_export_path)
+        export_memos(tools.memos, tools.memos_export_path, photos=tools.photos)  # 메모 아래 사진 줄(5.6 5번)
         exported = True
     except OSError as e:
         log.warning("memos_export_failed", extra={"error_type": type(e).__name__})
         exported = False
-    return {"purged": purged, "exported": exported}
+    return {"purged": purged, "exported": exported, **photos}
 
 
 def _cmd_pause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:

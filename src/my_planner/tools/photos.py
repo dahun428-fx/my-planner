@@ -8,6 +8,8 @@
 - `attach_photo`, `detach_photo`: 앱의 `/actions`. 빼기만 되돌릴 수 있다. 둘 다 `memos.updated_at`을 바꾸지 않는다(5.3).
 - 활동은 `photo_attached`/`photo_detached`, 대상 `photo:<id>`. `summary`에는 고정 문구만, `undo_json`에는 id와
   위치만 둔다. 파일 경로, sha256, 사진 읽기 결과는 활동·로그·결과에 넣지 않는다(6장).
+- `photos_daily`: 하루 한 번 작업(5.6 1~3번, `memos_daily` 안에서 메모 완전 지우기 뒤). 행 지우기는 트랜잭션 안,
+  파일 지우기는 커밋 뒤(`after_commit`)에만. 로그에는 사진 id와 개수만(경로 없음, 6장).
 - 오류 코드(`code`): `too_many_photos`(422), `photo_not_found`(422), `photo_in_use`(409), `photo_limit`(429).
   `tools/actions.py`가 HTTP로 바꾼다.
   그 메모에 없는 사진을 빼면 코드 없는 일반 거절(422 `rejected`, 8장)이다.
@@ -17,11 +19,12 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from my_planner.clock import local
-from my_planner.store.db import after_rollback, transaction
+from my_planner.store.db import after_commit, after_rollback, transaction
 from my_planner.store.photos import IMAGE_MAX_BYTES, SIDE_MAX, PhotoFiles
 from my_planner.store.repos.photos import (
     MEMO_PHOTOS_MAX,
@@ -34,7 +37,7 @@ from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import SUPERSEDED, UndoRefused, register_undo
 
 if TYPE_CHECKING:
-    from datetime import date, tzinfo
+    from datetime import date, datetime, tzinfo
 
     from my_planner.clock import Clock
     from my_planner.config import Settings
@@ -66,6 +69,8 @@ MSG_NOT_ON_MEMO = "그 메모에 없는 사진이에요."  # 빼기의 낡은 �
 # 8장 "사진 보기"(v2.5). 활동 `summary`이자 `/actions` 확인 문구. 이 문구는 여기에만 둔다
 ATTACHED = "✓ 사진을 붙였어요"
 DETACHED = "✓ 사진을 뺐어요"
+
+ORPHAN_KEEP = timedelta(days=7)  # 행 없는 파일·`.incoming/` tmp를 지우기 전 기다림(5.6 2번)
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -279,6 +284,63 @@ class PhotoTools:
             self._record(ctx, "photo_detached", photo_target(photo_id), DETACHED, undo)
         log.info("photo_detached", extra={"memo_id": m.id, "photo_id": photo_id})
         return {"memo_id": m.id, "photo_id": photo_id, "detached": True}
+
+    # --- 하루 한 번 작업 (5.6) ---
+
+    def photos_daily(self, now: datetime) -> dict[str, Any]:
+        """5.6 1~3번. 결과는 개수만(`memos_daily` 로그에 실린다).
+
+        1. 완전히 지울 사진(`purgeable`)의 행을 지운다. 파일 둘은 커밋 뒤에 지운다(행이 되돌려지면 파일은 남는다).
+        2. 커밋 뒤 `data/photos/`에서 행 없는 파일과 `.incoming/` tmp 중 7일 지난 것을 지운다(5.7 롤백 뒤 남은 파일 포함).
+        3. 행은 있는데 파일이 없으면 `photo_missing {id}` 경고(SP6 감시, 지문 `be-warn:photo_missing`).
+        `photos.cleanup = false`(14장, 020 되돌림)면 아무것도 하지 않는다.
+        """
+        repo, files = self.photos, self.photo_files
+        if repo is None or files is None:
+            return {}
+        if self.settings is not None and not self.settings.photos.cleanup:
+            return {"photos_cleanup": False, "photos_purged": 0, "photos_missing": 0}
+        conn = self.tasks.conn
+        with transaction(conn):
+            gone = repo.purgeable(conn, now)
+            purged = repo.delete_rows(conn, [p.id for p in gone])
+            rows = repo.file_rows(conn)
+        missing = [pid for pid, path, thumb in rows if not (files.exists(path) and files.exists(thumb))]
+        for pid in missing:
+            log.warning("photo_missing", extra={"photo_id": pid})
+        # 지운 사진의 파일은 커밋 뒤 따로 지우니 오늘 고아 찾기에서는 뺀다. 못 지운 것은 다음 날 행 없는 고아로 다시(5.2)
+        known = {r for _, path, thumb in rows for r in (path, thumb)} | {r for p in gone for r in (p.path, p.thumb_path)}
+        after_commit(conn, lambda: _sweep_files(files, [(p.id, p.path, p.thumb_path) for p in gone], known,
+                                                now - ORPHAN_KEEP))
+        return {"photos_purged": purged, "photos_missing": len(missing)}
+
+
+def _sweep_files(files: PhotoFiles, gone: list[tuple[int, str, str]], known: set[str], cutoff: datetime) -> None:
+    """커밋 뒤(5.2 파일 지우기는 하루 한 번 작업만): 지운 행의 파일 둘, 그다음 7일 지난 고아 파일. 지우기마다
+    `PermissionError`는 `remove`가 세 번 다시 해 본다. 그래도 안 되면 남겨 두고 다음 날 고아로 다시 지운다."""
+    failed: list[int] = []
+    for pid, *rels in gone:
+        ok = True
+        for rel in rels:  # 하나가 잠겨도 다른 하나는 지운다
+            try:
+                files.remove(rel)
+            except OSError:
+                ok = False
+        if not ok:
+            failed.append(pid)
+            log.warning("photo_remove_failed", extra={"photo_id": pid})
+    orphans = files.orphans(known, cutoff)
+    left = 0
+    for rel in orphans:
+        try:
+            files.remove(rel)
+        except OSError:
+            left += 1
+    if left:
+        log.warning("photo_orphan_remove_failed", extra={"count": left})
+    log.info("photos_files_swept", extra={
+        "removed": len(gone) - len(failed), "remove_failed": len(failed), "orphans_removed": len(orphans) - left,
+    })
 
 
 def _undo_photo_detached(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
