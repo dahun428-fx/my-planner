@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -142,7 +143,11 @@ def export_memos(memos: MemosRepo, path: Path, *, photos: PhotosRepo | None = No
     def photo_lines(memo_id: int) -> list[str]:
         if photos is None:
             return []
-        lines = [f"![사진](../photos/{p.path})" for p in photos.for_memo(memos.conn, memo_id)]
+        try:
+            got = photos.for_memo(memos.conn, memo_id)
+        except sqlite3.OperationalError:  # SP10 14장 되돌림: 020 표를 지웠다. 사진 줄 없이 메모만 쓴다
+            return []
+        lines = [f"![사진](../photos/{p.path})" for p in got]
         return [*lines, ""] if lines else []
 
     lines = ["# 메모", "", "_이 파일은 자동으로 다시 만들어져요. 직접 고치지 마세요._", ""]

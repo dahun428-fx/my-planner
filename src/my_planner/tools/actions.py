@@ -430,12 +430,18 @@ def _memos_daily(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dic
     from my_planner.tools.memos import DELETED_KEEP
 
     tools = deps.tools
-    if tools.memos is None:
-        return {"purged": 0, "exported": False}
     now = deps.clock.now()
-    purged = tools.memos.purge_deleted(now - DELETED_KEEP)
-    # SP10 5.6: 메모 완전 지우기 뒤에 사진 정리 — CASCADE로 연결이 풀린 사진이 같은 실행에서 함께 지워진다
-    photos = tools.photos_daily(now)
+    purged = tools.memos.purge_deleted(now - DELETED_KEEP) if tools.memos is not None else 0
+    # SP10 5.6: 메모 완전 지우기 뒤에 사진 정리 — CASCADE로 연결이 풀린 사진이 같은 실행에서 함께 지워진다.
+    # 메모가 없는 구성에서도 사진 정리는 돈다. 사진 정리가 실패해도 메모 지우기·내보내기는 그대로다:
+    # `photos_daily`의 SAVEPOINT가 사진 쓰기만 되돌리고, 커밋 뒤 파일 지우기도 걸리지 않는다
+    try:
+        photos = tools.photos_daily(now)
+    except Exception as e:  # noqa: BLE001 - 사진 하나의 문제로 하루 메모 작업을 멈추지 않는다
+        log.warning("photos_daily_failed", extra={"error_type": type(e).__name__})
+        photos = {"photos_failed": True}
+    if tools.memos is None:
+        return {"purged": 0, "exported": False, **photos}
     try:
         export_memos(tools.memos, tools.memos_export_path, photos=tools.photos)  # 메모 아래 사진 줄(5.6 5번)
         exported = True

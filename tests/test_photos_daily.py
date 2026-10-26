@@ -159,9 +159,11 @@ async def test_photo_on_soft_deleted_memo_kept_until_memo_purge(env):
 
 
 async def test_files_removed_only_after_commit(env, monkeypatch):
-    """행 지우기 트랜잭션이 되돌려지면 파일은 그대로다(파일은 커밋 뒤에만 지운다)."""
+    """사진 정리가 중간에 실패하면 사진 쓰기만 되돌려지고(파일은 커밋 뒤에만 지운다) 메모 지우기·내보내기는 그대로다."""
     pid = await _photo(env, origin="memo")
     paths = _paths(env, pid)
+    _, made = await env.action("create_memo", {"body": "지울 메모"})
+    await env.action("delete_memo", {"id": made["result"]["id"]})
     env.clock.advance(timedelta(days=31))
     repo = env.parts.tools.photos
 
@@ -169,8 +171,9 @@ async def test_files_removed_only_after_commit(env, monkeypatch):
         raise RuntimeError("after purge")
 
     monkeypatch.setattr(repo, "file_rows", boom)  # 행을 지운 뒤, 커밋 전에 실패
-    with pytest.raises(RuntimeError):
-        env.parts.dispatcher.apply_action(_req())
+    out = _daily(env)
+    assert out["purged"] == 1 and out["exported"] is True and out["photos_failed"] is True
+    assert env.conn.execute("SELECT COUNT(*) FROM memos").fetchone()[0] == 0
     assert _row(env, pid) is not None and _exists(env, *paths) == [True, True]
 
 
@@ -291,6 +294,19 @@ async def test_cleanup_off_keeps_photos_and_orphans(tmp_path):
         assert _row(env, pid) is not None and _exists(env, *paths) == [True, True]
         assert _exists(env, "2026/10/900-deadbeef.jpg", ".incoming/abc.tmp") == [True, True]
         assert out["photos_purged"] == 0 and out["photos_cleanup"] is False
+
+
+async def test_cleanup_off_after_tables_dropped(tmp_path):
+    """14장 되돌림: 020 표를 지우고 `cleanup = false`면 하루 작업은 사진 없이 메모만 내보낸다(오류 없음)."""
+    async with BeEnv.start(tmp_path, start=MON_1400, overrides={"photos": PhotosConfig(cleanup=False)}) as env:
+        _, made = await env.action("create_memo", {"body": "남는 메모"})
+        for table in ("memo_photos", "message_photos", "photos"):
+            env.conn.execute(f"DROP TABLE {table}")
+        env.conn.commit()
+        out = _daily(env)
+        text = (env.settings.paths.data_dir / "exports" / "memos.md").read_text(encoding="utf-8")
+    assert out["exported"] is True and "photos_failed" not in out and out["photos_cleanup"] is False
+    assert f"### #{made['result']['id']} 남는 메모" in text and "![사진]" not in text
 
 
 # --- 6장: 로그에는 id와 개수만 ---

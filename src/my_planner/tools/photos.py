@@ -293,7 +293,10 @@ class PhotoTools:
         1. 완전히 지울 사진(`purgeable`)의 행을 지운다. 파일 둘은 커밋 뒤에 지운다(행이 되돌려지면 파일은 남는다).
         2. 커밋 뒤 `data/photos/`에서 행 없는 파일과 `.incoming/` tmp 중 7일 지난 것을 지운다(5.7 롤백 뒤 남은 파일 포함).
         3. 행은 있는데 파일이 없으면 `photo_missing {id}` 경고(SP6 감시, 지문 `be-warn:photo_missing`).
-        `photos.cleanup = false`(14장, 020 되돌림)면 아무것도 하지 않는다.
+        `photos.cleanup = false`(14장, 020 되돌림)면 아무것도 하지 않는다: 지우기·고아 정리뿐 아니라 3번
+        `photo_missing` 확인도 건너뛴다(표가 없을 수 있다).
+        행 지우기, 없는 파일 확인, 커밋 뒤 파일 지우기 걸기는 한 SAVEPOINT 안에서 한다: 중간에 실패하면 사진 쓰기만
+        되돌려지고 파일 지우기는 걸리지 않는다(부르는 `_memos_daily`가 예외를 잡는다).
         """
         repo, files = self.photos, self.photo_files
         if repo is None or files is None:
@@ -305,13 +308,15 @@ class PhotoTools:
             gone = repo.purgeable(conn, now)
             purged = repo.delete_rows(conn, [p.id for p in gone])
             rows = repo.file_rows(conn)
-        missing = [pid for pid, path, thumb in rows if not (files.exists(path) and files.exists(thumb))]
+            missing = [pid for pid, path, thumb in rows if not (files.exists(path) and files.exists(thumb))]
+            # 지운 사진의 파일은 커밋 뒤 따로 지우니 오늘 고아 찾기에서는 뺀다. 못 지운 것은 다음 날 행 없는 고아로(5.2)
+            known = {r for _, path, thumb in rows for r in (path, thumb)} | {
+                r for p in gone for r in (p.path, p.thumb_path)
+            }
+            after_commit(conn, lambda: _sweep_files(files, [(p.id, p.path, p.thumb_path) for p in gone], known,
+                                                    now - ORPHAN_KEEP))
         for pid in missing:
             log.warning("photo_missing", extra={"photo_id": pid})
-        # 지운 사진의 파일은 커밋 뒤 따로 지우니 오늘 고아 찾기에서는 뺀다. 못 지운 것은 다음 날 행 없는 고아로 다시(5.2)
-        known = {r for _, path, thumb in rows for r in (path, thumb)} | {r for p in gone for r in (p.path, p.thumb_path)}
-        after_commit(conn, lambda: _sweep_files(files, [(p.id, p.path, p.thumb_path) for p in gone], known,
-                                                now - ORPHAN_KEEP))
         return {"photos_purged": purged, "photos_missing": len(missing)}
 
 

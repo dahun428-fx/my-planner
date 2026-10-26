@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+import stat
 import time
 import uuid
 from datetime import date, datetime
@@ -23,6 +25,8 @@ SIDE_MAX = 2048  # 긴 변(5.1)
 INCOMING = ".incoming"
 _RETRIES = 3  # `remove`의 `PermissionError`(백신 등) 다시 하기(5.2)
 _RETRY_SLEEP = 0.2
+
+log = logging.getLogger(__name__)
 
 # 크기를 담은 SOFn 표지(DHT C4, JPG C8, DAC CC는 아니다)
 _SOF = frozenset({0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF})
@@ -195,9 +199,13 @@ class PhotoFiles:
         return self.root in path.parents and path.is_file()
 
     def remove(self, *rel_paths: str) -> None:
-        """상대 경로의 파일을 지운다(하루 한 번 작업). 없으면 그만. `PermissionError`면 세 번까지 다시 해 보고 올린다."""
+        """상대 경로의 파일을 지운다(하루 한 번 작업). 없으면 그만. `PermissionError`면 세 번까지 다시 해 보고 올린다.
+        사진 폴더 밖(DB 값이 `..`이나 절대 경로)은 지우지 않고 `photo_path_outside`만 남긴다(경로는 넣지 않는다, 6장)."""
         for rel in rel_paths:
-            p = self.root / rel
+            p = (self.root / rel).resolve()
+            if self.root not in p.parents:
+                log.warning("photo_path_outside")
+                continue
             for attempt in range(_RETRIES):
                 try:
                     p.unlink(missing_ok=True)
@@ -213,10 +221,28 @@ class PhotoFiles:
             return []
         cutoff = older_than.timestamp()
         out: list[str] = []
-        for p in self.root.rglob("*"):
-            if not p.is_file():
-                continue
-            rel = p.relative_to(self.root).as_posix()
-            if rel not in known and p.stat().st_mtime < cutoff:
-                out.append(rel)
+        for dirpath, dirnames, filenames in os.walk(self.root):  # 읽을 수 없는 폴더는 건너뛴다(onerror 없음)
+            here = Path(dirpath)
+            dirnames[:] = [n for n in dirnames if not _is_link(here / n)]  # 링크·정션 밖으로 나가지 않는다
+            for name in filenames:
+                p = here / name
+                try:
+                    if _is_link(p):
+                        continue
+                    st = p.stat()
+                except OSError:  # 그 사이 지워졌거나 읽을 수 없는 파일: 나머지는 계속(5.6 2번)
+                    continue
+                if not stat.S_ISREG(st.st_mode):
+                    continue
+                rel = p.relative_to(self.root).as_posix()
+                if rel not in known and st.st_mtime < cutoff:
+                    out.append(rel)
         return sorted(out)
+
+
+def _is_link(p: Path) -> bool:
+    """심볼릭 링크 또는 Windows 정션(고아 찾기가 사진 폴더 밖 파일을 보지 않게)."""
+    try:
+        return p.is_symlink() or os.path.isjunction(p)
+    except OSError:
+        return True

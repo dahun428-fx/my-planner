@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 from dataclasses import replace
@@ -244,6 +245,61 @@ def test_remove_retries_permission_error(files, monkeypatch):
     monkeypatch.setattr("my_planner.store.photos._RETRY_SLEEP", 0)
     files.remove(rel[0])
     assert not (files.root / rel[0]).exists() and len(calls) == 3
+
+
+def test_remove_refuses_path_outside_root(files, tmp_path, caplog):
+    """DB 값이 사진 폴더 밖(`..`, 절대 경로)을 가리켜도 지우지 않는다. 로그에는 경로가 없다."""
+    files.root.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "keep.jpg"
+    outside.write_bytes(b"x")
+    inside = files.root / "2026" / "10" / "1-a.jpg"
+    inside.parent.mkdir(parents=True)
+    inside.write_bytes(b"x")
+    caplog.set_level(logging.WARNING, logger="my_planner")
+    files.remove("../../keep.jpg", str(outside), "2026/10/1-a.jpg")
+    warned = [r for r in caplog.records if r.getMessage() == "photo_path_outside"]
+    assert outside.exists() and not inside.exists() and len(warned) == 2
+    assert all("keep" not in str(vars(r)) for r in warned)
+
+
+def test_orphans_tolerates_vanished_file(files, monkeypatch):
+    """찾는 사이 사라진(stat 실패) 파일은 건너뛰고 나머지는 계속 찾는다(5.6 2번)."""
+    old = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
+    for name in ("2026/10/1-a.jpg", "2026/10/2-b.jpg", ".incoming/c.tmp"):
+        p = files.root / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")
+        os.utime(p, (old, old))
+    gone = (files.root / "2026/10/1-a.jpg").resolve()
+    real_stat = Path.stat
+    seen = []
+
+    def stat(self, *a, **k):  # 첫 확인 뒤 사라졌다: 그 파일의 두 번째 stat부터 실패
+        if Path(os.path.abspath(self)) == gone:
+            seen.append(1)
+            if len(seen) > 1:
+                raise FileNotFoundError(2, "gone")
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", stat)
+    got = files.orphans(set(), NOW)
+    assert got == [".incoming/c.tmp", "2026/10/2-b.jpg"]
+
+
+def test_orphans_skip_symlinks(files, tmp_path):
+    """링크·정션을 따라 사진 폴더 밖 파일을 고아로 보지 않는다."""
+    old = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "x.jpg").write_bytes(b"x")
+    os.utime(outside / "x.jpg", (old, old))
+    files.root.mkdir(parents=True, exist_ok=True)
+    try:
+        os.symlink(outside, files.root / "link", target_is_directory=True)
+        os.symlink(outside / "x.jpg", files.root / "y.jpg")
+    except OSError:
+        pytest.skip("이 환경은 심볼릭 링크를 만들 수 없다")
+    assert files.orphans(set(), NOW) == []
 
 
 def test_after_rollback_runs_only_on_rollback(conn):
