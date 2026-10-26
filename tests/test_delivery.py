@@ -428,11 +428,17 @@ def _browser_keys():
 
 
 class _Resp:
-    def __init__(self, status):
+    def __init__(self, status, body=None):
         self.status_code = status
         self.reason = "fake"
         self.text = ""
         self.headers = {}
+        self._body = body
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no json")
+        return self._body
 
 
 def test_web_push_sender_encrypts_signs_and_maps_status(tmp_path, monkeypatch, conn):
@@ -623,3 +629,27 @@ def test_push_reject_reason_keeps_only_short_alnum_reason():
     assert push_reject_reason(R({"reason": "https://web.push.apple.com/abc"})) is None  # 주소는 남기지 않는다
     assert push_reject_reason(R(ValueError("not json"))) is None
     assert push_reject_reason(R({})) is None
+    assert push_reject_reason(R({"reason": "한글사유"})) is None  # ASCII 사유 코드만
+
+
+def test_web_push_sender_logs_reject_reason_without_endpoint(monkeypatch, caplog):
+    import logging
+
+    import requests
+
+    from my_planner import cli
+    from my_planner.config import VapidConfig
+    from my_planner.harness.delivery import WebPushSender
+    from my_planner.store.repos.push import PushSubscription
+
+    public, private = cli.gen_vapid()
+    vapid = VapidConfig(public_key=public, private_key=private, subject="mailto:test@example.invalid")
+    p256dh, auth = _browser_keys()
+    sub = PushSubscription(id=3, endpoint=EP_A, p256dh=p256dh, auth=auth, label=None, created_at=SAT_1000,
+                           last_success_at=None, failure_count=0, disabled_at=None)
+    monkeypatch.setattr(requests, "post", lambda url, **kw: _Resp(400, {"reason": "BadWebPushTopic"}))
+    with caplog.at_level(logging.WARNING, logger="my_planner.harness.delivery"):
+        assert WebPushSender(vapid).send(sub, {"type": "notice"}, ttl=60, topic=None) == 400
+    (rec,) = [r for r in caplog.records if r.getMessage() == "push_rejected"]
+    assert (rec.subscription_id, rec.status, rec.reason) == (3, 400, "BadWebPushTopic")
+    assert EP_A not in caplog.text

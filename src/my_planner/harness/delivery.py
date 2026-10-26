@@ -94,7 +94,8 @@ class WebPushSender:
         except WebPushException as e:
             status = getattr(e.response, "status_code", None)
             if isinstance(status, int):
-                log.warning("push_rejected", extra={"status": status, "reason": push_reject_reason(e.response)})
+                log.warning("push_rejected", extra={"subscription_id": sub.id, "status": status,
+                                                    "reason": push_reject_reason(e.response)})
                 return status
             raise PushSendError("push_failed") from None  # 메시지(주소가 들어 있다)를 잇지 않는다
         return int(getattr(resp, "status_code", 201))
@@ -106,7 +107,7 @@ def push_reject_reason(response: Any) -> str | None:
         reason = response.json().get("reason")
     except Exception:  # noqa: BLE001 - 본문이 JSON이 아닐 수 있다(FCM 등)
         return None
-    return reason if isinstance(reason, str) and reason.isalnum() and len(reason) <= 64 else None
+    return reason if isinstance(reason, str) and reason.isascii() and reason.isalnum() and len(reason) <= 64 else None
 
 
 class PushSendError(Exception):
@@ -126,8 +127,9 @@ def _first_line(text: str) -> str:
 def push_payload(run: Run, text: str, *, reply_until: datetime, now: datetime) -> tuple[dict[str, Any], int]:
     """회차 푸시(6.4.8): (페이로드, TTL 초 = `now`(주입한 시계)부터 답장 창 끝까지).
 
-    `Topic` 헤더는 붙이지 않는다: 애플 푸시 서비스가 `run-<id>` Topic을 단 요청을 400으로 거절해 회차가 늘
-    텔레그램으로 갔다(2026-10-26 노트북 로그). Topic 없는 일정 알림·시험 푸시는 같은 구독에 잘 갔다."""
+    `Topic` 헤더는 붙이지 않는다(2026-10-26): 노트북 로그에서 `run-<id>` Topic을 단 회차 푸시만 애플 푸시 서비스가
+    늘 400으로 거절해 텔레그램 대체로 갔고, Topic 없는 일정 알림·시험 푸시는 같은 구독에 잘 갔다. 기기에서 같은 회차를
+    덮어쓰는 일은 sw.js의 알림 `tag`가 한다. 다시 400이 나면 `push_rejected`의 `reason`을 본다."""
     payload = {
         "type": "checkin",
         "checkin_id": run.id,
