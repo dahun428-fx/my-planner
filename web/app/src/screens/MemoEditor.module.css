@@ -2,7 +2,7 @@
 .main {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  min-height: calc(100dvh - env(safe-area-inset-top));
   padding-bottom: env(safe-area-inset-bottom);
 }
 .bar {
