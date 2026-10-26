@@ -152,6 +152,10 @@ def test_refusal_is_unreadable(text):
     "죄송합니다 오늘은 쉽니다\n영업시간 10:00~19:00",
     "회의 메모 [읽을 수 없음] 3시",
     "창가에 놓인 화분 두 개가 찍힌 사진이다.",
+    "Sorry, we are closed",
+    "본인 확인할 수 없는 경우 반송됩니다",
+    "확인할 수 없는 전화는 받지 않습니다",
+    "죄송합니다 " + "안내 문구 " * 40 + "읽을 수 없",  # 200자가 넘으면 거절로 보지 않는다
 ])
 def test_transcription_is_readable(text):
     assert not is_refusal(text)
@@ -251,21 +255,45 @@ async def test_read_text_present_skips_brain(env):
     assert len(env.brain.calls) == 1 and _usage(env) == (1, 1)
 
 
+def _spy(d, name):
+    """디스패처 인스턴스의 메서드를 감싸 부른 횟수를 센다."""
+    calls: list[tuple] = []
+    orig = getattr(d, name)
+
+    async def wrapped(*a, **kw):
+        calls.append(a)
+        return await orig(*a, **kw)
+
+    setattr(d, name, wrapped)
+    return calls
+
+
+async def _until(cond, steps=400):
+    """파일 읽기가 스레드(`to_thread`)라 실제 시간을 조금씩 기다린다."""
+    for _ in range(steps):
+        if cond():
+            return
+        await asyncio.sleep(0.005)
+    raise AssertionError("조건이 끝내 서지 않았다")
+
+
 async def test_concurrent_reads_share_one_brain_call(env):
+    """두 요청이 모두 `read_photo`에 들어온 뒤에 두뇌를 풀어 준다: 큐 작업 하나, 미래 하나를 함께 기다린다."""
     gate = asyncio.Event()
     env.brain.script = [FakeTurn([], "같은 결과", gate=gate)]
     pid = await _new_photo(env)
+    d = env.parts.dispatcher
+    entered = _spy(d, "read_photo")
+    handled = _spy(d, "_handle_photo_read")
     first = asyncio.create_task(_read(env, pid))
     second = asyncio.create_task(_read(env, pid))
-    for _ in range(50):
-        await asyncio.sleep(0)
-        if env.brain.calls:
-            break
-    assert len(env.brain.calls) == 1
+    await _until(lambda: len(entered) == 2 and env.brain.calls)
+    assert len(d._photo_reads) == 1 and len(handled) == 1 and d._queue.empty()
     gate.set()
     got = await asyncio.gather(first, second)
     assert got == [(200, {"text": "같은 결과", "unreadable": False})] * 2
-    assert len(env.brain.calls) == 1 and _usage(env) == (1, 1)
+    assert len(env.brain.calls) == 1 and len(handled) == 1 and _usage(env) == (1, 1)
+    assert d._photo_reads == {}
 
 
 async def test_refusal_reply_marks_unreadable(env):
@@ -375,3 +403,72 @@ def test_new_copy_has_no_banned_words():
     assert api_photos.MSG_READ_LIMIT == MSG_READ_LIMIT  # 스펙 8장 그대로
     for word in BANNED:
         assert word not in MSG_READ_LIMIT
+
+
+def _session_file(env):
+    config = env.settings.paths.data_dir.parent / "claude"
+    env.parts.dispatcher.claude_config_dir = config
+    project = config / "projects" / "-p"
+    project.mkdir(parents=True)
+    (project / f"{SID}.jsonl").write_text("{}", encoding="utf-8")
+    return project
+
+
+async def test_session_file_deleted_on_brain_error(env):
+    env.brain.script = [FakeTurn([], "", status="error", error="is_error", session_id=SID)]
+    project = _session_file(env)
+    pid = await _new_photo(env)
+    assert (await _read(env, pid))[0] == 503
+    assert not list(project.iterdir())
+
+
+async def test_session_file_deleted_on_exception(env, caplog):
+    caplog.set_level(logging.INFO)
+    env.brain.script = [FakeTurn([], "", session_id=SID, raises=RuntimeError(SECRET))]
+    project = _session_file(env)
+    pid = await _new_photo(env)
+    status, body = await _read(env, pid)
+    assert (status, body["error"]["code"]) == (503, "unavailable")
+    assert not list(project.iterdir())
+    assert _read_text(env, pid) is None
+    logged = " ".join(f"{r.getMessage()} {r.__dict__}" for r in caplog.records)
+    assert SECRET not in logged  # 예외 메시지는 남기지 않는다(종류만)
+    [rec] = [r for r in caplog.records if r.getMessage() == "photo_read_handling_error"]
+    assert rec.__dict__["error_type"] == "RuntimeError" and rec.exc_info is None
+
+
+async def test_stop_cancelling_worker_answers_503(env):
+    """읽는 중에 작업자를 취소하면(`stop(timeout=0)`) 그 읽기는 `cancelled`, 큐에 남은 읽기는 `stopping`으로 503."""
+    gate = asyncio.Event()
+    env.brain.script = [FakeTurn([], "끝나지 않음", gate=gate)]
+    a = await _new_photo(env, jpeg(700, 500), cmid="p-a")
+    b = await _new_photo(env, jpeg(701, 500), cmid="p-b")
+    d = env.parts.dispatcher
+    first = asyncio.create_task(_read(env, a))
+    await _until(lambda: env.brain.calls)
+    second = asyncio.create_task(_read(env, b))
+    await _until(lambda: len(d._photo_reads) == 2)
+    await d.stop(timeout=0)
+    got = await asyncio.gather(first, second)
+    assert [(s, body["error"]["code"]) for s, body in got] == [(503, "unavailable")] * 2
+    assert d._photo_reads == {} and len(env.brain.calls) == 1
+    assert _read_text(env, a) is None and _read_text(env, b) is None
+
+
+async def test_handle_cancel_settles_cancelled():
+    """작업자 취소(`CancelledError`)는 미래를 `PhotoReadFailed("cancelled")`로 닫고 취소를 그대로 올린다."""
+    from my_planner.harness import dispatcher as dmod
+    from my_planner.harness.photo_reader import PhotoReadFailed
+
+    class D:
+        def __init__(self) -> None:
+            self._photo_reads: dict = {}
+
+        async def _read_photo(self, job):
+            raise asyncio.CancelledError
+
+    fut = asyncio.get_running_loop().create_future()
+    job = dmod._PhotoReadJob(1, b"", fut)
+    with pytest.raises(asyncio.CancelledError):
+        await dmod.Dispatcher._handle_photo_read(D(), job)  # type: ignore[arg-type]
+    assert isinstance(fut.exception(), PhotoReadFailed) and fut.exception().status == "cancelled"

@@ -500,6 +500,10 @@ class Dispatcher:
         self._cancel_timers()  # 혹시 남은 것까지
         if self._background:  # 걸어 둔 버튼 거두기는 끝까지(짧다. 안 되면 로그만 남긴다)
             await asyncio.gather(*self._background, return_exceptions=True)
+        # 작업자를 취소했으면 큐에 남은 사진 읽기는 처리되지 않는다: 기다리는 요청은 503(SP10 5.4)
+        for fut in self._photo_reads.values():
+            _settle(fut, exc=PhotoReadFailed("stopping"))
+        self._photo_reads.clear()
         self._worker = None
 
     def _cancel_timers(self) -> None:
@@ -2424,8 +2428,8 @@ class Dispatcher:
             got = await self._read_photo(job)
         except (PhotoReadLimit, PhotoGone, PhotoReadFailed) as e:
             _settle(fut, exc=e)
-        except Exception as e:
-            log.exception("photo_read_handling_error", extra={"photo_id": job.photo_id})
+        except Exception as e:  # noqa: BLE001 - 무엇이든 503으로. 예외 메시지는 남기지 않는다(6장), 종류만
+            log.error("photo_read_handling_error", extra={"photo_id": job.photo_id, "error_type": type(e).__name__})
             _settle(fut, exc=PhotoReadFailed(type(e).__name__))
         except BaseException:  # 멈출 때 취소: 기다리는 요청은 503
             _settle(fut, exc=PhotoReadFailed("cancelled"))

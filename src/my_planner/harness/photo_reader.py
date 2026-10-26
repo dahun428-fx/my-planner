@@ -37,6 +37,7 @@ PROMPT_FILE = "photo_read.md"
 READ_MAX_CHARS = READ_TEXT_MAX  # 5.4: 넘으면 자른다(`photos.read_text` CHECK와 같은 값)
 READ_MAX_TURNS = 1
 UNREADABLE_MARK = "[읽을 수 없음]"
+REFUSAL_MAX_CHARS = 200  # 이보다 긴 출력은 거절 틀에 대 보지 않는다(옮긴 글이다)
 
 
 @dataclass(frozen=True)
@@ -121,9 +122,12 @@ def photo_read_content(image: bytes) -> UserContent:
 def is_refusal(text: str) -> bool:
     """모든 줄이 거절 틀이거나 `[읽을 수 없음]` 표시뿐인가. 빈 출력도 그렇다.
 
-    한 줄이라도 옮긴 글자가 있으면 아니다(간판의 "죄송합니다 오늘은 쉽니다" 같은 줄이 섞여도 읽은 것으로 본다).
+    틀은 줄 머리에 묶은 1인칭 거절이고, 표시를 뺀 출력이 200자를 넘으면 거절로 보지 않는다. 한 줄이라도 옮긴 글자가
+    있으면 아니다(간판의 "죄송합니다 오늘은 쉽니다", "Sorry, we are closed" 같은 줄은 읽은 것으로 본다).
     """
     patterns = refusal_patterns()
+    if len(text.replace(UNREADABLE_MARK, "").strip()) > REFUSAL_MAX_CHARS:
+        return False
     for line in text.splitlines():
         rest = line.replace(UNREADABLE_MARK, "").strip()
         if not rest:
