@@ -95,6 +95,7 @@ from my_planner.tools.confirmations import (
     xp_granted_line,
 )
 from my_planner.tools.conversations import ConversationTools
+from my_planner.tools.digest_settings import DigestSettingTools
 from my_planner.tools.events import (
     MSG_TIMED_TASK,
     EventTools,
@@ -200,7 +201,9 @@ def _result_before(a: Activity) -> dict[str, Any]:
     return out
 
 
-class Tools(MomentTools, HabitTools, CheckinTimeTools, MemoTools, BodyTools, EventTools, ConversationTools):
+class Tools(
+    MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, BodyTools, EventTools, ConversationTools
+):
     def __init__(
         self,
         *,

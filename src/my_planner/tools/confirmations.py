@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from my_planner.domain import Area, ToolEvent
 from my_planner.status.xp import AREA_LABELS, level_up_to
+
+if TYPE_CHECKING:
+    from my_planner.loop.digests import DigestSetting
 
 
 def _md(d: date) -> str:
@@ -389,6 +392,10 @@ _CHECKIN_SET = re.compile(
 )
 
 
+# `digest_set_line`의 되돌림(SP9b 5.1): `✓ 일정 정리 알림 바꿈: 밤 끔` → `↩ 되돌림: 밤 일정 정리 알림`
+_DIGEST_SET = re.compile(r"^✓ 일정 정리 알림 바꿈: (?P<kind>아침|밤) ")
+
+
 def undo_summary(summary: str) -> str:
     """되돌림 확인(부록 A): `↩ 되돌림: {확인 문구 요지}`. `✓ 완료: 운동` → `↩ 되돌림: 운동 완료`.
 
@@ -397,6 +404,8 @@ def undo_summary(summary: str) -> str:
     """
     if (ck := _CHECKIN_SET.match(summary)) is not None:
         return f"↩ 되돌림: {ck['slot']} 체크인 시간 {ck['after']} → {ck['before']}"
+    if (dg := _DIGEST_SET.match(summary)) is not None:
+        return f"↩ 되돌림: {dg['kind']} 일정 정리 알림"
     if (h := _HABIT_SUMMARY.match(summary)) is not None:
         verb = "습관 체크" if h["verb"] == "습관" else h["verb"]
         return f"↩ 되돌림: {_HABIT_TAIL.sub('', h['rest'])} {verb}"
@@ -459,3 +468,19 @@ def checkin_set_line(loop: str, day_type: str, before: time, after: time, applie
         f"✓ 체크인 시간 바꿈: {slot_label(loop, day_type)} {before:%H:%M} → {after:%H:%M} "
         f"({CHECKIN_APPLIES_LABEL[applies]})"
     )
+
+
+# --- 일정 정리 알림 (SP9b 5.1, 7장 문구) ---
+
+DIGEST_KIND_LABEL = {"morning": "아침", "night": "밤"}
+
+
+def digest_set_line(kind: str, before: DigestSetting, after: DigestSetting) -> str:
+    """적용한 활동 한 줄: `✓ 일정 정리 알림 바꿈: 아침 07:30 → 08:00`, `… 밤 끔`, `… 밤 켬 21:30`.
+    켜기/끄기가 바뀌면 그쪽을 적고(끄면서 시각도 바꿨으면 시각은 적지 않는다), 아니면 시각만 적는다."""
+    label = DIGEST_KIND_LABEL[kind]
+    if before.on and not after.on:
+        return f"✓ 일정 정리 알림 바꿈: {label} 끔"
+    if after.on and not before.on:
+        return f"✓ 일정 정리 알림 바꿈: {label} 켬 {after.time:%H:%M}"
+    return f"✓ 일정 정리 알림 바꿈: {label} {before.time:%H:%M} → {after.time:%H:%M}"

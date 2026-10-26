@@ -133,7 +133,8 @@
                 "remind_invalid",
                 "start_not_in_weekdays",
                 "too_many_events",
-                "range_too_long"
+                "range_too_long",
+                "digest_time_invalid"
               ],
               "type": "string"
             },
@@ -2166,6 +2167,159 @@
       ],
       "type": "object"
     },
+    "DigestSettingPutBody": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "morning",
+            "night"
+          ],
+          "type": "string"
+        },
+        "on": {
+          "type": "boolean"
+        },
+        "time": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "on",
+        "time"
+      ],
+      "type": "object"
+    },
+    "DigestSettings": {
+      "$defs": {
+        "DigestSlot": {
+          "additionalProperties": false,
+          "properties": {
+            "on": {
+              "type": "boolean"
+            },
+            "time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "on",
+            "time"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "morning": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "night": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "wake_updated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "morning",
+        "night",
+        "wake_updated"
+      ],
+      "type": "object"
+    },
+    "DigestSettingsUpdated": {
+      "$defs": {
+        "DigestSlot": {
+          "additionalProperties": false,
+          "properties": {
+            "on": {
+              "type": "boolean"
+            },
+            "time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "on",
+            "time"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applies": {
+          "anyOf": [
+            {
+              "enum": [
+                "today",
+                "tomorrow"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "morning": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "night": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "undo_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wake_updated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "morning",
+        "night",
+        "wake_updated",
+        "applies",
+        "activity_id",
+        "undo_id"
+      ],
+      "type": "object"
+    },
+    "DigestSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "type": "boolean"
+        },
+        "time": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "on",
+        "time"
+      ],
+      "type": "object"
+    },
     "Drafts": {
       "$defs": {
         "DraftItem": {
@@ -2379,7 +2533,8 @@
                 "remind_invalid",
                 "start_not_in_weekdays",
                 "too_many_events",
-                "range_too_long"
+                "range_too_long",
+                "digest_time_invalid"
               ],
               "type": "string"
             },
