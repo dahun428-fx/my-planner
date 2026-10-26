@@ -125,6 +125,8 @@ class LimitsConfig(_Model):
     daily_summaries: int = 15  # 대화 요약 하루 상한(SP9 7.2). `daily_brain_calls`에도 센다
     rollup_user_messages: int = 30  # 사용자 메시지가 이보다 많아지면 다음 호출 전에 말아 넣는다(SP9 7.4)
     rollup_tail_lines: int = 6  # 말아 넣은 새 세션·resume 실패에 붙이는 최근 원문 줄 수(SP9 7.3, 7.4)
+    daily_photos: int = 100  # 하루(논리적 날짜) 사진 올리기 상한(SP10 5.1). 넘으면 `POST /photos` 429 `photo_limit`
+    daily_photo_reads: int = 30  # 하루 사진 읽기 상한(SP10 5.4, `usage_state.photo_reads`)
     reply_window: ReplyWindowConfig = ReplyWindowConfig()
     catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
 
@@ -164,6 +166,16 @@ class ApiConfig(_Model):
     cors_origins: list[str] = []  # 정확한 문자열 목록. `*.vercel.app` 같은 와일드카드는 받지 않는다
     # 출처 값의 검사는 CorsPolicy가 한다: 틀려도 API만 열지 않고 BE는 돈다(스펙 15)
     max_body_kb: int = 64
+    # `POST /photos`의 `image` 상한(SP10 5.3). DB CHECK(5.1)가 5,000,000이라 그보다 크게 두지 않는다
+    max_photo_bytes: int = Field(default=5_000_000, ge=1, le=5_000_000)
+
+
+class PhotosConfig(_Model):
+    """사진 (SP10). `reader`: 사진 읽기를 누가 하나(5.4, SP11이 `local`을 더한다). `cleanup`: 하루 한 번 작업의 사진
+    정리(5.6). 020을 되돌릴 때 끈다(14장: 남은 파일이 고아로 지워지지 않게)."""
+
+    reader: Literal["claude"] = "claude"
+    cleanup: bool = True
 
 
 class NotifyConfig(_Model):
@@ -196,6 +208,7 @@ class Settings(_Model):
     retention: RetentionConfig = RetentionConfig()
     api: ApiConfig = ApiConfig()
     notify: NotifyConfig = NotifyConfig()
+    photos: PhotosConfig = PhotosConfig()
     api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
     # .env의 BODY_TOKEN(SP8 7.2). `POST /body`만 된다. 없거나 짧거나 API_TOKEN과 같으면 그 경로만 열지 않는다
     body_token: SecretStr | None = None

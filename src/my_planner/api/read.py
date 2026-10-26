@@ -57,6 +57,7 @@ from my_planner.store.repos.events import EventsRepo, check_range
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
+from my_planner.store.repos.photos import Photo, PhotosRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -393,8 +394,11 @@ def get_memos(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     rest = [m for m in rows if not m.pinned]
     more = len(rest) > limit
     rest = rest[:limit]
+    first = _photos(deps).first_for_memos(conn, [m.id for m in [*pinned, *rest]])
     return dump(MemoList, {
-        "items": [memo_item(m) for m in [*pinned, *rest]],
+        "items": [
+            {**memo_item(m), "photos": [photo_ref(first[m.id])] if m.id in first else []} for m in [*pinned, *rest]
+        ],
         "next_before": memo_cursor(rest[-1].updated_at, rest[-1].id) if more and rest else None,
     })
 
@@ -404,7 +408,17 @@ def get_memo(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> d
     m = MemosRepo(conn, deps.clock).get(_path_id(request))
     if m is None:
         raise ApiError(404, "not_found", "없는 메모예요.")
-    return dump(Memo, memo_dict(m))
+    photos = [photo_ref(p) for p in _photos(deps).for_memo(conn, m.id)]
+    return dump(Memo, {**memo_dict(m), "photos": photos})
+
+
+def _photos(deps: ApiDeps) -> PhotosRepo:
+    return PhotosRepo(deps.settings.timezone, deps.settings.day_boundary)
+
+
+def photo_ref(p: Photo) -> dict[str, Any]:
+    """메모 항목의 사진 하나(SP10 5.3): id와 크기만. 경로·sha256·읽은 글은 싣지 않는다(6장)."""
+    return {"id": p.id, "width": p.width, "height": p.height}
 
 
 # --- 인생 곡선, 상태창 ---

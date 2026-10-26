@@ -746,8 +746,9 @@ def _rejected(message: str, code: str = "rejected") -> ActionResult:
 
 
 # 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모, 5.1 스케줄). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
-# 사진(SP10 5.3): `photo_in_use`는 409(5.3 표), `too_many_photos`·`photo_not_found`는 422
+# 사진(SP10 5.3): `photo_in_use`는 409(5.3 표), `too_many_photos`·`photo_not_found`는 422, `photo_limit`은 429(`rejected` 모양)
 CONFLICT_CODES = frozenset({"memo_conflict", "photo_in_use"})
+LIMIT_CODES = frozenset({"photo_limit"})
 REJECT_CODES = frozenset({
     "too_many_memos", "too_many_pinned", "remind_invalid", "start_not_in_weekdays", "too_many_events",
     "too_many_photos", "photo_not_found",
@@ -758,6 +759,9 @@ def _tool_error(out: dict[str, Any]) -> ActionResult:
     code, message = out.get("code"), str(out["error"])
     if code in CONFLICT_CODES:
         return _error("conflict", 409, code, message)
+    if code in LIMIT_CODES:
+        res = _rejected(message, code)
+        return ActionResult(res.status, 429, res.body)
     return _rejected(message, code if code in REJECT_CODES else "rejected")
 
 

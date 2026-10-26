@@ -38,5 +38,6 @@
   "push": {
     "subscriptions": 0,
     "last_success_at": null
-  }
+  },
+  "disk_low": false
 }

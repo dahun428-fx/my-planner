@@ -667,4 +667,4 @@ def test_photo_copy_has_no_banned_words():
 
     copy = [v for k, v in vars(pt).items() if k.startswith("MSG_")] + [pt.ATTACHED, pt.DETACHED]
     words = banned_words()
-    assert len(copy) == 10 and [(c, w) for c in copy for w in words if w in c] == []
+    assert len(copy) == 11 and [(c, w) for c in copy for w in words if w in c] == []

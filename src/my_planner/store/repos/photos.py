@@ -97,6 +97,19 @@ class PhotosRepo:
         ).fetchall()
         return [_photo(r) for r in rows]
 
+    def first_for_memos(self, conn: sqlite3.Connection, memo_ids: list[int]) -> dict[int, Photo]:
+        """메모마다 가장 앞 위치의 사진 하나(`GET /memos` 목록, SP10 5.3). 사진이 없는 메모는 빠진다."""
+        if not memo_ids:
+            return {}
+        marks = ",".join("?" * len(memo_ids))
+        rows = conn.execute(
+            f"SELECT mp.memo_id AS memo_id, p.* FROM memo_photos mp JOIN photos p ON p.id = mp.photo_id "
+            f"WHERE mp.memo_id IN ({marks}) AND mp.position = "
+            "(SELECT MIN(position) FROM memo_photos f WHERE f.memo_id = mp.memo_id)",
+            memo_ids,
+        ).fetchall()
+        return {r["memo_id"]: _photo(r) for r in rows}
+
     def for_message(self, conn: sqlite3.Connection, inbound_id: int) -> list[Photo]:
         """사진 id 순(보낸 순서)."""
         rows = conn.execute(

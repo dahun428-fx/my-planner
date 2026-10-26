@@ -138,7 +138,12 @@
                 "bad_code",
                 "too_many_photos",
                 "photo_not_found",
-                "photo_in_use"
+                "photo_in_use",
+                "photo_too_large",
+                "photo_not_jpeg",
+                "photo_unreadable",
+                "photo_limit",
+                "disk_full"
               ],
               "type": "string"
             },
@@ -2651,7 +2656,12 @@
                 "bad_code",
                 "too_many_photos",
                 "photo_not_found",
-                "photo_in_use"
+                "photo_in_use",
+                "photo_too_large",
+                "photo_not_jpeg",
+                "photo_unreadable",
+                "photo_limit",
+                "disk_full"
               ],
               "type": "string"
             },
@@ -3598,6 +3608,10 @@
         "brain": {
           "$ref": "#/$defs/HealthBrain"
         },
+        "disk_low": {
+          "default": false,
+          "type": "boolean"
+        },
         "errors": {
           "$ref": "#/$defs/HealthErrors"
         },
@@ -3694,6 +3708,28 @@
       "type": "object"
     },
     "Memo": {
+      "$defs": {
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "area": {
@@ -3730,6 +3766,13 @@
           ],
           "type": "string"
         },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhotoRef"
+          },
+          "type": "array"
+        },
         "pinned": {
           "type": "boolean"
         },
@@ -3753,6 +3796,28 @@
       "type": "object"
     },
     "MemoItem": {
+      "$defs": {
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "area": {
@@ -3782,6 +3847,13 @@
             "chat"
           ],
           "type": "string"
+        },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhotoRef"
+          },
+          "type": "array"
         },
         "pinned": {
           "type": "boolean"
@@ -3840,6 +3912,13 @@
               ],
               "type": "string"
             },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "type": "array"
+            },
             "pinned": {
               "type": "boolean"
             },
@@ -3861,6 +3940,26 @@
             "pinned",
             "origin",
             "updated_at"
+          ],
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
           ],
           "type": "object"
         }
@@ -4301,6 +4400,50 @@
       },
       "required": [
         "state"
+      ],
+      "type": "object"
+    },
+    "PhotoRef": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height"
+      ],
+      "type": "object"
+    },
+    "PhotoUploaded": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "bytes"
       ],
       "type": "object"
     },

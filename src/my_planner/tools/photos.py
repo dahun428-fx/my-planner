@@ -1,12 +1,14 @@
 """사진 동작 (SP10 스펙 5.2·5.3). `Tools`가 이 mixin을 상속한다. 두뇌 도구가 아니다(`mcp_adapter` 목록에 없다).
 
-- `store_photo`: `POST /photos`(PH-02)만 부르는 내부 동작. 처리기가 갈래 밖에서 쓴 `.incoming/` tmp 둘을 받아 한
-  트랜잭션에서 행을 넣고 최종 이름으로 바꾼다(5.2 2번). 트랜잭션이 롤백되면 tmp와 바꾼 파일을 지운다(5.2 3번,
-  `after_rollback`). 활동·되돌리기는 없다(올리기만으로는 아무것도 보이지 않는다).
+- `store_photo`: `POST /photos`(`api/photos.py`)만 부르는 내부 동작. 처리기가 갈래 밖에서 쓴 `.incoming/` tmp 둘을 받아
+  한 트랜잭션에서 행을 넣고 최종 이름으로 바꾼다(5.2 2번). 트랜잭션이 롤백되면 tmp와 바꾼 파일을 지운다(5.2 3번,
+  `after_rollback`). 활동·되돌리기는 없다(올리기만으로는 아무것도 보이지 않는다). 하루(논리적 날짜) 올리기 상한
+  (`limits.daily_photos`, 5.1)은 같은 갈래에서 세어 두 요청이 함께 와도 넘지 않는다(429 `photo_limit`).
 - `attach_photo`, `detach_photo`: 앱의 `/actions`. 빼기만 되돌릴 수 있다. 둘 다 `memos.updated_at`을 바꾸지 않는다(5.3).
 - 활동은 `photo_attached`/`photo_detached`, 대상 `photo:<id>`. `summary`에는 고정 문구만, `undo_json`에는 id와
   위치만 둔다. 파일 경로, sha256, 사진 읽기 결과는 활동·로그·결과에 넣지 않는다(6장).
-- 오류 코드(`code`): `too_many_photos`(422), `photo_not_found`(422), `photo_in_use`(409). `tools/actions.py`가 HTTP로 바꾼다.
+- 오류 코드(`code`): `too_many_photos`(422), `photo_not_found`(422), `photo_in_use`(409), `photo_limit`(429).
+  `tools/actions.py`가 HTTP로 바꾼다.
   그 메모에 없는 사진을 빼면 코드 없는 일반 거절(422 `rejected`, 8장)이다.
 """
 
@@ -30,9 +32,10 @@ from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import SUPERSEDED, UndoRefused, register_undo
 
 if TYPE_CHECKING:
-    from datetime import tzinfo
+    from datetime import date, tzinfo
 
     from my_planner.clock import Clock
+    from my_planner.config import Settings
     from my_planner.domain import RunContext
     from my_planner.store.repos.memos import Memo, MemosRepo
     from my_planner.store.repos.tasks import TasksRepo
@@ -43,11 +46,14 @@ log = logging.getLogger(__name__)
 TOO_MANY_PHOTOS = "too_many_photos"
 PHOTO_NOT_FOUND = "photo_not_found"
 PHOTO_IN_USE = "photo_in_use"
+PHOTO_LIMIT = "photo_limit"
+DAILY_PHOTOS = 100  # 설정이 없을 때(`limits.daily_photos`)
 
 # 스펙 8장 문구
 MSG_TOO_MANY_PHOTOS = "사진은 메모 하나에 10장까지예요."
 MSG_PHOTO_IN_USE = "이 사진은 다른 곳에 이미 붙어 있어요."
 MSG_PHOTO_NOT_FOUND = "사진을 올리지 못했어요. 다시 보내 주세요."
+MSG_PHOTO_LIMIT = "오늘은 사진을 더 올릴 수 없어요. 내일 다시 올려 주세요."
 MSG_NO_PHOTOS = "사진을 다룰 수 없어요."
 MSG_MEMO_NOT_FOUND = "없는 메모예요."
 MSG_STORE_ARGS = "사진 정보가 맞지 않아요."
@@ -83,6 +89,9 @@ class PhotoTools:
         tasks: TasksRepo
         tz: tzinfo
         memos: MemosRepo | None
+        settings: Settings | None
+
+        def today(self) -> date: ...
 
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
@@ -161,6 +170,9 @@ class PhotoTools:
             return _err(MSG_STORE_ARGS)  # `.incoming/` 밖의 파일은 건드리지 않는다
         tmp = (Path(image_tmp), Path(thumb_tmp))
         conn = self.tasks.conn
+        limit = self.settings.limits.daily_photos if self.settings is not None else DAILY_PHOTOS
+        if repo.uploaded_on(conn, self.today()) >= limit:  # tmp는 처리기가 지운다(적용하지 않은 요청)
+            return _code(MSG_PHOTO_LIMIT, PHOTO_LIMIT)
         created: list[Path] = []
 
         def cleanup() -> None:  # 5.2 3번: 롤백되면 tmp와 이번에 바꾼 파일을 지운다

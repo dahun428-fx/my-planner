@@ -28,6 +28,7 @@ EXPECTED_MODELS = {
     "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
     "DigestSlot", "DigestSettings", "DigestSettingPutBody", "DigestSettingsUpdated",  # SP9b 5장
     "Memo", "MemoItem", "MemoList",  # SP9 6.4
+    "PhotoRef", "PhotoUploaded",  # SP10 5.3
     "Moment", "MomentsList",  # SP8 6.5
     "BodyPostBody", "BodySaved",  # SP8 7.3
     "CurveHistory",  # SP8 8.2

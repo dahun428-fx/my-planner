@@ -59,6 +59,8 @@ export interface ApiModels {
   PairCreated: PairCreated;
   PairResult: PairResult;
   PairStatus: PairStatus;
+  PhotoRef: PhotoRef;
+  PhotoUploaded: PhotoUploaded;
   Priorities: Priorities;
   PushSubscribeBody: PushSubscribeBody;
   PushSubscribed: PushSubscribed;
@@ -158,7 +160,12 @@ export interface ErrorDetail {
     | "bad_code"
     | "too_many_photos"
     | "photo_not_found"
-    | "photo_in_use";
+    | "photo_in_use"
+    | "photo_too_large"
+    | "photo_not_jpeg"
+    | "photo_unreadable"
+    | "photo_limit"
+    | "disk_full";
   message: string;
 }
 /**
@@ -955,6 +962,7 @@ export interface HabitsList {
  */
 export interface Health {
   brain: HealthBrain;
+  disk_low?: boolean;
   errors: HealthErrors;
   inbound_pending_oldest_at: string | null;
   last_tick_at: string | null;
@@ -1053,9 +1061,21 @@ export interface Memo {
   created_at: string;
   id: number;
   origin: "user" | "chat";
+  photos?: PhotoRef[];
   pinned: boolean;
   title: string;
   updated_at: string;
+}
+/**
+ * 메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PhotoRef".
+ */
+export interface PhotoRef {
+  height: number;
+  id: number;
+  width: number;
 }
 /**
  * `GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 "제목 없는 메모"). `preview`: 제목 줄 다음부터
@@ -1068,6 +1088,7 @@ export interface MemoItem {
   area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
   id: number;
   origin: "user" | "chat";
+  photos?: PhotoRef[];
   pinned: boolean;
   preview: string;
   title: string;
@@ -1220,6 +1241,18 @@ export interface PairStatus {
 export interface DeviceRef {
   id: number;
   label: string;
+}
+/**
+ * `POST /photos` 201 (SP10 5.3).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PhotoUploaded".
+ */
+export interface PhotoUploaded {
+  bytes: number;
+  height: number;
+  id: number;
+  width: number;
 }
 /**
  * `GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
