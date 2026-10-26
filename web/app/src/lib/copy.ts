@@ -255,6 +255,9 @@ export const copy = {
     notReceived: "답을 받지 못했어요",
     retry: "다시 받기",
     send: "보내기",
+    // (new) the send button while an answer is coming, and the line a stopped answer ends with (the BE's STOPPED_REPLY)
+    stop: "멈추기",
+    stopped: "멈췄어요.",
     inputLabel: "비서에게 보낼 말",
     undo: "되돌리기",
     undone: "되돌렸어요",

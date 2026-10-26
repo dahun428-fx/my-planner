@@ -28,6 +28,7 @@ import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
 import { QuickChips, WRITING_ID } from "./QuickChips";
 import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
 import { sheetState } from "./sheetContext";
+import { stopOnBe } from "./stop";
 import { type ChatCtx, InFlightError, makeTransport } from "./transport";
 
 const GAP_MS = 10 * 60_000;
@@ -101,6 +102,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const autoRetried = useRef(false);
   const lastError = useRef<Error | null>(null);
   const regenerateRef = useRef<() => Promise<void>>(async () => {});
+  // The stop button was pressed for the answer coming now: its abort is not a cut (no resend, no failure line).
+  const stopping = useRef(false);
+  const showStoppedRef = useRef<(m: UIMessage, all: UIMessage[]) => void>(() => {});
   const list = useRef<HTMLDivElement>(null);
 
   // The BE the last request went to: an answer's parts are kept only while the device is still connected there.
@@ -124,7 +128,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setFailure(f);
   }, []);
 
-  const { messages, setMessages, sendMessage, regenerate, status } = useChat({
+  const { messages, setMessages, sendMessage, regenerate, status, stop } = useChat({
     transport,
     generateId: newClientMsgId,
     resume: false,
@@ -136,10 +140,18 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     onError: (e) => {
       lastError.current = e;
     },
-    onFinish: ({ message, isAbort, isError }) => {
+    onFinish: ({ message, messages: all, isAbort, isError }) => {
       setPhase(null);
+      const stopped = stopping.current;
+      stopping.current = false;
+      if (stopped && (isAbort || isError)) {
+        lastError.current = null;
+        settle(null);
+        showStoppedRef.current(message, all);
+        return;
+      }
       if (isError || isAbort) {
-        // Nothing here aborts on purpose, so an abort is a cut as well.
+        // Only the stop button aborts on purpose (above), so any other abort is a cut as well.
         const cut = isAbort || isCut(lastError.current);
         const later = isInFlight(lastError.current);
         lastError.current = null;
@@ -170,6 +182,18 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     },
   });
   regenerateRef.current = () => regenerate();
+  // A stopped answer keeps what already came and ends with the stopped line (the BE stores the same,
+  // so the history shows it again on reopening). Stopped before its start, it is that line alone.
+  showStoppedRef.current = (message, all) => {
+    const line = { type: "text" as const, text: copy.chat.stopped };
+    const i = all.findIndex((m) => m.id === message.id);
+    const shown: UIMessage =
+      i === -1
+        ? { id: message.id, role: "assistant", parts: [line], metadata: { ...metaOf(message), at: new Date().toISOString() } }
+        : { ...all[i], parts: [...all[i].parts, line] };
+    setMessages(i === -1 ? [...all, shown] : all.map((m, k) => (k === i ? shown : m)));
+    void saveParts(shown.id, toViewParts(shown), sentTo.current);
+  };
 
   // SP9 9.5: the chips are judged from /today (check-in and review state, today's events). Not on the
   // check-in screen's box, which has no chips. Without an answer only the fixed four show.
@@ -281,6 +305,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (t === "" || sending.current || !canSend) return false;
     sending.current = true; // a second press before the answer starts is ignored
     autoRetried.current = false;
+    stopping.current = false;
     lastError.current = null;
     setInFlight(true);
     setFailure(null);
@@ -350,8 +375,24 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     }
   };
 
+  // The send button while an answer is coming: stop here at once, and ask the BE to stop too (stop.ts).
+  // Offline or refused, the BE goes on, and its answer shows in the history later instead of the stopped line.
+  const stopAnswer = () => {
+    if (!busy || stopping.current) return;
+    const clientMsgId = [...messages].reverse().find((m) => m.role === "user")?.id;
+    stopping.current = true;
+    if (clientMsgId) void stopOnBe(clientMsgId);
+    void stop().then(() => {
+      if (!stopping.current) return; // onFinish took it
+      stopping.current = false; // nothing was in flight to abort (between a cut and its resend)
+      setPhase(null);
+      settle(null);
+    });
+  };
+
   const retry = () => {
     if (sending.current || readOnly) return;
+    stopping.current = false;
     sending.current = true;
     setInFlight(true);
     setFailure(null);
@@ -547,11 +588,20 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button type="submit" className={`${styles.send} pressable`} aria-label={copy.chat.send} disabled={!ready}>
-          <span className={styles.sendMark} aria-hidden="true">
-            <Icon name="send" />
-          </span>
-        </button>
+        {busy ? (
+          // While an answer is coming the send button is the stop button (enabled with an empty field).
+          <button type="button" className={`${styles.send} pressable`} aria-label={copy.chat.stop} onClick={stopAnswer}>
+            <span className={styles.sendMark} aria-hidden="true">
+              <Icon name="stop" />
+            </span>
+          </button>
+        ) : (
+          <button type="submit" className={`${styles.send} pressable`} aria-label={copy.chat.send} disabled={!ready}>
+            <span className={styles.sendMark} aria-hidden="true">
+              <Icon name="send" />
+            </span>
+          </button>
+        )}
       </form>
     </div>
   );
