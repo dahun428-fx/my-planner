@@ -143,7 +143,8 @@
                 "photo_not_jpeg",
                 "photo_unreadable",
                 "photo_limit",
-                "disk_full"
+                "disk_full",
+                "photo_read_limit"
               ],
               "type": "string"
             },
@@ -2661,7 +2662,8 @@
                 "photo_not_jpeg",
                 "photo_unreadable",
                 "photo_limit",
-                "disk_full"
+                "disk_full",
+                "photo_read_limit"
               ],
               "type": "string"
             },
@@ -4400,6 +4402,22 @@
       },
       "required": [
         "state"
+      ],
+      "type": "object"
+    },
+    "PhotoRead": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "unreadable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "unreadable"
       ],
       "type": "object"
     },

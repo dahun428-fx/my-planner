@@ -38,6 +38,7 @@ ErrorCode = Literal[
     "bad_code",
     "too_many_photos", "photo_not_found", "photo_in_use",  # SP10 5.3
     "photo_too_large", "photo_not_jpeg", "photo_unreadable", "photo_limit", "disk_full",  # SP10 5.3 `POST /photos`
+    "photo_read_limit",  # SP10 5.4 `POST /photos/{id}/read`
 ]
 
 
@@ -339,6 +340,13 @@ class PhotoRef(_Model):
     id: int
     width: int
     height: int
+
+
+class PhotoRead(_Model):
+    """`POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `""`."""
+
+    text: str
+    unreadable: bool
 
 
 class PhotoUploaded(_Model):
@@ -1350,6 +1358,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "MemoList": MemoList,
     "PhotoRef": PhotoRef,
     "PhotoUploaded": PhotoUploaded,
+    "PhotoRead": PhotoRead,
     "EventItem": EventItem,
     "EventList": EventList,
     "EventDetail": EventDetail,

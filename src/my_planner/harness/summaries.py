@@ -23,6 +23,7 @@ from my_planner.harness.redact import redact
 
 if TYPE_CHECKING:
     from my_planner.harness.brain import BrainResult
+    from my_planner.harness.photo_reader import UserContent
     from my_planner.store.repos.conversations import Conversation
     from my_planner.store.transcripts import TranscriptMessage
 
@@ -48,8 +49,8 @@ class Summary:
 
 class SummaryBrain(Protocol):
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, system_prompt: str | None = None,
-        max_turns: int | None = None, persist_session: bool = True,
+        self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult: ...
 
 

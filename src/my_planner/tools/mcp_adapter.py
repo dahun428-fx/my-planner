@@ -655,14 +655,18 @@ _SPECS["save_moments"] = (
 )
 
 
+NO_TOOL_KINDS = frozenset({"summary", "photo_read"})  # 도구를 주지 않는 실행 종류
+
+
 def tool_names_for(ctx: RunContext) -> list[str]:
-    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약은 없음(SP9 7.2).
+    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
         return list(MOMENTS_TOOLS)
-    if ctx.kind == "summary":  # 대화 요약(SP9 7.2): 도구 없음
+    # 대화 요약(SP9 7.2), 사진 읽기(SP10 5.4): 도구 없음. 사진 속 글이 지시처럼 보여도 쓸 도구가 없다
+    if ctx.kind in NO_TOOL_KINDS:
         return []
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 

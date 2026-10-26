@@ -58,6 +58,7 @@ from my_planner.api.photos import (
     PHOTOS_PATH,
     disk_free_bytes,
     get_photo,
+    post_photo_read,
     post_photos,
 )
 from my_planner.api.push import (
@@ -326,6 +327,7 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
     ("/devices/pair", post_pair_code),  # 기기 연결 스펙 4.5
     ("/pair", post_pair),
     ("/photos", post_photos),  # SP10 5.3: multipart 스트림, 본문 상한은 `body_limit`의 경로 틀
+    ("/photos/{id}/read", post_photo_read),  # SP10 5.4: 두뇌 큐에서 사진 읽기
 )
 
 

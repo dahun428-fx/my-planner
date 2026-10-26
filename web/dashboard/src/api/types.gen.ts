@@ -59,6 +59,7 @@ export interface ApiModels {
   PairCreated: PairCreated;
   PairResult: PairResult;
   PairStatus: PairStatus;
+  PhotoRead: PhotoRead;
   PhotoRef: PhotoRef;
   PhotoUploaded: PhotoUploaded;
   Priorities: Priorities;
@@ -165,7 +166,8 @@ export interface ErrorDetail {
     | "photo_not_jpeg"
     | "photo_unreadable"
     | "photo_limit"
-    | "disk_full";
+    | "disk_full"
+    | "photo_read_limit";
   message: string;
 }
 /**
@@ -1241,6 +1243,16 @@ export interface PairStatus {
 export interface DeviceRef {
   id: number;
   label: string;
+}
+/**
+ * `POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `""`.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PhotoRead".
+ */
+export interface PhotoRead {
+  text: string;
+  unreadable: boolean;
 }
 /**
  * `POST /photos` 201 (SP10 5.3).

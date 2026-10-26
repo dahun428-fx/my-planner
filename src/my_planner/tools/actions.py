@@ -704,6 +704,8 @@ ACTIONS: dict[str, ActionSpec] = {
     "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
     # 내부(`POST /photos`, SP10 5.2): `.incoming/` tmp 둘 → 행과 최종 파일. 활동·되돌리기 없음. `/actions`에서는 `400`
     "store_photo": ActionSpec("store_photo", public=False, endpoint="photos", on_replay="discard_incoming"),
+    # 사진 읽기 결과(SP10 5.4): 디스패처의 사진 읽기 작업이 `client_msg_id` 없이 부른다(응답 기록 없음)
+    "save_photo_read": ActionSpec("save_photo_read", public=False, endpoint="photos"),
     # 내부(`api/push.py`: 6.4.8, 6.4.9). 되돌릴 수 없다
     "push_subscribe": ActionSpec(
         _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label", "device_id"}),

@@ -160,7 +160,8 @@
                 "photo_not_jpeg",
                 "photo_unreadable",
                 "photo_limit",
-                "disk_full"
+                "disk_full",
+                "photo_read_limit"
               ],
               "title": "Code",
               "type": "string"
@@ -3024,7 +3025,8 @@
                 "photo_not_jpeg",
                 "photo_unreadable",
                 "photo_limit",
-                "disk_full"
+                "disk_full",
+                "photo_read_limit"
               ],
               "title": "Code",
               "type": "string"
@@ -5022,6 +5024,26 @@
         "state"
       ],
       "title": "PairStatus",
+      "type": "object"
+    },
+    "PhotoRead": {
+      "additionalProperties": false,
+      "description": "`POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `\"\"`.",
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "unreadable": {
+          "title": "Unreadable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "unreadable"
+      ],
+      "title": "PhotoRead",
       "type": "object"
     },
     "PhotoRef": {

@@ -4,6 +4,7 @@
   한 트랜잭션에서 행을 넣고 최종 이름으로 바꾼다(5.2 2번). 트랜잭션이 롤백되면 tmp와 바꾼 파일을 지운다(5.2 3번,
   `after_rollback`). 활동·되돌리기는 없다(올리기만으로는 아무것도 보이지 않는다). 하루(논리적 날짜) 올리기 상한
   (`limits.daily_photos`, 5.1)은 같은 갈래에서 세어 두 요청이 함께 와도 넘지 않는다(429 `photo_limit`).
+- `save_photo_read`: 사진 읽기(5.4) 결과를 `photos.read_text`에 적는 내부 동작(`POST /photos/{id}/read`의 디스패처 작업).
 - `attach_photo`, `detach_photo`: 앱의 `/actions`. 빼기만 되돌릴 수 있다. 둘 다 `memos.updated_at`을 바꾸지 않는다(5.3).
 - 활동은 `photo_attached`/`photo_detached`, 대상 `photo:<id>`. `summary`에는 고정 문구만, `undo_json`에는 id와
   위치만 둔다. 파일 경로, sha256, 사진 읽기 결과는 활동·로그·결과에 넣지 않는다(6장).
@@ -24,6 +25,7 @@ from my_planner.store.db import after_rollback, transaction
 from my_planner.store.photos import IMAGE_MAX_BYTES, SIDE_MAX, PhotoFiles
 from my_planner.store.repos.photos import (
     MEMO_PHOTOS_MAX,
+    READ_TEXT_MAX,
     Photo,
     PhotosRepo,
     TooManyPhotos,
@@ -195,6 +197,22 @@ class PhotoTools:
             repo.set_paths(conn, p.id, *rel)
         log.info("photo_stored", extra={"photo_id": p.id, "origin": origin})
         return {"id": p.id, "width": p.width, "height": p.height, "bytes": p.bytes}
+
+    @_tool
+    def save_photo_read(self, ctx: RunContext, photo_id: Any = None, text: Any = None) -> dict[str, Any]:
+        """사진 읽기 결과를 `photos.read_text`에 적는다(5.4, 즉시 갈래). 디스패처의 사진 읽기 작업만 부른다.
+
+        `text`는 이미 8,000자 안이고 못 읽었으면 `""`다. 활동·되돌리기는 없다. 결과·로그에 글을 넣지 않는다(6장)."""
+        repo = self.photos
+        if repo is None:
+            return _err(MSG_NO_PHOTOS)
+        if not _is_int(photo_id) or not isinstance(text, str) or len(text) > READ_TEXT_MAX:
+            return _err(MSG_STORE_ARGS)
+        conn = self.tasks.conn
+        if repo.get(conn, photo_id) is None:
+            return _code(MSG_PHOTO_NOT_FOUND, PHOTO_NOT_FOUND)
+        repo.set_read_text(conn, photo_id, text)
+        return {"photo_id": photo_id, "unreadable": text == ""}
 
     # --- 즉시 갈래 동작(`/actions`) ---
 

@@ -10,6 +10,9 @@
 - 남은 공간: 데이터 폴더 드라이브가 2GB 아래면 507 `disk_full`, 5GB 아래면 `/health`의 `disk_low`(5.6 4번).
 - `GET /photos/{id}`: 읽기 전용 연결로 살아 있는 사진(5.1)만 찾고 파일 바이트를 준다. `Cache-Control: private, no-store`
   (앱 메모리 캐시만, 7.3). 토큰은 헤더로만(쿼리 토큰은 인증이 아니다, SP3-4 6.1).
+- `POST /photos/{id}/read`(5.4): 이미 읽었으면(`read_text`) 두뇌 없이 그 값. 아니면 파일 바이트를 읽어 디스패처의 두뇌
+  큐(`Dispatcher.read_photo`)에 넣는다. 같은 사진의 동시 요청은 한 호출을 함께 기다린다. 하루 상한 429
+  `photo_read_limit`, 두뇌가 답하지 못하면 503(앱은 "다시 읽기"). 아직 붙지 않은 새 사진도 읽는다(새 메모는 저장 때 붙는다).
 - 로그에는 사진 id와 코드만 남긴다. 사진 바이트, 파일 경로, sha256은 남기지 않는다(6장).
 """
 
@@ -26,7 +29,19 @@ from typing import TYPE_CHECKING, Any
 
 from aiohttp import BodyPartReader, web
 
-from my_planner.api.models import ErrorCode, PhotoUploaded, dump, error_response
+from my_planner.api.models import (
+    ErrorCode,
+    PhotoRead,
+    PhotoUploaded,
+    dump,
+    error_response,
+)
+from my_planner.harness.photo_reader import (
+    PhotoGone,
+    PhotoReadFailed,
+    PhotoReadLimit,
+    ReadResult,
+)
 from my_planner.store.photos import (
     THUMB_MAX_BYTES,
     PhotoFileConflict,
@@ -67,6 +82,7 @@ BAD_BODY = "요청 형식이 맞지 않아요."  # `/actions`와 같은 글
 NO_PHOTO = "없는 사진이에요."
 TRY_LATER = "잠시 뒤에 다시 해 주세요."
 BAD_SIZE = "size는 full 또는 thumb이어야 해요."
+MSG_READ_LIMIT = "오늘은 사진 읽기를 더 할 수 없어요. 사진은 붙여 둘 수 있어요."  # 스펙 8장
 
 
 def disk_free_bytes(path: Path) -> int:
@@ -270,3 +286,43 @@ async def get_photo(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     return web.Response(
         body=data, content_type="image/jpeg", headers={"Cache-Control": "private, no-store"},
     )
+
+
+def _read_answer(got: ReadResult) -> web.Response:
+    return web.json_response(dump(PhotoRead, {"text": got.text, "unreadable": got.unreadable}))
+
+
+async def post_photo_read(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
+    raw = request.match_info["id"]
+    if not _INT.match(raw):
+        return error_response(404, "not_found", NO_PHOTO)
+    photo_id = int(raw)
+    assert deps.read_conn is not None and deps.dispatcher is not None, "안전 모드가 아니면 읽기 연결과 디스패처가 있다"
+    conn = deps.read_conn()
+    try:
+        repo = PhotosRepo(deps.settings.timezone, deps.settings.day_boundary)
+        p = repo.get(conn, photo_id)
+        readable = p is not None and repo.is_readable(conn, photo_id)
+    finally:
+        conn.close()
+    if p is None or not readable:
+        return error_response(404, "not_found", NO_PHOTO)
+    if p.read_text is not None:  # 이미 읽었다: 두뇌를 부르지 않는다(5.3)
+        return _read_answer(ReadResult(text=p.read_text, unreadable=p.read_text == ""))
+    try:
+        image = await asyncio.to_thread(_read_file, _photo_files(deps).root, p.path)
+    except OSError as e:
+        log.warning("photo_read_failed", extra={"photo_id": photo_id, "error_type": type(e).__name__})
+        return error_response(503, "unavailable", TRY_LATER)
+    if image is None:
+        log.warning("photo_missing", extra={"photo_id": photo_id})
+        return error_response(404, "not_found", NO_PHOTO)
+    try:
+        got = await deps.dispatcher.read_photo(photo_id, image)
+    except PhotoReadLimit:
+        return error_response(429, "photo_read_limit", MSG_READ_LIMIT)
+    except PhotoGone:
+        return error_response(404, "not_found", NO_PHOTO)
+    except PhotoReadFailed:
+        return error_response(503, "unavailable", TRY_LATER)
+    return _read_answer(got)

@@ -44,8 +44,9 @@ DIGEST_SETTINGS_KEY = "digest_settings"
 # 종류마다 판정한 마지막 슬롯 날짜(JSON, 현지 달력 날짜 ISO). 판정할 때 보내기 전에 적는다
 DIGEST_LAST_KEY = "digest_last"
 
-UsageField = Literal["brain_calls", "proactive_messages", "summaries"]
-_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries")  # `summaries`: 하루 요약 호출(SP9 7.2, 018)
+UsageField = Literal["brain_calls", "proactive_messages", "summaries", "photo_reads"]
+# `summaries`: 하루 요약 호출(SP9 7.2, 018). `photo_reads`: 하루 사진 읽기(SP10 5.4, 020)
+_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries", "photo_reads")
 
 
 @dataclass
@@ -53,6 +54,7 @@ class Usage:
     brain_calls: int
     proactive_messages: int
     summaries: int = 0
+    photo_reads: int = 0
 
 
 @dataclass
@@ -171,13 +173,14 @@ class StateRepo:
 
     def usage(self, d: date) -> Usage:
         row = self.conn.execute(
-            "SELECT brain_calls, proactive_messages, summaries FROM usage_state WHERE date = ?",
+            "SELECT brain_calls, proactive_messages, summaries, photo_reads FROM usage_state WHERE date = ?",
             (d.isoformat(),),
         ).fetchone()
         if row is None:
             return Usage(brain_calls=0, proactive_messages=0)
         return Usage(
-            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"]
+            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"],
+            photo_reads=row["photo_reads"],
         )
 
     # telegram_updates (처리를 마친 update_id)

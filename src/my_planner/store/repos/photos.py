@@ -22,6 +22,7 @@ from my_planner.store.db import transaction
 PhotoOrigin = Literal["memo", "chat"]
 
 MEMO_PHOTOS_MAX = 10  # 메모당(5.1)
+READ_TEXT_MAX = 8000  # `photos.read_text` CHECK(5.1), 사진 읽기 출력 자르기(5.4)
 KEEP_DAYS = 30  # 연결 없는 사진 보관(5.6 1번)
 
 
@@ -80,6 +81,16 @@ class PhotosRepo:
 
     def is_live(self, conn: sqlite3.Connection, photo_id: int) -> bool:
         return conn.execute(f"SELECT 1 FROM photos p WHERE p.id = ? AND {_LIVE}", (photo_id,)).fetchone() is not None
+
+    def is_readable(self, conn: sqlite3.Connection, photo_id: int) -> bool:
+        """사진 읽기(SP10 5.4)를 할 수 있나: 살아 있거나, 아직 어디에도 붙지 않은 새 사진(새 메모의 사진은 저장 때
+        `create_memo`로 붙는다, 7.1). 빼고 되돌리기를 기다리는 사진·지운 메모·지운 대화의 사진은 아니다."""
+        return conn.execute(
+            f"SELECT 1 FROM photos p WHERE p.id = ? AND ({_LIVE} OR (p.unlinked_at IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM memo_photos a WHERE a.photo_id = p.id) "
+            "AND NOT EXISTS (SELECT 1 FROM message_photos b WHERE b.photo_id = p.id)))",
+            (photo_id,),
+        ).fetchone() is not None
 
     def memo_of(self, conn: sqlite3.Connection, photo_id: int) -> tuple[int, int] | None:
         """붙은 메모(지운 메모 포함)의 (메모 id, 위치). 없으면 None."""
