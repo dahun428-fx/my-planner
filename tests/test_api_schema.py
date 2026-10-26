@@ -22,6 +22,7 @@ EXPECTED_MODELS = {
     "Priorities", "Drafts", "Curve", "Status", "CheckinList", "CheckinSummary", "CheckinDetail", "Conversations", "ConversationsClosed", "Messages",
     "UiCatalog", "SchemaBundle", "ActionRequestBody", "ActionApplied", "ActionNeedsConfirm", "ActionRejected",
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
+    "ChatStopBody", "ChatStopped",  # 답 멈추기
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
     "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
     "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장

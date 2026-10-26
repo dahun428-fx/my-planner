@@ -573,6 +573,43 @@
       "title": "ChatRequestBody",
       "type": "object"
     },
+    "ChatStopBody": {
+      "additionalProperties": false,
+      "description": "`POST /chat/stop` 요청: 멈출 메시지의 `client_msg_id`(`POST /chat`에 보낸 것).",
+      "properties": {
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Client Msg Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_msg_id"
+      ],
+      "title": "ChatStopBody",
+      "type": "object"
+    },
+    "ChatStopped": {
+      "additionalProperties": false,
+      "description": "`POST /chat/stop` 응답. `stopped`: 기다리거나 답하던 것을 멈췄다. `done`: 이미 답을 마쳤다(그대로 둔다).\n`unknown`: 받은 적 없는 id다.",
+      "properties": {
+        "state": {
+          "enum": [
+            "stopped",
+            "done",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "ChatStopped",
+      "type": "object"
+    },
     "CheckinDetail": {
       "$defs": {
         "CheckinCard": {

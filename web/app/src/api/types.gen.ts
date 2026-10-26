@@ -18,6 +18,8 @@ export interface ApiModels {
   CalendarPutBody: CalendarPutBody;
   CalendarSettings: CalendarSettings;
   ChatRequestBody: ChatRequestBody;
+  ChatStopBody: ChatStopBody;
+  ChatStopped: ChatStopped;
   CheckinDetail: CheckinDetail;
   CheckinList: CheckinList;
   CheckinSummary: CheckinSummary;
@@ -284,6 +286,25 @@ export interface ChatMessage {
     [k: string]: unknown;
   }[];
   role: "user";
+}
+/**
+ * `POST /chat/stop` 요청: 멈출 메시지의 `client_msg_id`(`POST /chat`에 보낸 것).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ChatStopBody".
+ */
+export interface ChatStopBody {
+  client_msg_id: string;
+}
+/**
+ * `POST /chat/stop` 응답. `stopped`: 기다리거나 답하던 것을 멈췄다. `done`: 이미 답을 마쳤다(그대로 둔다).
+ * `unknown`: 받은 적 없는 id다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ChatStopped".
+ */
+export interface ChatStopped {
+  state: "stopped" | "done" | "unknown";
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema

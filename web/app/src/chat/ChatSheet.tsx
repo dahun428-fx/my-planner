@@ -28,11 +28,14 @@ import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
 import { QuickChips, WRITING_ID } from "./QuickChips";
 import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
 import { sheetState } from "./sheetContext";
+import { stopOnBe } from "./stop";
 import { type ChatCtx, InFlightError, makeTransport } from "./transport";
 
 const GAP_MS = 10 * 60_000;
 // The front chip depends on the time (a check-in window, an event within 3 hours): looked at again each minute.
 const CHIP_TICK_MS = 60_000;
+// The stop button ignores a press this soon after a send or a retry: it is the send button's place.
+export const STOP_GUARD_MS = 600;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // --- retries ---
@@ -101,6 +104,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const autoRetried = useRef(false);
   const lastError = useRef<Error | null>(null);
   const regenerateRef = useRef<() => Promise<void>>(async () => {});
+  // The stop button was pressed for the answer coming now: its abort is not a cut (no resend, no failure line).
+  const stopping = useRef(false);
+  // The client_msg_id actually sent (the user message's id, set before sendMessage), and when: a stop
+  // right after a send must not name the previous message, and a double tap on send must not stop.
+  const sentId = useRef<string | null>(null);
+  const sentAt = useRef(-Infinity);
+  const showStoppedRef = useRef<(m: UIMessage, all: UIMessage[]) => void>(() => {});
   const list = useRef<HTMLDivElement>(null);
 
   // The BE the last request went to: an answer's parts are kept only while the device is still connected there.
@@ -124,7 +134,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setFailure(f);
   }, []);
 
-  const { messages, setMessages, sendMessage, regenerate, status } = useChat({
+  const { messages, setMessages, sendMessage, regenerate, status, stop } = useChat({
     transport,
     generateId: newClientMsgId,
     resume: false,
@@ -136,10 +146,18 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     onError: (e) => {
       lastError.current = e;
     },
-    onFinish: ({ message, isAbort, isError }) => {
+    onFinish: ({ message, messages: all, isAbort, isError }) => {
       setPhase(null);
+      const stopped = stopping.current;
+      stopping.current = false;
+      if (stopped && (isAbort || isError)) {
+        lastError.current = null;
+        settle(null);
+        showStoppedRef.current(message, all);
+        return;
+      }
       if (isError || isAbort) {
-        // Nothing here aborts on purpose, so an abort is a cut as well.
+        // Only the stop button aborts on purpose (above), so any other abort is a cut as well.
         const cut = isAbort || isCut(lastError.current);
         const later = isInFlight(lastError.current);
         lastError.current = null;
@@ -170,6 +188,19 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     },
   });
   regenerateRef.current = () => regenerate();
+  // A stopped answer keeps what already came and ends with the stopped line (the BE stores the same,
+  // so the history shows it again on reopening). Stopped before its start, it is that line alone.
+  showStoppedRef.current = (message, all) => {
+    const line = { type: "text" as const, text: copy.chat.stopped };
+    const i = all.findIndex((m) => m.id === message.id);
+    const shown: UIMessage =
+      i === -1
+        ? { id: message.id, role: "assistant", parts: [line], metadata: { ...metaOf(message), at: new Date().toISOString() } }
+        : { ...all[i], parts: [...all[i].parts, line] };
+    setMessages(i === -1 ? [...all, shown] : all.map((m, k) => (k === i ? shown : m)));
+    // Stopped before its start, the id is the app's own: no BE line will ever carry it, so nothing is kept.
+    if (i !== -1) void saveParts(shown.id, toViewParts(shown), sentTo.current);
+  };
 
   // SP9 9.5: the chips are judged from /today (check-in and review state, today's events). Not on the
   // check-in screen's box, which has no chips. Without an answer only the fixed four show.
@@ -281,6 +312,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (t === "" || sending.current || !canSend) return false;
     sending.current = true; // a second press before the answer starts is ignored
     autoRetried.current = false;
+    stopping.current = false;
     lastError.current = null;
     setInFlight(true);
     setFailure(null);
@@ -288,7 +320,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (!embedded) sheetState.freshSince = null; // said something: the latest conversation is this one again
     const metadata: Meta = { at: new Date().toISOString(), ...(checkinId === undefined ? {} : { checkin_id: checkinId }) };
     if (chip) metadata.chip = chip;
-    void sendMessage({ text: t, metadata });
+    const id = newClientMsgId();
+    sentId.current = id;
+    sentAt.current = performance.now();
+    void sendMessage({ id, role: "user", parts: [{ type: "text", text: t }], metadata });
     return true;
   };
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
@@ -350,8 +385,26 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     }
   };
 
+  // The send button while an answer is coming: stop here at once, and ask the BE to stop too (stop.ts).
+  // Offline or refused, the BE goes on, and its answer shows in the history later instead of the stopped line.
+  const stopAnswer = () => {
+    if (!busy || stopping.current) return;
+    if (performance.now() - sentAt.current < STOP_GUARD_MS) return; // the second tap of a double tap on send
+    stopping.current = true;
+    if (sentId.current) void stopOnBe(sentId.current);
+    void stop().then(() => {
+      if (!stopping.current) return; // onFinish took it
+      stopping.current = false; // nothing was in flight to abort (between a cut and its resend)
+      setPhase(null);
+      settle(null);
+    });
+  };
+
   const retry = () => {
     if (sending.current || readOnly) return;
+    stopping.current = false;
+    sentId.current = [...messages].reverse().find((m) => m.role === "user")?.id ?? null; // regenerate sends it again
+    sentAt.current = performance.now();
     sending.current = true;
     setInFlight(true);
     setFailure(null);
@@ -391,6 +444,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setFieldRows(next);
   }, [text]);
   const ready = canSend && text.trim() !== "";
+  // The × inside the field: empties it in one press (a one-line write stays open), the focus back in it.
+  const clearable = text !== "" && !readOnly && !loading;
+  const clearInput = () => {
+    setText("");
+    field.current?.focus();
+  };
 
   // Dividers (5.5.2): the time when the conversation changes or after a gap of more than 10 minutes.
   // Right after the history it was read for, not after what is said now.
@@ -532,26 +591,49 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       {reason && <p className={styles.reason}>{reason}</p>}
       {!embedded && <QuickChips chips={chips} disabled={!canSend} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
       <form className={styles.composer} onSubmit={onSubmit}>
-        <textarea
-          ref={field}
-          className={styles.input}
-          rows={fieldRows}
-          aria-label={copy.chat.inputLabel}
-          placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
-          aria-describedby={writing ? WRITING_ID : undefined}
-          value={text}
-          disabled={readOnly || loading}
-          enterKeyHint="send"
-          autoComplete="off"
-          data-ready={ready ? "" : undefined}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-        <button type="submit" className={`${styles.send} pressable`} aria-label={copy.chat.send} disabled={!ready}>
-          <span className={styles.sendMark} aria-hidden="true">
-            <Icon name="send" />
-          </span>
-        </button>
+        <div className={styles.field}>
+          <textarea
+            ref={field}
+            className={styles.input}
+            rows={fieldRows}
+            aria-label={copy.chat.inputLabel}
+            placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
+            aria-describedby={writing ? WRITING_ID : undefined}
+            value={text}
+            disabled={readOnly || loading}
+            enterKeyHint="send"
+            autoComplete="off"
+            data-ready={ready ? "" : undefined}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          {clearable && (
+            <button
+              type="button"
+              className={styles.clear}
+              aria-label={copy.chat.clearInput}
+              // The field keeps the focus, so a phone's keyboard stays up.
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={clearInput}
+            >
+              <Icon name="clear" />
+            </button>
+          )}
+        </div>
+        {busy ? (
+          // While an answer is coming the send button is the stop button (enabled with an empty field).
+          <button type="button" className={`${styles.send} pressable`} aria-label={copy.chat.stop} onClick={stopAnswer}>
+            <span className={styles.sendMark} aria-hidden="true">
+              <Icon name="stop" />
+            </span>
+          </button>
+        ) : (
+          <button type="submit" className={`${styles.send} pressable`} aria-label={copy.chat.send} disabled={!ready}>
+            <span className={styles.sendMark} aria-hidden="true">
+              <Icon name="send" />
+            </span>
+          </button>
+        )}
       </form>
     </div>
   );

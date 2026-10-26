@@ -92,6 +92,8 @@ function week(): Record<string, unknown> {
 export type MockOptions = {
   /** SSE bodies for POST /chat, in turn (the last repeats): a golden's file name, or `{ body }`. */
   chat?: (string | { body: string })[];
+  /** POST /chat gets no answer at all (an answer that is slow to come): for the stop button. */
+  chatHangs?: boolean;
 };
 
 /** An answer in Markdown, streamed in small pieces: emphasis, a list, a table, a code block, a link. */
@@ -133,6 +135,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
   const chat = opts.chat ?? ["chat_propose_tasks.sse"];
   const sseHeaders = JSON.parse(golden("headers.json")) as Record<string, string>;
   const chatBodies: unknown[] = [];
+  const stopBodies: unknown[] = [];
 
   const json = (route: Route, body: unknown, status = 200) =>
     route.fulfill({ status, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -173,14 +176,19 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/settings/notify") return json(route, fixture("notify"));
     if (get && path === "/settings/digests") return json(route, fixture("digest-settings")); // SP9b 5장
     if (get && path === "/push/vapid-public-key") return json(route, { public_key: "BFixtureKeyNotReal" });
+    if (req.method() === "POST" && path === "/chat/stop") {
+      stopBodies.push(req.postDataJSON());
+      return json(route, { state: "stopped" });
+    }
     if (req.method() === "POST" && path === "/chat") {
       chatBodies.push(req.postDataJSON());
+      if (opts.chatHangs) return new Promise<void>(() => {}); // never answered; the page aborts it
       const next = chat[Math.min(chatBodies.length - 1, chat.length - 1)];
       return route.fulfill({ status: 200, headers: { ...CORS, ...sseHeaders }, body: typeof next === "string" ? golden(next) : next.body });
     }
     return json(route, { error: { code: "not_found", message: `no fixture for ${req.method()} ${path}` } }, 404);
   });
-  return { chatBodies };
+  return { chatBodies, stopBodies };
 }
 
 /** The BE stops answering (network error), as when the laptop sleeps (spec 5.5.4). */
