@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
@@ -18,6 +19,7 @@ from my_planner.loop.digests import (
 )
 from my_planner.loop.schedule import Overrides, dump_overrides, parse_overrides
 from my_planner.store.db import transaction
+from my_planner.store.repos.photos import link_message_rows
 
 if TYPE_CHECKING:
     from my_planner.config import DigestConfig
@@ -215,10 +217,14 @@ class StateRepo:
         checkin_id: int | None = None,
         conversation_id: int | None = None,
         resume_conversation_id: int | None = None,
+        photo_ids: Sequence[int] = (),
     ) -> None:
         """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`와 앱이 실은 `resume_conversation_id`를
-        적는다(SP3-4 5.1, SP9 7.3)."""
+        적는다(SP3-4 5.1, SP9 7.3). `photo_ids`(SP10 5.5)는 같은 트랜잭션의 `message_photos` 연결(INSERT OR IGNORE)."""
         with transaction(self.conn):
+            if photo_ids:
+                assert conversation_id is not None, "앱 메시지는 늘 대화가 있다(5.1)"
+                link_message_rows(self.conn, update_id, conversation_id, list(photo_ids))
             self.conn.execute(
                 "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
                 "client_msg_id, checkin_id, conversation_id, resume_conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

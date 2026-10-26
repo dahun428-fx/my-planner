@@ -179,6 +179,16 @@ class PhotoFiles:
             created.extend(made)
         return rel
 
+    def read(self, rel: str) -> bytes | None:
+        """최종 파일 바이트(두뇌 입력, 5.5). 없거나 사진 폴더 밖이면 None. 그 밖의 읽기 실패는 `OSError`."""
+        path = (self.root / rel).resolve()
+        if self.root not in path.parents:  # DB 값이어도 사진 폴더 밖은 열지 않는다
+            return None
+        try:
+            return path.read_bytes()
+        except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+            return None
+
     def remove(self, *rel_paths: str) -> None:
         """상대 경로의 파일을 지운다(하루 한 번 작업). 없으면 그만. `PermissionError`면 세 번까지 다시 해 보고 올린다."""
         for rel in rel_paths:

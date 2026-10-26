@@ -542,7 +542,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
             log.exception("recovery_error")
         # 4b. 받았지만 답하지 못한 메시지(inbound_pending)를 다시 넣는다. 메시지가 회차보다 먼저 처리된다
         try:
-            resubmit_inbound(parts.state, dispatcher)
+            resubmit_inbound(parts.state, dispatcher, photos=parts.tools.photos)  # 앱 행의 사진도(SP10 5.5)
         except Exception:
             log.exception("inbound_resubmit_error")
         # 5. 첫 실행이면 installed_at 기록

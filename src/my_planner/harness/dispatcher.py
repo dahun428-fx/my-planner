@@ -31,6 +31,7 @@ from my_planner.domain import (
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.chat_photos import message_text, photo_body, photo_content
 from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
     ask_condition_for,
@@ -136,6 +137,8 @@ class Inbound:
     resume_conversation_id: int | None = None
     # 앱: 퀵 칩(SP9c 4.2). `inbound_pending`에는 넣지 않는다(다시 넣은 메시지는 보통 메시지로 처리한다)
     chip: str | None = None
+    # 앱: 붙인 사진 id(SP10 5.5, 오름차순). `text`는 `[사진 #12] {글}` 본문이다. 다시 넣을 때는 `for_message`로 다시 읽는다
+    photo_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -677,6 +680,7 @@ class Dispatcher:
             )
             return False
         self.state.bump_inbound_attempts(row.update_id)
+        photo_ids = self.message_photo_ids(row.update_id)  # 같은 사진으로 같은 입력(SP10 5.5)
         writer = UiMessageWriter(sink, _secretary_id(row.conversation_id, row.update_id))
         writer.start({**self.chat_metadata(row.conversation_id), "checkin_id": row.checkin_id})
         writer.status("queued")
@@ -684,9 +688,16 @@ class Dispatcher:
             text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
             channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=sink,
             conversation_id=row.conversation_id, message_id=message_id,
-            resume_conversation_id=row.resume_conversation_id,
+            resume_conversation_id=row.resume_conversation_id, photo_ids=photo_ids,
         ))
         return True
+
+    def message_photo_ids(self, inbound_id: int) -> list[int]:
+        """그 받은 메시지에 붙은 사진 id(id 순, SP10 5.5). 사진 저장소가 없으면 빈 목록."""
+        tools = self.tools
+        if tools is None or tools.photos is None:
+            return []
+        return [p.id for p in tools.photos.for_message(tools.tasks.conn, inbound_id)]
 
     def chat_metadata(self, conversation_id: int | None) -> dict[str, Any]:
         conv = self.convs.get(conversation_id) if conversation_id is not None else None
@@ -879,6 +890,10 @@ class Dispatcher:
             )
             slot.conversation_id = conv.id
             slot.writer.metadata = self.chat_metadata(conv.id)
+            tools = self.tools
+            if slot.inbound.photo_ids and tools is not None and tools.photos is not None:
+                # 사진도 새 대화로: `create_memo(photo_ids)`는 이번 대화의 사진만 받는다(SP10 5.5)
+                tools.photos.move_message(tools.tasks.conn, slot.inbound_id, conv.id)
         return conv
 
     def _release_app(self, slot: _AppSlot) -> None:
@@ -1085,8 +1100,10 @@ class Dispatcher:
             return
         # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
         chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
-        redacted_parts = [redact(m.text) for m in batch]
+        # 사진(SP10 5.5): 두뇌가 보는 메시지 글에는 사진 표시를 떼고(각 이미지 앞 글 블록에 있다), 글이 없으면 `(사진 n장)`
+        redacted_parts = [redact(message_text(m.text, m.photo_ids)) for m in batch]
         text = "\n\n".join(t for t, _ in redacted_parts)
+        photo_ids = [i for m in batch for i in m.photo_ids]
         limits = self.settings.limits
         truncated = len(text) > limits.input_max_chars
         if truncated:
@@ -1164,7 +1181,8 @@ class Dispatcher:
             if not rolled and not resumed and app is not None and conv.kind is not ConversationKind.run:
                 # 세션 없이 다시 연 앱 대화(앞선 호출이 세션을 못 얻었다): resume 실패와 같은 지난 내용. 새 대화는 빈 글
                 rolled = self._past_text(conv, len(batch))
-            prompt = _join(
+            images = await self._message_images(photo_ids)
+            prompt: str | UserContent = photo_content(_join(
                 notices,
                 "" if resumed else instructions,
                 self._preamble(resumed, include_habits=True),
@@ -1173,7 +1191,7 @@ class Dispatcher:
                 rolled,
                 f"## 최근 대화\n{history}" if history else "",
                 body,
-            )
+            ), images)
             if app is not None:
                 if not thinking:
                     app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
@@ -1199,7 +1217,7 @@ class Dispatcher:
                 # 새 세션으로 다시 부른다. 이 대화의 요약이 있으면 요약 + 최근 6줄, 없으면 최근 원문 20개를 붙인다
                 # (SP9 7.3, 방금 기록한 지금 메시지는 뺀다). 가르기가 안 됐으면(S11 대체 경로) 원래 대화의 회차 본문과
                 # 원래 대화의 최근 원문을 붙인다(7.2, 요약은 보지 않는다)
-                prompt = _join(
+                prompt = photo_content(_join(
                     notices,
                     instructions,
                     self._preamble(False, include_habits=True),
@@ -1207,7 +1225,7 @@ class Dispatcher:
                     self._continued_text(conv),
                     self._past_text(conv, len(batch)),
                     body,
-                )
+                ), images)
                 fell_back = True
                 if fork:
                     log.warning("fork_session_failed", extra={"conversation_id": conv.id})
@@ -1501,6 +1519,29 @@ class Dispatcher:
                 out.draft_milestones = milestone_refs(out.draft_milestone_ids, curve)
             if out.draft_chapter_ids:
                 out.draft_chapters = chapter_refs(out.draft_chapter_ids, curve)
+        return out
+
+    async def _message_images(self, photo_ids: list[int]) -> list[tuple[int, bytes]]:
+        """두뇌 입력에 넣을 사진 바이트(SP10 5.5): 부를 때 파일에서 읽는다. 살아 있지 않은 사진(5.1)과 파일이 없는
+        사진은 빼고 `photo_missing {id}` 경고만(경로는 로그에 넣지 않는다, 6장)."""
+        tools = self.tools
+        if not photo_ids or tools is None or tools.photos is None or tools.photo_files is None:
+            return []
+        repo, files, conn = tools.photos, tools.photo_files, tools.tasks.conn
+        out: list[tuple[int, bytes]] = []
+        for pid in photo_ids:
+            p = repo.get(conn, pid)
+            if p is None or not repo.is_live(conn, pid):
+                continue
+            try:
+                data = await asyncio.to_thread(files.read, p.path)
+            except OSError as e:
+                log.warning("photo_file_error", extra={"photo_id": pid, "error_type": type(e).__name__})
+                data = None
+            if data is None:
+                log.warning("photo_missing", extra={"photo_id": pid})
+                continue
+            out.append((pid, data))
         return out
 
     def _log_user_lines(
@@ -2795,7 +2836,11 @@ def _chip_of(m: Inbound) -> _Chip:
     # 다시 넣은 메시지(`recovered`)는 칩이 없다(`inbound_pending`에 넣지 않는다, 4.2). 글은 이미 가린 글이기도 하다
     if m.chip is None or m.recovered:
         return _NO_CHIP
-    return _Chip(m.chip, m.text if m.chip == "memo" else None)
+    if m.chip != "memo":
+        return _Chip(m.chip, None)
+    # 메모 칩의 원문에는 사진 표시를 넣지 않는다(SP10 5.5). 사진만이면 원문이 없다: 두뇌가 옮겨 적은 body를 쓴다
+    text = m.text.removeprefix(photo_body(m.photo_ids, "")).strip() if m.photo_ids else m.text
+    return _Chip(m.chip, text or None)
 
 
 def _join(*parts: str) -> str:

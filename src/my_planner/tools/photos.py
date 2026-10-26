@@ -49,6 +49,7 @@ TOO_MANY_PHOTOS = "too_many_photos"
 PHOTO_NOT_FOUND = "photo_not_found"
 PHOTO_IN_USE = "photo_in_use"
 PHOTO_LIMIT = "photo_limit"
+PHOTO_NOT_IN_CONVERSATION = "photo_not_in_conversation"  # 두뇌 `create_memo`(5.5): 이번 대화의 사진이 아니다
 DAILY_PHOTOS = 100  # 설정이 없을 때(`limits.daily_photos`)
 
 # 스펙 8장 문구
@@ -60,6 +61,7 @@ MSG_NO_PHOTOS = "사진을 다룰 수 없어요."
 MSG_MEMO_NOT_FOUND = "없는 메모예요."
 MSG_STORE_ARGS = "사진 정보가 맞지 않아요."
 MSG_PHOTO_IDS = "photo_ids는 서로 다른 사진 번호(정수) 목록이에요."
+MSG_PHOTO_NOT_IN_CONVERSATION = "이 대화에서 받은 사진만 메모에 붙일 수 있어요."
 MSG_NOT_ON_MEMO = "그 메모에 없는 사진이에요."  # 빼기의 낡은 대상: 일반 거절(8장 응답→문구, `photo_not_found`가 아니다)
 # 8장 "사진 보기"(v2.5). 활동 `summary`이자 `/actions` 확인 문구. 이 문구는 여기에만 둔다
 ATTACHED = "✓ 사진을 붙였어요"
@@ -133,6 +135,27 @@ class PhotoTools:
             got = self._free_memo_photo(pid)
             if isinstance(got, dict):
                 return got
+        return list(photo_ids)
+
+    def check_chat_photo_ids(self, ctx: RunContext, photo_ids: Any) -> list[int] | dict[str, Any]:
+        """두뇌 `create_memo(photo_ids)`(5.5): 서로 다른 정수 10개 이하, 모두 이번 대화(`ctx.conversation_id`)의 메시지에
+        붙은 사진. 다른 사진 id는 `photo_not_in_conversation`. 이미 메모에 붙은 사진은 `photo_in_use`(`memo_photos`만 본다:
+        메시지와 메모에 함께 붙는 것은 허용된다). 아니면 오류 결과."""
+        if self.photos is None:
+            return _err(MSG_NO_PHOTOS)
+        if not isinstance(photo_ids, list) or not all(_is_int(i) for i in photo_ids):
+            return _err(MSG_PHOTO_IDS)
+        if len(set(photo_ids)) != len(photo_ids):
+            return _err(MSG_PHOTO_IDS)
+        if len(photo_ids) > MEMO_PHOTOS_MAX:
+            return _code(MSG_TOO_MANY_PHOTOS, TOO_MANY_PHOTOS)
+        conn = self.tasks.conn
+        cid = ctx.conversation_id
+        if cid is None or not self.photos.in_conversation(conn, cid, photo_ids):
+            log.info("memo_photo_not_in_conversation", extra={"conversation_id": cid})
+            return _code(MSG_PHOTO_NOT_IN_CONVERSATION, PHOTO_NOT_IN_CONVERSATION)
+        if any(self.photos.memo_of(conn, pid) is not None for pid in photo_ids):
+            return _code(MSG_PHOTO_IN_USE, PHOTO_IN_USE)
         return list(photo_ids)
 
     def discard_incoming(self, args: Any) -> None:

@@ -1125,6 +1125,7 @@ export interface MessageItem {
   at: string;
   channel: "telegram" | "app";
   id: string;
+  photos?: PhotoRef[];
   speaker: "user" | "secretary";
   text: string;
   tools: string[];

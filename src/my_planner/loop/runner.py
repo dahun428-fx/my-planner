@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from my_planner.harness.delivery import Delivery
     from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.moments import MomentsRepo
+    from my_planner.store.repos.photos import PhotosRepo
     from my_planner.store.repos.runs import Run, RunsRepo
     from my_planner.store.repos.state import StateRepo
 
@@ -336,12 +337,13 @@ def recover_on_start(runs: RunsRepo, dispatcher: RecoveryTarget, clock: Clock, s
 
 
 
-def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
+def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter, *, photos: PhotosRepo | None = None) -> int:
     """시작 시 복구 다음 단계: 받았지만 답하지 못한 메시지(`inbound_pending`)를 받은 순서대로 다시 넣는다.
 
     본문은 저장해 둔 가린 글이다(가린 정보는 두뇌도 다시 받지 못한다). 받은 시각과 보낸 시각은 처음 그대로라,
     6시간보다 오래된 메시지는 "몇 시간 전" 알림을 붙여 넘긴다. 답을 보내면 처리 완료로 기록하면서 행을 지운다.
     넣을 때마다 `attempts`를 1 올리고, 이미 3회 넣은 행은 버린다(`inbound_dropped`). 다시 넣은 것만 센다.
+    앱 행의 사진(SP10 5.5)은 `photos.for_message`로 다시 읽어 처음과 같은 두뇌 입력을 만든다.
     """
     submitted: list[int] = []
     for row in state.pending_inbound():
@@ -360,6 +362,7 @@ def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter) -> int:
                 text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
                 channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=None,
                 conversation_id=row.conversation_id, resume_conversation_id=row.resume_conversation_id,
+                photo_ids=[ph.id for ph in photos.for_message(state.conn, row.update_id)] if photos is not None else [],
             )
         else:
             m = Inbound(text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True)

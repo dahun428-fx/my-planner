@@ -3,10 +3,13 @@
 흐름(6.4.1):
 1. 같은 `client_msg_id`의 처리가 끝났으면 저장한 답을 재생한다(두뇌 없이, `api_idempotency.response_json`).
 2. 처리 중이면(큐에서 기다리거나 두뇌가 답하는 중) 새 요청을 그 처리의 스트림에 붙인다(M8).
-3. 글이 없으면(그림 등) SP1 `NON_TEXT_REPLY`, `/`로 시작하면 텔레그램과 같은 명령(`bot.commands.run_command`).
-   `/plan [주제]`만 앱 계획 대화를 열고 두뇌 갈래로 간다. 퀵 칩(`chip`, SP9c 4.1)이 있으면 명령을 해석하지 않는다.
+3. 사진(`data-photo`, SP10 5.5)을 두뇌 부르기 전에 검사한다(400 `photo_not_found`, 422 `too_many_photos`).
+   글도 사진도 없으면(그림 등) SP1 `NON_TEXT_REPLY`, `/`로 시작하면 텔레그램과 같은 명령(`bot.commands.run_command`).
+   `/plan [주제]`만 앱 계획 대화를 열고 두뇌 갈래로 간다. 퀵 칩(`chip`, SP9c 4.1)이나 사진이 있으면 명령을 해석하지 않는다.
+   사진만 있는 메시지는 두뇌로 간다.
 4. 대화를 받을 때 고르고(`route_app_message`), 가린 글을 `inbound_pending`(통로 `app`, 음수 id, 고른 대화)에 먼저
-   쓴 뒤 두뇌 갈래에 넣는다(`submit_message`). `start`와 `data-status: queued`는 여기서 쓴다.
+   쓴 뒤 두뇌 갈래에 넣는다(`submit_message`). 사진 연결(`message_photos`)은 같은 트랜잭션이고 본문은
+   `[사진 #12] {글}`이다. `start`와 `data-status: queued`는 여기서 쓴다.
 5. 스트림을 연결에 흘려 보낸다. 15초 동안 새 조각이 없으면 `: ping`. 연결이 끊겨도 처리는 끝까지 간다(M7).
    멈추는 길은 연결 끊기가 아니라 `POST /chat/stop`(`post_chat_stop`) 하나다.
 
@@ -32,6 +35,7 @@ from my_planner.api.models import (
     ChatStopBody,
     ChatStopped,
     ConversationsClosed,
+    ErrorCode,
     dump,
     error_response,
 )
@@ -43,6 +47,7 @@ from my_planner.bot.commands import (
     run_command,
 )
 from my_planner.bot.telegram_io import NON_TEXT_MARK, NON_TEXT_REPLY
+from my_planner.harness.chat_photos import MESSAGE_PHOTOS_MAX, photo_body
 from my_planner.harness.dispatcher import FALLBACK_REPLY, Inbound
 from my_planner.harness.redact import redact
 from my_planner.harness.stream import (
@@ -71,9 +76,52 @@ STREAM_HEADERS = {
 IN_FLIGHT = "같은 메시지를 처리하고 있어요. 잠시 뒤에 다시 보내 주세요."
 
 
+# SP10 8장: `400 photo_not_found`(채팅 `data-photo`)는 "올리지 못했어요", `422 too_many_photos`는 메시지 4장 상한
+PHOTO_NOT_FOUND = "사진을 올리지 못했어요. 다시 보내 주세요."
+TOO_MANY_PHOTOS = "한 번에 사진 4장까지 보낼 수 있어요."
+
+
+class _PhotoRefused(Exception):
+    def __init__(self, status: int, code: ErrorCode, message: str) -> None:
+        super().__init__(code)
+        self.status, self.code, self.message = status, code, message
+
+
 def message_text(parts: list[dict[str, Any]]) -> str:
     """`parts`의 `text`만 이어 붙인다(6.4.1)."""
     return "".join(p["text"] for p in parts if p.get("type") == "text" and isinstance(p.get("text"), str))
+
+
+def message_photos(parts: list[dict[str, Any]]) -> list[int]:
+    """`parts`의 `{"type": "data-photo", "data": {"photo_id": 12}}`(SP10 5.5)에서 사진 id를 고른다. 오름차순, 중복은 하나로.
+
+    `photo_id`가 양의 정수가 아니면 400 `photo_not_found`, 5장 이상이면 422 `too_many_photos`(`_PhotoRefused`).
+    DB 검사(있는 사진인가, `origin`, 이미 붙었나)는 `_check_photos`가 한다.
+    """
+    ids: set[int] = set()
+    for p in parts:
+        if p.get("type") != "data-photo":
+            continue
+        data = p.get("data")
+        pid = data.get("photo_id") if isinstance(data, dict) else None
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+            raise _PhotoRefused(400, "photo_not_found", PHOTO_NOT_FOUND)
+        ids.add(pid)
+    if len(ids) > MESSAGE_PHOTOS_MAX:
+        raise _PhotoRefused(422, "too_many_photos", TOO_MANY_PHOTOS)
+    return sorted(ids)
+
+
+def _check_photos(d: Dispatcher, photo_ids: list[int]) -> None:
+    """모두 있는 `origin = 'chat'` 사진이고 아직 다른 메시지나 메모에 붙지 않았다(5.5). 아니면 400 `photo_not_found`."""
+    tools = d.tools
+    if not photo_ids:
+        return
+    if tools is None or tools.photos is None:
+        raise _PhotoRefused(400, "photo_not_found", PHOTO_NOT_FOUND)
+    conn = tools.tasks.conn
+    if not all(tools.photos.free_chat_photo(conn, pid) for pid in photo_ids):
+        raise _PhotoRefused(400, "photo_not_found", PHOTO_NOT_FOUND)
 
 
 async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
@@ -115,13 +163,21 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     text = message_text(req.message.parts)
     now = deps.clock.now()
 
-    # 3. 글이 아닌 메시지, 명령: 두뇌 없이 글 조각 하나
-    if not text.strip():
+    # 3. 사진 검사(SP10 5.5): 모두 두뇌를 부르기 전. 검사와 연결 쓰기 사이에 다른 요청이 끼지 않는다(await 없음)
+    try:
+        photo_ids = message_photos(req.message.parts)
+        _check_photos(d, photo_ids)
+    except _PhotoRefused as e:
+        log.info("chat_photo_refused", extra={"code": e.code})
+        return error_response(e.status, e.code, e.message)
+
+    # 글이 아닌 메시지(사진도 없음), 명령: 두뇌 없이 글 조각 하나
+    if not text.strip() and not photo_ids:
         _transcribe_direct(deps, NON_TEXT_MARK, NON_TEXT_REPLY)
         d.record_chat_reply(cmid, NON_TEXT_REPLY)
         return await _direct_reply(request, deps, d, sink, NON_TEXT_REPLY, req.conversation_id, req.checkin_id)
     # 퀵 칩(SP9c 4.1)이면 명령을 해석하지 않는다: `/`로 시작해도 그대로 메시지다
-    cmd = command_of(text) if d.tools is not None and req.chip is None else None
+    cmd = command_of(text) if d.tools is not None and req.chip is None and not photo_ids else None
     if cmd is not None and cmd != "/plan":
         assert d.tools is not None
         cdeps = CommandDeps(
@@ -147,18 +203,21 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     )
     inbound_id = d.state.next_app_inbound_id()
     d.state.add_pending_inbound(
-        inbound_id, redact(text)[0], now, now, channel="app", client_msg_id=cmid, checkin_id=req.checkin_id,
-        conversation_id=conv.id, resume_conversation_id=req.resume_conversation_id,
+        inbound_id, photo_body(photo_ids, redact(text)[0]), now, now, channel="app", client_msg_id=cmid,
+        checkin_id=req.checkin_id, conversation_id=conv.id, resume_conversation_id=req.resume_conversation_id,
+        photo_ids=photo_ids,
     )
     writer = UiMessageWriter(sink, app_secretary_message_id(conv.id, inbound_id))
     writer.start({**d.chat_metadata(conv.id), "checkin_id": req.checkin_id})
     writer.status("queued")
     d.submit_message(Inbound(
-        text=text, at=now, sent_at=now, update_ids=[inbound_id], channel="app", client_msg_id=cmid,
-        checkin_id=req.checkin_id, sink=sink, conversation_id=conv.id, message_id=req.message.id,
-        resume_conversation_id=req.resume_conversation_id, chip=req.chip,
+        text=photo_body(photo_ids, text), at=now, sent_at=now, update_ids=[inbound_id], channel="app",
+        client_msg_id=cmid, checkin_id=req.checkin_id, sink=sink, conversation_id=conv.id, message_id=req.message.id,
+        resume_conversation_id=req.resume_conversation_id, chip=req.chip, photo_ids=photo_ids,
     ))
-    log.info("chat_queued", extra={"conversation_id": conv.id, "inbound_id": inbound_id, "chip": req.chip})
+    log.info("chat_queued", extra={
+        "conversation_id": conv.id, "inbound_id": inbound_id, "chip": req.chip, "photos": len(photo_ids),
+    })
     return await stream_sink(request, deps, sink, conv.id)
 
 

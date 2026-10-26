@@ -4009,6 +4009,13 @@
             "id": {
               "type": "string"
             },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "type": "array"
+            },
             "speaker": {
               "enum": [
                 "user",
@@ -4033,6 +4040,26 @@
             "text",
             "tools",
             "channel"
+          ],
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
           ],
           "type": "object"
         }

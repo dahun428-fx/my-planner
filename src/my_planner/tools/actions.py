@@ -604,6 +604,9 @@ def _conversation_delete(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]
     conv = deps.router.delete(cid) if cid is not None else None
     if conv is None:
         return {"error": NO_CONVERSATION}
+    if deps.tools.photos is not None:
+        # 그 대화의 메시지 사진 연결을 지운다(SP10 5.5). 메모에 붙은 사진은 남고, 나머지는 하루 한 번 작업이 지운다(5.6)
+        deps.tools.photos.unlink_conversation(deps.conn, conv.id)
     record_activity(
         deps.activity, ctx, kind="conversation_deleted", target=f"conversation:{conv.id}",
         summary=CONVERSATION_DELETED, risk="low", undo=None,

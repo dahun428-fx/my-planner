@@ -4567,6 +4567,14 @@
               "title": "Id",
               "type": "string"
             },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "title": "Photos",
+              "type": "array"
+            },
             "speaker": {
               "enum": [
                 "user",
@@ -4596,6 +4604,31 @@
             "channel"
           ],
           "title": "MessageItem",
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "description": "메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.",
+          "properties": {
+            "height": {
+              "title": "Height",
+              "type": "integer"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "width": {
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "title": "PhotoRef",
           "type": "object"
         }
       },

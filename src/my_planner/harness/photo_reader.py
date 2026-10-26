@@ -107,13 +107,15 @@ def refusal_patterns() -> tuple[re.Pattern[str], ...]:
     return tuple(re.compile(p) for p in found)
 
 
+def image_block(image: bytes) -> dict[str, Any]:
+    """JPEG 바이트 하나의 이미지 블록(base64, 스파이크 S1 모양). 채팅 사진(5.5)도 같은 블록을 쓴다."""
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                        "data": base64.b64encode(image).decode("ascii")}}
+
+
 def photo_read_content(image: bytes) -> UserContent:
     """사용자 메시지 하나의 content: 이미지 블록 + 고정 지시(5.4, 스파이크 S1·S2 모양)."""
-    return [
-        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                     "data": base64.b64encode(image).decode("ascii")}},
-        {"type": "text", "text": instruction()},
-    ]
+    return [image_block(image), {"type": "text", "text": instruction()}]
 
 
 # --- 결과 검사 ---

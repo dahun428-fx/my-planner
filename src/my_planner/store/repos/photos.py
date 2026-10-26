@@ -141,6 +141,23 @@ class PhotosRepo:
         ).fetchone()[0]
         return n == len(ids)
 
+    def for_conversation(self, conn: sqlite3.Connection, conversation_id: int) -> dict[int, Photo]:
+        """그 대화의 메시지에 붙은 사진(id로). `GET /conversations/{id}/messages`의 `photos`(5.3)."""
+        rows = conn.execute(
+            "SELECT p.* FROM message_photos xp JOIN photos p ON p.id = xp.photo_id WHERE xp.conversation_id = ?",
+            (conversation_id,),
+        ).fetchall()
+        return {r["id"]: _photo(r) for r in rows}
+
+    def free_chat_photo(self, conn: sqlite3.Connection, photo_id: int) -> bool:
+        """채팅 `data-photo`(5.5)로 받을 수 있나: `origin = 'chat'`이고 아직 어느 메시지에도 메모에도 붙지 않았다."""
+        return conn.execute(
+            "SELECT 1 FROM photos p WHERE p.id = ? AND p.origin = 'chat' "
+            "AND NOT EXISTS (SELECT 1 FROM memo_photos a WHERE a.photo_id = p.id) "
+            "AND NOT EXISTS (SELECT 1 FROM message_photos b WHERE b.photo_id = p.id)",
+            (photo_id,),
+        ).fetchone() is not None
+
     def purgeable(self, conn: sqlite3.Connection, now: datetime) -> list[Photo]:
         """완전히 지울 사진(5.6 1번): 메모 연결이 없고, 메시지 연결이 없거나 그 대화가 지워졌고, `created_at`과
         `unlinked_at`(있으면) 모두 30일보다 오래됐다."""
@@ -217,13 +234,31 @@ class PhotosRepo:
                 conn.execute("UPDATE photos SET unlinked_at = ? WHERE id = ?", (to_iso(now), photo_id))
 
     def link_message(self, conn: sqlite3.Connection, inbound_id: int, conversation_id: int, photo_ids: list[int]) -> None:
-        """받은 메시지에 사진을 잇는다(PH-04). 같은 연결은 다시 넣지 않는다(INSERT OR IGNORE)."""
+        """받은 메시지에 사진을 잇는다(5.5). 같은 연결은 다시 넣지 않는다(INSERT OR IGNORE)."""
+        link_message_rows(conn, inbound_id, conversation_id, photo_ids)
+
+    def move_message(self, conn: sqlite3.Connection, inbound_id: int, conversation_id: int) -> None:
+        """받을 때 고른 대화가 처리 전에 닫혀 다시 골랐다(SP3-4 M3): 그 메시지의 사진도 새 대화로(5.5 "이번 대화")."""
         with transaction(conn):
-            conn.executemany(
-                "INSERT OR IGNORE INTO message_photos (inbound_id, conversation_id, photo_id) VALUES (?, ?, ?)",
-                [(inbound_id, conversation_id, pid) for pid in photo_ids],
+            conn.execute(
+                "UPDATE message_photos SET conversation_id = ? WHERE inbound_id = ?", (conversation_id, inbound_id)
             )
+
+    def unlink_conversation(self, conn: sqlite3.Connection, conversation_id: int) -> int:
+        """대화 지우기(SP9 7.7, SP10 5.5): 그 대화의 `message_photos`를 지운다. 메모 연결은 그대로. 지운 행 수."""
+        with transaction(conn):
+            return conn.execute("DELETE FROM message_photos WHERE conversation_id = ?", (conversation_id,)).rowcount
 
     def set_read_text(self, conn: sqlite3.Connection, photo_id: int, text: str) -> None:
         with transaction(conn):
             conn.execute("UPDATE photos SET read_text = ? WHERE id = ?", (text, photo_id))
+
+
+def link_message_rows(conn: sqlite3.Connection, inbound_id: int, conversation_id: int, photo_ids: list[int]) -> None:
+    """`message_photos` 행 쓰기(INSERT OR IGNORE). `StateRepo.add_pending_inbound`가 받은 메시지 행과 한 트랜잭션에서
+    부른다(5.5, 같은 `client_msg_id` 재전송에 안전)."""
+    with transaction(conn):
+        conn.executemany(
+            "INSERT OR IGNORE INTO message_photos (inbound_id, conversation_id, photo_id) VALUES (?, ?, ?)",
+            [(inbound_id, conversation_id, pid) for pid in photo_ids],
+        )
