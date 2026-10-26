@@ -562,7 +562,8 @@ _SPECS.update({
                 "body": {"type": "string", "description": "1~20,000자, 첫 줄이 제목"},
                 "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
             },
-            ["body"],
+            # 필수가 아니다: 메모 칩 차례(SP9c 4.5)는 `body` 없이 부르면 원문을 쓴다. 그 밖에 빠지면 도구가 거절한다
+            [],
         ),
     ),
 })

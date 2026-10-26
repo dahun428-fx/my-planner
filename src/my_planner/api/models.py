@@ -15,7 +15,14 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from aiohttp import web
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 # 시각 변환의 정본은 `my_planner.timefmt`다. API 쪽 가져오기가 그대로 되도록 다시 내보낸다
 from my_planner.domain import SkipReason
@@ -879,8 +886,15 @@ class ChatMessage(BaseModel):
     parts: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
 
 
+# 입력창의 퀵 칩(SP9c 4.1). 두뇌 차례 본문에 `## 버튼` 블록(`harness/prompts/chip_<키>.md`)을 붙인다
+ChipKey = Literal["todo", "event", "memo", "today", "next"]
+
+
 class ChatRequestBody(_Model):
-    """`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지)."""
+    """`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).
+
+    `chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).
+    """
 
     client_msg_id: str = Field(min_length=1, max_length=200)
     conversation_id: int | None = None
@@ -888,6 +902,13 @@ class ChatRequestBody(_Model):
     # 목록에서 골라 연 대화(SP9 7.3 0번 규칙). 앱은 그 화면을 떠나거나 "새 대화"를 누를 때까지 모든 메시지에 싣는다
     resume_conversation_id: int | None = None
     message: ChatMessage
+    chip: ChipKey | None = None
+
+    @model_validator(mode="after")
+    def _chip_not_with_checkin(self) -> ChatRequestBody:
+        if self.chip is not None and self.checkin_id is not None:
+            raise ValueError("chip과 checkin_id는 같이 올 수 없다")
+        return self
 
 
 class ActionXp(_Model):

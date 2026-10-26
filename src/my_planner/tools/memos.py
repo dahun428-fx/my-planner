@@ -224,11 +224,15 @@ class MemoTools:
     @_tool
     def create_memo(self, ctx: RunContext, body: Any = None, area: Any = None) -> dict[str, Any]:
         """메모를 만든다. 두뇌가 만들면 `origin = 'chat'`, 앱(`/actions`)이면 `'user'`. 되돌릴 수 있다.
-        회차 차례(비서가 먼저 꺼낸 말)에서는 만들지 않는다: 사용자가 부탁할 때만(6.3)."""
+        회차 차례(비서가 먼저 꺼낸 말)에서는 만들지 않는다: 사용자가 부탁할 때만(6.3).
+        메모 칩 차례(`ctx.chip == "memo"`, SP9c 4.5)면 본문은 늘 `ctx.chip_text`(가리기·자르기 전 원문)다."""
         if self.memos is None:
             return _err(MSG_NO_MEMOS)
         if ctx.run_turn:
             return _err(MSG_RUN_TURN)
+        if ctx.chip == "memo" and ctx.chip_text is not None:
+            # 메모 칩 차례(SP9c 4.5): 두뇌가 본 글은 가리고 자른 글이라 원문 그대로를 저장한다(두뇌가 body를 넣어도)
+            body = ctx.chip_text
         try:
             text, a = _body(body), _area(area)
         except ValueError as e:

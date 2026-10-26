@@ -124,6 +124,8 @@ class Inbound:
     message_id: str | None = None  # 앱: 받은 `message.id`(사용자 줄의 id, 6.4.6)
     # 앱: 목록에서 골라 이어 가는 대화(SP9 7.3 0번 규칙). 받은 대화가 처리 전에 닫혔으면 다시 고를 때 쓴다
     resume_conversation_id: int | None = None
+    # 앱: 퀵 칩(SP9c 4.2). `inbound_pending`에는 넣지 않는다(다시 넣은 메시지는 보통 메시지로 처리한다)
+    chip: str | None = None
 
 
 @dataclass
@@ -870,6 +872,8 @@ class Dispatcher:
             if await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)), update_ids):
                 log.info("message_rate_limited_window", extra={"update_ids": update_ids})
             return
+        # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
+        chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
         redacted_parts = [redact(m.text) for m in batch]
         text = "\n\n".join(t for t, _ in redacted_parts)
         limits = self.settings.limits
@@ -905,9 +909,11 @@ class Dispatcher:
         flow = self.review_flow
         review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
-        run_ctx = self._message_ctx(conv.id, lead)
+        run_ctx = self._message_ctx(conv.id, lead, chip_of)
         body = _join(
-            self._recorded_condition(), f"## 메시지\n{text}",
+            self._recorded_condition(),
+            f"## 버튼\n{prompts.load(f'chip_{chip_of.chip}.md')}" if chip_of.chip is not None else "",
+            f"## 메시지\n{text}",
             step_note(review_step, where="답"),
         )
         with self._awake.hold():
@@ -991,7 +997,7 @@ class Dispatcher:
                 fell_back = True
                 if fork:
                     log.warning("fork_session_failed", extra={"conversation_id": conv.id})
-                run_ctx = self._message_ctx(conv.id, lead)
+                run_ctx = self._message_ctx(conv.id, lead, chip_of)
                 result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
             capped = False
@@ -1234,14 +1240,15 @@ class Dispatcher:
         except Exception as e:  # noqa: BLE001 - 답 표시가 안 돼도 메시지에는 답한다
             log.warning("run_answer_record_error", extra={"run_id": run_id, "error_type": type(e).__name__})
 
-    def _message_ctx(self, conversation_id: int, lead: int) -> RunContext:
-        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1)를 싣는다."""
+    def _message_ctx(self, conversation_id: int, lead: int, chip: _Chip | None = None) -> RunContext:
+        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1), 퀵 칩(SP9c 4.2)을 싣는다."""
         app = self._cur
         if app is None:
             return RunContext(conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead)
+        chip = chip or _NO_CHIP
         return RunContext(
             conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead, channel="app",
-            stream=app.writer,
+            stream=app.writer, chip=chip.chip, chip_text=chip.text,
         )
 
     def _reply_out(
@@ -2416,6 +2423,24 @@ def _week_label(monday: date) -> str:
         f"{period_of(Cadence.week, monday)} "
         f"({monday.month}/{monday.day}~{sunday.month}/{sunday.day})"
     )
+
+
+@dataclass(frozen=True)
+class _Chip:
+    """앱 차례의 퀵 칩(SP9c 4.2). `text`는 메모 칩일 때만 받은 글 그대로(가리기·자르기 전)."""
+
+    chip: str | None = None
+    text: str | None = None
+
+
+_NO_CHIP = _Chip()
+
+
+def _chip_of(m: Inbound) -> _Chip:
+    # 다시 넣은 메시지(`recovered`)는 칩이 없다(`inbound_pending`에 넣지 않는다, 4.2). 글은 이미 가린 글이기도 하다
+    if m.chip is None or m.recovered:
+        return _NO_CHIP
+    return _Chip(m.chip, m.text if m.chip == "memo" else None)
 
 
 def _join(*parts: str) -> str:

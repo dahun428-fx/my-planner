@@ -110,6 +110,9 @@ class RunContext:
     # 두뇌가 호출 중에 처음 본 세션 id(두뇌 구현이 적는다). 시간 초과·취소로 결과가 없어도 순간 호출 뒤
     # 세션 파일을 지울 수 있게(SP8 6.3, 계획 결정 18)
     brain_session_id: str | None = None
+    # 앱 퀵 칩(SP9c 4.2). `chip_text`는 메모 칩 차례에만, 가리기·자르기 전 원문(메모리로만, 저장·로그 없음, 4.5)
+    chip: str | None = None
+    chip_text: str | None = None
 
     @property
     def run_turn(self) -> bool:
