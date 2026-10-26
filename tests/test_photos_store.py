@@ -425,6 +425,40 @@ async def test_store_photo_replays_client_msg_id(tmp_path):
     assert status == 409 and other["error"]["code"] == "conflict"
 
 
+async def test_store_photo_replay_removes_this_requests_tmps(tmp_path):
+    """다시 받은 요청의 `.incoming/` tmp는 쓰이지 않는다: 재생(같은 응답)이든 다른 경로 id(409)든 지운다.
+    `.incoming/` 밖의 파일은 건드리지 않는다."""
+    from be_env import BeEnv
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        files = env.parts.tools.photo_files
+        image = jpeg(800, 600)
+        env.parts.dispatcher.apply_action(
+            replace(_store_req(files.write_incoming(image, jpeg(80, 60)), image), client_msg_id="p-1")
+        )
+        placed = _files_under(files.root)
+        again = env.parts.dispatcher.apply_action(
+            replace(_store_req(files.write_incoming(image, jpeg(80, 60)), image), client_msg_id="p-1")
+        )
+        after_replay = _files_under(files.root)
+        await env.action("create_memo", {"body": "x"}, client_msg_id="m-1")
+        crossed = env.parts.dispatcher.apply_action(
+            replace(_store_req(files.write_incoming(image, jpeg(80, 60)), image), client_msg_id="m-1")
+        )
+        after_conflict = _files_under(files.root)
+        outside = tmp_path / "keep.tmp"
+        outside.write_bytes(image)
+        img_tmp, thumb_tmp = files.write_incoming(image, jpeg(80, 60))
+        thumb_tmp.unlink()  # 이 요청의 썸네일 자리에 `.incoming/` 밖의 파일을 둔다
+        req = replace(_store_req((img_tmp, thumb_tmp), image), client_msg_id="p-1")
+        req.args["thumb_tmp"] = str(outside)
+        env.parts.dispatcher.apply_action(req)
+        after_outside = _files_under(files.root)
+    assert again.status == "applied" and crossed.http_status == 409
+    assert after_replay == placed and after_conflict == placed
+    assert outside.exists() and after_outside == placed  # 밖의 파일은 그대로, 안의 tmp는 지웠다
+
+
 async def test_failed_insert_removes_file(tmp_path, monkeypatch):
     """Review Focus 1: 행 트랜잭션이 실패하면 최종 파일도 tmp도 없다."""
     from be_env import BeEnv
@@ -606,6 +640,24 @@ async def test_create_memo_with_photo_ids(tmp_path):
     assert resp.status == 200 and hidden is False and links == 2  # 되돌리기는 지우기: 연결은 그대로, 사진은 숨김
     assert dup["error"]["code"] == "rejected"
     assert undone["confirmation"] == "↩ 되돌림: 영수증 정리 메모를 만들었어요"  # 사진 수는 만들기 확인에만
+
+
+async def test_undo_text_keeps_a_title_that_looks_like_the_photo_tail(tmp_path):
+    """사진 없이 만든 메모의 제목이 `(사진 3장)`으로 끝나도 되돌림 문구는 제목 그대로다(꼬리를 글자로 떼지 않는다)."""
+    from be_env import BeEnv
+
+    async with BeEnv.start(tmp_path, start=MON_1400) as env:
+        _, plain = await env.action("create_memo", {"body": "영수증 (사진 3장)"})
+        resp = await env.post(f"/activity/{plain['undo_id']}/undo", json={"client_msg_id": "u-plain"})
+        undone = await resp.json()
+        ids = [_store(env)["id"] for _ in range(2)]
+        _, with_photos = await env.action("create_memo", {"body": "영수증 (사진 3장)", "photo_ids": ids})
+        resp2 = await env.post(f"/activity/{with_photos['undo_id']}/undo", json={"client_msg_id": "u-photos"})
+        undone2 = await resp2.json()
+    assert plain["confirmation"] == "✓ 메모를 만들었어요: 영수증 (사진 3장)"
+    assert undone["confirmation"] == "↩ 되돌림: 영수증 (사진 3장) 메모를 만들었어요"
+    assert with_photos["confirmation"] == "✓ 메모를 만들었어요: 영수증 (사진 3장) (사진 2장)"
+    assert undone2["confirmation"] == "↩ 되돌림: 영수증 (사진 3장) 메모를 만들었어요"
 
 
 def test_photo_copy_has_no_banned_words():

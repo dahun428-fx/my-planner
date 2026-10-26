@@ -199,6 +199,9 @@ class MemoTools:
         if photos:
             data["photos"] = photos  # 확인 문구의 `(사진 {n}장)`(SP10 8장). 사진 id는 연결 표에 있다
         self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
+        if photos and undo is not None:
+            # 되돌림 문구는 사진 수 없는 확인 문구에서 만든다(`_undo`가 `undo["summary"]`를 먼저 본다). 제목은 그대로
+            undo = {**undo, "summary": memo_line(kind, data["title"])}
         self._record(ctx, kind, memo_target(m.id), memo_line(kind, data["title"], photos), undo)
         ctx.events.append(ToolEvent(kind, None, data))
 

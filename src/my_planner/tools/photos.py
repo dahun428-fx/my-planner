@@ -124,6 +124,20 @@ class PhotoTools:
                 return got
         return list(photo_ids)
 
+    def discard_incoming(self, args: Any) -> None:
+        """다시 받은 `store_photo` 요청(같은 `client_msg_id`, 도구를 부르지 않음)의 tmp를 지운다. `.incoming/` 밖은 두고,
+        못 지운 것은 하루 한 번 작업의 고아 정리(5.6 2번)에 맡긴다."""
+        files = self.photo_files
+        if files is None or not isinstance(args, dict):
+            return
+        for key in ("image_tmp", "thumb_tmp"):
+            v = args.get(key)
+            if isinstance(v, str) and files.is_incoming(Path(v)):
+                try:
+                    Path(v).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
     # --- 내부 동작 ---
 
     @_tool

@@ -128,7 +128,7 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
 
 # `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
 # `photos`: 사진 올리기(SP10 5.2 `store_photo`, PH-02 `POST /photos`). 020부터 `api_idempotency`에 기록한다: 같은
-# `client_msg_id`면 처음 응답을 그대로 돌려주고 인자(그 요청의 `.incoming/` tmp)는 보지 않는다. 그 tmp 정리는 처리기(PH-02) 몫
+# `client_msg_id`면 처음 응답을 그대로 돌려주고 도구는 부르지 않고 그 요청의 `.incoming/` tmp만 지운다(`on_replay`)
 RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices", "photos"]
 NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices"})  # `api_idempotency.endpoint`에 없는 값
 
@@ -197,6 +197,9 @@ class ActionSpec:
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
     endpoint: RequestEndpoint | None = None
     reply: bool = False  # 명령 동작: 결과가 답 글(`reply_text`)이고 응답은 `/chat` 재생 모양(6.4.1)
+    # 같은 `client_msg_id`로 다시 와서 도구를 부르지 않을 때(재생·409) 그 요청의 인자로 부르는 `Tools` 메서드 이름.
+    # `store_photo`: 그 요청이 쓴 `.incoming/` tmp를 지운다(SP10 5.2)
+    on_replay: str | None = None
 
 
 # --- 확인이 필요한가 (6.4.2 위험 칸) ---
@@ -700,7 +703,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "cmd_unpause": ActionSpec(_cmd_unpause, public=False, endpoint="chat", reply=True),
     "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
     # 내부(`POST /photos`, SP10 5.2): `.incoming/` tmp 둘 → 행과 최종 파일. 활동·되돌리기 없음. `/actions`에서는 `400`
-    "store_photo": ActionSpec("store_photo", public=False, endpoint="photos"),
+    "store_photo": ActionSpec("store_photo", public=False, endpoint="photos", on_replay="discard_incoming"),
     # 내부(`api/push.py`: 6.4.8, 6.4.9). 되돌릴 수 없다
     "push_subscribe": ActionSpec(
         _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label", "device_id"}),
@@ -989,6 +992,8 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     # `push` 경로는 중복 방지 기록이 없다(`api_idempotency.endpoint`에 없는 값)
     if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
         stored = deps.idempotency.get(req.client_msg_id)
+        if stored is not None and spec.on_replay is not None:
+            getattr(deps.tools, spec.on_replay)(req.args)  # 이 요청은 적용하지 않는다: 딸린 것을 치운다
         if stored is not None:
             if stored.endpoint != req.endpoint:
                 return _error("conflict", 409, "conflict", REUSED_ID)
