@@ -25,7 +25,7 @@ import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
-import { QuickChips } from "./QuickChips";
+import { QuickChips, WRITING_ID } from "./QuickChips";
 import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
 import { sheetState } from "./sheetContext";
 import { type ChatCtx, InFlightError, makeTransport } from "./transport";
@@ -307,6 +307,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setText("");
     setWriting(null);
   };
+  // A card's button is a plain message, also during a write (which then ends).
+  const chooseLabel = (label: string) => {
+    if (send(label)) setWriting(null);
+  };
   const openList = () => {
     setWriting(null);
     setView("list");
@@ -371,7 +375,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // report isComposing false on the Enter that ends a composition.
   // SP9c 3: Backspace in the empty input ends a one-line write.
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Backspace" && text === "" && writing) setWriting(null);
+    if ((e.key === "Backspace" || e.keyCode === 8) && text === "" && writing) setWriting(null); // 8: some Android keyboards
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
     e.preventDefault();
     sendInput();
@@ -426,7 +430,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       );
     }
     const parts = [...toViewParts(m), ...(restored[m.id] ?? [])];
-    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={(label) => void send(label)} onOpen={openScreen} onOpenPath={openPath} />);
+    rows.push(<MessageView key={m.id} message={m} parts={parts} readOnly={readOnly || busy} onChoose={chooseLabel} onOpen={openScreen} onOpenPath={openPath} />);
     if (i === historyCount - 1) rows.push(elsewhereLines);
     if (conv !== null) {
       prevConv = conv;
@@ -534,6 +538,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
           rows={fieldRows}
           aria-label={copy.chat.inputLabel}
           placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
+          aria-describedby={writing ? WRITING_ID : undefined}
           value={text}
           disabled={readOnly || loading}
           enterKeyHint="send"

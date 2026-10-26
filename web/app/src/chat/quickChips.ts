@@ -26,14 +26,15 @@ export interface Chip {
 }
 
 export const isWriteKey = (key: string): key is WriteKey => key in copy.chat.write;
-const WIRE: readonly string[] = ["todo", "event", "memo", "today", "next"] satisfies WireChip[];
+const WIRE = ["todo", "event", "memo", "today", "next"] as const satisfies readonly WireChip[];
+const isWire = (key: string): key is WireChip => (WIRE as readonly string[]).includes(key);
 
 const chip = (key: ChipKey, icon: IconName, checkinId?: number): Chip => ({
   key,
   icon,
   ...copy.chat.chips[key],
   mode: isWriteKey(key) ? "write" : "send",
-  ...(WIRE.includes(key) ? { wire: key as WireChip } : {}),
+  ...(isWire(key) ? { wire: key } : {}),
   ...(checkinId === undefined ? {} : { checkinId }),
 });
 

@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import type { AppProps } from "next/app";
 import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { apiFetch } from "../api/client";
 import { saveConn } from "../lib/connection";
 import { copy } from "../lib/copy";
 import { onTodayRefresh } from "../lib/push";
@@ -1127,6 +1128,78 @@ describe("ChatSheet one-line write (SP9c)", () => {
     await ready();
     expect(closeWrite()).toBeNull();
     expect(row()).toBeInTheDocument();
+  });
+
+  // Review round 1: a card's button pressed during a write is a plain message, and the write ends.
+  it("a card button during a write goes without chip and brings the row back", async () => {
+    serveHistory();
+    const bodies = serveChat(
+      () =>
+        sseResponse(
+          textAnswer("m-1-1", 1, "어느 쪽부터 할까요?", [
+            { type: "tool-input-available", toolCallId: "tc_1", toolName: "ui_choice", input: { question: "무엇부터 할까요?", options: [{ id: "a", label: "운동" }, { id: "b", label: "독서" }] } },
+            { type: "tool-output-available", toolCallId: "tc_1", output: { ok: true, data: {} } },
+          ]),
+        ),
+      () => sseResponse(textAnswer("m-1-2", 1, "운동부터 해요")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
+    await sendText(user, "뭐부터 할까");
+    const choice = await screen.findByRole("button", { name: "운동" });
+    await waitFor(() => expect(choice).toBeEnabled());
+    await openWrite(user, "일정 추가");
+    await user.click(choice);
+    expect(await screen.findByText("운동부터 해요")).toBeInTheDocument();
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).not.toHaveProperty("chip");
+    expect(closeWrite()).toBeNull();
+    expect(row()).toBeInTheDocument();
+  });
+
+  // Review round 1: a screen reader hears the write's kind with the input, only while it is open.
+  it("the input is described by the indicator while a write is open", async () => {
+    history(5, []);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "일정 추가");
+    expect(input).toHaveAccessibleDescription("일정 추가");
+    await user.click(closeWrite() as HTMLElement);
+    expect(input).not.toHaveAttribute("aria-describedby");
+  });
+
+  // Review round 1: some Android keyboards give keyCode 8 without key "Backspace".
+  it("keyCode 8 in the empty input ends the write too", async () => {
+    history(5, []);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "메모하기");
+    fireEvent.keyDown(input, { key: "Unidentified", keyCode: 8 });
+    expect(closeWrite()).toBeNull();
+    expect(row()).toBeInTheDocument();
+  });
+
+  // Spec 3: going offline during a write only stops the sending; back online, the line still carries its chip.
+  it("offline during a write keeps the indicator; back online the line goes with its chip", async () => {
+    history(5, []);
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-1", 5, "일정에 넣었어요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await openWrite(user, "일정 추가");
+    await user.type(input, "내일 오후 3시 치과");
+    server.use(healthAnswers.unreachable(), http.get(`${BASE}/today`, () => HttpResponse.error()));
+    await act(async () => void (await apiFetch("GET", "/today")));
+    expect(await screen.findByText(copy.offline.chatLater)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy.chat.send })).toBeDisabled();
+    expect(closeWrite()).toBeInTheDocument();
+    expect(screen.getByText("일정 추가")).toBeInTheDocument();
+    server.use(http.get(`${BASE}/health`, () => HttpResponse.json(healthJson)), http.get(`${BASE}/today`, () => HttpResponse.json(todayJson)));
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.send })).toBeEnabled());
+    expect(closeWrite()).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ chip: "event" });
   });
 
   // Spec 4.1: a BE from before the chips refuses `chip` (400 invalid_request); the line goes again
