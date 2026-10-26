@@ -30,6 +30,10 @@ export interface ApiModels {
   ConversationsClosed: ConversationsClosed;
   Curve: Curve;
   CurveHistory: CurveHistory;
+  DigestSettingPutBody: DigestSettingPutBody;
+  DigestSettings: DigestSettings;
+  DigestSettingsUpdated: DigestSettingsUpdated;
+  DigestSlot: DigestSlot;
   Drafts: Drafts;
   Error: Error;
   EventDetail: EventDetail;
@@ -142,7 +146,8 @@ export interface ErrorDetail {
     | "remind_invalid"
     | "start_not_in_weekdays"
     | "too_many_events"
-    | "range_too_long";
+    | "range_too_long"
+    | "digest_time_invalid";
   message: string;
 }
 /**
@@ -677,6 +682,55 @@ export interface HistoryTurningPoints {
 export interface HistoryUnassigned {
   events: HistoryEvent[];
   hidden_sensitive: HiddenSensitive;
+}
+/**
+ * `PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면
+ * `422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSettingPutBody".
+ */
+export interface DigestSettingPutBody {
+  kind: "morning" | "night";
+  on: boolean;
+  time: string;
+}
+/**
+ * `GET /settings/digests`: 아침 알림(오늘 일정), 밤 알림(내일 일정), 마지막 깨우기 작업 다시 등록이 됐는지
+ * (`wake_updated`: 체크인 시간과 같은 값).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSettings".
+ */
+export interface DigestSettings {
+  morning: DigestSlot;
+  night: DigestSlot;
+  wake_updated: boolean;
+}
+/**
+ * 일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 "HH:MM"(04:00 경계와 상관없다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSlot".
+ */
+export interface DigestSlot {
+  on: boolean;
+  time: string;
+}
+/**
+ * `PUT /settings/digests`의 답: 지금 두 종류(와 `wake_updated`), 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).
+ * 같은 값이라 바뀐 것이 없으면 `applies`, `activity_id`, `undo_id`가 모두 null이다.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "DigestSettingsUpdated".
+ */
+export interface DigestSettingsUpdated {
+  activity_id: number | null;
+  applies: ("today" | "tomorrow") | null;
+  morning: DigestSlot;
+  night: DigestSlot;
+  undo_id: number | null;
+  wake_updated: boolean;
 }
 /**
  * `GET /drafts` (6.3.8): 만료 전 초안만.

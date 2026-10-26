@@ -150,7 +150,8 @@
                 "remind_invalid",
                 "start_not_in_weekdays",
                 "too_many_events",
-                "range_too_long"
+                "range_too_long",
+                "digest_time_invalid"
               ],
               "title": "Code",
               "type": "string"
@@ -2463,6 +2464,185 @@
       "title": "CurveHistory",
       "type": "object"
     },
+    "DigestSettingPutBody": {
+      "additionalProperties": false,
+      "description": "`PUT /settings/digests`: 바꿀 종류 하나. 아침 04:00~11:50, 밤 18:00~23:50, 10분 단위(벗어나거나 모르는 종류면\n`422 digest_time_invalid`). 멱등 키는 없다(같은 값이면 아무것도 적지 않는다).",
+      "properties": {
+        "kind": {
+          "enum": [
+            "morning",
+            "night"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "on": {
+          "title": "On",
+          "type": "boolean"
+        },
+        "time": {
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "on",
+        "time"
+      ],
+      "title": "DigestSettingPutBody",
+      "type": "object"
+    },
+    "DigestSettings": {
+      "$defs": {
+        "DigestSlot": {
+          "additionalProperties": false,
+          "description": "일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 \"HH:MM\"(04:00 경계와 상관없다).",
+          "properties": {
+            "on": {
+              "title": "On",
+              "type": "boolean"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "on",
+            "time"
+          ],
+          "title": "DigestSlot",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /settings/digests`: 아침 알림(오늘 일정), 밤 알림(내일 일정), 마지막 깨우기 작업 다시 등록이 됐는지\n(`wake_updated`: 체크인 시간과 같은 값).",
+      "properties": {
+        "morning": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "night": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "wake_updated": {
+          "title": "Wake Updated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "morning",
+        "night",
+        "wake_updated"
+      ],
+      "title": "DigestSettings",
+      "type": "object"
+    },
+    "DigestSettingsUpdated": {
+      "$defs": {
+        "DigestSlot": {
+          "additionalProperties": false,
+          "description": "일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 \"HH:MM\"(04:00 경계와 상관없다).",
+          "properties": {
+            "on": {
+              "title": "On",
+              "type": "boolean"
+            },
+            "time": {
+              "title": "Time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "on",
+            "time"
+          ],
+          "title": "DigestSlot",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`PUT /settings/digests`의 답: 지금 두 종류(와 `wake_updated`), 적용 시점, 되돌리기 id(`undo_id`, 활동 id와 같다).\n같은 값이라 바뀐 것이 없으면 `applies`, `activity_id`, `undo_id`가 모두 null이다.",
+      "properties": {
+        "activity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Activity Id"
+        },
+        "applies": {
+          "anyOf": [
+            {
+              "enum": [
+                "today",
+                "tomorrow"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Applies"
+        },
+        "morning": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "night": {
+          "$ref": "#/$defs/DigestSlot"
+        },
+        "undo_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Undo Id"
+        },
+        "wake_updated": {
+          "title": "Wake Updated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "morning",
+        "night",
+        "wake_updated",
+        "applies",
+        "activity_id",
+        "undo_id"
+      ],
+      "title": "DigestSettingsUpdated",
+      "type": "object"
+    },
+    "DigestSlot": {
+      "additionalProperties": false,
+      "description": "일정 정리 알림 한 종류(SP9b 5장). `time`은 현지 시각 \"HH:MM\"(04:00 경계와 상관없다).",
+      "properties": {
+        "on": {
+          "title": "On",
+          "type": "boolean"
+        },
+        "time": {
+          "title": "Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "on",
+        "time"
+      ],
+      "title": "DigestSlot",
+      "type": "object"
+    },
     "Drafts": {
       "$defs": {
         "DraftItem": {
@@ -2699,7 +2879,8 @@
                 "remind_invalid",
                 "start_not_in_weekdays",
                 "too_many_events",
-                "range_too_long"
+                "range_too_long",
+                "digest_time_invalid"
               ],
               "title": "Code",
               "type": "string"

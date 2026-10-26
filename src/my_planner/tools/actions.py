@@ -23,6 +23,7 @@
 푸시와 알림 설정(6.4.8, 6.4.9)은 `api/push.py`만 부르는 내부 동작이다(`endpoint="push"`, 되돌릴 수 없음):
 `push_subscribe`, `push_unsubscribe`, `notify_set`, `push_test_result`. 구독 `endpoint`(주소)와 키는 활동
 `summary`, 결과, 로그에 넣지 않는다(14장). `api_idempotency`에는 쓰지 않는다(이 경로들은 `client_msg_id`가 없다).
+일정 정리 알림 설정 `set_digest_settings`(SP9b 5.1)도 같은 경로의 내부 동작이지만 활동을 남기고 되돌릴 수 있다.
 
 되돌리기 `undo`(6.4.3)는 `POST /activity/{id}/undo`만 부르는 내부 동작이다(`endpoint="undo"`). 없는 활동은 `404`,
 이미 되돌린 활동은 아무것도 바꾸지 않고 `200 already_undone`(U4: 같은 `client_msg_id`로 다시 와도 같은 답),
@@ -621,6 +622,9 @@ ACTIONS: dict[str, ActionSpec] = {
     # 체크인 시간(SP9 8장): 앱 설정(`PUT /settings/checkin-times`)과 두뇌 확인 카드(`/actions` + 토큰)가 같은 동작.
     # 바로 적용하고 되돌릴 수 있다(이전 칸으로). 두뇌 도구 `set_checkin_time`은 확인 토큰만 만든다
     "set_checkin_time": ActionSpec("apply_checkin_time", target=_checkin_target),
+    # 일정 정리 알림(SP9b 5.1): 앱 설정(`PUT /settings/digests`)만 부른다. 채팅 도구와 확인 카드가 없어 `/actions`에서는
+    # 부를 수 없다. 바로 적용하고 되돌릴 수 있다(이전 값으로). 같은 값이면 아무것도 적지 않는다
+    "set_digest_settings": ActionSpec("apply_digest_settings", public=False, endpoint="push"),
     # 메모(SP9 6.2·6.4). 확인 없음. 만들기·고정·고정 풀기·지우기는 되돌릴 수 있고 고치기는 되돌릴 수 없다.
     # 고치기·고정·지우기는 두뇌 도구가 아니다(`mcp_adapter` 목록에 없다, Q5)
     "create_memo": ActionSpec("create_memo"),

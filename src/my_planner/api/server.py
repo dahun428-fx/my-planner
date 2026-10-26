@@ -38,11 +38,13 @@ from my_planner.api.models import ApiError, error_response
 from my_planner.api.push import (
     delete_subscription,
     get_checkin_times,
+    get_digest_settings,
     get_notify,
     get_vapid_public_key,
     post_push_test,
     post_subscription,
     put_checkin_times,
+    put_digest_settings,
     put_notify,
 )
 from my_planner.api.read import (
@@ -238,6 +240,7 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/push/vapid-public-key", get_vapid_public_key),
     ("/settings/notify", get_notify),
     ("/settings/checkin-times", get_checkin_times),
+    ("/settings/digests", get_digest_settings),
     ("/settings/calendar", get_calendar_settings),
 )
 
@@ -293,6 +296,7 @@ def build_app(deps: ApiDeps) -> web.Application:
         app.router.add_post(API_PREFIX + path, write_handler(write))
     app.router.add_put(API_PREFIX + "/settings/notify", write_handler(put_notify))
     app.router.add_put(API_PREFIX + "/settings/checkin-times", write_handler(put_checkin_times))
+    app.router.add_put(API_PREFIX + "/settings/digests", write_handler(put_digest_settings))
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
     app.router.add_delete(API_PREFIX + "/conversations/{id}", write_handler(delete_conversation))  # SP9 7.7
     if body_route_open(deps):  # 아이폰 단축어(SP8 7.2). 토큰이 없으면 경로도 없다
