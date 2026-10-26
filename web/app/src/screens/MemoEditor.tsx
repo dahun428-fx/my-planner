@@ -166,6 +166,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const attachRef = useRef<(id: number) => Promise<boolean>>(async () => true);
+  const removePicRef = useRef<(id: number) => void>(() => {});
 
   const saved = useRef<Saved>({ id: givenId, body: "", area: null, updatedAt: null });
   const textRef = useRef(text);
@@ -305,6 +306,14 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
         return true;
       }
       if (out.kind === "rejected") toast.show({ text: out.message || copy.actions.failed });
+      if (out.kind === "failed" && out.result.kind === "error" && out.result.code === "photo_in_use") {
+        // 8장: a photo is already on another memo, so the memo was not made. The 409 does not say
+        // which one, so the photos sent with it leave the row and the next save can make the memo.
+        createFailed.current = false;
+        for (const id of photoIds) removePicRef.current(id);
+        toast.show({ text: photoOutcomeText(out) });
+        return false;
+      }
       if (out.kind === "failed") failure.current = out.result;
       return false;
     }
@@ -482,6 +491,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     },
     [setPhotos],
   );
+  removePicRef.current = removePic;
 
   // A saved memo takes the photo at once; a new one takes it with create_memo's photo_ids.
   const attach = useCallback(

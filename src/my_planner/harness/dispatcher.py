@@ -137,7 +137,7 @@ class Inbound:
     resume_conversation_id: int | None = None
     # 앱: 퀵 칩(SP9c 4.2). `inbound_pending`에는 넣지 않는다(다시 넣은 메시지는 보통 메시지로 처리한다)
     chip: str | None = None
-    # 앱: 붙인 사진 id(SP10 5.5, 오름차순). `text`는 `[사진 #12] {글}` 본문이다. 다시 넣을 때는 `for_message`로 다시 읽는다
+    # 앱: 붙인 사진 id(SP10 5.5, 보낸 순서: `for_message`의 연결 `rowid` 순). `text`는 `[사진 #12] {글}` 본문이다. 다시 넣을 때는 `for_message`로 다시 읽는다
     photo_ids: list[int] = field(default_factory=list)
 
 
@@ -695,7 +695,7 @@ class Dispatcher:
         return True
 
     def message_photo_ids(self, inbound_id: int) -> list[int]:
-        """그 받은 메시지에 붙은 사진 id(id 순, SP10 5.5). 사진 저장소가 없으면 빈 목록."""
+        """그 받은 메시지에 붙은 사진 id(보낸 순서 = 연결 `rowid` 순, SP10 5.5). 사진 저장소가 없으면 빈 목록."""
         tools = self.tools
         if tools is None or tools.photos is None:
             return []

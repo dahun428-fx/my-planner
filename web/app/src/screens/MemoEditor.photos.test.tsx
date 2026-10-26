@@ -328,6 +328,30 @@ describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull()); // read state, the memo is made
   });
 
+  it("409 photo_in_use on create_memo: it says so, the photo leaves the row and the next save makes the memo", async () => {
+    fakeBe({ read: () => HttpResponse.json({ text: "", unreadable: true }) });
+    const creates: Record<string, unknown>[] = [];
+    server.use(
+      http.post(`${BASE}/actions`, async ({ request }) => {
+        const b = (await request.json()) as Sent;
+        creates.push(b.args);
+        if (creates.length === 1) return HttpResponse.json({ error: { code: "photo_in_use", message: "x" } }, { status: 409 });
+        const result = { id: 7, title: "책 메모", area: null, pinned: false, updated_at: "2026-10-25T05:11:00Z" };
+        return HttpResponse.json({ status: "applied", activity_id: 901, undo_id: 900, result, confirmation: copy.memos.confirm.created("책 메모") });
+      }),
+    );
+    renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
+    await userEvent.type(box(), "책 메모");
+    await pick();
+    await waitFor(() => expect(creates).toHaveLength(1), { timeout: 2500 });
+    expect(creates[0]).toEqual({ body: "책 메모", photo_ids: [12] });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.inUse));
+    expect(screen.queryByRole("list", { name: copy.photos.strip })).toBeNull();
+    await userEvent.type(box(), "!");
+    await waitFor(() => expect(creates).toHaveLength(2), { timeout: 2500 });
+    expect(creates[1]).toEqual({ body: "책 메모!" });
+  });
+
   it("while the photo is still read the autosave does not make it with 사진", async () => {
     const read = deferred<Response>();
     const be = fakeBe({ read: () => read.promise });
