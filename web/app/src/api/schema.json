@@ -4151,7 +4151,7 @@
         "label": {
           "maxLength": 40,
           "minLength": 1,
-          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\\u200e\\u200f\\u2028-\\u202e\\u2066-\\u2069]+$",
           "type": "string"
         }
       },

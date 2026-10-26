@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hardReplace } from "../lib/nav";
 import { copy } from "../lib/copy";
+import { saveConn } from "../lib/connection";
 import { PALETTES } from "../lib/theme";
 import { formatKst } from "../lib/time";
 import degraded from "../test/fixtures/health-degraded.json";
@@ -761,6 +762,51 @@ describe("Settings", () => {
     const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
     await user.click(within(sheet).getByRole("button", { name: copy.settings.disconnectConfirm }));
     await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
+    expect(localStorage.getItem("mp.token")).toBeNull();
+  });
+
+  // Device pairing spec 5.4: a device token is revoked at the BE first; the device is cleared either way.
+  it("disconnect with a device token revokes this device at the BE, and clears even when that fails", async () => {
+    for (const answer of [204, 0]) {
+      serve();
+      const revoked: { id: string; auth: string | null }[] = [];
+      server.use(
+        http.delete(`${BASE}/devices/:id`, ({ params, request }) => {
+          revoked.push({ id: String(params.id), auth: request.headers.get("Authorization") });
+          return answer === 0 ? HttpResponse.error() : new HttpResponse(null, { status: answer });
+        }),
+      );
+      const { unmount } = renderWithProviders(<Settings />, { route: "/settings/" });
+      saveConn({ beUrl: TEST_BE_URL, token: "device-token" }, { id: 7 });
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: copy.settings.disconnect }));
+      const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
+      await user.click(within(sheet).getByRole("button", { name: copy.settings.disconnectConfirm }));
+      await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
+      expect(revoked).toEqual([{ id: "7", auth: "Bearer device-token" }]);
+      for (const k of ["mp.beUrl", "mp.token", "mp.tokenKind", "mp.deviceId"]) expect(localStorage.getItem(k)).toBeNull();
+      unmount();
+      vi.mocked(hardReplace).mockClear();
+      server.resetHandlers();
+    }
+  });
+
+  it("disconnect with the key asks the BE to revoke nothing", async () => {
+    serve();
+    const revoked: string[] = [];
+    server.use(
+      http.delete(`${BASE}/devices/:id`, ({ params }) => {
+        revoked.push(String(params.id));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderWithProviders(<Settings />, { route: "/settings/" });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: copy.settings.disconnect }));
+    const sheet = await screen.findByRole("dialog", { name: copy.settings.disconnectSummary });
+    await user.click(within(sheet).getByRole("button", { name: copy.settings.disconnectConfirm }));
+    await waitFor(() => expect(hardReplace).toHaveBeenCalledWith("/connect/"));
+    expect(revoked).toEqual([]);
     expect(localStorage.getItem("mp.token")).toBeNull();
   });
 

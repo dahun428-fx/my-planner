@@ -28,8 +28,15 @@ function servePush() {
   return posted;
 }
 
-async function fill() {
+// The key form is behind "열쇠로 연결" since device pairing (spec 5.3).
+async function keyMode() {
   const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: copy.connect.useKey }));
+  return user;
+}
+
+async function fill() {
+  const user = await keyMode();
   await user.type(await screen.findByLabelText(copy.connect.urlLabel), "https://gp76.example.ts.net");
   await user.type(screen.getByLabelText(copy.connect.tokenLabel), "good-token");
   return user;
@@ -124,7 +131,7 @@ describe("Connect with push (iPhone home screen app)", () => {
     env = installPush({ answer: "granted" });
     device(IPHONE_UA, { standalone: true });
     renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
-    const user = userEvent.setup();
+    const user = await keyMode();
     await user.type(await screen.findByLabelText(copy.connect.urlLabel), "http://gp76.example.ts.net");
     await user.type(screen.getByLabelText(copy.connect.tokenLabel), "good-token");
     await user.click(screen.getByRole("button", { name: copy.connect.startWithPush }));
@@ -136,7 +143,7 @@ describe("Connect with push (iPhone home screen app)", () => {
     env = installPush({ answer: "granted" });
     device(IPHONE_UA, { standalone: true });
     renderWithProviders(<Connect />, { conn: "none", route: "/connect/" });
-    const user = userEvent.setup();
+    const user = await keyMode();
     await user.type(await screen.findByLabelText(copy.connect.urlLabel), "https://gp76.example.ts.net");
     await user.type(screen.getByLabelText(copy.connect.tokenLabel), "   ");
     await user.click(screen.getByRole("button", { name: copy.connect.startWithPush }));

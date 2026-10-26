@@ -21,6 +21,7 @@ describe("More (spec 9.1)", () => {
       ["습관", "/habits/"],
       ["상태창", "/status/"],
       ["기기 연결", "/connect/"],
+      ["연결된 기기", "/devices/"],
     ]);
     expect(screen.queryByRole("link", { name: copy.more.back })).toBeNull();
   });
@@ -28,12 +29,12 @@ describe("More (spec 9.1)", () => {
   it("lists the status row once /status/ is in the build (SP8-02)", () => {
     expect(HAS_STATUS_PAGE).toBe(true);
     renderWithProviders(<More />, { route: "/more/" });
-    expect(rows().map(([t]) => t)).toEqual(["설정", "기록", "습관", "상태창", "기기 연결"]);
+    expect(rows().map(([t]) => t)).toEqual(["설정", "기록", "습관", "상태창", "기기 연결", "연결된 기기"]);
   });
 
   it("leaves the status row out when told the build has no /status/", () => {
     renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
-    expect(rows().map(([t]) => t)).toEqual(["설정", "기록", "습관", "기기 연결"]);
+    expect(rows().map(([t]) => t)).toEqual(["설정", "기록", "습관", "기기 연결", "연결된 기기"]);
   });
 
   it("the page shows the tab bar with no tab marked", () => {

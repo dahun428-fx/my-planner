@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { getHealth } from "../api/client";
+import { type ClipboardEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type ApiResult, getHealth, postPair } from "../api/client";
 import { LargeTitle } from "../components/LargeTitle";
 import { useToast } from "../components/Toast";
 import { useConnection } from "../lib/ConnectionProvider";
-import { type Conn, normalizeBeUrl, normalizeToken, saveConn, saveLastHealthOk } from "../lib/connection";
+import {
+  type Conn,
+  defaultBeUrl,
+  deviceLabel,
+  normalizeBeUrl,
+  normalizeToken,
+  parsePairHash,
+  saveConn,
+  saveLastHealthOk,
+} from "../lib/connection";
 import { copy } from "../lib/copy";
 import { isIos, isStandalone } from "../lib/platform";
 import { askPermission, forgetPushForOtherBe, pushSupport, subscribePush } from "../lib/push";
@@ -19,7 +28,31 @@ const URL_REASON = {
   invalid: copy.connect.invalidUrl,
 } as const;
 
-// Spec 5.5.8 / F1: address and key, checked against /health; saved only when the secretary answers.
+const CODE_LEN = 6;
+const EMPTY_DIGITS: readonly string[] = Array.from({ length: CODE_LEN }, () => "");
+
+// What the connect screen says when a call did not get through (both modes).
+function trouble(r: ApiResult<unknown>): string {
+  switch (r.kind) {
+    case "offline":
+      return copy.connect.unreachable;
+    case "rate_limited":
+      return copy.status.tooMany;
+    case "safe_mode":
+      return copy.status.safeMode;
+    case "unauthorized":
+      return copy.connect.badToken;
+    case "error":
+      return copy.errors.block(r.code);
+    case "ok":
+      return "";
+  }
+}
+
+// Spec 5.5.8 / F1 and device pairing spec 5.3: a 6-digit pairing code by default (the BE address
+// filled from NEXT_PUBLIC_DEFAULT_BE_URL or the QR's `#be=`), the address and key form behind
+// "열쇠로 연결". Either way the connection is checked against /health and saved only when the
+// secretary answers.
 export function Connect() {
   const router = useRouter();
   const toast = useToast();
@@ -28,6 +61,13 @@ export function Connect() {
   const [guideOnly, setGuideOnly] = useState<boolean | null>(null);
   // The iPhone home screen app offers "알림 허용하고 시작하기"; a computer browser just "시작하기".
   const [offerPush, setOfferPush] = useState(false);
+  // The iPhone home screen app: no auto-submit, so the permission prompt stays on a tap (5.3).
+  const [homeApp, setHomeApp] = useState(false);
+  const [mode, setMode] = useState<"code" | "key">("code");
+  // Filled from the build's default or the QR and shown as text until "주소 바꾸기".
+  const [urlFixed, setUrlFixed] = useState(false);
+  const [digits, setDigits] = useState<readonly string[]>(EMPTY_DIGITS);
+  const boxes = useRef<(HTMLInputElement | null)[]>([]);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [line, setLine] = useState<Line>(null);
@@ -38,9 +78,34 @@ export function Connect() {
   const asked = useRef<Promise<NotificationPermission> | null>(null);
 
   // Device checks need the browser, so they run after mount (the page is prerendered).
+  // Then the address: the QR's `#be=` beats the build's default (it is the address a connected device
+  // really uses). The hash goes from the address bar at once; an iPhone/iPad Safari tab never reads it
+  // (3.3: the code would be spent on a tab whose storage the home screen app cannot see).
   useEffect(() => {
-    setGuideOnly(isIos() && !isStandalone());
-    setOfferPush(isIos() && isStandalone() && pushSupport() === "ok");
+    const ios = isIos();
+    const standalone = isStandalone();
+    setGuideOnly(ios && !standalone);
+    setOfferPush(ios && standalone && pushSupport() === "ok");
+    setHomeApp(ios && standalone);
+    if (ios && !standalone) return;
+    const hash = parsePairHash(window.location.hash);
+    if (hash) {
+      try {
+        window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+      } catch {
+        // no history API: the hash stays, nothing else changes
+      }
+    }
+    const be = hash?.be ?? defaultBeUrl();
+    if (be) {
+      setUrl(be);
+      setUrlFixed(normalizeBeUrl(be).ok);
+    }
+    if (hash?.code) {
+      setDigits(hash.code.split(""));
+      if (!(ios && standalone) && be) void pair(be, hash.code, null);
+    }
+    // Once, on arrival.
   }, []);
 
   // Returns the connection to save when /health accepted it, otherwise null (and says why).
@@ -58,26 +123,127 @@ export function Connect() {
     const conn = { beUrl: norm.url, token: key };
     setLine({ tone: "ok", text: copy.connect.checking });
     const r = await getHealth(conn);
-    switch (r.kind) {
-      case "ok":
-        setLine({ tone: "ok", text: copy.connect.ok });
-        return conn;
-      case "unauthorized":
-        setLine({ tone: "bad", text: copy.connect.badToken });
-        return null;
-      case "offline":
-        setLine({ tone: "bad", text: copy.connect.unreachable });
-        return null;
-      case "rate_limited":
-        setLine({ tone: "bad", text: copy.status.tooMany });
-        return null;
-      case "safe_mode":
-        setLine({ tone: "bad", text: copy.status.safeMode });
-        return null;
-      case "error":
-        setLine({ tone: "bad", text: copy.errors.block(r.code) });
-        return null;
+    if (r.kind === "ok") {
+      setLine({ tone: "ok", text: copy.connect.ok });
+      return conn;
     }
+    setLine({ tone: "bad", text: trouble(r) });
+    return null;
+  }
+
+  // Saves a connection /health accepted, subscribes when asked, and goes today.
+  async function finish(conn: Conn, permission: Promise<NotificationPermission> | null, device?: { id: number }) {
+    await forgetPushForOtherBe(conn.beUrl);
+    saveConn(conn, device);
+    saveLastHealthOk(new Date().toISOString());
+    // Subscribe when asked; whatever the answer (denied, no push on this BE, a failure), go on:
+    // settings shows this device's push state and can try again.
+    if (permission) {
+      const r = await subscribePush(permission);
+      if (r.kind === "unavailable") toast.show({ text: copy.settings.pushUnavailable });
+      else if (r.kind === "failed" || r.kind === "unsupported") toast.show({ text: copy.settings.pushTurnOnFailed });
+    }
+    await router.push("/");
+  }
+
+  function clearDigits() {
+    setDigits(EMPTY_DIGITS);
+    boxes.current[0]?.focus();
+  }
+
+  // Device pairing spec 5.3: POST /pair (no key), then /health with the device token it gave.
+  // A 401 is read by its code here: `bad_code` is a wrong or spent code, `unauthorized` a BE without /pair.
+  async function pair(beInput: string, code: string, permission: Promise<NotificationPermission> | null) {
+    if (running.current) return;
+    const norm = normalizeBeUrl(beInput);
+    if (!norm.ok) {
+      setUrlFixed(false);
+      setLine({ tone: "bad", text: URL_REASON[norm.reason] });
+      return;
+    }
+    running.current = true;
+    setBusy(true);
+    try {
+      setLine({ tone: "ok", text: copy.connect.checking });
+      const label = deviceLabel(navigator.userAgent, copy.devices.whereApp);
+      const r = await postPair(norm.url, { code, client: "app", label });
+      if (r.kind === "error" && r.status === 401) {
+        if (r.code === "bad_code") {
+          setLine({ tone: "bad", text: copy.connect.badCode });
+          clearDigits();
+        } else {
+          setLine({ tone: "bad", text: copy.connect.oldBe });
+          setMode("key");
+        }
+        return;
+      }
+      if (r.kind !== "ok") {
+        setLine({ tone: "bad", text: trouble(r) });
+        return;
+      }
+      const conn = { beUrl: norm.url, token: r.data.token };
+      const h = await getHealth(conn);
+      if (h.kind !== "ok") {
+        setLine({ tone: "bad", text: trouble(h) });
+        return;
+      }
+      setLine({ tone: "ok", text: copy.connect.ok });
+      await finish(conn, permission, { id: r.data.device.id });
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }
+
+  const code = digits.join("");
+  const codeDone = code.length === CODE_LEN;
+
+  function goCode(withPush: boolean) {
+    // As in `go`: asked before any await, only for an address and code that can be tried at all.
+    const usable = normalizeBeUrl(url).ok && codeDone;
+    const permission = withPush && usable ? askPermission() : null;
+    void pair(url, code, permission);
+  }
+
+  // Typing, pasting or the one-time-code autofill put text into box `at`: its digits go into the
+  // boxes from there on. The sixth digit sends the code, except in the home screen app (a tap does).
+  function fillFrom(at: number, text: string) {
+    const got = text.replace(/\D/g, "");
+    const next = [...digits];
+    if (got === "") {
+      next[at] = "";
+      setDigits(next);
+      return;
+    }
+    let i = at;
+    for (const ch of got) {
+      if (i >= CODE_LEN) break;
+      next[i++] = ch;
+    }
+    setDigits(next);
+    boxes.current[Math.min(i, CODE_LEN - 1)]?.focus();
+    const full = next.join("");
+    if (full.length === CODE_LEN && !homeApp) void pair(url, full, null);
+  }
+
+  function onBoxKey(at: number, e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace" && digits[at] === "" && at > 0) {
+      e.preventDefault();
+      const next = [...digits];
+      next[at - 1] = "";
+      setDigits(next);
+      boxes.current[at - 1]?.focus();
+    }
+  }
+
+  function onBoxPaste(at: number, e: ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault();
+    fillFrom(at, e.clipboardData.getData("text"));
+  }
+
+  function onCodeSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (codeDone && url.trim() !== "") goCode(offerPush);
   }
 
   async function run(go: boolean) {
@@ -97,19 +263,7 @@ export function Connect() {
       goWhenChecked.current = false;
       const permission = asked.current;
       if (proceed) asked.current = null;
-      if (proceed && conn) {
-        await forgetPushForOtherBe(conn.beUrl);
-        saveConn(conn);
-        saveLastHealthOk(new Date().toISOString());
-        // Subscribe when asked; whatever the answer (denied, no push on this BE, a failure), go on:
-        // settings shows this device's push state and can try again.
-        if (permission) {
-          const r = await subscribePush(permission);
-          if (r.kind === "unavailable") toast.show({ text: copy.settings.pushUnavailable });
-          else if (r.kind === "failed" || r.kind === "unsupported") toast.show({ text: copy.settings.pushTurnOnFailed });
-        }
-        await router.push("/");
-      }
+      if (proceed && conn) await finish(conn, permission);
     } finally {
       running.current = false;
       setBusy(false);
@@ -142,9 +296,92 @@ export function Connect() {
         </nav>
       )}
       <LargeTitle title={copy.connect.title} />
-      <p className={styles.intro}>{copy.connect.intro}</p>
+      <p className={styles.intro}>{mode === "code" && guideOnly === false ? copy.connect.codeIntro : copy.connect.intro}</p>
       {guideOnly === true && <p className={styles.guide}>{copy.connect.homeScreenGuide}</p>}
-      {guideOnly === false && (
+      {guideOnly === false && mode === "code" && (
+        <form className={styles.form} onSubmit={onCodeSubmit} noValidate>
+          <div className={styles.field}>
+            {urlFixed ? (
+              <div className={styles.fixed}>
+                <span className={styles.label}>{copy.connect.urlLabel}</span>
+                <span className={styles.address}>{url.replace(/^https:\/\//, "")}</span>
+                <button type="button" className={styles.link} onClick={() => setUrlFixed(false)}>
+                  {copy.connect.changeUrl}
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className={styles.label} htmlFor="be-url">
+                  {copy.connect.urlLabel}
+                </label>
+                <input
+                  id="be-url"
+                  aria-describedby="be-url-help"
+                  className={styles.input}
+                  type="url"
+                  inputMode="url"
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                />
+                <span id="be-url-help" className={styles.help}>
+                  {copy.connect.urlHelp}
+                </span>
+              </>
+            )}
+          </div>
+          <fieldset className={styles.codeField}>
+            <legend className={styles.label}>{copy.connect.codeLabel}</legend>
+            <div className={styles.boxes}>
+              {digits.map((d, i) => (
+                <input
+                  key={i}
+                  ref={(el) => {
+                    boxes.current[i] = el;
+                  }}
+                  className={`${styles.box} ${i === 3 ? styles.split : ""}`}
+                  aria-label={copy.connect.digitLabel(i + 1)}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete={i === 0 ? "one-time-code" : "off"}
+                  value={d}
+                  readOnly={busy}
+                  onChange={(e) => fillFrom(i, e.target.value.replace(d, "") || e.target.value)}
+                  onKeyDown={(e) => onBoxKey(i, e)}
+                  onPaste={(e) => onBoxPaste(i, e)}
+                  onFocus={(e) => e.target.select()}
+                />
+              ))}
+            </div>
+          </fieldset>
+          <p className={line?.tone === "bad" ? styles.bad : styles.ok} role="status">
+            {line?.text}
+          </p>
+          <button type="submit" className={styles.start} disabled={busy || !codeDone || url.trim() === ""}>
+            {offerPush ? copy.connect.startWithPush : copy.connect.start}
+          </button>
+          {offerPush && (
+            <button type="button" className={styles.later} disabled={busy || !codeDone || url.trim() === ""} onClick={() => goCode(false)}>
+              {copy.connect.pushLater}
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.switch}
+            onClick={() => {
+              setLine(null);
+              setMode("key");
+            }}
+          >
+            {copy.connect.useKey}
+          </button>
+        </form>
+      )}
+      {guideOnly === false && mode === "key" && (
         <form className={styles.form} onSubmit={onSubmit} noValidate>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="be-url">
@@ -200,6 +437,16 @@ export function Connect() {
               {copy.connect.pushLater}
             </button>
           )}
+          <button
+            type="button"
+            className={styles.switch}
+            onClick={() => {
+              setLine(null);
+              setMode("code");
+            }}
+          >
+            {copy.connect.useCode}
+          </button>
         </form>
       )}
     </main>

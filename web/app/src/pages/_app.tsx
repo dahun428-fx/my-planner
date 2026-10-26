@@ -41,6 +41,10 @@ import "../screens/EventSheet.module.css";
 // _app (its own and the palette picker's, which no other screen uses); its code is /settings/'s chunk.
 import "../components/PalettePicker.module.css";
 import "../screens/Settings.module.css";
+// Device pairing spec 5.1: the devices screen's and its QR's stylesheets only (CSP, as above); their
+// code (and the QR library) stays in /devices/'s chunk.
+import "../screens/Devices.module.css";
+import "../components/Qr.module.css";
 // SP9 9.5: the chat sheet's list and quick chip stylesheets only (CSP, as above); their code stays in the
 // chat sheet's chunk, out of the first screen's 180KB.
 import "../chat/ConversationList.module.css";

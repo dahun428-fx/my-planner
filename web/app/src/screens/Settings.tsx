@@ -15,14 +15,13 @@ import { Sheet } from "../components/Sheet";
 import { Skeleton } from "../components/Skeleton";
 import { StatusDot } from "../components/StatusDot";
 import { useToast } from "../components/Toast";
-import { CONN_CHANGED, loadLastHealthOk } from "../lib/connection";
+import { loadLastHealthOk } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
-import { hardReplace } from "../lib/nav";
+import { disconnectThisDevice } from "../lib/disconnect";
 import { usePolling } from "../lib/polling";
-import { hasLiveSubscription, permission, pushSupport, subscribePush, unsubscribePush } from "../lib/push";
-import { clearDeviceData } from "../lib/snapshot";
-import { applyPalette, applyTheme, DEFAULT_PALETTE, loadPalette, loadTheme, type Palette, PALETTES, setPalette, setTheme, type Theme } from "../lib/theme";
+import { hasLiveSubscription, permission, pushSupport, subscribePush } from "../lib/push";
+import { DEFAULT_PALETTE, loadPalette, loadTheme, type Palette, PALETTES, setPalette, setTheme, type Theme } from "../lib/theme";
 import { formatKst, relativeChecked } from "../lib/time";
 import page from "../styles/page.module.css";
 import { useCatalog } from "../ui/CatalogProvider";
@@ -209,21 +208,8 @@ export function Settings() {
     if (disconnectLock.current) return;
     disconnectLock.current = true;
     setDisconnecting(true);
-    try {
-      try {
-        await unsubscribePush();
-      } catch {
-        // spec 5.5.7: the device is cleared even when the BE or the browser cannot drop the subscription
-      }
-      await clearDeviceData();
-      applyTheme("system");
-      applyPalette(DEFAULT_PALETTE);
-      window.dispatchEvent(new Event(CONN_CHANGED));
-    } finally {
-      // A full load of /connect/: the chat sheet, catalog and polls of the old BE leave memory too.
-      // The lock stays held: the page is going away.
-      hardReplace("/connect/");
-    }
+    // The lock stays held: the page is going away.
+    await disconnectThisDevice();
   };
 
   // ---- rows ----
