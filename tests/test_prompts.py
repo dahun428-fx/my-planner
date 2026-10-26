@@ -180,3 +180,15 @@ def test_chip_prompts_are_spec_text():
         got = prompts.load(f"chip_{key}.md")
         assert got == sentence, key
         assert [w for w in banned_words() if w in got] == [], key
+
+
+def test_chip_common_rule_only_on_saving_chips():
+    """4.3 공통 규칙(`chip_common.md`)은 저장하는 칩(todo, event, memo)의 `## 버튼` 블록 끝에만, 빈 줄 하나 뒤에."""
+    from my_planner.harness.dispatcher import chip_block
+
+    common = prompts.load("chip_common.md")
+    assert common == "글이 할 일·일정·메모로 읽히지 않으면(인사, 질문) 저장하지 않고 평소처럼 답합니다."
+    for key in ("todo", "event", "memo"):
+        assert chip_block(key) == f"## 버튼\n{prompts.load(f'chip_{key}.md')}\n\n{common}", key
+    for key in ("today", "next"):
+        assert chip_block(key) == f"## 버튼\n{prompts.load(f'chip_{key}.md')}", key

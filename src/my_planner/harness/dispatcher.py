@@ -912,7 +912,7 @@ class Dispatcher:
         run_ctx = self._message_ctx(conv.id, lead, chip_of)
         body = _join(
             self._recorded_condition(),
-            f"## 버튼\n{prompts.load(f'chip_{chip_of.chip}.md')}" if chip_of.chip is not None else "",
+            chip_block(chip_of.chip) if chip_of.chip is not None else "",
             f"## 메시지\n{text}",
             step_note(review_step, where="답"),
         )
@@ -2423,6 +2423,18 @@ def _week_label(monday: date) -> str:
         f"{period_of(Cadence.week, monday)} "
         f"({monday.month}/{monday.day}~{sunday.month}/{sunday.day})"
     )
+
+
+# 칩 알림 끝에 공통 규칙(4.3, `chip_common.md`)을 붙이는 칩: 글로 무엇을 저장하는 칩만
+_SAVING_CHIPS = frozenset({"todo", "event", "memo"})
+
+
+def chip_block(chip: str) -> str:
+    """두뇌 차례 본문의 `## 버튼` 블록(SP9c 4.3). `## 메시지` 앞에 둔다."""
+    text = prompts.load(f"chip_{chip}.md")
+    if chip in _SAVING_CHIPS:
+        text = f"{text}\n\n{prompts.load('chip_common.md')}"
+    return f"## 버튼\n{text}"
 
 
 @dataclass(frozen=True)
