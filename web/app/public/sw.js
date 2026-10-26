@@ -43,12 +43,15 @@ async function handlePush(event) {
   }
   const title = typeof p.title === "string" && p.title ? p.title : DEFAULT_TITLE;
   const body = typeof p.body === "string" ? p.body : "";
-  // reminder (schedule event, SP9 5.3): one tag per event and day so two reminders never replace each other
+  // reminder (schedule event, SP9 5.3): one tag per event and day so two reminders never replace each other.
+  // digest (SP9b 2.2): the BE's own tag, one per kind and day (digest:morning:2026-10-27).
   const tag = p.checkin_id
     ? "run-" + p.checkin_id
     : p.type === "reminder"
       ? "reminder:" + (p.event_id || "") + ":" + (p.url || "")
-      : "notice";
+      : p.type === "digest" && typeof p.tag === "string" && p.tag
+        ? p.tag
+        : "notice";
   await self.registration.showNotification(title, { body: body, tag: tag, data: { url: mapPushUrl(p.url) } });
   const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   for (const w of wins) w.postMessage({ refresh: "today" });

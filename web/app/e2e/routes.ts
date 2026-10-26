@@ -171,6 +171,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/memos") return json(route, { items: [], next_before: null });
     if (get && path === "/events") return json(route, { start: q.get("start"), end: q.get("end"), items: [] }); // SP9 9.2
     if (get && path === "/settings/notify") return json(route, fixture("notify"));
+    if (get && path === "/settings/digests") return json(route, fixture("digest-settings")); // SP9b 5장
     if (get && path === "/push/vapid-public-key") return json(route, { public_key: "BFixtureKeyNotReal" });
     if (req.method() === "POST" && path === "/chat") {
       chatBodies.push(req.postDataJSON());

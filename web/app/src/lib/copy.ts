@@ -9,6 +9,10 @@ const CHAT_LATER = "비서가 다시 연결되면 말할 수 있어요";
 const BACK_TODAY = "‹ 오늘";
 // SP9 9.1: the back link of every screen reached from the more screen.
 const BACK_MORE = "‹ 더보기";
+// SP9 10장 체크인 시간의 토스트와 깨우기 안내. SP9b 일정 정리 알림도 같은 문장(5장).
+const FROM_TODAY = "오늘부터 적용돼요";
+const FROM_TOMORROW = "내일부터 적용돼요";
+const WAKE_STALE = "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요.";
 
 export const copy = {
   appName: "비서",
@@ -456,10 +460,21 @@ export const copy = {
     weekdayEvening: "평일 저녁",
     weekendMorning: "주말 아침",
     weekendEvening: "주말 저녁",
-    fromToday: "오늘부터 적용돼요",
-    fromTomorrow: "내일부터 적용돼요",
-    wakeStale: "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요.",
+    fromToday: FROM_TODAY,
+    fromTomorrow: FROM_TOMORROW,
+    wakeStale: WAKE_STALE,
     reviewNote: "주말 저녁은 일요일 주간 회고 시각이기도 해요.",
+  },
+
+  // SP9b 5장, 7장 "일정 정리 알림" (그대로)
+  digests: {
+    heading: "일정 정리 알림",
+    morning: "아침에 오늘 일정",
+    night: "밤에 내일 일정",
+    note: "일정이 있는 날만 보내요.",
+    fromToday: FROM_TODAY,
+    fromTomorrow: FROM_TOMORROW,
+    wakeStale: WAKE_STALE,
   },
 
   // SP9 9.7, 10장 "캘린더" (그대로) + 안내 한 줄(9.7). `copied`는 10장에 없는 토스트 한 줄(복사했다는 사실만)
