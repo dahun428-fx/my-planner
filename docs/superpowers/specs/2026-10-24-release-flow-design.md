@@ -160,9 +160,8 @@ post_commit_status = true     # staging/be 올림
 | `schedule` `40 0 * * 1-5`, `10 9 * * 1-5`, `40 1 * * 0,6`, `40 9 * * 0,6` (UTC = KST 평일 09:40·18:10, 주말 10:40·18:40) | 회차 차단 구간(6.2의 6) 때문에 미뤄진 승격을 다시 본다 |
 | `workflow_run` (`ci` 완료, `develop`) | `staging/be`가 먼저 와서 CI·Windows를 기다리던 승격을 CI가 끝날 때 다시 본다 |
 | `workflow_dispatch` (입력 `skip_staging_be: boolean`) | 수동. 6.4 |
-| 임시: `schedule` `0 23,0-14 * * *` (UTC = KST 08–23시 매시 정각) | `staging/be`가 생기기 전까지만. 저장소 변수 `REQUIRE_STAGING_BE`가 `"true"`가 되면 지운다 |
 
-`schedule`은 GitHub 부하에 따라 늦어지거나 빠질 수 있다. 빠지면 다음 트리거가 잡는다. `concurrency: { group: promote, cancel-in-progress: false }`는 **작업(job) 수준**에 둔다. 워크플로 수준에 두면 `if`로 걸러질 Vercel `status` 실행도 그룹에 들어가, 대기 중인 `staging/be` 실행이 밀려 취소될 수 있다. 권한: `contents: read`, `actions: read`, `statuses: read`, `issues: write` (쓰기는 `RELEASE_PAT`).
+임시 매시 `schedule`(`0 23,0-14 * * *`)은 `REQUIRE_STAGING_BE=true`가 된 2026-10-26에 지웠다. 변수를 `"false"`로 되돌리면 30분 대기 승격을 다시 볼 트리거가 재확인 cron뿐이라(최대 반나절 늦음) 이 cron도 되살린다. `schedule`은 GitHub 부하에 따라 늦어지거나 빠질 수 있다. 빠지면 다음 트리거가 잡는다. `concurrency: { group: promote, cancel-in-progress: false }`는 **작업(job) 수준**에 둔다. 워크플로 수준에 두면 `if`로 걸러질 Vercel `status` 실행도 그룹에 들어가, 대기 중인 `staging/be` 실행이 밀려 취소될 수 있다. 권한: `contents: read`, `actions: read`, `statuses: read`, `issues: write` (쓰기는 `RELEASE_PAT`).
 
 ### 6.2 검사 (모두 통과해야 빨리감기)
 
@@ -186,7 +185,7 @@ post_commit_status = true     # staging/be 올림
 - 30분 안에 develop 머리가 바뀌면 그 SHA에는 아무것도 올리지 않고 새 머리로 다시 시작한다. (구현: 재시작 없는 빨리감기 창은 그렇게 버린다. 재시작한 배포의 확인은 끝까지 가서 그 SHA에도 올리며, 승격은 머리 SHA의 상태만 보므로 해가 없다.)
 - BE 파일이 안 바뀐 develop 커밋(웹·문서만)도 재시작 없이 같은 방식으로 30분 뒤 `success`를 올린다. 그래서 승격 트리거가 하나로 통일된다.
 
-**SP6 후속(티켓 12)이 들어오기 전에는**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
+**SP6 후속(티켓 12)이 들어오기 전에는(2026-10-26까지)**: 개발용 BE의 자동 갱신과 `staging/be`가 없다. 이 동안 `REQUIRE_STAGING_BE`는 `"false"`이고, 승격은 CI·Windows 검사와 30분 대기로만 한다(스테이징 BE 검증 없음). 개발용 BE는 설치된 뒤에도 손으로 `git pull` 후 작업을 다시 시작해야 갱신된다.
 
 ### 6.4 노트북이 꺼져 있으면
 
@@ -208,7 +207,7 @@ post_commit_status = true     # staging/be 올림
 | D1 | GitHub → fine-grained PAT 만들기 → 저장소 시크릿 `RELEASE_PAT` | 5.4 권한. 만료일을 변수 `RELEASE_PAT_EXPIRES`에 |
 | D2 | Vercel 두 프로젝트 → Settings → Environment Variables, Git → Deploy Hooks | `NEXT_PUBLIC_CONNECT_SRC`를 Preview, 브랜치 `develop`에만 `https://*.<tailnet>.ts.net:8443`로 추가(Type Config). Production 값은 그대로. Deploy Hook(브랜치 develop)을 만들어 URL을 저장소 시크릿 `VERCEL_DEPLOY_HOOK_APP`, `VERCEL_DEPLOY_HOOK_DASHBOARD`에 |
 | D3 | Vercel 두 프로젝트 → Settings | Git: Production Branch가 `main`인지 확인. Deployment Protection: Preview 보호가 켜져 있으면 스테이징 별칭을 열 수 있는지 확인. 첫 develop 배포 뒤 별칭 주소 두 개를 Claude에게 알려 줌(개발용 CORS에 넣음) |
-| D4 | GitHub → 개발용 PAT | 5.4 권한. 노트북 개발용 `.env`에 넣고, 계정 이름을 변수 `DEV_STATUS_LOGIN`에 (SP6 후속, 티켓 12가 들어올 때) |
+| D4 | GitHub → 개발용 PAT | 5.4 권한. 노트북 개발용 `.env`에 넣고, 계정 이름을 변수 `DEV_STATUS_LOGIN`에 (SP6 후속, 티켓 12가 들어올 때. 2026-10-26 완료) |
 | D5 | 노트북 | `E:\my-planner-dev` 클론과 `.env`, `config.local.toml`, `config.medic.local.toml`, 작업 두 개 등록, `tailscale serve --https=8443`. Claude가 스크립트(`scripts/setup_dev.ps1`)를 주고 원격 제어 세션으로 같이 돌린다 |
 | D6 | 스테이징 앱·대시보드 | 개발용 BE 주소와 토큰을 한 번 넣는다 |
 
@@ -221,7 +220,7 @@ D1이 없으면 승격이 돌지 않는다(첫 승격부터 워크플로 파일�
 3. `develop`을 그 `main`에서 만든다. 저장소 변수 `REQUIRE_STAGING_BE=false`.
 4. 코디네이터가 모든 스레드에 공지: 기능 PR은 `base: develop`을 명시, 브랜치는 `origin/develop`에서 딴다, 열려 있는 `main` 대상 기능 PR은 대상을 `develop`으로 바꾸고 `develop`에 다시 얹는다.
 5. D1 뒤 첫 develop 머지로 승격이 한 번 도는지 확인.
-6. SP6 후속 티켓: medic `config.medic.local.toml`·깊은 병합·새 필드(5.3), `staging/be` 올리기, `repair.yml` `ref`/base 명시, `watch.yml` PAT 만료 알림 추가(SP6 티켓 10, 12에서 들어옴). 들어오면 D4, `REQUIRE_STAGING_BE=true`, 임시 트리거 삭제.
+6. SP6 후속 티켓: medic `config.medic.local.toml`·깊은 병합·새 필드(5.3), `staging/be` 올리기, `repair.yml` `ref`/base 명시, `watch.yml` PAT 만료 알림 추가(SP6 티켓 10, 12에서 들어옴). 들어오면 D4, `REQUIRE_STAGING_BE=true`, 임시 트리거 삭제(2026-10-26 완료).
 7. D5: 노트북 개발용 BE 설치.
 
 ## 10. 테스트
