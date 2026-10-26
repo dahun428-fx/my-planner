@@ -160,7 +160,8 @@ post_commit_status = true     # staging/be 올림
 | `schedule` `40 0 * * 1-5`, `10 9 * * 1-5`, `40 1 * * 0,6`, `40 9 * * 0,6` (UTC = KST 평일 09:40·18:10, 주말 10:40·18:40) | 회차 차단 구간(6.2의 6) 때문에 미뤄진 승격을 다시 본다 |
 | `workflow_run` (`ci` 완료, `develop`) | `staging/be`가 먼저 와서 CI·Windows를 기다리던 승격을 CI가 끝날 때 다시 본다 |
 | `workflow_dispatch` (입력 `skip_staging_be: boolean`) | 수동. 6.4 |
-| 임시: `schedule` `0 23,0-14 * * *` (UTC = KST 08–23시 매시 정각) | `staging/be`가 생기기 전까지만. 저장소 변수 `REQUIRE_STAGING_BE`가 `"true"`가 되면 지운다 |
+
+임시 매시 `schedule`(`0 23,0-14 * * *`)은 `REQUIRE_STAGING_BE=true`가 된 2026-10-26에 지웠다.
 
 `schedule`은 GitHub 부하에 따라 늦어지거나 빠질 수 있다. 빠지면 다음 트리거가 잡는다. `concurrency: { group: promote, cancel-in-progress: false }`는 **작업(job) 수준**에 둔다. 워크플로 수준에 두면 `if`로 걸러질 Vercel `status` 실행도 그룹에 들어가, 대기 중인 `staging/be` 실행이 밀려 취소될 수 있다. 권한: `contents: read`, `actions: read`, `statuses: read`, `issues: write` (쓰기는 `RELEASE_PAT`).
 
