@@ -178,15 +178,20 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   );
 
   // The message is answered (or refused, or given up on): its photos are the BE's to give out now.
-  const unpinAll = useCallback(() => {
+  const unpinAll = useCallback((also: Set<number> = new Set()) => {
     const c = connRef.current ?? loadConn();
-    if (c) for (const id of pinned.current) dropLocalPhoto(c, id);
+    if (c) for (const id of [...pinned.current, ...also]) dropLocalPhoto(c, id);
     pinned.current.clear();
+    also.clear();
   }, []);
-  // Room in the tray for photos coming back (a failed camera send, a refused message); the rest are dropped.
+  // A refused message's photos are never linked, so the BE never gives them out: their own bytes stay
+  // (its bubble can still show them big) until the sheet goes.
+  const refusedPins = useRef(new Set<number>());
+  // Room in the tray for photos coming back (a failed camera send, a refused message). The camera
+  // keeps a place for its photo while it is sent (`reserved`), so one always fits.
   const backToTray = useCallback(
-    (items: TrayPhoto[]) => {
-      const room = TRAY_MAX - trayRef.current.length - picking.current;
+    (items: TrayPhoto[], reserved = 0) => {
+      const room = TRAY_MAX - trayRef.current.length - (picking.current - reserved);
       const back = items.slice(0, Math.max(0, room)).map((p) => trayPhoto(p.image, p.thumb));
       if (back.length > 0) setTray((t) => [...t, ...back]);
     },
@@ -197,8 +202,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       sending.current = false;
       setInFlight(false);
       setFailure(f);
-      unpinAll();
-      if (f === "photo" || f === "photoLimit") backToTray(lastSent.current);
+      if (f === "photo" || f === "photoLimit") {
+        for (const id of pinned.current) refusedPins.current.add(id);
+        pinned.current.clear();
+        backToTray(lastSent.current);
+      } else {
+        unpinAll();
+      }
       lastSent.current = [];
     },
     [unpinAll, backToTray],
@@ -418,7 +428,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // camera's photo (`fromCamera`) goes back to the tray then; the tray's stay where they are.
   const sendPhotos = async (items: TrayPhoto[], fromCamera: boolean) => {
     if (sending.current || !canSendRef.current) {
-      if (fromCamera) backToTray(items);
+      if (fromCamera) backToTray(items, 1);
       return;
     }
     const raw = textRef.current;
@@ -444,13 +454,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (failed || !c) {
       if (c) for (const id of ids) dropLocalPhoto(c, id);
       toastRef.current.show({ text: failed ? uploadFailureText(failed) : copy.photos.uploadFailed });
-      if (fromCamera) backToTray(items);
+      if (fromCamera) backToTray(items, 1);
       return;
     }
     for (const id of ids) pinned.current.add(id);
     if (!send(raw, { chip, photoIds: ids })) {
       unpinAll();
-      if (fromCamera) backToTray(items);
+      if (fromCamera) backToTray(items, 1);
       return;
     }
     lastSent.current = items;
@@ -500,21 +510,39 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (gone) URL.revokeObjectURL(gone.url);
     setTray((t) => t.filter((p) => p.key !== key));
   };
-  // "카메라": the phone's own camera; after "사진 사용" the photo goes at once (7.5).
+  // "카메라": the phone's own camera; after "사진 사용" the photo goes at once (7.5). Off while a send
+  // or an answer is going on, and with a full tray (a photo that fails must have a place to wait).
+  const pressCamera = () => {
+    if (trayRef.current.length + picking.current >= TRAY_MAX) {
+      toastRef.current.show({ text: copy.photos.sendLimit });
+      return;
+    }
+    cameraInput.current?.click();
+  };
   const onCamera = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    const p = await shrinkFile(file);
-    if (!p) return;
-    URL.revokeObjectURL(p.url); // not shown in the tray (should it come back there, it gets an address of its own)
-    await sendPhotos([p], true);
+    // The tray filled while the camera was open: said so, nothing is lost unseen.
+    if (trayRef.current.length + picking.current >= TRAY_MAX) {
+      toastRef.current.show({ text: copy.photos.sendLimit });
+      return;
+    }
+    picking.current += 1; // its place in the tray, kept until the send is over
+    try {
+      const p = await shrinkFile(file);
+      if (!p) return;
+      URL.revokeObjectURL(p.url); // not shown in the tray (should it come back there, it gets an address of its own)
+      await sendPhotos([p], true);
+    } finally {
+      picking.current -= 1;
+    }
   };
-  // The tray's addresses go with the sheet, and so do the pins of photos still unanswered.
+  // The tray's addresses go with the sheet, and so do the pins of photos still unanswered or refused.
   useEffect(
     () => () => {
       for (const p of trayRef.current) URL.revokeObjectURL(p.url);
-      unpinAll();
+      unpinAll(refusedPins.current);
     },
     [unpinAll],
   );
@@ -805,8 +833,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
               type="button"
               className={`${styles.attachButton} pressable`}
               aria-label={copy.chat.camera}
-              disabled={readOnly || loading}
-              onClick={() => cameraInput.current?.click()}
+              aria-disabled={tray.length >= TRAY_MAX ? true : undefined}
+              disabled={readOnly || loading || busy || uploading}
+              onClick={pressCamera}
             >
               <Icon name="camera" />
             </button>

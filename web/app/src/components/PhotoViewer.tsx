@@ -33,6 +33,7 @@ export function PhotoViewer({
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const start = useRef<number | null>(null);
+  const layer = useRef<HTMLDivElement>(null);
   const open = index !== null && photos.length > 0;
   const at = open ? Math.min(index, photos.length - 1) : 0;
 
@@ -41,11 +42,20 @@ export function PhotoViewer({
   }, [open]);
   useEffect(() => {
     if (!open) return;
-    // Caught first (capture): over the chat sheet (SP10 7.5), Escape closes the viewer alone, not the sheet under it.
+    // Caught first (capture): over the chat sheet (SP10 7.5), Escape closes the viewer alone, not the
+    // sheet under it, and Tab goes round the viewer's own buttons, never to the sheet behind.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
         onClose();
+      } else if (e.key === "Tab") {
+        e.stopPropagation();
+        e.preventDefault();
+        const items = [...(layer.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? [])];
+        if (items.length === 0) return;
+        const i = items.indexOf(document.activeElement as HTMLElement);
+        const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : i === -1 || i === items.length - 1 ? 0 : i + 1;
+        items[next].focus();
       } else if (e.key === "ArrowLeft" && at > 0) onIndex(at - 1);
       else if (e.key === "ArrowRight" && at < photos.length - 1) onIndex(at + 1);
     };
@@ -67,7 +77,7 @@ export function PhotoViewer({
   };
 
   return (
-    <div className={styles.layer} role="dialog" aria-modal="true" aria-label={copy.photos.viewer}>
+    <div ref={layer} className={styles.layer} role="dialog" aria-modal="true" aria-label={copy.photos.viewer}>
       <div className={styles.bar}>
         <button ref={close} type="button" className={styles.icon} onClick={onClose}>
           <Icon name="close" label={copy.photos.close} />

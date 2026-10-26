@@ -5,13 +5,14 @@ import { clear } from "idb-keyval";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
-import { clearPhotoCache } from "../lib/photoCache";
+import { clearPhotoCache, peekPhoto, photoCacheSize, photoKey } from "../lib/photoCache";
 import { PhotoUnopenable, shrinkPhoto } from "../lib/shrinkPhoto";
-import { type HistoryItem, serveChat, serveHistory, sse, sseResponse } from "../test/chat";
+import { gatedResponse, type HistoryItem, serveChat, serveHistory, sse, sseResponse } from "../test/chat";
 import todayJson from "../test/fixtures/today.json";
-import { renderWithProviders } from "../test/render";
+import { renderWithProviders, TEST_BE_URL } from "../test/render";
 import { BASE, server } from "../test/server";
 import { ChatSheet } from "./ChatSheet";
+import { sheetState } from "./sheetContext";
 
 // SP10 12장 앱 (채팅 쪽, 7.5): 사진 대기·4장 상한·사진만 보내기·올리기 실패 시 안 보냄·보낸 `parts`에
 // `data-photo`, 카메라는 바로 보냄, 다시 연 대화의 말풍선 사진, 8장 응답→문구(채팅 자리).
@@ -73,7 +74,7 @@ interface Upload {
 }
 
 /** POST /photos (ids from 12, or the given answers in turn) and GET /photos/{id}. */
-function photoBe(opts: { upload?: (n: number) => Response | undefined } = {}) {
+function photoBe(opts: { upload?: (n: number) => Response | Promise<Response> | undefined } = {}) {
   const uploads: Upload[] = [];
   const gets: string[] = [];
   let nextId = 12;
@@ -81,7 +82,7 @@ function photoBe(opts: { upload?: (n: number) => Response | undefined } = {}) {
     http.post(`${BASE}/photos`, async ({ request }) => {
       const form = multipart(await request.text());
       uploads.push({ origin: form.origin, clientMsgId: form.client_msg_id, hasImage: form.image === "file image/jpeg", hasThumb: form.thumb === "file image/jpeg" });
-      const custom = opts.upload?.(uploads.length);
+      const custom = await opts.upload?.(uploads.length);
       if (custom) return custom;
       return HttpResponse.json({ id: nextId++, width: 2048, height: 1536, bytes: 300 }, { status: 201 });
     }),
@@ -385,5 +386,206 @@ describe("ChatSheet photos (SP10 7.5)", () => {
     await screen.findByRole("textbox", { name: copy.chat.inputLabel });
     expect(screen.queryByRole("button", { name: copy.chat.camera })).toBeNull();
     expect(screen.queryByRole("button", { name: copy.photos.button })).toBeNull();
+  });
+});
+
+// PH-07 fix round 1: the camera never loses a photo unseen, blob: addresses are let go (12장),
+// the SP9 metadata stays with photos, a refused message's photos still open, Tab stays in the viewer.
+describe("ChatSheet photos, fix round 1", () => {
+  const pressCamera = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: copy.chat.camera }));
+
+  it("카메라 with 4 waiting: dimmed, says the 4장 sentence, the camera does not open, and a late photo is not taken unseen", async () => {
+    const be = photoBe();
+    const { user } = await openSheet();
+    await pick(user, [picture(1), picture(2), picture(3), picture(4)]);
+    await waitFor(() => expect(within(tray()!).getAllByRole("listitem")).toHaveLength(4));
+    const camera = screen.getByRole("button", { name: copy.chat.camera });
+    expect(camera).toHaveAttribute("aria-disabled", "true");
+    const opened = vi.spyOn(cameraInput(), "click");
+    await pressCamera(user);
+    expect(opened).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent(copy.photos.sendLimit);
+    // A photo that comes back from a camera opened before the tray filled: said so, not sent, not lost unseen.
+    await user.upload(cameraInput(), picture(5));
+    expect(screen.getByRole("status")).toHaveTextContent(copy.photos.sendLimit);
+    expect(be.uploads).toHaveLength(0);
+    expect(within(tray()!).getAllByRole("listitem")).toHaveLength(4);
+  });
+
+  it("카메라 is off while an answer is coming and while photos go up", async () => {
+    let releaseUpload!: () => void;
+    const held = new Promise<void>((r) => (releaseUpload = r));
+    photoBe({
+      upload: async () => {
+        await held;
+        return HttpResponse.json({ id: 12, width: 10, height: 10, bytes: 9 }, { status: 201 });
+      },
+    });
+    const gate = gatedResponse(answer("m-1", 5, "받았어요"), [1]);
+    serveChat(() => gate.response());
+    const { user } = await openSheet();
+    const camera = screen.getByRole("button", { name: copy.chat.camera });
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(camera).toBeDisabled()); // uploading
+    releaseUpload();
+    await screen.findByRole("button", { name: copy.chat.stop });
+    expect(camera).toBeDisabled(); // answering
+    gate.release();
+    expect(await screen.findByText("받았어요")).toBeInTheDocument();
+    await waitFor(() => expect(camera).toBeEnabled());
+  });
+
+  it("✕ revokes that photo's tray address", async () => {
+    photoBe();
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    const { user } = await openSheet();
+    await pick(user, [picture(1), picture(2)]);
+    const t = await screen.findByRole("list", { name: copy.chat.tray });
+    await waitFor(() => expect(t.querySelectorAll("img")).toHaveLength(2));
+    const [first, second] = [...t.querySelectorAll("img")].map((i) => i.getAttribute("src")!);
+    await user.click(within(t).getByRole("button", { name: copy.chat.unpick(2, 2) }));
+    expect(revoke).toHaveBeenCalledWith(second);
+    expect(revoke).not.toHaveBeenCalledWith(first);
+  });
+
+  it("sending revokes the tray addresses; once answered, the full-size pins are let go (thumbs stay in the 60)", async () => {
+    photoBe();
+    const gate = gatedResponse(answer("m-1", 5, "받았어요"), [1]);
+    serveChat(() => gate.response());
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    const { user } = await openSheet();
+    await pick(user, [picture(1), picture(2)]);
+    const t = await screen.findByRole("list", { name: copy.chat.tray });
+    await waitFor(() => expect(t.querySelectorAll("img")).toHaveLength(2));
+    const urls = [...t.querySelectorAll("img")].map((i) => i.getAttribute("src")!);
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await screen.findByRole("button", { name: copy.chat.stop });
+    for (const u of urls) expect(revoke).toHaveBeenCalledWith(u);
+    // While the answer comes, the photos' own bytes (full and thumb) are held.
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).not.toBeNull();
+    const before = photoCacheSize();
+    expect(before).toBe(4);
+    gate.release();
+    expect(await screen.findByText("받았어요")).toBeInTheDocument();
+    await waitFor(() => expect(photoCacheSize()).toBe(2));
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).toBeNull();
+    expect(peekPhoto(photoKey(TEST_BE_URL, 13, "full"))).toBeNull();
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "thumb"))).not.toBeNull();
+  });
+
+  it("closing the sheet lets go of the tray's addresses and of the pins of a message still unanswered", async () => {
+    photoBe();
+    const gate = gatedResponse(answer("m-1", 5, "받았어요"), [1]);
+    serveChat(() => gate.response());
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    await pick(user, [picture(1)]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await screen.findByRole("button", { name: copy.chat.stop });
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).not.toBeNull();
+    // One more waits in the tray.
+    await pick(user, [picture(2)]);
+    const t = await screen.findByRole("list", { name: copy.chat.tray });
+    await waitFor(() => expect(t.querySelectorAll("img")).toHaveLength(1));
+    const waiting = t.querySelector("img")!.getAttribute("src")!;
+    unmount();
+    expect(revoke).toHaveBeenCalledWith(waiting);
+    expect(peekPhoto(photoKey(TEST_BE_URL, 12, "full"))).toBeNull();
+    gate.release();
+  });
+
+  it("with photos, a sheet opened for a check-in still sends its checkin_id and conversation", async () => {
+    serveHistory({ messages: { 8: [{ id: "m-8-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "체크인 대화예요" }] } });
+    photoBe();
+    const bodies = serveChat(() => sseResponse(answer("m-8-2", 8, "네")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={8} checkinId={341} />);
+    expect(await screen.findByText("체크인 대화예요")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ conversation_id: 8, checkin_id: 341 });
+    expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+    expect((bodies[0] as unknown as Body).message.parts).toEqual([{ type: "data-photo", data: { photo_id: 12 } }]);
+  });
+
+  it("with photos, a conversation reopened from the list still carries resume_conversation_id", async () => {
+    serveHistory({
+      messages: {
+        3: [
+          { id: "u-3-1", at: "2026-10-20T01:00:00Z", speaker: "user", text: "읽을 책 골라 줘" },
+          { id: "m-3-1", at: "2026-10-20T01:05:00Z", speaker: "secretary", text: "사피엔스 어때요" },
+        ],
+      },
+    });
+    server.use(
+      http.get(`${BASE}/conversations`, () =>
+        HttpResponse.json({
+          items: [{ id: 3, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-20T01:00:00Z", last_message_at: "2026-10-20T01:05:00Z", closed_at: "2026-10-20T01:35:00Z", title: "책 고르기", summary: null }],
+          next_before: null,
+        }),
+      ),
+    );
+    photoBe();
+    const bodies = serveChat(() => sseResponse(answer("m-3-2", 3, "이어서 말해요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await user.click(await screen.findByRole("button", { name: copy.chat.pastConversations }));
+    await user.click((await screen.findByText("책 고르기")).closest("button") as HTMLElement);
+    expect(await screen.findByText("사피엔스 어때요")).toBeInTheDocument();
+    expect(sheetState.pickedConversationId).toBe(3);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.type(screen.getByRole("textbox", { name: copy.chat.inputLabel }), "이것도");
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ conversation_id: 3, resume_conversation_id: 3, checkin_id: null });
+    expect((bodies[0] as unknown as Body).message.parts).toEqual([
+      { type: "text", text: "이것도" },
+      { type: "data-photo", data: { photo_id: 12 } },
+    ]);
+  });
+
+  it("a refused message's photos still open big, from their own bytes (the BE never gives them out)", async () => {
+    const be = photoBe();
+    serveChat(() => HttpResponse.json({ error: { code: "photo_not_found", message: "x" } }, { status: 400 }));
+    const { user } = await openSheet();
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    expect(await screen.findByText(copy.photos.uploadFailed, { selector: "span" })).toBeInTheDocument();
+    const log = screen.getByRole("log", { name: copy.chat.messages });
+    await user.click(within(log).getByRole("button", { name: copy.photos.photo(1, 1) }));
+    const viewer = await screen.findByRole("dialog", { name: copy.photos.viewer });
+    await waitFor(() => expect(viewer.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/));
+    expect(be.gets).toEqual([]);
+  });
+
+  it("Tab goes round the viewer's buttons, never to the sheet behind it", async () => {
+    photoBe();
+    serveHistory({
+      conversations: [{ id: 5, last_message_at: "2026-10-24T01:00:00Z" }],
+      messages: { 5: [{ id: "u-5-1", at: "2026-10-24T01:00:00Z", speaker: "user", text: "", photos: [{ id: 31, width: 10, height: 10 }, { id: 32, width: 10, height: 10 }] }] },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await user.click(await screen.findByRole("button", { name: copy.photos.photo(1, 2) }));
+    const viewer = await screen.findByRole("dialog", { name: copy.photos.viewer });
+    for (let i = 0; i < 5; i++) {
+      await user.tab();
+      expect(viewer.contains(document.activeElement)).toBe(true);
+    }
+    for (let i = 0; i < 3; i++) {
+      await user.tab({ shift: true });
+      expect(viewer.contains(document.activeElement)).toBe(true);
+    }
   });
 });
