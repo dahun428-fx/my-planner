@@ -113,6 +113,7 @@ export const copy = {
     inUse: "이 사진은 다른 곳에 이미 붙어 있어요.",
     created: (title: string, n: number) => `✓ 메모를 만들었어요: ${title} (사진 ${n}장)`,
     cut: "메모는 20,000자까지라 뒷부분은 넣지 못했어요.",
+    defaultBody: "사진", // (7.1 v2.7) 사진만 있는 새 메모의 본문(제목도 된다)
     strip: "사진", // (new) 사진 줄의 읽는 이름
     photo: (n: number, total: number) => `사진 ${n}/${total}`, // (new) 사진 하나의 읽는 이름
     viewer: "사진 보기", // (new) 크게 보기 화면의 이름

@@ -4,7 +4,7 @@ import { type ChangeEvent, type MouseEvent, useCallback, useEffect, useLayoutEff
 import { type ActionOutcome, failureText, runAction } from "../api/actions";
 import type { ApiResult } from "../api/client";
 import { apiGet } from "../api/client";
-import { keepLocalPhoto, readLimitText, readPhoto, uploadFailureText, uploadPhoto } from "../api/photos";
+import { dropLocalPhoto, keepLocalPhoto, readLimitText, readPhoto, uploadFailureText, uploadPhoto } from "../api/photos";
 import type { Memo, PhotoRef } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Markdown } from "../components/Markdown";
@@ -156,6 +156,10 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   const [viewing, setViewing] = useState<number | null>(null);
   const [reads, setReads] = useState<Reading[]>([]);
   const [uploading, setUploading] = useState(0);
+  // Picked photos not in the row yet (shrinking, uploading): they count toward the 10 (5.1).
+  const uploadsRef = useRef(0);
+  const readsRef = useRef(reads);
+  readsRef.current = reads;
   const fileInput = useRef<HTMLInputElement>(null);
   const picked = useRef<{ at: number; base: string }>({ at: 0, base: "" });
   const anchors = useRef(new Set<Anchor>());
@@ -178,9 +182,11 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   // Why the last save did not go through, for "완료" to say (an autosave stays quiet: the draft keeps the text).
   const failure = useRef<ApiResult<never> | null>(null);
 
+  /** A new memo holding photos not sent yet (7.1 v2.7: it is made even with no text). */
+  const photosWaiting = () => saved.current.id === null && photosRef.current.some((p) => !p.attached);
   const isDirty = () => {
     const s = saved.current;
-    return textRef.current !== s.body || (areaTouched.current && areaRef.current !== s.area);
+    return textRef.current !== s.body || (areaTouched.current && areaRef.current !== s.area) || photosWaiting();
   };
 
   const take = useCallback((m: Memo) => {
@@ -245,10 +251,19 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
 
   const saveOnce = useCallback(async (auto: boolean): Promise<boolean> => {
     if (!isDirty()) return true;
-    const body = textRef.current;
+    let body = textRef.current;
     const a = areaRef.current;
     const s = saved.current;
-    if (!body.trim()) return false; // the BE takes no empty memo; nothing to keep
+    let defaulted = false;
+    if (!body.trim()) {
+      if (!photosWaiting()) return false; // the BE takes no empty memo; nothing to keep
+      // SP10 7.1 (v2.7): a new memo with only photos is made with the body "사진", so they are not
+      // lost. The autosave waits while a photo is still read (its text is on the way); "완료" and
+      // leaving the screen do not.
+      if (auto && (uploadsRef.current > 0 || readsRef.current.some((r) => r.state === "reading"))) return false;
+      body = copy.photos.defaultBody;
+      defaulted = true;
+    }
     if (codePoints(body) > BODY_MAX) {
       if (alive.current) setTooLong(true);
       return false;
@@ -268,7 +283,14 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       if (out.kind === "applied") {
         const r = out.result as MemoResult;
         saved.current = { id: r.id, body, area: r.area, updatedAt: r.updated_at };
+        if (defaulted && !textRef.current.trim()) {
+          // The screen shows what was saved (and an anchor at 0 moves after it).
+          textRef.current = body;
+          if (alive.current) setText(body);
+        }
         setPhotos((ps) => ps.map((p) => (photoIds.includes(p.id) ? { ...p, attached: true } : p)));
+        const conn = loadConn();
+        if (conn) for (const id of photoIds) dropLocalPhoto(conn, id);
         // A photo that came while the creation was out is attached on its own.
         for (const p of photosRef.current) if (!p.attached) void attachRef.current(p.id);
         areaTouched.current = areaRef.current !== r.area;
@@ -351,7 +373,8 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     if (!writable) return; // back online, this runs again and saves
     const t = setTimeout(() => void saveRef.current(true), SAVE_AFTER_MS);
     return () => clearTimeout(t);
-  }, [text, area, mode, writable]);
+    // photos and reads: a new memo with only a photo is saved once its read ends (7.1 v2.7).
+  }, [text, area, mode, writable, photos, reads]);
 
   // Leaving: the tab goes to the background, or the screen goes away.
   useEffect(() => {
@@ -362,7 +385,11 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     return () => {
       document.removeEventListener("visibilitychange", onHide);
       alive.current = false;
-      void saveRef.current();
+      void saveRef.current().then(() => {
+        // Photos this screen still held only as its own bytes go with it.
+        const conn = loadConn();
+        if (conn) for (const p of photosRef.current) if (!p.attached) dropLocalPhoto(conn, p.id);
+      });
     };
   }, []);
   useEffect(() => {
@@ -443,6 +470,12 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
 
   const removePic = useCallback(
     (id: number) => {
+      const pic = photosRef.current.find((p) => p.id === id);
+      const conn = loadConn();
+      if (pic && !pic.attached && conn) dropLocalPhoto(conn, id);
+      // Its read, if one is going on or waiting for 다시 읽기, goes too.
+      for (const r of readsRef.current) if (r.id === id) anchors.current.delete(r.anchor);
+      setReads((rs) => rs.filter((r) => r.id !== id));
       setPhotos((ps) => ps.filter((p) => p.id !== id));
       const n = photosRef.current.length;
       setViewing((v) => (v === null || n === 0 ? null : Math.min(v, n - 1)));
@@ -458,6 +491,8 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       const out = await runAction("attach_photo", { memo_id: memoId, photo_id: id });
       if (out.kind === "applied") {
         setPhotos((ps) => ps.map((p) => (p.id === id ? { ...p, attached: true } : p)));
+        const conn = loadConn();
+        if (conn) dropLocalPhoto(conn, id); // the BE gives it out now
         if (out.activityId !== null && out.confirmation) toast.show({ text: out.confirmation });
         return true;
       }
@@ -476,6 +511,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       const conn = loadConn();
       const r: ApiResult<{ text: string; unreadable: boolean }> = conn ? await readPhoto(conn, id) : { kind: "offline" };
       if (!alive.current) return;
+      if (!photosRef.current.some((p) => p.id === id)) return; // taken out while it was read (removePic dropped its entry)
       if (r.kind !== "ok") {
         const limit = readLimitText(r);
         if (limit) {
@@ -489,7 +525,6 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       }
       anchors.current.delete(anchor);
       setReads((rs) => rs.filter((x) => x.id !== id));
-      if (!photosRef.current.some((p) => p.id === id)) return; // taken out while it was read
       if (r.data.unreadable || !r.data.text.trim()) {
         toast.show({ text: copy.photos.unreadable });
         return;
@@ -504,7 +539,8 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     [syncAnchors, toast],
   );
 
-  const addPhoto = async (file: File, anchor: Anchor): Promise<boolean> => {
+  /** `inRow`: called once the photo is in the row (it stops counting as an upload). */
+  const addPhoto = async (file: File, anchor: Anchor, inRow: () => void): Promise<boolean> => {
     let shrunk: { image: Blob; thumb: Blob };
     try {
       shrunk = await shrinkPhoto(file);
@@ -517,10 +553,6 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       toast.show({ text: copy.actions.offline });
       return false;
     }
-    if (photosRef.current.length >= PHOTOS_MAX) {
-      toast.show({ text: copy.photos.memoLimit });
-      return false;
-    }
     // A new client_msg_id for every photo picked (uploadPhoto keeps it for its own retry only).
     const up = await uploadPhoto(conn, { ...shrunk, origin: "memo", clientMsgId: newClientMsgId() });
     if (up.kind !== "ok") {
@@ -531,13 +563,16 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     keepLocalPhoto(conn, up.data.id, shrunk.image, shrunk.thumb);
     if (!alive.current) return false;
     setPhotos((ps) => [...ps, { id: up.data.id, attached: false }]);
+    inRow();
     if (!(await attach(up.data.id))) return false;
     void readInto(up.data.id, anchor);
     return true;
   };
 
+  /** The photos of the memo and those on their way: two quick picks at 9 must not make 11. */
+  const photoCount = () => photosRef.current.length + uploadsRef.current;
   const pickPhoto = () => {
-    if (photosRef.current.length >= PHOTOS_MAX) {
+    if (photoCount() >= PHOTOS_MAX) {
       toast.show({ text: copy.photos.memoLimit });
       return;
     }
@@ -550,14 +585,26 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+    if (photoCount() >= PHOTOS_MAX) {
+      toast.show({ text: copy.photos.memoLimit });
+      return;
+    }
     syncAnchors();
     const anchor: Anchor = { pos: shiftAnchor(picked.current.base, textRef.current, picked.current.at) };
     anchors.current.add(anchor);
+    uploadsRef.current++;
+    let counted = true;
+    const leaveUploads = () => {
+      if (!counted) return;
+      counted = false;
+      uploadsRef.current--;
+      if (alive.current) setUploading((n) => n - 1);
+    };
     setUploading((n) => n + 1);
     try {
-      if (!(await addPhoto(file, anchor))) anchors.current.delete(anchor);
+      if (!(await addPhoto(file, anchor, leaveUploads))) anchors.current.delete(anchor);
     } finally {
-      if (alive.current) setUploading((n) => n - 1);
+      leaveUploads();
     }
   };
 
@@ -618,7 +665,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     setMode("write");
   };
 
-  const photosFull = photos.length >= PHOTOS_MAX;
+  const photosFull = photos.length + uploading >= PHOTOS_MAX;
   const busy = uploading > 0 || reads.some((r) => r.state === "reading");
   const readFailed = reads.some((r) => r.state === "failed");
   // SP10 7.1: the line above the tool row while a photo is read; "다시 읽기" after a read that did not go through.

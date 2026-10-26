@@ -1,6 +1,6 @@
 import type { Conn } from "../lib/connection";
 import { copy } from "../lib/copy";
-import { cachedPhoto, type PhotoSize, photoKey, putPhoto } from "../lib/photoCache";
+import { type HeldPhoto, holdPhoto, type PhotoSize, photoKey, putPhoto, unpinPhoto } from "../lib/photoCache";
 import { type ApiResult, apiFetch } from "./client";
 import type { PhotoRead, PhotoUploaded } from "./types.gen";
 import { failureText } from "./actions";
@@ -53,16 +53,28 @@ export function readPhoto(conn: Conn, id: number): Promise<ApiResult<PhotoRead>>
   });
 }
 
-const inFlight = new Map<string, Promise<string | null>>();
+const inFlight = new Map<string, Promise<boolean>>();
 
 /**
- * A blob: address of `GET /photos/{id}?size=`, through the memory cache (7.3). Null when it cannot be
- * had (offline, a photo not live any more, a missing file): the place shows as a grey cell.
+ * A blob: address of `GET /photos/{id}?size=`, through the memory cache (7.3), already held for the
+ * caller: call `release` when it is not shown any more (a full-size one is revoked then). Null when
+ * it cannot be had (offline, a photo not live any more, a missing file): a grey cell.
  */
-export function photoBlobUrl(conn: Conn, id: number, size: PhotoSize): Promise<string | null> {
+export async function photoBlobUrl(conn: Conn, id: number, size: PhotoSize): Promise<HeldPhoto | null> {
   const key = photoKey(conn.beUrl, id, size);
-  const hit = cachedPhoto(key);
-  if (hit) return Promise.resolve(hit);
+  // Held at once when there; otherwise fetched and held right after. Should it go in between (the
+  // 60 moved on), it is fetched once more.
+  for (let i = 0; i < 2; i++) {
+    const held = holdPhoto(key);
+    if (held) return held;
+    if (!(await fetchInto(conn, id, size, key))) return null;
+    const got = holdPhoto(key);
+    if (got) return got;
+  }
+  return null;
+}
+
+function fetchInto(conn: Conn, id: number, size: PhotoSize, key: string): Promise<boolean> {
   const going = inFlight.get(key);
   if (going) return going;
   const run = (async () => {
@@ -74,10 +86,11 @@ export function photoBlobUrl(conn: Conn, id: number, size: PhotoSize): Promise<s
         cache: "no-store",
         signal: ac.signal,
       });
-      if (!res.ok) return null;
-      return putPhoto(key, await res.blob());
+      if (!res.ok) return false;
+      putPhoto(key, await res.blob());
+      return true;
     } catch {
-      return null;
+      return false;
     } finally {
       clearTimeout(timer);
       inFlight.delete(key);
@@ -87,10 +100,18 @@ export function photoBlobUrl(conn: Conn, id: number, size: PhotoSize): Promise<s
   return run;
 }
 
-/** Shows a photo just uploaded from its own bytes: the BE does not give it out until it is attached (5.1). */
+/**
+ * Shows a photo just uploaded from its own bytes: the BE does not give it out until it is attached
+ * (5.1). They stay pinned until `dropLocalPhoto` (attached, or taken out before it was).
+ */
 export function keepLocalPhoto(conn: Conn, id: number, image: Blob, thumb: Blob): void {
-  putPhoto(photoKey(conn.beUrl, id, "full"), image);
-  putPhoto(photoKey(conn.beUrl, id, "thumb"), thumb);
+  putPhoto(photoKey(conn.beUrl, id, "full"), image, { pinned: true });
+  putPhoto(photoKey(conn.beUrl, id, "thumb"), thumb, { pinned: true });
+}
+
+/** The photo is attached (the BE gives it out now) or gone: its own bytes are no longer pinned. */
+export function dropLocalPhoto(conn: Conn, id: number): void {
+  unpinPhoto(conn.beUrl, id);
 }
 
 // ---- 8장 "응답 → 문구" -------------------------------------------------------------------------

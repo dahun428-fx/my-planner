@@ -6,6 +6,13 @@ import styles from "./PhotoViewer.module.css";
 
 const SWIPE_PX = 40;
 
+/** Where a swipe of `dx` px goes from photo `at` of `n`: the next (left), the previous (right), or nowhere (null). */
+export function swipeStep(dx: number, at: number, n: number): number | null {
+  if (dx <= -SWIPE_PX && at < n - 1) return at + 1;
+  if (dx >= SWIPE_PX && at > 0) return at - 1;
+  return null;
+}
+
 /**
  * SP10 7.1: one photo over the whole screen. Left and right (a swipe, the arrows, the arrow keys)
  * go through the memo's photos; "메모에서 빼기" only when `onDetach` is given (a screen that can write).
@@ -52,8 +59,8 @@ export function PhotoViewer({
     if (start.current === null) return;
     const dx = e.clientX - start.current;
     start.current = null;
-    if (dx <= -SWIPE_PX && at < photos.length - 1) onIndex(at + 1);
-    else if (dx >= SWIPE_PX && at > 0) onIndex(at - 1);
+    const to = swipeStep(dx, at, photos.length);
+    if (to !== null) onIndex(to);
   };
 
   return (

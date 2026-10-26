@@ -4,10 +4,10 @@ import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
 import { subscribeResults } from "../lib/connection";
-import { clearPhotoCache, PHOTO_CACHE_MAX, cachedPhoto, holdPhoto, photoCacheSize, photoKey, putPhoto } from "../lib/photoCache";
+import { clearPhotoCache, holdPhoto, PHOTO_CACHE_MAX, peekPhoto, photoCacheSize, photoKey, putPhoto } from "../lib/photoCache";
 import { TEST_BE_URL, TEST_TOKEN } from "../test/render";
 import { BASE, server } from "../test/server";
-import { keepLocalPhoto, photoBlobUrl, readLimitText, readPhoto, uploadFailureText, uploadPhoto } from "./photos";
+import { dropLocalPhoto, keepLocalPhoto, photoBlobUrl, readLimitText, readPhoto, uploadFailureText, uploadPhoto } from "./photos";
 import type { ApiResult } from "./client";
 
 const conn = { beUrl: TEST_BE_URL, token: TEST_TOKEN };
@@ -115,17 +115,22 @@ describe("8장 응답 → 문구 (upload)", () => {
 });
 
 describe("photoBlobUrl and the memory cache (spec 7.3)", () => {
-  it("fetches with the Authorization header, no-store, and hands a blob: address; a second ask is the cache", async () => {
+  const bytes = () => new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store" } });
+  const tk = (id: number) => photoKey(TEST_BE_URL, id, "thumb");
+  const fk = (id: number) => photoKey(TEST_BE_URL, id, "full");
+
+  it("fetches with the Authorization header, no-store, and hands a held blob: address; a second ask is the cache", async () => {
     const asks: { size: string | null; auth: string | null }[] = [];
     server.use(
       http.get(`${BASE}/photos/:id`, ({ request }) => {
         asks.push({ size: new URL(request.url).searchParams.get("size"), auth: request.headers.get("authorization") });
-        return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, no-store" } });
+        return bytes();
       }),
     );
-    const url = await photoBlobUrl(conn, 9, "thumb");
-    expect(url).toMatch(/^blob:/);
-    expect(await photoBlobUrl(conn, 9, "thumb")).toBe(url);
+    const a = await photoBlobUrl(conn, 9, "thumb");
+    expect(a?.url).toMatch(/^blob:/);
+    const b = await photoBlobUrl(conn, 9, "thumb");
+    expect(b?.url).toBe(a?.url);
     expect(asks).toEqual([{ size: "thumb", auth: `Bearer ${TEST_TOKEN}` }]);
   });
 
@@ -136,38 +141,106 @@ describe("photoBlobUrl and the memory cache (spec 7.3)", () => {
     expect(photoCacheSize()).toBe(0);
   });
 
-  it("a photo just uploaded is shown from its own bytes (no request)", async () => {
-    keepLocalPhoto(conn, 40, jpeg(100), jpeg(10));
-    expect(await photoBlobUrl(conn, 40, "thumb")).toMatch(/^blob:/);
-    expect(await photoBlobUrl(conn, 40, "full")).toMatch(/^blob:/);
+  it("a full-size photo is revoked as soon as no screen shows it (the viewer closes or moves on)", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    server.use(http.get(`${BASE}/photos/:id`, () => bytes()));
+    const one = await photoBlobUrl(conn, 5, "full");
+    const two = await photoBlobUrl(conn, 5, "full");
+    expect(two?.url).toBe(one?.url);
+    one!.release();
+    expect(revoke).not.toHaveBeenCalled();
+    two!.release();
+    expect(revoke).toHaveBeenCalledWith(one!.url);
+    expect(peekPhoto(fk(5))).toBeNull();
+    // A thumbnail let go stays (one of the 60).
+    const t = await photoBlobUrl(conn, 5, "thumb");
+    t!.release();
+    expect(peekPhoto(tk(5))).toBe(t!.url);
   });
 
-  it("keeps the latest 60: the oldest goes and its address is revoked", () => {
+  it("only thumbnails count toward the 60", () => {
+    for (let i = 0; i < PHOTO_CACHE_MAX; i++) putPhoto(tk(i), jpeg(1));
+    const full = holdPhoto((putPhoto(fk(500), jpeg(1)), fk(500)))!;
+    expect(peekPhoto(tk(0))).not.toBeNull();
+    expect(photoCacheSize()).toBe(PHOTO_CACHE_MAX + 1);
+    full.release();
+    expect(photoCacheSize()).toBe(PHOTO_CACHE_MAX);
+  });
+
+  it("a just-uploaded photo's own bytes are pinned until it is attached, then the full one goes", async () => {
     const revoke = vi.spyOn(URL, "revokeObjectURL");
-    const urls = Array.from({ length: PHOTO_CACHE_MAX + 1 }, (_, i) => putPhoto(photoKey(TEST_BE_URL, i, "thumb"), jpeg(1)));
+    keepLocalPhoto(conn, 40, jpeg(100), jpeg(10));
+    const full = await photoBlobUrl(conn, 40, "full");
+    const thumb = await photoBlobUrl(conn, 40, "thumb");
+    expect(full?.url).toMatch(/^blob:/);
+    expect(thumb?.url).toMatch(/^blob:/);
+    full!.release();
+    thumb!.release();
+    // Pinned: the viewer closing does not drop it, nor do 60 newer thumbnails.
+    for (let i = 0; i < PHOTO_CACHE_MAX + 5; i++) putPhoto(tk(i + 100), jpeg(1));
+    expect(peekPhoto(fk(40))).toBe(full!.url);
+    expect(peekPhoto(tk(40))).toBe(thumb!.url);
+    expect(revoke).not.toHaveBeenCalledWith(full!.url);
+    dropLocalPhoto(conn, 40);
+    expect(revoke).toHaveBeenCalledWith(full!.url);
+    expect(peekPhoto(fk(40))).toBeNull();
+  });
+
+  it("keeps the latest 60 thumbnails: the oldest goes and its address is revoked", () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    const urls = Array.from({ length: PHOTO_CACHE_MAX + 1 }, (_, i) => putPhoto(tk(i), jpeg(1)));
     expect(photoCacheSize()).toBe(PHOTO_CACHE_MAX);
     expect(revoke).toHaveBeenCalledTimes(1);
     expect(revoke).toHaveBeenCalledWith(urls[0]);
-    expect(cachedPhoto(photoKey(TEST_BE_URL, 0, "thumb"))).toBeNull();
+    expect(peekPhoto(tk(0))).toBeNull();
   });
 
   it("one a screen still shows is not revoked until that screen lets it go", () => {
     const revoke = vi.spyOn(URL, "revokeObjectURL");
-    const first = putPhoto(photoKey(TEST_BE_URL, 0, "thumb"), jpeg(1));
-    const release = holdPhoto(photoKey(TEST_BE_URL, 0, "thumb"));
-    for (let i = 1; i <= PHOTO_CACHE_MAX; i++) putPhoto(photoKey(TEST_BE_URL, i, "thumb"), jpeg(1));
+    const first = putPhoto(tk(0), jpeg(1));
+    const held = holdPhoto(tk(0))!;
+    for (let i = 1; i <= PHOTO_CACHE_MAX; i++) putPhoto(tk(i), jpeg(1));
     expect(revoke).not.toHaveBeenCalledWith(first);
-    // the next oldest went instead
-    expect(revoke).toHaveBeenCalledTimes(1);
-    release();
-    putPhoto(photoKey(TEST_BE_URL, 99, "thumb"), jpeg(1));
+    expect(revoke).toHaveBeenCalledTimes(1); // the next oldest went instead
+    held.release();
+    putPhoto(tk(99), jpeg(1));
     expect(revoke).toHaveBeenCalledWith(first);
   });
 
+  it("a replaced entry starts with no screens: the old address goes when its screen lets go, the new one stays", () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    const old = putPhoto(fk(7), jpeg(1));
+    const held = holdPhoto(fk(7))!;
+    const fresh = putPhoto(fk(7), jpeg(2));
+    expect(revoke).not.toHaveBeenCalled();
+    held.release();
+    expect(revoke).toHaveBeenCalledWith(old);
+    expect(revoke).not.toHaveBeenCalledWith(fresh);
+    // The new entry was not counted as shown: held and let go once, it goes (full size).
+    holdPhoto(fk(7))!.release();
+    expect(revoke).toHaveBeenCalledWith(fresh);
+  });
+
+  it("an address that went (cleared) is fetched again, and held", async () => {
+    let gets = 0;
+    server.use(
+      http.get(`${BASE}/photos/:id`, () => {
+        gets++;
+        return bytes();
+      }),
+    );
+    (await photoBlobUrl(conn, 77, "thumb"))!.release();
+    clearPhotoCache();
+    expect(holdPhoto(tk(77))).toBeNull();
+    const again = await photoBlobUrl(conn, 77, "thumb");
+    expect(again?.url).toMatch(/^blob:/);
+    expect(gets).toBe(2);
+  });
+
   it("photos stay in memory only: nothing goes to IndexedDB (the offline copy, ADR 0009) or localStorage", async () => {
-    server.use(http.get(`${BASE}/photos/:id`, () => new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { headers: { "Content-Type": "image/jpeg" } })));
-    await photoBlobUrl(conn, 5, "thumb");
-    await photoBlobUrl(conn, 5, "full");
+    server.use(http.get(`${BASE}/photos/:id`, () => bytes()));
+    (await photoBlobUrl(conn, 5, "thumb"))?.release();
+    (await photoBlobUrl(conn, 5, "full"))?.release();
     keepLocalPhoto(conn, 6, jpeg(10), jpeg(2));
     expect(await keys()).toEqual([]);
     expect(localStorage.length).toBe(0);
@@ -175,8 +248,8 @@ describe("photoBlobUrl and the memory cache (spec 7.3)", () => {
 
   it("clearPhotoCache revokes every address", () => {
     const revoke = vi.spyOn(URL, "revokeObjectURL");
-    putPhoto("a", jpeg(1));
-    putPhoto("b", jpeg(1));
+    putPhoto("a|1|thumb", jpeg(1));
+    putPhoto("b|1|thumb", jpeg(1));
     clearPhotoCache();
     expect(revoke).toHaveBeenCalledTimes(2);
     expect(photoCacheSize()).toBe(0);

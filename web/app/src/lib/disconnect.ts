@@ -1,6 +1,7 @@
 import { deleteDevice } from "../api/client";
 import { CONN_CHANGED, loadConn, loadDeviceId } from "./connection";
 import { hardReplace } from "./nav";
+import { clearPhotoCache } from "./photoCache";
 import { unsubscribePush } from "./push";
 import { clearDeviceData } from "./snapshot";
 import { applyPalette, applyTheme, DEFAULT_PALETTE } from "./theme";
@@ -26,6 +27,7 @@ export async function disconnectThisDevice({ deviceId = loadDeviceId() }: { devi
       }
     }
     await clearDeviceData();
+    clearPhotoCache(); // SP10 7.3: the photos of this BE leave memory too
     applyTheme("system");
     applyPalette(DEFAULT_PALETTE);
     window.dispatchEvent(new Event(CONN_CHANGED));

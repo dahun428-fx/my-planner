@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { photoBlobUrl } from "../api/photos";
 import { useConnection } from "../lib/ConnectionProvider";
-import { cachedPhoto, holdPhoto, type PhotoSize, photoKey } from "../lib/photoCache";
+import { peekPhoto, type PhotoSize, photoKey } from "../lib/photoCache";
 import styles from "./PhotoStrip.module.css";
 
 /**
@@ -12,16 +12,19 @@ export function PhotoImage({ id, size, className }: { id: number; size: PhotoSiz
   const { conn } = useConnection();
   const beUrl = conn?.beUrl ?? null;
   const token = conn?.token ?? null;
-  const [url, setUrl] = useState<string | null>(() => (beUrl ? cachedPhoto(photoKey(beUrl, id, size)) : null));
+  const [url, setUrl] = useState<string | null>(() => (beUrl ? peekPhoto(photoKey(beUrl, id, size)) : null));
 
   useEffect(() => {
     if (!beUrl || !token) return;
     let live = true;
     let release = () => {};
-    void photoBlobUrl({ beUrl, token }, id, size).then((u) => {
-      if (!live) return;
-      if (u) release = holdPhoto(photoKey(beUrl, id, size));
-      setUrl(u);
+    void photoBlobUrl({ beUrl, token }, id, size).then((held) => {
+      if (!live) {
+        held?.release(); // gone before it came
+        return;
+      }
+      if (held) release = held.release;
+      setUrl(held?.url ?? null);
     });
     return () => {
       live = false;
