@@ -135,7 +135,16 @@
                 "too_many_events",
                 "range_too_long",
                 "digest_time_invalid",
-                "bad_code"
+                "bad_code",
+                "too_many_photos",
+                "photo_not_found",
+                "photo_in_use",
+                "photo_too_large",
+                "photo_not_jpeg",
+                "photo_unreadable",
+                "photo_limit",
+                "disk_full",
+                "photo_read_limit"
               ],
               "type": "string"
             },
@@ -2645,7 +2654,16 @@
                 "too_many_events",
                 "range_too_long",
                 "digest_time_invalid",
-                "bad_code"
+                "bad_code",
+                "too_many_photos",
+                "photo_not_found",
+                "photo_in_use",
+                "photo_too_large",
+                "photo_not_jpeg",
+                "photo_unreadable",
+                "photo_limit",
+                "disk_full",
+                "photo_read_limit"
               ],
               "type": "string"
             },
@@ -3592,6 +3610,10 @@
         "brain": {
           "$ref": "#/$defs/HealthBrain"
         },
+        "disk_low": {
+          "default": false,
+          "type": "boolean"
+        },
         "errors": {
           "$ref": "#/$defs/HealthErrors"
         },
@@ -3688,6 +3710,28 @@
       "type": "object"
     },
     "Memo": {
+      "$defs": {
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "area": {
@@ -3724,6 +3768,13 @@
           ],
           "type": "string"
         },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhotoRef"
+          },
+          "type": "array"
+        },
         "pinned": {
           "type": "boolean"
         },
@@ -3747,6 +3798,28 @@
       "type": "object"
     },
     "MemoItem": {
+      "$defs": {
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "area": {
@@ -3776,6 +3849,13 @@
             "chat"
           ],
           "type": "string"
+        },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhotoRef"
+          },
+          "type": "array"
         },
         "pinned": {
           "type": "boolean"
@@ -3834,6 +3914,13 @@
               ],
               "type": "string"
             },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "type": "array"
+            },
             "pinned": {
               "type": "boolean"
             },
@@ -3855,6 +3942,26 @@
             "pinned",
             "origin",
             "updated_at"
+          ],
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
           ],
           "type": "object"
         }
@@ -3902,6 +4009,13 @@
             "id": {
               "type": "string"
             },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "type": "array"
+            },
             "speaker": {
               "enum": [
                 "user",
@@ -3926,6 +4040,26 @@
             "text",
             "tools",
             "channel"
+          ],
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
           ],
           "type": "object"
         }
@@ -4295,6 +4429,66 @@
       },
       "required": [
         "state"
+      ],
+      "type": "object"
+    },
+    "PhotoRead": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "unreadable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "unreadable"
+      ],
+      "type": "object"
+    },
+    "PhotoRef": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height"
+      ],
+      "type": "object"
+    },
+    "PhotoUploaded": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "bytes"
       ],
       "type": "object"
     },

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { copy } from "../src/lib/copy";
-import { markdownSse, mockBe, seedConn } from "./routes";
+import { APP_ORIGIN, BE_URL, markdownSse, mockBe, seedConn } from "./routes";
 
 // Spec 13장 "CSP 실행": under the real CSP headers, the chat part is drawn (the json-schema check
 // and zod run without eval) and nothing breaks the policy. Two tests, so a failure says which.
@@ -18,6 +18,8 @@ test("chat part renders under CSP", async ({ page }) => {
   expect(csp).toContain("font-src 'self'");
   expect(csp).toContain("connect-src 'self' https://*.example.ts.net");
   expect(csp).toContain("frame-ancestors 'none'");
+  // SP10 7.3: photos are shown from blob: addresses (fetched with the key in the header).
+  expect(csp).toContain("img-src 'self' data: blob:");
   await page.getByRole("button", { name: copy.chat.launcher }).click();
   const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
   await expect(input).toBeEnabled();
@@ -231,4 +233,78 @@ test("Pretendard loads from this origin on the first screen", async ({ page }) =
       .reduce((n, e) => n + (e as PerformanceResourceTiming).encodedBodySize, 0),
   );
   console.log(`fonts on the first screen: ${fonts.length} files, ${(bytes / 1024).toFixed(1)} KB`);
+});
+
+// SP10 12장 (Playwright): with the fixture BE, a photo picked in a new memo is shrunk in the real
+// browser, joins the photo row (a blob: image under img-src blob:), its read text goes into the body,
+// and the save request carries photo_ids. No CSP violation on the way.
+test("memo photo: pick, row, read text goes in, create_memo has photo_ids, under CSP", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI}`));
+  });
+  await mockBe(page);
+  const uploads: string[] = [];
+  const actions: { action: string; args: Record<string, unknown> }[] = [];
+  const headers = {
+    "Access-Control-Allow-Origin": APP_ORIGIN,
+    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+    "content-type": "application/json",
+  };
+  // Registered after mockBe, so these answer first; anything else falls back to it.
+  await page.route(`${BE_URL}/api/v1/**`, async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^\/api\/v1/, "");
+    if (req.method() === "POST" && path === "/photos") {
+      uploads.push(req.headers()["content-type"] ?? "");
+      const body = req.postDataBuffer()?.toString("latin1") ?? "";
+      for (const part of ["image", "thumb", "origin", "client_msg_id"]) if (!body.includes(`name="${part}"`)) uploads.push(`missing ${part}`);
+      if (!/name="image"; filename="[^"]*"\r\nContent-Type: image\/jpeg/.test(body)) uploads.push("image not jpeg");
+      return route.fulfill({ status: 201, headers, body: JSON.stringify({ id: 12, width: 2048, height: 1365, bytes: 1000 }) });
+    }
+    if (req.method() === "POST" && path === "/photos/12/read") {
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ text: "사진 속 글", unreadable: false }) });
+    }
+    if (req.method() === "POST" && path === "/actions") {
+      const b = req.postDataJSON() as { action: string; args: Record<string, unknown> };
+      actions.push({ action: b.action, args: b.args });
+      const result = { id: 7, title: "책 메모", area: null, pinned: false, updated_at: "2026-10-24T05:00:00Z" };
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ status: "applied", activity_id: 900, undo_id: 900, result, confirmation: copy.photos.created("책 메모", 1) }) });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/memos/view/?new=1");
+  const box = page.getByRole("textbox", { name: copy.memos.body });
+  await expect(box).toBeVisible();
+  await box.fill("책 메모");
+  // A 3000x2000 photo drawn in the page (as a phone photo would be, larger than 2,048).
+  const png = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 3000;
+    c.height = 2000;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#88aa66";
+    ctx.fillRect(0, 0, 3000, 2000);
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: copy.photos.button }).click();
+  await (await chooser).setFiles({ name: "IMG_0001.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+
+  const strip = page.getByRole("list", { name: copy.photos.strip });
+  const img = strip.locator("img");
+  await expect(img).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect(box).toHaveValue("책 메모\n사진 속 글");
+  await expect(page.getByText(copy.photos.inserted)).toBeVisible();
+  await expect.poll(() => actions.find((a) => a.action === "create_memo")?.args, { timeout: 5000 }).toEqual({ body: "책 메모\n사진 속 글", photo_ids: [12] });
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]).toMatch(/^multipart\/form-data; boundary=/);
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `securitypolicyviolation ${v}`));
+  expect(problems).toEqual([]);
 });

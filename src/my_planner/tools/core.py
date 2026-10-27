@@ -105,16 +105,19 @@ from my_planner.tools.events import (
 from my_planner.tools.habits import HabitTools
 from my_planner.tools.memos import MemoTools
 from my_planner.tools.moments import MomentTools
+from my_planner.tools.photos import PhotoTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
+    from my_planner.store.photos import PhotoFiles
     from my_planner.store.repos.activity import Activity, ConfirmsRepo
     from my_planner.store.repos.body import BodyRepo
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.memos import MemosRepo
     from my_planner.store.repos.moments import MomentsRepo
+    from my_planner.store.repos.photos import PhotosRepo
     from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.state import StateRepo
 
@@ -208,7 +211,8 @@ def _result_before(a: Activity) -> dict[str, Any]:
 
 
 class Tools(
-    MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, BodyTools, EventTools, ConversationTools
+    MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, PhotoTools, BodyTools, EventTools,
+    ConversationTools,
 ):
     def __init__(
         self,
@@ -237,6 +241,8 @@ class Tools(
         body: BodyRepo | None = None,
         events: EventsRepo | None = None,
         conversations: ConversationsRepo | None = None,
+        photos: PhotosRepo | None = None,
+        photo_files: PhotoFiles | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -275,6 +281,9 @@ class Tools(
         self.events = events
         # 지난 대화 찾기(SP9 7.5, `find_conversations`). None이면 거절한다
         self.conversations = conversations
+        # 사진(SP10 5.1·5.2). 둘 중 하나라도 None이면 사진 동작과 `create_memo(photo_ids)`가 거절한다
+        self.photos = photos
+        self.photo_files = photo_files
 
     # --- 공통 ---
 

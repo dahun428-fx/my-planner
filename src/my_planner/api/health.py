@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from my_planner.api.models import api_time, to_api_times
+from my_planner.api.photos import disk_low
 from my_planner.clock import Clock, from_iso, logical_date
 from my_planner.harness.checkins import runs_today
 from my_planner.harness.delivery import effective_channel
@@ -149,5 +150,6 @@ def health_view(conn: sqlite3.Connection, deps: ApiDeps) -> dict[str, Any]:
         "runs_today": runs_today(runs=runs, deliveries=DeliveriesRepo(conn, deps.clock), now=now, settings=s),
         "errors": deps.errors.snapshot(),
         "push": {"subscriptions": push.count_active(), "last_success_at": last_success},
+        "disk_low": disk_low(deps),  # SP10 5.6 4번: 경고만(`status`는 그대로)
     }
     return to_api_times(body)

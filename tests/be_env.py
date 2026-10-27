@@ -49,6 +49,7 @@ ON_WRITE: Any = None
 TEST_TOKEN = "test-token-" + "x" * 40  # 꾸며 낸 값(51자). 로그 검사 시험이 이 문자열을 찾는다
 OWNER = 42
 DRAIN_STEPS = 10_000
+DISK_FREE = 50 * 1024**3  # 남은 공간(SP10 5.6 4번)을 시험 기계의 디스크와 떼어 둔다. 시험이 `env.deps.disk_free`를 바꾼다
 
 
 class RecordingBot:
@@ -162,6 +163,7 @@ class BeEnv:
             polling_state=lambda: "down" if parts.runner.polling_down else "running",
             started_at=start, transcripts=parts.transcripts,
             body_token=_body_token(settings, TEST_TOKEN) if body_token is not None else None,
+            disk_free=lambda _path: DISK_FREE,
             **({"sleep": api_sleep} if api_sleep is not None else {}),
         )
         client = TestClient(TestServer(build_app(deps)))

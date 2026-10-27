@@ -1,0 +1,51 @@
+/* SP10 7.1 / 7.3 photo row and cells: theme tokens only (DESIGN.md). */
+.strip {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+  padding: 0 var(--gutter);
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.strip::-webkit-scrollbar {
+  display: none;
+}
+.item {
+  flex: none;
+}
+.cell {
+  display: block;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--raised);
+  cursor: pointer;
+}
+.cell:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* A photo not had (yet, or offline): a grey cell (7.3). */
+.empty {
+  display: block;
+  background: var(--raised);
+}
+/* The memo list's small photo (9.4 + SP10 7.1): 40px at the row's right. */
+.listThumb {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}

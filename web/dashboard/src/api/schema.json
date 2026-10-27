@@ -152,7 +152,16 @@
                 "too_many_events",
                 "range_too_long",
                 "digest_time_invalid",
-                "bad_code"
+                "bad_code",
+                "too_many_photos",
+                "photo_not_found",
+                "photo_in_use",
+                "photo_too_large",
+                "photo_not_jpeg",
+                "photo_unreadable",
+                "photo_limit",
+                "disk_full",
+                "photo_read_limit"
               ],
               "title": "Code",
               "type": "string"
@@ -3008,7 +3017,16 @@
                 "too_many_events",
                 "range_too_long",
                 "digest_time_invalid",
-                "bad_code"
+                "bad_code",
+                "too_many_photos",
+                "photo_not_found",
+                "photo_in_use",
+                "photo_too_large",
+                "photo_not_jpeg",
+                "photo_unreadable",
+                "photo_limit",
+                "disk_full",
+                "photo_read_limit"
               ],
               "title": "Code",
               "type": "string"
@@ -4085,6 +4103,11 @@
         "brain": {
           "$ref": "#/$defs/HealthBrain"
         },
+        "disk_low": {
+          "default": false,
+          "title": "Disk Low",
+          "type": "boolean"
+        },
         "errors": {
           "$ref": "#/$defs/HealthErrors"
         },
@@ -4191,6 +4214,33 @@
       "type": "object"
     },
     "Memo": {
+      "$defs": {
+        "PhotoRef": {
+          "additionalProperties": false,
+          "description": "메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.",
+          "properties": {
+            "height": {
+              "title": "Height",
+              "type": "integer"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "width": {
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "title": "PhotoRef",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "description": "`GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).",
       "properties": {
@@ -4233,6 +4283,14 @@
           "title": "Origin",
           "type": "string"
         },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhotoRef"
+          },
+          "title": "Photos",
+          "type": "array"
+        },
         "pinned": {
           "title": "Pinned",
           "type": "boolean"
@@ -4260,6 +4318,33 @@
       "type": "object"
     },
     "MemoItem": {
+      "$defs": {
+        "PhotoRef": {
+          "additionalProperties": false,
+          "description": "메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.",
+          "properties": {
+            "height": {
+              "title": "Height",
+              "type": "integer"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "width": {
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "title": "PhotoRef",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "description": "`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 \"제목 없는 메모\"). `preview`: 제목 줄 다음부터\n서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다.",
       "properties": {
@@ -4293,6 +4378,14 @@
           ],
           "title": "Origin",
           "type": "string"
+        },
+        "photos": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PhotoRef"
+          },
+          "title": "Photos",
+          "type": "array"
         },
         "pinned": {
           "title": "Pinned",
@@ -4360,6 +4453,14 @@
               "title": "Origin",
               "type": "string"
             },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "title": "Photos",
+              "type": "array"
+            },
             "pinned": {
               "title": "Pinned",
               "type": "boolean"
@@ -4387,6 +4488,31 @@
             "updated_at"
           ],
           "title": "MemoItem",
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "description": "메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.",
+          "properties": {
+            "height": {
+              "title": "Height",
+              "type": "integer"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "width": {
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "title": "PhotoRef",
           "type": "object"
         }
       },
@@ -4423,7 +4549,7 @@
       "$defs": {
         "MessageItem": {
           "additionalProperties": false,
-          "description": "대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.",
+          "description": "대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.\n`photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를\n뗀 글이다(사진만이면 빈 문자열).",
           "properties": {
             "at": {
               "title": "At",
@@ -4440,6 +4566,14 @@
             "id": {
               "title": "Id",
               "type": "string"
+            },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "title": "Photos",
+              "type": "array"
             },
             "speaker": {
               "enum": [
@@ -4470,6 +4604,31 @@
             "channel"
           ],
           "title": "MessageItem",
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "description": "메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.",
+          "properties": {
+            "height": {
+              "title": "Height",
+              "type": "integer"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "width": {
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "title": "PhotoRef",
           "type": "object"
         }
       },
@@ -4898,6 +5057,81 @@
         "state"
       ],
       "title": "PairStatus",
+      "type": "object"
+    },
+    "PhotoRead": {
+      "additionalProperties": false,
+      "description": "`POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `\"\"`.",
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "unreadable": {
+          "title": "Unreadable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "text",
+        "unreadable"
+      ],
+      "title": "PhotoRead",
+      "type": "object"
+    },
+    "PhotoRef": {
+      "additionalProperties": false,
+      "description": "메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다.",
+      "properties": {
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height"
+      ],
+      "title": "PhotoRef",
+      "type": "object"
+    },
+    "PhotoUploaded": {
+      "additionalProperties": false,
+      "description": "`POST /photos` 201 (SP10 5.3).",
+      "properties": {
+        "bytes": {
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "width",
+        "height",
+        "bytes"
+      ],
+      "title": "PhotoUploaded",
       "type": "object"
     },
     "Priorities": {

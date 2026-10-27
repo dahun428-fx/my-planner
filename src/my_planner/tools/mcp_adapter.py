@@ -555,12 +555,18 @@ _SPECS.update({
         (
             "사용자가 \"메모해줘\", \"적어둬\"처럼 부탁할 때만 메모를 만듭니다. body는 1~20,000자이고 첫 줄이 제목입니다. 메모 칩 차례에서는 body 없이 부릅니다. "
             "쓸 수 있는 서식은 목록 \"- \", 번호 \"1. \", 체크박스 \"- [ ]\", 굵게 \"**\"입니다. area는 영역 하나 또는 null. "
-            "만든 메모는 고치거나 지울 수 없습니다(사용자가 앱에서 합니다)."
+            "만든 메모는 고치거나 지울 수 없습니다(사용자가 앱에서 합니다). "
+            "photo_ids에는 이번 대화에서 받은 사진 번호(이미지 앞 [사진 #12]의 12)만 넣으면 그 사진을 순서대로 메모에 붙입니다(10장까지)."
         ),
         _schema(
             {
                 "body": {"type": "string", "description": "1~20,000자, 첫 줄이 제목"},
                 "area": {"type": ["string", "null"], "enum": [*_AREAS, None]},
+                # SP10 5.5: 앱 통로만(이 도구는 앱 대화에만 있다). 다른 대화의 사진은 `photo_not_in_conversation`
+                "photo_ids": {
+                    "type": "array", "items": {"type": "integer"}, "maxItems": 10,
+                    "description": "이번 대화에서 받은 사진 번호([사진 #12]의 12). 없으면 빼세요",
+                },
             },
             # 필수가 아니다: 메모 칩 차례(SP9c 4.5)는 `body` 없이 부르면 원문을 쓴다. 그 밖에 빠지면 도구가 거절한다
             [],
@@ -655,14 +661,18 @@ _SPECS["save_moments"] = (
 )
 
 
+NO_TOOL_KINDS = frozenset({"summary", "photo_read"})  # 도구를 주지 않는 실행 종류
+
+
 def tool_names_for(ctx: RunContext) -> list[str]:
-    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약은 없음(SP9 7.2).
+    """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
         return list(MOMENTS_TOOLS)
-    if ctx.kind == "summary":  # 대화 요약(SP9 7.2): 도구 없음
+    # 대화 요약(SP9 7.2), 사진 읽기(SP10 5.4): 도구 없음. 사진 속 글이 지시처럼 보여도 쓸 도구가 없다
+    if ctx.kind in NO_TOOL_KINDS:
         return []
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 

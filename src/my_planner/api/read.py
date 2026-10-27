@@ -43,6 +43,7 @@ from my_planner.clock import logical_date, period_bounds, period_of, to_iso
 from my_planner.curve.history import curve_history
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
+from my_planner.harness.chat_photos import leading_photo_ids, strip_marks
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
 from my_planner.harness.summaries import LIST_SUMMARY_CHARS
 from my_planner.status.snapshot import status_snapshot
@@ -57,6 +58,7 @@ from my_planner.store.repos.events import EventsRepo, check_range
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
+from my_planner.store.repos.photos import Photo, PhotosRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -393,8 +395,11 @@ def get_memos(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> 
     rest = [m for m in rows if not m.pinned]
     more = len(rest) > limit
     rest = rest[:limit]
+    first = _photos(deps).first_for_memos(conn, [m.id for m in [*pinned, *rest]])
     return dump(MemoList, {
-        "items": [memo_item(m) for m in [*pinned, *rest]],
+        "items": [
+            {**memo_item(m), "photos": [photo_ref(first[m.id])] if m.id in first else []} for m in [*pinned, *rest]
+        ],
         "next_before": memo_cursor(rest[-1].updated_at, rest[-1].id) if more and rest else None,
     })
 
@@ -404,7 +409,17 @@ def get_memo(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> d
     m = MemosRepo(conn, deps.clock).get(_path_id(request))
     if m is None:
         raise ApiError(404, "not_found", "없는 메모예요.")
-    return dump(Memo, memo_dict(m))
+    photos = [photo_ref(p) for p in _photos(deps).for_memo(conn, m.id)]
+    return dump(Memo, {**memo_dict(m), "photos": photos})
+
+
+def _photos(deps: ApiDeps) -> PhotosRepo:
+    return PhotosRepo(deps.settings.timezone, deps.settings.day_boundary)
+
+
+def photo_ref(p: Photo) -> dict[str, Any]:
+    """메모 항목의 사진 하나(SP10 5.3): id와 크기만. 경로·sha256·읽은 글은 싣지 않는다(6장)."""
+    return {"id": p.id, "width": p.width, "height": p.height}
 
 
 # --- 인생 곡선, 상태창 ---
@@ -563,14 +578,27 @@ def get_conversation_messages(conn: sqlite3.Connection, deps: ApiDeps, request: 
     conv = ConversationsRepo(conn, deps.clock).get(conversation_id)
     if conv is None or conv.deleted_at is not None or deps.transcripts is None:  # 지운 대화는 404(SP9 7.6)
         raise ApiError(404, "not_found", "없는 대화예요.")
-    items = [
-        {
+    lines = deps.transcripts.messages(conversation_id)
+    # 사용자 줄의 사진(SP10 5.3): 줄 앞 `[사진 #id]` 표시가 이 대화의 아직 쓰지 않은 받은 메시지 하나의 사진과 똑같을
+    # 때만 그 사진들(보낸 순서). 그 줄의 글에서는 표시를 뗀다(사진만이면 ""). 글로 친 `[사진 #N]`은 사진이 되지 않는다
+    unused = _photos(deps).for_conversation(conn, conversation_id) if any(
+        m.speaker == "사용자" and m.channel == "app" for m in lines
+    ) else {}
+
+    def item(m: Any) -> dict[str, Any]:
+        text, photos = m.text, []
+        marks = leading_photo_ids(m.text) if m.speaker == "사용자" and m.channel == "app" else []
+        if marks:
+            hit = next((k for k, ps in unused.items() if [p.id for p in ps] == marks), None)
+            if hit is not None:
+                photos = [photo_ref(p) for p in unused.pop(hit)]
+                text = strip_marks(m.text, marks)
+        return {
             "id": m.id, "at": m.at, "speaker": "user" if m.speaker == "사용자" else "secretary",
-            "text": m.text, "tools": m.tools, "channel": m.channel,
+            "text": text, "tools": m.tools, "channel": m.channel, "photos": photos,
         }
-        for m in deps.transcripts.messages(conversation_id)
-    ]
-    return dump(Messages, {"items": items})
+
+    return dump(Messages, {"items": [item(m) for m in lines]})
 
 
 # --- 카탈로그와 스키마 ---

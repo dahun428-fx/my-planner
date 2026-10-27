@@ -10,6 +10,9 @@
 - 바꾸면 `tool_events_log`에도 `{"memo_id", "title"(앞 20자)}`를 쓴다(다시 처리할 때 두뇌를 다시 부르지 않게).
 - 두뇌의 `create_memo` 결과는 `{id, title, area}`, `/actions` 결과는 본문 없는 `memo_result`다.
 - 오류 코드(`code`): `memo_conflict`(409), `too_many_memos`, `too_many_pinned`(422). `tools/actions.py`가 HTTP로 바꾼다.
+- `create_memo`는 `photo_ids`를 받아 순서대로 붙인다: 앱은 메모 사진(SP10 5.3), 두뇌는 앱 대화에서 이번 대화의 채팅
+  사진만(5.5, 그 밖은 `photo_not_in_conversation`). `update_memo`는 사진을 받지 않는다(11장).
+  메모 지우기·되돌리기는 사진 연결을 그대로 둔다(살아 있는 사진 정의로 숨는다, 5.1).
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from my_planner.tools.confirmations import memo_line
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
+    from my_planner.store.repos.photos import PhotosRepo
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.tools.core import Tools
 
@@ -65,6 +69,7 @@ MSG_RUN_TURN = "사용자가 부탁한 메모만 만들 수 있어요."
 MSG_AREA = "area는 career, finance, health, relationships, learning, quality_of_life 가운데 하나예요."
 MSG_UPDATED_AT = "updated_at은 앞서 받은 메모의 updated_at 값으로 보내 주세요."
 MSG_QUERY = "찾을 말(query)을 알려 주세요."
+MSG_PHOTOS_APP_ONLY = "사진은 앱에서 붙일 수 있어요."
 MSG_LIMIT = f"limit은 1~{SEARCH_LIMIT_MAX} 사이 정수예요."
 
 
@@ -164,6 +169,7 @@ class MemoTools:
     """메모 도구 셋(두뇌)과 메모 동작 넷(즉시 갈래만). `Tools`의 공통 부품(`_record`)을 쓴다."""
 
     memos: MemosRepo | None
+    photos: PhotosRepo | None
 
     if TYPE_CHECKING:
         clock: Clock
@@ -172,6 +178,10 @@ class MemoTools:
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
 
+        def check_photo_ids(self, photo_ids: Any) -> list[int] | dict[str, Any]: ...
+
+        def check_chat_photo_ids(self, ctx: RunContext, photo_ids: Any) -> list[int] | dict[str, Any]: ...
+
     # --- 공통 ---
 
     def _memo(self, id: Any) -> Memo | str:
@@ -179,14 +189,23 @@ class MemoTools:
         m = self.memos.get(id) if _is_int(id) else None
         return m if m is not None else MSG_NOT_FOUND
 
-    def _memo_change(self, ctx: RunContext, kind: str, m: Memo, undo: dict[str, Any] | None) -> None:
+    def _memo_change(
+        self, ctx: RunContext, kind: str, m: Memo, undo: dict[str, Any] | None, *, photos: int = 0
+    ) -> None:
         """트랜잭션 안에서: 도구 호출 기록(`tool_events_log`), 활동 한 행, 확인 문구용 이벤트. 셋 다 제목 앞 20자만 쓰고
         본문은 넣지 않는다(6.1). 호출 기록이 있어야 두뇌 호출 도중 멈춘 메시지를 다시 처리할 때 두뇌를 다시 부르지 않고
         (같은 메모를 두 번 만들지 않고) 이 데이터로 확인 문구를 다시 만든다(`Dispatcher._finish_after_logged_tools`)."""
         # 두뇌가 바꾼 것은 가린 제목으로(메모 칩은 원문을 저장한다, SP9c 4.5). 앱(`/actions`)은 사용자 글 그대로
-        data = {"memo_id": m.id, "title": summary_title(redact(m.body)[0] if ctx.actor == "secretary" else m.body)}
+        data: dict[str, Any] = {
+            "memo_id": m.id, "title": summary_title(redact(m.body)[0] if ctx.actor == "secretary" else m.body),
+        }
+        if photos:
+            data["photos"] = photos  # 확인 문구의 `(사진 {n}장)`(SP10 8장). 사진 id는 연결 표에 있다
         self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
-        self._record(ctx, kind, memo_target(m.id), memo_line(kind, data["title"]), undo)
+        if photos and undo is not None:
+            # 되돌림 문구는 사진 수 없는 확인 문구에서 만든다(`_undo`가 `undo["summary"]`를 먼저 본다). 제목은 그대로
+            undo = {**undo, "summary": memo_line(kind, data["title"])}
+        self._record(ctx, kind, memo_target(m.id), memo_line(kind, data["title"], photos), undo)
         ctx.events.append(ToolEvent(kind, None, data))
 
     # --- 두뇌 도구 ---
@@ -228,10 +247,14 @@ class MemoTools:
         }
 
     @_tool
-    def create_memo(self, ctx: RunContext, body: Any = None, area: Any = None) -> dict[str, Any]:
+    def create_memo(
+        self, ctx: RunContext, body: Any = None, area: Any = None, photo_ids: Any = None
+    ) -> dict[str, Any]:
         """메모를 만든다. 두뇌가 만들면 `origin = 'chat'`, 앱(`/actions`)이면 `'user'`. 되돌릴 수 있다.
         회차 차례(비서가 먼저 꺼낸 말)에서는 만들지 않는다: 사용자가 부탁할 때만(6.3).
-        메모 칩 차례(`ctx.chip == "memo"`, SP9c 4.5)면 본문은 늘 `ctx.chip_text`(가리기·자르기 전 원문)다."""
+        메모 칩 차례(`ctx.chip == "memo"`, SP9c 4.5)면 본문은 늘 `ctx.chip_text`(가리기·자르기 전 원문)다.
+        `photo_ids`: 앱(`/actions`, SP10 5.3)은 붙지 않은 `origin=memo` 사진, 두뇌(앱 대화만, 5.5)는 이번 대화의 메시지에
+        붙은 사진. 10장까지를 순서대로 붙인다. 메시지 연결은 그대로 두고, 되돌리기는 메모 지우기(연결은 남는다)."""
         if self.memos is None:
             return _err(MSG_NO_MEMOS)
         if ctx.run_turn:
@@ -249,12 +272,26 @@ class MemoTools:
             text, a = _body(body), _area(area)
         except ValueError as e:
             return _err(str(e))
+        ids: list[int] = []
+        if photo_ids is not None and photo_ids != []:
+            if ctx.actor == "secretary" and ctx.channel != "app":  # 앱 통로에서만 받는다(SP10 5.5, Q14)
+                return _err(MSG_PHOTOS_APP_ONLY)
+            # 두뇌(앱 대화)는 이번 대화의 채팅 사진만(5.5), 앱(`/actions`)은 붙지 않은 메모 사진만(5.3)
+            checked = (
+                self.check_chat_photo_ids(ctx, photo_ids) if ctx.actor == "secretary" else self.check_photo_ids(photo_ids)
+            )
+            if isinstance(checked, dict):
+                return checked
+            ids = checked
         if self.memos.count_live() >= MEMOS_MAX:
             return _code(MSG_TOO_MANY, TOO_MANY_MEMOS)
         origin = "chat" if ctx.actor == "secretary" else "user"
         with transaction(self.memos.conn):
             m = self.memos.create(text, a, origin, self.clock.now())
-            self._memo_change(ctx, "memo_created", m, {"memo_id": m.id})
+            for pid in ids:
+                assert self.photos is not None
+                self.photos.attach(self.memos.conn, m.id, pid)  # 빈 메모라 0부터 차례로
+            self._memo_change(ctx, "memo_created", m, {"memo_id": m.id}, photos=len(ids))
         log.info("memo_created", extra={"memo_id": m.id, "origin": origin})
         if ctx.actor == "secretary":  # 두뇌에는 본문을 돌려주지 않는다(6.3). 제목도 가린 글로
             return _brain_result(m)

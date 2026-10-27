@@ -33,6 +33,9 @@ import "../styles/page.module.css";
 // out of the first screen's 180KB.
 import "../screens/Memos.module.css";
 import "../screens/MemoEditor.module.css";
+// SP10 7.1: the memo photo row and the full-screen photo, for the same reason.
+import "../components/PhotoStrip.module.css";
+import "../components/PhotoViewer.module.css";
 // SP9 9.2: the schedule tab's stylesheets only, for the same reason (its code stays in /schedule/'s chunk).
 import "../screens/Schedule.module.css";
 import "../screens/MonthCalendar.module.css";

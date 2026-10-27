@@ -238,6 +238,22 @@ describe("Memos (spec 9.4)", () => {
     expect(screen.queryByRole("button", { name: /더 보기$/ })).toBeNull();
   });
 
+  it("a memo with photos shows its first one small at the row's right (SP10 7.1)", async () => {
+    serve(() => ({ items: [item({ id: 1, title: "영수증", photos: [{ id: 30, width: 2048, height: 1536 }] }), item({ id: 2, title: "글만" })], next_before: null }));
+    const asked: string[] = [];
+    server.use(
+      http.get(`${BASE}/photos/:id`, ({ request, params }) => {
+        asked.push(`${params.id}:${new URL(request.url).searchParams.get("size")}:${request.headers.get("authorization") ? "key" : "none"}`);
+        return new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), { headers: { "Content-Type": "image/jpeg" } });
+      }),
+    );
+    renderWithProviders(<Memos />, { route: "/memos/" });
+    const row = (await screen.findByText("영수증")).closest("a")!;
+    await waitFor(() => expect(row.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/));
+    expect(asked).toEqual(["30:thumb:key"]);
+    expect(screen.getByText("글만").closest("a")!.querySelector("[data-photo]")).toBeNull();
+  });
+
   it("the page marks the memos tab", async () => {
     serve();
     renderWithProviders(<MemosPage />, { route: "/memos/" });

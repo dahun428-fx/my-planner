@@ -5,19 +5,19 @@
 **Goal:** 운영 앱의 메모 쓰기 화면과 채팅에서 사진을 올리면, BE가 사진 파일을 노트북에 남기고 두뇌(구독 Claude)가 읽어 메모로 기록한다.
 
 **Architecture:**
-- 새 표 셋(`019_photos.sql`: `photos`, `memo_photos`, `message_photos`), 파일은 `data/photos/`(`store/photos.py`). 쓰기는 즉시 갈래의 새 내부 동작 `store_photo`와 `/actions`의 `attach_photo`·`detach_photo`.
+- 새 표 셋(`020_photos.sql`: `photos`, `memo_photos`, `message_photos`), 파일은 `data/photos/`(`store/photos.py`). 쓰기는 즉시 갈래의 새 내부 동작 `store_photo`와 `/actions`의 `attach_photo`·`detach_photo`.
 - 사진 읽기 자리 `PhotoReader`, v1은 `ClaudePhotoReader`(도구 없는 한 번 호출, 두뇌 직렬 큐).
 - 채팅: `parts`의 `data-photo` → 두뇌 SDK 스트리밍 입력의 이미지 블록. `create_memo(photo_ids?)`.
 - 앱: 메모 사진 줄·보기·"사진" 버튼, 채팅 사진 버튼·대기·말풍선 사진, `blob:` 주소로 보이기.
 
 **Tech Stack:** SP9와 같다(Python 3.12, aiohttp, SQLite, Claude Agent SDK / Next.js 15 Pages Router 정적 내보내기, AI SDK `useChat`, Vitest, Playwright). BE 새 의존성 없음(그림 처리는 앱).
 
-**Spec:** [`docs/superpowers/specs/2026-10-26-sp10-photos-claude-reads-design.md`](../specs/2026-10-26-sp10-photos-claude-reads-design.md) (v2.4). 결정 [ADR 0017](../../adr/0017-photos-as-files-claude-reads-first.md). 상위: [SP9](../specs/2026-10-25-sp9-app-tabs-memo-schedule-design.md), [SP3-4](../specs/2026-10-24-sp3-4-life-curve-dashboard-design.md)(API 계약 정본), [SP5](../specs/2026-10-24-sp5-ops-app-design.md). 다음 단계 [SP11](../specs/2026-10-26-sp11-local-ocr-service-design.md).
+**Spec:** [`docs/superpowers/specs/2026-10-26-sp10-photos-claude-reads-design.md`](../specs/2026-10-26-sp10-photos-claude-reads-design.md) (v2.5). 결정 [ADR 0017](../../adr/0017-photos-as-files-claude-reads-first.md). 상위: [SP9](../specs/2026-10-25-sp9-app-tabs-memo-schedule-design.md), [SP3-4](../specs/2026-10-24-sp3-4-life-curve-dashboard-design.md)(API 계약 정본), [SP5](../specs/2026-10-24-sp5-ops-app-design.md). 다음 단계 [SP11](../specs/2026-10-26-sp11-local-ocr-service-design.md).
 - 스펙과 이 계획이 다르면 스펙이 맞다. 티켓은 스펙을 다시 쓰지 않고 절을 가리킨다.
 
 ## Global Constraints
 
-- 스파이크 S1·S2·S4는 통과했다([결과](../../spikes/2026-10-sp10.md)). **S3(아이폰)가 끝나기 전에는 PH-06·07(앱)을 시작하지 않는다.** (스펙 15장 Q1~Q5는 2026-10-26 확정) PH-00, PH-01, PH-02는 먼저 해도 된다(두뇌와 무관).
+- 스파이크 S1·S2·S4는 통과했다([결과](../../spikes/2026-10-sp10.md)). S3(아이폰)는 따로 하지 않고, PH-07 뒤 스테이징 앱에서 Dahun이 카메라 버튼을 한 번 눌러 확인한다(Dahun, 2026-10-26). (스펙 15장 Q1~Q5는 2026-10-26 확정) PH-00, PH-01, PH-02는 먼저 해도 된다(두뇌와 무관).
 - (5.1) 사진 바이트를 DB에 넣지 않는다. 메모당 10장, 메시지당 4장, 하루(논리적 날짜) 올리기 100장, 사진 읽기 하루 30회, 사진 5,000,000바이트·긴 변 2,048, 작은 사진 256 KiB.
 - (5.4) 사진 읽기는 실행 종류 `photo_read`, 도구 0개. 사진 속 글을 지시로 다루지 않는다.
 - (5.2) 파일은 한 번 쓰고 바꾸지 않는다. 파일 지우기는 하루 한 번 작업만.
@@ -26,7 +26,7 @@
 - (4.3) 두뇌는 메모를 고치거나 지우지 않는다. 사진에 대한 메모 자동 만들기는 4.3 조건에서만.
 - (Q14) 텔레그램 도구 목록과 화면은 바꾸지 않는다. `create_memo`의 `photo_ids`는 앱 통로에서만 받는다.
 - (8장) 새 문구는 스펙 8장 그대로, 금지어 검사에 넣는다. 새 아이콘 24px, 선 1.75, 이모지 없음.
-- 마이그레이션 번호는 PH-01 브랜치를 딸 때 develop의 다음 빈 번호로 다시 확인한다.
+- 마이그레이션 번호는 020이다(019는 기기 연결). 머지 전에 develop의 번호를 다시 확인한다.
 - SP3-4·SP1·SP9 Global Constraints(단일 작성자, `mode=ro` 읽기, 시각 UTC 저장, 논리적 날짜 04:00)는 그대로다.
 - 브랜치는 `origin/develop`에서, PR 대상은 `develop`.
 
@@ -51,7 +51,7 @@
 
 ```
 src/my_planner/
-  store/migrations/019_photos.sql      # PH-01
+  store/migrations/020_photos.sql      # PH-01
   store/photos.py                      # PH-01: PhotoFiles (경로, 쓰기, JPEG 머리 읽기)
   store/repos/photos.py                # PH-01: Photo, PhotosRepo
   tools/actions.py                     # PH-01: store_photo, attach_photo, detach_photo
@@ -155,9 +155,9 @@ export function shiftAnchor(prev: string, next: string, anchor: number): number;
 - [ ] S4: `.venv\Scripts\python spikes\sp10_s4.py`가 aiohttp `client_max_size=64KiB` 그대로에서 `/photos` 처리기가 `request.multipart()`로 5.5MiB를 읽고, `/actions`의 chunked 65KB 본문이 413인지 확인. 기대 출력 줄: `photos_5_5mib=201`, `photos_5_6mib=413`, `actions_chunked_65k=413`.
 - 끝: 결과에 따라 스펙 v2.1 PR(S1이 실패하면 5.5를 "사진 읽기 결과 글을 두뇌에 준다"로 바꾼다).
 
-### PH-01 저장: 019, 파일, 즉시 갈래
+### PH-01 저장: 020, 파일, 즉시 갈래
 
-- [ ] `019_photos.sql`(스펙 5.1, CASCADE, `UNIQUE(photo_id)`, `usage_state.photo_reads`), `store/photos.py`(5.2), `store/repos/photos.py`, `tools/actions.py`의 `store_photo`·`attach_photo`·`detach_photo`(되돌리기, 활동 기록은 `summary`에 id만, `updated_at` 안 바꿈), `REJECT_CODES`에 새 코드.
+- [ ] `020_photos.sql`(스펙 5.1, CASCADE, `UNIQUE(photo_id)`, `usage_state.photo_reads`), `store/photos.py`(5.2), `store/repos/photos.py`, `tools/actions.py`의 `store_photo`·`attach_photo`·`detach_photo`(되돌리기, 활동 `summary`에 경로·읽은 글 없음, id는 `target`, `updated_at` 안 바꿈), `REJECT_CODES`에 새 코드.
 - [ ] `create_memo` 동작(앱 `/actions`)에 `photo_ids`(스펙 5.3). `update_memo`는 사진을 받지 않는다. 메모 지우기·되돌리기는 연결을 그대로 둔다(살아 있는 사진 정의로 숨김, 수용 기준 6).
 - [ ] 테스트: `test_photos_store.py`(스펙 12장, Review Focus 1·6), 마이그레이션 시험.
 - 검증: BE 명령 → `0 failed`, `All checks passed!`.

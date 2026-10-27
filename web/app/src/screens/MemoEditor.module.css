@@ -173,3 +173,35 @@
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
+/* SP10 7.1: "사진" when the memo has 10 (still pressable: it says why). */
+.dim {
+  opacity: 0.4;
+}
+/* SP10 7.1: the line above the tool row while a photo is read. */
+.band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  min-height: var(--control-h);
+  padding: 0 var(--pad);
+  border-top: 1px solid var(--rule);
+  background: var(--bar);
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.reread {
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.reread:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}

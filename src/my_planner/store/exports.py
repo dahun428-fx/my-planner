@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from my_planner.domain import TaskStatus
 from my_planner.store.repos.curve import CurveRepo, Milestone
 from my_planner.store.repos.habits import Habit, HabitsRepo
 from my_planner.store.repos.memos import Memo, MemosRepo, memo_title
+from my_planner.store.repos.photos import PhotosRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
 
 
@@ -132,17 +134,29 @@ def _memo_heading(m: Memo) -> str:
     return " · ".join(bits)
 
 
-def export_memos(memos: MemosRepo, path: Path) -> None:
+def export_memos(memos: MemosRepo, path: Path, *, photos: PhotosRepo | None = None) -> None:
     """살아 있는 메모 전체(SP9 6.1, ADR 0003 사람이 읽는 사본): "고정됨" 묶음 먼저, 그다음 "메모", 고친 시각 최근순.
-    하루 한 번 작업만 부른다. 지운 메모는 넣지 않는다. 시각 줄은 두지 않는다(같은 데이터면 같은 파일)."""
+    하루 한 번 작업만 부른다. 지운 메모는 넣지 않는다. 시각 줄은 두지 않는다(같은 데이터면 같은 파일).
+    `photos`가 있으면 메모 본문 아래에 붙은 사진마다 `![사진](../photos/<경로>)` 줄(위치 순, 큰 사진만, SP10 5.6 5번)."""
     live = memos.all_live()
+
+    def photo_lines(memo_id: int) -> list[str]:
+        if photos is None:
+            return []
+        try:
+            got = photos.for_memo(memos.conn, memo_id)
+        except sqlite3.OperationalError:  # SP10 14장 되돌림: 020 표를 지웠다. 사진 줄 없이 메모만 쓴다
+            return []
+        lines = [f"![사진](../photos/{p.path})" for p in got]
+        return [*lines, ""] if lines else []
+
     lines = ["# 메모", "", "_이 파일은 자동으로 다시 만들어져요. 직접 고치지 마세요._", ""]
     for heading, group in (("고정됨", [m for m in live if m.pinned]), ("메모", [m for m in live if not m.pinned])):
         if heading == "고정됨" and not group:
             continue
         lines += [f"## {heading}", ""]
         for m in group:
-            lines += [_memo_heading(m), "", m.body.rstrip("\n"), ""]
+            lines += [_memo_heading(m), "", m.body.rstrip("\n"), "", *photo_lines(m.id)]
         if not group:
             lines += ["(없음)", ""]
     _write(path, lines)

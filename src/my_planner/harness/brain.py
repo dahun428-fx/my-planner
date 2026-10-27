@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,6 +24,7 @@ from claude_agent_sdk import (
 
 from my_planner.domain import RunContext
 from my_planner.harness import prompts
+from my_planner.harness.photo_reader import UserContent
 from my_planner.tools.mcp_adapter import (
     SERVER_NAME,
     allowed_tool_patterns,
@@ -62,10 +63,13 @@ class Brain(Protocol):
     `system_prompt`·`max_turns`가 있으면 기본 지시문(`system.md`)·설정값 대신 쓰고, `persist_session=False`면
     세션 파일을 쓰지 않는다(하루 끝 순간 호출, SP8 6.3). 디스패처는 기본값이 아닐 때만 이 인자들을 넘긴다
     (SP1의 두뇌 구현은 받지 않아도 된다).
+
+    `prompt`가 글·이미지 블록 목록(`UserContent`)이면 SDK 스트리밍 입력의 사용자 메시지 하나로 보낸다(SP10 5.4·5.5,
+    스파이크 S1). 글이면 지금 경로 그대로다.
     """
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
         system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult: ...
 
@@ -104,6 +108,18 @@ def build_options(
         fork_session=fork_session,
         extra_args=dict(extra_args or {}),
     )
+
+
+def user_message_stream(content: UserContent, session_id: str | None) -> AsyncIterator[dict[str, Any]]:
+    """SDK 스트리밍 입력: 사용자 메시지 하나(스파이크 S1에서 `build_options()` 그대로 되는 모양). `resume`과 함께 된다."""
+
+    async def stream() -> AsyncIterator[dict[str, Any]]:
+        yield {
+            "type": "user", "message": {"role": "user", "content": content}, "parent_tool_use_id": None,
+            "session_id": session_id or "default",
+        }
+
+    return stream()
 
 
 # --- 오류 판별 (스펙 5.3 "오류 판별 규칙", S1 결과). 문자열 매칭은 쓰지 않는다. ---
@@ -200,7 +216,7 @@ class ClaudeBrain:
         return self._app_system_prompt if channel == "app" else self._system_prompt
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
         system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult:
         server = build_planner_server(self._tools_factory(), run_ctx)
@@ -223,7 +239,9 @@ class ClaudeBrain:
         text_stream = _TextStreamer(run_ctx.stream) if run_ctx.stream is not None else None
         exc: Exception | None = None
         try:
-            async for message in query(prompt=prompt, options=options):
+            # 글·이미지 블록이면 스트리밍 입력으로(5.4·5.5), 글이면 지금처럼 문자열 그대로
+            sdk_prompt = prompt if isinstance(prompt, str) else user_message_stream(prompt, session_id)
+            async for message in query(prompt=sdk_prompt, options=options):
                 if run_ctx.brain_session_id is None:  # 끝나기 전에 끊겨도 디스패처가 그 세션을 알게(SP8 6.3)
                     run_ctx.brain_session_id = _message_session_id(message)
                 if isinstance(message, StreamEvent):  # 부분 메시지는 분류와 답 글에 쓰지 않는다

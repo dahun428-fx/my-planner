@@ -127,7 +127,9 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
 }
 
 # `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
-RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices"]
+# `photos`: 사진 올리기(SP10 5.2 `store_photo`, PH-02 `POST /photos`). 020부터 `api_idempotency`에 기록한다: 같은
+# `client_msg_id`면 처음 응답을 그대로 돌려주고 도구는 부르지 않고 그 요청의 `.incoming/` tmp만 지운다(`on_replay`)
+RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices", "photos"]
 NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
@@ -195,6 +197,9 @@ class ActionSpec:
     accepts: frozenset[str] = field(default_factory=frozenset)  # 처리 함수가 받는 `args` 항목(메서드는 서명으로 본다)
     endpoint: RequestEndpoint | None = None
     reply: bool = False  # 명령 동작: 결과가 답 글(`reply_text`)이고 응답은 `/chat` 재생 모양(6.4.1)
+    # 같은 `client_msg_id`로 다시 와서 도구를 부르지 않을 때(재생·409) 그 요청의 인자로 부르는 `Tools` 메서드 이름.
+    # `store_photo`: 그 요청이 쓴 `.incoming/` tmp를 지운다(SP10 5.2)
+    on_replay: str | None = None
 
 
 # --- 확인이 필요한가 (6.4.2 위험 칸) ---
@@ -419,22 +424,31 @@ def _prune_records(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> d
 
 
 def _memos_daily(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
-    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고 `data/exports/memos.md`를 다시 쓴다. 활동은 없다.
-    내보내기가 안 돼도 지우기는 그대로다(다음 날 다시 쓴다)."""
+    """하루 한 번 작업(SP9 6.1): 30일 전에 지운 메모를 완전히 지우고, 사진을 정리하고(SP10 5.6 1~3번),
+    `data/exports/memos.md`를 다시 쓴다(사진 줄, 5.6 5번). 활동은 없다. 내보내기가 안 돼도 지우기는 그대로다(다음 날 다시 쓴다)."""
     from my_planner.store.exports import export_memos
     from my_planner.tools.memos import DELETED_KEEP
 
     tools = deps.tools
-    if tools.memos is None:
-        return {"purged": 0, "exported": False}
-    purged = tools.memos.purge_deleted(deps.clock.now() - DELETED_KEEP)
+    now = deps.clock.now()
+    purged = tools.memos.purge_deleted(now - DELETED_KEEP) if tools.memos is not None else 0
+    # SP10 5.6: 메모 완전 지우기 뒤에 사진 정리 — CASCADE로 연결이 풀린 사진이 같은 실행에서 함께 지워진다.
+    # 메모가 없는 구성에서도 사진 정리는 돈다. 사진 정리가 실패해도 메모 지우기·내보내기는 그대로다:
+    # `photos_daily`의 SAVEPOINT가 사진 쓰기만 되돌리고, 커밋 뒤 파일 지우기도 걸리지 않는다
     try:
-        export_memos(tools.memos, tools.memos_export_path)
+        photos = tools.photos_daily(now)
+    except Exception as e:  # noqa: BLE001 - 사진 하나의 문제로 하루 메모 작업을 멈추지 않는다
+        log.warning("photos_daily_failed", extra={"error_type": type(e).__name__})
+        photos = {"photos_failed": True}
+    if tools.memos is None:
+        return {"purged": 0, "exported": False, **photos}
+    try:
+        export_memos(tools.memos, tools.memos_export_path, photos=tools.photos)  # 메모 아래 사진 줄(5.6 5번)
         exported = True
     except OSError as e:
         log.warning("memos_export_failed", extra={"error_type": type(e).__name__})
         exported = False
-    return {"purged": purged, "exported": exported}
+    return {"purged": purged, "exported": exported, **photos}
 
 
 def _cmd_pause(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -599,6 +613,9 @@ def _conversation_delete(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]
     conv = deps.router.delete(cid) if cid is not None else None
     if conv is None:
         return {"error": NO_CONVERSATION}
+    if deps.tools.photos is not None:
+        # 그 대화의 메시지 사진 연결을 지운다(SP10 5.5). 메모에 붙은 사진은 남고, 나머지는 하루 한 번 작업이 지운다(5.6)
+        deps.tools.photos.unlink_conversation(deps.conn, conv.id)
     record_activity(
         deps.activity, ctx, kind="conversation_deleted", target=f"conversation:{conv.id}",
         summary=CONVERSATION_DELETED, risk="low", undo=None,
@@ -669,6 +686,9 @@ ACTIONS: dict[str, ActionSpec] = {
     "pin_memo": ActionSpec("pin_memo"),
     "unpin_memo": ActionSpec("unpin_memo"),
     "delete_memo": ActionSpec("delete_memo"),
+    # 사진(SP10 5.3). 확인 없음. 빼기만 되돌릴 수 있다. 둘 다 `memos.updated_at`을 바꾸지 않는다
+    "attach_photo": ActionSpec("attach_photo"),
+    "detach_photo": ActionSpec("detach_photo"),
     # 이룬 순간(SP8 6.4): 앱 상태창. 숨기기·다시 보이기는 low(되돌리기), 지우기는 앱에서 확인 뒤(되돌릴 수 없다)
     "hide_moment": ActionSpec("hide_moment", target=_moment_target),
     "unhide_moment": ActionSpec("unhide_moment", target=_moment_target),
@@ -694,6 +714,10 @@ ACTIONS: dict[str, ActionSpec] = {
     "cmd_pause": ActionSpec(_cmd_pause, public=False, accepts=frozenset({"text"}), endpoint="chat", reply=True),
     "cmd_unpause": ActionSpec(_cmd_unpause, public=False, endpoint="chat", reply=True),
     "cmd_done": ActionSpec(_cmd_done, public=False, endpoint="chat", reply=True),
+    # 내부(`POST /photos`, SP10 5.2): `.incoming/` tmp 둘 → 행과 최종 파일. 활동·되돌리기 없음. `/actions`에서는 `400`
+    "store_photo": ActionSpec("store_photo", public=False, endpoint="photos", on_replay="discard_incoming"),
+    # 사진 읽기 결과(SP10 5.4): 디스패처의 사진 읽기 작업이 `client_msg_id` 없이 부른다(응답 기록 없음)
+    "save_photo_read": ActionSpec("save_photo_read", public=False, endpoint="photos"),
     # 내부(`api/push.py`: 6.4.8, 6.4.9). 되돌릴 수 없다
     "push_subscribe": ActionSpec(
         _push_subscribe, public=False, accepts=frozenset({"endpoint", "p256dh", "auth", "label", "device_id"}),
@@ -736,16 +760,27 @@ def _rejected(message: str, code: str = "rejected") -> ActionResult:
 
 
 # 도구가 오류에 `code`를 붙이면 그 코드로 답한다(SP9 6.1·6.4 메모, 5.1 스케줄). 409는 `conflict` 모양, 나머지는 422 `rejected` 모양
-CONFLICT_CODES = frozenset({"memo_conflict"})
+# 사진(SP10 5.3): `photo_in_use`는 409(5.3 표), `too_many_photos`·`photo_not_found`는 422, `photo_limit`은 429(`rejected` 모양)
+CONFLICT_CODES = frozenset({"memo_conflict", "photo_in_use"})
+LIMIT_CODES = frozenset({"photo_limit"})
 REJECT_CODES = frozenset({
     "too_many_memos", "too_many_pinned", "remind_invalid", "start_not_in_weekdays", "too_many_events",
+    "too_many_photos", "photo_not_found",
 })
+
+
+def _error_code(res: ActionResult) -> str | None:
+    err = res.body.get("error")
+    return err.get("code") if isinstance(err, dict) else None
 
 
 def _tool_error(out: dict[str, Any]) -> ActionResult:
     code, message = out.get("code"), str(out["error"])
     if code in CONFLICT_CODES:
         return _error("conflict", 409, code, message)
+    if code in LIMIT_CODES:
+        res = _rejected(message, code)
+        return ActionResult(res.status, 429, res.body)
     return _rejected(message, code if code in REJECT_CODES else "rejected")
 
 
@@ -980,6 +1015,8 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
     # `push` 경로는 중복 방지 기록이 없다(`api_idempotency.endpoint`에 없는 값)
     if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
         stored = deps.idempotency.get(req.client_msg_id)
+        if stored is not None and spec.on_replay is not None:
+            getattr(deps.tools, spec.on_replay)(req.args)  # 이 요청은 적용하지 않는다: 딸린 것을 치운다
         if stored is not None:
             if stored.endpoint != req.endpoint:
                 return _error("conflict", 409, "conflict", REUSED_ID)
@@ -1001,7 +1038,9 @@ def apply_action(deps: ActionDeps, req: ActionRequest) -> ActionResult:
                 _answer_in_savepoint(deps, req, gain)
                 if "xp" in res.body:
                     _add_xp(res.body, gain)
-            if req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY:
+            # 하루 상한 거절(`LIMIT_CODES`, 429)은 기록하지 않는다: 같은 `client_msg_id`로 다음 날 다시 보내면 올라가야 한다
+            if (req.client_msg_id is not None and deps.idempotency is not None and req.endpoint not in NO_IDEMPOTENCY
+                    and _error_code(res) not in LIMIT_CODES):
                 stored_body = res.body if req.endpoint != "undo" else {**res.body, _REQUEST_KEY: _request_key(req)}
                 deps.idempotency.put(
                     req.client_msg_id, req.endpoint, res.http_status, stored_body  # type: ignore[arg-type]

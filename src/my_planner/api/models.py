@@ -36,6 +36,9 @@ ErrorCode = Literal[
     "checkin_time_invalid", "memo_conflict", "too_many_memos", "too_many_pinned",
     "remind_invalid", "start_not_in_weekdays", "too_many_events", "range_too_long", "digest_time_invalid",
     "bad_code",
+    "too_many_photos", "photo_not_found", "photo_in_use",  # SP10 5.3
+    "photo_too_large", "photo_not_jpeg", "photo_unreadable", "photo_limit", "disk_full",  # SP10 5.3 `POST /photos`
+    "photo_read_limit",  # SP10 5.4 `POST /photos/{id}/read`
 ]
 
 
@@ -163,6 +166,9 @@ class Health(_Model):
     runs_today: list[HealthRun]
     errors: HealthErrors
     push: HealthPush
+    # 데이터 폴더 드라이브의 남은 공간이 5GB 아래(SP10 5.6 4번). 경고만이고 `status`는 바꾸지 않는다.
+    # 앱·대시보드가 BE보다 먼저 배포되거나 BE가 되돌아가도 모양 검사를 넘게 required가 아니다
+    disk_low: bool = False
 
 
 class SafeModeHealth(_Model):
@@ -328,6 +334,30 @@ class HabitHistory(_Model):
     weeks: list[HabitWeek]
 
 
+class PhotoRef(_Model):
+    """메모·메시지에 붙은 사진 하나(SP10 5.3). 바이트는 `GET /photos/{id}`로 따로 받는다."""
+
+    id: int
+    width: int
+    height: int
+
+
+class PhotoRead(_Model):
+    """`POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `""`."""
+
+    text: str
+    unreadable: bool
+
+
+class PhotoUploaded(_Model):
+    """`POST /photos` 201 (SP10 5.3)."""
+
+    id: int
+    width: int
+    height: int
+    bytes: int
+
+
 class MemoItem(_Model):
     """`GET /memos` 한 줄 (SP9 6.4). `title`: 첫 줄 서식 뺀 앞 40자(없으면 "제목 없는 메모"). `preview`: 제목 줄 다음부터
     서식 뺀 줄들을 공백으로 이은 앞 80자(제목뿐이면 빈 문자열). 본문은 없다."""
@@ -339,6 +369,8 @@ class MemoItem(_Model):
     pinned: bool
     origin: Literal["user", "chat"]
     updated_at: str
+    # 첫 사진만(SP10 5.3). 배포 순서가 엇갈려도 모양 검사를 넘게 required가 아니다(BE는 늘 싣는다)
+    photos: list[PhotoRef] = []
 
 
 class MemoList(_Model):
@@ -361,6 +393,7 @@ class Memo(_Model):
     origin: Literal["user", "chat"]
     created_at: str
     updated_at: str
+    photos: list[PhotoRef] = []  # 위치 순 전부(SP10 5.3). `GET /memos/{id}`만 싣는다
 
 
 RemindMin = Literal[0, 10, 30, 60, 1440]
@@ -528,7 +561,9 @@ class ConversationsClosed(_Model):
 
 
 class MessageItem(_Model):
-    """대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`."""
+    """대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.
+    `photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를
+    뗀 글이다(사진만이면 빈 문자열)."""
 
     id: str
     at: str
@@ -536,6 +571,9 @@ class MessageItem(_Model):
     text: str
     tools: list[str]
     channel: ChannelName
+    # 앱 사용자 메시지에 붙은 사진(SP10 5.3, 보낸 순서). 사진이 있는 줄은 `text`에서 앞의 `[사진 #id]` 표시를 뗀다
+    # (사진만이면 ""). 다른 줄은 빈 목록. 배포 순서가 엇갈려도 모양 검사를 넘게 required가 아니다(BE는 늘 싣는다)
+    photos: list[PhotoRef] = []
 
 
 class Messages(_Model):
@@ -1323,6 +1361,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "Memo": Memo,
     "MemoItem": MemoItem,
     "MemoList": MemoList,
+    "PhotoRef": PhotoRef,
+    "PhotoUploaded": PhotoUploaded,
+    "PhotoRead": PhotoRead,
     "EventItem": EventItem,
     "EventList": EventList,
     "EventDetail": EventDetail,

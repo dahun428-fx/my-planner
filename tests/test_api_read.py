@@ -599,7 +599,7 @@ async def test_api_memos_list_pinned_first(tmp_path):
     assert [x["id"] for x in body["items"]] == [new_pin, old_pin, b, a] and body["next_before"] is None
     item = next(x for x in body["items"] if x["id"] == a)
     assert item == {"id": a, "title": "읽을 책", "preview": "사피엔스 총균쇠", "area": "learning", "pinned": False,
-                    "origin": "chat", "updated_at": "2026-10-24T04:02:00Z"}
+                    "origin": "chat", "updated_at": "2026-10-24T04:02:00Z", "photos": []}
     assert next(x for x in body["items"] if x["id"] == b)["title"] == "장보기"
     assert [x["id"] for x in searched["items"]] == [a]
     _validate("Memo", one)

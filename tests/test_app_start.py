@@ -598,9 +598,9 @@ def test_main_resubmits_pending_inbound_after_recovery_before_first_tick(started
         calls.append(("recover", None))
         return real_recover(*a, **kw)
 
-    def spy_resubmit(state, dispatcher):
+    def spy_resubmit(state, dispatcher, **kw):
         calls.append(("resubmit", dispatcher._worker is None))  # 디스패처를 시작하기 전
-        return real_resubmit(state, dispatcher)
+        return real_resubmit(state, dispatcher, **kw)
 
     real_tick = runner_mod.Runner.tick
 

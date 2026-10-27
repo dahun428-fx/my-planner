@@ -43,7 +43,7 @@ def test_018_backfills_conversation_sessions(tmp_path):
             (sid, at, at),
         )
     conn.commit()
-    assert migrate(conn) == 19
+    assert migrate(conn, upto=18) == 18
     rows = [dict(r) for r in conn.execute("SELECT * FROM conversation_sessions")]
     assert rows == [{"conversation_id": 1, "session_id": "sess-a", "started_at": at}]
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(conversations)")}

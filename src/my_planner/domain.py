@@ -70,8 +70,9 @@ Channel = Literal["telegram", "app"]  # 대화 통로 (SP3-4 스펙 5.1)
 ActivityChannel = Literal["app", "telegram", "scheduler"]  # 활동 통로 (5.2)
 Actor = Literal["secretary", "user"]  # 활동 행위자 (5.2)
 Risk = Literal["low", "confirm"]  # 활동 위험 (5.2, 6.4.2)
-# 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음)
-RunKind = Literal["chat", "run", "moments", "summary"]
+# 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음),
+# 사진 읽기는 `photo_read`(SP10 5.4, 도구 없음)
+RunKind = Literal["chat", "run", "moments", "summary", "photo_read"]
 
 
 @dataclass

@@ -31,6 +31,7 @@ from my_planner.domain import (
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.chat_photos import message_text, photo_body, photo_content
 from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
     ask_condition_for,
@@ -39,6 +40,15 @@ from my_planner.harness.context import (
     habit_week_block,
     moments_week_block,
     recent_areas_block,
+)
+from my_planner.harness.photo_reader import (
+    PhotoGone,
+    PhotoReader,
+    PhotoReadFailed,
+    PhotoReadLimit,
+    ReadResult,
+    UserContent,
+    build_reader,
 )
 from my_planner.harness.redact import MASK, redact
 from my_planner.harness.review_steps import (
@@ -127,6 +137,8 @@ class Inbound:
     resume_conversation_id: int | None = None
     # 앱: 퀵 칩(SP9c 4.2). `inbound_pending`에는 넣지 않는다(다시 넣은 메시지는 보통 메시지로 처리한다)
     chip: str | None = None
+    # 앱: 붙인 사진 id(SP10 5.5, 보낸 순서: `for_message`의 연결 `rowid` 순). `text`는 `[사진 #12] {글}` 본문이다. 다시 넣을 때는 `for_message`로 다시 읽는다
+    photo_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -268,6 +280,15 @@ class _SummaryJob:
 
 
 @dataclass
+class _PhotoReadJob:
+    """사진 한 장 읽기(SP10 5.4). 채팅과 같은 직렬 큐를 탄다. 같은 사진을 기다리는 요청은 `future` 하나를 함께 기다린다."""
+
+    photo_id: int
+    image: bytes = field(repr=False)
+    future: asyncio.Future[ReadResult] = field(repr=False)
+
+
+@dataclass
 class _ResendJob:
     """전송이 끝내 안 된 회차를 5분 뒤 전송만 한 번 더 한다. 두뇌는 다시 부르지 않는다."""
 
@@ -288,6 +309,7 @@ _PRIORITY_MESSAGE = 0  # 사용자 메시지가 회차보다 먼저
 _PRIORITY_RUN = 1
 _PRIORITY_MOMENTS = 2  # 하루 끝 순간: 기다리는 메시지와 회차가 먼저(SP8 6.2-4)
 _PRIORITY_SUMMARY = 2  # 대화 요약(SP9 7.2): 같은 차례의 순간 정리와는 들어온 순서
+_PRIORITY_PHOTO_READ = _PRIORITY_MESSAGE  # 사진 읽기(SP10 5.4): 사용자가 기다린다. 메시지와는 들어온 순서
 _PRIORITY_STOP = 1_000_000
 
 # 루프별 지시문 파일 (스펙 5.3 "프롬프트 선택")
@@ -317,6 +339,8 @@ INBOUND_MAX_ATTEMPTS = 3  # 다시 넣기 상한(SP1 5.2-4, `loop.runner`와 같
 _DEFAULT_APP_SENDER = AppReplySender()
 
 FALLBACK_REPLY = "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요."
+# 사진만 보냈는데 한 장도 열 수 없을 때(SP10 8장 "이 사진은 열 수 없어요."). 두뇌를 부르지 않는다
+PHOTO_UNOPENABLE_REPLY = "이 사진은 열 수 없어요."
 MAX_TURNS_REPLY = "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
 # 앱에서 멈춘 답(`POST /chat/stop`). 이미 나간 글이 있으면 그 뒤에 붙는다. 앱 `copy.chat.stopped`와 같은 글
 STOPPED_REPLY = "멈췄어요."
@@ -391,6 +415,7 @@ class Dispatcher:
         app_sender: AppReplySender | None = None,
         delivery: Delivery | None = None,
         claude_config_dir: Path | None = None,
+        photo_reader: PhotoReader | None = None,
     ) -> None:
         self.brain = brain
         self.sender = sender
@@ -434,6 +459,9 @@ class Dispatcher:
         self._summary_queued: set[int] = set()
         # 해 본 대화와 그때의 `last_message_at`: 다시 열어 말이 더 생기면 다시 해 본다(SP9-09 리뷰)
         self._summary_tried: dict[int, datetime | None] = {}
+        # 사진 읽기(SP10 5.4): `photos.reader` 설정이 고른 구현. 두뇌 호출은 `_PhotoReadCaller`(셈, 세션 파일 지우기)로
+        self.photo_reader: PhotoReader = photo_reader or build_reader(settings.photos.reader, _PhotoReadCaller(self))
+        self._photo_reads: dict[int, asyncio.Future[ReadResult]] = {}  # 사진 id → 큐에 든 읽기(같은 사진은 하나로)
         # 회고 단계(SP3-4 11.1): 곡선 저장소가 있을 때만. 텔레그램 버튼 처리기도 같은 것을 쓴다
         curve = tools.curve if tools is not None else None
         self.review_flow: ReviewFlow | None = (
@@ -477,6 +505,10 @@ class Dispatcher:
         self._cancel_timers()  # 혹시 남은 것까지
         if self._background:  # 걸어 둔 버튼 거두기는 끝까지(짧다. 안 되면 로그만 남긴다)
             await asyncio.gather(*self._background, return_exceptions=True)
+        # 작업자를 취소했으면 큐에 남은 사진 읽기는 처리되지 않는다: 기다리는 요청은 503(SP10 5.4)
+        for fut in self._photo_reads.values():
+            _settle(fut, exc=PhotoReadFailed("stopping"))
+        self._photo_reads.clear()
         self._worker = None
 
     def _cancel_timers(self) -> None:
@@ -650,6 +682,7 @@ class Dispatcher:
             )
             return False
         self.state.bump_inbound_attempts(row.update_id)
+        photo_ids = self.message_photo_ids(row.update_id)  # 같은 사진으로 같은 입력(SP10 5.5)
         writer = UiMessageWriter(sink, _secretary_id(row.conversation_id, row.update_id))
         writer.start({**self.chat_metadata(row.conversation_id), "checkin_id": row.checkin_id})
         writer.status("queued")
@@ -657,9 +690,16 @@ class Dispatcher:
             text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
             channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=sink,
             conversation_id=row.conversation_id, message_id=message_id,
-            resume_conversation_id=row.resume_conversation_id,
+            resume_conversation_id=row.resume_conversation_id, photo_ids=photo_ids,
         ))
         return True
+
+    def message_photo_ids(self, inbound_id: int) -> list[int]:
+        """그 받은 메시지에 붙은 사진 id(보낸 순서 = 연결 `rowid` 순, SP10 5.5). 사진 저장소가 없으면 빈 목록."""
+        tools = self.tools
+        if tools is None or tools.photos is None:
+            return []
+        return [p.id for p in tools.photos.for_message(tools.tasks.conn, inbound_id)]
 
     def chat_metadata(self, conversation_id: int | None) -> dict[str, Any]:
         conv = self.convs.get(conversation_id) if conversation_id is not None else None
@@ -852,6 +892,10 @@ class Dispatcher:
             )
             slot.conversation_id = conv.id
             slot.writer.metadata = self.chat_metadata(conv.id)
+            tools = self.tools
+            if slot.inbound.photo_ids and tools is not None and tools.photos is not None:
+                # 사진도 새 대화로: `create_memo(photo_ids)`는 이번 대화의 사진만 받는다(SP10 5.5)
+                tools.photos.move_message(tools.tasks.conn, slot.inbound_id, conv.id)
         return conv
 
     def _release_app(self, slot: _AppSlot) -> None:
@@ -969,6 +1013,9 @@ class Dispatcher:
             except Exception:
                 log.exception("summary_handling_error", extra={"conversation_id": item.conversation_id})
             return
+        if isinstance(item, _PhotoReadJob):
+            await self._handle_photo_read(item)
+            return
         # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다).
         # 앱 메시지도 묶지 않는다(요청마다 스트림이 하나다, M2)
         if item.channel == "app" and item.update_ids[0] in self._dropped:
@@ -1055,7 +1102,20 @@ class Dispatcher:
             return
         # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
         chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
-        redacted_parts = [redact(m.text) for m in batch]
+        # 사진(SP10 5.5): 부를 때 파일에서 읽는다. 읽힌 사진만 두뇌 입력에 넣고 `(사진 n장)`도 그 수로 센다
+        images = await self._message_images([i for m in batch for i in m.photo_ids])
+        loaded = {pid for pid, _ in images}
+        if any(m.photo_ids for m in batch) and not images and all(
+            not message_text(m.text, m.photo_ids, count=0).strip() for m in batch
+        ):
+            # 사진만 보냈는데 한 장도 열 수 없다(파일 없음, 처리 전에 대화를 지움): 두뇌를 부르지 않는다(8장 문구)
+            if await self._fixed_reply(batch, PHOTO_UNOPENABLE_REPLY, update_ids):
+                log.info("message_photos_unopenable", extra={"update_ids": update_ids})
+            return
+        # 두뇌가 보는 메시지 글에는 사진 표시를 떼고(각 이미지 앞 글 블록에 있다), 글이 없으면 `(사진 n장)`
+        redacted_parts = [
+            redact(message_text(m.text, m.photo_ids, count=sum(i in loaded for i in m.photo_ids))) for m in batch
+        ]
         text = "\n\n".join(t for t, _ in redacted_parts)
         limits = self.settings.limits
         truncated = len(text) > limits.input_max_chars
@@ -1134,7 +1194,7 @@ class Dispatcher:
             if not rolled and not resumed and app is not None and conv.kind is not ConversationKind.run:
                 # 세션 없이 다시 연 앱 대화(앞선 호출이 세션을 못 얻었다): resume 실패와 같은 지난 내용. 새 대화는 빈 글
                 rolled = self._past_text(conv, len(batch))
-            prompt = _join(
+            prompt: str | UserContent = photo_content(_join(
                 notices,
                 "" if resumed else instructions,
                 self._preamble(resumed, include_habits=True),
@@ -1143,7 +1203,7 @@ class Dispatcher:
                 rolled,
                 f"## 최근 대화\n{history}" if history else "",
                 body,
-            )
+            ), images)
             if app is not None:
                 if not thinking:
                     app.writer.status("thinking")  # 두뇌가 시작한다(6.4.1). 도구 조각은 이 단계 안에 온다
@@ -1169,7 +1229,7 @@ class Dispatcher:
                 # 새 세션으로 다시 부른다. 이 대화의 요약이 있으면 요약 + 최근 6줄, 없으면 최근 원문 20개를 붙인다
                 # (SP9 7.3, 방금 기록한 지금 메시지는 뺀다). 가르기가 안 됐으면(S11 대체 경로) 원래 대화의 회차 본문과
                 # 원래 대화의 최근 원문을 붙인다(7.2, 요약은 보지 않는다)
-                prompt = _join(
+                prompt = photo_content(_join(
                     notices,
                     instructions,
                     self._preamble(False, include_habits=True),
@@ -1177,7 +1237,7 @@ class Dispatcher:
                     self._continued_text(conv),
                     self._past_text(conv, len(batch)),
                     body,
-                )
+                ), images)
                 fell_back = True
                 if fork:
                     log.warning("fork_session_failed", extra={"conversation_id": conv.id})
@@ -1471,6 +1531,29 @@ class Dispatcher:
                 out.draft_milestones = milestone_refs(out.draft_milestone_ids, curve)
             if out.draft_chapter_ids:
                 out.draft_chapters = chapter_refs(out.draft_chapter_ids, curve)
+        return out
+
+    async def _message_images(self, photo_ids: list[int]) -> list[tuple[int, bytes]]:
+        """두뇌 입력에 넣을 사진 바이트(SP10 5.5): 부를 때 파일에서 읽는다. 살아 있지 않은 사진(5.1)과 파일이 없는
+        사진은 빼고 `photo_missing {id}` 경고만(경로는 로그에 넣지 않는다, 6장)."""
+        tools = self.tools
+        if not photo_ids or tools is None or tools.photos is None or tools.photo_files is None:
+            return []
+        repo, files, conn = tools.photos, tools.photo_files, tools.tasks.conn
+        out: list[tuple[int, bytes]] = []
+        for pid in photo_ids:
+            p = repo.get(conn, pid)
+            if p is None or not repo.is_live(conn, pid):
+                continue
+            try:
+                data = await asyncio.to_thread(files.read, p.path)
+            except OSError as e:
+                log.warning("photo_file_error", extra={"photo_id": pid, "error_type": type(e).__name__})
+                data = None
+            if data is None:
+                log.warning("photo_missing", extra={"photo_id": pid})
+                continue
+            out.append((pid, data))
         return out
 
     def _log_user_lines(
@@ -2177,7 +2260,7 @@ class Dispatcher:
         return from_iso(v) if v else None
 
     async def _call_brain(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
+        self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
         system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult:
         """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다. `fork_session`: `session_id`를 갈라 새 세션으로(7.2).
@@ -2188,7 +2271,7 @@ class Dispatcher:
             run_ctx.stream.begin_attempt()  # 앞 시도가 글을 보냈으면 새 단계로 나눈다(06b)
         self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7, 두 통로가 함께)
         # '입력 중'은 텔레그램에만. 앱은 `data-status`와 `: ping`이 대신한다(6.4.1). 순간 호출은 아무 데도 보내지 않는다
-        quiet = run_ctx.channel == "app" or run_ctx.kind in ("moments", "summary")
+        quiet = run_ctx.channel == "app" or run_ctx.kind in ("moments", "summary", "photo_read")
         typing = asyncio.create_task(self._typing_loop() if not quiet else _idle(), name="typing")
         started = time.monotonic()
         try:
@@ -2379,6 +2462,77 @@ class Dispatcher:
             conv, lines, conv.summary or None, _SummaryCaller(self), max_chars=self.settings.limits.input_max_chars,
         )
 
+    # --- 사진 읽기 (SP10 5.4) ---
+
+    async def read_photo(self, photo_id: int, image: bytes) -> ReadResult:
+        """`POST /photos/{id}/read`: 사진 한 장을 두뇌 큐에서 읽는다. 같은 사진에 읽기가 이미 큐에 있으면 그것을 함께
+        기다린다(5.3). 요청이 끊겨도 읽기는 끝까지 간다(`shield`). `PhotoReadLimit`, `PhotoGone`, `PhotoReadFailed`."""
+        fut = self._photo_reads.get(photo_id)
+        if fut is None:
+            fut = asyncio.get_running_loop().create_future()
+            fut.add_done_callback(_retrieve)  # 기다리던 요청이 모두 끊겨도 "꺼내지 않은 예외" 경고가 없게
+            self._photo_reads[photo_id] = fut
+            self._queue.put_nowait((_PRIORITY_PHOTO_READ, next(self._seq), _PhotoReadJob(photo_id, image, fut)))
+        return await asyncio.shield(fut)
+
+    async def _handle_photo_read(self, job: _PhotoReadJob) -> None:
+        fut = job.future
+        try:
+            got = await self._read_photo(job)
+        except (PhotoReadLimit, PhotoGone, PhotoReadFailed) as e:
+            _settle(fut, exc=e)
+        except Exception as e:  # noqa: BLE001 - 무엇이든 503으로. 예외 메시지는 남기지 않는다(6장), 종류만
+            log.error("photo_read_handling_error", extra={"photo_id": job.photo_id, "error_type": type(e).__name__})
+            _settle(fut, exc=PhotoReadFailed(type(e).__name__))
+        except BaseException:  # 멈출 때 취소: 기다리는 요청은 503
+            _settle(fut, exc=PhotoReadFailed("cancelled"))
+            raise
+        else:
+            _settle(fut, result=got)
+        finally:
+            if self._photo_reads.get(job.photo_id) is fut:
+                del self._photo_reads[job.photo_id]
+
+    def _photo_read_blocked(self) -> bool:
+        """두뇌를 부르지 않을 때(사진은 붙은 채 "다시 읽기"): 로그인·결제 문제, 사용 한도 대기."""
+        if self.state.get(BRAIN_AUTH_STATE_KEY) in ("login", "billing"):
+            return True
+        limited = self._state_time(LIMITED_UNTIL_KEY)
+        return limited is not None and self.clock.now() < limited
+
+    async def _read_photo(self, job: _PhotoReadJob) -> ReadResult:
+        """작업자 안에서(한 번에 하나): 다시 읽기 확인 → 상한 → 두뇌 → `read_text` 저장(즉시 갈래) → 원문 기록 한 줄."""
+        tools = self.tools
+        if self._stopping or tools is None or tools.photos is None:
+            raise PhotoReadFailed("unavailable")
+        pid, repo, conn = job.photo_id, tools.photos, tools.tasks.conn
+        p = repo.get(conn, pid)
+        if p is None or not repo.is_readable(conn, pid):
+            raise PhotoGone(pid)
+        if p.read_text is not None:  # 큐에서 기다리는 사이 다른 요청이 읽었다
+            return ReadResult(text=p.read_text, unreadable=p.read_text == "")
+        usage, limits = self.state.usage(self._today()), self.settings.limits
+        # 하루 사진 읽기 30회, 하루 두뇌 호출 상한(채팅과 같은 사용자 몫. 하루 끝 순간 예약 규칙은 그대로, SP8 6.2-5)
+        if usage.photo_reads >= limits.daily_photo_reads or usage.brain_calls >= limits.daily_brain_calls:
+            log.info("photo_read_limited", extra={"photo_id": pid})
+            raise PhotoReadLimit(pid)
+        if self._photo_read_blocked():
+            raise PhotoReadFailed("blocked")
+        got = await self.photo_reader.read(pid, job.image)
+        res = self.apply_action(ActionRequest(
+            "save_photo_read", {"photo_id": pid, "text": got.text}, actor="secretary", channel="app", endpoint="photos",
+        ))
+        if res.status != "applied":  # 읽는 사이 행이 사라졌다(하루 한 번 작업). 읽은 글은 그대로 돌려준다
+            log.warning("photo_read_not_saved", extra={"photo_id": pid, "status": res.status})
+        try:  # 원문 기록에는 표시 한 줄만(6장). 읽은 글은 넣지 않는다
+            self.transcripts.append(self.clock.now(), "비서", None, None, f"[사진 #{pid} 읽음]", channel="app")
+        except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
+            log.warning("photo_read_transcript_error", extra={"error_type": type(e).__name__})
+        log.info("photo_read", extra={
+            "photo_id": pid, "reader": self.photo_reader.name, "unreadable": got.unreadable, "chars": len(got.text),
+        })
+        return got
+
     # --- 하루 끝 순간 (SP8 6.2~6.3) ---
 
     def _moments_blocked(self) -> bool:
@@ -2489,8 +2643,8 @@ class _SummaryCaller:
         self._d = d
 
     async def run(
-        self, prompt: str, *, session_id: str | None, run_ctx: RunContext, system_prompt: str | None = None,
-        max_turns: int | None = None, persist_session: bool = True,
+        self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
     ) -> BrainResult:
         d = self._d
         d.state.incr_usage(d._today(), "summaries")
@@ -2507,6 +2661,48 @@ class _SummaryCaller:
         if result.status == "rate_limited":
             d._set_limited(result.retry_at)
         return result
+
+
+class _PhotoReadCaller:
+    """사진 읽기 호출(SP10 5.4)을 디스패처의 두뇌 호출(시간 상한, `brain_calls` 셈)로 잇는다. `usage_state.photo_reads`도
+    올리고, 끝나면 세션 파일을 지운다(`_SummaryCaller`와 같은 틀, 6장: 사진이 base64로 남지 않게)."""
+
+    def __init__(self, d: Dispatcher) -> None:
+        self._d = d
+
+    async def run(
+        self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
+    ) -> BrainResult:
+        d = self._d
+        d.state.incr_usage(d._today(), "photo_reads")
+        result: BrainResult | None = None
+        try:
+            result = await d._call_brain(
+                prompt, session_id=session_id, run_ctx=run_ctx, system_prompt=system_prompt, max_turns=max_turns,
+                persist_session=persist_session,
+            )
+        finally:
+            if d.claude_config_dir is not None:  # 이어 쓰지 않는 세션이다(플래그와 두 겹)
+                sid = (result.session_id if result is not None else None) or run_ctx.brain_session_id
+                moments_job.remove_session_file(sid, config_dir=d.claude_config_dir, event="photo_read_session_cleanup")
+        if result.status == "rate_limited":
+            d._set_limited(result.retry_at)
+        return result
+
+
+def _retrieve(fut: asyncio.Future[Any]) -> None:
+    if not fut.cancelled():
+        fut.exception()
+
+
+def _settle(fut: asyncio.Future[Any], *, result: Any = None, exc: BaseException | None = None) -> None:
+    if fut.done():
+        return
+    if exc is not None:
+        fut.set_exception(exc)
+    else:
+        fut.set_result(result)
 
 
 async def send_with_retry(
@@ -2652,7 +2848,11 @@ def _chip_of(m: Inbound) -> _Chip:
     # 다시 넣은 메시지(`recovered`)는 칩이 없다(`inbound_pending`에 넣지 않는다, 4.2). 글은 이미 가린 글이기도 하다
     if m.chip is None or m.recovered:
         return _NO_CHIP
-    return _Chip(m.chip, m.text if m.chip == "memo" else None)
+    if m.chip != "memo":
+        return _Chip(m.chip, None)
+    # 메모 칩의 원문에는 사진 표시를 넣지 않는다(SP10 5.5). 사진만이면 원문이 없다: 두뇌가 옮겨 적은 body를 쓴다
+    text = m.text.removeprefix(photo_body(m.photo_ids, "")).strip() if m.photo_ids else m.text
+    return _Chip(m.chip, text or None)
 
 
 def _join(*parts: str) -> str:

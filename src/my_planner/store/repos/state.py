@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
@@ -18,6 +19,7 @@ from my_planner.loop.digests import (
 )
 from my_planner.loop.schedule import Overrides, dump_overrides, parse_overrides
 from my_planner.store.db import transaction
+from my_planner.store.repos.photos import link_message_rows
 
 if TYPE_CHECKING:
     from my_planner.config import DigestConfig
@@ -44,8 +46,9 @@ DIGEST_SETTINGS_KEY = "digest_settings"
 # 종류마다 판정한 마지막 슬롯 날짜(JSON, 현지 달력 날짜 ISO). 판정할 때 보내기 전에 적는다
 DIGEST_LAST_KEY = "digest_last"
 
-UsageField = Literal["brain_calls", "proactive_messages", "summaries"]
-_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries")  # `summaries`: 하루 요약 호출(SP9 7.2, 018)
+UsageField = Literal["brain_calls", "proactive_messages", "summaries", "photo_reads"]
+# `summaries`: 하루 요약 호출(SP9 7.2, 018). `photo_reads`: 하루 사진 읽기(SP10 5.4, 020)
+_USAGE_FIELDS = ("brain_calls", "proactive_messages", "summaries", "photo_reads")
 
 
 @dataclass
@@ -53,6 +56,7 @@ class Usage:
     brain_calls: int
     proactive_messages: int
     summaries: int = 0
+    photo_reads: int = 0
 
 
 @dataclass
@@ -171,13 +175,14 @@ class StateRepo:
 
     def usage(self, d: date) -> Usage:
         row = self.conn.execute(
-            "SELECT brain_calls, proactive_messages, summaries FROM usage_state WHERE date = ?",
+            "SELECT brain_calls, proactive_messages, summaries, photo_reads FROM usage_state WHERE date = ?",
             (d.isoformat(),),
         ).fetchone()
         if row is None:
             return Usage(brain_calls=0, proactive_messages=0)
         return Usage(
-            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"]
+            brain_calls=row["brain_calls"], proactive_messages=row["proactive_messages"], summaries=row["summaries"],
+            photo_reads=row["photo_reads"],
         )
 
     # telegram_updates (처리를 마친 update_id)
@@ -212,10 +217,14 @@ class StateRepo:
         checkin_id: int | None = None,
         conversation_id: int | None = None,
         resume_conversation_id: int | None = None,
+        photo_ids: Sequence[int] = (),
     ) -> None:
         """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`와 앱이 실은 `resume_conversation_id`를
-        적는다(SP3-4 5.1, SP9 7.3)."""
+        적는다(SP3-4 5.1, SP9 7.3). `photo_ids`(SP10 5.5)는 같은 트랜잭션의 `message_photos` 연결(INSERT OR IGNORE)."""
         with transaction(self.conn):
+            if photo_ids:
+                assert conversation_id is not None, "앱 메시지는 늘 대화가 있다(5.1)"
+                link_message_rows(self.conn, update_id, conversation_id, list(photo_ids))
             self.conn.execute(
                 "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
                 "client_msg_id, checkin_id, conversation_id, resume_conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

@@ -1,6 +1,6 @@
 import styles from "./icons.module.css";
 
-export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send" | "schedule" | "memo" | "more" | "list" | "compose" | "stop" | "clear";
+export type IconName = "today" | "todos" | "activity" | "settings" | "plus" | "check" | "chevron" | "close" | "send" | "schedule" | "memo" | "more" | "list" | "compose" | "stop" | "clear" | "camera" | "photo";
 
 // Hand-drawn 24px icons, 1.7px stroke, currentColor (spec 4.3). SP9 9.1's three (schedule, memo,
 // more) follow the SP8 pictogram rule: 24px, 1.75 stroke, round ends, no emoji.
@@ -35,9 +35,20 @@ const PATHS: Record<IconName, string[]> = {
   stop: ["M8 8h8v8H8z"],
   // A small ×: empty the chat field (smaller than `close`, it sits inside the field). Same pictogram rule.
   clear: ["M8 8l8 8", "M16 8l-8 8"],
+  // SP10 7.5, the chat's two photo buttons. A camera body with its lens: take one now.
+  camera: [
+    "M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1.5-2h5L16 7h2.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z",
+    "M12 9.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z",
+  ],
+  // A picture with a hill and the sun: pick from the library. Same pictogram rule.
+  photo: [
+    "M5.5 5h13A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-11A1.5 1.5 0 0 1 5.5 5z",
+    "M4 16l4.5-4.5 4 4 2.5-2.5L20 18",
+    "M15.5 8a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5z",
+  ],
 };
 
-const STROKE: Partial<Record<IconName, string>> = { schedule: "1.75", memo: "1.75", more: "1.75", list: "1.75", compose: "1.75", stop: "1.75", clear: "1.75" };
+const STROKE: Partial<Record<IconName, string>> = { schedule: "1.75", memo: "1.75", more: "1.75", list: "1.75", compose: "1.75", stop: "1.75", clear: "1.75", camera: "1.75", photo: "1.75" };
 // Drawn filled as well as stroked (the stroke's round joins round its corners).
 const FILLED: Partial<Record<IconName, true>> = { stop: true };
 

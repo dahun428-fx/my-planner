@@ -92,6 +92,36 @@ export const copy = {
     },
   },
 
+  // SP10 8장 사진 문구 그대로. (new)는 스펙에 없는 이름(읽는 이름)이다.
+  photos: {
+    button: "사진",
+    reading: "사진을 읽고 있어요…",
+    reread: "다시 읽기",
+    inserted: "사진 내용을 넣었어요. 틀린 곳은 고쳐 주세요.",
+    unreadable: "사진에서 읽을 글자를 찾지 못했어요. 사진은 붙여 두었어요.",
+    detach: "메모에서 빼기",
+    attached: "✓ 사진을 붙였어요",
+    detached: "✓ 사진을 뺐어요",
+    memoLimit: "사진은 메모 하나에 10장까지예요.",
+    sendLimit: "한 번에 사진 4장까지 보낼 수 있어요.",
+    dailyLimit: "오늘은 사진을 더 올릴 수 없어요. 내일 다시 올려 주세요.",
+    readLimit: "오늘은 사진 읽기를 더 할 수 없어요. 사진은 붙여 둘 수 있어요.",
+    cannotOpen: "이 사진은 열 수 없어요.",
+    tooLarge: "사진이 너무 커요.",
+    uploadFailed: "사진을 올리지 못했어요. 다시 보내 주세요.",
+    diskFull: "노트북 저장 공간이 부족해 사진을 올릴 수 없어요.",
+    inUse: "이 사진은 다른 곳에 이미 붙어 있어요.",
+    created: (title: string, n: number) => `✓ 메모를 만들었어요: ${title} (사진 ${n}장)`,
+    cut: "메모는 20,000자까지라 뒷부분은 넣지 못했어요.",
+    defaultBody: "사진", // (7.1 v2.7) 사진만 있는 새 메모의 본문(제목도 된다)
+    strip: "사진", // (new) 사진 줄의 읽는 이름
+    photo: (n: number, total: number) => `사진 ${n}/${total}`, // (new) 사진 하나의 읽는 이름
+    viewer: "사진 보기", // (new) 크게 보기 화면의 이름
+    prev: "이전 사진", // (new)
+    next: "다음 사진", // (new)
+    close: "닫기", // (new)
+  },
+
   // SP9 9.2 스케줄 탭과 추가·상세 시트. 10장 "스케줄 빈 날", "알림 고르기", "반복", "일정 때", "일정 확인 요청"은 그대로.
   // (9.2)는 스펙 9.2의 말, (new)는 스펙에 없는 말이라 SP9-12에서 Dahun에게 묻는다.
   schedule: {
@@ -261,6 +291,11 @@ export const copy = {
     stopped: "멈췄어요.",
     clearInput: "입력한 글 지우기", // (new) the × inside the field
     inputLabel: "비서에게 보낼 말",
+    // SP10 7.5: the camera button's name (the library one is copy.photos.button "사진"), the tray
+    // above the field and its ✕. The sentences are copy.photos (8장).
+    camera: "카메라", // (new)
+    tray: "보낼 사진", // (new)
+    unpick: (n: number, total: number) => `사진 ${n}/${total} 빼기`, // (new)
     undo: "되돌리기",
     undone: "되돌렸어요",
     // SP9 9.6: the one line of a change before R4b (no confirmation came, only undo ids).

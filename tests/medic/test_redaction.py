@@ -118,3 +118,25 @@ def test_issue_body_redacted_row_keeps_repo_frame() -> None:
     body = issue_body(_incident({}), [allowed_log_row(rec, ROOT)], None, "abc")
     assert "src/my_planner/x.py:12 fn" in body
     assert "/home/" not in body
+
+
+def test_photo_events_keep_ids_only_in_issue_body() -> None:
+    """SP10 6장·5.6 3번: `photo_missing` 경고 폭주는 `be-warn:photo_missing` 지문이 되고, 이슈 본문에는 사진 파일
+    경로·사진 읽기 결과 원문이 없다(로그 줄의 덧붙인 값은 허용 목록에 없다)."""
+    from datetime import UTC, datetime
+
+    from my_planner_medic.signals import WARN_BURST, log_signals
+
+    now = datetime(2026, 10, 27, 0, 0, tzinfo=UTC)
+    rec = {
+        "ts": "2026-10-27T00:00:00.000+00:00", "level": "WARNING", "logger": "my_planner.tools.photos",
+        "msg": "photo_missing", "photo_id": 12, "path": "2026/10/12-3fa2c1d0.jpg",
+        "file": r"E:\my-planner\data\photos\2026\10\12-3fa2c1d0-t.jpg", "read_text": "영수증 합계 12,000원",
+    }
+    sigs = log_signals([rec] * WARN_BURST, ROOT, now=now, warn_window={})
+    assert [s.fingerprint for s in sigs] == ["be-warn:photo_missing"]
+    health = {"status": "ok", "disk_low": True, "photo_path": "2026/10/12-3fa2c1d0.jpg"}
+    body = issue_body(_incident({"event": "photo_missing", "path": rec["path"]}), [rec], health, "abc")
+    assert "photo_missing" in body
+    for leak in ("3fa2c1d0", ".jpg", "my-planner", "영수증", "12,000"):
+        assert leak not in body, leak

@@ -456,6 +456,13 @@ CREATE TABLE status_titles (
 | 422 | `rejected` | 도구가 거절(예: 우선순위 4개). `message`는 도구의 오류 문구 |
 | 422 | `not_undoable` | 되돌릴 수 없는 종류 |
 | 429 | `too_many_auth_failures` | 1분에 인증 실패 10회. 1분 동안 모든 요청 거절 |
+| 400 | `photo_not_found` | 채팅 `data-photo`의 사진이 없거나 쓸 수 없음(SP10 5.5) |
+| 409 | `photo_in_use` | 사진이 이미 다른 메모·메시지에 붙음(SP10 5.3) |
+| 413 | `photo_too_large` | 사진 바이트 또는 긴 변 초과(SP10 5.3) |
+| 415 | `photo_not_jpeg` | JPEG이 아님(SP10 5.3) |
+| 422 | `photo_unreadable`, `too_many_photos`, `photo_not_found` | 열 수 없는 사진, 메모 10장·메시지 4장 상한, `/actions`의 없는 사진(SP10 5.3) |
+| 429 | `photo_limit`, `photo_read_limit` | 하루 사진 100장, 하루 사진 읽기 30회(SP10 5.3·5.4) |
+| 507 | `disk_full` | 남은 공간 2GB 아래에서 사진 올리기(SP10 5.6) |
 | 503 | `safe_mode` | DB 안전 모드(SP1 5.1 3단계). `/health`만 답한다 |
 | 500 | `internal` | 그 밖. 로그에는 예외 종류만 |
 
@@ -492,6 +499,9 @@ CREATE TABLE status_titles (
 | POST | `/client-errors` | 운영 앱·대시보드용 | 없음(로그 `client_error`만) | SP6 3.3 |
 | POST | `/internal/notify` | 자동 복구 감시자용 | 없음(고정 안내 길, 푸시 결과만 기록) | SP6 6장 |
 | POST | `/body` | 아이폰 단축어(`BODY_TOKEN`만, `API_TOKEN`은 401) | 즉시 갈래(`record_body_days`, `endpoint = body`) | SP8 7.2 |
+| POST | `/photos` | 운영 앱용 | 즉시 갈래(`endpoint = photos`) | SP10 5.3 |
+| GET | `/photos/{id}?size` | 운영 앱용 | 없음 | SP10 5.3 |
+| POST | `/photos/{id}/read` | 운영 앱용 | 두뇌 큐(`photo_read`, 도구 없음) | SP10 5.4 |
 
 대시보드는 표의 `GET` 일곱 개(SP8에서 `/curve/history`를 더함)와 `POST /client-errors`만 쓴다.
 

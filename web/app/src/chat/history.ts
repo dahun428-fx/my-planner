@@ -13,7 +13,12 @@ const ELSEWHERE_MAX = 3;
  * `chip`: the quick chip a message was sent from on this device (SP9c 3); the BE's lines never have one.
  */
 export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number; chip?: WireChip };
-type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string };
+/** `photos`: SP10 5.3, the ids of an app user line's photos in send order (its text has the marks already taken off by the BE). */
+type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string; photos: number[] };
+
+// A BE before SP10 has no `photos`: none. Read leniently, like the ids.
+const photoIdsOf = (v: unknown): number[] =>
+  Array.isArray(v) ? v.map((p) => (isObj(p) && typeof p.id === "number" ? p.id : null)).filter((id): id is number => id !== null) : [];
 
 export interface History {
   conversationId: number | null;
@@ -35,7 +40,13 @@ export function readLines(data: unknown): Line[] | null {
   const out: Line[] = [];
   for (const m of data.items) {
     if (!isObj(m) || typeof m.at !== "string" || typeof m.text !== "string" || (m.speaker !== "user" && m.speaker !== "secretary")) return null;
-    out.push({ id: typeof m.id === "string" && m.id !== "" ? m.id : undefined, at: m.at, speaker: m.speaker, text: m.text });
+    out.push({
+      id: typeof m.id === "string" && m.id !== "" ? m.id : undefined,
+      at: m.at,
+      speaker: m.speaker,
+      text: m.text,
+      photos: m.speaker === "user" ? photoIdsOf(m.photos) : [],
+    });
   }
   return out;
 }
@@ -85,7 +96,11 @@ export async function loadHistory(given: number | null | undefined, opts: { notB
     messages.push({
       id: mid,
       role: l.speaker === "user" ? "user" : "assistant",
-      parts: [{ type: "text", text: l.text }],
+      // SP10 7.5: my photos come back as the data-photo parts they were sent as (a photo-only line has no text).
+      parts: [
+        ...(l.text === "" && l.photos.length > 0 ? [] : [{ type: "text" as const, text: l.text }]),
+        ...l.photos.map((photo_id) => ({ type: "data-photo" as const, data: { photo_id } })),
+      ],
       metadata: { conversation_id: id, at: l.at } satisfies Meta,
     });
   }

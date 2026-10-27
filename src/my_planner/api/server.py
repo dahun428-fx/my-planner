@@ -3,6 +3,8 @@
 미들웨어(바깥 → 안): 접근 로그 → CORS(사전 요청, 오류를 JSON으로) → 본문 상한 → 인증 → 안전 모드.
 - 몸 기록 `POST /body`(SP8 7.2)는 경로 틀로 기대 토큰을 `BODY_TOKEN`으로 바꾸고(다른 경로는 `API_TOKEN`), 본문 상한
   4KB, CORS 없음이다. `BODY_TOKEN`이 없으면 이 경로를 등록하지 않는다.
+- 사진 올리기 `POST /photos`(SP10 5.3)는 `Content-Length` 상한만 5.5MiB다. `client_max_size`(64KB)는 그대로라 다른
+  경로는 길이 없는 본문도 64KB에서 413이고, 사진 처리기는 multipart 스트림을 세며 읽는다(`api/photos.py`).
 - 접근 로그는 aiohttp 기본 것을 끄고(`access_log=None`) 요청마다 `method`, 경로 틀, 상태, 소요 시간만 남긴다.
   쿼리 문자열, 헤더, 본문, 토큰, 푸시 구독 주소는 남기지 않는다.
 - `GET` 처리기는 요청마다 따로 연 읽기 전용 연결(`mode=ro`)만 받는다. 쓰기는 디스패처 경로뿐이다(ADR 0007).
@@ -18,6 +20,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
@@ -50,6 +53,14 @@ from my_planner.api.devices import (
 )
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
+from my_planner.api.photos import (
+    PHOTO_BODY_MAX,
+    PHOTOS_PATH,
+    disk_free_bytes,
+    get_photo,
+    post_photo_read,
+    post_photos,
+)
 from my_planner.api.push import (
     delete_subscription,
     get_checkin_times,
@@ -122,6 +133,8 @@ class ApiDeps:
     body_token: str | None = None  # `POST /body`만 받는 토큰(SP8 7.2). None이면 그 경로를 등록하지 않는다
     devices: DeviceTokens = field(default_factory=DeviceTokens)  # 기기 토큰 사전(기기 연결 스펙 4.4). `build_app`이 채운다
     pair_codes: PairCodes = field(init=False)  # 연결 코드(4.3). 메모리에만
+    # 데이터 폴더 드라이브의 남은 바이트(SP10 5.6 4번: `POST /photos` 507, `/health` `disk_low`). 시험이 바꾼다
+    disk_free: Callable[[Path], int] = disk_free_bytes
 
     def __post_init__(self) -> None:
         self.pair_codes = PairCodes(self.clock)
@@ -163,11 +176,17 @@ async def access_log(request: web.Request, handler: Handler) -> web.StreamRespon
 
 def body_limit_middleware(limit_bytes: int) -> Callable[[web.Request, Handler], Awaitable[web.StreamResponse]]:
     """`Content-Length`가 상한을 넘으면 읽지 않고 `413`. 길이가 없는 본문은 `client_max_size`가 막는다.
-    `POST /body`는 4KB(SP8 7.2, 길이 없는 본문은 처리기가 읽으며 막는다)."""
+    `POST /body`는 4KB(SP8 7.2, 길이 없는 본문은 처리기가 읽으며 막는다). `POST /photos`는 5.5MiB(SP10 5.3, 길이
+    없는 본문은 처리기가 multipart를 세며 막는다)."""
 
     @web.middleware
     async def body_limit(request: web.Request, handler: Handler) -> web.StreamResponse:
-        limit = BODY_MAX_BYTES if route_template(request) == BODY_PATH else limit_bytes
+        route = route_template(request)
+        if route == PHOTOS_PATH and request.method == "POST":
+            if request.content_length is not None and request.content_length > PHOTO_BODY_MAX:
+                return error_response(413, "photo_too_large", "사진이 너무 커요.")
+            return await handler(request)
+        limit = BODY_MAX_BYTES if route == BODY_PATH else limit_bytes
         if request.content_length is not None and request.content_length > limit:
             return error_response(413, "too_large", "요청 본문이 너무 커요.")
         return await handler(request)
@@ -307,6 +326,8 @@ WRITE_ROUTES: tuple[tuple[str, Callable[[web.Request, ApiDeps], Awaitable[web.St
     ("/internal/notify", post_internal_notify),
     ("/devices/pair", post_pair_code),  # 기기 연결 스펙 4.5
     ("/pair", post_pair),
+    ("/photos", post_photos),  # SP10 5.3: multipart 스트림, 본문 상한은 `body_limit`의 경로 틀
+    ("/photos/{id}/read", post_photo_read),  # SP10 5.4: 두뇌 큐에서 사진 읽기
 )
 
 
@@ -343,6 +364,8 @@ def build_app(deps: ApiDeps) -> web.Application:
     app.router.add_delete(API_PREFIX + "/push/subscriptions/{id}", write_handler(delete_subscription))
     app.router.add_delete(API_PREFIX + "/conversations/{id}", write_handler(delete_conversation))  # SP9 7.7
     app.router.add_get(API_PREFIX + "/devices/pair", write_handler(get_pair_status))  # 메모리만 읽는다
+    # 사진 바이트(SP10 5.3): JSON이 아니라 `read_handler` 대신 처리기가 읽기 전용 연결을 열고 닫는다
+    app.router.add_get(API_PREFIX + "/photos/{id}", write_handler(get_photo))
     app.router.add_delete(API_PREFIX + "/devices/{id}", write_handler(delete_device))
     if deps.read_conn is not None and not deps.safe_mode:  # 끊지 않은 기기 토큰(4.4)
         conn = deps.read_conn()

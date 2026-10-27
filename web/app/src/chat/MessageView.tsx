@@ -1,6 +1,7 @@
 import { registerChatParts } from "../ui/chat/registerChatParts";
 import type { UIMessage } from "ai";
 import { Markdown } from "../components/Markdown";
+import { PhotoImage } from "../components/PhotoImage";
 import { copy } from "../lib/copy";
 import type { OpenScreen } from "../ui/primitives/types";
 import { useCatalog } from "../ui/CatalogProvider";
@@ -32,6 +33,17 @@ const userText = (m: UIMessage) =>
     .map((p) => p.text)
     .join("");
 
+/** SP10 5.5: the photos of my message (its data-photo parts: those sent, or the history's `photos`), in order. */
+export function messagePhotoIds(m: UIMessage): number[] {
+  const ids: number[] = [];
+  for (const p of m.parts) {
+    if (p.type !== "data-photo") continue;
+    const id = (p as { data?: { photo_id?: unknown } }).data?.photo_id;
+    if (typeof id === "number" && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 // SP9c 3: a line written from an add chip on this device has a small grey label above the bubble.
 function chipLabel(m: UIMessage): string | null {
   const chip = (m.metadata as { chip?: unknown } | undefined)?.chip;
@@ -47,6 +59,7 @@ export function MessageView({
   onChoose,
   onOpen,
   onOpenPath,
+  onOpenPhoto,
 }: {
   message: UIMessage;
   parts: ViewPart[];
@@ -56,14 +69,30 @@ export function MessageView({
   onOpen?(screen: OpenScreen): void;
   /** SP9 9.8: a `ui_events` row opens the schedule tab on its day (the sheet moves there and closes). */
   onOpenPath?(path: string): void;
+  /** SP10 7.5: a photo of my bubble pressed: shown big, with the others of the message. */
+  onOpenPhoto?(ids: number[], index: number): void;
 }) {
   const { check, settled } = useCatalog();
   if (message.role === "user") {
     const label = chipLabel(message);
+    const text = userText(message);
+    const photos = messagePhotoIds(message);
     return (
       <div className={styles.mine} data-message={message.id}>
         {label && <p className={styles.chipLabel}>{label}</p>}
-        <p className={styles.bubble}>{userText(message)}</p>
+        {photos.length > 0 && (
+          // SP10 7.5: small photos above the text, a grid of at most 4.
+          <ul className={styles.photoGrid} aria-label={copy.photos.strip} data-count={Math.min(photos.length, 4)}>
+            {photos.map((id, i) => (
+              <li key={id} className={styles.photoCell}>
+                <button type="button" className={styles.photoButton} aria-label={copy.photos.photo(i + 1, photos.length)} onClick={() => onOpenPhoto?.(photos, i)}>
+                  <PhotoImage id={id} size="thumb" className={styles.photoThumb} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {(text !== "" || photos.length === 0) && <p className={styles.bubble}>{text}</p>}
       </div>
     );
   }

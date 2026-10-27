@@ -85,7 +85,7 @@ describe("runAction", () => {
         HttpResponse.json({ status: "rejected", activity_id: null, error: { code: "rejected", message: "우선순위는 3개까지예요" } }, { status: 422 }),
       ),
     );
-    expect(await runAction("set_priorities", {})).toEqual({ kind: "rejected", message: "우선순위는 3개까지예요" });
+    expect(await runAction("set_priorities", {})).toEqual({ kind: "rejected", message: "우선순위는 3개까지예요", code: "rejected" });
 
     server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ error: { code: "conflict", message: "x" } }, { status: 409 })));
     expect(await runAction("confirm_tasks", { ids: [1] })).toEqual({ kind: "conflict" });
@@ -97,11 +97,12 @@ describe("runAction", () => {
         HttpResponse.json({ status: "rejected", activity_id: null, error: { code: "too_many_pinned", message: copy.memos.limits.too_many_pinned } }, { status: 422 }),
       ),
     );
-    expect(await runAction("pin_memo", { id: 1 })).toEqual({ kind: "rejected", message: copy.memos.limits.too_many_pinned });
+    expect(await runAction("pin_memo", { id: 1 })).toEqual({ kind: "rejected", message: copy.memos.limits.too_many_pinned, code: "too_many_pinned" });
     // SP9 5.1: the schedule's 422 codes too.
-    for (const code of ["remind_invalid", "start_not_in_weekdays", "too_many_events"]) {
+    // SP10 5.3: the photo codes too.
+    for (const code of ["remind_invalid", "start_not_in_weekdays", "too_many_events", "too_many_photos", "photo_not_found"]) {
       server.use(http.post(`${BASE}/actions`, () => HttpResponse.json({ status: "rejected", activity_id: null, error: { code, message: "m" } }, { status: 422 })));
-      expect(await runAction("create_event", { title: "a" })).toEqual({ kind: "rejected", message: "m" });
+      expect(await runAction("create_event", { title: "a" })).toEqual({ kind: "rejected", message: "m", code });
     }
     // The BE's "already so" (SP9 6.4): applied with no activity, not a failure.
     server.use(
