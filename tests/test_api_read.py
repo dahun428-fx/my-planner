@@ -110,11 +110,31 @@ async def test_done_todos_stay_after_open_ones_but_not_in_telegram_text(tmp_path
     by_day = {d["date"]: [x["id"] for x in d["todos"]] for d in week["days"]}
     assert by_day["2026-10-24"] == [c.id, a.id, b.id] and by_day["2026-10-22"] == [old.id]
     assert [x["id"] for x in week["priorities"]] == [p.id] and [x["id"] for x in week["undated"]] == [u.id]
-    # 달 보기의 할 일도 열린 일 다음 끝낸 일
-    assert [x["id"] for x in month["todos"]] == [c.id, old.id, p.id, a.id, b.id, later.id]
+    # 달 보기의 할 일도 열린 일 다음 이번 주에 끝낸 일(끝낸 순서)
+    assert [x["id"] for x in month["todos"]] == [c.id, b.id, a.id, old.id, later.id, p.id]
     # 텔레그램 글은 그대로: 끝낸 일은 없다
     assert "열린 채로 남은 일" in ttext and "수채화 밑그림" not in ttext and "도서관 반납" not in ttext
     assert "이번 주 책 한 권" not in wtext and "지난 주에 잡은 빨래" not in wtext and "열린 채로 남은 일" in wtext
+
+
+async def test_done_today_follows_the_0400_logical_day(tmp_path):
+    # 01:30에 끝낸 일은 아직 전날(논리적 날짜 10/24)의 일: 03:59의 /today에는 남고 04:01에는 없다
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 25, 1, 30)) as env:
+        late = mk(env, "늦은 밤 정리", planned_for="2026-10-24")
+        await env.action("complete_task", {"id": late.id})
+        env.clock.advance(minutes=149)  # 03:59
+        before = await get_json(env, "/today")
+        env.clock.advance(minutes=2)  # 04:01
+        after = await get_json(env, "/today")
+        # 오늘 끝냈어도 오늘 목록에 없던 일(다음 주로 잡은 일, 날짜 없는 일)은 "done"에도 없다
+        nxt = mk(env, "다음 주 장보기", planned_for="2026-10-28")
+        undated = mk(env, "날짜 없는 정리")
+        for t in (nxt, undated):
+            await env.action("complete_task", {"id": t.id})
+        later = await get_json(env, "/today")
+
+    assert before["date"] == "2026-10-24" and [(x["group"], x["todo"]["id"]) for x in before["todos"]] == [("done", late.id)]
+    assert after["date"] == "2026-10-25" and after["todos"] == [] and later["todos"] == []
 
 
 async def test_week_lists_undated_and_periods_list_their_todos(tmp_path):

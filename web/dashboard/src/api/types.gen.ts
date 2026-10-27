@@ -1270,7 +1270,7 @@ export interface PhotoUploaded {
   width: number;
 }
 /**
- * `GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌), 그 뒤에 끝낸 일이다.
+ * `GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌), 그 뒤에 그중 이번 주에 끝낸 일(끝낸 순서)이다.
  * 날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -1629,7 +1629,8 @@ export interface VapidPublicKey {
 }
 /**
  * `GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,
- * 이번 주 우선순위는 뺀다). 우선순위·날마다·`undated` 모두 열린 일 다음에 끝낸 일(`undated`는 이번 주에 끝낸 것)이 온다.
+ * 이번 주 우선순위는 뺀다). 우선순위·날마다·`undated` 모두 열린 일 다음에 끝낸 일이 온다(날마다는 하려는 날 순,
+ * `undated`는 이번 주에 끝낸 것을 끝낸 순서로).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "Week".
