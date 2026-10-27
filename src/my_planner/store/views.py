@@ -27,7 +27,7 @@ AREA_ORDER = {a: i for i, a in enumerate(Area)}
 
 @dataclass
 class TodoGroup:
-    name: str  # priority | scheduled(SP9부터 죽은 갈래) | open
+    name: str  # priority | scheduled(SP9부터 죽은 갈래) | open | done
     tasks: list[Task]
 
 
@@ -53,14 +53,17 @@ class WeekView:
     start: date
     end: date
     priorities: list[Task]
-    days: list[DayView]  # 할 일이 없는 날도 포함, 7일
-    undated: list[Task] = field(default_factory=list)  # 날짜 없는 열린 일(비서가 날짜 없이 추가한 일 포함)
+    days: list[DayView]  # 할 일이 없는 날도 포함, 7일. 날마다 열린 일 다음에 끝낸 일
+    undated: list[Task] = field(default_factory=list)  # 날짜 없는 열린 일(비서가 날짜 없이 추가한 일 포함), 이번 주에 끝낸 것은 뒤에
 
 
 def today_view(
     tasks: TasksRepo, conditions: ConditionsRepo | None, now: datetime, tz: str | tzinfo, boundary: time
 ) -> TodayView:
-    """묶음 순서: 우선순위 → 일정 → 열린 할 일(이미 나온 것은 뺀다, 전에 잡은 일 포함).
+    """묶음 순서: 우선순위 → 일정 → 열린 할 일(이미 나온 것은 뺀다, 전에 잡은 일 포함) → 끝낸 일.
+
+    "끝낸 일"(`done`)은 오늘(논리적 날짜) 끝낸 일 가운데 열려 있었다면 이 뷰에 나왔을 것(오늘 우선순위, 하려는 날이
+    오늘이나 그 전)이다. 체크해도 줄에서 사라지지 않고 취소선으로 남게 하려는 것이다. 끝낸 순서대로.
 
     SP9 5.4: "일정" 묶음(`group = "scheduled"`)은 이제 죽은 갈래다. 017 훅이 시각 있는 열린 할 일을 일정으로 옮겼고,
     도구·다시 열기·되돌리기는 열린 할 일에 `scheduled_at`을 두지 않는다. 대시보드가 이 묶음을 읽어 남겨 둔다.
@@ -68,7 +71,8 @@ def today_view(
     today = logical_date(now, tz, boundary)
     groups: list[TodoGroup] = []
 
-    prios = [t for t in tasks.priorities(Cadence.day, period_of(Cadence.day, today)) if t.status is TaskStatus.open]
+    day_prios = tasks.priorities(Cadence.day, period_of(Cadence.day, today))
+    prios = [t for t in day_prios if t.status is TaskStatus.open]
     shown = {t.id for t in prios}
     if prios:
         groups.append(TodoGroup("priority", prios))
@@ -87,6 +91,12 @@ def today_view(
     if rest:
         groups.append(TodoGroup("open", rest))
 
+    prio_ids = {t.id for t in day_prios}
+    done = [t for t in reversed(tasks.list(status=TaskStatus.done, from_=today, to=today))
+            if t.id in prio_ids or (t.planned_for and t.planned_for <= today)]
+    if done:
+        groups.append(TodoGroup("done", done))
+
     cond = conditions.get(today) if conditions is not None else None
     return TodayView(today, WEEKDAY[today.weekday()], groups, cond)
 
@@ -94,16 +104,23 @@ def today_view(
 def week_view(tasks: TasksRepo, now: datetime, tz: str | tzinfo, boundary: time) -> WeekView:
     today = logical_date(now, tz, boundary)
     mon, sun = week_bounds(today)
-    prios = [t for t in tasks.priorities(Cadence.week, period_of(Cadence.week, today)) if t.status is TaskStatus.open]
-    open_tasks = tasks.list(status=TaskStatus.open, from_=mon, to=sun)
+    # 우선순위·날·날짜 없음 모두 열린 일 다음에 끝낸 일을 둔다(체크해도 취소선으로 남는다, `today_view`와 같다)
+    week_prios = tasks.priorities(Cadence.week, period_of(Cadence.week, today))
+    prios = [t for s in (TaskStatus.open, TaskStatus.done) for t in week_prios if t.status is s]
+    # 상태를 목록으로 주면 `done`도 `planned_for`로 거른다(`TasksRepo.list`)
+    rows = tasks.list(status=[TaskStatus.open, TaskStatus.done], from_=mon, to=sun)
     days = []
     for i in range(7):
         d = mon + timedelta(days=i)
         # 시각이 있는 일이 먼저 나오도록 repo가 정렬해 준다
-        days.append(DayView(d, WEEKDAY[d.weekday()], d == today, [t for t in open_tasks if t.planned_for == d]))
-    # 날짜 없는 열린 할 일. 이번 주 우선순위(이미 위에 나온다)와 첫 걸음(부모 목표 아래 것)은 뺀다.
+        mine = [t for t in rows if t.planned_for == d]
+        days.append(DayView(d, WEEKDAY[d.weekday()], d == today,
+                            [t for s in (TaskStatus.open, TaskStatus.done) for t in mine if t.status is s]))
+    # 날짜 없는 할 일: 열린 것 전부와 이번 주에 끝낸 것(끝낸 순서). 이번 주 우선순위(이미 위에 나온다)와 첫 걸음
+    # (부모 목표 아래 것)은 뺀다.
     shown = {t.id for t in prios}
-    undated = [t for t in tasks.list(status=TaskStatus.open)
+    undated = [t for t in [*tasks.list(status=TaskStatus.open),
+                           *reversed(tasks.list(status=TaskStatus.done, from_=mon, to=sun))]
                if t.planned_for is None and t.parent_id is None and t.id not in shown]
     return WeekView(period_of(Cadence.week, today), mon, sun, prios, days, undated)
 

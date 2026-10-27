@@ -249,7 +249,9 @@ def get_priorities(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request
         start, end = period_bounds(cadence, period)
     except ValueError:  # 형식은 맞아도 없는 기간(53주가 없는 해의 W53, 0년)
         raise _bad("period가 cadence와 맞지 않아요.") from None
-    planned = tasks.list(status=TaskStatus.open, from_=start, to=end)  # 그 기간에 하려는 열린 할 일, 날짜순
+    # 그 기간에 하려는 열린 할 일(날짜순), 그 뒤에 끝낸 일(체크해도 취소선으로 남는다). 상태 목록이라 `done`도 하려는 날로 거른다
+    rows = tasks.list(status=[TaskStatus.open, TaskStatus.done], from_=start, to=end)
+    planned = [t for s in (TaskStatus.open, TaskStatus.done) for t in rows if t.status is s]
     return dump(Priorities, {
         "cadence": cadence, "period": period, "items": [todo_dict(t, tasks, today) for t in items],
         "todos": [todo_dict(t, tasks, today) for t in planned],

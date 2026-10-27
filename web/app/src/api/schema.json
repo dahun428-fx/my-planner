@@ -5776,7 +5776,8 @@
               "enum": [
                 "priority",
                 "scheduled",
-                "open"
+                "open",
+                "done"
               ],
               "type": "string"
             },

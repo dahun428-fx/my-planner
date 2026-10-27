@@ -11,7 +11,9 @@ import { formatDay, formatKst } from "../lib/time";
 
 type Tab = "today" | "week";
 const TABS: Tab[] = ["today", "week"];
-const GROUP_KIND: Record<Today["todos"][number]["group"], TodoListKind> = {
+// The BE's "done" group (to-dos done today, struck through in the app) is left out here, like the Telegram text.
+type ShownGroup = Exclude<Today["todos"][number]["group"], "done">;
+const GROUP_KIND: Record<ShownGroup, TodoListKind> = {
   priority: "ranked",
   scheduled: "scheduled",
   open: "open",
@@ -25,8 +27,9 @@ const sameState = (a: ApiResult<unknown>, b: ApiResult<unknown>) =>
 
 /** Consecutive runs of the same group, in the API's order (spec 6.3.2: the order is the BE's). */
 function groupsOf(todos: Today["todos"]) {
-  const out: { group: Today["todos"][number]["group"]; todos: Today["todos"][number]["todo"][] }[] = [];
+  const out: { group: ShownGroup; todos: Today["todos"][number]["todo"][] }[] = [];
   for (const { group, todo } of todos) {
+    if (group === "done") continue;
     const last = out[out.length - 1];
     if (last && last.group === group) last.todos.push(todo);
     else out.push({ group, todos: [todo] });
@@ -65,8 +68,11 @@ export function TodayPanel({ today }: { today: Today }) {
   );
 }
 
-export function WeekPanel({ week }: { week: Week }) {
+export function WeekPanel({ week: raw }: { week: Week }) {
   const headingId = useId();
+  // Open to-dos only, like the Telegram `/week` text: the BE also lists the done ones for the app.
+  const open = (todos: Week["priorities"]) => todos.filter((t) => t.status !== "done");
+  const week = { ...raw, priorities: open(raw.priorities), days: raw.days.map((d) => ({ ...d, todos: open(d.todos) })) };
   const empty = week.priorities.length === 0 && week.days.every((d) => d.todos.length === 0);
   return (
     <section className="panel" aria-labelledby={headingId}>

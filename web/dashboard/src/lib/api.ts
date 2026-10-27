@@ -174,7 +174,7 @@ export function isToday(v: unknown): v is Today {
     str(v.weekday) &&
     (b === null || (isObj(b) && str(b.loop) && str(b.text) && strOrNull(b.sent_at))) &&
     (v.condition === null || isCondition(v.condition)) &&
-    arr(v.todos, (t) => isObj(t) && (t.group === "priority" || t.group === "scheduled" || t.group === "open") && isTodo(t.todo))
+    arr(v.todos, (t) => isObj(t) && (t.group === "priority" || t.group === "scheduled" || t.group === "open" || t.group === "done") && isTodo(t.todo))
   );
 }
 

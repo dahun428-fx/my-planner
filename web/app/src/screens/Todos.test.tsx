@@ -135,6 +135,19 @@ describe("Todos", () => {
     expect(within(group).getByText("언젠가 읽을 책 고르기")).toBeInTheDocument();
   });
 
+  it("week keeps a checked to-do with no date, struck through after the open ones", async () => {
+    serve();
+    const [open] = week.undated ?? [];
+    const done = { ...open, id: 9901, title: "어제 끝낸 정리", status: "done" as const, completed_at: "2026-10-24T01:00:00Z" };
+    server.use(http.get(`${BASE}/week`, () => HttpResponse.json({ ...week, undated: [done, open] })));
+    renderWithProviders(<Todos tab="week" />);
+    const heading = await screen.findByRole("heading", { name: copy.todos.undated });
+    const group = heading.closest("section") ?? heading.parentElement!.parentElement!;
+    const boxes = within(group).getAllByRole("checkbox");
+    expect(boxes.map((b) => b.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+    expect(boxes[1]).toHaveAccessibleName(copy.today.doneLabel("어제 끝낸 정리"));
+  });
+
   it("month shows the to-dos planned in it with their day (10/28 is not only a priority)", async () => {
     serve();
     renderWithProviders(<Todos tab="month" />);

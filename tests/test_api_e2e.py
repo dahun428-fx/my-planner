@@ -120,7 +120,8 @@ async def test_actions_end_to_end(tmp_path):
     assert status == 200 and body["status"] == "applied" and body["confirmation"] == "✓ 완료: 운동"
     assert again == (status, body)
     assert "운동" not in today_text
-    assert after["todos"] == []
+    # 끝낸 일은 사라지지 않고 맨 뒤 "done" 묶음에 남는다(앱이 취소선으로 그린다)
+    assert [(x["group"], x["todo"]["title"], x["todo"]["status"]) for x in after["todos"]] == [("done", "운동", "done")]
     assert rows == [("task_added", "secretary", "telegram"), ("task_completed", "user", "app")]
 
 
@@ -146,7 +147,7 @@ async def test_undo_end_to_end(tmp_path):
         after = await (await env.get("/activity")).json()
 
     assert (done["kind"], done["actor"], done["channel"]) == ("task_completed", "secretary", "telegram")
-    assert done["undo_id"] == done["id"] and mid["todos"] == []
+    assert done["undo_id"] == done["id"] and [x["group"] for x in mid["todos"]] == ["done"]
     assert resp.status == 200 and body["status"] == "undone" and body["confirmation"] == "↩ 되돌림: 운동 완료"
     assert [x["todo"]["title"] for x in today["todos"]] == ["운동"]
     assert today["todos"][0]["todo"]["status"] == "open"
