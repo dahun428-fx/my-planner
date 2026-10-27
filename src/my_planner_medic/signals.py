@@ -30,6 +30,9 @@ CLIENT_ERROR_MSG = "client_error"  # BE api/recovery.py
 BIND_ERROR_MSG = "api_bind_error"  # BE api/server.py
 _NOT_BURST = frozenset({THIRD_PARTY_MSG, CLIENT_ERROR_MSG})
 _OWN = "my_planner"
+# PTB Updater가 폴링 중 스스로 재시도하는 일시적 네트워크 오류. 지속되면 polling down·무응답 신호가 잡는다.
+_TRANSIENT_POLL_LOGGER = "telegram.ext.Updater"
+_TRANSIENT_POLL_EXC = frozenset({"NetworkError", "TimedOut", "RetryAfter"})
 _CLIENT_APPS = ("app", "dashboard")
 WARN_WINDOW = timedelta(hours=1)
 WARN_BURST = 20
@@ -97,6 +100,8 @@ def log_signals(
                 fp = f"{app}:{safe_token(rec.get('error_name'))} {safe_token(rec.get('route'))}"
                 out.append(Signal(fp, app, "client_error", at))
         elif level in ("ERROR", "CRITICAL") and rec.get("exc_type"):
+            if rec.get("logger") == _TRANSIENT_POLL_LOGGER and rec["exc_type"] in _TRANSIENT_POLL_EXC:
+                continue
             fp = exception_fingerprint(rec["exc_type"], rec.get("exc_where"), root)
             out.append(Signal(fp, "be", "exception", at))
         elif level == "WARNING" and own and isinstance(msg, str) and msg not in _NOT_BURST:
