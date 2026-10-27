@@ -31,3 +31,24 @@ def test_third_party_fstring_message_dropped(tmp_path):
     assert sdk[0]["msg"] == "third_party_log"
     own = [e for e in entries if e["logger"] == "my_planner.x"]
     assert own[0]["msg"] == "own_event" and own[0]["n"] == 1
+
+
+def _poll_error(exc: Exception) -> None:
+    try:
+        raise exc
+    except Exception:
+        # PTB Updater가 폴링 오류를 재시도하며 남기는 기록과 같다
+        logging.getLogger("telegram.ext.Updater").exception("Exception happened while polling for updates.")
+
+
+def test_transient_polling_error_is_not_an_error_record(tmp_path):
+    from telegram.error import BadRequest, NetworkError, TimedOut
+
+    path = setup_logging(tmp_path / "state", 30)
+    _poll_error(NetworkError("httpx.ReadError"))
+    _poll_error(TimedOut())
+    _poll_error(BadRequest("x"))
+
+    levels = {e["exc_type"]: e["level"] for e in _entries(path) if e["logger"] == "telegram.ext.Updater"}
+    assert levels["NetworkError"] == "INFO" and levels["TimedOut"] == "INFO"
+    assert levels["BadRequest"] == "ERROR"
