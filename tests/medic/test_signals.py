@@ -249,3 +249,19 @@ def test_tick_stalled_ignores_normal_delay_reasons(kw: dict[str, Any]) -> None:
     paused = dict(b, paused_until=(now + timedelta(hours=1)).isoformat())
     assert health_signals(HealthProbe(200, paused), now, streak=0, suppress=False, cfg=CFG)[0] == []
     assert health_signals(HealthProbe(200, b), now, streak=0, suppress=True, cfg=CFG)[0] == []
+
+
+@pytest.mark.parametrize("exc", ["NetworkError", "TimedOut", "RetryAfter"])
+def test_transient_telegram_polling_error_is_not_an_incident(exc: str) -> None:
+    """PTB Updater가 스스로 재시도하는 일시적 네트워크 오류는 장애가 아니다(지속되면 헬스 신호가 잡는다)."""
+    where = ["/x/site-packages/telegram/request/_httpxrequest.py:303 do_request"]
+    r = rec(level="ERROR", logger="telegram.ext.Updater", msg="third_party_log", exc_type=exc, exc_where=where)
+    assert log_signals([r], ROOT, now=NOW, warn_window={}) == []
+
+
+def test_other_telegram_errors_still_signal() -> None:
+    where = ["/x/site-packages/telegram/_bot.py:712 _post"]
+    r = rec(level="ERROR", logger="telegram.ext.Updater", msg="third_party_log", exc_type="BadRequest", exc_where=where)
+    assert len(log_signals([r], ROOT, now=NOW, warn_window={})) == 1
+    own = rec(level="ERROR", logger="my_planner.x", exc_type="NetworkError", exc_where=where)
+    assert len(log_signals([own], ROOT, now=NOW, warn_window={})) == 1
