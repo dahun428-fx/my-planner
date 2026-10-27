@@ -35,6 +35,19 @@ _QUIET_LOGGERS = ("httpx", "httpcore", "telegram", "apscheduler")
 THIRD_PARTY_MSG = "third_party_log"
 _OWN_PREFIX = "my_planner"
 
+# PTB Updater는 폴링 중 네트워크가 잠깐 끊기면 ERROR로 남기고 스스로 재시도한다. 이것이 장애 신호가 되어
+# 배포 확인이 롤백되지 않도록 INFO로 낮춘다(지속되면 polling down·무응답 신호가 잡는다).
+_POLL_LOGGER = "telegram.ext.Updater"
+_TRANSIENT_POLL_EXC = frozenset({"NetworkError", "TimedOut", "RetryAfter"})
+
+
+class _TransientPollFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[0] if record.exc_info else None
+        if record.levelno >= logging.ERROR and exc is not None and exc.__name__ in _TRANSIENT_POLL_EXC:
+            record.levelno, record.levelname = logging.INFO, "INFO"
+        return True
+
 
 def _is_own(name: str) -> bool:
     return name == _OWN_PREFIX or name.startswith(_OWN_PREFIX + ".")
@@ -106,6 +119,9 @@ def setup_logging(state_dir: Path, keep_days: int) -> Path:
         root.addHandler(console)
 
     root.setLevel(logging.INFO)
+    poll_logger = logging.getLogger(_POLL_LOGGER)
+    if not any(isinstance(f, _TransientPollFilter) for f in poll_logger.filters):
+        poll_logger.addFilter(_TransientPollFilter())
     for name in _QUIET_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
     return path
