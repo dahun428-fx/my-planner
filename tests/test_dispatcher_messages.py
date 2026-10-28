@@ -267,3 +267,19 @@ async def test_brain_timeout_lets_shielded_cleanup_finish(tmp_path, conn, state)
 
     assert cleaned == ["closed"]
     assert (result.status, result.error) == ("error", "timeout")
+
+
+async def test_start_timeout_is_not_retried(tmp_path, conn, state):
+    # CLI가 시작 대기 시간 안에 뜨지 않은 호출(2026-10-28 진단): 같은 대기를 세 번 더 되풀이하지 않고 대체 답으로
+    from my_planner.harness.dispatcher import FALLBACK_REPLY
+
+    env = Env(
+        tmp_path, conn, state,
+        script=[FakeTurn([], "", status="error", error="start_timeout"), FakeTurn([], "쓰이면 안 되는 답")],
+        start=kst(2026, 10, 23, 15, 0),
+    )
+    env.dispatcher._sleep = fake_sleep(env.clock, real=0.005)
+    await env.process(env.inbound("안녕", update_id=5))
+
+    assert len(env.brain.calls) == 1
+    assert [o.text for o in env.sender.sent] == [FALLBACK_REPLY]

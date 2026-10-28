@@ -67,6 +67,12 @@ cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner
 max_body_kb = 64               # 다른 경로의 본문 상한. 사진 경로만 따로 5.5MiB(SP10 5.3)
 max_photo_bytes = 5000000      # POST /photos의 사진 한 장 상한(SP10 5.3)
 
+# 두뇌 CLI (2026-10-28 채팅 느림 진단). 메모리가 모자라면 CLI 첫 실행이 1분을 넘겨 SDK 기본 60초에 실패했다
+[brain]
+start_timeout_s = 180   # CLI 시작 대기(초). limits.brain_timeout_s보다 작아야 한다. 넘으면 다시 부르지 않고 대체 답
+# 시작에 쓴 시간도 brain_timeout_s(300초) 안에 든다. 느리게 뜬 호출은 답할 시간이 그만큼 줄어든다
+# cli_path는 기계마다 달라 config.local.toml에 둔다. 예: cli_path = "C:/my-planner-cli/claude.exe"
+
 [notify]
 default_primary = "app"   # app_state.notify_primary가 없을 때. 유효한 푸시 구독이 없으면 실제로는 텔레그램(7.3 D1a)
 

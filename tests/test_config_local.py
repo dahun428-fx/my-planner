@@ -113,3 +113,15 @@ def test_body_token_read_from_env_file(tmp_path):
     assert s.body_token is not None and s.body_token.get_secret_value() == fake
     assert fake not in repr(s)
     assert load_settings(_root(tmp_path)).body_token is None
+
+
+def test_brain_defaults_and_local_cli_path(tmp_path):
+    s = load_settings(_root(tmp_path))
+    assert s.brain.start_timeout_s == 180 and s.brain.cli_path is None
+    s = load_settings(_root(tmp_path, local='[brain]\ncli_path = "C:/cli/claude.exe"\n'))
+    assert s.brain.cli_path == Path("C:/cli/claude.exe")
+
+
+def test_brain_start_timeout_must_be_below_brain_timeout(tmp_path):
+    with pytest.raises(ValueError, match="start_timeout_s"):
+        load_settings(_root(tmp_path, local="[brain]\nstart_timeout_s = 300\n"))
