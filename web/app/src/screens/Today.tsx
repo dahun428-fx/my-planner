@@ -5,6 +5,7 @@ import { useAction } from "../api/actions";
 import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
+import { DoneFold } from "../components/DoneFold";
 import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
@@ -164,7 +165,19 @@ export function Today() {
     const list = t.todos.map((item) => ({ ...item, todo: show(item.todo) }));
     // Open rows keep the BE's order; rows that are done go to the end of the list (spec 5.5.1).
     const display = [...list.filter((i) => i.todo.status !== "done"), ...list.filter((i) => i.todo.status === "done")];
-    const openCount = display.filter((i) => i.todo.status !== "done").length;
+    const openRows = display.filter((i) => i.todo.status !== "done");
+    const doneRows = display.filter((i) => i.todo.status === "done"); // folded until pressed
+    const openCount = openRows.length;
+    const todoRow = (item: (typeof display)[number]) => (
+      <TodoRow
+        key={item.todo.id}
+        todo={item.todo}
+        readOnly={readOnly}
+        onToggle={() => void toggle(item.todo)}
+        onTomorrow={() => void tomorrow(item.todo.id)}
+        onDrop={() => void drop(item.todo.id)}
+      />
+    );
     const readOnly = !writable;
     const pinned = [...t.cards].sort((a, b) => a.order - b.order);
     const pinnedIds = pinned.map((c) => c.id);
@@ -317,16 +330,10 @@ export function Today() {
           {display.length === 0 ? (
             <Row title={copy.today.noTodos} />
           ) : (
-            display.map((item) => (
-              <TodoRow
-                key={item.todo.id}
-                todo={item.todo}
-                readOnly={readOnly}
-                onToggle={() => void toggle(item.todo)}
-                onTomorrow={() => void tomorrow(item.todo.id)}
-                onDrop={() => void drop(item.todo.id)}
-              />
-            ))
+            <>
+              {openRows.map(todoRow)}
+              <DoneFold count={doneRows.length}>{doneRows.map(todoRow)}</DoneFold>
+            </>
           )}
         </Group>
         {pinned.map((card, i) => (

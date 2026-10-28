@@ -6,6 +6,7 @@ import type { Drafts, DraftItem, Priorities, Today as TodayData, Todo, Week } fr
 import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
 import { ChatLauncher, launcherReason } from "../components/ChatLauncher";
+import { DoneFold } from "../components/DoneFold";
 import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
@@ -41,8 +42,6 @@ const LABEL: Record<TodosTab, string> = {
 };
 
 const is404 = (r: { kind: string; status?: number }) => r.kind === "error" && r.status === 404;
-// Open rows first, done rows after them (spec 5.5.1), each keeping the BE's order.
-const openFirst = (todos: Todo[]) => [...todos.filter((t) => t.status !== "done"), ...todos.filter((t) => t.status === "done")];
 
 // Spec 5.5.5, F6.
 export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
@@ -187,7 +186,18 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       onEditTitle={() => setEdit({ kind: "title", todo })}
     />
   );
-  const rows = (todos: Todo[], readOnly: boolean) => todos.map((t) => row(t, readOnly));
+  // Open rows, then the done ones folded under "완료 N개" until pressed (each keeps the BE's order).
+  const fold = (todos: Todo[], one: (t: Todo) => React.ReactNode) => {
+    const shown = todos.map(show);
+    const done = shown.filter((t) => t.status === "done");
+    return (
+      <>
+        {shown.filter((t) => t.status !== "done").map(one)}
+        <DoneFold count={done.length}>{done.map(one)}</DoneFold>
+      </>
+    );
+  };
+  const rows = (todos: Todo[], readOnly: boolean) => fold(todos, (t) => row(t, readOnly));
 
   const weekOffline = weekView.kind === "snapshot" || weekView.kind === "none";
   const offline = offlineConn || (tab === "week" && weekOffline);
@@ -231,7 +241,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
-          {w.priorities.length > 0 && <Group paper heading={copy.todos.weekPriorities}>{rows(openFirst(w.priorities.map(show)), readOnly)}</Group>}
+          {w.priorities.length > 0 && <Group paper heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
           {w.days.map((d) => {
             const [, m, day] = d.date.split("-").map(Number);
             if (d.todos.length === 0) {
@@ -243,18 +253,18 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
             }
             return (
               <Group paper key={d.date} heading={copy.todos.dayHeading(d.weekday, m, day, d.is_today)}>
-                {rows(openFirst(d.todos.map(show)), readOnly)}
+                {rows(d.todos, readOnly)}
               </Group>
             );
           })}
           {/* An older BE (or a snapshot from before) has no `undated`. */}
-          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(openFirst(undated.map(show)), readOnly)}</Group>}
+          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(undated, readOnly)}</Group>}
         </>
       );
     }
   } else if (tab === "day") {
     if (todayView.kind === "live") {
-      const list = openFirst(todayView.data.todos.map((t) => show(t.todo)));
+      const list = todayView.data.todos.map((t) => t.todo);
       body = <Group paper heading={copy.todos.periods.today}>{list.length === 0 ? <Row title={copy.today.noTodos} /> : rows(list, !writable)}</Group>;
     } else if (todayView.kind === "blocked") {
       body = (
@@ -274,12 +284,12 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     body = (
       <>
         <Group paper heading={copy.todos.periodPriorities(LABEL[tab])}>
-          {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(openFirst(shownPrio.items.map(show)), !writable)}
+          {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
         </Group>
         {planned.length > 0 && (
           <Group paper heading={copy.todos.periodTodos(LABEL[tab])}>
             {/* Not grouped by day, so each row says its day ("10월 28일"). */}
-            {openFirst(planned.map(show)).map((t) => row(t, !writable, copy.dateParts.monthDay(+t.planned_for!.slice(5, 7), +t.planned_for!.slice(8))))}
+            {fold(planned, (t) => row(t, !writable, copy.dateParts.monthDay(+t.planned_for!.slice(5, 7), +t.planned_for!.slice(8))))}
           </Group>
         )}
       </>

@@ -249,6 +249,7 @@ export const copy = {
     seeAll: "전체 보기",
     noTodos: "오늘 잡힌 할 일이 없어요. 비서에게 말하거나 + 로 추가할 수 있어요.",
     completedAt: (hhmm: string) => `${hhmm} 완료`,
+    doneFold: (n: number) => `완료 ${n}개`, // (new) the folded done rows under a to-do list, opened by pressing
     pinnedBySecretary: "비서가 올려 둔 카드",
     pinnedMenu: "이 카드에 할 수 있는 일",
     pinnedMore: (title: string) => `${title} 카드 메뉴`,

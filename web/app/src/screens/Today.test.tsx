@@ -105,6 +105,12 @@ describe("Today", () => {
     expect(screen.getByText(copy.parts.scoreLow)).toBeInTheDocument();
     expect(screen.getByText(copy.parts.scoreHigh)).toBeInTheDocument();
     expect(before(condition, todos)).toBe(true);
+    // The done row is folded under "완료 1개" until pressed, then shows last.
+    expect(screen.queryByText(d.todo.title)).toBeNull();
+    const fold = screen.getByRole("button", { name: copy.today.doneFold(1) });
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    await userEvent.setup().click(fold);
+    expect(fold).toHaveAttribute("aria-expanded", "true");
     const rows = [a, b, c, d].map((t) => screen.getByText(t.todo.title));
     rows.forEach((r, i) => {
       expect(before(todos, r)).toBe(true);
@@ -208,7 +214,10 @@ describe("Today", () => {
     });
     renderWithProviders(<Today />);
     const box = await screen.findByRole("checkbox", { name: copy.today.checkLabel("장보기") });
-    await userEvent.setup().click(box);
+    const user = userEvent.setup();
+    await user.click(box);
+    // The checked row moves into the done fold at once (now 2, closed) and shows there struck.
+    await user.click(screen.getByRole("button", { name: copy.today.doneFold(2) }));
     const checked = screen.getByRole("checkbox", { name: copy.today.doneLabel("장보기") });
     expect(checked).toHaveAttribute("aria-checked", "true");
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -222,7 +231,9 @@ describe("Today", () => {
     serve();
     const bodies = actions(() => applied());
     renderWithProviders(<Today />);
-    await userEvent.setup().click(await screen.findByRole("checkbox", { name: copy.today.doneLabel("빨래 널기") }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: copy.today.doneFold(1) }));
+    await user.click(screen.getByRole("checkbox", { name: copy.today.doneLabel("빨래 널기") }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ action: "reopen_task", args: { id: 15 } });
   });
@@ -371,6 +382,7 @@ describe("Today", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     await screen.findByText("✓ 처리했어요"); // taste-skill-ignore: BE confirmation prefix (R4b), not UI
     await new Promise((r) => setTimeout(r, 50));
+    await userEvent.setup().click(screen.getByRole("button", { name: copy.today.doneFold(2) }));
     expect(screen.getByRole("checkbox", { name: copy.today.doneLabel("장보기") })).toHaveAttribute("aria-checked", "true");
   });
 
