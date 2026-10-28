@@ -52,3 +52,17 @@
     transition: none;
   }
 }
+/* The rows' own hairline is only between rows, so the first one under the fold line draws its own. */
+.panel {
+  position: relative;
+}
+.panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--rule-inset, var(--row-pad-x, var(--pad)));
+  border-top: 1px solid var(--rule);
+  z-index: 1;
+  pointer-events: none;
+}

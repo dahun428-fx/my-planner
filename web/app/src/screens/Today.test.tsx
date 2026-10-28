@@ -234,6 +234,9 @@ describe("Today", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: copy.today.doneFold(1) }));
     await user.click(screen.getByRole("checkbox", { name: copy.today.doneLabel("빨래 널기") }));
+    // It goes back up among the open rows at once, and the fold line goes with its last row.
+    expect(screen.getByRole("checkbox", { name: copy.today.checkLabel("빨래 널기") })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("button", { name: copy.today.doneFold(1) })).toBeNull();
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ action: "reopen_task", args: { id: 15 } });
   });
