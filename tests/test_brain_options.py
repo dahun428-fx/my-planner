@@ -514,3 +514,37 @@ async def test_claude_brain_records_session_id_before_result(tmp_path, monkeypat
     with pytest.raises(TimeoutError), anyio.fail_after(0.05):
         await brain.run("입력", session_id=None, run_ctx=ctx, max_turns=3, persist_session=False)
     assert ctx.brain_session_id == sid
+
+
+def test_classify_start_timeout_only_for_sdk_initialize_timeout():
+    from my_planner.harness.brain import START_TIMEOUT_MESSAGE
+
+    now = datetime(2026, 10, 28, tzinfo=UTC)
+    assert classify([], Exception(f"{START_TIMEOUT_MESSAGE}"), now) == ("error", "start_timeout", None)
+    assert classify([], Exception("Control request timeout: interrupt"), now) == ("error", "Exception", None)
+    assert classify([], RuntimeError(START_TIMEOUT_MESSAGE), now) == ("error", "RuntimeError", None)
+
+
+def test_set_start_timeout_writes_sdk_env_in_ms():
+    from my_planner.harness.brain import START_TIMEOUT_ENV, set_start_timeout
+
+    environ: dict[str, str] = {}
+    set_start_timeout(180, environ)
+    assert environ == {START_TIMEOUT_ENV: "180000"}
+
+
+async def test_start_timeout_on_resume_is_not_resume_failed(tmp_path, monkeypatch):
+    # CLI가 뜨지 않은 것은 세션이 깨진 것이 아니다: 대체 경로로 또 부르거나 세션 id를 지우지 않게(리뷰 BLOCKER)
+    from my_planner.harness import brain as brain_mod
+
+    async def slow_start_query(*, prompt, options):
+        raise Exception(brain_mod.START_TIMEOUT_MESSAGE)  # noqa: TRY002 - SDK가 이렇게 올린다
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(brain_mod, "query", slow_start_query)
+    monkeypatch.setattr(brain_mod, "build_planner_server", lambda tools, ctx: {"type": "sdk"})
+    monkeypatch.setattr(brain_mod, "build_options", lambda **kw: None)
+    b = brain_mod.ClaudeBrain(lambda: None, tmp_path, max_turns=10)
+    result = await b.run("hi", session_id="s1", run_ctx=RunContext(conversation_id=1, run_id=None, events=[]))
+    assert (result.status, result.error, result.resume_failed) == ("error", "start_timeout", False)
+    assert result.session_id == "s1"

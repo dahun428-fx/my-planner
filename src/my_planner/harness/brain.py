@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Callable
+import os
+from collections.abc import AsyncIterator, Callable, MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -40,6 +41,18 @@ BRAIN_ENV = {
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
 }
+
+
+# SDK가 CLI 시작(initialize) 답을 기다리는 시간. SDK는 이 값을 파이썬 프로세스 환경에서 밀리초로 읽고 60초보다
+# 짧으면 60초를 쓴다(claude_agent_sdk `_internal/client.py`). 넘으면 평범한 `Exception("Control request timeout:
+# initialize")`이 난다
+START_TIMEOUT_ENV = "CLAUDE_CODE_STREAM_CLOSE_TIMEOUT"
+START_TIMEOUT_MESSAGE = "Control request timeout: initialize"
+
+
+def set_start_timeout(seconds: float, environ: MutableMapping[str, str] = os.environ) -> None:
+    """CLI 시작 대기 시간을 정한다(`[brain] start_timeout_s`). 시작할 때 한 번 부른다."""
+    environ[START_TIMEOUT_ENV] = str(round(seconds * 1000))
 
 
 @dataclass
@@ -164,7 +177,12 @@ def classify(
     ):
         return "max_turns", None, None
 
-    # 4. 그 밖의 예외나 is_error=True. error에는 로그용 종류만 담는다(본문 없음).
+    # 4. CLI가 시작 대기 시간 안에 뜨지 않았다. SDK가 종류 없는 Exception으로만 알려 여기서만 문구를 본다.
+    #    디스패처는 이 오류를 다시 부르지 않는다(기계가 느린 상태라 같은 대기를 되풀이할 뿐이다)
+    if exc is not None and type(exc) is Exception and str(exc).startswith(START_TIMEOUT_MESSAGE):
+        return "error", "start_timeout", None
+
+    # 5. 그 밖의 예외나 is_error=True. error에는 로그용 종류만 담는다(본문 없음).
     if exc is not None:
         return "error", type(exc).__name__, None
     if any(r.is_error for r in results):
@@ -191,8 +209,8 @@ def detect_resume_failed(session_id: str | None, messages: list[object], status:
 class ClaudeBrain:
     """Claude Agent SDK로 두뇌를 부른다. 호출마다 `planner` 서버를 새로 만든다.
 
-    `cli_path`는 번들 CLI가 망가졌을 때를 위한 비상용 인자다. 설정 파일에는 두지 않고,
-    `app.py`도 넘기지 않는다(S3: 번들 CLI 사용).
+    `cli_path`: 번들 CLI 대신 쓸 CLI. 기본은 번들 CLI(S3)이고, `config.local.toml`의 `[brain] cli_path`가 있으면
+    `app.py`가 넘긴다(느린 디스크의 번들 대신 빠른 디스크의 사본, 2026-10-28 진단).
     """
 
     def __init__(
@@ -264,7 +282,8 @@ class ClaudeBrain:
             turns=result.num_turns if result else 0,
             status=status,
             error=error,
-            resume_failed=detect_resume_failed(session_id, messages, status),
+            # CLI가 뜨지 않은 것은 세션이 깨진 것이 아니다: 새 세션 대체 경로로 또 부르거나 세션 id를 지우지 않게
+            resume_failed=error != "start_timeout" and detect_resume_failed(session_id, messages, status),
             retry_at=retry_at,
         )
 

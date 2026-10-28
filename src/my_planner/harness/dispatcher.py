@@ -1249,6 +1249,8 @@ class Dispatcher:
             for delay in MESSAGE_RETRY_DELAYS_S:
                 if result.status != "error":
                     break
+                if result.error == "start_timeout":  # CLI가 대기 시간 안에 뜨지 않았다: 또 기다리게 하지 않는다
+                    break
                 if run_ctx.events:  # 도구가 이미 데이터를 바꿨다: 다시 부르지 않는다(중복 쓰기 방지, 스펙 5.4-3)
                     break
                 if self._capped():  # 다시 부르기 전마다 하루 상한을 본다
@@ -2059,10 +2061,11 @@ class Dispatcher:
     def _may_rerun(self, run: Run, result: BrainResult) -> bool:
         """두뇌 단계 오류는 도구 이벤트가 하나도 없고 한계 안일 때만 한 번 다시 실행한다.
 
-        `auth_error`, `rate_limited`, `max_turns`는 다시 실행하지 않는다(티켓 10이 따로 다룬다).
+        `auth_error`, `rate_limited`, `max_turns`는 다시 실행하지 않는다(티켓 10이 따로 다룬다). CLI가 시작 대기 시간
+        안에 뜨지 않은 오류(`start_timeout`)도 다시 실행하지 않는다: 직렬 작업자를 또 그만큼 막는다.
         """
         assert self.runs is not None
-        if result.status != "error":
+        if result.status != "error" or result.error == "start_timeout":
             return False
         current = self.runs.get(run.id)
         if current is None or current.attempt >= MAX_RUN_ATTEMPTS or self.runs.has_tool_events(run.id):

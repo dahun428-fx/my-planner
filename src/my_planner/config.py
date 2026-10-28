@@ -178,6 +178,15 @@ class PhotosConfig(_Model):
     cleanup: bool = True
 
 
+class BrainConfig(_Model):
+    """두뇌 CLI 띄우기. `start_timeout_s`: CLI가 시작(initialize)에 답할 때까지 기다리는 초. SDK 기본 60초는 메모리가 모자란
+    노트북의 첫 실행에서 넘친다(2026-10-28 진단). `limits.brain_timeout_s`보다 작게 둔다. `cli_path`: 번들 CLI 대신 쓸
+    `claude.exe`(빠른 디스크에 둔 사본 등). 기계마다 다르니 `config.local.toml`에 둔다."""
+
+    start_timeout_s: float = Field(default=180, ge=60)
+    cli_path: Path | None = None
+
+
 class NotifyConfig(_Model):
     default_primary: Literal["telegram", "app"] = "app"  # app_state.notify_primary가 없을 때
 
@@ -209,6 +218,7 @@ class Settings(_Model):
     api: ApiConfig = ApiConfig()
     notify: NotifyConfig = NotifyConfig()
     photos: PhotosConfig = PhotosConfig()
+    brain: BrainConfig = BrainConfig()
     api_token: SecretStr | None = None  # .env의 API_TOKEN. 없거나 짧으면 API를 열지 않는다
     # .env의 BODY_TOKEN(SP8 7.2). `POST /body`만 된다. 없거나 짧거나 API_TOKEN과 같으면 그 경로만 열지 않는다
     body_token: SecretStr | None = None
@@ -270,7 +280,7 @@ def load_settings(root: Path) -> Settings:
     runtime = data.get("runtime")
     dev = isinstance(runtime, dict) and runtime.get("role") == "dev"
     secrets = (_DevSecrets if dev else _Secrets)(_env_file=root / ".env")  # type: ignore[call-arg]
-    return Settings(
+    settings = Settings(
         telegram_bot_token=secrets.telegram_bot_token,
         owner_telegram_id=secrets.owner_telegram_id,
         api_token=secrets.api_token,
@@ -279,3 +289,7 @@ def load_settings(root: Path) -> Settings:
         paths=PathsConfig.for_root(root),
         **data,
     )
+    # 시작 대기가 호출 상한보다 길면 상한(error="timeout", 재시도 대상)이 먼저 터져 시작 실패를 알아보지 못한다
+    if settings.brain.start_timeout_s >= settings.limits.brain_timeout_s:
+        raise ValueError("brain.start_timeout_s는 limits.brain_timeout_s보다 작아야 한다")
+    return settings

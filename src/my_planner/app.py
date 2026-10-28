@@ -41,7 +41,7 @@ from my_planner.config import (
     resolve_root,
 )
 from my_planner.domain import ConversationKind, LoopKey, RunContext
-from my_planner.harness.brain import Brain, ClaudeBrain
+from my_planner.harness.brain import Brain, ClaudeBrain, set_start_timeout
 from my_planner.harness.conversations import ConversationRouter
 from my_planner.harness.delivery import Delivery, PushSender, WebPushSender
 from my_planner.harness.dispatcher import Dispatcher, Outbound, Sender
@@ -516,6 +516,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
             task.add_done_callback(restarting.remove)
             await asyncio.shield(task)
 
+        set_start_timeout(settings.brain.start_timeout_s)  # SDK 기본 60초는 느린 첫 실행에서 넘친다
         parts = build_be(
             settings,
             conn,
@@ -524,6 +525,7 @@ async def _serve_counted(settings: Settings, clock: Clock, errors: ErrorCounter)
                 tools_factory=lambda: tools,
                 workdir=paths.state_dir / "brain-workdir",
                 max_turns=settings.limits.max_turns,
+                cli_path=settings.brain.cli_path,
             ),
             sender_factory=lambda tasks: DisabledTelegramSender() if bot is None else TelegramSender(
                 bot, _owner(settings), tasks=tasks, curve=CurveRepo(tasks.conn, clock),
