@@ -107,25 +107,38 @@ async function openSheet(props: Partial<Parameters<typeof ChatSheet>[0]> = {}) {
   return { user, input };
 }
 
-/** Presses "사진" and picks `files` from the library. */
+/** Opens the (+) menu and gives its item `name` (copy.chat.camera or copy.photos.button). */
+async function menuItem(user: ReturnType<typeof userEvent.setup>, name: string) {
+  const plus = screen.getByRole("button", { name: copy.chat.attach });
+  if (plus.getAttribute("aria-expanded") !== "true") await user.click(plus);
+  return screen.getByRole("menuitem", { name });
+}
+
+/** Presses (+) → "사진" and picks `files` from the library. */
 async function pick(user: ReturnType<typeof userEvent.setup>, files: File[]) {
-  await user.click(screen.getByRole("button", { name: copy.photos.button }));
+  await user.click(await menuItem(user, copy.photos.button));
   await user.upload(pickerInput(), files);
 }
 
 const tray = () => screen.queryByRole("list", { name: copy.chat.tray });
 
 describe("ChatSheet photos (SP10 7.5)", () => {
-  it("two buttons left of the field: 카메라 opens the camera only, 사진 the library with many; no in-app camera", async () => {
+  it("a (+) at the field's leading edge opens a menu: 카메라 opens the camera only, 사진 the library with many; no in-app camera", async () => {
     const media = vi.fn();
     vi.stubGlobal("navigator", Object.assign(Object.create(navigator), { mediaDevices: { getUserMedia: media } }));
-    await openSheet();
-    const camera = screen.getByRole("button", { name: copy.chat.camera });
-    const photos = screen.getByRole("button", { name: copy.photos.button });
-    // Both sit before the field in the composer.
+    const { user } = await openSheet();
+    const plus = screen.getByRole("button", { name: copy.chat.attach });
+    expect(plus).toHaveAttribute("aria-haspopup", "menu");
+    expect(plus).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("menu")).toBeNull();
+    // Inside the field's box, before the text.
     const field = screen.getByRole("textbox", { name: copy.chat.inputLabel });
-    expect(camera.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(photos.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(plus.parentElement!.parentElement).toBe(field.parentElement);
+    expect(plus.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const camera = await menuItem(user, copy.chat.camera);
+    const photos = screen.getByRole("menuitem", { name: copy.photos.button });
+    expect(plus).toHaveAttribute("aria-expanded", "true");
+    expect(within(screen.getByRole("menu", { name: copy.chat.attach })).getAllByRole("menuitem")).toEqual([camera, photos]);
     expect(camera.querySelector("svg")).not.toBeNull();
     expect(photos.querySelector("svg")).not.toBeNull();
     expect(cameraInput()).toHaveAttribute("capture", "environment");
@@ -212,7 +225,7 @@ describe("ChatSheet photos (SP10 7.5)", () => {
     const t = await screen.findByRole("list", { name: copy.chat.tray });
     expect(within(t).getAllByRole("listitem")).toHaveLength(4);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.sendLimit));
-    const button = screen.getByRole("button", { name: copy.photos.button });
+    const button = await menuItem(user, copy.photos.button);
     expect(button).toHaveAttribute("aria-disabled", "true");
     vi.mocked(shrinkPhoto).mockClear();
     await user.click(button);
@@ -277,7 +290,7 @@ describe("ChatSheet photos (SP10 7.5)", () => {
     const bodies = serveChat(() => sseResponse(answer("m-1", 5, "받았어요")));
     const { user, input } = await openSheet();
     await user.type(input, "칠판");
-    await user.click(screen.getByRole("button", { name: copy.chat.camera }));
+    await user.click(await menuItem(user, copy.chat.camera));
     await user.upload(cameraInput(), picture());
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(be.uploads.map((u) => u.origin)).toEqual(["chat"]);
@@ -375,31 +388,93 @@ describe("ChatSheet photos (SP10 7.5)", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("offline: both buttons are off and no tray is taken", async () => {
+  it("offline: the (+) is off and no tray is taken", async () => {
     renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />, { conn: "offline" });
-    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.camera })).toBeDisabled());
-    expect(screen.getByRole("button", { name: copy.photos.button })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: copy.chat.attach })).toBeDisabled());
   });
 
   it("the check-in screen's box has no photo buttons", async () => {
     renderWithProviders(<ChatSheet open embedded onClose={() => {}} conversationId={null} checkinId={341} />);
     await screen.findByRole("textbox", { name: copy.chat.inputLabel });
-    expect(screen.queryByRole("button", { name: copy.chat.camera })).toBeNull();
-    expect(screen.queryByRole("button", { name: copy.photos.button })).toBeNull();
+    expect(screen.queryByRole("button", { name: copy.chat.attach })).toBeNull();
+  });
+});
+
+describe("ChatSheet (+) menu", () => {
+  it("Escape closes the menu alone (not the sheet) and gives the focus back to the (+); arrows move between items", async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={onClose} conversationId={null} />);
+    const input = await screen.findByRole("textbox", { name: copy.chat.inputLabel });
+    await waitFor(() => expect(input).toBeEnabled());
+    const plus = screen.getByRole("button", { name: copy.chat.attach });
+    plus.focus();
+    await user.keyboard("{Enter}");
+    const menu = screen.getByRole("menu");
+    expect(plus).toHaveAttribute("aria-controls", menu.id);
+    const [camera, photos] = within(menu).getAllByRole("menuitem");
+    expect(camera).toHaveFocus();
+    expect(camera).toHaveAttribute("tabindex", "-1");
+    await user.keyboard("{ArrowDown}");
+    expect(photos).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(camera).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(photos).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(camera).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(photos).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(plus).toHaveFocus();
+    expect(plus).toHaveAttribute("aria-expanded", "false");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a tap leaves the focus in the field; choosing from the keyboard gives it back to the (+)", async () => {
+    photoBe();
+    const { user, input } = await openSheet();
+    await user.click(input);
+    const plus = screen.getByRole("button", { name: copy.chat.attach });
+    await user.click(plus);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(input).toHaveFocus();
+    await user.click(plus);
+    plus.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{ArrowDown}{Enter}"); // 사진
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(plus).toHaveFocus();
+  });
+
+  it("a press outside or a second press on (+) closes it; choosing an item closes it", async () => {
+    photoBe();
+    const { user, input } = await openSheet();
+    const plus = screen.getByRole("button", { name: copy.chat.attach });
+    await user.click(plus);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(plus);
+    expect(screen.queryByRole("menu")).toBeNull();
+    await user.click(plus);
+    await user.click(input);
+    expect(screen.queryByRole("menu")).toBeNull();
+    await pick(user, [picture()]);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });
 
 // PH-07 fix round 1: the camera never loses a photo unseen, blob: addresses are let go (12장),
 // the SP9 metadata stays with photos, a refused message's photos still open, Tab stays in the viewer.
 describe("ChatSheet photos, fix round 1", () => {
-  const pressCamera = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: copy.chat.camera }));
+  const pressCamera = async (user: ReturnType<typeof userEvent.setup>) => user.click(await menuItem(user, copy.chat.camera));
 
   it("카메라 with 4 waiting: dimmed, says the 4장 sentence, the camera does not open, and a late photo is not taken unseen", async () => {
     const be = photoBe();
     const { user } = await openSheet();
     await pick(user, [picture(1), picture(2), picture(3), picture(4)]);
     await waitFor(() => expect(within(tray()!).getAllByRole("listitem")).toHaveLength(4));
-    const camera = screen.getByRole("button", { name: copy.chat.camera });
+    const camera = await menuItem(user, copy.chat.camera);
     expect(camera).toHaveAttribute("aria-disabled", "true");
     const opened = vi.spyOn(cameraInput(), "click");
     await pressCamera(user);
@@ -424,17 +499,24 @@ describe("ChatSheet photos, fix round 1", () => {
     const gate = gatedResponse(answer("m-1", 5, "받았어요"), [1]);
     serveChat(() => gate.response());
     const { user } = await openSheet();
-    const camera = screen.getByRole("button", { name: copy.chat.camera });
     await pick(user, [picture()]);
     await screen.findByRole("list", { name: copy.chat.tray });
     await user.click(screen.getByRole("button", { name: copy.chat.send }));
-    await waitFor(() => expect(camera).toBeDisabled()); // uploading
+    // The menu stays open from here: its 카메라 follows the sending, 사진 stays on.
+    const camera = await menuItem(user, copy.chat.camera);
+    // Off stays focusable (a menu item that goes away would drop the focus behind the sheet).
+    await waitFor(() => expect(camera).toHaveAttribute("aria-disabled", "true")); // uploading
+    expect(screen.getByRole("menuitem", { name: copy.photos.button })).not.toHaveAttribute("aria-disabled");
+    const opened = vi.spyOn(cameraInput(), "click");
+    await user.click(camera);
+    expect(opened).not.toHaveBeenCalled();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
     releaseUpload();
     await screen.findByRole("button", { name: copy.chat.stop });
-    expect(camera).toBeDisabled(); // answering
+    expect(camera).toHaveAttribute("aria-disabled", "true"); // answering
     gate.release();
     expect(await screen.findByText("받았어요")).toBeInTheDocument();
-    await waitFor(() => expect(camera).toBeEnabled());
+    await waitFor(() => expect(camera).not.toHaveAttribute("aria-disabled"));
   });
 
   it("✕ revokes that photo's tray address", async () => {

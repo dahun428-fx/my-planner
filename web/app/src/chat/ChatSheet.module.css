@@ -327,11 +327,16 @@
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }
-/* SP10 7.5: 카메라 and 사진, left of the field: 44px targets side by side, drawn like the head's icons. */
+/* The (+) at the field's leading edge, centred on the first line as the × is at the trailing one;
+   the field keeps that much room at its left so the text never runs under it. */
 .attach {
-  flex: none;
+  position: absolute;
+  top: 2px;
+  left: 2px;
   display: flex;
-  margin-bottom: 2px;
+}
+.field[data-attach] .input {
+  padding-left: var(--control-h);
 }
 .attachButton {
   display: inline-flex;
@@ -345,6 +350,65 @@
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.attachButton[data-open] {
+  color: var(--text);
+  transform: rotate(45deg);
+}
+.attachButton[data-open]:active:not(:disabled) {
+  transform: rotate(45deg) scale(var(--press-scale));
+}
+/* The menu the (+) opens: a popover (layer 20) of paper above the field, set off by a thin line and the
+   surface tone, no shadow (DESIGN.md: shadows are the sheet's and the toast's alone). */
+.attachMenu {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-container);
+  background: var(--surface);
+}
+.attachItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-callout);
+  text-align: left;
+  cursor: pointer;
+}
+.attachItem svg {
+  color: var(--text-2);
+}
+.attachItem:hover:not([aria-disabled="true"]),
+.attachItem:focus-visible {
+  background: var(--raised);
+  outline: none;
+}
+.attachItem[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+.attachItem[aria-disabled="true"] svg {
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .attachButton[data-open],
+  .attachButton[data-open]:active:not(:disabled) {
+    transform: none;
+  }
 }
 .attachButton:disabled,
 .attachButton[aria-disabled="true"] {

@@ -294,6 +294,7 @@ export const copy = {
     // SP10 7.5: the camera button's name (the library one is copy.photos.button "사진"), the tray
     // above the field and its ✕. The sentences are copy.photos (8장).
     camera: "카메라", // (new)
+    attach: "사진 넣기", // (new) the (+) at the field's leading edge and the menu it opens
     tray: "보낼 사진", // (new)
     unpick: (n: number, total: number) => `사진 ${n}/${total} 빼기`, // (new)
     undo: "되돌리기",
