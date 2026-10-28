@@ -408,20 +408,44 @@ describe("ChatSheet (+) menu", () => {
     const input = await screen.findByRole("textbox", { name: copy.chat.inputLabel });
     await waitFor(() => expect(input).toBeEnabled());
     const plus = screen.getByRole("button", { name: copy.chat.attach });
-    await user.click(plus);
-    const [camera, photos] = within(screen.getByRole("menu")).getAllByRole("menuitem");
+    plus.focus();
+    await user.keyboard("{Enter}");
+    const menu = screen.getByRole("menu");
+    expect(plus).toHaveAttribute("aria-controls", menu.id);
+    const [camera, photos] = within(menu).getAllByRole("menuitem");
     expect(camera).toHaveFocus();
+    expect(camera).toHaveAttribute("tabindex", "-1");
     await user.keyboard("{ArrowDown}");
     expect(photos).toHaveFocus();
     await user.keyboard("{ArrowDown}");
     expect(camera).toHaveFocus();
     await user.keyboard("{ArrowUp}");
     expect(photos).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(camera).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(photos).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).toBeNull();
     expect(plus).toHaveFocus();
     expect(plus).toHaveAttribute("aria-expanded", "false");
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("a tap leaves the focus in the field; choosing from the keyboard gives it back to the (+)", async () => {
+    photoBe();
+    const { user, input } = await openSheet();
+    await user.click(input);
+    const plus = screen.getByRole("button", { name: copy.chat.attach });
+    await user.click(plus);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(input).toHaveFocus();
+    await user.click(plus);
+    plus.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{ArrowDown}{Enter}"); // 사진
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(plus).toHaveFocus();
   });
 
   it("a press outside or a second press on (+) closes it; choosing an item closes it", async () => {
@@ -480,14 +504,19 @@ describe("ChatSheet photos, fix round 1", () => {
     await user.click(screen.getByRole("button", { name: copy.chat.send }));
     // The menu stays open from here: its 카메라 follows the sending, 사진 stays on.
     const camera = await menuItem(user, copy.chat.camera);
-    await waitFor(() => expect(camera).toBeDisabled()); // uploading
-    expect(screen.getByRole("menuitem", { name: copy.photos.button })).toBeEnabled();
+    // Off stays focusable (a menu item that goes away would drop the focus behind the sheet).
+    await waitFor(() => expect(camera).toHaveAttribute("aria-disabled", "true")); // uploading
+    expect(screen.getByRole("menuitem", { name: copy.photos.button })).not.toHaveAttribute("aria-disabled");
+    const opened = vi.spyOn(cameraInput(), "click");
+    await user.click(camera);
+    expect(opened).not.toHaveBeenCalled();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
     releaseUpload();
     await screen.findByRole("button", { name: copy.chat.stop });
-    expect(camera).toBeDisabled(); // answering
+    expect(camera).toHaveAttribute("aria-disabled", "true"); // answering
     gate.release();
     expect(await screen.findByText("받았어요")).toBeInTheDocument();
-    await waitFor(() => expect(camera).toBeEnabled());
+    await waitFor(() => expect(camera).not.toHaveAttribute("aria-disabled"));
   });
 
   it("✕ revokes that photo's tray address", async () => {
