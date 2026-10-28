@@ -297,6 +297,10 @@ export const copy = {
     attach: "사진 넣기", // (new) the (+) at the field's leading edge and the menu it opens
     tray: "보낼 사진", // (new)
     unpick: (n: number, total: number) => `사진 ${n}/${total} 빼기`, // (new)
+    // (new) a message held down: the menu's one item and the toast after it
+    copy: "복사",
+    copied: "복사했어요",
+    copyFailed: "복사하지 못했어요",
     undo: "되돌리기",
     undone: "되돌렸어요",
     // SP9 9.6: the one line of a change before R4b (no confirmation came, only undo ids).
