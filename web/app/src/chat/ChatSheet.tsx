@@ -27,6 +27,7 @@ import { ConversationList } from "./ConversationList";
 import { loadHistory, type Meta } from "./history";
 import { saveParts } from "./localParts";
 import { MessageView } from "./MessageView";
+import { AttachMenu } from "./AttachMenu";
 import { PhotoTray, type TrayPhoto, TRAY_MAX, trayPhoto } from "./PhotoTray";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
 import { QuickChips, WRITING_ID } from "./QuickChips";
@@ -843,35 +844,29 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       {!embedded && <QuickChips chips={chips} disabled={!canSend || uploading} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
       {!embedded && <PhotoTray photos={tray} onRemove={unpick} disabled={uploading} />}
       <form className={styles.composer} onSubmit={onSubmit}>
-        {!embedded && (
-          // SP10 7.5: left of the field, in the chat sheet only. No camera screen of the app's own
-          // (getUserMedia): the phone's camera opens through the file input.
-          <div className={styles.attach}>
-            <button
-              type="button"
-              className={`${styles.attachButton} pressable`}
-              aria-label={copy.chat.camera}
-              aria-disabled={tray.length >= TRAY_MAX ? true : undefined}
-              disabled={readOnly || loading || busy || uploading}
-              onClick={pressCamera}
-            >
-              <Icon name="camera" />
-            </button>
-            <button
-              type="button"
-              className={`${styles.attachButton} pressable`}
-              aria-label={copy.photos.button}
-              aria-disabled={tray.length >= TRAY_MAX ? true : undefined}
-              disabled={readOnly || loading}
-              onClick={pickPhotos}
-            >
-              <Icon name="photo" />
-            </button>
-            <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden tabIndex={-1} onChange={(e) => void onCamera(e)} />
-            <input ref={pickerInput} type="file" accept="image/*" multiple hidden tabIndex={-1} onChange={(e) => void onPicked(e)} />
-          </div>
-        )}
-        <div className={styles.field}>
+        <div className={styles.field} data-attach={embedded ? undefined : ""}>
+          {!embedded && (
+            // SP10 7.5: in the chat sheet only, behind the (+) at the field's leading edge. No camera
+            // screen of the app's own (getUserMedia): the phone's camera opens through the file input.
+            <>
+              <AttachMenu
+                disabled={readOnly || loading}
+                items={[
+                  {
+                    key: "camera",
+                    label: copy.chat.camera,
+                    icon: "camera",
+                    disabled: busy || uploading,
+                    dimmed: tray.length >= TRAY_MAX,
+                    onSelect: pressCamera,
+                  },
+                  { key: "photo", label: copy.photos.button, icon: "photo", dimmed: tray.length >= TRAY_MAX, onSelect: pickPhotos },
+                ]}
+              />
+              <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden tabIndex={-1} onChange={(e) => void onCamera(e)} />
+              <input ref={pickerInput} type="file" accept="image/*" multiple hidden tabIndex={-1} onChange={(e) => void onPicked(e)} />
+            </>
+          )}
           <textarea
             ref={field}
             className={styles.input}

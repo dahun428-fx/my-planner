@@ -70,7 +70,7 @@ test("chat photos: pick two, tray, send uploads in order and sends data-photo pa
   await page.getByRole("button", { name: copy.chat.launcher }).click();
   const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
   await expect(input).toBeEnabled();
-  await expect(page.getByRole("button", { name: copy.chat.camera })).toBeVisible();
+  await expect(page.getByRole("button", { name: copy.chat.attach })).toBeVisible();
   // Two photos drawn in the page, larger than 2,048 (as a phone's would be).
   const png = await page.evaluate(() => {
     const c = document.createElement("canvas");
@@ -83,7 +83,8 @@ test("chat photos: pick two, tray, send uploads in order and sends data-photo pa
   });
   const file = (name: string) => ({ name, mimeType: "image/png", buffer: Buffer.from(png, "base64") });
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: copy.photos.button }).click();
+  await page.getByRole("button", { name: copy.chat.attach }).click();
+  await page.getByRole("menuitem", { name: copy.photos.button }).click();
   const fc = await chooser;
   expect(fc.isMultiple()).toBe(true);
   await fc.setFiles([file("IMG_0001.png"), file("IMG_0002.png")]);
