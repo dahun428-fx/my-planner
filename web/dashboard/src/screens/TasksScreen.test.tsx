@@ -30,7 +30,9 @@ describe("TasksScreen", () => {
   it("today order equals API groups", async () => {
     renderScreen();
     const panel = await screen.findByRole("region", { name: "오늘 (10/24 토)" });
-    expect(titles(panel)).toEqual(today.todos.map((t) => t.todo.title));
+    // the "done" group (struck through in the app) is not shown here, like the Telegram text
+    expect(titles(panel)).toEqual(today.todos.filter((t) => t.group !== "done").map((t) => t.todo.title));
+    expect(today.todos.some((t) => t.group === "done")).toBe(true);
     expect(within(panel).getByText("우선순위")).toBeInTheDocument();
     expect(within(panel).getByText("일정")).toBeInTheDocument();
     expect(within(panel).getByText("열린 할 일")).toBeInTheDocument();

@@ -132,6 +132,20 @@
           "note": "",
           "priority": null,
           "completed_at": null
+        },
+        {
+          "id": 2,
+          "title": "동네 도서관 책 반납",
+          "status": "done",
+          "planned_for": "2026-10-24",
+          "scheduled_at": null,
+          "parent_id": null,
+          "areas": [
+            "learning"
+          ],
+          "note": "",
+          "priority": null,
+          "completed_at": "2026-10-24T02:20:00Z"
         }
       ]
     },

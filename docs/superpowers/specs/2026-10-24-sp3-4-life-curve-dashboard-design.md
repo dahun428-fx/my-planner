@@ -593,6 +593,7 @@ CREATE TABLE status_titles (
 - `day_boundary`: 논리적 날짜가 바뀌는 시각 `HH:MM`(설정, 기본 `04:00`).
 - `brief`: 오늘 논리적 날짜에 보낸(`done`) `morning_brief` 또는 `return` 회차의 `runs.outbound_text`. 없으면 `null`.
 - `todos`: `today_text`의 묶음 순서 그대로(우선순위 → 일정 → 열린 할 일, 이미 나온 것은 빼고, 전에 잡은 일 포함). 묶음 이름 `priority` | `scheduled` | `open`.
+  2026-10-27 추가: 맨 뒤 `done` 묶음은 오늘(논리적 날짜) 끝낸 일 가운데 열려 있었다면 여기 나왔을 것(오늘 우선순위, 하려는 날이 오늘이나 그 전)을 끝낸 순서로 준다. 앱은 체크한 줄을 지우지 않고 취소선으로 남긴다. 텔레그램 `/today`와 대시보드는 `done`을 보이지 않는다.
 - `cards`(운영 앱용): `app_cards`의 고정 카드(`unpinned_at IS NULL`, `sort_order` 순). `props`에 할 일 id가 있으면 BE가 지금 값으로 채운 `data`를 붙인다(카드가 낡지 않게). 대시보드는 `cards`를 쓰지 않는다.
 - 운영 앱 스레드가 보낸 모양 `{date, brief, condition, todos[], cards[]}`에 `weekday`, `checkins`, `todos[].group`을 더했다.
 
@@ -609,6 +610,7 @@ CREATE TABLE status_titles (
 
 할 일이 없는 날도 `days`에 넣는다(`todos: []`). 대시보드가 빈 날을 같은 칸으로 그리기 위해서다.
 `undated`(2026-10-25 추가)는 날짜 없는 열린 할 일이다(초안, 첫 걸음, 이번 주 우선순위는 뺀다. 앞선 BE에는 없으니 앱은 없으면 `[]`로 읽는다). 이것이 없을 때는 날짜 없이 들어간 할 일이 앱 어디에도 보이지 않았다. 텔레그램 `/week`는 그대로다.
+2026-10-27 추가: `priorities`와 날마다 `todos`는 열린 일 다음에 끝낸 일을 주고, `undated`는 열린 일 다음에 이번 주에 끝낸 날짜 없는 일을 끝낸 순서로 준다(앱이 취소선으로 남긴다). 텔레그램 `/week`와 대시보드는 열린 일만 보인다.
 
 #### 6.3.4 `GET /conditions?from=YYYY-MM-DD&to=YYYY-MM-DD`
 
@@ -682,7 +684,7 @@ CREATE TABLE status_titles (
 - `cadence`는 필수이고 `week` | `month` | `quarter` | `year`다(오늘 우선순위는 `GET /today`의 `priority` 묶음). `period`는 선택이고, 없으면 지금 기간(`period_of(cadence, 오늘 논리적 날짜)`)이다. `period`는 `priorities.period` 형식(`2026-W43`, `2026-10`, `2026-Q4`, `2026`)이어야 하고, 주기와 맞지 않으면 `400 invalid_request`다.
 - `items`는 그 기간의 `priorities` 행을 `rank` 순서대로 `Todo`(6.3)로 준다. 초안과 소프트 삭제한 할 일을 가리키는 행은 뺀다. 우선순위가 없으면 `items: []`다.
 - 형식은 맞아도 없는 기간(53주가 없는 해의 `W53`)도 `400 invalid_request`다.
-- `todos`(2026-10-25 추가, 없으면 `[]`)는 그 기간(`period_bounds`, 첫날~마지막 날)에 하려는 열린 할 일을 날짜순으로 준다(초안 뺌). 앱은 탭에서 우선순위 아래 "{기간} 할 일"로 줄마다 날짜를 붙여 보인다. 이것이 없을 때는 이번 달 탭에 우선순위만 나와 "10월 28일 할 일"이 보이지 않았다.
+- `todos`(2026-10-25 추가, 없으면 `[]`)는 그 기간(`period_bounds`, 첫날~마지막 날)에 하려는 열린 할 일을 날짜순으로 준다(초안 뺌). 앱은 탭에서 우선순위 아래 "{기간} 할 일"로 줄마다 날짜를 붙여 보인다. 이것이 없을 때는 이번 달 탭에 우선순위만 나와 "10월 28일 할 일"이 보이지 않았다. 2026-10-27부터 열린 일 뒤에 그 기간 할 일 가운데 이번 주에 끝낸 것을 끝낸 순서로 붙인다(한 해치가 다 붙지 않게 이번 주로 자른다).
 
 #### 6.3.8 `GET /drafts` (운영 앱용)
 

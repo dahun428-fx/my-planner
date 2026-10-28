@@ -17,6 +17,7 @@ from datetime import datetime as _datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from my_planner.clock import Clock, from_iso, local, logical_date, to_iso
+from my_planner.domain import TaskStatus
 from my_planner.probe import command_probe_on
 from my_planner.store.repos.state import PAUSE_UNTIL_KEY, StateRepo
 from my_planner.store.repos.tasks import Task, TasksRepo
@@ -142,10 +143,14 @@ def week_text(
     for o in events.occurrences(view.start, view.end) if events is not None else []:
         by_day.setdefault(o.date, []).append(o)
     out = [f"이번 주 ({_md(view.start)}~{_md(view.end)})"]
-    if view.priorities:
-        out.append("우선순위\n" + _numbered(view.priorities))
+    # 뷰에 든 끝낸 일(앱의 취소선 줄)은 텔레그램 글에 넣지 않는다
+    prios = [t for t in view.priorities if t.status is TaskStatus.open]
+    if prios:
+        out.append("우선순위\n" + _numbered(prios))
     for day in view.days:
-        lines = [_event_line(o, tz) for o in by_day.get(day.date, [])] + [f"- {t.title}" for t in day.tasks]
+        lines = [_event_line(o, tz) for o in by_day.get(day.date, [])] + [
+            f"- {t.title}" for t in day.tasks if t.status is TaskStatus.open
+        ]
         if not lines:
             continue
         mark = " (오늘)" if day.is_today else ""

@@ -243,7 +243,8 @@ class TodayBrief(_Model):
 
 
 class TodayTodo(_Model):
-    group: Literal["priority", "scheduled", "open"]  # "scheduled"는 SP9부터 죽은 갈래(열린 할 일에 시각이 없다)
+    # "scheduled"는 SP9부터 죽은 갈래(열린 할 일에 시각이 없다). "done"은 오늘 끝낸 일(맨 뒤, 취소선으로 남긴다)
+    group: Literal["priority", "scheduled", "open", "done"]
     todo: Todo
 
 
@@ -486,7 +487,8 @@ class WeekDay(_Model):
 
 class Week(_Model):
     """`GET /week` (6.3.3): 할 일이 없는 날도 `days`에 7일 모두 든다. `undated`는 날짜 없는 열린 할 일이다(초안, 첫 걸음,
-    이번 주 우선순위는 뺀다)."""
+    이번 주 우선순위는 뺀다). 우선순위·날마다·`undated` 모두 열린 일 다음에 끝낸 일이 온다(날마다는 하려는 날 순,
+    `undated`는 이번 주에 끝낸 것을 끝낸 순서로)."""
 
     week: str
     start: str
@@ -509,7 +511,7 @@ class Conditions(_Model):
 
 
 class Priorities(_Model):
-    """`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌)이다.
+    """`GET /priorities` (6.3.7). `todos`는 그 기간에 하려는 열린 할 일(날짜순, 초안 뺌), 그 뒤에 그중 이번 주에 끝낸 일(끝낸 순서)이다.
     날짜가 그 기간에 있는 우선순위 할 일은 `items`와 `todos`에 둘 다 나온다."""
 
     cadence: Literal["week", "month", "quarter", "year"]

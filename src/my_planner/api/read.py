@@ -47,6 +47,7 @@ from my_planner.harness.chat_photos import leading_photo_ids, strip_marks
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
 from my_planner.harness.summaries import LIST_SUMMARY_CHARS
 from my_planner.status.snapshot import status_snapshot
+from my_planner.store.exports import week_bounds
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo
 from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.cards import CardsRepo
@@ -249,7 +250,13 @@ def get_priorities(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request
         start, end = period_bounds(cadence, period)
     except ValueError:  # 형식은 맞아도 없는 기간(53주가 없는 해의 W53, 0년)
         raise _bad("period가 cadence와 맞지 않아요.") from None
-    planned = tasks.list(status=TaskStatus.open, from_=start, to=end)  # 그 기간에 하려는 열린 할 일, 날짜순
+    # 그 기간에 하려는 열린 할 일(날짜순), 그 뒤에 그 기간 할 일 가운데 이번 주에 끝낸 것(끝낸 순서, 체크해도 취소선으로
+    # 남는다). 한 해치 끝낸 일이 다 붙지 않게 이번 주로 자른다(`/week.undated`와 같다).
+    mon, sun = week_bounds(today)
+    planned = tasks.list(status=TaskStatus.open, from_=start, to=end) + [
+        t for t in reversed(tasks.list(status=TaskStatus.done, from_=mon, to=sun))
+        if t.planned_for is not None and start <= t.planned_for <= end
+    ]
     return dump(Priorities, {
         "cadence": cadence, "period": period, "items": [todo_dict(t, tasks, today) for t in items],
         "todos": [todo_dict(t, tasks, today) for t in planned],

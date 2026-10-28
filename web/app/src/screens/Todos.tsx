@@ -231,7 +231,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
       const readOnly = weekView.kind !== "live" || !writable;
       body = (
         <>
-          {w.priorities.length > 0 && <Group paper heading={copy.todos.weekPriorities}>{rows(w.priorities, readOnly)}</Group>}
+          {w.priorities.length > 0 && <Group paper heading={copy.todos.weekPriorities}>{rows(openFirst(w.priorities.map(show)), readOnly)}</Group>}
           {w.days.map((d) => {
             const [, m, day] = d.date.split("-").map(Number);
             if (d.todos.length === 0) {
@@ -248,7 +248,7 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
             );
           })}
           {/* An older BE (or a snapshot from before) has no `undated`. */}
-          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(undated, readOnly)}</Group>}
+          {undated.length > 0 && <Group paper heading={copy.todos.undated}>{rows(openFirst(undated.map(show)), readOnly)}</Group>}
         </>
       );
     }
@@ -274,12 +274,12 @@ export function Todos({ tab: requested = "week" }: { tab?: TodosTab }) {
     body = (
       <>
         <Group paper heading={copy.todos.periodPriorities(LABEL[tab])}>
-          {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(shownPrio.items, !writable)}
+          {shownPrio.items.length === 0 ? <Row title={copy.todos.noPriorities} /> : rows(openFirst(shownPrio.items.map(show)), !writable)}
         </Group>
         {planned.length > 0 && (
           <Group paper heading={copy.todos.periodTodos(LABEL[tab])}>
             {/* Not grouped by day, so each row says its day ("10월 28일"). */}
-            {planned.map((t) => row(t, !writable, copy.dateParts.monthDay(+t.planned_for!.slice(5, 7), +t.planned_for!.slice(8))))}
+            {openFirst(planned.map(show)).map((t) => row(t, !writable, copy.dateParts.monthDay(+t.planned_for!.slice(5, 7), +t.planned_for!.slice(8))))}
           </Group>
         )}
       </>
