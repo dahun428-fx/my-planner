@@ -52,6 +52,8 @@ import "../components/Qr.module.css";
 // chat sheet's chunk, out of the first screen's 180KB.
 import "../chat/ConversationList.module.css";
 import "../chat/QuickChips.module.css";
+// The hold-to-copy menu of a chat message, for the same reason.
+import "../chat/CopyHold.module.css";
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
 import "../ui/chat/cards.module.css";

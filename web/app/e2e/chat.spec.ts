@@ -109,3 +109,41 @@ test("chat photos: pick two, tray, send uploads in order and sends data-photo pa
   problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `securitypolicyviolation ${v}`));
   expect(problems).toEqual([]);
 });
+
+// A message held down in the built app (CSP on): the "복사" menu opens over it, one tap copies the
+// text the reader sees, the toast says so. Mine and the secretary's alike.
+test("hold to copy: my bubble and the secretary's answer", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: "http://127.0.0.1:4173" });
+  await seedConn(page);
+  await mockBe(page, { chat: [{ body: markdownSse("**내일 9시**에 치과 예약을 넣었어요.") }] });
+  await page.goto("/");
+  await page.getByRole("button", { name: copy.chat.launcher }).click();
+  const input = page.getByRole("textbox", { name: copy.chat.inputLabel });
+  await input.fill("내일 9시 치과 예약 넣어 줘");
+  await page.getByRole("button", { name: copy.chat.send }).click();
+  const answer = page.getByText("에 치과 예약을 넣었어요.");
+  await expect(answer).toBeVisible();
+
+  const holdOn = async (text: string) => {
+    const box = (await page.getByText(text).boundingBox())!;
+    await page.mouse.move(box.x + 8, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+  };
+
+  await holdOn("내일 9시 치과 예약 넣어 줘");
+  const item = page.getByRole("menuitem", { name: copy.chat.copy });
+  await expect(item).toBeVisible();
+  if (process.env.COPY_SHOTS) await page.screenshot({ path: `${process.env.COPY_SHOTS}/hold-mine.png` });
+  await item.click();
+  await expect(page.getByText(copy.chat.copied)).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("내일 9시 치과 예약 넣어 줘");
+
+  await holdOn("에 치과 예약을 넣었어요.");
+  await expect(item).toBeVisible();
+  if (process.env.COPY_SHOTS) await page.screenshot({ path: `${process.env.COPY_SHOTS}/hold-theirs.png` });
+  await item.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("내일 9시에 치과 예약을 넣었어요.");
+  await expect(item).toHaveCount(0);
+});

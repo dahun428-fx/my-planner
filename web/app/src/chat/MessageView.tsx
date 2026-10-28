@@ -8,6 +8,7 @@ import { useCatalog } from "../ui/CatalogProvider";
 import { registryNames, UiPart } from "../ui/registry";
 import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
+import { CopyHold } from "./CopyHold";
 import { isWriteKey } from "./quickChips";
 import styles from "./ChatSheet.module.css";
 
@@ -78,7 +79,7 @@ export function MessageView({
     const text = userText(message);
     const photos = messagePhotoIds(message);
     return (
-      <div className={styles.mine} data-message={message.id}>
+      <CopyHold side="mine" className={styles.mine} data-message={message.id}>
         {label && <p className={styles.chipLabel}>{label}</p>}
         {photos.length > 0 && (
           // SP10 7.5: small photos above the text, a grid of at most 4.
@@ -92,8 +93,12 @@ export function MessageView({
             ))}
           </ul>
         )}
-        {(text !== "" || photos.length === 0) && <p className={styles.bubble}>{text}</p>}
-      </div>
+        {(text !== "" || photos.length === 0) && (
+          <p className={styles.bubble} data-copy="">
+            {text}
+          </p>
+        )}
+      </CopyHold>
     );
   }
   // 11.4 (SP9 9.6): a line that ui_result already shows is left out, but never in a restored message.
@@ -101,10 +106,14 @@ export function MessageView({
   const restored = parts.some((p) => p.kind === "ui" && p.restored === true);
   const shown = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
   return (
-    <div className={styles.theirs} data-message={message.id}>
+    <CopyHold side="theirs" className={styles.theirs} data-message={message.id}>
       {shown.map((p, i) => {
         if (p.kind === "text") {
-          return <Markdown key={i} text={p.text} className={styles.text} />;
+          return (
+            <div key={i} data-copy="">
+              <Markdown text={p.text} className={styles.text} />
+            </div>
+          );
         }
         if (p.kind === "ui") {
           return (
@@ -115,6 +124,6 @@ export function MessageView({
         }
         return <ActivityLine key={i} confirmation={p.confirmation} undoable={p.undoIds.length > 0} />;
       })}
-    </div>
+    </CopyHold>
   );
 }
