@@ -124,12 +124,14 @@ test("hold to copy: my bubble and the secretary's answer", async ({ page, contex
   const answer = page.getByText("에 치과 예약을 넣었어요.");
   await expect(answer).toBeVisible();
 
+  // A finger held down: pointer events of a touch, past HOLD_MS (a mouse opens it by right-click).
   const holdOn = async (text: string) => {
-    const box = (await page.getByText(text).boundingBox())!;
-    await page.mouse.move(box.x + 8, box.y + box.height / 2);
-    await page.mouse.down();
+    const target = page.getByText(text);
+    const box = (await target.boundingBox())!;
+    const at = { pointerType: "touch", button: 0, clientX: box.x + 8, clientY: box.y + box.height / 2, bubbles: true };
+    await target.dispatchEvent("pointerdown", at);
     await page.waitForTimeout(600);
-    await page.mouse.up();
+    await target.dispatchEvent("pointerup", at);
   };
 
   await holdOn("내일 9시 치과 예약 넣어 줘");
@@ -140,7 +142,7 @@ test("hold to copy: my bubble and the secretary's answer", async ({ page, contex
   await expect(page.getByText(copy.chat.copied)).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("내일 9시 치과 예약 넣어 줘");
 
-  await holdOn("에 치과 예약을 넣었어요.");
+  await page.getByText("에 치과 예약을 넣었어요.").click({ button: "right" });
   await expect(item).toBeVisible();
   if (process.env.COPY_SHOTS) await page.screenshot({ path: `${process.env.COPY_SHOTS}/hold-theirs.png` });
   await item.click();

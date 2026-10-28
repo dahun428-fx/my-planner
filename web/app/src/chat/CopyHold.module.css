@@ -4,13 +4,16 @@
 .hold {
   position: relative;
 }
-/* A touch screen: the browser's own text selection and callout give way to the hold menu. A mouse
-   keeps selecting text as usual (right-click opens the menu). */
+/* A touch screen: on the text only, the browser's own selection and callout give way to the hold menu
+   (a card's field, a link and a photo keep theirs). A mouse keeps selecting text (right-click opens the menu). */
 @media (hover: none) and (pointer: coarse) {
-  .hold {
+  .hold [data-copy] {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+  }
+  .hold [data-copy] a {
+    -webkit-touch-callout: default;
   }
 }
 /* While the menu is open the held message sinks a little, as iOS lifts what it copies. */
@@ -30,11 +33,14 @@
   border-radius: var(--radius-container);
   background: var(--surface);
 }
+/* At the finger's height (--hold-y, from script), just above it, or just below near the list's top. */
 .menu[data-place="above"] {
-  bottom: calc(100% + var(--space-1));
+  top: var(--hold-y, 0px);
+  transform: translateY(calc(-100% - var(--space-5)));
 }
 .menu[data-place="below"] {
-  top: calc(100% + var(--space-1));
+  top: var(--hold-y, 0px);
+  transform: translateY(var(--space-5));
 }
 .menu[data-side="mine"] {
   right: 0;

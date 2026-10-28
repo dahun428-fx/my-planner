@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 const hold = (el: Element, ms = HOLD_MS) => {
-  fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10 });
+  fireEvent.pointerDown(el, { button: 0, pointerType: "touch", clientX: 10, clientY: 10 });
   act(() => void vi.advanceTimersByTime(ms));
 };
 
@@ -63,7 +63,27 @@ describe("CopyHold", () => {
     expect(screen.queryByRole("menu")).toBeNull();
 
     hold(screen.getByRole("button", { name: "카드 버튼" }));
+    hold(screen.getByText("✓ 바꿨어요"));
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("a mouse held down selects text as usual: no menu", () => {
+    setup();
+    fireEvent.pointerDown(screen.getByText("첫 줄"), { button: 0, pointerType: "mouse" });
+    act(() => void vi.advanceTimersByTime(HOLD_MS * 2));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("Escape closes the menu alone: the keydown does not reach the sheet", () => {
+    const sheet = vi.fn();
+    document.addEventListener("keydown", sheet);
+    setup();
+    fireEvent.contextMenu(screen.getByText("첫 줄"));
+    expect(screen.getByRole("menuitem")).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem"), { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(sheet).not.toHaveBeenCalled();
+    document.removeEventListener("keydown", sheet);
   });
 
   it("opens on a right-click (the browser's own menu gives way) and closes on a tap elsewhere", () => {
