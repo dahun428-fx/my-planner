@@ -1,0 +1,68 @@
+/* DESIGN.md list row height, caption --muted text: the fold line reads quieter than a to-do. */
+.toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0.25rem var(--row-pad-x, var(--pad));
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.toggle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--row-pad-x, var(--pad));
+  border-top: 1px solid var(--rule);
+  pointer-events: none;
+}
+.toggle:first-child::before {
+  display: none;
+}
+.toggle:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.chevron {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  transition: transform 150ms ease;
+}
+.chevron svg {
+  width: 100%;
+  height: 100%;
+}
+.open {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+/* The rows' own hairline is only between rows, so the first one under the fold line draws its own. */
+.panel {
+  position: relative;
+}
+.panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--rule-end, 0);
+  left: var(--rule-inset, var(--row-pad-x, var(--pad)));
+  border-top: 1px solid var(--rule);
+  z-index: 1;
+  pointer-events: none;
+}

@@ -77,7 +77,7 @@ describe("Today cards", () => {
     // the card draws its todos from data
     expect(screen.getAllByRole("checkbox", { name: copy.parts.checkLabel("운동 30분") })).toHaveLength(2); // list row + card row
     // pinned cards come after the to-do list
-    const list = screen.getByText("빨래 널기");
+    const list = screen.getByRole("button", { name: copy.today.doneFold(1) }); // the list's last line
     expect(list.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

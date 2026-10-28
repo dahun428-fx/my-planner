@@ -121,7 +121,9 @@ describe("Todos", () => {
     const { container } = renderWithProviders(<Todos tab="week" />);
     await screen.findByText("장보기");
     expect(screen.getByRole("heading", { name: copy.todos.weekPriorities })).toBeInTheDocument();
-    // The finished one shows as a checked box (also on its day), never as a count.
+    // The finished one is folded (in the priorities and on its day); opened, it is a checked box.
+    const user = userEvent.setup();
+    for (const fold of screen.getAllByRole("button", { name: copy.today.doneFold(1) })) await user.click(fold);
     for (const box of screen.getAllByRole("checkbox", { name: copy.today.doneLabel("주간 계획 세우기") })) expect(box).toHaveAttribute("aria-checked", "true");
     expect(container.textContent).not.toMatch(/\d\s*\/\s*\d/);
     expect(container.textContent).not.toContain("%");
@@ -135,7 +137,7 @@ describe("Todos", () => {
     expect(within(group).getByText("언젠가 읽을 책 고르기")).toBeInTheDocument();
   });
 
-  it("week keeps a checked to-do with no date, struck through after the open ones", async () => {
+  it("week keeps a checked to-do with no date, folded after the open ones", async () => {
     serve();
     const [open] = week.undated ?? [];
     const done = { ...open, id: 9901, title: "어제 끝낸 정리", status: "done" as const, completed_at: "2026-10-24T01:00:00Z" };
@@ -143,6 +145,9 @@ describe("Todos", () => {
     renderWithProviders(<Todos tab="week" />);
     const heading = await screen.findByRole("heading", { name: copy.todos.undated });
     const group = heading.closest("section") ?? heading.parentElement!.parentElement!;
+    // The done one waits under the fold line, after the open one, until pressed.
+    expect(within(group).getAllByRole("checkbox").map((b) => b.getAttribute("aria-checked"))).toEqual(["false"]);
+    await userEvent.setup().click(within(group).getByRole("button", { name: copy.today.doneFold(1) }));
     const boxes = within(group).getAllByRole("checkbox");
     expect(boxes.map((b) => b.getAttribute("aria-checked"))).toEqual(["false", "true"]);
     expect(boxes[1]).toHaveAccessibleName(copy.today.doneLabel("어제 끝낸 정리"));
