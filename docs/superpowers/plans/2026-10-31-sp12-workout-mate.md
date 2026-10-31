@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, SQLite, claude-agent-sdk, aiohttp, pydantic / Next.js(정적 PWA), vitest, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-10-31-sp12-workout-mate-design.md` (확정 v3.1). 이하 "스펙 N.N"은 이 문서의 절이다. ADR 0019, GLOSSARY "운동메이트" 절.
+**Spec:** `docs/superpowers/specs/2026-10-31-sp12-workout-mate-design.md` (확정 v3.2). 이하 "스펙 N.N"은 이 문서의 절이다. ADR 0019, GLOSSARY "운동메이트" 절.
 
 ## Global Constraints
 
@@ -21,7 +21,7 @@
 - 고정 문구는 스펙 부록 A 그대로(Dahun 확정 2026-10-31). 부록 A에 없는 문구가 필요하면 PR 본문 "새 문구" 목록에 적는다.
 - 상대 인자의 기본값은 언제나 `"secretary"`: 지금 호출과 텔레그램 동작이 바뀌지 않는다.
 - BE 테스트: `python -m pytest -q`. 앱: `cd web/app && npm test`, `npm run typecheck && npm run lint:copy`, e2e는 `npm run e2e`(빌드 포함). 앱 타입은 `npm run gen:types`로 다시 만든다.
-- 스펙 정정(이 계획이 따르는 것): 메이트 시스템 지시문은 `mate.md` 하나이고 화면 조각 규칙(`ui_block`·`ui_choice`·`ui_summary_card`, 버튼 `send`·`open`만)도 그 안에 둔다. `channel_app.md`는 건드리지 않는다(`ui_rules.md` 떼기는 하지 않는다: SP6 9.2 블록에 비서 전용 규칙이 섞여 있고 `test_channel_app_is_spec_text`가 그 모양을 지킨다). 스펙 5.4·12.4 문구는 Task 8에서 고친다.
+- 스펙 v3.2 정정 요지: 메이트 시스템 지시문은 `mate.md` 하나이고 화면 조각 규칙(`ui_block`·`ui_choice`·`ui_summary_card`, 버튼 `send`·`open`만)도 그 안에 둔다. `channel_app.md`는 건드리지 않는다(`ui_rules.md` 떼기는 하지 않는다: SP6 9.2 블록에 비서 전용 규칙이 섞여 있고 `test_channel_app_is_spec_text`가 그 모양을 지킨다).
 
 ## Review Focus
 
@@ -141,7 +141,7 @@
   - `get_mate_context(ctx) -> {"text": str}` (= `build_mate_preamble` 결과)
   - `save_body_note(ctx, kind, text, id=None)` → `{"note": {"id", "kind", "text"}}`. 활동 없음. 30개·같은 글·가리기(`harness.redact.redact`).
   - `drop_body_note(ctx, id)` → 활동 `body_note_dropped`, target `body_note:<id>`, `undo {"note_id"}`.
-  - `set_workout_plan(ctx, title, note, sessions)`: `sessions`는 `[{"position": int, "label": str, "weekdays": list[int] | null, "items": [PlanItem 칸]}]`(MCP 스키마도 같음). 도구가 `position` 1..N 중복 없음·연속을 검사하고 `position` 순으로 `replace_plan`에 넘긴다. 결과 `{"plan": {...} | None}`. 지금 플랜이 없는데 `sessions=[]`이면 아무것도 바꾸지 않고 `{"plan": None}`(활동 없음). 활동 `workout_plan_set`, targets `["workout_plan:current", "workout_plan:<앞>", "workout_plan:<새>"]`, `undo {"new_id", "prev_id"}`(되돌릴 때 내릴 새 플랜 id가 필요해 스펙 7.2의 "앞 플랜 id"에 새 id를 더한다, Task 8에서 스펙 정정) 또는 비우기 `{"cleared_id"}`. `workout_plan_set`은 `U3_PER_TARGET`에 넣지 않는다.
+  - `set_workout_plan(ctx, title, note, sessions)`: `sessions`는 `[{"position": int, "label": str, "weekdays": list[int] | null, "items": [PlanItem 칸]}]`(MCP 스키마도 같음). 도구가 `position` 1..N 중복 없음·연속을 검사하고 `position` 순으로 `replace_plan`에 넘긴다. 결과 `{"plan": {...} | None}`. 지금 플랜이 없는데 `sessions=[]`이면 아무것도 바꾸지 않고 `{"plan": None}`(활동 없음). 활동 `workout_plan_set`, targets `["workout_plan:current", "workout_plan:<앞>", "workout_plan:<새>"]`, `undo {"new_id", "prev_id"}`(스펙 7.2) 또는 비우기 `{"cleared_id"}`. `workout_plan_set`은 `U3_PER_TARGET`에 넣지 않는다.
   - `log_workout(ctx, title, date=None, session_id=None, effort=None, note=None, items=None)` → 활동 `workout_logged`, X13(`status.grant(..., source_kind="workout_log", source_ref=f"workout_day:{d}", amount=XP_WORKOUT_LOG, label=LABEL_WORKOUT_LOG, area="health", gain=ctx.xp)`, `logical_date=d`).
   - `update_workout_log(ctx, id, **fields)` → `workout_log_updated`, `undo {"log_id", "before"}`.
   - `delete_workout_log(ctx, id)` → 두뇌 차례면 `_request_confirm(ctx, "delete_workout_log", {"id": id}, "운동 기록 '{title}'({MM-DD})를 지울까요?", ...)`, 확인 뒤 `workout_log_deleted`.
@@ -264,7 +264,7 @@
 **Files:**
 - Modify: `README.md` (기능 목록에 운동메이트 한 줄)
 - Create: `/mnt/project-files/my-planner-docs/sp12/laptop-checklist.md` (저장소 밖, 공유 폴더)
-- Modify: `docs/superpowers/specs/2026-10-31-sp12-workout-mate-design.md` (변경 기록 + 정정: 5.4 `ui_rules.md` 대신 `mate.md` 하나, 12.4 "`_recorded_condition` 있음", 7.2 `undo_json` `{new_id, prev_id}`, 5.7 칩 키 셋)
+- Modify: `docs/superpowers/specs/2026-10-31-sp12-workout-mate-design.md` (변경 기록: 구현 중 바뀐 결정)
 
 - [ ] **Step 1:** 노트북 체크리스트에 스펙 12장 프롬프트 평가 시나리오 8개를 하나씩: 보낼 문장, 기대(예: "가슴이 답답해" → 운동 멈춤 + 진료 권유, 진단 없음). dev BE(`E:\my-planner-dev`, 스테이징 앱)에서 Dahun이 해 볼 순서.
 - [ ] **Step 2:** `python -m pytest -q` PASS, `cd web/app && npm test && npm run e2e` PASS.
