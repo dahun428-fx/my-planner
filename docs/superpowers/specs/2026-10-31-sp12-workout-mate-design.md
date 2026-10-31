@@ -1,6 +1,6 @@
 # SP12 운동메이트 상세 설계 (추가 기능)
 
-- 상태: 초안 v2 (리뷰 1회 반영. Dahun 방향 결정 Q1~Q4 반영, 나머지는 비서 추천이며 15장에서 Dahun 확인)
+- 상태: 초안 v3 (리뷰 2회 반영. Dahun 방향 결정 Q1~Q4 반영, 나머지는 비서 추천이며 15장에서 Dahun 확인)
 - 작성일: 2026-10-31
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP7 습관](2026-10-24-sp7-habits-design.md), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md) (몸 기록, 활동 보너스), [SP9 앱 탭·대화](2026-10-25-sp9-app-tabs-memo-schedule-design.md) (대화 = 세션, 요약), [SP10 사진](2026-10-26-sp10-photos-claude-reads-design.md)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "운동메이트", "운동 플랜", "운동 기록", "몸 메모", "대화 상대" 추가). 결정 기록: [ADR 0019](../../adr/0019-workout-mate-is-a-second-agent-in-be.md) 추가
@@ -84,6 +84,7 @@ SP9 7.3의 규칙을 상대마다 따로 돈다.
 | `_close_app_talks(agent)`, `new_app_conversation(agent)` | 그 상대의 열린 대화만 닫는다. 비서 대화를 다시 열어도(`_resumed`) 메이트 대화는 닫히지 않는다 |
 | `_resumed` | 고른 대화의 상대를 확인(0번 규칙), `continued_from`으로 새로 여는 `chat`은 고른 대화의 상대를 물려받는다 |
 | `keep_alive`, `current_app`, `for_app_message`, `for_user_message`의 `asked_id` 갈래 | 상대 인자. 메이트는 회차·계획 갈래를 건너뛴다 |
+| 디스패처 `Inbound`, `route_app_message`, `_app_conversation`(닫힌 대화를 다시 고를 때) | `inbound_pending.agent`에서 읽은 상대를 넘긴다 |
 
 ### 5.3 도구 목록
 
@@ -94,7 +95,7 @@ SP9 7.3의 규칙을 상대마다 따로 돈다.
 | `record_condition` | 사용자가 "오늘 컨디션 2야"라고 하면 그날 컨디션을 기록한다(SP1 도구 그대로, X4). 9.1 강도 맞추기가 이 값에 기댄다 | 가벼움 |
 | `get_mate_context` | 앞머리(5.5)와 같은 내용을 지금 값으로 다시 읽는다. 긴 대화 중간에 쓴다 | 읽기 |
 | `save_body_note` | 몸 메모 한 줄을 더하거나(`id` 없음) 고친다(`id`). 6.2 규칙 | 조용히(활동 없음, 6.3) |
-| `drop_body_note` | 몸 메모를 지운다(소프트 삭제). 사용자가 "이제 무릎 괜찮아"처럼 말할 때 | 조용히 |
+| `drop_body_note` | 몸 메모를 지운다(소프트 삭제). 사용자가 "이제 무릎 괜찮아"처럼 말할 때 | 가벼움, 되돌리기(6.3) |
 | `set_workout_plan` | 플랜을 통째로 바꾼다(7.2). 앞 플랜은 남긴다 | 가벼움, 되돌리기 |
 | `log_workout` | 운동 기록 하나를 남긴다(8장) | 가벼움, 되돌리기 |
 | `update_workout_log` | 기록을 고친다(사용자가 "아 60이 아니라 65였어"라고 할 때) | 가벼움, 되돌리기 |
@@ -110,15 +111,15 @@ SP9 7.3의 규칙을 상대마다 따로 돈다.
 ### 5.4 지시문
 
 - 메이트 차례의 시스템 지시문은 `system.md` 대신 `mate.md` 하나다. `channel_app.md`의 화면 조각 규칙 중 공통 부분은 `ui_rules.md`로 떼어 비서·메이트가 함께 붙인다(내용 변경 없음, 비서 쪽 결과 지시문은 바이트까지 같다는 테스트를 둔다).
-- 새 두뇌 세션 첫 프롬프트에 디스패처가 붙이는 것도 상대마다 다르다:
+- 디스패처가 프롬프트에 붙이는 조각도 상대마다 다르다:
 
-| 조각 | 비서 `chat` (지금) | 메이트 |
+| 조각 (붙는 때) | 비서 `chat` (지금) | 메이트 |
 |---|---|---|
-| 차례 지시문 `CONVERSATION_PROMPTS[chat]` (`chat.md`: 할 일, `/plan`, `record_condition` 안내) | 붙인다 | 붙이지 않는다. 메이트 규칙은 모두 `mate.md`(시스템 지시문)에 있다 |
-| 앞머리 `_preamble(include_habits=True)` | 붙인다 | 5.5의 메이트 앞머리로 바꾼다 |
-| `_recorded_condition()` (오늘 컨디션 기록 여부) | 붙인다 | 붙이지 않는다(앞머리 `## 오늘 몸`에 컨디션이 있다) |
-| 알림 `build_notices` (가림, 오래된 메시지, 잘림) | 붙인다 | 붙인다 |
-| 알림의 `## 다른 곳에서 바뀐 것` | 붙인다 | 붙이지 않는다(할 일 변경은 메이트 몫이 아니다) |
+| 차례 지시문 `CONVERSATION_PROMPTS[chat]` (새 두뇌 세션 첫 프롬프트) (`chat.md`: 할 일, `/plan`, `record_condition` 안내) | 붙인다 | 붙이지 않는다. 메이트 규칙은 모두 `mate.md`(시스템 지시문)에 있다 |
+| 앞머리 `_preamble(include_habits=True)` (새 두뇌 세션 첫 프롬프트) | 붙인다 | 5.5의 메이트 앞머리로 바꾼다 |
+| `_recorded_condition()` (매 호출, 오늘 컨디션 기록 여부) | 붙인다 | 붙인다. 대화 중 버튼이나 비서로 기록한 컨디션을 이어진 세션에서도 보게 한다(9.1 강도 맞추기가 기댄다) |
+| 알림 `build_notices` (매 호출, 가림·오래된 메시지·잘림) | 붙인다 | 붙인다 |
+| 알림의 `## 다른 곳에서 바뀐 것` (매 호출) | 붙인다 | 붙이지 않는다(할 일 변경은 메이트 몫이 아니다) |
 
 - `mate.md`의 요지 (전문은 계획 단계에서 쓰고 Dahun 문구 확인 15장 D9):
   1. 너는 Dahun의 운동메이트다. 같이 운동하는 친구처럼 편한 존댓말("~해요")로 짧게 말한다. 한 답에 질문은 하나.
@@ -239,10 +240,10 @@ DB의 CHECK는 JSON 모양과 개수만 본다. 칸마다의 값 검증(7.3 표)
 ### 7.2 바꾸기와 되돌리기
 
 - 플랜은 고치지 않고 통째로 바꾼다. `set_workout_plan(title, note, sessions)`는 한 트랜잭션에서 지금 플랜의 `replaced_at`을 쓰고 새 플랜과 세션을 넣는다. "목요일만 빼줘" 같은 작은 변경도 두뇌가 지금 플랜을 고친 전체를 다시 보낸다. 이렇게 하면 되돌리기가 "앞 플랜을 다시 지금 플랜으로"라는 한 가지 동작이 된다.
-- 활동 기록: `kind` `workout_plan_set`, `summary` "운동 플랜 바꿈". 대상은 `activity_targets`에 둘을 적는다: `workout_plan:<앞 id>`(앞 플랜이 있었으면)와 `workout_plan:<새 id>`. `undo_json`에는 앞 플랜 id와 그 직전 상태(`current` 또는 `cleared`, 앞 플랜이 없으면 `null`)를 둔다.
-- 되돌리기는 새 플랜에 `replaced_at`을 쓰고, 앞 플랜을 `undo_json`의 상태로 돌린다(`current`면 `replaced_at` NULL, `cleared`면 그대로 둔다, 없으면 아무것도). 뒤에 같은 대상을 건드린 활동이 있으면 지금 되돌리기 규칙(U3)이 거절한다. 그래서 A→B→C 뒤에 A→B를 되돌려 지금 플랜이 둘이 되는 일이 없다(B를 대상으로 한 B→C가 뒤에 있다).
+- 활동 기록: `kind` `workout_plan_set`, `summary` "운동 플랜 바꿈". 모든 `workout_plan_set` 활동(처음 만들기, 바꾸기, 비우기)은 `activity_targets`에 공통 대상 `workout_plan:current`를 적고, 바뀐 플랜 id(`workout_plan:<앞 id>`, `workout_plan:<새 id>`)를 함께 적는다. `undo_json`에는 앞 플랜 id 또는 `null`만 둔다.
+- 되돌리기는 새 플랜에 `replaced_at`을 쓰고, 앞 플랜이 있으면 그 `replaced_at`을 NULL로 돌린다. `workout_plan_set`은 `U3_PER_TARGET`에 넣지 않으므로, 공통 대상 `workout_plan:current`를 건드린 뒤 활동이 하나라도 있으면 지금 되돌리기 규칙(U3)이 거절한다. 그래서 되돌릴 수 있는 것은 언제나 **가장 최근의 플랜 변경 하나**이고, 지금 플랜이 둘이 되는 일이 없다(A→B→C 뒤 A→B 되돌리기, A 비우기 → B 만들기 → A 비우기 되돌리기 모두 거절).
 - "앞 플랜"은 `set_workout_plan`을 부르기 직전의 **지금 플랜**이다. 지금 플랜이 없으면(처음이거나 비운 뒤) 앞 플랜은 없다. A를 비운 뒤 B를 만들고 되돌리면 플랜 없음으로 돌아간다.
-- `set_workout_plan(sessions=[])`는 "플랜 없이 할래"다: 지금 플랜에 `cleared_at`을 쓴다(`kind` `workout_plan_set`, `summary` "운동 플랜 내림"). 되돌리기는 `cleared_at`을 NULL로.
+- `set_workout_plan(sessions=[])`는 "플랜 없이 할래"다: 지금 플랜에 `cleared_at`을 쓴다(`kind` `workout_plan_set`, `summary` "운동 플랜 내림", 대상 `workout_plan:current`와 `workout_plan:<그 id>`). 되돌리기는 `cleared_at`을 NULL로(가장 최근 변경일 때만).
 - 지난 플랜은 지우지 않고 남긴다(기록의 `session_id`가 가리킬 수 있다). 화면에는 지금 플랜만 보인다. 지난 플랜 목록은 v1에 없다.
 - 플랜에는 시작일·종료일·주차가 없다(P2, Q2). "12주 프로그램" 같은 기간 구조를 만들지 않는다.
 
@@ -335,7 +336,7 @@ CREATE TABLE workout_log_items (
 ## 10. 경험치와 활동 보너스
 
 - **X13 운동 기록** (X12는 SP7 v2에서 지운 "주간 목표 보상" 번호라 다시 쓰지 않는다): 날짜마다 처음 남긴 운동 기록에 5. 같은 날 두 번째 기록은 없다. 지우거나 고쳐도 줄지 않는다(ADR 0006).
-  - 원장: `source_kind` `workout_log`, `source_ref` `workout:<YYYY-MM-DD>`(기록의 `date`), `logical_date` = 기록의 `date`(SP7 지난 날 체크와 같다), `area` `health`, `label` "운동 기록"(제목은 넣지 않는다, SP7 5.6과 같은 까닭). 하루 한 번은 원장의 지금 UNIQUE(`source_kind`, `source_ref`)가 막는다.
+  - 원장: `source_kind` `workout_log`, `source_ref` `workout_day:<YYYY-MM-DD>`(기록의 `date`. 이룬 순간 출처 `workout:<id>`와 겹치지 않게 다른 머리말), `logical_date` = 기록의 `date`(SP7 지난 날 체크와 같다), `area` `health`, `label` "운동 기록"(제목은 넣지 않는다, SP7 5.6과 같은 까닭). 하루 한 번은 원장의 지금 UNIQUE(`source_kind`, `source_ref`)가 막는다.
   - SQLite는 CHECK를 고칠 수 없어 `status_xp_ledger`를 새 표로 옮긴다. 옮기기 SQL은 SP7 `012_habits.sql`의 그 부분과 같고 `source_kind` CHECK 목록에 `'workout_log'` 하나만 더한다(계획 단계에서 전문을 012에서 복사해 적는다).
 - **건강 활동 보너스**(SP8 5.2 표에 한 줄): 지우지 않은 운동 기록이 있는 날, 건강 영역에 0.5. 같은 날 여러 기록도 0.5다. 하루 상한 3 안에서 습관·몸 기록과 합친다. `status/activity.py`에 `WORKOUT_POINT = 0.5`. `ActivityCounts`에 `workout_days`(지난 28일 중 기록 있는 날 수)를 더하고, `GET /status`의 `stats[health].activity`에 같은 이름의 필드가 생긴다(필드 추가, 앱은 v1에서 표시하지 않는다).
 - 이로써 "운동" 습관 체크(0.5)와 운동 기록(0.5)을 둘 다 하면 그날 1.0이다. 하루 상한이 있어 문제 되지 않는다고 본다(15장 D6).
@@ -377,11 +378,11 @@ CREATE TABLE workout_log_items (
 **BE (pytest)**
 
 1. 마이그레이션 021: 새 표, `agent` 기본값, 원장 옮기기 뒤 기존 원장 행 수·합 같음.
-2. 라우터: 비서 30분 대화가 열려 있을 때 메이트 메시지가 새 메이트 대화를 연다. 반대도. `resume_conversation_id` 상대가 다르면 400. `/conversations/new {agent: mate}`가 비서 대화를 닫지 않는다. 메이트 대화가 더 최근이어도 30분 지난 비서 대화가 `close_expired`로 닫히고 요약 큐에 들어간다. 비서 지난 대화를 다시 열어도 메이트 대화가 닫히지 않는다. `continued_from`으로 연 대화가 상대를 물려받는다.
-3. 도구 목록: `ctx.agent == "mate"`의 목록이 5.3 표와 정확히 같고, `TOOL_NAMES`·`APP_ONLY_TOOLS`와 겹치는 것은 `find_conversations`와 화면 조각 셋뿐이다. 비서 목록에는 메이트 도구가 없다.
+2. 라우터: 비서 30분 대화가 열려 있을 때 메이트 메시지가 새 메이트 대화를 연다. 반대도. `resume_conversation_id` 상대가 다르면 400. `/conversations/new {agent: mate}`가 비서 대화를 닫지 않는다. 메이트 대화가 더 최근이어도 30분 지난 비서 대화가 `close_expired`로 닫히고 요약 큐에 들어간다. 비서 지난 대화를 다시 열어도 메이트 대화가 닫히지 않는다. `continued_from`으로 연 대화가 상대를 물려받는다(메이트에는 계획·회차 대화가 없어 비서 쪽으로만 시험한다).
+3. 도구 목록: `ctx.agent == "mate"`의 목록이 5.3 표와 정확히 같고, `TOOL_NAMES`·`APP_ONLY_TOOLS`와 겹치는 것은 `record_condition`, `find_conversations`, 화면 조각 셋뿐이다. 비서 목록에는 메이트 도구가 없다.
 4. 지시문: 메이트 차례 시스템 지시문이 `mate.md` + `ui_rules.md`이고, 비서 차례 지시문은 이 작업 전과 바이트까지 같다. 메이트 첫 프롬프트에 `chat.md`, `_recorded_condition`, `## 다른 곳에서 바뀐 것`이 없다. 메이트 대화의 요약 호출에는 도구가 없다.
 5. 앞머리: 각 섹션 줄 수 상한, 데이터 없을 때 문구, 지운 메모·기록 제외.
-6. 플랜: 바꾸기 트랜잭션, 지금 플랜 하나 유일 색인, 되돌리기(앞 플랜 있음/없음/비우기), A→B→C 뒤 A→B 되돌리기 거절, A 비우기 → B 만들기 → 되돌리기 = 플랜 없음, `items` 검증 경계값.
+6. 플랜: 바꾸기 트랜잭션, 지금 플랜 하나 유일 색인, 되돌리기(앞 플랜 있음/없음/비우기), A→B→C 뒤 A→B 되돌리기 거절, A 비우기 → B 만들기 → A 비우기 되돌리기 거절, A 비우기 → B 만들기 → B 되돌리기 = 플랜 없음, `items` 검증 경계값.
 7. 기록: 오늘−6 허용, 오늘−7 거절, 내일 거절, 11-01 03:59에 10-25 허용, 항목 검증, 소프트 삭제, 고치기 되돌리기, 확인 카드.
 8. 경험치 X13: 같은 날 두 기록에 5 한 번, 지워도 원장 유지, 다른 날 다시 5.
 9. 활동 보너스: 운동 기록 날 0.5, 같은 날 둘도 0.5, 지운 기록 제외, 하루 상한 3.
@@ -389,7 +390,7 @@ CREATE TABLE workout_log_items (
 11. `find_conversations`가 메이트 차례에서 메이트 대화만, 비서 차례에서 비서 대화만 돌려준다.
 12. 이룬 순간 입력에 `## 운동 기록`이 들어가고 `workout:<id>` 출처를 받는다.
 13. 금지어 검사가 `mate.md`, 칩 지시문, 새 고정 문구에 돈다.
-14. 원문 기록: 메이트 대화 줄의 화자가 "운동메이트"이고, 텔레그램 `read_transcript`와 비서 `read_transcript`가 메이트 대화의 줄(사용자 줄 포함)을 돌려주지 않는다.
+14. 원문 기록: 메이트 대화 줄의 화자가 "운동메이트"이고 머리글이 ` @app @mate`로 읽힌다. 메이트 대화의 `messages()`, `recent_entries`, `user_lines`, 지우기(`erase_conversation`)가 줄을 바르게 가른다. 텔레그램 `read_transcript`와 비서 `read_transcript`가 메이트 대화의 줄(사용자 줄 포함)을 돌려주지 않는다.
 
 **앱 (vitest + Playwright)**
 
@@ -401,7 +402,7 @@ CREATE TABLE workout_log_items (
 
 | 묶음 | 명령 | 기대 |
 |---|---|---|
-| BE 1~14 | `python -m pytest tests/test_workout_*.py tests/test_conversations*.py tests/test_mcp_adapter*.py tests/test_activity*.py tests/test_moments*.py -q` | 모두 통과, `failed` 0 |
+| BE 1~14 | `python -m pytest tests/test_migrations.py tests/test_workout_repo.py tests/test_tools_workout.py tests/test_mate_routing.py tests/test_mate_prompts.py tests/test_prompts.py tests/test_dispatcher_conversations.py tests/test_conversation_summaries.py tests/test_status_xp.py tests/test_status_activity.py tests/test_activity.py tests/test_transcript_channels.py tests/test_moments_job.py -q` (새 파일: `test_workout_repo.py` 6·7·10, `test_tools_workout.py` 3·5·11, `test_mate_routing.py` 2, `test_mate_prompts.py` 4·13, `test_moments_job.py`에 12를 더한다. 이름이 이미 있으면 그 파일에 더한다) | 모두 통과, `failed` 0 |
 | BE 전체(되돌림 없음 확인) | `python -m pytest -q` | 모두 통과 |
 | 앱 15~16 | `cd web/app && npx vitest run src/chat src/screens/Workout*` | 모두 통과 |
 | 앱 17 | `cd web/app && npx playwright test e2e/workout-mate.spec.ts` | `1 passed` 이상, 실패 0 |
@@ -410,14 +411,15 @@ CREATE TABLE workout_log_items (
 
 ## 13. 설정
 
-- 새 `config.toml` 값 없음. 상수는 코드(`tools/workout.py`: `BODY_NOTES_MAX = 30`, `PLAN_SESSIONS_MAX = 7`, `SESSION_ITEMS_MAX = 12`, `LOG_ITEMS_MAX = 20`, `LOG_BACKDATE_DAYS = 7`, `LIST_DAYS_MAX = 180`).
+- 새 `config.toml` 값 없음. 상수는 코드(`tools/workout.py`: `BODY_NOTES_MAX = 30`, `PLAN_SESSIONS_MAX = 7`, `SESSION_ITEMS_MAX = 12`, `LOG_ITEMS_MAX = 20`, `LOG_BACKDATE_DAYS = 6`, `LIST_DAYS_MAX = 180`).
 - dev BE(develop)와 prod BE 모두 같은 코드로 켜진다. 기능 플래그는 두지 않는다(앱의 더보기 줄과 상대 고르기가 BE 버전에 맞춰 나타나도록 `GET /health`에 새 필드 `features`(문자열 배열)를 만들어 `"mate"`를 넣고, 없으면 앱이 숨긴다). `Health` 모델에서 `features`는 필수가 아니다(앱 쪽 기본 `[]`): 앱이 BE보다 먼저 배포되거나 앞 BE로 롤백돼도 화면이 깨지지 않게 한다.
 
 ## 14. 보안·개인정보와 마이그레이션
 
 - 몸 메모, 플랜, 기록은 `planner.db`에만 둔다(P5). md 내보내기(ADR 0003)에는 v1에서 넣지 않는다(15장 D10). 로그에는 id와 개수만 남기고 글·숫자는 남기지 않는다(SP8 몸 기록과 같은 규칙).
 - 메이트 두뇌는 잠·걸음 숫자와 부상 메모를 받는다. 채팅 글과 같은 경로로 Anthropic에 간다(마스터 P5, ADR 0017과 같은 대가). 메이트 대화 SDK 세션 파일에도 앞머리가 남는다(ADR 0013 "받아들이는 것"과 같은 취급).
-- 원문 기록(날짜별 md, SP1)에는 메이트 대화도 남는다. 화자 이름은 "운동메이트"(`Speaker`에 더한다)이고 머리글에 ` @app`과 상대 표시 ` @mate`가 붙는다. 비서·텔레그램의 `read_transcript`는 ` @mate` 항목을 모두 뺀다(사용자 줄 포함): 비서가 메이트 대화의 원문(부상 글 등)을 읽지 않게 한다(ADR 0014, 1장 조건 1). 하루 끝 순간 입력은 지금처럼 사용자 줄을 읽는다(5.6).
+- 원문 기록(날짜별 md, SP1)에는 메이트 대화도 남는다. 화자 이름은 "운동메이트"(`Speaker`에 더한다)이고 머리글 끝에 ` @app @mate`가 붙는다(메이트 대화의 사용자 줄도 ` @app @mate`). 머리글 정규식 `_HEADER_RE`에 화자 `운동메이트`와 끝 ` @mate`를 더한다. 그러지 않으면 `_parse`를 쓰는 `messages()`(대화 기록 API), `recent_entries`(말아 넣기), `user_lines`(이룬 순간), `erase_conversation`, `_only_conversation`이 메이트 줄을 앞 항목 본문으로 붙인다. 대화 기록 API(`api/read.py`)의 화자 변환은 `user` | `secretary` | `mate`가 된다(앱은 `mate`를 메이트 말풍선으로 그린다).
+- 비서·텔레그램의 `read_transcript`는 ` @mate` 항목을 모두 뺀다(사용자 줄 포함): 비서가 메이트 대화의 원문(부상 글 등)을 읽지 않게 한다(ADR 0014, 1장 조건 1). 하루 끝 순간 입력은 지금처럼 사용자 줄을 읽는다(5.6).
 - 활동 기록 `summary`에는 세션 이름(`title`)만 들어간다. 몸 메모 글은 활동 기록·푸시·로그 어디에도 나가지 않는다.
 - 마이그레이션 `021_workout_mate.sql` 하나. 되돌림은 지금 규칙(배포 롤백이 DB 파일을 통째로 바꾼다, ADR 0010)을 따른다. 새 표는 지우지 않아도 앞 코드가 무시한다. `agent` 칸도 앞 코드가 읽지 않는다.
 
@@ -446,7 +448,7 @@ CREATE TABLE workout_log_items (
 | D4 | 무게 기록 정도 | 운동 하나에 한 줄(세트 × 횟수 × 무게) | 세트마다 한 줄 |
 | D5 | 기록 쓰는 곳 | 대화로만. 화면은 보기·지우기 | 운동 화면에 직접 쓰기 폼 |
 | D6 | 습관과의 관계 | 운동 기록이 경험치·건강 보너스를 직접 받음, 습관 자동 체크 없음 | "운동" 습관을 골라 기록 때 자동 체크 |
-| D7 | 비서가 운동 정보를 보나 | 안 봄(완전 분리) | 비서 앞머리에 "오늘 운동 계획" 한 줄 |
+| D7 | 비서가 운동 정보를 보나 | 몸 메모·플랜·기록 내용은 안 봄. 예외: `get_status`의 `workout_days`(날 수), 운동 기록이 출처인 이룬 순간 글, 다른 통로 알림의 "운동 기록: <title>" 줄 | 비서 앞머리에 "오늘 운동 계획" 한 줄 |
 | D8 | 두뇌 사용량 | 비서와 같은 하루 상한(60회) | 메이트 몫 따로(예: 20회) |
 | D9 | 고정 문구 | 부록 A | 고쳐 주기 |
 | D10 | md 내보내기 | 넣지 않음 | 운동 기록을 날짜별 md로 |
@@ -464,7 +466,7 @@ CREATE TABLE workout_log_items (
 | 기록 빈 상태 | 아직 기록이 없어요 |
 | 메모 설명 | 운동메이트가 대화에서 알게 된 것을 적어 둬요. 지우면 다음 대화부터 잊어요. |
 | 메모 종류 | 장비 / 부상·통증 / 선호 / 가능한 때 / 기타 |
-| 확인 문구 | ✓ 운동 플랜 바꿈 / ✓ 운동 기록: {title} / ✓ 운동 기록 고침: {title} / ✓ 몸 메모 지움 |
+| 확인 문구 | ✓ 운동 플랜 바꿈 / ✓ 운동 플랜 내림 / ✓ 운동 기록: {title} / ✓ 운동 기록 고침: {title} / ✓ 몸 메모 지움 |
 | 확인 카드 | 운동 기록 '{title}'({MM-DD})를 지울까요? |
 | 오류 | 몸 메모는 30개까지예요. 오래된 것을 정리해 주세요. / 일주일 안의 기록만 남길 수 있어요. / 이 대화는 다른 상대예요. |
 | 경험치 줄 | 운동 기록 |
@@ -472,4 +474,5 @@ CREATE TABLE workout_log_items (
 ## 변경 기록
 
 - v1 (2026-10-31): 첫 초안. Q1~Q4 반영.
+- v3 (2026-10-31): doc-reviewer 2회 반영. 플랜 되돌리기는 공통 대상 `workout_plan:current`로 가장 최근 변경만(7.2), `LOG_BACKDATE_DAYS = 6` 맞춤, 메이트도 `_recorded_condition` 매 호출, 원문 기록 정규식·화자 변환, 테스트 파일 이름, 원장 `workout_day:` 머리말, D7 예외.
 - v2 (2026-10-31): doc-reviewer 1회 반영. 라우터의 상대 인자 자리 표(5.2), 첫 프롬프트 조각 표(5.4), 도구 판정 순서와 `record_condition`(5.3), 플랜 되돌리기 대상 둘(7.2), 기록 날짜 오늘−6로 SP7과 맞춤(8.2), 경험치 X13과 원장 칸(10장), 활동 `kind`·`actor`(8.2), 몸 메모 지우기 활동(6.3), 원문 기록 화자와 읽기 제외(14장), 테스트 명령 표(12장), 몸 숫자 대가 정정(5.5).
