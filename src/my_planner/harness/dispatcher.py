@@ -1382,7 +1382,9 @@ class Dispatcher:
         - 이 메시지로 이미 만든 메모(도구 호출 기록의 `memo_created`)가 있으면 다시 만들지 않는다: 메모를 만든 뒤 처리
           완료 전에 끊긴 행의 다시 보내기·시작 때 다시 넣기.
         - 답은 앱 통로대로 글 없이 `data-activity.confirmation`(+ `data-photo-memo`), 원문 기록은 대화 안에 `[사진 #id]`
-          사용자 줄과 확인 문구 줄. 두뇌 호출·사진 읽기 횟수에 세지 않는다.
+          사용자 줄과 확인 문구 줄. 두뇌 호출·사진 읽기 횟수에 세지 않는다(하루 상한·사용 한도 구간에도 만든다).
+        - 회차 대화면 두뇌 길처럼 그 회차의 답으로 적는다(6.4.5, 7.5 M3). 레벨이 오르면 확인 문구 끝에 한 줄(9.2).
+        - 메모를 만들 수 없으면(메모 상한 등) 그 문구로 답한다. 사용자 줄은 그 대화 안에 남는다(다시 열어도 사진이 보인다).
         """
         app = self._cur
         tools = self.tools
@@ -1399,15 +1401,25 @@ class Dispatcher:
                 return
         conv = self._app_conversation(app)
         self.convs.touch(conv.id)
+        answer_xp = XpGain()
+        if conv.kind is ConversationKind.run and conv.run_id is not None:
+            # 회차 대화에 온 사진만 메시지도 그 회차의 답이다(두뇌 길과 같다, 6.4.5). 처음 한 번만, 보낸 시각으로
+            self._answer_by_message(conv.run_id, "app", m.sent_at, answer_xp)
         if made is None:
             loaded = {pid for pid, _ in images}
             ctx = RunContext(
                 conversation_id=conv.id, run_id=None, events=[], inbound_id=lead, actor="user", channel="app",
             )
             res = tools.create_memo(ctx, body=PHOTO_MEMO_BODY, photo_ids=[i for i in m.photo_ids if i in loaded])
-            if "error" in res:  # 메모 상한 등: 그 문구로 답한다(만든 것이 없다)
-                if await self._fixed_reply([m], str(res["error"]), [lead]):
-                    log.info("message_photo_memo_refused", extra={"update_ids": [lead], "code": res.get("code")})
+            if "error" in res:  # 메모 상한 등: 그 문구로 답한다(만든 것이 없다). 사용자 줄은 이 대화 안에
+                refused = str(res["error"])
+                with self._awake.hold():
+                    self._log_user_lines([m], conv.id, pending, lead)
+                    if not await self._send_reply(self._reply_out(Outbound(text=refused), "", [], []), [lead], conv.id):
+                        return
+                    self._messages_done([lead], reply=refused, conversation_id=conv.id)
+                    self._transcribe_reply(conv.id, refused, [])
+                log.info("message_photo_memo_refused", extra={"update_ids": [lead], "code": res.get("code")})
                 return
             memo_id = int(res["id"])
         else:
@@ -1415,12 +1427,13 @@ class Dispatcher:
             memo_id = int(made["memo_id"])
             log.warning("inbound_photo_memo_already_made", extra={"update_ids": [lead], "memo_id": memo_id})
         photo_memo = {"memo_id": memo_id, "photo_ids": [p.id for p in tools.photos.for_memo(tools.tasks.conn, memo_id)]}
-        confirmation = render_confirmations(ctx.events, self._today())
+        confirmation = with_level_up(render_confirmations(ctx.events, self._today()), answer_xp.level_up) or ""
         with self._awake.hold():
             self._log_user_lines([m], conv.id, pending, lead)
             out = self._reply_out(Outbound(text=""), confirmation, *self.activity_of(lead))
             out.photo_memo = photo_memo
-            await self._send_reply(out, [lead], conv.id)
+            if not await self._send_reply(out, [lead], conv.id):
+                return
             self._messages_done(
                 [lead], reply="", confirmation=confirmation, conversation_id=conv.id, photo_memo=photo_memo,
             )
@@ -2915,8 +2928,12 @@ _NO_CHIP = _Chip()
 
 
 def _photo_only(m: Inbound) -> bool:
-    """글 없이 사진만 보낸 앱 메시지(SP10 16장: 두뇌 없이 사진 메모). 퀵 칩(SP9c 4.2)은 그 칩의 부탁이 있으니 두뇌로 간다."""
-    return bool(m.photo_ids) and m.chip is None and not strip_marks(m.text, m.photo_ids).strip()
+    """글 없이 사진만 보낸 앱 메시지(SP10 16장: 두뇌 없이 사진 메모). 퀵 칩(SP9c 4.2)은 그 칩의 부탁이 있으니 두뇌로 간다.
+
+    칩은 `_chip_of`와 같은 규칙으로 본다: 시작 때 다시 넣은 행(`recovered`)은 칩을 잃으므로(`inbound_pending`에 넣지
+    않는다) 칩과 함께 보낸 사진만 메시지도 다시 넣으면 사진 메모 길로 간다.
+    """
+    return bool(m.photo_ids) and _chip_of(m).chip is None and not strip_marks(m.text, m.photo_ids).strip()
 
 
 def _chip_of(m: Inbound) -> _Chip:

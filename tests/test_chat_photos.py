@@ -462,6 +462,82 @@ async def test_messages_have_photo_memo_id(env):
     assert [i["photo_memo_id"] for i in items[1:]] == [None] * 7
 
 
+async def test_photo_only_with_chip_goes_to_brain(env):
+    """퀵 칩과 사진만(글 없음)은 칩의 부탁이 있어 두뇌로 간다: `(사진 1장)`, 사진 메모 없음(16장, SP9c 4.5)."""
+    pid = await _photo(env)
+    env.brain.script.append(FakeTurn([("create_memo", {"body": "옮겨 적은 글", "photo_ids": [pid]})], "남겼어요."))
+    status, chunks = await _send(env, _parts(None, pid), chip="memo")
+    prompt = env.brain.calls[0]["prompt"]
+    ((_, body, origin, _),) = _memos(env)
+
+    assert status == 200 and len(env.brain.calls) == 1
+    assert prompt[:2] == [{"type": "text", "text": f"[사진 #{pid}]"}, _image(env, pid)]
+    assert "## 메시지\n(사진 1장)" in prompt[-1]["text"]
+    assert _photo_memo(chunks) is None
+    assert (body, origin) == ("옮겨 적은 글", "chat")  # 사진만 메모 칩: 원문이 없어 두뇌가 옮겨 적은 body(4.5)
+
+
+@pytest.mark.parametrize("case", ["daily_cap", "rate_limit"])
+async def test_photo_only_memo_made_under_brain_limits(env, case):
+    """하루 두뇌 호출 상한·사용 한도 구간에도 사진만 메시지는 두뇌가 필요 없어 사진 메모를 만든다(16장)."""
+    from datetime import timedelta
+
+    from my_planner.clock import to_iso
+    from my_planner.store.repos.state import LIMITED_UNTIL_KEY
+
+    p = env.parts
+    if case == "daily_cap":
+        for _ in range(p.dispatcher.settings.limits.daily_brain_calls):
+            p.state.incr_usage(p.dispatcher._today(), "brain_calls")
+    else:
+        p.state.set(LIMITED_UNTIL_KEY, to_iso(env.clock.now() + timedelta(hours=2)))
+    pid = await _photo(env)
+    status, chunks = await _send(env, _parts(None, pid))
+    assert status == 200 and env.brain.calls == []
+    assert len(_memos(env)) == 1
+    assert _confirmation(chunks) == "✓ 메모를 만들었어요: 사진 (사진 1장)"
+    assert _photo_memo(chunks) is not None
+
+
+async def test_photo_only_memo_cap_reply_keeps_user_line_in_conversation(env, monkeypatch):
+    """메모 상한이면 그 문구로 답하고 메모는 없다. 사용자 줄은 대화 안이라 다시 열어도 사진이 보인다."""
+    import my_planner.tools.memos as memos_mod
+
+    monkeypatch.setattr(memos_mod, "MEMOS_MAX", 0)
+    pid = await _photo(env)
+    status, chunks = await _send(env, _parts(None, pid))
+    conv = _conv_of(chunks)
+    lines = env.parts.transcripts.messages(conv)
+    items = (await (await env.get(f"/conversations/{conv}/messages")).json())["items"]
+    text = "".join(c["delta"] for c in chunks if c["type"] == "text-delta")
+
+    assert status == 200 and env.brain.calls == [] and _memos(env) == []
+    assert text == memos_mod.MSG_TOO_MANY and _photo_memo(chunks) is None
+    assert [(m.speaker, m.text) for m in lines] == [("사용자", f"[사진 #{pid}]"), ("비서", memos_mod.MSG_TOO_MANY)]
+    assert items[0]["photos"] == [{"id": pid, "width": 1024, "height": 768}] and items[0]["photo_memo_id"] is None
+    assert env.conn.execute("SELECT COUNT(*) FROM inbound_pending").fetchone()[0] == 0
+
+
+async def test_photo_only_in_checkin_conversation_answers_run(tmp_path):
+    """회차(체크인) 대화에 보낸 사진만 메시지도 그 회차의 답이다(6.4.5): 두뇌 없이 사진 메모 + 답 표시."""
+    from datetime import timedelta
+
+    script = [FakeTurn([], "꾸민 저녁 체크인", session_id="s-run")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 17, 30) + timedelta(seconds=30), script=script) as e:
+        await e.tick()
+        run_id = e.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+        e.clock.set(kst(2026, 10, 26, 18, 0))
+        pid = await _photo(e)
+        status, chunks = await _send(e, _parts(None, pid), checkin_id=run_id)
+        detail = await (await e.get(f"/checkins/{run_id}")).json()
+        calls = len(e.brain.calls)
+        memos = _memos(e)
+
+    assert status == 200 and calls == 1  # 회차 메시지 하나뿐
+    assert len(memos) == 1 and _photo_memo(chunks) is not None
+    assert (detail["state"], detail["answered_via"]) == ("answered", "app")
+
+
 # --- create_memo(photo_ids) (5.5, Review Focus 3) ---
 
 
