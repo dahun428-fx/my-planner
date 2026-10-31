@@ -30,6 +30,7 @@ import { MessageView } from "./MessageView";
 import { AttachMenu } from "./AttachMenu";
 import { PhotoTray, type TrayPhoto, TRAY_MAX, trayPhoto } from "./PhotoTray";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
+import { type PhotoMemo, photoMemoOf, readIntoPhotoMemo } from "./photoMemoRead";
 import { QuickChips, WRITING_ID } from "./QuickChips";
 import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
 import { sheetState } from "./sheetContext";
@@ -151,6 +152,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const [viewing, setViewing] = useState<{ ids: number[]; index: number } | null>(null);
   const pickerInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
+  // SP10 16장: the photo memo the last photo-only message made (its answer's data-photo-memo), for the
+  // "글자 읽기" chip. Gone on another send, another conversation, a reopening, or a read that is done.
+  const [photoMemo, setPhotoMemo] = useState<PhotoMemo | null>(null);
+  const readingMemo = useRef(false);
 
   const sending = useRef(false);
   const autoRetried = useRef(false);
@@ -277,6 +282,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       readTodayRef.current(); // a check-in answered, an event made: the chips may change
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
+      const made = embeddedRef.current ? null : photoMemoOf(message);
+      if (made) setPhotoMemo(made);
       const parts = toViewParts(message);
       // SP9 9.6: the answer's changes get one toast with "되돌리기" for 6 s; the chat keeps one line.
       const changed = chatActivityToast(parts);
@@ -324,6 +331,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const seq = useRef(0);
   const load = useCallback(() => {
     dropRefused(); // the history read now has no refused message to show
+    setPhotoMemo(null); // 16장: a reopened conversation has no 글자 읽기 chip
     const mine = ++seq.current;
     setLoading(true);
     setLoadError(null);
@@ -380,6 +388,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     dropRefused();
     sheetState.pickedConversationId = null;
     ctx.current.conversationId = null;
+    setPhotoMemo(null);
     setLoading(false);
     setMessages([]);
     setHistoryCount(0);
@@ -427,6 +436,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setInFlight(true);
     setFailure(null);
     setPhase(null);
+    setPhotoMemo(null); // 16장: another message takes the 글자 읽기 chip away
     if (!embedded) sheetState.freshSince = null; // said something: the latest conversation is this one again
     const metadata: Meta = { at: new Date().toISOString(), ...(checkinId === undefined ? {} : { checkin_id: checkinId }) };
     if (chip) metadata.chip = chip;
@@ -567,9 +577,30 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   );
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
   const pressChip = (chip: Chip) => {
+    if (chip.mode === "read") return void readPhotoMemo();
     if (chip.mode === "send") return void send(chip.text, { checkinId: chip.checkinId, chip: chip.wire });
     setWriting(chip);
     field.current?.focus();
+  };
+  // SP10 16장 "글자 읽기": reads the photo memo's photos into it (no message, no bubble). Done, the chip
+  // goes; not done (a read or the save did not go through), it stays to be pressed again.
+  const readPhotoMemo = async () => {
+    const target = photoMemo;
+    if (!target || readingMemo.current) return;
+    const c = connRef.current ?? loadConn();
+    if (!c) {
+      toastRef.current.show({ text: copy.actions.offline });
+      return;
+    }
+    readingMemo.current = true;
+    toastRef.current.show({ text: copy.photos.reading });
+    try {
+      const r = await readIntoPhotoMemo(c, target.memoId, target.photoIds);
+      toastRef.current.show({ text: r.text });
+      if (r.done) setPhotoMemo((now) => (now === target ? null : now));
+    } finally {
+      readingMemo.current = false;
+    }
   };
   const closeWrite = () => {
     setWriting(null);
@@ -750,7 +781,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (at !== null) prevAt = at;
   });
 
-  const chips = quickChips(today, new Date(now));
+  const chips = quickChips(today, new Date(now), { read: photoMemo !== null });
 
   const last = messages[messages.length - 1];
   const answering = busy && last?.role === "assistant" && toViewParts(last).length > 0;

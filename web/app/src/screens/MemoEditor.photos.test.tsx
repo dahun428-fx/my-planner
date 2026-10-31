@@ -12,6 +12,7 @@ import { BASE, server } from "../test/server";
 import { MemoEditor } from "./MemoEditor";
 
 // SP10 12장 앱 (메모 쪽): 사진 줄과 보기, 넣을 자리, 읽기 상태에서 끝남, 실패 뒤 "다시 읽기", 8장 응답→문구.
+// 16장: 붙여도 읽지 않는다. 보기 화면의 "글자 읽기"가 읽어 보기를 열 때의 커서 자리(읽기 상태면 끝)에 넣는다.
 // jsdom has no image decoder: shrinkPhoto (its own tests fake the bitmap) stands in here.
 vi.mock("../lib/shrinkPhoto", async (orig) => {
   const real = await orig<typeof import("../lib/shrinkPhoto")>();
@@ -94,13 +95,19 @@ async function pick(at?: number) {
   await userEvent.upload(fileInput(), picture());
 }
 
+/** 16장: opens photo `n` of `total` big (the caret, if writing, is where it is now) and presses 글자 읽기. */
+async function readFromViewer(n = 1, total = 1) {
+  await userEvent.click(await screen.findByRole("button", { name: copy.photos.photo(n, total) }));
+  const viewer = screen.getByRole("dialog", { name: copy.photos.viewer });
+  await userEvent.click(within(viewer).getByRole("button", { name: copy.photos.readText }));
+}
+
 beforeEach(() => clearPhotoCache());
 afterEach(() => vi.mocked(shrinkPhoto).mockClear());
 
 describe("MemoEditor photos (SP10 7.1)", () => {
-  it("a new memo: the photo joins the row above the body, is read, its text goes in at the caret, and the save sends photo_ids", async () => {
-    const read = deferred<Response>();
-    const be = fakeBe({ read: () => read.promise });
+  it("a new memo: the photo joins the row above the body and is not read (16장); the save sends photo_ids", async () => {
+    const be = fakeBe();
     renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
     await userEvent.type(box(), "책 메모");
     await pick();
@@ -108,29 +115,44 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     const strip = await screen.findByRole("list", { name: copy.photos.strip });
     const img = within(strip).getByRole("button", { name: copy.photos.photo(1, 1) }).querySelector("img");
     await waitFor(() => expect(img?.getAttribute("src")).toMatch(/^blob:/));
-    expect(await screen.findByText(copy.photos.reading)).toBeInTheDocument();
-    // Writing goes on while it is read.
-    expect(box()).not.toHaveAttribute("readonly");
-    read.resolve(HttpResponse.json({ text: "사진 속 글", unreadable: false }));
-    await waitFor(() => expect(box()).toHaveValue("책 메모\n사진 속 글"));
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.inserted));
-    expect(screen.queryByText(copy.photos.reading)).toBeNull();
     await waitFor(() => expect(be.sent.some((s) => s.action === "create_memo")).toBe(true), { timeout: 2500 });
-    expect(be.sent.find((s) => s.action === "create_memo")!.args).toEqual({ body: "책 메모\n사진 속 글", photo_ids: [12] });
+    expect(be.sent.find((s) => s.action === "create_memo")!.args).toEqual({ body: "책 메모", photo_ids: [12] });
     expect(be.sent.some((s) => s.action === "attach_photo")).toBe(false);
     expect(be.gets).toEqual([]);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.created("책 메모", 1)));
+    // No read, no band.
+    expect(be.order).not.toContain("read");
+    expect(screen.queryByText(copy.photos.reading)).toBeNull();
+    expect(box()).toHaveValue("책 메모");
   });
 
-  it("a saved memo: the photo is attached at once, then read; the text goes where the caret was even after typing before it", async () => {
+  it("a saved memo: the photo is attached at once and not read", async () => {
+    const be = fakeBe();
+    renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
+    await userEvent.click(await screen.findByText("읽을 책"));
+    await pick(5);
+    await waitFor(() => expect(be.order).toEqual(["upload", "attach_photo"]));
+    expect(be.sent[0].args).toEqual({ memo_id: 7, photo_id: 12 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(be.order).not.toContain("read");
+    expect(screen.queryByText(copy.photos.reading)).toBeNull();
+    expect(box()).toHaveValue(MEMO.body);
+  });
+
+  it("the viewer's 글자 읽기 (writing): it closes, the band shows, and the text goes where the caret was when it opened, even after typing before it", async () => {
     const read = deferred<Response>();
     const be = fakeBe({ read: () => read.promise });
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
     await pick(5); // the start of "- 끝 줄"
+    await waitFor(() => expect(be.order).toEqual(["upload", "attach_photo"]));
+    box().setSelectionRange(5, 5);
+    await readFromViewer();
+    expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(be.order).toEqual(["upload", "attach_photo", "read"]));
-    expect(be.sent[0].args).toEqual({ memo_id: 7, photo_id: 12 });
-    // Typing at the start while the photo is read moves the anchor along.
+    expect(await screen.findByText(copy.photos.reading)).toBeInTheDocument();
+    // Writing goes on while it is read; typing at the start moves the anchor along.
+    expect(box()).not.toHaveAttribute("readonly");
     box().focus();
     box().setSelectionRange(0, 0);
     await userEvent.keyboard("새 ");
@@ -147,6 +169,8 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
     await pick(MEMO.body.length);
+    box().setSelectionRange(MEMO.body.length, MEMO.body.length);
+    await readFromViewer();
     await screen.findByText(copy.photos.reading);
     await userEvent.click(screen.getByRole("button", { name: copy.memos.toolbar.done }));
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
@@ -158,6 +182,48 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     await waitFor(() => expect(document.querySelector("main")).toHaveTextContent("읽은 글"));
   });
 
+  it("the viewer's 글자 읽기 in the read state: the text goes at the end and is saved at once", async () => {
+    const WITH = { ...MEMO, photos: [{ id: 3, width: 10, height: 10 }, { id: 4, width: 10, height: 10 }] };
+    const be = fakeBe({ memo: WITH, read: () => HttpResponse.json({ text: "끝에 들어갈 글", unreadable: false }) });
+    renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
+    await screen.findByText("읽을 책");
+    await readFromViewer(2, 2);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull(); // still reading, not writing
+    await waitFor(() => expect(be.sent).toHaveLength(1));
+    expect(be.order).toEqual(["read", "update_memo"]);
+    expect(be.sent[0]).toMatchObject({ action: "update_memo", args: { id: 7, body: `${MEMO.body}\n끝에 들어갈 글` } });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.inserted));
+  });
+
+  it("the viewer's 글자 읽기 reads the photo shown, not the first", async () => {
+    const WITH = { ...MEMO, photos: [{ id: 3, width: 10, height: 10 }, { id: 4, width: 10, height: 10 }] };
+    const ids: number[] = [];
+    fakeBe({
+      memo: WITH,
+      read: (id) => {
+        ids.push(id);
+        return HttpResponse.json({ text: "x", unreadable: false });
+      },
+    });
+    renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
+    await screen.findByText("읽을 책");
+    await userEvent.click(await screen.findByRole("button", { name: copy.photos.photo(1, 2) }));
+    const viewer = screen.getByRole("dialog", { name: copy.photos.viewer });
+    await userEvent.click(within(viewer).getByRole("button", { name: copy.photos.next }));
+    await userEvent.click(within(viewer).getByRole("button", { name: copy.photos.readText }));
+    await waitFor(() => expect(ids).toEqual([4]));
+  });
+
+  it("offline the viewer has no 글자 읽기", async () => {
+    const WITH = { ...MEMO, photos: [{ id: 3, width: 10, height: 10 }] };
+    server.use(http.get(`${BASE}/memos/:id`, () => HttpResponse.json(WITH)), http.get(`${BASE}/photos/:id`, () => HttpResponse.error()));
+    renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7", conn: "offline" });
+    await screen.findByText(copy.offline.lead);
+    await userEvent.click(await screen.findByRole("button", { name: copy.photos.photo(1, 1) }));
+    expect(within(screen.getByRole("dialog")).queryByRole("button", { name: copy.photos.readText })).toBeNull();
+  });
+
   it("a read that does not go through leaves the photo and offers 다시 읽기", async () => {
     let reads = 0;
     fakeBe({
@@ -166,6 +232,8 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
     await pick(MEMO.body.length);
+    box().setSelectionRange(MEMO.body.length, MEMO.body.length);
+    await readFromViewer();
     const again = await screen.findByRole("button", { name: copy.photos.reread });
     expect(screen.getByRole("button", { name: copy.photos.photo(1, 1) })).toBeInTheDocument();
     expect(box()).toHaveValue(MEMO.body);
@@ -179,6 +247,7 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
     await pick(2);
+    await readFromViewer();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.unreadable));
     expect(box()).toHaveValue(MEMO.body);
     expect(screen.getByRole("button", { name: copy.photos.photo(1, 1) })).toBeInTheDocument();
@@ -189,6 +258,7 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
     await pick(2);
+    await readFromViewer();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.readLimit));
     expect(screen.queryByRole("button", { name: copy.photos.reread })).toBeNull();
     expect(screen.queryByText(copy.photos.reading)).toBeNull();
@@ -201,6 +271,8 @@ describe("MemoEditor photos (SP10 7.1)", () => {
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText(long.body));
     await pick(long.body.length);
+    box().setSelectionRange(long.body.length, long.body.length);
+    await readFromViewer();
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(copy.photos.cut));
     expect(box().value).toBe(`${long.body}\n0123`);
   });
@@ -290,14 +362,15 @@ describe("MemoEditor photos (SP10 7.1)", () => {
 describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
   const created = (be: { sent: Sent[] }) => be.sent.filter((s) => s.action === "create_memo");
 
-  it("unreadable: it is made with the body 사진 and the photo, by itself", async () => {
-    const be = fakeBe({ read: () => HttpResponse.json({ text: "", unreadable: true }) });
+  it("it is made with the body 사진 and the photo, by itself (no read)", async () => {
+    const be = fakeBe();
     renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
     await pick();
     await waitFor(() => expect(created(be)).toHaveLength(1), { timeout: 2500 });
     expect(created(be)[0].args).toEqual({ body: copy.photos.defaultBody, photo_ids: [12] });
     await waitFor(() => expect(box()).toHaveValue(copy.photos.defaultBody));
     expect(be.sent.some((s) => s.action === "attach_photo")).toBe(false);
+    expect(be.order).not.toContain("read");
   });
 
   it("a read that does not go through: made with 사진 all the same; 다시 읽기 then puts the text after it", async () => {
@@ -307,6 +380,7 @@ describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
     });
     renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
     await pick();
+    await readFromViewer();
     const again = await screen.findByRole("button", { name: copy.photos.reread });
     await waitFor(() => expect(created(be)).toHaveLength(1), { timeout: 2500 });
     expect(created(be)[0].args).toEqual({ body: copy.photos.defaultBody, photo_ids: [12] });
@@ -319,6 +393,7 @@ describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
     const be = fakeBe({ read: () => read.promise });
     renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
     await pick();
+    await readFromViewer();
     read.resolve(HttpResponse.json({ text: "지울 글", unreadable: false }));
     await waitFor(() => expect(box()).toHaveValue("지울 글"));
     await userEvent.clear(box());
@@ -329,7 +404,7 @@ describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
   });
 
   it("409 photo_in_use on create_memo: it says so, the photo leaves the row and the next save makes the memo", async () => {
-    fakeBe({ read: () => HttpResponse.json({ text: "", unreadable: true }) });
+    fakeBe();
     const creates: Record<string, unknown>[] = [];
     server.use(
       http.post(`${BASE}/actions`, async ({ request }) => {
@@ -357,6 +432,7 @@ describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
     const be = fakeBe({ read: () => read.promise });
     renderWithProviders(<MemoEditor id={null} />, { route: "/memos/view/?new=1" });
     await pick();
+    await readFromViewer();
     await screen.findByText(copy.photos.reading);
     await new Promise((r) => setTimeout(r, 1300));
     expect(created(be)).toEqual([]);
@@ -369,7 +445,6 @@ describe("a new memo with only a photo (SP10 7.1 v2.7)", () => {
 describe("photo limits and taking out (SP10 7.1, fix round 1)", () => {
   it("two quick picks at 9 photos: only one is sent, the other says the 10 limit", async () => {
     const nine = { ...MEMO, photos: Array.from({ length: 9 }, (_, i) => ({ id: 100 + i, width: 10, height: 10 })) };
-    const hold = deferred<Response>();
     let uploads = 0;
     fakeBe({
       memo: nine,
@@ -377,7 +452,6 @@ describe("photo limits and taking out (SP10 7.1, fix round 1)", () => {
         uploads++;
         return HttpResponse.json({ id: 12, width: 10, height: 10, bytes: 9 }, { status: 201 });
       },
-      read: () => hold.promise,
     });
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
@@ -387,7 +461,6 @@ describe("photo limits and taking out (SP10 7.1, fix round 1)", () => {
     await waitFor(() => expect(within(screen.getByRole("list", { name: copy.photos.strip })).getAllByRole("button")).toHaveLength(10));
     expect(uploads).toBe(1);
     expect(screen.getByRole("button", { name: copy.photos.button })).toHaveAttribute("aria-disabled", "true");
-    hold.resolve(HttpResponse.json({ text: "", unreadable: true }));
   });
 
   it("taking out a photo whose read did not go through takes its 다시 읽기 away too", async () => {
@@ -395,6 +468,7 @@ describe("photo limits and taking out (SP10 7.1, fix round 1)", () => {
     renderWithProviders(<MemoEditor id={7} />, { route: "/memos/view/?id=7" });
     await userEvent.click(await screen.findByText("읽을 책"));
     await pick(2);
+    await readFromViewer();
     await screen.findByRole("button", { name: copy.photos.reread });
     await userEvent.click(screen.getByRole("button", { name: copy.photos.photo(1, 1) }));
     await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: copy.photos.detach }));

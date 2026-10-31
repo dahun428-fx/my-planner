@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CheckinSummary, EventItem, Today } from "../api/types.gen";
 import { copy } from "../lib/copy";
-import { FIXED_CHIPS, frontChip, quickChips } from "./quickChips";
+import { FIXED_CHIPS, frontChip, quickChips, READ_CHIP } from "./quickChips";
 
 // 시험 날짜(계획 작업 방식): 2026-10-27(화), 2026-11-01(일).
 const today = (over: Partial<Today> = {}): Today => ({
@@ -144,5 +144,15 @@ describe("quickChips", () => {
     const chips = quickChips(today({ checkins: [run()] }), at("2026-10-27T13:00:00Z"));
     expect(chips.map((c) => c.label)).toEqual([copy.chat.chips.checkin.label, ...FIXED_CHIPS.map((c) => c.label)]);
     expect(quickChips(null, at("2026-10-27T13:00:00Z"))).toEqual(FIXED_CHIPS);
+  });
+
+  // SP10 16장: after a photo-only message's photo memo, "글자 읽기" goes first, before the front chip.
+  it("글자 읽기 goes before the front chip and the fixed four; it sends nothing", () => {
+    const chips = quickChips(today({ checkins: [run()] }), at("2026-10-27T13:00:00Z"), { read: true });
+    expect(chips.map((c) => c.label)).toEqual([copy.chat.readChip, copy.chat.chips.checkin.label, ...FIXED_CHIPS.map((c) => c.label)]);
+    expect(quickChips(null, at("2026-10-27T13:00:00Z"), { read: true })).toEqual([READ_CHIP, ...FIXED_CHIPS]);
+    expect(READ_CHIP).toMatchObject({ key: "read", icon: "photo", mode: "read" });
+    expect(READ_CHIP.wire).toBeUndefined();
+    expect(quickChips(null, at("2026-10-27T13:00:00Z"), { read: false })).toEqual(FIXED_CHIPS);
   });
 });

@@ -236,9 +236,10 @@ test("Pretendard loads from this origin on the first screen", async ({ page }) =
 });
 
 // SP10 12장 (Playwright): with the fixture BE, a photo picked in a new memo is shrunk in the real
-// browser, joins the photo row (a blob: image under img-src blob:), its read text goes into the body,
-// and the save request carries photo_ids. No CSP violation on the way.
-test("memo photo: pick, row, read text goes in, create_memo has photo_ids, under CSP", async ({ page }) => {
+// browser, joins the photo row (a blob: image under img-src blob:), and the save request carries
+// photo_ids. 16장: it is not read on its own; the viewer's "글자 읽기" puts its text into the body.
+// No CSP violation on the way.
+test("memo photo: pick, row, create_memo has photo_ids, 글자 읽기 puts the text in, under CSP", async ({ page }) => {
   const problems: string[] = [];
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
   await page.addInitScript(() => {
@@ -248,6 +249,7 @@ test("memo photo: pick, row, read text goes in, create_memo has photo_ids, under
   });
   await mockBe(page);
   const uploads: string[] = [];
+  let reads = 0;
   const actions: { action: string; args: Record<string, unknown> }[] = [];
   const headers = {
     "Access-Control-Allow-Origin": APP_ORIGIN,
@@ -267,6 +269,7 @@ test("memo photo: pick, row, read text goes in, create_memo has photo_ids, under
       return route.fulfill({ status: 201, headers, body: JSON.stringify({ id: 12, width: 2048, height: 1365, bytes: 1000 }) });
     }
     if (req.method() === "POST" && path === "/photos/12/read") {
+      reads++;
       return route.fulfill({ status: 200, headers, body: JSON.stringify({ text: "사진 속 글", unreadable: false }) });
     }
     if (req.method() === "POST" && path === "/actions") {
@@ -300,9 +303,18 @@ test("memo photo: pick, row, read text goes in, create_memo has photo_ids, under
   const img = strip.locator("img");
   await expect(img).toHaveAttribute("src", /^blob:/);
   await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(() => actions.find((a) => a.action === "create_memo")?.args, { timeout: 5000 }).toEqual({ body: "책 메모", photo_ids: [12] });
+  expect(reads).toBe(0);
+  await expect(box).toHaveValue("책 메모");
+  // The viewer's 글자 읽기: it closes, and the text goes in at the caret (the end) and is saved.
+  await strip.getByRole("button").first().click();
+  const viewer = page.getByRole("dialog", { name: copy.photos.viewer });
+  await viewer.getByRole("button", { name: copy.photos.readText }).click();
+  await expect(viewer).toHaveCount(0);
   await expect(box).toHaveValue("책 메모\n사진 속 글");
   await expect(page.getByText(copy.photos.inserted)).toBeVisible();
-  await expect.poll(() => actions.find((a) => a.action === "create_memo")?.args, { timeout: 5000 }).toEqual({ body: "책 메모\n사진 속 글", photo_ids: [12] });
+  await expect.poll(() => actions.find((a) => a.action === "update_memo")?.args.body, { timeout: 5000 }).toBe("책 메모\n사진 속 글");
+  expect(reads).toBe(1);
   expect(uploads).toHaveLength(1);
   expect(uploads[0]).toMatch(/^multipart\/form-data; boundary=/);
   problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `securitypolicyviolation ${v}`));

@@ -5,7 +5,8 @@ import { logicalDateOf } from "../lib/time";
 
 // SP9 9.5 퀵 칩: 입력창 위 고정 칩 4개와, 때에 맞는 칩 1개(맨 앞). 판단 재료는 `GET /today`뿐이다(BE에 새 경로 없음).
 
-export type ChipKey = keyof typeof copy.chat.chips;
+/** `read`: SP10 16장 "글자 읽기" (no sentence: it reads a photo memo, nothing is sent). */
+export type ChipKey = keyof typeof copy.chat.chips | "read";
 /** `POST /chat`의 `chip`(SP9c 4.1). */
 export type WireChip = NonNullable<ChatRequestBody["chip"]>;
 /** 한 줄 쓰기 칩(SP9c 3): 할 일·일정·메모. */
@@ -14,11 +15,14 @@ export type WriteKey = keyof typeof copy.chat.write;
 export interface Chip {
   key: ChipKey;
   label: string;
-  /** 누르면 내 말풍선으로 보내는 정해진 문장(`send`). */
+  /** 누르면 내 말풍선으로 보내는 정해진 문장(`send`). `read`는 빈 글이다. */
   text: string;
   icon: IconName;
-  /** SP9c 3: `write`는 보내지 않고 입력창을 한 줄 쓰기로 바꾼다. `send`는 문장을 바로 보낸다. */
-  mode: "write" | "send";
+  /**
+   * SP9c 3: `write`는 보내지 않고 입력창을 한 줄 쓰기로 바꾼다. `send`는 문장을 바로 보낸다.
+   * SP10 16장: `read`는 말을 보내지 않고 사진 메모의 사진을 읽어 넣는다(말풍선 없음).
+   */
+  mode: "write" | "send" | "read";
   /** 요청에 싣는 `chip`. 체크인·회고 칩은 없다. */
   wire?: WireChip;
   /** 체크인·회고 칩: 그 회차(`checkin_id`)로 보낸다. 이때는 `resume_conversation_id`를 싣지 않는다(Review Focus 5). */
@@ -29,7 +33,7 @@ export const isWriteKey = (key: string): key is WriteKey => key in copy.chat.wri
 const WIRE = ["todo", "event", "memo", "today", "next"] as const satisfies readonly WireChip[];
 const isWire = (key: string): key is WireChip => (WIRE as readonly string[]).includes(key);
 
-const chip = (key: ChipKey, icon: IconName, checkinId?: number): Chip => ({
+const chip = (key: Exclude<ChipKey, "read">, icon: IconName, checkinId?: number): Chip => ({
   key,
   icon,
   ...copy.chat.chips[key],
@@ -79,8 +83,15 @@ export function frontChip(today: Today, now: Date): Chip | null {
   return soon ? chip("next", "schedule") : null;
 }
 
-/** 칩 줄 전체: 맨 앞 칩(있으면) + 고정 4개. `/today`를 못 받았으면 고정 4개만. */
-export function quickChips(today: Today | null, now: Date): readonly Chip[] {
+/** SP10 16장 "글자 읽기": 사진만 보낸 메시지가 만든 메모가 대상이다. */
+export const READ_CHIP: Chip = { key: "read", label: copy.chat.readChip, text: "", icon: "photo", mode: "read" };
+
+/**
+ * 칩 줄 전체: "글자 읽기"(`read`, 16장) + 맨 앞 칩(있으면) + 고정 4개. `/today`를 못 받았으면 맨 앞
+ * 칩은 없다.
+ */
+export function quickChips(today: Today | null, now: Date, { read = false }: { read?: boolean } = {}): readonly Chip[] {
   const front = today ? frontChip(today, now) : null;
-  return front ? [front, ...FIXED_CHIPS] : FIXED_CHIPS;
+  const rest = front ? [front, ...FIXED_CHIPS] : FIXED_CHIPS;
+  return read ? [READ_CHIP, ...rest] : rest;
 }
