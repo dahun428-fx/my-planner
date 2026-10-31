@@ -538,6 +538,33 @@ async def test_photo_only_in_checkin_conversation_answers_run(tmp_path):
     assert (detail["state"], detail["answered_via"]) == ("answered", "app")
 
 
+async def test_photo_only_memo_cap_reply_in_checkin_keeps_level_up_line(tmp_path, monkeypatch):
+    """회차 답으로 레벨이 오른 사진만 메시지가 메모 상한에 걸려도 거절 문구 끝에 레벨 오름 줄이 붙는다(9.2)."""
+    from datetime import timedelta
+
+    from test_status_xp import _seed_xp
+
+    import my_planner.tools.memos as memos_mod
+
+    monkeypatch.setattr(memos_mod, "MEMOS_MAX", 0)
+    script = [FakeTurn([], "꾸민 저녁 체크인", session_id="s-run")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 10, 26, 17, 30) + timedelta(seconds=30), script=script) as e:
+        await e.tick()
+        run_id = e.conn.execute("SELECT id FROM runs WHERE loop = 'evening_checkin'").fetchone()["id"]
+        _seed_xp(e, 145)  # 체크인 답 +5 → 150, 레벨 2
+        e.clock.set(kst(2026, 10, 26, 18, 0))
+        pid = await _photo(e)
+        status, chunks = await _send(e, _parts(None, pid), checkin_id=run_id)
+        conv = _conv_of(chunks)
+        lines = e.parts.transcripts.messages(conv)
+        memos = _memos(e)
+
+    text = "".join(c["delta"] for c in chunks if c["type"] == "text-delta")
+    refused = f"{memos_mod.MSG_TOO_MANY}\n레벨 2이 됐어요."
+    assert status == 200 and memos == [] and _photo_memo(chunks) is None
+    assert text == refused and lines[-1].text == refused
+
+
 # --- create_memo(photo_ids) (5.5, Review Focus 3) ---
 
 

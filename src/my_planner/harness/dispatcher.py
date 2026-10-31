@@ -1412,7 +1412,7 @@ class Dispatcher:
             )
             res = tools.create_memo(ctx, body=PHOTO_MEMO_BODY, photo_ids=[i for i in m.photo_ids if i in loaded])
             if "error" in res:  # 메모 상한 등: 그 문구로 답한다(만든 것이 없다). 사용자 줄은 이 대화 안에
-                refused = str(res["error"])
+                refused = with_level_up(str(res["error"]), answer_xp.level_up) or ""
                 with self._awake.hold():
                     self._log_user_lines([m], conv.id, pending, lead)
                     if not await self._send_reply(self._reply_out(Outbound(text=refused), "", [], []), [lead], conv.id):
