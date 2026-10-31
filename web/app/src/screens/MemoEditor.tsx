@@ -551,31 +551,31 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   );
 
   /** `inRow`: called once the photo is in the row (it stops counting as an upload). 16장: it is not read. */
-  const addPhoto = async (file: File, inRow: () => void): Promise<boolean> => {
+  const addPhoto = async (file: File, inRow: () => void): Promise<void> => {
     let shrunk: { image: Blob; thumb: Blob };
     try {
       shrunk = await shrinkPhoto(file);
     } catch {
       toast.show({ text: copy.photos.cannotOpen });
-      return false;
+      return;
     }
     const conn = loadConn();
     if (!conn) {
       toast.show({ text: copy.actions.offline });
-      return false;
+      return;
     }
     // A new client_msg_id for every photo picked (uploadPhoto keeps it for its own retry only).
     const up = await uploadPhoto(conn, { ...shrunk, origin: "memo", clientMsgId: newClientMsgId() });
     if (up.kind !== "ok") {
       toast.show({ text: uploadFailureText(up) });
-      return false;
+      return;
     }
     // The BE gives the photo out only once it is attached (5.1): until then it is shown from these bytes.
     keepLocalPhoto(conn, up.data.id, shrunk.image, shrunk.thumb);
-    if (!alive.current) return false;
+    if (!alive.current) return;
     setPhotos((ps) => [...ps, { id: up.data.id, attached: false }]);
     inRow();
-    return attach(up.data.id);
+    await attach(up.data.id);
   };
 
   /** The photos of the memo and those on their way: two quick picks at 9 must not make 11. */

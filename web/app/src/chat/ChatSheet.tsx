@@ -156,6 +156,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // "글자 읽기" chip. Gone on another send, another conversation, a reopening, or a read that is done.
   const [photoMemo, setPhotoMemo] = useState<PhotoMemo | null>(null);
   const readingMemo = useRef(false);
+  const [readingChip, setReadingChip] = useState(false);
 
   const sending = useRef(false);
   const autoRetried = useRef(false);
@@ -593,13 +594,17 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       return;
     }
     readingMemo.current = true;
+    setReadingChip(true); // the chip is off and busy until the read ends (the toast may go first)
     toastRef.current.show({ text: copy.photos.reading });
     try {
+      // A read started here still ends and writes the memo after another send or another conversation
+      // took the chip away: that is meant (it was asked for), and its toast says so.
       const r = await readIntoPhotoMemo(c, target.memoId, target.photoIds);
       toastRef.current.show({ text: r.text });
       if (r.done) setPhotoMemo((now) => (now === target ? null : now));
     } finally {
       readingMemo.current = false;
+      setReadingChip(false);
     }
   };
   const closeWrite = () => {
@@ -872,7 +877,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         {online && loadError !== null && <BlockError code={loadError} onRetry={load} />}
       </div>
       {reason && <p className={styles.reason}>{reason}</p>}
-      {!embedded && <QuickChips chips={chips} disabled={!canSend || uploading} writing={writing} onPress={pressChip} onCloseWrite={closeWrite} />}
+      {!embedded && <QuickChips chips={chips} disabled={!canSend || uploading} writing={writing} busy={readingChip ? "read" : null} onPress={pressChip} onCloseWrite={closeWrite} />}
       {!embedded && <PhotoTray photos={tray} onRemove={unpick} disabled={uploading} />}
       <form className={styles.composer} onSubmit={onSubmit}>
         <div className={styles.field} data-attach={embedded ? undefined : ""}>

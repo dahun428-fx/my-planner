@@ -34,15 +34,16 @@ export function photoMemoOf(m: UIMessage): PhotoMemo | null {
 
 /**
  * The memo's body with the read text in: in place of the default body "사진" when it is still that,
- * else at the end after one blank line. What would take it over 20,000 code points is left out (`cut`).
+ * else at the end after one blank line. What would take it over 20,000 code points is left out (`cut`);
+ * `noRoom`: nothing fits at all, and the body is as it was.
  */
-export function fillPhotoMemo(body: string, read: string): { body: string; cut: boolean } {
+export function fillPhotoMemo(body: string, read: string): { body: string; cut: boolean; noRoom: boolean } {
   const base = body === copy.photos.defaultBody ? "" : `${body.replace(/\n+$/, "")}\n\n`;
   const room = BODY_MAX_CODE_POINTS - codePoints(base);
   const chars = Array.from(read);
-  if (chars.length <= room) return { body: base + read, cut: false };
-  if (room <= 0) return { body, cut: true };
-  return { body: base + chars.slice(0, room).join(""), cut: true };
+  if (chars.length <= room) return { body: base + read, cut: false, noRoom: false };
+  if (room <= 0) return { body, cut: true, noRoom: true };
+  return { body: base + chars.slice(0, room).join(""), cut: true, noRoom: false };
 }
 
 /** The toast's title: its first 20 (16장). */
@@ -69,8 +70,10 @@ export async function readIntoPhotoMemo(conn: Conn, memoId: number, photoIds: nu
       if (m.kind === "error" && m.status === 404) return { done: true, text: copy.memos.errors.notFound };
       return { done: false, text: failureText(m) };
     }
+    // Already there: an earlier save was applied though its answer was lost (the chip stayed). Not twice.
+    if (m.data.body.includes(read)) return { done: true, text: copy.photos.readInto(title20(m.data.title)) };
     const next = fillPhotoMemo(m.data.body, read);
-    if (next.body === m.data.body) return { done: true, text: copy.photos.cut }; // no room left at all
+    if (next.noRoom) return { done: true, text: copy.photos.cut };
     const out = await runAction("update_memo", { id: memoId, body: next.body, updated_at: m.data.updated_at });
     if (out.kind === "conflict") continue;
     if (out.kind === "applied") {

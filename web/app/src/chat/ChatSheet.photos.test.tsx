@@ -854,6 +854,53 @@ describe("글자 읽기 chip (SP10 16장)", () => {
     await waitFor(() => expect(readChip()).toBeNull());
   });
 
+  it("an update whose answer is lost (it was applied): the chip stays, and a second press writes nothing again", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    // A 5xx after the write (a network loss would also take the sheet offline for a while).
+    const be = memoBe({ actions: () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) });
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    await user.click(await within(chipRow()).findByRole("button", { name: copy.chat.readChip }));
+    await waitFor(() => expect(be.sent.length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(chipRow()).getByRole("button", { name: copy.chat.readChip })).toBeEnabled());
+    const updates = be.sent.length;
+    // The BE did apply it: the memo now holds the text.
+    server.use(
+      http.get(`${BASE}/memos/:id`, () =>
+        HttpResponse.json({ id: 40, title: "영수증 12", body: "영수증 12", area: null, pinned: false, origin: "user", created_at: "2026-10-31T01:00:00Z", updated_at: "2026-10-31T01:01:00Z", photos: [] }),
+      ),
+    );
+    await user.click(readChip()!);
+    await waitFor(() => expect(readChip()).toBeNull());
+    expect(be.sent).toHaveLength(updates);
+    expect(toastSays(copy.photos.readInto("영수증 12"))).toBe(true);
+  });
+
+  it("while it reads, the chip is off and busy", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    memoBe();
+    server.use(
+      http.post(`${BASE}/photos/:id/read`, async () => {
+        await held;
+        return HttpResponse.json({ text: "영수증 12", unreadable: false });
+      }),
+    );
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    const chip = await within(chipRow()).findByRole("button", { name: copy.chat.readChip });
+    await user.click(chip);
+    await waitFor(() => expect(chip).toBeDisabled());
+    expect(chip).toHaveAttribute("aria-busy", "true");
+    // The other chips stay as they were.
+    expect(within(chipRow()).getAllByRole("button").filter((b) => b !== chip).every((b) => !(b as HTMLButtonElement).disabled)).toBe(true);
+    release();
+    await waitFor(() => expect(readChip()).toBeNull());
+  });
+
   it("all unreadable: the unreadable sentence, and nothing is written", async () => {
     photoBe();
     serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));

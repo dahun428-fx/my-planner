@@ -74,21 +74,21 @@ beforeEach(() => saveConn(conn));
 
 describe("fillPhotoMemo", () => {
   it("the body 사진 as it is: the read text takes its place", () => {
-    expect(fillPhotoMemo(copy.photos.defaultBody, "글1\n\n글2")).toEqual({ body: "글1\n\n글2", cut: false });
+    expect(fillPhotoMemo(copy.photos.defaultBody, "글1\n\n글2")).toEqual({ body: "글1\n\n글2", cut: false, noRoom: false });
   });
 
   it("a body changed: the read text goes at the end after one blank line", () => {
-    expect(fillPhotoMemo("사진 영수증", "글1")).toEqual({ body: "사진 영수증\n\n글1", cut: false });
-    expect(fillPhotoMemo("사진\n", "글1")).toEqual({ body: "사진\n\n글1", cut: false });
+    expect(fillPhotoMemo("사진 영수증", "글1")).toEqual({ body: "사진 영수증\n\n글1", cut: false, noRoom: false });
+    expect(fillPhotoMemo("사진\n", "글1")).toEqual({ body: "사진\n\n글1", cut: false, noRoom: false });
   });
 
   it("over 20,000 code points: the rest is left out (cut)", () => {
     const body = "가".repeat(19_995);
-    expect(fillPhotoMemo(body, "0123456789")).toEqual({ body: `${body}\n\n012`, cut: true });
+    expect(fillPhotoMemo(body, "0123456789")).toEqual({ body: `${body}\n\n012`, cut: true, noRoom: false });
     // Code points, not UTF-16 units: an emoji counts once.
     const emoji = "😀".repeat(19_990);
-    expect(fillPhotoMemo(emoji, "0123456789")).toEqual({ body: `${emoji}\n\n01234567`, cut: true });
-    expect(fillPhotoMemo("가".repeat(20_000), "글")).toEqual({ body: "가".repeat(20_000), cut: true });
+    expect(fillPhotoMemo(emoji, "0123456789")).toEqual({ body: `${emoji}\n\n01234567`, cut: true, noRoom: false });
+    expect(fillPhotoMemo("가".repeat(20_000), "글")).toEqual({ body: "가".repeat(20_000), cut: true, noRoom: true });
   });
 });
 
@@ -178,6 +178,13 @@ describe("readIntoPhotoMemo", () => {
     const r = await readIntoPhotoMemo(conn, 40, [12]);
     expect(b.sent[0].args.body).toBe(`${body}\n\n012`);
     expect(r).toEqual({ done: true, text: copy.photos.cut });
+  });
+
+  it("the text already in the memo (an earlier save applied though its answer was lost): no second update_memo, done", async () => {
+    const b = be({ memos: [memo({ body: "영수증\n\n글12\n\n글13", title: "영수증" })] });
+    const r = await readIntoPhotoMemo(conn, 40, [12, 13]);
+    expect(b.sent).toEqual([]);
+    expect(r).toEqual({ done: true, text: copy.photos.readInto("영수증") });
   });
 
   it("the memo gone (undone): nothing is written, and it says so", async () => {
