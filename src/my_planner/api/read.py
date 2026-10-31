@@ -588,21 +588,32 @@ def get_conversation_messages(conn: sqlite3.Connection, deps: ApiDeps, request: 
     lines = deps.transcripts.messages(conversation_id)
     # 사용자 줄의 사진(SP10 5.3): 줄 앞 `[사진 #id]` 표시가 이 대화의 아직 쓰지 않은 받은 메시지 하나의 사진과 똑같을
     # 때만 그 사진들(보낸 순서). 그 줄의 글에서는 표시를 뗀다(사진만이면 ""). 글로 친 `[사진 #N]`은 사진이 되지 않는다
-    unused = _photos(deps).for_conversation(conn, conversation_id) if any(
+    repo = _photos(deps)
+    unused = repo.for_conversation(conn, conversation_id) if any(
         m.speaker == "사용자" and m.channel == "app" for m in lines
     ) else {}
+    memos = MemosRepo(conn, deps.clock)
+
+    def photo_memo_id(photo_ids: list[int]) -> int | None:
+        """사진만 보낸 줄의 사진 메모(SP10 16장): 그 사진이 붙은 살아 있는 메모. 지운 메모(되돌림)는 null."""
+        for pid in photo_ids:
+            got = repo.memo_of(conn, pid)
+            if got is not None and memos.get(got[0]) is not None:
+                return got[0]
+        return None
 
     def item(m: Any) -> dict[str, Any]:
-        text, photos = m.text, []
+        text, photos, memo_id = m.text, [], None
         marks = leading_photo_ids(m.text) if m.speaker == "사용자" and m.channel == "app" else []
         if marks:
             hit = next((k for k, ps in unused.items() if [p.id for p in ps] == marks), None)
             if hit is not None:
                 photos = [photo_ref(p) for p in unused.pop(hit)]
                 text = strip_marks(m.text, marks)
+                memo_id = photo_memo_id(marks) if not text.strip() else None  # 사진과 글은 두뇌가 본 메시지다
         return {
             "id": m.id, "at": m.at, "speaker": "user" if m.speaker == "사용자" else "secretary",
-            "text": text, "tools": m.tools, "channel": m.channel, "photos": photos,
+            "text": text, "tools": m.tools, "channel": m.channel, "photos": photos, "photo_memo_id": memo_id,
         }
 
     return dump(Messages, {"items": [item(m) for m in lines]})

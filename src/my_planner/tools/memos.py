@@ -254,7 +254,9 @@ class MemoTools:
         회차 차례(비서가 먼저 꺼낸 말)에서는 만들지 않는다: 사용자가 부탁할 때만(6.3).
         메모 칩 차례(`ctx.chip == "memo"`, SP9c 4.5)면 본문은 늘 `ctx.chip_text`(가리기·자르기 전 원문)다.
         `photo_ids`: 앱(`/actions`, SP10 5.3)은 붙지 않은 `origin=memo` 사진, 두뇌(앱 대화만, 5.5)는 이번 대화의 메시지에
-        붙은 사진. 10장까지를 순서대로 붙인다. 메시지 연결은 그대로 두고, 되돌리기는 메모 지우기(연결은 남는다)."""
+        붙은 사진. 10장까지를 순서대로 붙인다. 메시지 연결은 그대로 두고, 되돌리기는 메모 지우기(연결은 남는다).
+        사진만 보낸 앱 메시지(SP10 16장)는 디스패처가 `actor='user'`, `inbound_id`가 있는 맥락으로 부른다: 두뇌처럼 이번
+        대화의 채팅 사진을 받고, `/actions`처럼 `origin='user'`다."""
         if self.memos is None:
             return _err(MSG_NO_MEMOS)
         if ctx.run_turn:
@@ -276,10 +278,10 @@ class MemoTools:
         if photo_ids is not None and photo_ids != []:
             if ctx.actor == "secretary" and ctx.channel != "app":  # 앱 통로에서만 받는다(SP10 5.5, Q14)
                 return _err(MSG_PHOTOS_APP_ONLY)
-            # 두뇌(앱 대화)는 이번 대화의 채팅 사진만(5.5), 앱(`/actions`)은 붙지 않은 메모 사진만(5.3)
-            checked = (
-                self.check_chat_photo_ids(ctx, photo_ids) if ctx.actor == "secretary" else self.check_photo_ids(photo_ids)
-            )
+            # 채팅 메시지 처리(두뇌, 사진만 메시지 16장)는 이번 대화의 채팅 사진만(5.5), 앱(`/actions`)은 붙지 않은
+            # 메모 사진만(5.3). `/actions`의 맥락에는 `inbound_id`가 없다
+            chat = ctx.actor == "secretary" or ctx.inbound_id is not None
+            checked = self.check_chat_photo_ids(ctx, photo_ids) if chat else self.check_photo_ids(photo_ids)
             if isinstance(checked, dict):
                 return checked
             ids = checked

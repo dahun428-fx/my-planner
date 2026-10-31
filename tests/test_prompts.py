@@ -66,13 +66,14 @@ def _spec_section(title: str) -> str:
 
 
 def test_channel_app_is_spec_text():
-    """`channel_app.md`는 스펙 9.2 블록(공백까지)으로 시작한다. 그 뒤는 SP9 줄(메모, 지난 대화, 일정)과 SP10 5.5 사진 두 줄이 빈 줄 하나 뒤에 붙는다."""
+    """`channel_app.md`는 스펙 9.2 블록(공백까지)으로 시작한다. 그 뒤는 SP9 줄(메모, 지난 대화, 일정)과 SP10 5.5 사진 줄이
+    빈 줄 하나 뒤에 붙는다. SP10 16장이 사진 첫째 줄("사진만 왔거나 …")을 지웠다(사진만 메시지는 두뇌로 가지 않는다)."""
     block = re.search(r"```markdown\n(.*?)\n```", _spec_section("9.2"), re.DOTALL).group(1)
     raw = (prompts.PROMPTS_DIR / "channel_app.md").read_text(encoding="utf-8")
     assert raw.startswith(block + "\n\n")
     rest = raw.removeprefix(block + "\n\n").splitlines()
-    assert [line.split(" ", 1)[0] for line in rest] == ["메모는", "사진만", "사진과", "메모", "지난", "시간이"]
-    assert "`find_conversations`" in rest[4] and "`create_event`" in rest[5]
+    assert [line.split(" ", 1)[0] for line in rest] == ["메모는", "사진과", "메모", "지난", "시간이"]
+    assert "`find_conversations`" in rest[3] and "`create_event`" in rest[4]
 
 
 def test_old_echo_sentence_gone():

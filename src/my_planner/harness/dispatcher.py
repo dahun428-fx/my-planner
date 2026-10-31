@@ -31,7 +31,12 @@ from my_planner.domain import (
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
-from my_planner.harness.chat_photos import message_text, photo_body, photo_content
+from my_planner.harness.chat_photos import (
+    message_text,
+    photo_body,
+    photo_content,
+    strip_marks,
+)
 from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
     ask_condition_for,
@@ -179,6 +184,8 @@ class Outbound:
     # 퀵 칩 차례의 하네스 결과 카드 `(컴포넌트, props, 출력)`(SP9c 4.4). 정상 답 경로에서만 `_reply_out`이 싣는다.
     # 앱 `harness_cards`가 맨 뒤에 `h_chip`으로 붙인다
     chip_cards: list[tuple[str, dict[str, Any], dict[str, Any]]] = field(default_factory=list)
+    # 사진만 보낸 앱 메시지가 만든 사진 메모(SP10 16장) `{"memo_id", "photo_ids"}`. 앱 스트림의 `data-photo-memo`
+    photo_memo: dict[str, Any] | None = None
 
 
 class Sender(Protocol):
@@ -341,6 +348,8 @@ _DEFAULT_APP_SENDER = AppReplySender()
 FALLBACK_REPLY = "지금 잠깐 생각이 안 돼요. 조금 뒤에 다시 말씀해 주세요."
 # 사진만 보냈는데 한 장도 열 수 없을 때(SP10 8장 "이 사진은 열 수 없어요."). 두뇌를 부르지 않는다
 PHOTO_UNOPENABLE_REPLY = "이 사진은 열 수 없어요."
+# 사진만 보낸 앱 메시지의 사진 메모 본문(SP10 16장). 답은 그 확인 문구 "✓ 메모를 만들었어요: 사진 (사진 {n}장)"
+PHOTO_MEMO_BODY = "사진"
 MAX_TURNS_REPLY = "정리하다가 길어졌어요. 이어서 말씀해 주시면 계속할게요."
 # 앱에서 멈춘 답(`POST /chat/stop`). 이미 나간 글이 있으면 그 뒤에 붙는다. 앱 `copy.chat.stopped`와 같은 글
 STOPPED_REPLY = "멈췄어요."
@@ -1080,6 +1089,11 @@ class Dispatcher:
             # 두뇌 답을 저장한 뒤 보내지 못했다: 그 답만 다시 보낸다
             await self._resend_saved_reply(batch, pending, update_ids)
             return
+        if self._cur is not None and _photo_only(batch[0]):
+            # 사진만 보낸 앱 메시지(SP10 16장): 두뇌를 부르지 않고 사진 메모를 만든다. 하루 두뇌 호출 상한·사용 한도와
+            # 상관없다. 다시 보내기·시작 때 다시 넣기도 이 길이다(이미 만든 메모는 다시 만들지 않는다)
+            await self._photo_memo_reply(batch[0], pending, lead)
+            return
         if (
             pending is not None
             and pending.user_logged  # 이 행으로 이미 처리를 시작했다. 새 메시지가 예전 update_id를 다시 받았으면 아니다
@@ -1103,15 +1117,9 @@ class Dispatcher:
         # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
         chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
         # 사진(SP10 5.5): 부를 때 파일에서 읽는다. 읽힌 사진만 두뇌 입력에 넣고 `(사진 n장)`도 그 수로 센다
+        # 사진만 보낸 메시지는 위에서 두뇌 없이 마쳤다(16장): 여기 오는 사진에는 늘 글이 있다
         images = await self._message_images([i for m in batch for i in m.photo_ids])
         loaded = {pid for pid, _ in images}
-        if any(m.photo_ids for m in batch) and not images and all(
-            not message_text(m.text, m.photo_ids, count=0).strip() for m in batch
-        ):
-            # 사진만 보냈는데 한 장도 열 수 없다(파일 없음, 처리 전에 대화를 지움): 두뇌를 부르지 않는다(8장 문구)
-            if await self._fixed_reply(batch, PHOTO_UNOPENABLE_REPLY, update_ids):
-                log.info("message_photos_unopenable", extra={"update_ids": update_ids})
-            return
         # 두뇌가 보는 메시지 글에는 사진 표시를 떼고(각 이미지 앞 글 블록에 있다), 글이 없으면 `(사진 n장)`
         redacted_parts = [
             redact(message_text(m.text, m.photo_ids, count=sum(i in loaded for i in m.photo_ids))) for m in batch
@@ -1364,6 +1372,62 @@ class Dispatcher:
         self._messages_done(update_ids, reply=sent, confirmation=confirmation)
         self._transcribe_reply(None, full, [])
         return True
+
+    async def _photo_memo_reply(self, m: Inbound, pending: PendingInbound | None, lead: int) -> None:
+        """사진만 보낸 앱 메시지(SP10 16장): 두뇌 없이 사진을 붙인 메모(본문 "사진", `origin='user'`)를 만들고 그 확인
+        문구 한 줄로 답한다. 메모는 `create_memo`(`/actions`와 같은 도구 함수)라 활동·되돌리기도 같다.
+
+        - 한 장도 열 수 없으면 지금처럼 "이 사진은 열 수 없어요."(PH-04). 열린 사진만 붙인다(보낸 순서).
+        - 대화는 받을 때 고른 것, 닫혔으면 다시 고른다(사진 연결도 옮긴다, `_app_conversation`).
+        - 이 메시지로 이미 만든 메모(도구 호출 기록의 `memo_created`)가 있으면 다시 만들지 않는다: 메모를 만든 뒤 처리
+          완료 전에 끊긴 행의 다시 보내기·시작 때 다시 넣기.
+        - 답은 앱 통로대로 글 없이 `data-activity.confirmation`(+ `data-photo-memo`), 원문 기록은 대화 안에 `[사진 #id]`
+          사용자 줄과 확인 문구 줄. 두뇌 호출·사진 읽기 횟수에 세지 않는다.
+        """
+        app = self._cur
+        tools = self.tools
+        assert app is not None and tools is not None and tools.photos is not None, "사진 메시지는 앱 통로와 사진 저장소에서만"
+        app.past_stop = True  # 멈출 두뇌 호출이 없다: 멈추기는 "done"(곧 답한다)
+        logged = tools.tasks.inbound_tool_events(lead)
+        made = next((d for kind, _, d, _ in logged if kind == "memo_created" and d), None)
+        if made is None:
+            images = await self._message_images(m.photo_ids)
+            if not images:
+                # 한 장도 열 수 없다(파일 없음, 처리 전에 대화를 지움): 8장 문구
+                if await self._fixed_reply([m], PHOTO_UNOPENABLE_REPLY, [lead]):
+                    log.info("message_photos_unopenable", extra={"update_ids": [lead]})
+                return
+        conv = self._app_conversation(app)
+        self.convs.touch(conv.id)
+        if made is None:
+            loaded = {pid for pid, _ in images}
+            ctx = RunContext(
+                conversation_id=conv.id, run_id=None, events=[], inbound_id=lead, actor="user", channel="app",
+            )
+            res = tools.create_memo(ctx, body=PHOTO_MEMO_BODY, photo_ids=[i for i in m.photo_ids if i in loaded])
+            if "error" in res:  # 메모 상한 등: 그 문구로 답한다(만든 것이 없다)
+                if await self._fixed_reply([m], str(res["error"]), [lead]):
+                    log.info("message_photo_memo_refused", extra={"update_ids": [lead], "code": res.get("code")})
+                return
+            memo_id = int(res["id"])
+        else:
+            ctx = self._logged_context(lead, conv.id)
+            memo_id = int(made["memo_id"])
+            log.warning("inbound_photo_memo_already_made", extra={"update_ids": [lead], "memo_id": memo_id})
+        photo_memo = {"memo_id": memo_id, "photo_ids": [p.id for p in tools.photos.for_memo(tools.tasks.conn, memo_id)]}
+        confirmation = render_confirmations(ctx.events, self._today())
+        with self._awake.hold():
+            self._log_user_lines([m], conv.id, pending, lead)
+            out = self._reply_out(Outbound(text=""), confirmation, *self.activity_of(lead))
+            out.photo_memo = photo_memo
+            await self._send_reply(out, [lead], conv.id)
+            self._messages_done(
+                [lead], reply="", confirmation=confirmation, conversation_id=conv.id, photo_memo=photo_memo,
+            )
+            self._transcribe_reply(conv.id, confirmation, ["create_memo"])
+        log.info("message_photo_memo", extra={
+            "conversation_id": conv.id, "update_ids": [lead], "memo_id": memo_id, "photos": len(photo_memo["photo_ids"]),
+        })
 
     def _elsewhere(self, conv: Conversation, channel: Channel) -> list[str] | None:
         """이 대화의 마지막 메시지 뒤에 다른 통로에서 생긴 활동의 `summary`(최대 5줄, 7.1 "다른 곳에서 바뀐 것", `redact()` 거침).
@@ -1657,12 +1721,14 @@ class Dispatcher:
         return False
 
     def _messages_done(
-        self, update_ids: list[int], *, reply: str = "", confirmation: str = "", conversation_id: int | None = None
+        self, update_ids: list[int], *, reply: str = "", confirmation: str = "", conversation_id: int | None = None,
+        photo_memo: dict[str, Any] | None = None,
     ) -> None:
         """답을 보낸 메시지를 처리 완료로 기록한다.
 
         텔레그램: `telegram_updates` + `inbound_pending` 삭제(SP1). 앱(M5): `api_idempotency`(`reply_text`,
-        `confirmation`) + `inbound_pending` 삭제를 한 트랜잭션으로. `telegram_updates`에는 쓰지 않는다.
+        `confirmation`, 사진 메모면 `photo_memo`(SP10 16장)) + `inbound_pending` 삭제를 한 트랜잭션으로.
+        `telegram_updates`에는 쓰지 않는다.
         """
         app = self._cur
         if app is None:
@@ -1672,6 +1738,7 @@ class Dispatcher:
         self.state.finish_app_inbound(
             app.inbound_id, client_msg_id=app.inbound.client_msg_id, conversation_id=cid,
             reply_text=redact(reply)[0], confirmation=confirmation or None, message_id=app.secretary_id(),
+            photo_memo=photo_memo,
         )
         app.done = True
         # 이제부터 같은 `client_msg_id`는 저장한 답 재생이다(6.4.1)
@@ -2845,6 +2912,11 @@ class _Chip:
 
 
 _NO_CHIP = _Chip()
+
+
+def _photo_only(m: Inbound) -> bool:
+    """글 없이 사진만 보낸 앱 메시지(SP10 16장: 두뇌 없이 사진 메모). 퀵 칩(SP9c 4.2)은 그 칩의 부탁이 있으니 두뇌로 간다."""
+    return bool(m.photo_ids) and m.chip is None and not strip_marks(m.text, m.photo_ids).strip()
 
 
 def _chip_of(m: Inbound) -> _Chip:

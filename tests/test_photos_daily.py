@@ -89,7 +89,7 @@ async def test_chat_photo_on_memo_survives_conversation_delete(env):
     """메모에 붙은 채팅 사진은 대화를 지워도 남고, 메모가 30일 뒤 완전히 지워질 때 같은 실행에서 함께 지워진다."""
     a, b = await _photo(env), await _photo(env)
     env.brain.script.append(FakeTurn([("create_memo", {"body": "남길 메모", "photo_ids": [a]})], "만들었어요."))
-    _, chunks = await _send(env, _parts(None, a, b))
+    _, chunks = await _send(env, _parts("하나만 메모해 줘", a, b))  # 사진만이면 두뇌 없이 둘 다 붙인다(SP10 16장)
     resp = await env.delete(f"/conversations/{_conv_of(chunks)}")
     assert resp.status == 204
     a_paths, b_paths = _paths(env, a), _paths(env, b)
