@@ -1,6 +1,6 @@
 # SP12 운동메이트 상세 설계 (추가 기능)
 
-- 상태: 초안 v3 (리뷰 2회 반영. Dahun 방향 결정 Q1~Q4 반영, 나머지는 비서 추천이며 15장에서 Dahun 확인)
+- 상태: 확정 v3.1 (Dahun 2026-10-31 "진행": Q1~Q4와 15장 D1~D10·부록 A를 추천대로 확정)
 - 작성일: 2026-10-31
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP7 습관](2026-10-24-sp7-habits-design.md), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md) (몸 기록, 활동 보너스), [SP9 앱 탭·대화](2026-10-25-sp9-app-tabs-memo-schedule-design.md) (대화 = 세션, 요약), [SP10 사진](2026-10-26-sp10-photos-claude-reads-design.md)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "운동메이트", "운동 플랜", "운동 기록", "몸 메모", "대화 상대" 추가). 결정 기록: [ADR 0019](../../adr/0019-workout-mate-is-a-second-agent-in-be.md) 추가
