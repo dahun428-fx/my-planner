@@ -98,7 +98,8 @@
 - Produces:
   - `MATE_TOOLS: list[str] = ["record_condition", "find_conversations", "ui_block", "ui_choice", "ui_summary_card"]` (지금 있는 도구만. Task 3이 운동 도구 8개를 앞에 더해 스펙 5.3 표가 된다. 그래야 `_SPECS[name]`이 KeyError를 내지 않는다)
   - `tool_names_for(ctx)`: `moments` → `MOMENTS_TOOLS`, `NO_TOOL_KINDS` → `[]`, `ctx.agent == "mate"` → `list(MATE_TOOLS)`, 그 밖은 지금 그대로.
-  - `ClaudeSdkBrain.system_prompt_for(channel: str, agent: Agent = "secretary") -> str`: 메이트는 `mate.md` 그대로, 비서는 지금 값 그대로(바이트까지 같다).
+  - `ClaudeSdkBrain.system_prompt_for(channel: str, agent: Agent = "secretary") -> str`: 메이트는 `mate.md` 그대로, 비서는 지금 값 그대로(바이트까지 같다). `run()`의 기본 지시문은 `system_prompt_for(run_ctx.channel, run_ctx.agent)`.
+  - `Dispatcher.current_app_conversation(conversation_id, agent: Agent = "secretary")` (글 아닌 메시지 답 `_direct_reply`가 쓴다).
   - `Dispatcher.route_app_message(..., agent: Agent = "secretary")`, `Dispatcher.new_conversation(agent: Agent = "secretary") -> list[int]`
   - 원문 머리글: `### HH:MM 운동메이트 [12] #m-12-3 @app @mate`, 메이트 대화의 사용자 줄 `### HH:MM 사용자 [12] @app @mate`. (API 화자 변환은 Task 5)
   - `add_pending_inbound(..., agent: Agent = "secretary")`, `PendingInbound.agent`.
@@ -111,6 +112,7 @@
   - `test_mate_routing.py::test_resume_secretary_keeps_mate_open`, `test_new_conversation_closes_only_that_agent`, `test_continued_from_inherits_agent`(비서 쪽만).
   - `test_inbound_recovery.py::test_recovered_inbound_keeps_agent` (Review Focus 2): `add_pending_inbound(..., agent="mate")` 행을 남기고 `resubmit_inbound` → 메이트 대화로 처리, 비서 열린 대화는 그대로.
   - `test_mate_prompts.py::test_secretary_app_prompt_unchanged`: `system_prompt_for("app") == system.md + "\n\n" + channel_app.md.strip()`, `system_prompt_for("app", "mate") == load("mate.md")`. 지금 `test_prompts.py`가 그대로 통과.
+  - `test_mate_prompts.py::test_run_passes_mate_prompt`: 가짜 SDK로 `run(..., run_ctx=RunContext(..., agent="mate", channel="app"))` → `build_options`의 `system_prompt == load("mate.md")`.
   - `test_mate_prompts.py::test_mate_prompt_parts`: 메이트 첫 프롬프트에 `chat.md` 첫 줄 없음, `## 다른 곳에서 바뀐 것` 없음, `_recorded_condition()` 글 있음.
   - `test_mate_prompts.py::test_mate_tool_list`: `tool_names_for(RunContext(..., agent="mate", channel="app")) == MATE_TOOLS`, `RunContext(kind="summary", agent="mate")` → `[]`, `kind="moments"` → `MOMENTS_TOOLS`. (Task 3이 같은 테스트에 `set(MATE_TOOLS) & (set(TOOL_NAMES) | set(APP_ONLY_TOOLS)) == 공통 5`와 `(set(MATE_TOOLS) - 공통 5) & set(tool_names_for(비서 앱 ctx)) == set()`를 더한다.)
   - `test_transcript_channels.py::test_mate_header_parsed`: 메이트 줄 둘 + 비서 줄 하나 → `messages(conv)`가 3개로 가르고 화자 `운동메이트`; `recent_entries(mate_conv, 2)`가 메이트 대화 줄 둘; `erase_conversation`이 메이트 대화 줄만 지움.
@@ -131,7 +133,7 @@
 - Modify: `src/my_planner/status/xp.py` (`XP_WORKOUT_LOG: Final = 5  # X13`, `LABEL_WORKOUT_LOG: Final = "운동 기록"`)
 - Create: `src/my_planner/harness/mate_context.py` (`build_mate_preamble`)
 - Modify: `src/my_planner/harness/prompts/mate.md` (전문), Create: `chip_mate_today.md`, `chip_mate_log.md`, `chip_mate_plan.md`
-- Modify: `src/my_planner/harness/chip_cards.py`, 디스패처 `chip_block` (메이트 칩 셋), `src/my_planner/api/models.py` (`ChipKey`에 `"mate_today", "mate_log", "mate_plan"`), `tests/test_prompts.py::test_chip_prompts_are_spec_text` (키 집합 = SP9c 4.3 다섯 + 메이트 셋)
+- Modify: 디스패처 `chip_block` (메이트 칩은 `chip_common.md`를 붙이지 않고 `chip_mate_<키>.md`만), `src/my_planner/api/models.py` (`ChipKey`에 `"mate_today", "mate_log", "mate_plan"`), `tests/test_prompts.py::test_chip_prompts_are_spec_text` (`set(get_args(ChipKey)) == set(rows) | {"mate_today", "mate_log", "mate_plan"}`; 메이트 셋은 아래 문장과 같고 금지어 없음, `chip_block("mate_log")`에 `chip_common` 글 없음). `harness/chip_cards.py`는 바꾸지 않는다(`DRAWN_ENOUGH`에 없는 키는 카드 보장이 없다).
 - Modify: `src/my_planner/app.py` (`HabitsRepo(conn, clock)` 옆에 `WorkoutRepo(conn, clock)`를 `Tools`에 주입)
 - Test: `tests/test_tools_workout.py` (새), `tests/test_mate_prompts.py` (더함)
 
@@ -147,7 +149,10 @@
   - `delete_workout_log(ctx, id)` → 두뇌 차례면 `_request_confirm(ctx, "delete_workout_log", {"id": id}, "운동 기록 '{title}'({MM-DD})를 지울까요?", ...)`, 확인 뒤 `workout_log_deleted`.
   - `list_workouts(ctx, days=28, name=None)` → `{"logs": [...]}` (`days` 1~180).
   - `build_mate_preamble(*, now, tz, boundary, conditions, body, events, workout) -> str`: 스펙 5.5 형식과 줄 수 상한(일정 8, 메모 30, 최근 기록 14일·8개). 빈 섹션 문구 "기록 없음" / "없음" / "아직 없음".
-  - 칩 키: `mate_today` "오늘 뭐 할까?", `mate_log` "운동 기록하기", `mate_plan` "플랜 고치기" → `chip_mate_today.md` 등.
+  - 칩 키와 말풍선(부록 A): `mate_today` "오늘 뭐 할까?", `mate_log` "운동 기록하기", `mate_plan` "플랜 고치기". 지시문 파일 내용(그대로):
+    - `chip_mate_today.md`: "`오늘 뭐 할까?` 버튼입니다. 앞머리의 오늘 몸·일정·최근 기록을 보고 세션 하나를 `ui_block`으로 제안하고, `ui_choice`로 그대로 / 가볍게 / 오늘은 쉬기를 내밉니다."
+    - `chip_mate_log.md`: "`운동 기록하기` 버튼입니다. 오늘 한 운동을 짧게 말해 달라고 한 문장으로 묻습니다. 아직 기록하지 않습니다."
+    - `chip_mate_plan.md`: "`플랜 고치기` 버튼입니다. 지금 플랜을 `ui_block`으로 보여 주고 무엇을 바꿀지 한 문장으로 묻습니다. 플랜이 없으면 주 몇 번, 한 번에 몇 분이 좋은지 묻습니다."
   - `MATE_TOOLS`를 스펙 5.3 표 전체로 넓힌다: 앞에 `"get_mate_context", "save_body_note", "drop_body_note", "set_workout_plan", "log_workout", "update_workout_log", "delete_workout_log", "list_workouts"`.
   - 오류 문구(부록 A): `MSG_NOTES_FULL = "몸 메모는 30개까지예요. 오래된 것을 정리해 주세요."`, `MSG_LOG_RANGE = "일주일 안의 기록만 남길 수 있어요."`.
 
@@ -184,7 +189,8 @@
 - Produces: `ActivityRows.workout_days: frozenset[date]`, `area_points(tasks, checks, body, today, *, tz, boundary, workout_days: frozenset[date] = frozenset())`, `activity_counts(..., workout_days: frozenset[date] = frozenset())`, `ActivityCounts.workout_days: int = 0`, API `stats[].activity.workout_days: int`.
 
 - [ ] **Step 1: 실패하는 테스트**
-  - `test_status_activity.py::test_workout_day_adds_half_to_health`: 오늘 기록 2개 → 건강 `p = 1/2`; 습관 체크 4개(건강) + 기록 → 2.5; 습관 체크 6개 + 기록 → 3(하루 상한); 삭제한 기록만 있는 날 0.
+  - `test_status_activity.py::test_workout_day_adds_half_to_health`: 오늘 기록 2개 → 건강 `p = 1/2`; 습관 체크 4개(건강) + 기록 → 2.5; 습관 체크 6개 + 기록 → 3(하루 상한).
+  - `test_status_activity.py::test_activity_rows_skip_deleted_workouts`: 삭제한 기록만 있는 날은 `workout_days`에 없음; `ActivityCounts.workout_days`는 건강만 값, 나머지 영역 0.
   - `test_status_activity.py::test_workout_days_count`: 28일 안 3일 기록 → `workout_days == 3`.
   - `test_status_xp.py::test_x13_label_in_recent`: 상태창 최근 경험치 줄의 라벨 "운동 기록", 제목 없음.
   - `test_moments_job.py::test_workout_section_and_source`: 그날 기록 "하체" → 입력에 `## 운동 기록\n- 하체`, `save_moments`가 `sources=["workout:<id>"]` 받음, 다른 날 기록 id는 거절. 기록만 있는 날도 순간 작업이 돈다.
@@ -197,7 +203,7 @@
 
 **Files:**
 - Create: `src/my_planner/api/workout.py` (`get_workout`)
-- Modify: `src/my_planner/api/server.py` (`GET /workout` 등록), `src/my_planner/api/chat.py` (`ChatRequestBody.agent`, `post_new_conversation` 본문 `agent`, `agent=mate`면 `/` 명령을 해석하지 않음, 칩 키와 상대가 맞지 않으면 400), `src/my_planner/api/read.py` (`get_conversations?agent=`, 대화 기록 화자 `mate`), `src/my_planner/api/models.py` (`Workout*` 모델, `Health.features: list[str] | None = None`, 대화 기록 `speaker: Literal["user", "secretary", "mate"]`), `src/my_planner/api/health.py` (`features=["mate"]`)
+- Modify: `src/my_planner/api/server.py` (`GET /workout` 등록), `src/my_planner/api/chat.py` (`post_chat`이 `add_pending_inbound(..., agent=req.agent)`와 `route_app_message(..., agent=req.agent)`에 넘김, `_direct_reply`가 `current_app_conversation(..., agent)`, `ChatRequestBody.agent`, `post_new_conversation` 본문 `agent`, `agent=mate`면 `/` 명령을 해석하지 않음, 칩 키와 상대가 맞지 않으면 400), `src/my_planner/api/read.py` (`get_conversations?agent=`, 대화 기록 화자 `mate`), `src/my_planner/api/models.py` (`Workout*` 모델, `Health.features: list[str] | None = None`, 대화 기록 `speaker: Literal["user", "secretary", "mate"]`), `src/my_planner/api/health.py` (`features=["mate"]`)
 - Test: `tests/test_api_workout.py` (새), `tests/test_api_chat.py` (더함)
 
 **Interfaces:**
@@ -208,7 +214,7 @@
   - `test_api_workout.py::test_get_workout_shapes`: 플랜 1·기록 2(하나 29일 전)·메모 1 → `logs` 1개, 숫자 칸 그대로.
   - `test_api_workout.py::test_actions_drop_note_and_delete_log`: `POST /actions drop_body_note` → `applied` + 되돌리기 id. `delete_workout_log`는 `ActionSpec(needs_confirm=workout_log_delete_needs_confirm, target=...)`라(스펙 8.2, 이룬 순간 지우기와 같은 방식) 첫 요청 `needs_confirm` + 토큰, 토큰과 함께 두 번째 → `applied`.
   - `test_api_workout.py::test_health_features_has_mate`.
-  - `test_api_chat.py`: `agent="mate"` 요청이 메이트 대화를 열고 `start` 메시지 id가 그 대화; 잘못된 `agent` 값 → `400 invalid_request`; 비서 대화 id를 `resume_conversation_id`로 `agent="mate"` → `400 invalid_request` "이 대화는 다른 상대예요."; `agent="mate"` + `chip="todo"` 또는 `agent="secretary"` + `chip="mate_log"` → `400 invalid_request`; `agent="mate"`의 `/plan 하체`는 두뇌로 가고 계획 대화를 열지 않음; `GET /conversations?agent=mate`가 메이트 것만; 메이트 대화 기록의 화자 `mate`.
+  - `test_api_chat.py`: `agent="mate"` 요청이 메이트 대화를 열고 `start` 메시지 id가 그 대화; 잘못된 `agent` 값 → `400 invalid_request`; 비서 대화 id를 `resume_conversation_id`로 `agent="mate"` → `400 invalid_request` "이 대화는 다른 상대예요."; `agent="mate"` + `chip="todo"` 또는 `agent="secretary"` + `chip="mate_log"` → `400 invalid_request`; `agent="mate"`의 `/plan 하체`는 두뇌로 가고 계획 대화를 열지 않음; `GET /conversations?agent=mate`가 메이트 것만, `agent=bogus` → 400; 메이트 대화 기록의 화자 `mate`; `agent=mate` 요청 뒤 `pending_by_client_msg_id(...).agent == "mate"`; `agent=mate` 빈 메시지 답의 `conversation_id`가 메이트 대화이거나 null; `agent=mate` + `checkin_id` → 400; `POST /conversations/new` 본문 없음·`{}` → 비서(지금 앱 그대로), `{"agent": "x"}` → 400 `invalid_request`.
 - [ ] **Step 2:** `python -m pytest tests/test_api_workout.py tests/test_api_chat.py -q` → FAIL.
 - [ ] **Step 3:** 구현. 로그는 경로 틀과 상태 코드만.
 - [ ] **Step 4:** PASS, 전체 PASS, `cd web/app && npm run gen:types` 후 `git diff --stat src/api` 에 `schema.json`, `types.gen.ts`만.
@@ -217,7 +223,7 @@
 ### Task 6: 앱 — 채팅 시트 상대 고르기와 퀵 칩 (SP12-06)
 
 **Files:**
-- Modify: `web/app/src/chat/ChatSheet.tsx`, `web/app/src/chat/sheetContext.ts` (`sheetState`를 상대마다: `{secretary: {pickedConversationId, freshSince}, mate: {...}}`, `openChat(opts?: {agent?: Agent})`), `web/app/src/pages/_app.tsx`(시트 여는 자리), `web/app/src/chat/transport.ts` (`agent` 본문), `web/app/src/chat/ConversationList.tsx` (`agent` 쿼리), `web/app/src/chat/history.ts`, `web/app/src/chat/quickChips.ts` (상대별 칩, `WIRE`에 `mate_today`·`mate_log`·`mate_plan`), `web/app/src/chat/MessageView.tsx` (화자 `mate` 머리 줄 "운동메이트"), `web/app/src/lib/copy.ts` (부록 A)
+- Modify: `web/app/src/chat/ChatSheet.tsx`, `web/app/src/chat/sheetContext.ts` (`sheetState`를 상대마다: `{secretary: {pickedConversationId, freshSince}, mate: {...}}`, `ChatSheetApi.open(opts?: {agent?: Agent})`), `web/app/src/pages/_app.tsx`(시트 여는 자리), `web/app/src/chat/transport.ts` (`agent` 본문), `web/app/src/chat/ConversationList.tsx` (`agent` 쿼리), `web/app/src/chat/history.ts`, `web/app/src/chat/quickChips.ts` (상대별 칩, `WIRE`에 `mate_today`·`mate_log`·`mate_plan`), `web/app/src/chat/MessageView.tsx` (화자 `mate` 머리 줄 "운동메이트"), `web/app/src/lib/copy.ts` (부록 A)
 - Create: `web/app/src/chat/agent.ts` (`type Agent = "secretary" | "mate"`, `loadAgent(): Agent`, `saveAgent(a: Agent): void` — 둘 다 try/catch, 실패 시 `"secretary"`)
 - Test: `web/app/src/chat/agent.test.ts`, `web/app/src/chat/ChatSheet.test.tsx`, `web/app/src/chat/contract.test.tsx` (더함)
 
@@ -242,7 +248,7 @@
 - Test: `web/app/src/screens/Workout.test.tsx`, `web/app/src/screens/More.test.tsx` (더함)
 
 **Interfaces:**
-- Consumes: Task 5 `GET /workout`, `POST /actions`(`drop_body_note`, `delete_workout_log` + 확인 토큰), `useSnapshotted`(ADR 0009), `SwipeRow`, `ConfirmSheet`, Task 6의 `openChat({agent: "mate"})`.
+- Consumes: Task 5 `GET /workout`, `POST /actions`(`drop_body_note`, `delete_workout_log` + 확인 토큰), `useSnapshotted`(ADR 0009), `SwipeRow`, `ConfirmSheet`, Task 6의 `ChatSheetApi.open({agent: "mate"})`.
 
 - [ ] **Step 1: 실패하는 테스트** (`Workout.test.tsx`)
   - `empty state shows talk button`: 플랜 없음 → "운동메이트와 이야기하면서 플랜을 짜요"와 버튼, 누르면 시트가 `agent: "mate"`로 열림.
