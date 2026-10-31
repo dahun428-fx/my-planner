@@ -368,8 +368,9 @@ describe("ChatSheet photos (SP10 7.5)", () => {
     await user.click(within(second).getByRole("button", { name: copy.photos.photo(2, 2) }));
     const viewer = await screen.findByRole("dialog", { name: copy.photos.viewer });
     await waitFor(() => expect(be.gets).toContain("33:full"));
-    // Only to look at: no "메모에서 빼기" in the chat.
+    // Only to look at: no "메모에서 빼기" in the chat, and no "글자 읽기" (the chip does that, 16장).
     expect(within(viewer).queryByRole("button", { name: copy.photos.detach })).toBeNull();
+    expect(within(viewer).queryByRole("button", { name: copy.photos.readText })).toBeNull();
   });
 
   it("Escape closes the photo shown big, not the sheet under it", async () => {
@@ -718,5 +719,261 @@ describe("ChatSheet photos, fix round 2", () => {
       await user.tab({ shift: true });
       expect(viewer.contains(document.activeElement)).toBe(true);
     }
+  });
+});
+
+// SP10 16장: a photo-only message makes a photo memo without the brain; its answer carries
+// data-photo-memo, and "글자 읽기" goes first in the chip row until another send, a read that is done,
+// or another conversation.
+describe("글자 읽기 chip (SP10 16장)", () => {
+  const photoMemoAnswer = (messageId: string, conversationId: number, memoId: number, ids: number[]) =>
+    sse([
+      { type: "start", messageId, messageMetadata: { conversation_id: conversationId, channel: "app", kind: "chat", checkin_id: null } },
+      { type: "start-step" },
+      { type: "finish-step" },
+      { type: "data-photo-memo", data: { memo_id: memoId, photo_ids: ids } },
+      { type: "data-activity", data: { activity_ids: [70], undo_ids: [70], confirmation: copy.photos.created("사진", ids.length) } },
+      { type: "finish", messageMetadata: { conversation_id: conversationId, channel: "app", kind: "chat" } },
+      "[DONE]",
+    ]);
+
+  interface Sent {
+    action: string;
+    args: Record<string, unknown>;
+  }
+
+  /** Memo 40 (each read of it a new updated_at), the photo reads and /actions. */
+  function memoBe(opts: { body?: string; reads?: (id: number, n: number) => Response | undefined; actions?: (n: number) => Response | undefined } = {}) {
+    const reads: number[] = [];
+    const sent: Sent[] = [];
+    let memoGets = 0;
+    server.use(
+      http.get(`${BASE}/memos/:id`, ({ params }) => {
+        memoGets++;
+        return HttpResponse.json({
+          id: Number(params.id),
+          title: "사진",
+          body: opts.body ?? "사진",
+          area: null,
+          pinned: false,
+          origin: "user",
+          created_at: "2026-10-31T01:00:00Z",
+          updated_at: `2026-10-31T01:00:0${memoGets}Z`,
+          photos: [],
+        });
+      }),
+      http.post(`${BASE}/photos/:id/read`, ({ params }) => {
+        const id = Number(params.id);
+        reads.push(id);
+        return opts.reads?.(id, reads.length) ?? HttpResponse.json({ text: `영수증 ${id}`, unreadable: false });
+      }),
+      http.post(`${BASE}/actions`, async ({ request }) => {
+        const b = (await request.json()) as Sent;
+        sent.push({ action: b.action, args: b.args });
+        const custom = opts.actions?.(sent.length);
+        if (custom) return custom;
+        const title = String(b.args.body).split("\n")[0];
+        return HttpResponse.json({
+          status: "applied",
+          activity_id: 900,
+          undo_id: null,
+          result: { id: 40, title, area: null, pinned: false, updated_at: "2026-10-31T01:05:00Z" },
+          confirmation: copy.memos.confirm.updated(title),
+        });
+      }),
+    );
+    return { reads, sent, memoGets: () => memoGets };
+  }
+
+  const chipRow = () => screen.getByRole("group", { name: copy.chat.chipsLabel });
+  const chipLabels = () => within(chipRow()).getAllByRole("button").map((b) => b.textContent);
+  const readChip = () => within(chipRow()).queryByRole("button", { name: copy.chat.readChip });
+  const toastSays = (text: string) => screen.queryAllByRole("status").some((s) => s.textContent?.includes(text));
+
+  /** Sends photos alone and waits for the photo memo's answer. */
+  async function sendPhotoOnly(user: ReturnType<typeof userEvent.setup>, n = 1) {
+    await pick(user, Array.from({ length: n }, (_, i) => picture(i + 1)));
+    await waitFor(() => expect(within(tray()!).getAllByRole("listitem")).toHaveLength(n));
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(toastSays(copy.photos.created("사진", n))).toBe(true));
+  }
+
+  it("after a photo-only message's photo memo it goes first (before the front chip); a press reads each photo into 사진, with no message and no bubble", async () => {
+    photoBe();
+    const bodies = serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12, 13])));
+    const be = memoBe();
+    const { user } = await openSheet();
+    const before = chipLabels();
+    expect(readChip()).toBeNull();
+    await sendPhotoOnly(user, 2);
+    await waitFor(() => expect(chipLabels()).toEqual([copy.chat.readChip, ...before]));
+    expect(readChip()!.querySelector("svg")).not.toBeNull();
+    const bubbles = document.querySelectorAll("[data-message]").length;
+    await user.click(readChip()!);
+    await waitFor(() => expect(be.sent).toHaveLength(1));
+    expect(be.reads).toEqual([12, 13]);
+    expect(be.sent[0]).toEqual({ action: "update_memo", args: { id: 40, body: "영수증 12\n\n영수증 13", updated_at: "2026-10-31T01:00:01Z" } });
+    await waitFor(() => expect(toastSays(copy.photos.readInto("영수증 12"))).toBe(true));
+    // Done: the chip goes. Nothing went to the brain and no bubble was made.
+    await waitFor(() => expect(readChip()).toBeNull());
+    expect(bodies).toHaveLength(1);
+    expect(document.querySelectorAll("[data-message]")).toHaveLength(bubbles);
+  });
+
+  it("a body changed by hand: the text goes after it; a 409 reads it again and tries once more", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    const be = memoBe({
+      body: "사진 영수증",
+      actions: (n) => (n === 1 ? HttpResponse.json({ error: { code: "memo_conflict", message: "x" } }, { status: 409 }) : undefined),
+    });
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    await user.click(await within(chipRow()).findByRole("button", { name: copy.chat.readChip }));
+    await waitFor(() => expect(be.sent).toHaveLength(2));
+    expect(be.memoGets()).toBe(2);
+    expect(be.sent.map((s) => s.args)).toEqual([
+      { id: 40, body: "사진 영수증\n\n영수증 12", updated_at: "2026-10-31T01:00:01Z" },
+      { id: 40, body: "사진 영수증\n\n영수증 12", updated_at: "2026-10-31T01:00:02Z" },
+    ]);
+    await waitFor(() => expect(readChip()).toBeNull());
+  });
+
+  it("a read that does not go through: it says so, the chip stays, and a second press reads again", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    const be = memoBe({ reads: (_id, n) => (n === 1 ? HttpResponse.json({ error: { code: "unavailable", message: "x" } }, { status: 503 }) : undefined) });
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    await user.click(await within(chipRow()).findByRole("button", { name: copy.chat.readChip }));
+    await waitFor(() => expect(toastSays(copy.actions.failed)).toBe(true));
+    expect(be.sent).toEqual([]);
+    expect(readChip()).not.toBeNull();
+    await user.click(readChip()!);
+    await waitFor(() => expect(be.sent).toHaveLength(1));
+    await waitFor(() => expect(readChip()).toBeNull());
+  });
+
+  it("an update whose answer is lost (it was applied): the chip stays, and a second press writes nothing again", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    // A 5xx after the write (a network loss would also take the sheet offline for a while).
+    const be = memoBe({ actions: () => HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 }) });
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    await user.click(await within(chipRow()).findByRole("button", { name: copy.chat.readChip }));
+    await waitFor(() => expect(be.sent.length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(chipRow()).getByRole("button", { name: copy.chat.readChip })).toBeEnabled());
+    const updates = be.sent.length;
+    // The BE did apply it: the memo now holds the text.
+    server.use(
+      http.get(`${BASE}/memos/:id`, () =>
+        HttpResponse.json({ id: 40, title: "영수증 12", body: "영수증 12", area: null, pinned: false, origin: "user", created_at: "2026-10-31T01:00:00Z", updated_at: "2026-10-31T01:01:00Z", photos: [] }),
+      ),
+    );
+    await user.click(readChip()!);
+    await waitFor(() => expect(readChip()).toBeNull());
+    expect(be.sent).toHaveLength(updates);
+    expect(toastSays(copy.photos.readInto("영수증 12"))).toBe(true);
+  });
+
+  it("while it reads, the chip is off and busy", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    memoBe();
+    server.use(
+      http.post(`${BASE}/photos/:id/read`, async () => {
+        await held;
+        return HttpResponse.json({ text: "영수증 12", unreadable: false });
+      }),
+    );
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    const chip = await within(chipRow()).findByRole("button", { name: copy.chat.readChip });
+    await user.click(chip);
+    await waitFor(() => expect(chip).toBeDisabled());
+    expect(chip).toHaveAttribute("aria-busy", "true");
+    // The other chips stay as they were.
+    expect(within(chipRow()).getAllByRole("button").filter((b) => b !== chip).every((b) => !(b as HTMLButtonElement).disabled)).toBe(true);
+    release();
+    await waitFor(() => expect(readChip()).toBeNull());
+  });
+
+  it("all unreadable: the unreadable sentence, and nothing is written", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    const be = memoBe({ reads: () => HttpResponse.json({ text: "", unreadable: true }) });
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    await user.click(await within(chipRow()).findByRole("button", { name: copy.chat.readChip }));
+    await waitFor(() => expect(toastSays(copy.photos.unreadable)).toBe(true));
+    expect(be.sent).toEqual([]);
+  });
+
+  it("another message sent takes it away", async () => {
+    photoBe();
+    serveChat(
+      () => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])),
+      () => sseResponse(answer("m-2", 5, "네")),
+    );
+    const { user, input } = await openSheet();
+    await sendPhotoOnly(user);
+    await within(chipRow()).findByRole("button", { name: copy.chat.readChip });
+    await user.type(input, "고마워");
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(readChip()).toBeNull());
+    expect(await screen.findByText("네")).toBeInTheDocument();
+    expect(readChip()).toBeNull();
+  });
+
+  it("a new conversation takes it away", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    server.use(http.post(`${BASE}/conversations/new`, () => HttpResponse.json({ closed: [5] })));
+    const { user } = await openSheet();
+    await sendPhotoOnly(user);
+    await within(chipRow()).findByRole("button", { name: copy.chat.readChip });
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(readChip()).toBeNull());
+  });
+
+  it("an answer to a photo with words brings no chip", async () => {
+    photoBe();
+    serveChat(() => sseResponse(answer("m-1", 5, "받았어요")));
+    const { user, input } = await openSheet();
+    await pick(user, [picture()]);
+    await screen.findByRole("list", { name: copy.chat.tray });
+    await user.type(input, "영수증");
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    expect(await screen.findByText("받았어요")).toBeInTheDocument();
+    expect(readChip()).toBeNull();
+  });
+
+  it("a reopened conversation shows no chip, even with a photo memo's line (photo_memo_id)", async () => {
+    photoBe();
+    const items = [
+      { id: "u-5-1", at: "2026-10-31T01:00:00Z", speaker: "user", text: "", photos: [{ id: 31, width: 10, height: 10 }], photo_memo_id: 40 },
+      { id: "m-5-1", at: "2026-10-31T01:00:01Z", speaker: "secretary", text: copy.photos.created("사진", 1) },
+    ] as HistoryItem[];
+    serveHistory({ conversations: [{ id: 5, last_message_at: "2026-10-31T01:00:01Z" }], messages: { 5: items } });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText(copy.photos.created("사진", 1))).toBeInTheDocument();
+    expect(readChip()).toBeNull();
+  });
+
+  it("closing and opening the sheet again takes it away", async () => {
+    photoBe();
+    serveChat(() => sseResponse(photoMemoAnswer("m-1", 5, 40, [12])));
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} conversationId={null} />);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    await sendPhotoOnly(user);
+    await within(chipRow()).findByRole("button", { name: copy.chat.readChip });
+    rerender(<ChatSheet open={false} onClose={() => {}} conversationId={null} />);
+    rerender(<ChatSheet open onClose={() => {}} conversationId={null} />);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
+    expect(readChip()).toBeNull();
   });
 });

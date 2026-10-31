@@ -114,6 +114,9 @@ export const copy = {
     created: (title: string, n: number) => `✓ 메모를 만들었어요: ${title} (사진 ${n}장)`,
     cut: "메모는 20,000자까지라 뒷부분은 넣지 못했어요.",
     defaultBody: "사진", // (7.1 v2.7) 사진만 있는 새 메모의 본문(제목도 된다)
+    // SP10 16장: 보기 화면 버튼과 퀵 칩(copy.chat.readChip)의 토스트. 제목은 앞 20자.
+    readText: "글자 읽기",
+    readInto: (title: string) => `✓ 메모에 글자를 넣었어요: ${title}`,
     strip: "사진", // (new) 사진 줄의 읽는 이름
     photo: (n: number, total: number) => `사진 ${n}/${total}`, // (new) 사진 하나의 읽는 이름
     viewer: "사진 보기", // (new) 크게 보기 화면의 이름
@@ -331,6 +334,7 @@ export const copy = {
     },
     // SP9 9.5 퀵 칩: labels 10장 "퀵 칩" verbatim, sentences 9.5 verbatim.
     chipsLabel: "퀵 칩", // (glossary) the chip row's accessible name
+    readChip: "글자 읽기", // SP10 16장: 사진만 보낸 메시지의 사진 메모를 읽는 칩(맨 앞 칩보다 앞)
     chips: {
       todo: { label: "할 일 추가", text: "할 일 추가할래요" },
       event: { label: "일정 추가", text: "일정 하나 추가할래요" },

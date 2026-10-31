@@ -4,7 +4,7 @@
 - `QueueSink`: HTTP 연결(`attach()`가 준 큐)마다 SSE 바이트를 넣는다. 지난 조각을 모두 기억해 두었다가 나중에
   붙은 연결에도 처음부터 다시 넣는다(M8: 같은 `client_msg_id`가 처리 중에 다시 옴). 연결이 끊겨도 쓰기는 계속
   기억에만 남고 오류를 올리지 않는다(M7).
-- `UiMessageWriter`: 조각 모양(`start`, `text-*`, `tool-*`, `data-activity`, `finish`)을 만든다. 싱크가 없어도
+- `UiMessageWriter`: 조각 모양(`start`, `text-*`, `tool-*`, `data-photo-memo`, `data-activity`, `finish`)을 만든다. 싱크가 없어도
   (`sink=None`, 시작 때 다시 넣은 행) 상태만 따라가고 아무 데도 쓰지 않는다.
 - `AppReplySender`: 디스패처가 앱 답을 보내는 곳(M4). 두뇌 글·도구 → 하네스 화면 조각(`h_draft_<n>`, `h_mdraft_<n>`, `h_cdraft_<n>`, `h_cond_<n>`)
   → `data-activity`(확인 문구 `confirmation`) → `finish`. 앱 통로에는 `h-confirm` 글 조각이 없다(6.4.1).
@@ -238,6 +238,10 @@ class UiMessageWriter:
             "data": {"activity_ids": list(activity_ids), "undo_ids": list(undo_ids), "confirmation": confirmation},
         })
 
+    def data_photo_memo(self, memo_id: int, photo_ids: list[int]) -> None:
+        """사진만 보낸 메시지가 만든 사진 메모(SP10 16장): `{"memo_id", "photo_ids"}`(붙인 순서)."""
+        self._emit({"type": "data-photo-memo", "data": {"memo_id": memo_id, "photo_ids": list(photo_ids)}})
+
     def finish(self, metadata: dict[str, Any] | None = None) -> None:
         """`finish` 조각, 그다음 `[DONE]`(싱크를 닫는다)."""
         if self.finished:
@@ -311,12 +315,13 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
 def write_reply(
     writer: UiMessageWriter, text: str, *, activity_ids: list[int] | None = None, undo_ids: list[int] | None = None,
     confirmation: str | None = None, metadata: dict[str, Any] | None = None, streamed: bool = False,
-    cards: list[HarnessCard] | None = None,
+    cards: list[HarnessCard] | None = None, photo_memo: dict[str, Any] | None = None,
 ) -> None:
     """글 블록 하나로 끝나는 답(고정 문구, 명령, 재생, 조각이 오지 않은 두뇌 답: S11 대체 경로).
 
-    순서: start-step → 글 → 하네스 화면 조각 → finish-step → data-activity → finish. 하네스 조각의 `toolCallId`는
-    `<앞머리>_<n>`이고 `n`은 그 답 안의 순번(1부터)이다. 활동도 확인 문구도 없으면 `data-activity`를 보내지 않는다(6.4.1).
+    순서: start-step → 글 → 하네스 화면 조각 → finish-step → data-photo-memo → data-activity → finish. 하네스 조각의
+    `toolCallId`는 `<앞머리>_<n>`이고 `n`은 그 답 안의 순번(1부터)이다. 활동도 확인 문구도 없으면 `data-activity`를
+    보내지 않는다(6.4.1). `photo_memo`(`{"memo_id", "photo_ids"}`)는 사진만 보낸 메시지의 답에만 있다(SP10 16장).
     """
     writer.start_step()
     if text and not streamed:  # streamed: 두뇌 글이 이미 조각으로 나갔다(상태가 ok일 때만, 고정 안내는 늘 보낸다)
@@ -326,6 +331,8 @@ def write_reply(
         writer.tool_input(call_id, component, props)
         writer.tool_output(call_id, to_api_times(output))  # `data.todos[].scheduled_at`도 UTC `Z`(6.1)
     writer.finish_step()
+    if photo_memo is not None:
+        writer.data_photo_memo(photo_memo["memo_id"], photo_memo["photo_ids"])
     if activity_ids or confirmation:
         writer.data_activity(list(activity_ids or []), list(undo_ids or []), confirmation)
     writer.finish(metadata)
@@ -341,7 +348,7 @@ class AppReplySender:
         try:
             write_reply(
                 w, out.text, activity_ids=out.activity_ids, undo_ids=out.undo_ids, confirmation=out.confirmation,
-                streamed=out.streamed, cards=harness_cards(out),
+                streamed=out.streamed, cards=harness_cards(out), photo_memo=out.photo_memo,
             )
         except Exception as e:  # noqa: BLE001 - 앱 답은 오류를 올리지 않는다(M7)
             log.warning("app_reply_error", extra={"error_type": type(e).__name__})

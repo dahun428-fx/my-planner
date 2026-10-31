@@ -6,7 +6,7 @@
 3. 사진(`data-photo`, SP10 5.5)을 두뇌 부르기 전에 검사한다(400 `photo_not_found`, 422 `too_many_photos`).
    글도 사진도 없으면(그림 등) SP1 `NON_TEXT_REPLY`, `/`로 시작하면 텔레그램과 같은 명령(`bot.commands.run_command`).
    `/plan [주제]`만 앱 계획 대화를 열고 두뇌 갈래로 간다. 퀵 칩(`chip`, SP9c 4.1)이나 사진이 있으면 명령을 해석하지 않는다.
-   사진만 있는 메시지는 두뇌로 간다.
+   사진만 있는 메시지도 큐로 간다: 작업자가 두뇌 없이 사진 메모를 만든다(SP10 16장, 보낸 순서·다시 고르기 그대로).
 4. 대화를 받을 때 고르고(`route_app_message`), 가린 글을 `inbound_pending`(통로 `app`, 음수 id, 고른 대화)에 먼저
    쓴 뒤 두뇌 갈래에 넣는다(`submit_message`). 사진 연결(`message_photos`)은 같은 트랜잭션이고 본문은
    `[사진 #12] {글}`이다. `start`와 `data-status: queued`는 여기서 쓴다.
@@ -273,7 +273,8 @@ def _message_id(conversation_id: int | None, inbound_id: int | None) -> str | No
 async def _replay(
     request: web.Request, deps: ApiDeps, d: Dispatcher, stored: StoredResponse, checkin_id: int | None
 ) -> web.StreamResponse:
-    """저장한 답을 글 조각 하나로, 확인 문구가 있으면 `data-activity`(활동은 지금 시각으로 다시 판정)와 함께(6.4.1)."""
+    """저장한 답을 글 조각 하나로, 확인 문구가 있으면 `data-activity`(활동은 지금 시각으로 다시 판정)와 함께(6.4.1).
+    사진 메모(SP10 16장)를 적어 둔 답이면 `data-photo-memo`도 싣는다."""
     body = stored.body or {}
     conv_id = body.get("conversation_id")
     inbound_id = body.get("inbound_id")
@@ -286,9 +287,10 @@ async def _replay(
     writer = UiMessageWriter(sink, body.get("message_id") or _message_id(conv_id, inbound_id))
     meta = d.chat_metadata(conv_id)
     writer.start({**meta, "checkin_id": checkin_id})
+    photo_memo = body.get("photo_memo")  # 사진만 보낸 메시지의 사진 메모(SP10 16장): 재생에도 `data-photo-memo`
     write_reply(
         writer, str(body.get("reply_text") or ""), activity_ids=ids[0], undo_ids=ids[1], confirmation=confirmation,
-        metadata=meta,
+        metadata=meta, photo_memo=photo_memo if isinstance(photo_memo, dict) else None,
     )
     log.info("chat_replayed")
     return await stream_sink(request, deps, sink, conv_id)

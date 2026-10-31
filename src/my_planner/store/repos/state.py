@@ -7,7 +7,7 @@ import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
 from my_planner.loop.digests import (
@@ -257,17 +257,21 @@ class StateRepo:
         reply_text: str,
         confirmation: str | None = None,
         message_id: str | None = None,
+        photo_memo: dict[str, Any] | None = None,
     ) -> None:
         """앱 메시지 처리 완료(SP3-4 7.5 M5): `api_idempotency`(`endpoint='chat'`) 기록과 `inbound_pending` 행 삭제를
         한 트랜잭션으로. `telegram_updates`에는 쓰지 않는다(음수 id를 넣지 않는다).
 
         `response_json`은 재요청 재생(6.4.1)의 근거다: `conversation_id`, `reply_text`(가린 뒤), `confirmation`,
         그리고 활동을 다시 찾을 `inbound_id`와 이 답의 `messageId`(`message_id`, 다시 골라 대화가 바뀌어도 처음 알린 값).
+        사진만 보낸 메시지(SP10 16장)는 `photo_memo`(`{"memo_id", "photo_ids"}`)도 적어 재생 때 `data-photo-memo`를 싣는다.
         """
-        body = {
+        body: dict[str, Any] = {
             "conversation_id": conversation_id, "reply_text": reply_text, "confirmation": confirmation,
             "inbound_id": update_id, "message_id": message_id,
         }
+        if photo_memo is not None:
+            body["photo_memo"] = photo_memo
         with transaction(self.conn):
             if client_msg_id is not None:
                 self.conn.execute(

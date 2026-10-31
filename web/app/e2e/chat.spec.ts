@@ -110,6 +110,92 @@ test("chat photos: pick two, tray, send uploads in order and sends data-photo pa
   expect(problems).toEqual([]);
 });
 
+// SP10 16장 in the built app (CSP on): a photo alone makes a photo memo (the answer's data-photo-memo);
+// "글자 읽기" goes first in the chip row, reads the photo into the memo with update_memo, toasts, and
+// goes. Nothing more is sent to /chat.
+test("chat 글자 읽기: a photo alone, then the chip reads it into the memo, under CSP", async ({ page }) => {
+  const problems: string[] = [];
+  page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const seen: string[] = [];
+    (window as unknown as { __csp: string[] }).__csp = seen;
+    document.addEventListener("securitypolicyviolation", (e) => seen.push(`${e.violatedDirective} ${e.blockedURI}`));
+  });
+  await seedConn(page);
+  const ev = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  const photoMemo = [
+    ev({ type: "start", messageId: "m-pm", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat", checkin_id: null } }),
+    ev({ type: "start-step" }),
+    ev({ type: "finish-step" }),
+    ev({ type: "data-photo-memo", data: { memo_id: 40, photo_ids: [12] } }),
+    ev({ type: "data-activity", data: { activity_ids: [70], undo_ids: [70], confirmation: copy.photos.created("사진", 1) } }),
+    ev({ type: "finish", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat" } }),
+    "data: [DONE]\n\n",
+  ].join("");
+  const be = await mockBe(page, { chat: [{ body: photoMemo }] });
+  const headers = {
+    "Access-Control-Allow-Origin": APP_ORIGIN,
+    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE",
+    "content-type": "application/json",
+  };
+  const reads: string[] = [];
+  const actions: { action: string; args: Record<string, unknown> }[] = [];
+  await page.route(`${BE_URL}/api/v1/**`, async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^\/api\/v1/, "");
+    if (req.method() === "POST" && path === "/photos") {
+      return route.fulfill({ status: 201, headers, body: JSON.stringify({ id: 12, width: 2048, height: 1365, bytes: 1000 }) });
+    }
+    if (req.method() === "POST" && path === "/photos/12/read") {
+      reads.push(path);
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ text: "영수증 글", unreadable: false }) });
+    }
+    if (req.method() === "GET" && path === "/memos/40") {
+      const memo = { id: 40, title: "사진", body: "사진", area: null, pinned: false, origin: "user", created_at: "2026-10-31T01:00:00Z", updated_at: "2026-10-31T01:00:00Z", photos: [{ id: 12, width: 2048, height: 1365 }] };
+      return route.fulfill({ status: 200, headers, body: JSON.stringify(memo) });
+    }
+    if (req.method() === "POST" && path === "/actions") {
+      const b = req.postDataJSON() as { action: string; args: Record<string, unknown> };
+      actions.push({ action: b.action, args: b.args });
+      const result = { id: 40, title: "영수증 글", area: null, pinned: false, updated_at: "2026-10-31T01:05:00Z" };
+      return route.fulfill({ status: 200, headers, body: JSON.stringify({ status: "applied", activity_id: 901, undo_id: null, result, confirmation: copy.memos.confirm.updated("영수증 글") }) });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: copy.chat.launcher }).click();
+  await expect(page.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled();
+  const png = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 800;
+    c.height = 600;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#88aa66";
+    ctx.fillRect(0, 0, 800, 600);
+    return c.toDataURL("image/png").split(",")[1];
+  });
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: copy.chat.attach }).click();
+  await page.getByRole("menuitem", { name: copy.photos.button }).click();
+  await (await chooser).setFiles({ name: "IMG_0001.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") });
+  await expect(page.getByRole("list", { name: copy.chat.tray }).locator("img")).toHaveCount(1);
+  await page.getByRole("button", { name: copy.chat.send }).click();
+  const chips = page.getByRole("group", { name: copy.chat.chipsLabel });
+  const chip = chips.getByRole("button", { name: copy.chat.readChip });
+  await expect(chip).toBeVisible();
+  await expect(chips.getByRole("button").first()).toHaveText(copy.chat.readChip);
+  await chip.click();
+  await expect(page.getByText(copy.photos.readInto("영수증 글"))).toBeVisible();
+  await expect(chip).toHaveCount(0);
+  expect(reads).toHaveLength(1);
+  expect(actions).toEqual([{ action: "update_memo", args: { id: 40, body: "영수증 글", updated_at: "2026-10-31T01:00:00Z" } }]);
+  expect(be.chatBodies).toHaveLength(1);
+  problems.push(...(await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)).map((v) => `securitypolicyviolation ${v}`));
+  expect(problems).toEqual([]);
+});
+
 // A message held down in the built app (CSP on): the "복사" menu opens over it, one tap copies the
 // text the reader sees, the toast says so. Mine and the secretary's alike.
 test("hold to copy: my bubble and the secretary's answer", async ({ page, context }) => {

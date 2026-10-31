@@ -1118,7 +1118,7 @@ export interface Messages {
 /**
  * 대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.
  * `photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를
- * 뗀 글이다(사진만이면 빈 문자열).
+ * 뗀 글이다(사진만이면 빈 문자열). `photo_memo_id`(SP10 16장): 사진만 보낸 줄의 사진 메모.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "MessageItem".
@@ -1127,6 +1127,7 @@ export interface MessageItem {
   at: string;
   channel: "telegram" | "app";
   id: string;
+  photo_memo_id?: number | null;
   photos?: PhotoRef[];
   speaker: "user" | "secretary";
   text: string;

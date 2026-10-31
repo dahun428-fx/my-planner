@@ -4009,6 +4009,17 @@
             "id": {
               "type": "string"
             },
+            "photo_memo_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "photos": {
               "default": [],
               "items": {

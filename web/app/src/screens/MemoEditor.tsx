@@ -161,7 +161,8 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   const readsRef = useRef(reads);
   readsRef.current = reads;
   const fileInput = useRef<HTMLInputElement>(null);
-  const picked = useRef<{ at: number; base: string }>({ at: 0, base: "" });
+  // 16장: the caret when the viewer opened (writing), where its "글자 읽기" puts the text; null reading.
+  const opened = useRef<{ at: number; base: string } | null>(null);
   const anchors = useRef(new Set<Anchor>());
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -549,34 +550,32 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     [syncAnchors, toast],
   );
 
-  /** `inRow`: called once the photo is in the row (it stops counting as an upload). */
-  const addPhoto = async (file: File, anchor: Anchor, inRow: () => void): Promise<boolean> => {
+  /** `inRow`: called once the photo is in the row (it stops counting as an upload). 16장: it is not read. */
+  const addPhoto = async (file: File, inRow: () => void): Promise<void> => {
     let shrunk: { image: Blob; thumb: Blob };
     try {
       shrunk = await shrinkPhoto(file);
     } catch {
       toast.show({ text: copy.photos.cannotOpen });
-      return false;
+      return;
     }
     const conn = loadConn();
     if (!conn) {
       toast.show({ text: copy.actions.offline });
-      return false;
+      return;
     }
     // A new client_msg_id for every photo picked (uploadPhoto keeps it for its own retry only).
     const up = await uploadPhoto(conn, { ...shrunk, origin: "memo", clientMsgId: newClientMsgId() });
     if (up.kind !== "ok") {
       toast.show({ text: uploadFailureText(up) });
-      return false;
+      return;
     }
     // The BE gives the photo out only once it is attached (5.1): until then it is shown from these bytes.
     keepLocalPhoto(conn, up.data.id, shrunk.image, shrunk.thumb);
-    if (!alive.current) return false;
+    if (!alive.current) return;
     setPhotos((ps) => [...ps, { id: up.data.id, attached: false }]);
     inRow();
-    if (!(await attach(up.data.id))) return false;
-    void readInto(up.data.id, anchor);
-    return true;
+    await attach(up.data.id);
   };
 
   /** The photos of the memo and those on their way: two quick picks at 9 must not make 11. */
@@ -586,8 +585,6 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       toast.show({ text: copy.photos.memoLimit });
       return;
     }
-    const el = box.current;
-    picked.current = { at: el ? el.selectionStart : textRef.current.length, base: textRef.current };
     fileInput.current?.click();
   };
 
@@ -599,9 +596,6 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       toast.show({ text: copy.photos.memoLimit });
       return;
     }
-    syncAnchors();
-    const anchor: Anchor = { pos: shiftAnchor(picked.current.base, textRef.current, picked.current.at) };
-    anchors.current.add(anchor);
     uploadsRef.current++;
     let counted = true;
     const leaveUploads = () => {
@@ -612,10 +606,31 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
     };
     setUploading((n) => n + 1);
     try {
-      if (!(await addPhoto(file, anchor, leaveUploads))) anchors.current.delete(anchor);
+      await addPhoto(file, leaveUploads);
     } finally {
       leaveUploads();
     }
+  };
+
+  // 16장: the viewer opens on a photo; writing, the caret then is where its read text will go (7.4).
+  const openViewer = (i: number) => {
+    const el = box.current;
+    opened.current = modeRef.current === "write" && el ? { at: el.selectionStart, base: textRef.current } : null;
+    setViewing(i);
+  };
+  // 16장 "글자 읽기": closes the viewer and reads that photo: writing, at the caret of the opening (moved
+  // along by what changed since); reading, at the end of the body.
+  const readShown = (id: number) => {
+    setViewing(null);
+    if (readsRef.current.some((r) => r.id === id && r.state === "reading")) return;
+    // A failed read of the same photo (its 다시 읽기) gives way to this one and its place.
+    for (const r of readsRef.current) if (r.id === id) anchors.current.delete(r.anchor);
+    syncAnchors();
+    const at = opened.current;
+    const pos = at && modeRef.current === "write" ? shiftAnchor(at.base, textRef.current, at.at) : textRef.current.length;
+    const anchor: Anchor = { pos };
+    anchors.current.add(anchor);
+    void readInto(id, anchor);
   };
 
   const reread = () => {
@@ -648,7 +663,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
       return;
     }
     if (saved.current.id === null) {
-      // A new memo with only a photo stays: its read text is still to come (or to be written).
+      // A new memo with only a photo stays: its text is still to be written (or read, 16장).
       if (!textRef.current.trim() && photosRef.current.length === 0) void router.push("/memos/");
       return;
     }
@@ -676,7 +691,8 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
   };
 
   const photosFull = photos.length + uploading >= PHOTOS_MAX;
-  const busy = uploading > 0 || reads.some((r) => r.state === "reading");
+  // 16장: only a read shows the band (an upload is not read any more).
+  const busy = reads.some((r) => r.state === "reading");
   const readFailed = reads.some((r) => r.state === "failed");
   // SP10 7.1: the line above the tool row while a photo is read; "다시 읽기" after a read that did not go through.
   const band =
@@ -803,7 +819,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
         )}
       </nav>
       {offline && <OfflineNotice savedAt={null} onRetry={() => void recheck()} />}
-      {load.kind === "ok" && <PhotoStrip photos={photos} onOpen={setViewing} />}
+      {load.kind === "ok" && <PhotoStrip photos={photos} onOpen={openViewer} />}
       {body}
       <input ref={fileInput} type="file" accept="image/*" hidden aria-label={copy.photos.button} onChange={(e) => void onFile(e)} />
       <PhotoViewer
@@ -812,6 +828,7 @@ export function MemoEditor({ id: givenId, onCreated }: { id: number | null; onCr
         onIndex={setViewing}
         onClose={() => setViewing(null)}
         onDetach={writable ? (id) => void detach(id) : undefined}
+        onRead={writable ? readShown : undefined}
       />
       <Sheet open={areaOpen} onClose={() => setAreaOpen(false)} title={copy.memos.toolbar.area}>
         <div className={styles.areas}>

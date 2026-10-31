@@ -15,7 +15,8 @@ export function swipeStep(dx: number, at: number, n: number): number | null {
 
 /**
  * SP10 7.1: one photo over the whole screen. Left and right (a swipe, the arrows, the arrow keys)
- * go through the memo's photos; "메모에서 빼기" only when `onDetach` is given (a screen that can write).
+ * go through the memo's photos; "메모에서 빼기" only when `onDetach` is given (a screen that can write),
+ * and "글자 읽기" (16장) only when `onRead` is given.
  */
 export function PhotoViewer({
   photos,
@@ -23,6 +24,7 @@ export function PhotoViewer({
   onIndex,
   onClose,
   onDetach,
+  onRead,
 }: {
   photos: { id: number }[];
   /** null: closed. */
@@ -30,6 +32,8 @@ export function PhotoViewer({
   onIndex(i: number): void;
   onClose(): void;
   onDetach?: (id: number) => void;
+  /** 16장: read the photo shown into the memo (the screen closes the viewer). */
+  onRead?: (id: number) => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const start = useRef<number | null>(null);
@@ -100,11 +104,18 @@ export function PhotoViewer({
           </button>
         )}
       </div>
-      {onDetach && (
+      {(onDetach || onRead) && (
         <div className={styles.foot}>
-          <button type="button" className={styles.detach} onClick={() => onDetach(photo.id)}>
-            {copy.photos.detach}
-          </button>
+          {onRead && (
+            <button type="button" className={styles.read} onClick={() => onRead(photo.id)}>
+              {copy.photos.readText}
+            </button>
+          )}
+          {onDetach && (
+            <button type="button" className={styles.detach} onClick={() => onDetach(photo.id)}>
+              {copy.photos.detach}
+            </button>
+          )}
         </div>
       )}
     </div>
