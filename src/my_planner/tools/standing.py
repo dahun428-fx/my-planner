@@ -16,7 +16,12 @@ from typing import TYPE_CHECKING, Any
 
 from my_planner.clock import local, period_of
 from my_planner.domain import EventKind, InboxAgent, RunContext, ToolEvent
-from my_planner.standing.metrics import METRICS, metric_area, validate
+from my_planner.standing.metrics import (
+    HEALTH_LOOKS_METRICS,
+    METRICS,
+    metric_area,
+    validate,
+)
 from my_planner.standing.score import AREAS, round_half_up
 from my_planner.status.xp import AREA_LABELS, LABEL_STANDING, XP_STANDING
 from my_planner.store.db import transaction
@@ -145,6 +150,23 @@ class StandingTools:
         ))
         log.info("measures_proposed", extra={"rows": len(card), "metrics": sorted({m for m, _, _ in good})})
         return {"ok": True, "card": True}
+
+    @_tool
+    def get_measures(self, ctx: RunContext) -> dict[str, Any]:
+        """건강·외모 지표(`HEALTH_LOOKS_METRICS`)마다 가장 최근 값(SP14 6.2, 운동메이트). 읽기만. 로그 없음(값)."""
+        if self.standing is None:
+            return {"measures": []}
+        latest = self.standing.latest()
+        out: list[dict[str, Any]] = []
+        for name, d in METRICS.items():
+            m = latest.get(name)
+            if name not in HEALTH_LOOKS_METRICS or m is None or isinstance(m, list):
+                continue
+            out.append({
+                "metric": name, "label": d.label, "value": m.value_num if m.value_num is not None else m.value_text,
+                "unit": d.unit, "measured_on": m.measured_on.isoformat(), "reliability": m.reliability,
+            })
+        return {"measures": out}
 
     # --- /actions ---
 

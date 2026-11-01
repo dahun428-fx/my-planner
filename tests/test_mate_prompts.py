@@ -71,15 +71,15 @@ def test_mate_tool_list():
     assert tool_names_for(RunContext(None, None, agent="mate", channel="app")) == MATE_TOOLS
     assert MATE_TOOLS == [
         "get_mate_context", "save_body_note", "drop_body_note", "set_workout_plan", "log_workout",
-        "update_workout_log", "delete_workout_log", "list_workouts",
+        "update_workout_log", "delete_workout_log", "list_workouts", "get_measures",
         "record_condition", "find_conversations", "ui_block", "ui_choice", "ui_summary_card",
     ]
     assert tool_names_for(RunContext(None, None, kind="summary", agent="mate")) == []
     assert tool_names_for(RunContext(None, None, kind="photo_read", agent="mate")) == []
     assert tool_names_for(RunContext(None, None, kind="moments", agent="mate")) == MOMENTS_TOOLS
     secretary = tool_names_for(RunContext(None, None, channel="app"))
-    assert "add_task" in secretary and not set(MATE_TOOLS[:8]) & set(secretary)  # 운동 도구는 메이트에만(5.3)
-    assert set(MATE_TOOLS[8:]) <= set(secretary)
+    assert "add_task" in secretary and not set(MATE_TOOLS[:9]) & set(secretary)  # 운동 도구는 메이트에만(5.3)
+    assert set(MATE_TOOLS[9:]) <= set(secretary)
 
 
 async def test_mate_prompt_parts(tmp_path):

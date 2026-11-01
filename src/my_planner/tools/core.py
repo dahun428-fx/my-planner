@@ -90,6 +90,7 @@ from my_planner.tools.activity import (
     tasks_target,
     undoable_now,
 )
+from my_planner.tools.agents import AgentTools
 from my_planner.tools.body import BodyTools
 from my_planner.tools.checkin_times import CheckinTimeTools
 from my_planner.tools.confirmations import (
@@ -234,7 +235,7 @@ def _result_before(a: Activity) -> dict[str, Any]:
 
 class Tools(
     MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, PhotoTools, BodyTools, EventTools,
-    ConversationTools, WorkoutTools, StandingTools,
+    ConversationTools, WorkoutTools, StandingTools, AgentTools,
 ):
     def __init__(
         self,
