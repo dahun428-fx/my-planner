@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 시작 조건: 이 브랜치(SP13·SP14가 들어 있음). 마이그레이션 번호 `024`(`024_life_manager.sql`). PR base는 `develop`.
-- **개인 값은 저장소·테스트·로그·문서에 넣지 않는다.** 연봉·자산·체성분·전화·이메일은 테스트에서 지어낸 값(`salary_krw = 1234`, `body_fat_pct = 21.5` 같은)만. 로그에는 개수·id·상태·이유 코드만(제목·근거 글·말·리포트·측정값 숫자 없음, 스펙 13장). 전문가 지시문은 `/mnt/attach/project-files/social-level/experts/*.md`의 관점과 "하지 말 것"만 일반화해 옮기고 숫자·회사·날짜·사람은 옮기지 않는다.
+- **개인 값은 저장소·테스트·로그·문서에 넣지 않는다.** 연봉·자산·체성분·전화·이메일은 테스트에서 지어낸 값(`salary_krw = 1234`, `body_fat_pct = 21.5` 같은)만. 로그에는 개수·id·상태·이유 코드만(제목·근거 글·말·리포트·측정값 숫자 없음, 스펙 13장). 전문가 지시문은 `/mnt/project-files/social-level/experts/*.md`의 관점과 "하지 말 것"만 일반화해 옮기고 숫자·회사·날짜·사람은 옮기지 않는다.
 - 상대 이름: `Agent = Literal["secretary", "mate", "manager"]`. 사용자에게 보이는 이름 `"라이프 매니저"`(원문 기록 화자, `AGENT_LABELS`, 앱 `copy.agentNames.manager`). 원문 기록 꼬리표 ` @manager`.
 - 전문가 키와 이름(이 순서): `career` 커리어 전략가, `finance` 재무설계사, `health` 건강 전문의, `image` 이미지 컨설턴트, `relationship` 관계 코치, `psych` 심리 코치.
 - 상수와 자리(값은 이대로): `EXPERTS_PER_MESSAGE = 2`, `EXPERTS_FULL = 6`, `EXPERT_MAX_TURNS = 6`(`panel/experts.py`) · `FULL_PER_DAY = 1`, `FULL_PER_WEEK = 2`, `FULL_MIN_CALLS_LEFT = 3`(사용자 몫 `MOMENTS_RESERVE_CALLS` 창 안의 남은 두뇌 호출 수, 스펙 6.2 그대로), `FULL_FAILED_REPLY`(`panel/report.py`) · `limits.full_diagnosis.max_turns = 30`, `limits.full_diagnosis.brain_timeout_s = 900`, `limits.manager_message.max_turns = 12`, `limits.manager_message.brain_timeout_s = 300`(`config.py`, `config.toml`. 보통 매니저 메시지 값은 Task 1 `full2_*` 판정으로 고칠 수 있다) · `BUDGET_START = 2`, `BUDGET_MIN = 1`, `BUDGET_MAX = 5`, `BUDGET_WARMUP_WEEKS = 4`, `BUDGET_WINDOW_WEEKS = 4`(`panel/budget.py`) · `SUGGESTION_TITLE_MAX = 60`, `EVIDENCE_MAX = 8`, `EVIDENCE_NOTE_MAX = 120`, `SUGGESTION_EXPIRE_DAYS = 7`, `SUGGESTION_DUE_MAX_DAYS = 60`(`due_hint`는 오늘~오늘+60), `NOT_INTERESTED_DAYS = 30`, `STATEMENT_TEXT_MAX = 200`, `PREDICTIONS_PER_CONVERSATION = 2`, `PREDICTION_MAX_AHEAD_DAYS = 365`, `PANEL_EXTRA_BANNED = ("%", "못 했", "못했", "뒤처졌")`(`tools/panel.py`) · `PREDICTION_WINDOW_DAYS = 14`(`panel/predictions.py`) · `PACE_DONE_WEEKS = 8`, `PACE_RECENT_DAYS = 28`, `PACE_AHEAD_DAYS = 14`(`panel/pace.py`).
@@ -537,7 +537,7 @@
   - `test_collect_expert_notes`: SDK 메시지 객체를 손으로 만든다 — `ToolUseBlock(id="t1", name=SUBAGENT_TOOL, input={"subagent_type": "career", …})`, `ToolUseBlock(id="t2", … "health")`, `ToolUseBlock(id="t3", … "bogus")`, 결과 셋(t2는 글 블록 둘) → `(ExpertNote("career", …), ExpertNote("health", "가 나"))`, bogus 없음. 서브에이전트 안(`parent_tool_use_id` 있음)의 `ToolUseBlock`은 세지 않는다.
   - `test_brain_options.py::test_build_options_with_agents`: `agents` 있음 → `tools == [SUBAGENT_TOOL]`, `allowed_tools`에 `SUBAGENT_TOOL`과 `mcp__planner__*`, `agents`·`hooks` 그대로. 없음 → 지금 그대로(`tools == []`, `agents is None`).
 - [ ] **Step 2:** `.venv/bin/python -m pytest tests/test_panel_experts.py tests/test_brain_options.py -q` → FAIL.
-- [ ] **Step 3:** 구현. 지시문은 `/mnt/attach/project-files/social-level/experts/<키>.md`에서 관점만 옮긴다(그 파일이 없는 환경이면 같은 모양으로 일반적인 관점을 쓰고 PR 설명에 적는다).
+- [ ] **Step 3:** 구현. 지시문은 `/mnt/project-files/social-level/experts/<키>.md`에서 관점만 옮긴다(그 파일이 없는 환경이면 같은 모양으로 일반적인 관점을 쓰고 PR 설명에 적는다).
 - [ ] **Step 4:** PASS, 전체 PASS·ruff 0.
 - [ ] **Step 5:** `git commit -m "feat(sp15): 전문가 6명 서브에이전트 정의와 두뇌 연결"`
 
