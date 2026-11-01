@@ -495,7 +495,7 @@ async def test_telegram_tool_count_28(env):
     habit_tools = ["add_habit", "update_habit", "set_habit_status", "check_habit", "uncheck_habit", "list_habits"]
     assert TOOL_NAMES[22:] == habit_tools
     assert len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28 == len(set(tool_names_for(RunContext(None, None, channel="telegram"))))
-    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 49  # SP6 G-BE2 +4, SP9-09 `find_conversations` +1, 화면 도구 `ui_habit_check`(SP7-06) +1, `set_checkin_time`(SP9-02) +1, 메모(SP9-03) +3, 일정(SP9-05) +5
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 50  # SP13-05 `propose_measures` +1, SP6 G-BE2 +4, SP9-09 `find_conversations` +1, 화면 도구 `ui_habit_check`(SP7-06) +1, `set_checkin_time`(SP9-02) +1, 메모(SP9-03) +3, 일정(SP9-05) +5
     ctx = env.user()
     handlers = {t.name: t for t in build_planner_tools(env.tools, ctx)}
     assert list(handlers) == TOOL_NAMES

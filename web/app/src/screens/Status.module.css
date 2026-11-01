@@ -207,3 +207,83 @@
   color: var(--hue);
   cursor: pointer;
 }
+
+/* SP13 10.1: satisfaction over position at the row's right; drift and debuff under the name. */
+.numbers {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.125rem;
+  max-width: 50%;
+  text-align: right;
+}
+.pos {
+  font-size: var(--size-meta);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+/* "위치 —": a 44px hit area around the meta-sized text. */
+.posNone {
+  position: relative;
+  min-height: var(--small-control-h);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  line-height: 1.4;
+  color: var(--muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.posNone::after {
+  content: "";
+  position: absolute;
+  inset: calc((var(--small-control-h) - var(--control-h)) / 2) -0.5rem;
+}
+.posNone:focus-visible,
+.detail:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.mine {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+/* The world moved, not me: grey (--muted), spec 9.2. */
+.world {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.debuff {
+  color: var(--text-2);
+}
+
+/* SP13 10.2 innate stats. */
+.innate {
+  margin: 0;
+  padding: 0.75rem var(--pad) 0;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+.innateNote {
+  margin: 0;
+  padding: 0.25rem var(--pad) 0.75rem;
+  font-size: var(--size-meta);
+  line-height: 1.4;
+  color: var(--muted);
+}
+.detail {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-h);
+  padding: 0 var(--pad);
+  border-top: 1px solid var(--rule);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}

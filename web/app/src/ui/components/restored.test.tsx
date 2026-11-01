@@ -8,8 +8,11 @@ import { renderWithProviders } from "../../test/render";
 import { ChapterDraft } from "./ChapterDraft";
 import { Choice } from "./Choice";
 import { HabitCheck } from "./HabitList";
+import { MeasureConfirm, type MeasureConfirmProps } from "./MeasureConfirm";
 import { MilestoneDraft } from "./MilestoneDraft";
 import { TodoDraft } from "./TodoDraft";
+
+const MEASURES: MeasureConfirmProps = { rows: [{ metric: "weight_kg", label: "몸무게", value: 70, unit: "kg", measured_on: "2026-10-01" }, { metric: "cert", label: "자격", value: "toeic:900", unit: null, measured_on: "2026-10-01" }], source_kind: "manual", source_ref: null };
 
 // A part restored from the device after a reload (4.6) holds rows as they were then: it writes nothing.
 const ctx = makeCtx({ restored: true, onChoose: vi.fn() });
@@ -18,6 +21,7 @@ const cases: [string, ReactElement, string][] = [
   ["TodoDraft", <TodoDraft key="a" props={{ task_ids: [1] }} data={{ todos: [makeTodo(1, "빨래", "draft")] }} ctx={ctx} />, "빨래"],
   ["MilestoneDraft", <MilestoneDraft key="b" props={{ milestone_ids: [1] }} data={{ milestones: [{ id: 1, title: "사건", date: "2020-01" }] }} ctx={ctx} />, "사건"],
   ["ChapterDraft", <ChapterDraft key="c" props={{ chapter_ids: [1] }} data={{ chapters: [{ id: 1, title: "챕터", start_month: "2020-01", end_month: null }] }} ctx={ctx} />, "챕터"],
+  ["MeasureConfirm", <MeasureConfirm key="d" props={MEASURES} ctx={ctx} />, "몸무게"],
 ];
 
 describe("restored parts", () => {
@@ -25,6 +29,12 @@ describe("restored parts", () => {
     renderWithProviders(el);
     expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toEqual([]);
+  });
+
+  it("MeasureConfirm fields are off and nothing is written", () => {
+    renderWithProviders(<MeasureConfirm props={MEASURES} ctx={ctx} />);
+    for (const f of screen.getAllByLabelText(/몸무게|자격/)) expect(f).toBeDisabled();
+    expect(screen.queryByText(copy.offline.writeLater)).toBeNull();
   });
 
   it("Choice pills are off: a stale choice must not go into the current conversation", () => {

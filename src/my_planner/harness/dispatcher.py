@@ -158,6 +158,8 @@ class Outbound:
     confirms: list[tuple[str, str]] = field(default_factory=list)
     # 앱 대화(사용자 차례)의 확인 카드 `ui_confirm` props(SP9 8장 `set_checkin_time`): `/chat` 스트림의 하네스 조각
     confirm_cards: list[dict[str, Any]] = field(default_factory=list)
+    # 측정값 확인 카드 `ui_measure_confirm` props(SP13 6.5, `propose_measures`): `/chat` 스트림의 하네스 조각(확인 카드 다음)
+    measure_cards: list[dict[str, Any]] = field(default_factory=list)
     # 앱 답(SP3-4 7.5 M4): 확인 문구는 글에 붙이지 않고 `data-activity.confirmation`으로 간다(6.4.1)
     channel: Channel = "telegram"
     confirmation: str | None = None
@@ -2824,6 +2826,10 @@ def _outbound(text: str, run_ctx: RunContext) -> Outbound:
             {"summary": e.data["summary"], "confirm_token": e.data["confirm_token"], "action": e.data["action"],
              "args": e.data["args"]}
             for e in run_ctx.events if e.kind == "confirm_requested" and e.data.get("card")
+        ],
+        measure_cards=[
+            {"rows": list(e.data["rows"]), "source_kind": e.data["source_kind"], "source_ref": e.data["source_ref"]}
+            for e in run_ctx.events if e.kind == "measures_proposed"
         ],
     )
 

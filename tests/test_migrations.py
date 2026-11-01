@@ -298,7 +298,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 21 == _migration_count()
+    assert dbmod.LATEST_VERSION == 22 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -407,8 +407,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 21 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 21
+    assert migrate(conn) == 22 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 22
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -668,7 +668,7 @@ def test_hook_failure_rolls_back_version(tmp_path, monkeypatch):
     assert "events" not in tables
     assert conn.execute("SELECT deleted_at FROM tasks").fetchone()[0] is None
     monkeypatch.setitem(hooks.HOOKS, 17, hooks.after_017)
-    assert migrate(conn) == 21 and len(_events(conn)) == 1
+    assert migrate(conn) == 22 and len(_events(conn)) == 1
 
 
 def test_017_tz_argument_used(tmp_path):
@@ -739,3 +739,43 @@ def test_021_ledger_moved_intact(tmp_path):
     )
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(_LEDGER_INS, (21, "2026-10-30T01:00:00+00:00", "2026-10-30", "bogus", "x", 5, "health", "x"))
+
+
+# --- 022: 객관적 위치 (SP13 스펙 6.1) ---
+
+
+def test_022_standing_tables(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn) == dbmod.LATEST_VERSION
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"standing_measures", "standing_snapshots"} <= tables
+    ins = (
+        "INSERT INTO standing_measures (metric, value_num, value_text, measured_on, source_kind, created_at) "
+        "VALUES (?, ?, ?, '2026-10-01', ?, '2026-10-01T00:00:00+00:00')"
+    )
+    conn.execute(ins, ("weight_kg", 70.0, None, "manual"))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(ins, ("weight_kg", None, None, "manual"))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(ins, ("weight_kg", 70.0, None, "bogus"))
+
+
+def test_022_ledger_moved_intact(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=21) == 21
+    rows = [(r[0], *r[1:5], amount, *r[6:]) for r, amount in zip(_LEDGER_ROWS, (10, 10, 5), strict=True)]
+    for row in rows:
+        conn.execute(_LEDGER_INS, row)
+    conn.commit()
+    assert migrate(conn) == dbmod.LATEST_VERSION
+    got = conn.execute(
+        "SELECT id, at, logical_date, source_kind, source_ref, amount, area, label FROM status_xp_ledger ORDER BY id"
+    ).fetchall()
+    assert [tuple(r) for r in got] == rows
+    assert conn.execute("SELECT SUM(amount) FROM status_xp_ledger").fetchone()[0] == 25
+    conn.execute(
+        _LEDGER_INS,
+        (20, "2026-10-30T01:00:00+00:00", "2026-10-30", "standing", "standing:2026-Q4", 20, None, "객관적 위치"),
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(_LEDGER_INS, (21, "2026-10-30T01:00:00+00:00", "2026-10-30", "bogus", "x", 5, None, "x"))

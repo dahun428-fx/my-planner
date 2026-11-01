@@ -364,7 +364,7 @@ describe("sw.js", () => {
     const cached = [...caches.store.get("app-b1")!.keys()].map((k) => new URL(k).pathname).sort();
     expect(cached).toEqual([
       "/", "/_next/static/chunks/a.js", "/activity/", "/checkin/", "/connect/", "/devices/", "/habits/", "/memos/", "/memos/view/",
-      "/more/", "/schedule/", "/settings/", "/status/", "/todos/", "/workout/",
+      "/more/", "/schedule/", "/settings/", "/status/", "/status/standing/", "/todos/", "/workout/",
     ]);
   });
 

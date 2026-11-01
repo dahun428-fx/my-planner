@@ -110,23 +110,32 @@ class PairCodes:
 
 
 class DeviceTokens:
-    """끊지 않은 기기의 `token_hash → device_id`와 마지막으로 `last_used_at`을 쓴 날(4.4)."""
+    """끊지 않은 기기의 `token_hash → device_id`, 기기 종류(`client`), 마지막으로 `last_used_at`을 쓴 날(4.4)."""
 
     def __init__(self) -> None:
         self._by_hash: dict[str, int] = {}
+        self._client: dict[int, str] = {}
         self._touched: dict[int, date] = {}
 
     def load(self, conn: sqlite3.Connection) -> None:
-        self._by_hash = {d.token_hash: d.id for d in DevicesRepo(conn).active()}
+        active = DevicesRepo(conn).active()
+        self._by_hash = {d.token_hash: d.id for d in active}
+        self._client = {d.id: d.client for d in active}
 
     def lookup(self, token: str) -> int | None:
         return self._by_hash.get(token_hash(token)) if token else None
 
-    def add(self, hash_: str, device_id: int) -> None:
+    def client(self, device_id: int) -> str | None:
+        """`'app'` | `'dashboard'`. 모르는(끊은) 기기면 None."""
+        return self._client.get(device_id)
+
+    def add(self, hash_: str, device_id: int, client: str) -> None:
         self._by_hash[hash_] = device_id
+        self._client[device_id] = client
 
     def remove(self, device_id: int) -> None:
         self._by_hash = {h: i for h, i in self._by_hash.items() if i != device_id}
+        self._client.pop(device_id, None)
         self._touched.pop(device_id, None)
 
     def claim_touch(self, device_id: int, today: date) -> bool:
@@ -189,7 +198,7 @@ async def post_pair(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
     if res.status != "applied":  # DB 쪽 실패: 코드는 그대로 살아 있어 다시 할 수 있다
         return error_response(500, "internal", "잠시 뒤에 다시 해 주세요.")
     device_id = int(res.body["result"]["id"])
-    deps.devices.add(hashed, device_id)
+    deps.devices.add(hashed, device_id, req.client)
     deps.pair_codes.mark_used({"id": device_id, "label": req.label})
     out = {"token": token, "device": {"id": device_id, "label": req.label, "client": req.client}}
     resp = web.json_response(dump(PairResult, out), status=201)

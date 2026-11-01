@@ -27,7 +27,7 @@ describe("registerChatParts", () => {
 
   it("drawn after register", async () => {
     registerChatParts();
-    expect(registryNames()).toEqual(expect.arrayContaining(["ui_date_choice", "ui_result", "ui_period_list", "ui_block"]));
+    expect(registryNames()).toEqual(expect.arrayContaining(["ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_measure_confirm"]));
     renderWithProviders(<UiPart name="ui_block" props={block} data={{ today: "2026-10-24" }} ctx={makeCtx()} />);
     expect(await screen.findByRole("heading", { level: 3, name: "이번 주 운동" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "이번 주 3회" })).toBeInTheDocument();

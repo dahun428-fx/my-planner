@@ -275,9 +275,10 @@ def test_app_tool_count_g_be1_base_plus_new_four():
         "find_conversations",  # SP9-09
         "list_events", "create_event", "update_event", "delete_event", "ui_events",  # SP9-05
     }
+    sp13 = {"propose_measures"}  # SP13-05(화면 조각이 아니다: 하네스가 확인 카드를 붙인다)
     app_only = set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES)
-    assert app_only == g_be1 | sp9 | set(NEW)
-    assert len(app_only) == len(g_be1) + len(sp9) + 4
+    assert app_only == g_be1 | sp9 | sp13 | set(NEW)
+    assert len(app_only) == len(g_be1) + len(sp9) + len(sp13) + 4
     assert set(NEW) <= set(BRAIN_COMPONENTS) and len(BRAIN_COMPONENTS) == 9  # SP9-05 `ui_events`
     assert PINNABLE_COMPONENTS == ("ui_todo_list", "ui_choice", "ui_summary_card")
 
@@ -352,7 +353,7 @@ def test_ui_events_catalog_entry():
     from my_planner.tools.ui import UI_CATALOG_VERSION, UI_COMPONENTS
 
     entry = UI_COMPONENTS["ui_events"]
-    assert entry["origin"] == "brain" and UI_CATALOG_VERSION == "2026-10-24.5"
+    assert entry["origin"] == "brain" and UI_CATALOG_VERSION == "2026-11-01.1"
     assert "ui_events" in BRAIN_COMPONENTS and "ui_events" not in PINNABLE_COMPONENTS
     assert "ui_events" in tool_names_for(RunContext(None, None, channel="app"))  # 9.8: 두뇌가 그린다(앱에만)
     assert "ui_events" not in tool_names_for(RunContext(None, None, channel="telegram"))

@@ -1,0 +1,220 @@
+{
+ "version": 1,
+ "measures": [
+  {
+   "metric": "profile_birth_year",
+   "value": 1992,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "profile_sex",
+   "value": "m",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "profile_region",
+   "value": "capital",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "profile_job_family",
+   "value": "dev_general",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "height_cm",
+   "value": 176,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "weight_kg",
+   "value": 72.0,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "body_fat_pct",
+   "value": 19.0,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "waist_cm",
+   "value": 82.0,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "face_rating",
+   "value": 55,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "grooming_rating",
+   "value": 70,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "shuttle_run_laps",
+   "value": 42,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "grip_rel_pct",
+   "value": 55.0,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "situp_per_min",
+   "value": 38,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "bp_sys",
+   "value": 118,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "bp_dia",
+   "value": 78,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "fasting_glucose",
+   "value": 96,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "ldl",
+   "value": 142,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "alt",
+   "value": 28,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "smoking",
+   "value": "quit",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "drinking",
+   "value": "monthly_binge",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "exercise_days_week",
+   "value": 1.5,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "salary_krw",
+   "value": 62000000,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "company_tier",
+   "value": 15,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "role_points",
+   "value": 9,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "years_exp",
+   "value": 7,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "level_points",
+   "value": 4,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "outside_activity_count",
+   "value": 1,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "recruiter_contacts_6m",
+   "value": 4,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "offer_ratio",
+   "value": 1.2,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "net_worth_krw",
+   "value": 180000000,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "monthly_saving_krw",
+   "value": 1500000,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "monthly_net_income_krw",
+   "value": 4500000,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "support_people",
+   "value": 3,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "monthly_meetups",
+   "value": 3,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "dating_status",
+   "value": "dating",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "lonely_often",
+   "value": "yes",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "cert",
+   "value": "toeic:900",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "cert",
+   "value": "jlpt_n2",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "education_tier",
+   "value": "local_private",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "double_major",
+   "value": "no",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "family_net_worth_krw",
+   "value": 250000000,
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "family_support",
+   "value": "support",
+   "measured_on": "2026-10-01"
+  },
+  {
+   "metric": "family_parent_60plus",
+   "value": "no",
+   "measured_on": "2026-10-01"
+  }
+ ]
+}

@@ -97,6 +97,7 @@ from my_planner.api.read import (
     get_week,
 )
 from my_planner.api.recovery import post_client_error, post_internal_notify
+from my_planner.api.standing import get_standing, get_standing_measures
 from my_planner.api.workout import get_workout
 from my_planner.probe import health_probe_fails
 
@@ -282,6 +283,8 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/curve", get_curve),
     ("/curve/history", get_curve_history),
     ("/status", get_status),
+    ("/standing", get_standing),  # SP13 12장. 대시보드 기기는 403
+    ("/standing/measures", get_standing_measures),
     ("/moments", get_moments),
     ("/checkins", get_checkins),
     ("/checkins/{id}", get_checkin),

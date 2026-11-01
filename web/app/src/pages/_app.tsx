@@ -23,7 +23,6 @@ import "../screens/Checkin";
 import "../screens/Connect";
 import "../screens/Habits";
 import "../screens/More";
-import "../screens/Status";
 import "../screens/Today";
 import "../screens/Todos";
 import "../components/LargeTitle";
@@ -51,6 +50,10 @@ import "../screens/Workout.module.css";
 // code (and the QR library) stays in /devices/'s chunk.
 import "../screens/Devices.module.css";
 import "../components/Qr.module.css";
+// SP13 10장: the status screen and its standing detail, stylesheets only (CSP, as above). Their code
+// stays in /status/'s and /status/standing/'s chunks, out of the first screen's 180KB.
+import "../screens/Status.module.css";
+import "../screens/Standing.module.css";
 // SP9 9.5: the chat sheet's list and quick chip stylesheets only (CSP, as above); their code stays in the
 // chat sheet's chunk, out of the first screen's 180KB.
 import "../chat/ConversationList.module.css";

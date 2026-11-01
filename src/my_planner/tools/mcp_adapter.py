@@ -8,6 +8,7 @@ from typing import Any
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server
 
 from my_planner.domain import RunContext
+from my_planner.standing.metrics import METRICS
 from my_planner.timefmt import to_api_times
 from my_planner.tools.events import ui_event_items
 from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
@@ -60,6 +61,7 @@ APP_ONLY_TOOLS: list[str] = [
     # 스케줄(SP9 5.5): 시간이 정해진 일. 고치기(시각류)·지우기는 확인을 거친다
     "list_events", "create_event", "update_event", "delete_event",
     "ui_events",  # 그날 일정 카드(9.8), 그리기만
+    "propose_measures",  # SP13 6.5: 측정값 확인 카드만 낸다(저장은 카드의 "저장")
 ]
 assert set(BRAIN_COMPONENTS) <= set(APP_ONLY_TOOLS)
 
@@ -631,6 +633,40 @@ _SPECS.update({
     ),
 })
 
+
+# 측정값(SP13 6.3~6.5). 앱 대화에만(`APP_ONLY_TOOLS`)
+_SPECS["propose_measures"] = (
+    (
+        "결과지 사진(인바디, 검진표, 급여명세, 자산 화면)이나 사용자가 말한 숫자를 측정값 확인 카드로 냅니다. 저장하지 "
+        "않습니다: 사용자가 카드에서 고치고 \"저장\"을 누르면 저장됩니다. 줄 하나라도 틀리면 카드 없이 errors(index, "
+        "message)가 오니 그 줄을 고쳐 다시 부릅니다. 금액은 원 단위(5,500만 원 = 55000000), measured_on은 결과지의 "
+        "날짜입니다(올린 날이 아니라). source_kind는 사진이면 photo(source_ref에 \"photo:<사진 번호>\"), PDF면 pdf, "
+        "말로 들은 값이면 manual입니다."
+    ),
+    _schema(
+        {
+            "rows": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": _schema(
+                    {
+                        "metric": {"enum": list(METRICS), "description": "측정값 이름"},
+                        "value": {
+                            "type": ["number", "string"],
+                            "description": "숫자 지표는 수, 범주 지표는 정해진 값(예: \"m\", \"seoul_mid_low\", \"toeic:825\")",
+                        },
+                        "measured_on": {"type": "string", "description": "측정일 YYYY-MM-DD"},
+                    },
+                    ["metric", "value", "measured_on"],
+                ),
+            },
+            "source_kind": {"enum": ["photo", "pdf", "manual"]},
+            "source_ref": {"type": ["string", "null"], "description": "photo:<사진 번호> 또는 null"},
+        },
+        ["rows", "source_kind"],
+    ),
+)
 
 # 하루 끝 순간 호출(`RunContext.kind == "moments"`, SP8 6.3)에만 주는 도구. 대화·회차 목록(`TOOL_NAMES`, `APP_ONLY_TOOLS`)에는 없다
 MOMENTS_TOOLS: list[str] = ["save_moments"]

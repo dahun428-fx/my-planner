@@ -222,10 +222,61 @@
   font-size: var(--size-body);
   color: var(--text-2);
 }
+/* SP13 6.5 ui_measure_confirm: one row per measure, the value and date fields side by side. */
+.measureRow {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--rule);
+}
+.measureRow:first-child {
+  border-top: 0;
+}
+.measureHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--size-body);
+  color: var(--text);
+}
+.measureFields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.field {
+  flex: 1 1 6rem;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  font: inherit;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.dateField {
+  flex: 0 1 10rem;
+}
+.field:disabled {
+  opacity: 0.6;
+}
+.unit {
+  flex: none;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.measureRow .hint {
+  margin: 0.25rem 0 0;
+}
 .pill:focus-visible,
 .button:focus-visible,
 .more:focus-visible,
-.note:focus-visible {
+.note:focus-visible,
+.field:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }

@@ -156,6 +156,7 @@ def test_ui_and_card_tools_absent_from_telegram(uenv):
         "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
         "set_checkin_time", "search_memos", "read_memo", "create_memo", "find_conversations",
         "list_events", "create_event", "update_event", "delete_event", "ui_events",
+        "propose_measures",  # SP13-05
     ]
     assert tool_names_for(RunContext(None, None, channel="telegram")) == TOOL_NAMES
     assert tool_names_for(RunContext(None, None, channel="app")) == TOOL_NAMES + APP_ONLY_TOOLS
@@ -266,7 +267,7 @@ def test_catalog_has_ui_habit_check_brain_origin():
     assert UI_COMPONENTS["ui_habit_check"]["origin"] == "brain"
     assert "ui_habit_check" in BRAIN_COMPONENTS
     assert "ui_habit_check" not in PINNABLE_COMPONENTS
-    assert UI_CATALOG_VERSION == "2026-10-24.5"
+    assert UI_CATALOG_VERSION == "2026-11-01.1"
     schema = UI_COMPONENTS["ui_habit_check"]["schema"]
     assert schema["required"] == ["date"] and schema["additionalProperties"] is False
 
@@ -293,8 +294,8 @@ def test_ui_habit_check_no_db_writes(uenv, tmp_path):
     assert ctx.events == [] and ctx.activity_ids == [] and ctx.undo_ids == []
 
 
-def test_app_tool_count_49():
-    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 49 and len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28  # SP6 G-BE2 +4, SP9-02 +1, SP9-03 +3, SP9-05 +5, SP9-09 +1(앱에만)
+def test_app_tool_count_50():
+    assert len(tool_names_for(RunContext(None, None, channel="app"))) == 50 and len(tool_names_for(RunContext(None, None, channel="telegram"))) == 28  # SP6 G-BE2 +4, SP9-02 +1, SP9-03 +3, SP9-05 +5, SP9-09 +1, SP13-05 +1(앱에만)
     assert "ui_habit_check" in APP_ONLY_TOOLS and "ui_habit_check" not in tool_names_for(RunContext(None, None, channel="telegram"))
     names = [t.name for t in build_planner_tools(Tools.__new__(Tools), RunContext(conversation_id=None, run_id=None, channel="app"))]
     assert "ui_habit_check" in names  # 도구 정의(설명, 스키마)가 있다
@@ -542,7 +543,8 @@ def test_app_tool_count_plus_four():
     SP9의 열 + 새 넷."""
     before = {"ui_todo_list", "ui_choice", "ui_summary_card", "ui_habit_check", "pin_card", "unpin_card", "reorder_cards",
               "set_checkin_time", "search_memos", "read_memo", "create_memo", "find_conversations",  # SP9
-              "list_events", "create_event", "update_event", "delete_event", "ui_events"}
+              "list_events", "create_event", "update_event", "delete_event", "ui_events",
+              "propose_measures"}  # SP13-05
     app_only = set(tool_names_for(RunContext(None, None, channel="app"))) - set(TOOL_NAMES)
     assert app_only == before | set(NEW_TOOLS)
     assert len(app_only) == len(before) + 4

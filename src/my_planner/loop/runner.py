@@ -201,6 +201,18 @@ def memos_daily(target: ActionApplier) -> Callable[[date], None]:
     return job
 
 
+def standing_daily(target: ActionApplier) -> Callable[[date], None]:
+    """하루 한 번 작업(SP13): 지난 분기 스냅숏이 없으면 분기 끝 값으로 쓴다(`catch_up_snapshots`). 즉시 갈래로(4.3).
+    로그에는 줄 수만."""
+
+    def job(today: date) -> None:
+        res = target.apply_action(_scheduler("standing_daily", {}))
+        log.info("standing_daily", extra=dict(res.body.get("result", {})))
+
+    job.__name__ = "standing_daily"
+    return job
+
+
 def backup_daily(conn: sqlite3.Connection, backups_dir: Path, *, keep: int) -> Callable[[date], None]:
     """하루 한 번 작업: DB 백업(스펙 7). 백업이 안 돼도 예외 종류만 남기고 tick은 그대로 간다."""
 

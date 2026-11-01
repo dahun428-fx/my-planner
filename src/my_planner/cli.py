@@ -6,6 +6,7 @@
 `seed-life <파일> [--dry-run]`은 검토한 인생 곡선 시드를 가져온다(12장, `curve/seed.py`). 출력은 개수뿐이다.
 `seed-life --update-history <파일> [--dry-run]`은 이미 가져온 시드의 빈 히스토리 칸(사건 영역, 챕터 사다리)만
 채운다(SP8 8.1).
+`standing import <파일> [--dry-run]`은 측정값 파일을 가져온다(SP13-07, `standing/importer.py`). 출력은 개수뿐이다.
 `pair`는 새 기기에 넣을 연결 코드(6자리, 5분, 한 번)를 돌고 있는 BE에서 받아 출력한다(기기 연결 스펙 4.7).
 """
 
@@ -16,7 +17,7 @@ import sys
 from collections.abc import Sequence
 
 USAGE = ("사용법: python -m my_planner [gen-token | gen-vapid | schema | pair | "
-         "seed-life [--update-history] <파일> [--dry-run]]")
+         "seed-life [--update-history] <파일> [--dry-run] | standing import <파일> [--dry-run]]")
 EXIT_USAGE = 2
 
 
@@ -75,6 +76,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return pair()
     if args[0] == "seed-life":
         return seed_life(args[1:])
+    if args[0] == "standing" and len(args) > 1 and args[1] == "import":
+        return standing_import(args[2:])
     print(USAGE, file=sys.stderr)
     return EXIT_USAGE
 
@@ -104,6 +107,26 @@ def seed_life(argv: Sequence[str]) -> int:
     ns = parser.parse_args(list(argv))
     run = run_update_history if ns.update_history else run_seed_life
     return run(resolve_root(), ns.file, dry_run=ns.dry_run, out=sys.stdout)
+
+
+def standing_import(argv: Sequence[str]) -> int:
+    """`standing import <파일> [--dry-run]`. 루트는 `seed-life`와 같다."""
+    import argparse
+    from pathlib import Path
+
+    from my_planner.config import resolve_root
+    from my_planner.standing.importer import run_import
+
+    parser = argparse.ArgumentParser(
+        prog="python -m my_planner standing import",
+        description="측정값 파일을 가져온다. 출력은 개수뿐이다. BE가 돌고 있으면 거절한다(코드 3).",
+        epilog="종료 코드: 0 가져옴(또는 --dry-run 끝남), 3 BE 실행 중, 5 틀린 줄이 있음(아무것도 쓰지 않음), "
+        "6 읽을 수 없거나 모양이 맞지 않는 파일.",
+    )
+    parser.add_argument("file", type=Path, help="측정값 JSON 파일")
+    parser.add_argument("--dry-run", action="store_true", help="쓰지 않고 가져올 개수와 건너뛸 개수만 출력한다")
+    ns = parser.parse_args(list(argv))
+    return run_import(resolve_root(), ns.file, dry_run=ns.dry_run, out=sys.stdout)
 
 
 PAIR_TIMEOUT_S = 10

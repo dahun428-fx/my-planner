@@ -6,6 +6,6 @@ import { registryNames } from "./registry";
 describe("first-screen registry", () => {
   it("first-screen registry stays eleven", () => {
     expect(registryNames()).toHaveLength(11);
-    for (const name of ["ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_events"]) expect(registryNames()).not.toContain(name);
+    for (const name of ["ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_events", "ui_measure_confirm"]) expect(registryNames()).not.toContain(name);
   });
 });

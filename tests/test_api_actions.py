@@ -50,7 +50,7 @@ CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
 def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None),
-                  events=(None, None), photos=(None, None), workout=(None, None)):
+                  events=(None, None), photos=(None, None), workout=(None, None), measure=None):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
@@ -110,6 +110,10 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         # 운동 화면(SP12 6.3, 8.2). 기록 지우기는 앱에서 늘 확인을 받으므로 토큰을 따로 만든다
         "drop_body_note": {"id": wn},
         "delete_workout_log": {"id": wl},
+        # 객관적 위치(SP13 6.5): 카드의 "저장"과 상세 화면의 지우기. 값은 꾸며 낸 것이다
+        "save_measures": {"rows": [{"metric": "weight_kg", "value": 72.0, "measured_on": "2026-10-24"}],
+                          "source_kind": "manual", "source_ref": None},
+        "delete_measure": {"id": measure},
     }
 
 
@@ -158,8 +162,9 @@ async def test_every_public_action_applies(tmp_path, action):
         with transaction(env.conn):
             wn = wk.add_note("equipment", "꾸민 장비", now).id
             wl = wk.add_log(env.parts.tools.today(), "꾸민 운동", None, None, None, [], now).id
+            measure = env.parts.tools.standing.add("waist_cm", 82.0, date(2026, 10, 24), "manual", None, "mid", now)
         cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()),
-                              (mv, mh, md), (ev, er), (pf, pa), (wn, wl))
+                              (mv, mh, md), (ev, er), (pf, pa), (wn, wl), measure)
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         token = None

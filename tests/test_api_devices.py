@@ -328,3 +328,36 @@ async def test_code_and_token_never_logged(tmp_path):
         assert code not in raw and _wrong(code) not in raw
         assert token not in raw
         assert hashlib.sha256(token.encode()).hexdigest() not in raw
+
+
+# --- SP13-06: 기기 사전이 기기 종류도 안다(대시보드 기기 403) ---
+
+
+async def test_device_tokens_know_client_after_pair_and_restart(tmp_path):
+    async with BeEnv.start(tmp_path, start=START) as env:
+        _t1, dash = await _device(env, client="dashboard", label="Windows · 대시보드")
+        _t2, app_id = await _device(env, client="app", label="iPhone · 앱")
+        assert env.deps.devices.client(dash) == "dashboard"
+        assert env.deps.devices.client(app_id) == "app"
+        assert env.deps.devices.client(9999) is None
+        restarted = ApiDeps(
+            settings=env.deps.settings, clock=env.clock, token=TEST_TOKEN, read_conn=env.deps.read_conn,
+            dispatcher=env.deps.dispatcher, errors=env.deps.errors, polling_state=env.deps.polling_state,
+            started_at=env.deps.started_at,
+        )
+        build_app(restarted)  # `load`가 `client`를 함께 담는다
+        assert restarted.devices.client(dash) == "dashboard"
+        assert restarted.devices.client(app_id) == "app"
+        assert (await env.delete(f"/devices/{dash}")).status == 204
+        assert env.deps.devices.client(dash) is None
+
+
+def test_device_tokens_add_takes_client():
+    from my_planner.api.devices import DeviceTokens, token_hash
+
+    tokens = DeviceTokens()
+    tokens.add(token_hash("꾸민-토큰"), 7, "dashboard")
+    assert tokens.lookup("꾸민-토큰") == 7
+    assert tokens.client(7) == "dashboard"
+    tokens.remove(7)
+    assert tokens.lookup("꾸민-토큰") is None and tokens.client(7) is None

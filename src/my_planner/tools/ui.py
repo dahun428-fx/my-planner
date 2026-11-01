@@ -18,13 +18,14 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import PydanticCustomError
 
-UI_CATALOG_VERSION = "2026-10-24.5"  # SP9-05: ui_events
+UI_CATALOG_VERSION = "2026-11-01.1"  # SP13-05: ui_measure_confirm
 
 AreaName = Literal["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 
 _DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
 _WEEK_PATTERN = r"^\d{4}-W\d{2}$"
 _INSTANT_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$"
+PHOTO_REF_PATTERN = r"^photo:[1-9][0-9]*$"  # 측정값 출처(SP13 6.5): 카드 props와 `tools/standing.py`의 검사가 같이 쓴다
 _UNIQUE = {"uniqueItems": True}  # 정수 목록의 서로 다름은 앱 검사기도 본다(빈 곳 10)
 
 
@@ -338,6 +339,24 @@ class ConfirmProps(_Props):
     args: dict[str, Any]
 
 
+class MeasureRow(_Props):
+    """확인 카드 한 줄(SP13 6.5). 값의 범위는 `propose_measures`·`save_measures`가 `standing.metrics.validate`로 본다."""
+
+    metric: str = Field(min_length=1, max_length=40)
+    label: str = Field(min_length=1, max_length=40)
+    value: float | Annotated[str, Field(min_length=1, max_length=40)]
+    unit: str | None = Field(max_length=10)
+    measured_on: str = Field(pattern=_DATE_PATTERN)
+
+
+class MeasureConfirmProps(_Props):
+    """측정값 확인 카드(SP13 6.5). "저장"을 누르면 앱이 `/actions save_measures`로 남은 줄을 보낸다."""
+
+    rows: list[MeasureRow] = Field(min_length=1, max_length=30)
+    source_kind: Literal["photo", "pdf", "manual"]
+    source_ref: str | None = Field(pattern=PHOTO_REF_PATTERN)
+
+
 Origin = Literal["brain", "harness"]
 
 # 스펙 6.4.7 표의 순서. 두뇌가 부르는 것이 먼저(기존 셋, SP6 넷), 하네스가 뒤
@@ -358,6 +377,7 @@ _COMPONENTS: dict[str, tuple[Origin, type[_Props]]] = {
     "ui_milestone_draft": ("harness", MilestoneDraftProps),
     "ui_chapter_draft": ("harness", ChapterDraftProps),
     "ui_confirm": ("harness", ConfirmProps),
+    "ui_measure_confirm": ("harness", MeasureConfirmProps),  # SP13 6.5
 }
 
 UI_COMPONENTS: dict[str, dict[str, Any]] = {

@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { useState } from "react";
 import { apiGet } from "../api/client";
-import type { Status as StatusData, StatusStat } from "../api/types.gen";
+import type { InnateItem, StandingArea, Status as StatusData, StatusStat } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
@@ -40,32 +41,94 @@ function Level({ data }: { data: StatusData }) {
   );
 }
 
+/**
+ * SP13 10.1: the area's objective position beside its satisfaction, and under the name the drift
+ * marks and a position debuff. With no position, "위치 —" opens the hint that says what fills it.
+ */
+function Position({ st, open, onToggle }: { st: StandingArea; open: boolean; onToggle(): void }) {
+  if (st.score === null) {
+    // No hint to open: the dash is plain text, not a button that does nothing.
+    if (!st.hint) return <span className={styles.pos}>{T.posNone}</span>;
+    return (
+      <button type="button" className={styles.posNone} aria-expanded={open} onClick={onToggle}>
+        {T.posNone}
+      </button>
+    );
+  }
+  return <span className={styles.pos}>{T.pos(st.score, st.peer_score, st.reliability)}</span>;
+}
+
+function StandingLines({ st, open }: { st: StandingArea; open: boolean }) {
+  return (
+    <>
+      {st.drift.map((d, i) => (
+        <span key={i} className={`${styles.meta} ${d.kind === "world" ? styles.world : styles.mine}`}>
+          {T.drift(d)}
+        </span>
+      ))}
+      {st.debuff && <span className={`${styles.meta} ${styles.debuff}`}>{T.posDebuff(st.recovery_quest)}</span>}
+      {open && st.score === null && st.hint && <span className={styles.meta}>{st.hint}</span>}
+    </>
+  );
+}
+
 function Stats({ stats, body }: { stats: StatusStat[]; body: StatusData["body"] }) {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (area: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(area)) next.add(area);
+      return next;
+    });
   return (
     <Group heading={T.statsHeading}>
       <ul className={styles.list}>
-        {stats.map((s) => (
-          <li key={s.area} className={styles.item} data-area={s.area}>
-            <span className={styles.face}>
-              <Pictogram name={s.area} size={20} />
-            </span>
-            <span className={styles.text}>
-              <span className={styles.name}>{s.label}</span>
-              <span className={styles.meta}>{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
-              {s.area === "health" &&
-                (body === null ? (
-                  <span className={styles.meta}>{T.bodyConnect}</span>
-                ) : (
-                  <>
-                    {T.bodyLine(body) !== "" && <span className={styles.meta}>{T.bodyLine(body)}</span>}
-                    <span className={styles.meta}>{T.bodyLast(body.last_date)}</span>
-                  </>
-                ))}
-            </span>
-            <span className={`${styles.value} ${s.score === null ? styles.none : ""}`}>{scoreText(s)}</span>
-          </li>
-        ))}
+        {stats.map((s) => {
+          const st = s.standing ?? null;
+          return (
+            <li key={s.area} className={styles.item} data-area={s.area}>
+              <span className={styles.face}>
+                <Pictogram name={s.area} size={20} />
+              </span>
+              <span className={styles.text}>
+                <span className={styles.name}>{s.label}</span>
+                <span className={styles.meta}>{s.score !== null ? T.statSub(s.score, s.bonus) : T.statSubNoBase(s.bonus)}</span>
+                {s.area === "health" &&
+                  (body === null ? (
+                    <span className={styles.meta}>{T.bodyConnect}</span>
+                  ) : (
+                    <>
+                      {T.bodyLine(body) !== "" && <span className={styles.meta}>{T.bodyLine(body)}</span>}
+                      <span className={styles.meta}>{T.bodyLast(body.last_date)}</span>
+                    </>
+                  ))}
+                {st && <StandingLines st={st} open={open.has(s.area)} />}
+              </span>
+              {st ? (
+                <span className={styles.numbers}>
+                  <span className={`${styles.value} ${s.score === null ? styles.none : ""}`}>{T.sat(scoreText(s))}</span>
+                  <Position st={st} open={open.has(s.area)} onToggle={() => toggle(s.area)} />
+                </span>
+              ) : (
+                <span className={`${styles.value} ${s.score === null ? styles.none : ""}`}>{scoreText(s)}</span>
+              )}
+            </li>
+          );
+        })}
       </ul>
+    </Group>
+  );
+}
+
+/** SP13 10.2: the three axes that are a starting point, never scored again; then the line to the detail screen. */
+function Innate({ items }: { items: InnateItem[] }) {
+  return (
+    <Group heading={T.innateHeading}>
+      <p className={styles.innate}>{items.map((i) => T.innateItem(i.label, i.score)).join(" · ")}</p>
+      <p className={styles.innateNote}>{T.innateNote}</p>
+      <Link href="/status/standing/" className={styles.detail}>
+        {T.standingLink}
+      </Link>
     </Group>
   );
 }
@@ -118,6 +181,7 @@ export function Status() {
       <>
         <Level data={result.data} />
         <Stats stats={result.data.stats} body={result.data.body} />
+        {result.data.innate && <Innate items={result.data.innate} />}
         <Recent stats={result.data.stats} />
         <StatusMoments moments={result.data.moments} hiddenCount={result.data.moments_hidden} onChanged={() => void refresh()} />
       </>

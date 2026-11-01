@@ -161,7 +161,8 @@
                 "photo_unreadable",
                 "photo_limit",
                 "disk_full",
-                "photo_read_limit"
+                "photo_read_limit",
+                "forbidden"
               ],
               "title": "Code",
               "type": "string"
@@ -3038,7 +3039,8 @@
                 "photo_unreadable",
                 "photo_limit",
                 "disk_full",
-                "photo_read_limit"
+                "photo_read_limit",
+                "forbidden"
               ],
               "title": "Code",
               "type": "string"
@@ -5587,6 +5589,596 @@
       "title": "SchemaBundle",
       "type": "object"
     },
+    "Standing": {
+      "$defs": {
+        "AxisScoreOut": {
+          "additionalProperties": false,
+          "properties": {
+            "assumed": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Assumed",
+              "type": "array"
+            },
+            "estimate": {
+              "title": "Estimate",
+              "type": "boolean"
+            },
+            "high": {
+              "title": "High",
+              "type": "integer"
+            },
+            "inputs": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Inputs",
+              "type": "array"
+            },
+            "low": {
+              "title": "Low",
+              "type": "integer"
+            },
+            "measured_on": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Measured On"
+            },
+            "missing": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Missing",
+              "type": "array"
+            },
+            "reliability": {
+              "enum": [
+                "high",
+                "mid",
+                "low"
+              ],
+              "title": "Reliability",
+              "type": "string"
+            },
+            "score": {
+              "title": "Score",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "score",
+            "low",
+            "high",
+            "reliability",
+            "estimate",
+            "inputs",
+            "missing",
+            "assumed",
+            "measured_on"
+          ],
+          "title": "AxisScoreOut",
+          "type": "object"
+        },
+        "InnateItem": {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect",
+                "height",
+                "education",
+                "family"
+              ],
+              "title": "Axis",
+              "type": "string"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Score"
+            }
+          },
+          "required": [
+            "axis",
+            "label",
+            "score"
+          ],
+          "title": "InnateItem",
+          "type": "object"
+        },
+        "StandingArea": {
+          "additionalProperties": false,
+          "description": "영역 위치(SP13 5.1, 10.1). `hint`는 위치가 없을 때만.",
+          "properties": {
+            "debuff": {
+              "title": "Debuff",
+              "type": "boolean"
+            },
+            "drift": {
+              "items": {
+                "$ref": "#/$defs/StandingDrift"
+              },
+              "title": "Drift",
+              "type": "array"
+            },
+            "hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hint"
+            },
+            "peer_score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peer Score"
+            },
+            "recovery_quest": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recovery Quest"
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reliability"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Score"
+            }
+          },
+          "required": [
+            "score",
+            "peer_score",
+            "reliability",
+            "drift",
+            "debuff",
+            "recovery_quest",
+            "hint"
+          ],
+          "title": "StandingArea",
+          "type": "object"
+        },
+        "StandingAreas": {
+          "additionalProperties": false,
+          "properties": {
+            "career": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "finance": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "health": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "learning": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "quality_of_life": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "relationships": {
+              "$ref": "#/$defs/StandingArea"
+            }
+          },
+          "required": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "title": "StandingAreas",
+          "type": "object"
+        },
+        "StandingAxis": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect",
+                "height",
+                "education",
+                "family"
+              ],
+              "title": "Axis",
+              "type": "string"
+            },
+            "innate": {
+              "title": "Innate",
+              "type": "boolean"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AxisScoreOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AxisScoreOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "axis",
+            "label",
+            "area",
+            "innate",
+            "national",
+            "peer"
+          ],
+          "title": "StandingAxis",
+          "type": "object"
+        },
+        "StandingBench": {
+          "additionalProperties": false,
+          "properties": {
+            "effective_from": {
+              "title": "Effective From",
+              "type": "string"
+            },
+            "version": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          "required": [
+            "version",
+            "effective_from"
+          ],
+          "title": "StandingBench",
+          "type": "object"
+        },
+        "StandingDrift": {
+          "additionalProperties": false,
+          "description": "하락 이유(SP13 9.2): `me`는 |Δm| ≥ 5, `world`는 Δw ≤ −5일 때만.",
+          "properties": {
+            "delta": {
+              "title": "Delta",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "me",
+                "world"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "delta"
+          ],
+          "title": "StandingDrift",
+          "type": "object"
+        },
+        "StandingMarket": {
+          "additionalProperties": false,
+          "properties": {
+            "excluded": {
+              "items": {
+                "enum": [
+                  "career",
+                  "money",
+                  "health",
+                  "looks",
+                  "relations",
+                  "intellect",
+                  "height",
+                  "education",
+                  "family"
+                ],
+                "type": "string"
+              },
+              "title": "Excluded",
+              "type": "array"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "National"
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peer"
+            }
+          },
+          "required": [
+            "national",
+            "peer",
+            "excluded"
+          ],
+          "title": "StandingMarket",
+          "type": "object"
+        },
+        "StandingMarkets": {
+          "additionalProperties": false,
+          "properties": {
+            "career": {
+              "$ref": "#/$defs/StandingMarket"
+            },
+            "marriage": {
+              "$ref": "#/$defs/StandingMarket"
+            }
+          },
+          "required": [
+            "marriage",
+            "career"
+          ],
+          "title": "StandingMarkets",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /standing` (SP13 12장, 모양의 정본은 구현 계획 Task 6). 축은 AXES 순서.",
+      "properties": {
+        "areas": {
+          "$ref": "#/$defs/StandingAreas"
+        },
+        "axes": {
+          "items": {
+            "$ref": "#/$defs/StandingAxis"
+          },
+          "title": "Axes",
+          "type": "array"
+        },
+        "bench": {
+          "$ref": "#/$defs/StandingBench"
+        },
+        "innate": {
+          "items": {
+            "$ref": "#/$defs/InnateItem"
+          },
+          "title": "Innate",
+          "type": "array"
+        },
+        "markets": {
+          "$ref": "#/$defs/StandingMarkets"
+        },
+        "measures_count": {
+          "title": "Measures Count",
+          "type": "integer"
+        },
+        "profile_missing": {
+          "title": "Profile Missing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile_missing",
+        "bench",
+        "axes",
+        "areas",
+        "innate",
+        "markets",
+        "measures_count"
+      ],
+      "title": "Standing",
+      "type": "object"
+    },
+    "StandingMeasures": {
+      "$defs": {
+        "StandingMeasure": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "measured_on": {
+              "title": "Measured On",
+              "type": "string"
+            },
+            "metric": {
+              "title": "Metric",
+              "type": "string"
+            },
+            "reliability": {
+              "enum": [
+                "high",
+                "mid",
+                "low"
+              ],
+              "title": "Reliability",
+              "type": "string"
+            },
+            "source_kind": {
+              "enum": [
+                "photo",
+                "pdf",
+                "manual",
+                "shortcut",
+                "import",
+                "derived"
+              ],
+              "title": "Source Kind",
+              "type": "string"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unit"
+            },
+            "value_num": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value Num"
+            },
+            "value_text": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Value Text"
+            }
+          },
+          "required": [
+            "id",
+            "metric",
+            "label",
+            "value_num",
+            "value_text",
+            "unit",
+            "measured_on",
+            "source_kind",
+            "reliability",
+            "created_at"
+          ],
+          "title": "StandingMeasure",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /standing/measures`: 지우지 않은 측정값 전부(`StandingRepo.active()` 순서).",
+      "properties": {
+        "measures": {
+          "items": {
+            "$ref": "#/$defs/StandingMeasure"
+          },
+          "title": "Measures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "measures"
+      ],
+      "title": "StandingMeasures",
+      "type": "object"
+    },
     "Status": {
       "$defs": {
         "DailyQuest": {
@@ -5654,6 +6246,48 @@
             "done"
           ],
           "title": "FirstSteps",
+          "type": "object"
+        },
+        "InnateItem": {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect",
+                "height",
+                "education",
+                "family"
+              ],
+              "title": "Axis",
+              "type": "string"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Score"
+            }
+          },
+          "required": [
+            "axis",
+            "label",
+            "score"
+          ],
+          "title": "InnateItem",
           "type": "object"
         },
         "MainQuest": {
@@ -5775,6 +6409,118 @@
             "amount"
           ],
           "title": "RecentXp",
+          "type": "object"
+        },
+        "StandingArea": {
+          "additionalProperties": false,
+          "description": "영역 위치(SP13 5.1, 10.1). `hint`는 위치가 없을 때만.",
+          "properties": {
+            "debuff": {
+              "title": "Debuff",
+              "type": "boolean"
+            },
+            "drift": {
+              "items": {
+                "$ref": "#/$defs/StandingDrift"
+              },
+              "title": "Drift",
+              "type": "array"
+            },
+            "hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hint"
+            },
+            "peer_score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peer Score"
+            },
+            "recovery_quest": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recovery Quest"
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reliability"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Score"
+            }
+          },
+          "required": [
+            "score",
+            "peer_score",
+            "reliability",
+            "drift",
+            "debuff",
+            "recovery_quest",
+            "hint"
+          ],
+          "title": "StandingArea",
+          "type": "object"
+        },
+        "StandingDrift": {
+          "additionalProperties": false,
+          "description": "하락 이유(SP13 9.2): `me`는 |Δm| ≥ 5, `world`는 Δw ≤ −5일 때만.",
+          "properties": {
+            "delta": {
+              "title": "Delta",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "me",
+                "world"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "delta"
+          ],
+          "title": "StandingDrift",
           "type": "object"
         },
         "StatActivity": {
@@ -5972,6 +6718,17 @@
                 }
               ],
               "title": "Score"
+            },
+            "standing": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StandingArea"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             }
           },
           "required": [
@@ -6051,6 +6808,21 @@
         },
         "hp": {
           "$ref": "#/$defs/StatusHp"
+        },
+        "innate": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/InnateItem"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Innate"
         },
         "level": {
           "title": "Level",

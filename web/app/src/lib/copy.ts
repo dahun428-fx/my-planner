@@ -227,6 +227,18 @@ export const copy = {
     deleteAsk: "이 순간을 지울까요? 되돌릴 수 없어요.",
     deleteGo: "지우기",
     deleteKeep: "그대로 두기",
+    // SP13 10.1: the area row's two numbers (only when `standing` came). "위치 n" only (D5).
+    sat: (n: number | string) => `만족 ${n}`,
+    pos: (n: number, peer: number | null, reliability: string | null) =>
+      `위치 ${n}${peer !== null && peer !== n ? ` (IT ${peer})` : ""}${reliability === "low" ? " · 낮음" : ""}`,
+    posNone: "위치 —",
+    drift: (d: { kind: "me" | "world"; delta: number }) => `${d.delta > 0 ? "▲" : "▼"}${Math.abs(d.delta)} ${d.kind === "me" ? "내 변화" : "세상 변화"}`,
+    posDebuff: (quest: string | null) => (quest ? `위치 하락 · 회복 퀘스트: ${quest}` : "위치 하락"),
+    // 10.2: the innate stats group, and the line to the detail screen under it.
+    innateHeading: "타고난 스탯",
+    innateItem: (label: string, score: number | null) => `${label} ${score ?? "—"}`,
+    innateNote: "바꿀 수 없는 출발점이에요. 다시 채점하지 않아요.",
+    standingLink: "객관적 위치 자세히 ›",
   },
 
   status: {

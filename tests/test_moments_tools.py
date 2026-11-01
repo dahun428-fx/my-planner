@@ -102,7 +102,7 @@ def test_tool_names_moments_kind_only_save_moments(env):
 def test_chat_and_run_tool_lists_have_no_save_moments(env):
     assert "save_moments" not in TOOL_NAMES and "save_moments" not in APP_ONLY_TOOLS
     for kind in ("chat", "run"):
-        for channel, n in (("telegram", 28), ("app", 49)):  # SP6 G-BE2 화면 도구 넷, SP9-03 메모 도구 3개, SP9-05 일정 도구 4개·`ui_events`, SP9-09 `find_conversations`(앱에만)
+        for channel, n in (("telegram", 28), ("app", 50)):  # SP13-05 `propose_measures`, SP6 G-BE2 화면 도구 넷, SP9-03 메모 도구 3개, SP9-05 일정 도구 4개·`ui_events`, SP9-09 `find_conversations`(앱에만)
             ctx = RunContext(None, None, kind=kind, channel=channel)
             names = tool_names_for(ctx)
             assert len(names) == n and "save_moments" not in names

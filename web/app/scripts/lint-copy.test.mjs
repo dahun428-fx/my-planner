@@ -31,6 +31,7 @@ describe("lint-copy", () => {
     const r = run(
       srcDir({
         "lib/copy.ts": `export const copy = { a: "오늘" };`,
+        "lib/copyStanding.ts": `export const standingCopy = { a: "위치" };`,
         "api/types.gen.ts": `/** 설명 */ export type A = "가";`,
         "lib/x.test.ts": `const s = "테스트";`,
         "test/render.tsx": `const s = "고정";`,
@@ -52,5 +53,18 @@ describe("lint-copy", () => {
     expect(r.code).toBe(1);
     expect(r.out).toMatch(/pages\/b\.tsx:2/);
     expect(r.out).toMatch(/pages\/b\.tsx:3/);
+  });
+
+  it("fails on a banned word in copy.ts (SP13 10.1)", () => {
+    const words = ["연속", "스트릭", "달성률", "등수", "패배", "뒤처짐", "실패"];
+    const r = run(srcDir({ "lib/copy.ts": `export const copy = {\n${words.map((w, i) => `  a${i}: "오늘 ${w}",`).join("\n")}\n};` }));
+    expect(r.code).toBe(1);
+    words.forEach((w, i) => expect(r.out).toContain(`lib/copy.ts:${i + 2}: banned word "${w}"`));
+  });
+
+  it("a banned word in a comment is not reported", () => {
+    const r = run(srcDir({ "lib/copy.ts": `// 등수는 쓰지 않는다\nexport const copy = { a: "위치" };` }));
+    expect(r.out).toBe("");
+    expect(r.code).toBe(0);
   });
 });

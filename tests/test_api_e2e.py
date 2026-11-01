@@ -690,3 +690,34 @@ async def test_body_from_shortcut(tmp_path):
     assert (health["bonus"], health["activity"]["body_days"]) == (0.2, 2)  # 0.5 × (27 + 26) / 28 / 5
     assert status["body"] == {"last_date": "2026-10-25", "days_7": 3, "steps_avg_7": 5350, "sleep_avg_7": 405}
     assert left == 1  # 10/23, 10/24는 지웠고 10/25(56일 전)는 남는다
+
+
+async def test_measures_card_then_save(tmp_path):
+    """SP13 6.5: 앱 대화의 두뇌가 측정값 확인 카드를 낸다(쓰지 않는다) → 카드의 "저장"(`/actions save_measures`) →
+    줄, 첫 기준선 스냅숏, X14. 값은 고정 자료의 가짜 사람이다."""
+    import json
+    from pathlib import Path
+
+    from ui_stream import parse_sse
+
+    sample = json.loads((Path(__file__).parent / "fixtures" / "standing_sample.json").read_text(encoding="utf-8"))
+    rows = [{k: m[k] for k in ("metric", "value", "measured_on")} for m in sample["measures"][:30]]
+    propose = ("propose_measures", {"rows": rows, "source_kind": "manual"})
+    script = [FakeTurn([propose], "카드에서 확인하고 저장해 주세요.")]
+    async with BeEnv.start(tmp_path, start=kst(2026, 11, 2, 13, 0), script=script) as env:
+        _, raw = await env.chat("내 측정값 넣어 줘")
+        chunks = parse_sse(raw)
+        before = env.conn.execute("SELECT COUNT(*) FROM standing_measures").fetchone()[0]
+        (card,) = [c for c in chunks if c.get("type") == "tool-input-available"
+                   and c.get("toolName") == "ui_measure_confirm"]
+        props = card["input"]
+        status, body = await env.action("save_measures", props)
+        saved = env.conn.execute("SELECT COUNT(*) FROM standing_measures WHERE deleted_at IS NULL").fetchone()[0]
+        snaps = env.conn.execute("SELECT COUNT(*) FROM standing_snapshots WHERE period = '2026-Q4'").fetchone()[0]
+        xp = await (await env.get("/status")).json()
+
+    assert before == 0  # 카드만 냈다
+    assert card["toolCallId"].startswith("h_measure")
+    assert status == 200 and body["confirmation"] == "✓ 측정값 30개 저장" and body["xp"]["gained"] == 20
+    assert saved == 30 and snaps > 0
+    assert xp["xp_total"] == 20

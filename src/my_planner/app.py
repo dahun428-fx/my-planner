@@ -64,6 +64,7 @@ from my_planner.loop.runner import (
     reerase_deleted_daily,
     resubmit_inbound,
     retry_summaries_daily,
+    standing_daily,
 )
 from my_planner.platform.windows import (
     AlreadyRunning,
@@ -87,6 +88,7 @@ from my_planner.store.repos.moments import MomentsRepo
 from my_planner.store.repos.photos import PhotosRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
+from my_planner.store.repos.standing import StandingRepo
 from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
@@ -305,6 +307,7 @@ def build_be(
         # 사진(SP10 5.1·5.2): 바이트는 `data/photos/`에만
         photos=photos, photo_files=PhotoFiles(paths.data_dir / "photos"),
         workout=workout,  # 운동메이트 도구·동작(SP12 6~8장), 메이트 앞머리(5.5)
+        standing=StandingRepo(conn, clock),  # 측정값 확인 카드·저장(SP13 6.5), 영역 점수 기록의 스냅숏
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -346,6 +349,7 @@ def build_be(
     runner.register_daily(prune_api_state_daily(dispatcher))  # 확인 토큰 만료·7일 정리, api_idempotency 2일
     runner.register_daily(prune_records_daily(dispatcher))  # 60일 지난 status_moment_days(SP8 6.4)
     runner.register_daily(memos_daily(dispatcher))  # 30일 지난 지운 메모 완전 삭제, memos.md(SP9 6.1)
+    runner.register_daily(standing_daily(dispatcher))  # 지난 분기 위치 스냅숏 따라잡기(SP13)
     # 하루 끝 이룬 순간: 정리할 날을 골라 디스패처에 가장 낮은 차례로(SP8 6.2). 두뇌는 디스패처가 부른다
     runner.register_daily(queue_moments_daily(dispatcher, moments, state))
     runner.register_daily(retry_summaries_daily(dispatcher))  # 요약이 안 된 최근 7일의 앱 대화(SP9 7.2)
