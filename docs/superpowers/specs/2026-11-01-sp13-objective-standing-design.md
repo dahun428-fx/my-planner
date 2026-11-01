@@ -1,6 +1,10 @@
 # SP13 객관적 위치 — 상태창 "만족 / 위치" 두 줄 상세 설계 (추가 기능)
 
-- 상태: 초안 v1.1 (문서 리뷰 1회 반영, Dahun 검토 전)
+- 상태: v1.2 (Dahun 승인 2026-11-01, 플랜 작성 때 정정: 아래 "v1.2 정정")
+
+> **v1.2 정정 (플랜 작성 중 발견, 2026-11-01)**: ① T6의 −3을 D4·9.2와 같은 −5로. ② 9.2 표가 끊긴 곳을 고침. ③ `face_rating`은 `reliability='low'`(옛 말 `confidence`). ④ 확인 카드는 `ui_block`이 아니라 하네스 화면 조각 `ui_measure_confirm`(영역 점수 카드 `ui_area_scores`와 같은 방식). 카드의 "저장"을 누르는 것이 확인이므로 `save_measures`는 활동 `risk = low`이고 되돌리기가 있다(`confirm` 등급은 되돌릴 수 없어서, 6.4.2). ⑤ 몸 기록 단축어에는 체중이 없다(걸음·잠만): 체중 `derived`를 뺀다. ⑥ 지표 셋을 더한다: `situp_per_min`(근지구력), `exercise_days_week`(운동 기록이 없을 때의 운동 습관), `family_parent_60plus`(집안의 60대 보정). ⑦ 자격 점수 상한은 99(문서 "약 95~99"). ⑧ 축별 규칙의 정확한 숫자(구간 값, 가운데 값)는 구현 계획과 기준표 파일이 정본이다.
+>
+> **v1.3 정정 (플랜 리뷰, 2026-11-01)**: ⑨ 두뇌 도구 이름은 `propose_measures`(6.3의 `extract_measures`). ⑩ 하락 계산은 앞뒤 값 묶음을 합집합으로 채운 뒤 한다: 빈칸을 처음 채우거나 측정값을 지운 것은 내 변화가 아니다. ⑪ 첫 기준선은 스냅숏이 하나도 없을 때만 쓴다. ⑫ 12장 `/standing` 모양의 정본은 구현 계획 Task 6이다(`cohorts` 대신 `axes[*].national/peer`, `/standing/measures`는 지우지 않은 줄 전부). ⑬ 수용 기준 4와 10.1의 "▲3", "▼4"는 경계 ±5 아래라 나오지 않는다: 예시를 "▲6", "▼6"으로 읽는다. ⑭ 13장의 해마다 기준표 갱신 제안은 SP15 이후로 미룬다. ⑮ 대시보드가 기기 연결이 아니라 API 토큰으로 붙으면 위치가 보인다(API 토큰은 기기 종류가 없다): 노트북 확인 목록에서 연결 방식을 본다. ⑯ 측정값이 두뇌 앞머리로 가는 것은 SP15부터다(SP13은 확인 카드의 줄만 두뇌가 만든다).
 - 작성일: 2026-11-01
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (상태창 9장, BE HTTP API 계약의 정본), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md), [SP10 사진](2026-10-26-sp10-photos-claude-reads-design.md)
 - 함께 읽기: [SP14 마스터 구조](2026-11-01-sp14-master-hierarchy-design.md), [SP15 라이프 매니저와 전문가 패널](2026-11-01-sp15-life-manager-panel-design.md). 세 스펙은 하나의 작업이고 SP13 → SP14 → SP15 순서로 만든다(Dahun Q10).
@@ -97,7 +101,7 @@ CREATE TABLE standing_measures (
   measured_on   TEXT NOT NULL,            -- 'YYYY-MM-DD' 측정일(올린 날이 아니라)
   source_kind   TEXT NOT NULL CHECK (source_kind IN ('photo','pdf','manual','shortcut','import','derived')),
   source_ref    TEXT,                     -- 'photo:<id>', 'body_day:<date>' 등. 원본 파일 경로는 두지 않는다
-  reliability   TEXT NOT NULL DEFAULT 'mid' CHECK (reliability IN ('high','mid','low')),  -- 기억 카드의 confidence와 다른 말
+  reliability   TEXT NOT NULL DEFAULT 'mid' CHECK (reliability IN ('high','mid','low')),
   created_at    TEXT NOT NULL,
   deleted_at    TEXT,                     -- 지우기는 표시만(되돌리기 24시간)
   CHECK (value_num IS NOT NULL OR value_text IS NOT NULL)
@@ -127,14 +131,14 @@ CREATE TABLE standing_snapshots (
 |---|---|---|---|
 | 프로필 | `profile_birth_year`, `profile_sex`, `profile_region`, `profile_job_family` | 숫자 / `m`·`f` / `capital`·`other` / `ai_ml`·`dev_general`·`other` | |
 | 키 | `height_cm` | cm | |
-| 외모 | `weight_kg`, `body_fat_pct`, `fat_free_mass_kg`, `skeletal_muscle_kg`, `waist_cm`, `face_rating`(0~100, 참고), `grooming_rating`(0~100) | | `weight_kg`은 몸 기록이 있으면 그 값 |
-| 건강 | `bp_sys`, `bp_dia`, `fasting_glucose`, `ldl`, `alt`, `checkup_flag`(`normal`·`watch`·`abnormal`), `shuttle_run_laps`, `grip_rel_pct`, `run_6k_min`, `squat_1rm_kg`, `bench_1rm_kg`, `deadlift_1rm_kg`, `smoking`(`none`·`quit`·`current`), `drinking`(`none`·`monthly_binge`·`high_risk`) | | 운동 습관은 운동 기록·걸음에서 `derived` |
+| 외모 | `weight_kg`, `body_fat_pct`, `fat_free_mass_kg`, `skeletal_muscle_kg`, `waist_cm`, `face_rating`(0~100, 참고), `grooming_rating`(0~100) | | |
+| 건강 | `bp_sys`, `bp_dia`, `fasting_glucose`, `ldl`, `alt`, `checkup_flag`(`normal`·`watch`·`abnormal`), `shuttle_run_laps`, `grip_rel_pct`, `situp_per_min`, `run_6k_min`, `squat_1rm_kg`, `bench_1rm_kg`, `deadlift_1rm_kg`, `smoking`(`none`·`quit`·`current`), `drinking`(`none`·`monthly_binge`·`high_risk`), `exercise_days_week`(0~7) | | 운동 습관은 지난 56일에 운동 기록이 있으면 지난 28일 운동한 날 ÷ 4(`derived`), 없으면 `exercise_days_week` |
 | 직업 | `salary_krw`(세전 연봉), `company_tier`(0~20), `role_points`(0~15), `years_exp`, `level_points`(0~6), `outside_activity_count`(0~5), `recruiter_contacts_6m`, `offer_ratio`(최근 1년 최고 오퍼 ÷ 현재 연봉) | | |
 | 경제력 | `net_worth_krw`, `monthly_saving_krw`, `monthly_net_income_krw`, `savings_rate_pct`(없으면 앞의 둘에서 `derived`) | | |
 | 관계 | `support_people`, `monthly_meetups`, `dating_status`(`single`·`dating`·`married`), `lonely_often`(`yes`·`no`) | | |
 | 자격 | `cert`(값마다 한 줄: `jlpt_n1`, `toeic:825`, `engineer_info`, `aice_associate` 등) | | |
 | 학벌 | `education_tier`(`hs`·`college2`·`local_private`·`seoul_mid_low`·`seoul_mid_high`·`top`), `double_major`(`yes`·`no`) | | |
-| 집안 | `family_net_worth_krw`, `family_support`(`none`·`receive`·`support`) | | |
+| 집안 | `family_net_worth_krw`, `family_support`(`none`·`receive`·`support`), `family_parent_60plus`(`yes`·`no`) | | |
 
 목록은 `standing/metrics.py`의 상수다. 목록 밖 `metric`, 단위가 맞지 않는 값(예: 체지방률 80%), 미래 측정일은 저장소에서 거절한다(범위표는 같은 파일).
 
@@ -144,21 +148,21 @@ CREATE TABLE standing_snapshots (
 |---|---|
 | 사진·PDF (Q9 C) | 채팅에 올림 → SP10 사진 읽기 단계가 결과지 종류를 알아보면 `extract_measures` 도구를 부른다 → 도구는 지표·값·측정일 목록을 받아 **확인 카드**(`ui_block` `measure_confirm`)를 낸다 → 앱 카드에서 값을 고치거나 줄을 빼고 "저장" → `/actions save_measures`(`confirm` 등급, 6.5) |
 | 말로 | "연봉 5,500이야"처럼 말하면 두뇌가 같은 확인 카드를 낸다. 묻지 않고 저장하지 않는다(숫자가 점수를 움직이므로) |
-| 자동 | 몸 기록 단축어의 체중, 운동 기록의 운동 습관은 `derived`로 매번 계산에 들어간다(저장하지 않음) |
+| 자동 | 운동 기록의 운동 습관은 `derived`로 매번 계산에 들어간다(저장하지 않음) |
 | 가져오기 | `my_planner standing import <json>`: 2026-11-01 점검 자료. 같은 `metric`·`measured_on`·`source_kind='import'` 줄이 있으면 건너뛴다(두 번 돌려도 같다) |
 
 SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저로 옮겨 간다. 그때까지는 비서 대화에서 받는다.
 
 ### 6.4 얼굴·관리 점수
 
-- `face_rating`은 두뇌가 정면 사진을 보고 매긴 참고값(0~100)이고 `confidence='low'`로만 저장한다. 외모 점수에서 얼굴·관리 묶음 30% 안의 절반(15%)만 차지한다. 나머지 절반은 `grooming_rating`.
+- `face_rating`은 두뇌가 정면 사진을 보고 매긴 참고값(0~100)이고 `reliability='low'`로만 저장한다. 외모 점수에서 얼굴·관리 묶음 30% 안의 절반(15%)만 차지한다. 나머지 절반은 `grooming_rating`.
 - 카드 문구에 "얼굴 점수는 조명·각도·취향에 따라 ±10 흔들려요."가 늘 붙는다.
 - 같은 조건 사진(같은 거울, 같은 조명)끼리의 변화만 해석한다는 규칙을 비서 지시문에 둔다.
 
 ### 6.5 확인 카드와 `/actions`
 
-- `ui_block` 종류 `measure_confirm`: `{rows: [{metric, label, value, unit, measured_on, editable: true}], source_ref}`. 카드는 SP9c 퀵 칩 카드와 같은 모양을 쓴다.
-- `/actions save_measures {rows, source_ref}`: `confirm` 등급. 응답 확인 문구 "✓ 측정값 {n}개 저장 · {영역} 위치 {이전}→{새}". 되돌리기 24시간(그 줄들에 `deleted_at`).
+- 하네스 화면 조각 `ui_measure_confirm`: `{rows: [{metric, label, value, unit, measured_on}], source_kind, source_ref}`. 두뇌 도구 `propose_measures`가 검사를 통과한 줄로 만든다(영역 점수 카드 `ui_area_scores`와 같은 길).
+- `/actions save_measures {rows, source_kind, source_ref}`: 카드의 "저장" 누름이 확인이다. 활동 `risk = low`, 되돌리기(그 줄들에 `deleted_at`). 응답 확인 문구 "✓ 측정값 {n}개 저장 · {영역} 위치 {이전}→{새}".
 - `/actions delete_measure {id}`: 상세 화면에서 밀어서 지우기. 되돌리기 24시간.
 - 감사 기록(`activity` 표, `risk` = `confirm`)에는 지표 이름과 개수만 남기고 값은 남기지 않는다(로그에 연봉·자산이 남지 않게).
 
@@ -197,7 +201,7 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | 직업 | 0.6 × 루브릭 백분위 + 0.4 × 연봉 백분위. 루브릭 = 회사 + 직무 + 연차·레벨 + 외부활동 + 리크루터 + 오퍼 보너스 | 리크루터·오퍼·외부활동 빈칸은 0으로 두되 범위 상단을 "있다면" 값으로 넓힌다(리포트 v2의 27~36) |
 | 경제력 | 0.40 × 연봉 백분위 + 0.45 × 순자산 백분위 + 0.15 × 저축률 점수 | 저축률 빈칸은 25로 가정(재무 전문가 소견) |
 | 관계 | 지지망 기본점 + 교류 가점 + 연애 상태 가점 − 외로움 | 지지망·교류 빈칸이면 범위 35~55, 점수는 가운데(45), `confidence='low'` |
-| 자격 | 가장 높은 자격 기본점 + 나머지마다 +4, 상한 100 | 자격이 없으면 50 |
+| 자격 | 가장 높은 자격 기본점 + 나머지마다 +4, 상한 99 | 자격이 없으면 50 |
 | 학벌 | 구간표 + 복수전공 +3 | 점수 없음 |
 | 집안 | 가구 순자산 구간(60대 보정 −4) + 부양 부담 보정 | 점수 없음 |
 
@@ -246,10 +250,11 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | "▼n 내 변화" + 디버프 + 회복 퀘스트 | `Δm ≤ −5` |
 | "▼n 세상 변화" (회색, 디버프 없음) | `Δw ≤ −5` |
 
+| 아무 표시 없음 | 그 밖 |
+
 경계 ±5는 기본 오차 범위(8.2)와 같다. 오차 안의 흔들림은 표시하지 않는다(심리 전문가 "±5 안은 해석하지 않음", 15장 D4).
 
 - **영역 단위**: 영역 줄의 변화는 영역 위치(5.1의 가중 합)에 같은 식을 쓴다. 건강 영역이면 `S`가 `0.6 × health + 0.4 × looks`다. 축 단위 변화는 상세 화면에서만 보인다.
-| 아무 표시 없음 | 그 밖 |
 
 - 둘 다 해당하면 두 줄로 보인다.
 - 고정 축은 표시하지 않는다(5.1).
@@ -342,9 +347,9 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | T3 | 2026-11-01 가져오기 자료(테스트용 가짜 값이 아니라 구조가 같은 고정 자료, 저장소에는 값을 바꾼 사본을 둔다)로 계산한 9축과 시장 점수가 기대값과 ±1 |
 | T4 | 빈칸 처리: 저축률 없음 → 25 가정, 관계 지지망 없음 → 45·low, 직업 리크루터 없음 → 범위 상단 확장 |
 | T5 | 하락 이유: 기준표만 바꾸면 `Δm = 0`, 입력만 바꾸면 `Δw = 0`, 둘 다 바꾸면 합이 맞다. 나이 구간 이동은 세상 변화다 |
-| T6 | `Δm ≤ −3`일 때만 위치 하락 디버프. 고정 축은 표시 없음 |
+| T6 | `Δm ≤ −5`일 때만 위치 하락 디버프. 고정 축은 표시 없음 |
 | T7 | 대시보드 기기 토큰으로 `/standing` → 403, `/status`에 `standing` 없음. 앱 기기에는 있음 |
-| T8 | `save_measures`는 `confirm` 등급이고 되돌리기 24시간. `activity` 표에 값이 없다 |
+| T8 | `save_measures`는 활동 `risk = low`이고 되돌릴 수 있다. `activity` 표에 값이 없다 |
 | T9 | `standing import`를 두 번 돌려도 줄 수가 같다 |
 | T10 | X14는 분기마다 한 번(가져오기 포함), 지워도 남는다. 마이그레이션 022 뒤 원장 CHECK가 `standing`을 받는다 |
 | T11 | 금지어 검사가 새 문구(앱, 지시문)에 돈다 |
