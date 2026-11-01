@@ -1,5 +1,7 @@
 /* SP12 11.2 workout screen: theme tokens only, a list and no calendar (DESIGN.md, ADR 0006). */
 .main {
+  /* No check circle on these rows: hairlines start at the text, like Memos. */
+  --rule-inset: var(--gutter);
   padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
 }
 .bar {
@@ -36,13 +38,18 @@
   color: var(--on-primary);
   cursor: pointer;
 }
+.talkQuiet {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
 .talk:disabled {
   opacity: 0.4;
   cursor: default;
 }
 .planTitle {
-  margin: 0 0 0.25rem;
-  padding: 0 var(--row-pad-x, var(--pad));
+  margin: 0;
+  padding: 0.75rem var(--row-pad-x, var(--pad)) 0;
   font-size: var(--size-body);
   font-weight: 600;
   overflow-wrap: anywhere;
@@ -87,19 +94,28 @@
   transform: rotate(90deg);
 }
 .lines {
-  margin: 0;
-  padding: 0 var(--row-pad-x, var(--pad)) 0.5rem;
+  margin: 0 var(--row-pad-x, var(--pad)) 0.75rem;
+  padding: 0 0 0 0.875rem;
+  border-left: 2px solid var(--rule);
   list-style: none;
 }
 .line {
   display: flex;
   flex-direction: column;
-  padding: 0.25rem 0;
+  padding: 0.3125rem 0;
   font-size: var(--size-body);
-  line-height: 1.35;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.line + .line {
+.session {
+  position: relative;
+}
+.session + .session::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--rule-inset);
+  right: var(--gutter);
   border-top: 1px solid var(--rule);
 }
 .lineMeta {
@@ -120,4 +136,7 @@
   min-height: var(--row);
   justify-content: center;
   padding: 0.5rem var(--row-pad-x, var(--pad));
+}
+.main section {
+  --rule-inset: var(--gutter);
 }
