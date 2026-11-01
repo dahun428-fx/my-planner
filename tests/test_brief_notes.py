@@ -226,6 +226,59 @@ async def test_shown_marked_after_resend(tmp_path):
     assert status == "done" and after is not None
 
 
+async def test_shown_marked_after_resend_without_conversation(tmp_path):
+    """재전송이 됐는데 회차 대화를 못 찾아도(`conv is None`) 사용자는 받았다: 실은 관찰은 보인 것으로."""
+    async with BeEnv.start(tmp_path, script=[FakeTurn([], MORNING)], start=MON_0900) as env:
+        nid = add_note(env, A, 1)
+        d = env.parts.dispatcher
+        inner, tries = env.sender.send, []
+
+        async def flaky(out):
+            tries.append(1)
+            if len(tries) <= SEND_ATTEMPTS:
+                if len(tries) == SEND_ATTEMPTS:  # 재전송 때 대화가 없어진 것처럼
+                    d.convs.get = lambda _cid: None
+                raise ConnectionError("fake send failure")
+            return await inner(out)
+
+        env.sender.send = flaky
+        await env.tick()
+        for _ in range(20):
+            if shown_at(env, nid) is not None:
+                break
+            await env.drain()
+        after = shown_at(env, nid)
+        left = dict(d._brief_shown)
+        del d.convs.get
+
+    assert len(tries) == SEND_ATTEMPTS + 1
+    assert env.sender.sent[-1].text.endswith(f"운동메이트: {A}")
+    assert after is not None and left == {}
+
+
+async def test_brief_shown_dropped_when_resend_skipped(tmp_path):
+    """재전송이 답장 창 밖이라 건너뛰면 표시하지 않고 메모리에서도 지운다(다음 브리핑 후보로 남는다)."""
+    async with BeEnv.start(tmp_path, script=[FakeTurn([], MORNING)], start=MON_0900) as env:
+        nid = add_note(env, A, 1)
+        d = env.parts.dispatcher
+
+        async def fail(out):
+            env.clock.set(kst(2026, 11, 2, 12, 30))  # 답장 창(12:00) 밖
+            raise ConnectionError("fake send failure")
+
+        env.sender.send = fail
+        await env.tick()
+        for _ in range(20):
+            if not d._brief_shown and not d._timers:
+                break
+            await env.drain()
+        left = dict(d._brief_shown)
+        never = shown_at(env, nid)
+        cands = [n.id for n in env.parts.agents.brief_candidates(TODAY + timedelta(days=1))]
+
+    assert left == {} and never is None and cands == [nid]
+
+
 async def test_unchosen_note_kept(tmp_path):
     async with BeEnv.start(tmp_path, script=[FakeTurn([], f"{MORNING}\n\n운동메이트: {A}")], start=MON_0900) as env:
         a = add_note(env, A, 2)

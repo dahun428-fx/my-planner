@@ -2213,6 +2213,14 @@ class Dispatcher:
         t.add_done_callback(self._timers.discard)
 
     async def _resend_run(self, job: _ResendJob) -> None:
+        try:
+            await self._resend_once(job)
+        finally:
+            # 재전송은 한 번뿐이다: 어떻게 끝나든(보냄, 못 보냄, 건너뜀) 실은 관찰 id를 메모리에서 지운다. 보냈으면
+            # 그 전에 표시했다. 못 보낸 관찰은 다음 브리핑 후보로 남는다(SP14 8장)
+            self._brief_shown.pop(job.run.id, None)
+
+    async def _resend_once(self, job: _ResendJob) -> None:
         assert self.runs is not None
         run = self.runs.get(job.run.id)
         if run is None or run.status != "failed" or not run.outbound_text or run.resent:
@@ -2243,9 +2251,10 @@ class Dispatcher:
             outcome = await self._send_run(out, run, attempts=1)
             if outcome.sent and conv is not None:
                 self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names, outcome=outcome)
-            elif not outcome.sent:
+            elif outcome.sent:
+                self._mark_brief_shown(run)  # 대화가 없어도 사용자는 받았다: 실은 관찰은 보인 것
+            else:
                 self._record_not_sent(run, outcome)
-                self._brief_shown.pop(run.id, None)  # 재전송은 한 번뿐: 표시하지 않고 다음 브리핑 후보로
 
     def _release_carry(self, runs: Iterable[Run]) -> None:
         """넘겨 받은 회고가 끝났으면(보냄, 건너뜀) `carry_review_run_id`를 지운다. 러너는 합칠 때 지우지 않는다."""
