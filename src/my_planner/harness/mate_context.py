@@ -98,7 +98,7 @@ def build_mate_preamble(
 ) -> str:
     """스펙 5.5 형식 그대로. 저장소가 없으면 그 섹션은 빈 문구다."""
     today = logical_date(now, tz, boundary)
-    sections = [f"## 오늘\n{today.isoformat()} ({WEEKDAY[today.weekday()]}), 논리적 날짜"]
+    sections = [f"## 오늘\n{today.isoformat()} ({WEEKDAY[today.weekday()]}) {local(now, tz):%H:%M}, 논리적 날짜"]
 
     cond = conditions.get(today) if conditions is not None else None
     sleep = steps = NO_RECORD

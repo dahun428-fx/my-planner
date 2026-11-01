@@ -368,6 +368,9 @@ class WorkoutTools:
             current = self.workout.note(id) if _is_int(id) else None
             if current is None:
                 return _err(MSG_NO_NOTE)
+            same = self.workout.find_note(kind, t)
+            if same is not None and same.id != current.id:  # 다른 메모와 같아지면 중복 없이 그 메모(더하기와 같다)
+                return {"note": note_dict(same)}
             with transaction(self.workout.conn):
                 self.workout.update_note(current.id, kind, t, now)
             got = self.workout.note(current.id)

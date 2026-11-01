@@ -324,6 +324,17 @@ def test_body_note_limits(env):
     assert "error" in env.tools.save_body_note(ctx, kind="other", text="x", id=9999)
 
 
+def test_body_note_edit_into_existing_returns_existing(env):
+    """고치기로 다른 살아 있는 메모와 같은 kind·text가 되면 중복을 만들지 않고 그 메모를 그대로 준다."""
+    ctx = env.mate()
+    a = env.tools.save_body_note(ctx, kind="injury", text="왼쪽 무릎")["note"]
+    b = env.tools.save_body_note(ctx, kind="other", text="초안")["note"]
+    out = env.tools.save_body_note(ctx, kind="injury", text="왼쪽 무릎", id=b["id"])
+    assert out["note"] == a
+    assert env.workout.note(b["id"]).text == "초안"
+    assert env.workout.count_notes() == 2
+
+
 def test_body_note_is_redacted(env):
     out = env.tools.save_body_note(env.mate(), kind="other", text="헬스장 회비 계좌 110-123-456789")
     saved = env.workout.note(out["note"]["id"]).text
@@ -384,7 +395,7 @@ def _section(text, title):
 
 def test_mate_preamble_sections(env):
     empty = _preamble(env)
-    assert _section(empty, "오늘") == "2026-10-31 (토), 논리적 날짜"
+    assert _section(empty, "오늘") == "2026-10-31 (토) 10:00, 논리적 날짜"
     assert _section(empty, "오늘 몸") == "- 컨디션: 기록 없음\n- 지난밤 잠: 기록 없음\n- 최근 7일 걸음: 기록 없음"
     assert _section(empty, "오늘 일정") == "없음"
     assert _section(empty, "몸 메모") == "아직 없음"
