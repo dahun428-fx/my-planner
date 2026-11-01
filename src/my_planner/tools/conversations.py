@@ -48,7 +48,9 @@ class ConversationTools:
     def find_conversations(
         self, ctx: RunContext, query: Any = None, days: Any = FIND_DAYS_DEFAULT, limit: Any = FIND_LIMIT_DEFAULT,
     ) -> dict[str, Any]:
-        """최근 `days`일 안에 말이 있었던 앱 통로의 끝난 대화, 마지막 메시지가 최근인 것부터 `limit`개(7.5)."""
+        """최근 `days`일 안에 말이 있었던 앱 통로의 끝난 대화, 마지막 메시지가 최근인 것부터 `limit`개(7.5).
+
+        부른 대화의 상대(`ctx.agent`)와 같은 상대의 대화만 찾는다(SP12 5.3)."""
         repo = self.conversations
         if repo is None:
             return _err(MSG_NO_CONVERSATIONS)
@@ -61,7 +63,7 @@ class ConversationTools:
         if not _is_int(n) or not 1 <= n <= FIND_LIMIT_MAX:
             return _err(MSG_LIMIT)
         since = self.clock.now() - timedelta(days=d)
-        found = repo.recent(channel="app", limit=n, q=query, closed_only=True, since=since)
+        found = repo.recent(channel="app", limit=n, q=query, closed_only=True, since=since, agent=ctx.agent)
         items = [
             {
                 "id": c.id,

@@ -17,10 +17,11 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from my_planner.clock import local, logical_date
+from my_planner.domain import Agent
 
 log = logging.getLogger(__name__)
 
-Speaker = Literal["사용자", "비서"]
+Speaker = Literal["사용자", "비서", "운동메이트"]
 Channel = Literal["telegram", "app"]
 
 # 클라이언트가 준 `message.id`로 쓸 수 있는 모양(스펙 6.4.6). 아니면 `u-<대화>-<|inbound_id|>`
@@ -72,10 +73,12 @@ class TranscriptStore:
         *,
         channel: Channel = "telegram",
         message_id: str | None = None,
+        agent: Agent = "secretary",
     ) -> None:
         """`channel="app"`이면 머리글 끝에 ` @app`(앞에 `#<message_id>`가 있으면 함께). 텔레그램 머리글은 SP1 그대로(7.4).
 
         `message_id`는 `inbound_id`가 있는 앱 줄에만 준다(`app_user_message_id`, `app_secretary_message_id`).
+        `agent="mate"`: 메이트 대화의 줄(사용자 줄도)이면 그 뒤에 ` @mate`(SP12 14장).
         """
         conv = f"[{conversation_id}]" if conversation_id is not None else "[-]"
         header = f"### {local(at, self.tz):%H:%M} {speaker} {conv}"
@@ -85,6 +88,8 @@ class TranscriptStore:
             if message_id is not None:
                 header += f" #{message_id}"
             header += " @app"
+        if agent == "mate":
+            header += " @mate"
         lines = [header]
         lines += [f"> 도구: {name}" for name in tools or []]
         lines += ["", _escape_headers(text.rstrip("\n")), "", ""]
@@ -95,7 +100,7 @@ class TranscriptStore:
 
     def read_range(
         self, start: date, end: date, *, max_chars: int = 20000, drop_app_secretary: bool = False,
-        only_conversation: int | None = None,
+        only_conversation: int | None = None, drop_mate: bool = False,
     ) -> str:
         """논리적 날짜 `start`~`end`(포함)의 원문 기록. 없는 날은 건너뛴다. 너무 길면 앞부분만.
 
@@ -103,6 +108,8 @@ class TranscriptStore:
         쓴다: 앱 대화의 비서는 `get_status`로 받은 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 1장 조건 7, 11장).
         `only_conversation`: 그 대화의 항목만 남긴다. 앱 통로 두뇌의 `read_transcript`가 쓴다: 다른 대화의 원문은
         주지 않는다(SP9 7.5, ADR 0014). 그날 그 대화의 항목이 없으면 그날 머리말도 넣지 않는다.
+        `drop_mate`: 메이트 대화의 항목(머리글 끝 ` @mate`, 사용자 줄 포함)을 뺀다. 비서의 `read_transcript`가 늘 쓴다:
+        비서가 메이트 대화의 원문(부상 글 등)을 읽지 않는다(SP12 14장, ADR 0014).
         """
         parts: list[str] = []
         d = start
@@ -112,6 +119,8 @@ class TranscriptStore:
                 text = path.read_text(encoding="utf-8")
                 if drop_app_secretary:
                     text = _without_app_secretary(text)
+                if drop_mate:
+                    text = _without_mate(text)
                 if only_conversation is not None:
                     text = _only_conversation(text, str(only_conversation))
                 if text.strip():
@@ -289,10 +298,11 @@ def _escape_headers(text: str) -> str:
     return "\n".join(_HEADER_ESCAPE + line if line.startswith("### ") else line for line in text.split("\n"))
 
 
-# `### 21:05 사용자 [44] (evening_checkin) #msg-abc @app`. 회차 표시, `#<id>`, ` @app`은 없을 수 있다
+# `### 21:05 사용자 [44] (evening_checkin) #msg-abc @app`. 회차 표시, `#<id>`, ` @app`은 없을 수 있다.
+# 메이트 대화는 ` @app @mate`(SP12 14장)
 _HEADER = re.compile(
-    r"^### (?P<hhmm>\d{2}:\d{2}) (?P<speaker>사용자|비서) \[(?P<conv>\d+|-)\]"
-    r"(?: \((?P<run>[^)]*)\))?(?: #(?P<id>[A-Za-z0-9_-]{1,64}))?(?P<app> @app)?$"
+    r"^### (?P<hhmm>\d{2}:\d{2}) (?P<speaker>사용자|비서|운동메이트) \[(?P<conv>\d+|-)\]"
+    r"(?: \((?P<run>[^)]*)\))?(?: #(?P<id>[A-Za-z0-9_-]{1,64}))?(?P<app> @app)?(?P<mate> @mate)?$"
 )
 _TOOL_PREFIX = "> 도구: "
 
@@ -316,6 +326,21 @@ def _without_app_secretary(text: str) -> str:
         m = _HEADER.match(line.rstrip("\n"))
         if m:
             skip = m["speaker"] == "비서" and m["app"] is not None
+        elif line.rstrip("\n") == ERASED_LINE:
+            skip = False
+        if not skip:
+            out.append(line)
+    return "".join(out)
+
+
+def _without_mate(text: str) -> str:
+    """머리글 끝이 ` @mate`인 항목(메이트 대화의 사용자·메이트 줄, 다음 머리글 전까지)을 뺀 원문."""
+    out: list[str] = []
+    skip = False
+    for line in text.splitlines(keepends=True):
+        m = _HEADER.match(line.rstrip("\n"))
+        if m:
+            skip = m["mate"] is not None
         elif line.rstrip("\n") == ERASED_LINE:
             skip = False
         if not skip:

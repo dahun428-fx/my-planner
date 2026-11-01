@@ -183,3 +183,29 @@ async def test_fresh_message_reusing_old_update_id_calls_brain(tmp_path, conn, s
 
     assert len(env.brain.calls) == 1
     assert [o.text for o in env.sender.sent] == ["새 답"]
+
+
+async def test_recovered_inbound_keeps_agent(tmp_path):
+    """Review Focus 2 (SP12 5.1): 받을 때 정한 상대(`inbound_pending.agent`)로 다시 넣는다. 받은 메이트 대화가 그 사이
+    닫혔어도 새 메이트 대화로 처리하고, 열린 비서 대화는 그대로 둔다."""
+    from be_env import BeEnv
+    from test_mate_prompts import app_message
+
+    start = kst(2026, 10, 31, 19, 0)
+    async with BeEnv.start(tmp_path, start=start, script=[FakeTurn([], "가볍게 걸어요")]) as env:
+        p = env.parts
+        sec = p.dispatcher.route_app_message(env.clock.now(), conversation_id=None, checkin_id=None)
+        msg = app_message(env, "오늘 뭐 할까?", "cm-mate-restart", agent="mate")  # 받아 저장한 뒤 BE가 멈췄다
+        assert p.state.pending_inbound()[0].agent == "mate"
+        p.convs.close(msg.conversation_id)  # 다시 시작하기 전에 받은 대화가 닫혔다
+        assert resubmit_inbound(p.state, p.dispatcher) == 1
+        await env.drain()
+        (call,) = env.brain.calls
+        conv = p.convs.get(call["run_ctx"].conversation_id)
+        sec_now = p.convs.get(sec.id)
+        lines = p.transcripts.messages(conv.id)
+
+    assert call["run_ctx"].agent == "mate"
+    assert conv.agent == "mate" and conv.id != msg.conversation_id and conv.id != sec.id
+    assert sec_now.closed_at is None
+    assert [m.speaker for m in lines] == ["사용자", "운동메이트"]

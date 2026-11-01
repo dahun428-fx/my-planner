@@ -1,0 +1,126 @@
+"""메이트 차례의 지시문·프롬프트 조각·도구 목록 (SP12 스펙 5.3, 5.4). 비서 쪽은 바이트까지 그대로다.
+
+디스패처 쪽은 가짜 두뇌 + 가짜 시계(`BeEnv`)에 `Inbound`를 바로 넣는다(`POST /chat`의 상대 받기는 Task 5).
+"""
+
+from datetime import timedelta
+
+from be_env import BeEnv
+from fakes import FakeTurn, ListSink
+from test_brain_options import _capture_build
+from test_dispatcher_messages import kst
+
+from my_planner.domain import RunContext
+from my_planner.harness import prompts
+from my_planner.harness.brain import ClaudeBrain
+from my_planner.harness.dispatcher import Inbound
+from my_planner.tools.mcp_adapter import MATE_TOOLS, MOMENTS_TOOLS, tool_names_for
+
+START = kst(2026, 10, 31, 19, 0)
+DENTIST = ("add_task", {"title": "치과", "areas": ["health"], "planned_for": "2026-11-01"})
+BANNED = ("연속", "스트릭", "달성률", "%")
+
+
+def app_message(env, text, cmid, *, agent="secretary", sink=None):
+    """`POST /chat`이 하는 것처럼: 받을 때 그 상대의 대화를 고르고, 가린 글을 먼저 저장한 뒤의 `Inbound`."""
+    d = env.parts.dispatcher
+    now = env.clock.now()
+    conv = d.route_app_message(now, conversation_id=None, checkin_id=None, agent=agent)
+    iid = d.state.next_app_inbound_id()
+    d.state.add_pending_inbound(
+        iid, text, now, now, channel="app", client_msg_id=cmid, conversation_id=conv.id, agent=agent,
+    )
+    return Inbound(
+        text=text, at=now, sent_at=now, update_ids=[iid], channel="app", client_msg_id=cmid,
+        sink=sink if sink is not None else ListSink(), conversation_id=conv.id, agent=agent,
+    )
+
+
+def telegram_message(env, text, update_id):
+    now = env.clock.now()
+    env.parts.state.add_pending_inbound(update_id, text, now, now)
+    return Inbound(text=text, at=now, sent_at=now, update_ids=[update_id])
+
+
+def test_secretary_app_prompt_unchanged(tmp_path):
+    brain = ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+    assert brain.system_prompt_for("app") == prompts.load("system.md") + "\n\n" + prompts.load("channel_app.md").strip()
+    assert brain.system_prompt_for("telegram") == prompts.load("system.md")
+    assert brain.system_prompt_for("app", "mate") == prompts.load("mate.md")
+
+
+def test_mate_prompt_text_rules():
+    text = prompts.load("mate.md")
+    for word in BANNED:
+        assert word not in text, word
+    for name in ("ui_block", "ui_choice", "ui_summary_card", "`send`", "`open`"):
+        assert name in text, name
+    assert "두 개까지" in text and "비서" in text
+    assert "complete" not in text and "pin_card" not in text
+
+
+async def test_run_passes_mate_prompt(tmp_path, monkeypatch):
+    brain, seen, _ = _capture_build(monkeypatch, tmp_path)
+    await brain.run("안녕", session_id=None, run_ctx=RunContext(1, None, agent="mate", channel="app"))
+    await brain.run("안녕", session_id=None, run_ctx=RunContext(2, None, channel="app"))
+    assert seen[0]["system_prompt"] == prompts.load("mate.md")
+    assert seen[1]["system_prompt"] == brain.system_prompt_for("app")
+
+
+def test_mate_tool_list():
+    assert tool_names_for(RunContext(None, None, agent="mate", channel="app")) == MATE_TOOLS
+    assert MATE_TOOLS == ["record_condition", "find_conversations", "ui_block", "ui_choice", "ui_summary_card"]
+    assert tool_names_for(RunContext(None, None, kind="summary", agent="mate")) == []
+    assert tool_names_for(RunContext(None, None, kind="photo_read", agent="mate")) == []
+    assert tool_names_for(RunContext(None, None, kind="moments", agent="mate")) == MOMENTS_TOOLS
+    secretary = tool_names_for(RunContext(None, None, channel="app"))
+    assert "add_task" in secretary and set(MATE_TOOLS) <= set(secretary)  # 지금 있는 도구만(5.3)
+
+
+async def test_mate_prompt_parts(tmp_path):
+    """메이트 첫 프롬프트: `chat.md` 없음, 비서 앞머리 없음, 기록된 컨디션 있음. 매 호출 `## 다른 곳에서 바뀐 것` 없음."""
+    script = [FakeTurn([], f"답 {i}", session_id=f"s{i}") for i in range(5)]
+    script[2] = FakeTurn([DENTIST], "넣었어요.", session_id="s2")
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        p = env.parts
+        p.conditions.upsert(START.date(), 2, None)
+        d = p.dispatcher
+        d.submit_message(app_message(env, "비서 첫 말", "cm-s1"))
+        await env.drain()
+        d.submit_message(app_message(env, "오늘 뭐 할까?", "cm-m1", agent="mate"))
+        await env.drain()
+        env.clock.advance(timedelta(minutes=2))
+        d.submit_message(telegram_message(env, "내일 치과", 701))  # 다른 통로의 변경
+        await env.drain()
+        env.clock.advance(timedelta(minutes=2))
+        d.submit_message(app_message(env, "비서 둘째 말", "cm-s2"))
+        await env.drain()
+        d.submit_message(app_message(env, "가볍게 할래", "cm-m2", agent="mate"))
+        await env.drain()
+        calls = env.brain.calls
+        convs = {r["id"]: r["agent"] for r in env.conn.execute("SELECT id, agent FROM conversations")}
+
+    chat_first = prompts.load("chat.md").splitlines()[0]
+    sec1, mate1, _, sec2, mate2 = calls
+    assert chat_first in sec1["prompt"] and chat_first not in mate1["prompt"]
+    assert "## 기록된 컨디션" in mate1["prompt"] and "2/5" in mate1["prompt"]
+    assert "## 기록된 컨디션" in mate2["prompt"]
+    assert "## 지금\n" in sec1["prompt"] and "## 지금\n" not in mate1["prompt"]  # 비서 앞머리 대신 메이트 앞머리(Task 3)
+    assert "## 다른 곳에서 바뀐 것" in sec2["prompt"]  # 비서는 그대로
+    assert "## 다른 곳에서 바뀐 것" not in mate2["prompt"]
+    assert [c["run_ctx"].agent for c in calls] == ["secretary", "mate", "secretary", "secretary", "mate"]
+    assert convs[mate1["run_ctx"].conversation_id] == "mate" and convs[sec1["run_ctx"].conversation_id] == "secretary"
+    assert mate2["session_id"] == "s1"  # 메이트 대화는 메이트 세션을 잇는다
+
+
+async def test_mate_reply_transcribed_as_mate(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "가볍게 걸어요")]) as env:
+        msg = app_message(env, "오늘 뭐 할까?", "cm-t1", agent="mate")
+        env.parts.dispatcher.submit_message(msg)
+        await env.drain()
+        lines = env.parts.transcripts.messages(msg.conversation_id)
+        day = env.parts.transcripts.path_for(START).read_text(encoding="utf-8")
+
+    assert [(m.speaker, m.text) for m in lines] == [("사용자", "오늘 뭐 할까?"), ("운동메이트", "가볍게 걸어요")]
+    heads = [line for line in day.splitlines() if line.startswith("### ")]
+    assert all(h.endswith(" @app @mate") for h in heads) and len(heads) == 2

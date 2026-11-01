@@ -10,6 +10,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
 from my_planner.clock import Clock, SystemClock, from_iso, to_iso
+from my_planner.domain import Agent
 from my_planner.loop.digests import (
     DIGEST_KINDS,
     DigestKind,
@@ -76,6 +77,7 @@ class PendingInbound:
     client_msg_id: str | None = None
     checkin_id: int | None = None
     resume_conversation_id: int | None = None  # 앱 행: 목록에서 고른 대화(SP9 7.3 0번 규칙)
+    agent: Agent = "secretary"  # 받을 때 정한 대화 상대(SP12 5.1). 다시 넣을 때도 그대로 쓴다
 
 
 def _pending(r: sqlite3.Row) -> PendingInbound:
@@ -93,6 +95,7 @@ def _pending(r: sqlite3.Row) -> PendingInbound:
         client_msg_id=r["client_msg_id"],
         checkin_id=r["checkin_id"],
         resume_conversation_id=r["resume_conversation_id"],
+        agent=r["agent"],
     )
 
 
@@ -218,19 +221,22 @@ class StateRepo:
         conversation_id: int | None = None,
         resume_conversation_id: int | None = None,
         photo_ids: Sequence[int] = (),
+        agent: Agent = "secretary",
     ) -> None:
         """앱 행(`channel="app"`, 음수 id)만 받을 때 고른 대화 `conversation_id`와 앱이 실은 `resume_conversation_id`를
-        적는다(SP3-4 5.1, SP9 7.3). `photo_ids`(SP10 5.5)는 같은 트랜잭션의 `message_photos` 연결(INSERT OR IGNORE)."""
+        적는다(SP3-4 5.1, SP9 7.3). `photo_ids`(SP10 5.5)는 같은 트랜잭션의 `message_photos` 연결(INSERT OR IGNORE).
+        `agent`: 받을 때 정한 대화 상대(SP12 5.1)."""
         with transaction(self.conn):
             if photo_ids:
                 assert conversation_id is not None, "앱 메시지는 늘 대화가 있다(5.1)"
                 link_message_rows(self.conn, update_id, conversation_id, list(photo_ids))
             self.conn.execute(
                 "INSERT OR IGNORE INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, "
-                "client_msg_id, checkin_id, conversation_id, resume_conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "client_msg_id, checkin_id, conversation_id, resume_conversation_id, agent) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     update_id, text_redacted, to_iso(sent_at), to_iso(received_at), channel, client_msg_id,
-                    checkin_id, conversation_id, resume_conversation_id,
+                    checkin_id, conversation_id, resume_conversation_id, agent,
                 ),
             )
 
