@@ -71,7 +71,7 @@ export function More({ hasStatus = HAS_STATUS_PAGE }: { hasStatus?: boolean }) {
   // SP12 11.2: "운동" only while the BE has the workout mate (`features`); offline keeps the last answer's.
   const { state } = useConnection();
   // The last answer is kept on the device, so a cold start without the laptop still shows the row (and the saved screen).
-  const [hasMate, setHasMate] = useState(() => {
+  const [storedMate, setStoredMate] = useState(() => {
     try {
       return localStorage.getItem(MATE_KEY) === "1";
     } catch {
@@ -80,10 +80,12 @@ export function More({ hasStatus = HAS_STATUS_PAGE }: { hasStatus?: boolean }) {
   });
   // SP14 10장: "비서 메모" only while the BE says `agent_notes` (the notes are read live, so offline has no row).
   const hasNotes = state?.kind === "online" && (state.health.features?.includes("agent_notes") ?? false);
+  // Online, the live answer decides in the same render as "비서 메모" (no frame with notes but no "운동").
+  const hasMate = state?.kind === "online" ? (state.health.features?.includes("mate") ?? false) : storedMate;
   useEffect(() => {
     if (state?.kind !== "online") return;
     const has = state.health.features?.includes("mate") ?? false;
-    setHasMate(has);
+    setStoredMate(has);
     try {
       if (has) localStorage.setItem(MATE_KEY, "1");
       else localStorage.removeItem(MATE_KEY);
