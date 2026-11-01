@@ -1,6 +1,6 @@
 # SP15 라이프 매니저와 전문가 패널 상세 설계 (추가 기능)
 
-- 상태: 초안 v1.1 (문서 리뷰 반영, Dahun 검토 전)
+- 상태: 승인 (2026-11-01, v1.1)
 - 작성일: 2026-11-01
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP12 운동메이트](2026-10-31-sp12-workout-mate-design.md) (대화 상대 구조), [SP9c 퀵 칩 카드](2026-10-26-sp9c-quick-chip-cards-design.md) (초안 카드)
 - 함께 읽기: [SP13 객관적 위치](2026-11-01-sp13-objective-standing-design.md) (점수와 측정값), [SP14 마스터 구조](2026-11-01-sp14-master-hierarchy-design.md) (사건 기록, 받은편지함, 하루 끝 판단)
