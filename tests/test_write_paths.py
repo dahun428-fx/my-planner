@@ -23,12 +23,12 @@ import test_api_e2e
 from my_planner.store.db import is_write, open_db
 
 # 도구 함수(`tools/core.py`, 습관 `tools/habits.py`, 이룬 순간 `tools/moments.py`, 메모 `tools/memos.py`, 몸 기록
-# `tools/body.py`, 스케줄 `tools/events.py`, 운동 `tools/workout.py`, 관찰 `tools/agents.py`), 즉시 갈래(`tools/actions.py`),
-# 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
+# `tools/body.py`, 스케줄 `tools/events.py`, 운동 `tools/workout.py`, 관찰 `tools/agents.py`, 패널 `tools/panel.py`),
+# 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
     "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body", "my_planner.tools.events",
-    "my_planner.tools.standing", "my_planner.tools.workout", "my_planner.tools.agents",
+    "my_planner.tools.standing", "my_planner.tools.workout", "my_planner.tools.agents", "my_planner.tools.panel",
 })
 MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
 DAYEND_JOB = "my_planner.harness.dayend"  # SP14 하루 끝 판단: 읽음 표시, 90일 정리, `agent_dayend_*` 상태
@@ -92,6 +92,12 @@ ALLOWED: dict[str, set[str]] = {
     "agent_events": {*TOOLS, IMPORTER, DAYEND_JOB},  # 90일 정리는 하루 끝 작업
     "agent_inbox": {*TOOLS, DISPATCHER, DAYEND_JOB, IMPORTER},  # 읽음 표시는 디스패처·하루 끝 작업
     "agent_notes": {*TOOLS, DISPATCHER, DAYEND_JOB},  # 쓰기는 `tools.agents`, `shown_at`은 디스패처
+    # SP15: 내가 한 말·리포트는 패널 도구만. 제안 상태는 하루 끝 갱신(`panel.lifecycle`), 예측 실제 값은
+    # `panel.predictions`도(스펙 7.1, 9.1)
+    "owner_statements": {"my_planner.tools.panel"},
+    "panel_suggestions": {"my_planner.tools.panel", "my_planner.panel.lifecycle"},
+    "panel_predictions": {"my_planner.tools.panel", "my_planner.panel.predictions"},
+    "life_reports": {"my_planner.tools.panel"},
     # 4.3 2행: 변경과 같은 트랜잭션(`tools/activity.py`), 되돌리기 표시(`apply_action`, U5)
     "activity": set(TOOLS),
     "activity_targets": set(TOOLS),
@@ -130,6 +136,8 @@ ALLOWED: dict[str, set[str]] = {
         MOMENTS_JOB,
         # SP14: `agent_dayend_day:*`, `agent_dayend_attempts:*`
         DAYEND_JOB,
+        # SP15: 전체 진단 횟수·주간 제안 수 상태(`panel.budget`, `tools.panel`)
+        "my_planner.panel.budget", "my_planner.tools.panel",
     },
 }
 

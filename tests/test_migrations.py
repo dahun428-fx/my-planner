@@ -298,7 +298,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 23 == _migration_count()
+    assert dbmod.LATEST_VERSION == 24 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -407,8 +407,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 23 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 23
+    assert migrate(conn) == 24 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 24
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -668,7 +668,7 @@ def test_hook_failure_rolls_back_version(tmp_path, monkeypatch):
     assert "events" not in tables
     assert conn.execute("SELECT deleted_at FROM tasks").fetchone()[0] is None
     monkeypatch.setitem(hooks.HOOKS, 17, hooks.after_017)
-    assert migrate(conn) == 23 and len(_events(conn)) == 1
+    assert migrate(conn) == 24 and len(_events(conn)) == 1
 
 
 def test_017_tz_argument_used(tmp_path):
@@ -806,3 +806,174 @@ def test_023_agent_tables(tmp_path):
             conn.execute(note, ("x", p, at))
     conn.execute("DELETE FROM agent_events WHERE id = ?", (eid,))
     assert conn.execute("SELECT COUNT(*) FROM agent_inbox").fetchone()[0] == 0
+
+
+# --- 024: 라이프 매니저와 패널 표 (SP15 스펙 5.1, 5.4, 7.1, 9.1, 10) ---
+
+_T1 = "2026-11-01T00:00:00+00:00"
+
+
+def _at_023(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn, upto=23) == 23
+    return conn
+
+
+def _conv(conn, *, agent="secretary", forked_from=None):
+    return conn.execute(
+        "INSERT INTO conversations (kind, logical_date, opened_at, last_message_at, forked_from, agent) "
+        "VALUES ('chat', '2026-11-01', ?, ?, ?, ?)",
+        (_T1, _T1, forked_from, agent),
+    ).lastrowid
+
+
+def _fts(conn, term):
+    return [r[0] for r in conn.execute("SELECT rowid FROM conversations_fts WHERE conversations_fts MATCH ?", (f'"{term}"',))]
+
+
+def _agent_check(conn, table):
+    sql = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()[0]
+    return "'manager'" in sql
+
+
+def test_024_manager_and_panel_tables(tmp_path):
+    conn = _at_023(tmp_path)
+    a = _conv(conn)
+    conn.execute("UPDATE conversations SET title = '가짜 대화 제목' WHERE id = ?", (a,))
+    b = _conv(conn, agent="mate", forked_from=a)
+    conn.execute("INSERT INTO conversation_sessions (conversation_id, session_id, started_at) VALUES (?, 's1', ?)", (b, _T1))
+    conn.execute(
+        "INSERT INTO inbound_pending (update_id, text_redacted, sent_at, received_at, channel, agent) "
+        "VALUES (7, '가짜 메시지', ?, ?, 'app', 'mate')",
+        (_T1, _T1),
+    )
+    conn.commit()
+    before_conv = [tuple(r) for r in conn.execute("SELECT * FROM conversations ORDER BY id")]
+    before_inb = [tuple(r) for r in conn.execute("SELECT * FROM inbound_pending")]
+    assert _fts(conn, "대화 제목") == [a]
+
+    assert migrate(conn) == 24
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 24
+    assert [tuple(r) for r in conn.execute("SELECT * FROM conversations ORDER BY id")] == before_conv
+    assert [tuple(r) for r in conn.execute("SELECT * FROM inbound_pending")] == before_inb
+    assert conn.execute("SELECT conversation_id FROM conversation_sessions").fetchone()[0] == b
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+    objs = {(r[0], r[1]) for r in conn.execute("SELECT type, name FROM sqlite_master WHERE tbl_name = 'conversations'")}
+    assert {("index", "idx_conversations_open"), ("index", "idx_conversations_channel"),
+            ("trigger", "conversations_au"), ("trigger", "conversations_ad")} <= objs
+    assert ("index", "idx_inbound_client_msg") in {
+        (r[0], r[1]) for r in conn.execute("SELECT type, name FROM sqlite_master WHERE tbl_name = 'inbound_pending'")
+    }
+    assert not any("__new" in r[0] for r in conn.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL"))
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"owner_statements", "panel_suggestions", "panel_predictions", "life_reports"} <= tables
+
+    c = _conv(conn, agent="manager")
+    with pytest.raises(sqlite3.IntegrityError):
+        _conv(conn, agent="bogus")
+    conn.execute(
+        "INSERT INTO inbound_pending (update_id, text_redacted, sent_at, received_at, agent) VALUES (8, 'x', ?, ?, 'manager')",
+        (_T1, _T1),
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO inbound_pending (update_id, text_redacted, sent_at, received_at, agent) VALUES (9, 'x', ?, ?, 'bogus')",
+            (_T1, _T1),
+        )
+    assert _fts(conn, "대화 제목") == [a]
+    conn.execute("UPDATE conversations SET title = '새로 붙인 이름' WHERE id = ?", (c,))
+    assert _fts(conn, "붙인 이름") == [c]
+    with pytest.raises(sqlite3.IntegrityError):  # 외래 키는 다시 켜져 있다
+        conn.execute("INSERT INTO conversation_sessions (conversation_id, session_id, started_at) VALUES (999, 's', ?)", (_T1,))
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_024_restores_fk_off(tmp_path):
+    conn = _at_023(tmp_path)
+    conn.execute("PRAGMA foreign_keys=OFF")
+    assert migrate(conn) == 24
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 0
+
+
+def test_024_ignores_unrelated_fk_violation(tmp_path):
+    conn = _at_023(tmp_path)
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("INSERT INTO agent_inbox (agent, event_id) VALUES ('mate', 999)")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=ON")
+    assert migrate(conn) == 24
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 24
+
+
+def test_024_seed_decision_and_checks(tmp_path):
+    from my_planner.store.migrations.hooks import SEED_DECISION_KEY, SEED_DECISION_TEXT
+
+    conn = open_db(tmp_path / "state" / "planner.db")
+    migrate(conn)
+    rows = conn.execute("SELECT kind, area, key, text, retired_at FROM owner_statements").fetchall()
+    assert [tuple(r) for r in rows] == [("decision", "career", SEED_DECISION_KEY, SEED_DECISION_TEXT, None)]
+
+    st = "INSERT INTO owner_statements (kind, area, key, text, created_at) VALUES (?, ?, ?, ?, ?)"
+    conn.execute(st, ("fact", "health", None, "가" * 200, _T1))
+    for bad in (("bogus", None, None, "x"), ("fact", None, None, "가" * 201), ("fact", "bogus", None, "x"),
+                ("decision", None, SEED_DECISION_KEY, "x")):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(st, (*bad, _T1))
+
+    sg = (
+        "INSERT INTO panel_suggestions (kind, title, area, size_min, per_week, experts, evidence_json, week, state, "
+        "dismiss_reason, created_at) VALUES (?, '가짜 제안', 'career', ?, ?, 'career', '[]', '2026-W44', ?, ?, ?)"
+    )
+    conn.execute(sg, ("task", 5, None, "proposed", None, _T1))
+    conn.execute(sg, ("habit", 120, 7, "dismissed", "no_time", _T1))
+    for bad in (("task", 4, None, "proposed", None), ("task", 121, None, "proposed", None),
+                ("task", 30, None, "bogus", None), ("task", 30, None, "dismissed", "bogus"),
+                ("habit", 30, None, "proposed", None), ("task", 30, 3, "proposed", None),
+                ("habit", 30, 8, "proposed", None), ("habit", 30, 0, "proposed", None), ("bogus", 30, None, "proposed", None)):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(sg, (*bad, _T1))
+    with pytest.raises(sqlite3.IntegrityError):  # 없는 대화
+        conn.execute(
+            "INSERT INTO panel_predictions (metric, predicted, due, made_at, conversation_id) VALUES ('m', 1, '2026-12-01', ?, 999)",
+            (_T1,),
+        )
+    conn.execute("INSERT INTO life_reports (created_at, json) VALUES (?, '{}')", (_T1,))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO life_reports (created_at, json) VALUES (?, '{')", (_T1,))
+    idx = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'panel_suggestions'")}
+    assert {"panel_suggestions_week", "panel_suggestions_area"} <= idx
+
+
+def test_024_rollback_on_fk_problem(tmp_path, monkeypatch):
+    from my_planner.store.migrations import hooks
+
+    conn = _at_023(tmp_path)
+    _conv(conn)
+    conn.commit()
+
+    def broken(c, tz):
+        n = hooks.after_024(c, tz)
+        c.execute("INSERT INTO conversation_sessions (conversation_id, session_id, started_at) VALUES (999, 's', ?)", (_T1,))
+        return n
+
+    monkeypatch.setitem(hooks.HOOKS, 24, broken)
+    with pytest.raises(RuntimeError, match="foreign_key_check"):
+        migrate(conn)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 23
+    assert not _agent_check(conn, "conversations") and not _agent_check(conn, "inbound_pending")
+    assert conn.execute("SELECT COUNT(*) FROM conversation_sessions").fetchone()[0] == 0
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "owner_statements" not in tables and "conversations__new" not in tables
+
+
+def test_024_hook_requires_one_check(tmp_path):
+    from my_planner.store.migrations import hooks
+
+    conn = _at_023(tmp_path)
+    conn.execute("BEGIN")
+    conn.execute("CREATE TABLE odd (agent TEXT CHECK (agent IN ('secretary')))")
+    with pytest.raises(RuntimeError):
+        hooks._rebuild_agent_check(conn, "odd")
+    conn.execute("ROLLBACK")
