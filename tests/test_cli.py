@@ -151,3 +151,15 @@ async def test_cli_pair_against_real_api(tmp_path, monkeypatch):
         finally:
             await stop_api(runner)
     assert status == 201 and len(body["code"]) == 6
+
+
+def test_cli_standing_import_routes(monkeypatch, tmp_path, capsys):
+    import json
+
+    monkeypatch.setenv("MY_PLANNER_ROOT", str(tmp_path))
+    f = tmp_path / "m.json"
+    f.write_text(json.dumps({"version": 1, "measures": [
+        {"metric": "height_cm", "value": 999, "measured_on": "2020-01-01"}]}), encoding="utf-8")
+    assert cli.main(["standing", "import", str(f), "--dry-run"]) == 5
+    assert "invalid: 0 height_cm" in capsys.readouterr().out
+    assert "999" not in capsys.readouterr().out
