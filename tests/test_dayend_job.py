@@ -426,3 +426,15 @@ async def test_dayend_sends_nothing(tmp_path):
         assert env.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == runs_before
         transcripts = [p for p in (env.settings.paths.data_dir / "transcripts").rglob("*") if p.is_file()]
         assert transcripts == []
+
+
+async def test_handoff_then_error_counts_as_progress(tmp_path):
+    """최종 검토: 넘긴 뒤 오류로 끝나도 본 것으로 둔다(다음 날 같은 사건을 다시 넘기지 않게)."""
+    turn = FakeTurn([
+        ("hand_off", {"to": "manager", "text": "저녁 일정이 많아 운동 날이 줄었어요", "refs": ["workout:3"]}),
+    ], "", status="error", error="x")
+    async with started(tmp_path, [turn]) as env:
+        ev(env, "workout_logged", "workout:3", date(2026, 11, 1), "health")
+        await tick_at(env)
+        assert unseen_ids(env) == []
+        assert env.parts.state.get(DAYEND_ATTEMPTS_KEY.format(agent="mate")) == "0"

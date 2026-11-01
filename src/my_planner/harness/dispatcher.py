@@ -2800,10 +2800,11 @@ class Dispatcher:
                     )
         if result.status == "rate_limited":
             self._set_limited(result.retry_at)
-        outcome = dayend_job.settle(
-            repo, self.state, agent, today, inp, result, run_ctx.notes_written, self.clock.now(),
-        )
         handoffs = repo.handoffs_on(agent, day) - handoffs_before
+        # 넘긴 것도 쓴 것이다: 넘긴 뒤 오류가 나도 다음 날 같은 사건을 다시 넘기지 않게
+        outcome = dayend_job.settle(
+            repo, self.state, agent, today, inp, result, run_ctx.notes_written + handoffs, self.clock.now(),
+        )
         shown = "error" if raised and outcome != "ok" else outcome  # 예외로 끝난 시도(`settle`은 retry·failed로 셌다)
         self._log_dayend(agent, inp.events, run_ctx.notes_written, handoffs, shown, started)
 

@@ -119,7 +119,7 @@ def settle(
     repo: AgentsRepo, state: StateRepo, agent: InboxAgent, today: date, inp: DayendInput, result: BrainResult,
     notes_written: int, now: datetime,
 ) -> Literal["ok", "retry", "failed", "limited"]:
-    """`ok`이거나 관찰을 저장했으면 본 것으로. 사용 한도·로그인 문제면 그대로. 그 밖은 시도 + 1(2회면 본 것으로)."""
+    """`ok`이거나 관찰·넘김을 저장했으면(`notes_written`에 넘김 수 포함) 본 것으로. 사용 한도·로그인 문제면 그대로. 그 밖은 시도 + 1(2회면 본 것으로)."""
     key = DAYEND_ATTEMPTS_KEY.format(agent=agent)
     if result.status == "ok" or notes_written > 0:
         with transaction(repo.conn):

@@ -54,12 +54,26 @@ def _norm(s: str) -> str:
     return " ".join(s.split())
 
 
+MATCH_SUBSTRING_MIN = 10  # 이보다 짧은 관찰은 줄 전체가 같을 때만 그 줄로 본다(짧은 말이 마스터 문장을 먹지 않게)
+_BULLET = "-*•· \t"
+
+
 def _match(line: str, notes: list[AgentNote]) -> AgentNote | None:
-    """관찰 본문(공백 정규화)이 그 줄(공백 정규화)에 들어 있는 첫 후보. 앞 이름은 보지 않는다."""
-    flat = _norm(line)
+    """그 줄을 관찰 줄로 볼 첫 후보.
+
+    글머리표·`"{이름}: "`를 뗀 줄이 관찰 본문과 같으면 맞다. 본문이 `MATCH_SUBSTRING_MIN`자 이상이면 본문이
+    들어 있는 줄도 맞다(공백 정규화).
+    """
+    flat = _norm(line).lstrip(_BULLET)
     for n in notes:
         body = _norm(n.text)
-        if body and body in flat:
+        if not body:
+            continue
+        prefix = f"{AGENT_LABELS[n.agent]}:"
+        bare = flat[len(prefix):].strip() if flat.startswith(prefix) else flat
+        if bare == body:
+            return n
+        if len(body) >= MATCH_SUBSTRING_MIN and body in flat:
             return n
     return None
 

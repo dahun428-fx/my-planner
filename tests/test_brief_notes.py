@@ -323,3 +323,13 @@ async def test_note_judged_after_brief_shows_next_morning(tmp_path):
     assert kinds == ["run", "dayend", "run"]
     assert second == f"{MORNING}\n\n운동메이트: {A}"
     assert shown is not None
+
+
+def test_short_note_does_not_eat_master_sentence():
+    """최종 검토: 짧은 관찰은 줄 전체가 같을 때만 관찰 줄이다. 그 말이 든 마스터 문장은 그대로 남는다."""
+    p2 = mk(5, "좋아요")
+    got = settle_brief("오늘 날씨가 좋아요.\n운동메이트: 좋아요", [p2])
+    assert got.text == "오늘 날씨가 좋아요.\n운동메이트: 좋아요" and got.shown_ids == (5,)
+    p1 = mk(6, "좋아요", priority=1)
+    kept = settle_brief("오늘 날씨가 좋아요.", [p1])
+    assert kept.text == "오늘 날씨가 좋아요.\n\n운동메이트: 좋아요" and kept.shown_ids == (6,)

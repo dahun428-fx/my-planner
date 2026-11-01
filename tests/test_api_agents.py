@@ -83,9 +83,10 @@ async def test_notes_dashboard_forbidden(tmp_path):
         assert (await env.get("/agents/mate/inbox/count", token=dash)).status == 200
 
 
-async def test_notes_include_handoff_priority_3(tmp_path):
+async def test_notes_hide_handoff_priority_3(tmp_path):
     async with BeEnv.start(tmp_path, start=START) as env:
         repo = AgentsRepo(env.conn, env.clock)
         _note(env, repo, TODAY, "넘기기", priority=3)
+        _note(env, repo, TODAY, "관찰", priority=2)
         body = await get_json(env, "/agents/notes")
-    assert [(n["text"], n["priority"]) for n in body["notes"]] == [("넘기기", 3)]
+    assert [(n["text"], n["priority"]) for n in body["notes"]] == [("관찰", 2)]

@@ -54,7 +54,8 @@ def get_agent_notes(conn: sqlite3.Connection, deps: ApiDeps, request: web.Reques
     if dashboard_device(request):
         raise ApiError(403, "forbidden", FORBIDDEN_MESSAGE)
     days = _days(request)
-    notes = AgentsRepo(conn, deps.clock).notes(None, _today(deps) - timedelta(days=days))
+    # 넘김(`priority` 3)은 상대끼리 주고받는 글이라 비서 메모에 보이지 않는다
+    notes = [n for n in AgentsRepo(conn, deps.clock).notes(None, _today(deps) - timedelta(days=days)) if n.priority in (1, 2)]
     return dump(AgentNotes, {"notes": [
         {
             "id": n.id, "agent": n.agent, "day": n.day.isoformat(), "text": n.text, "priority": n.priority,
