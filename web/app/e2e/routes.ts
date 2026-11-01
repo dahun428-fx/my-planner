@@ -159,6 +159,8 @@ export type MockOptions = {
   chat?: (string | { body: string })[];
   /** POST /chat gets no answer at all (an answer that is slow to come): for the stop button. */
   chatHangs?: boolean;
+  /** SP13 10장: /status as an app device gets it, with `standing` and `innate` (default: the dashboard shape). */
+  standing?: boolean;
 };
 
 /** An answer in Markdown, streamed in small pieces: emphasis, a list, a table, a code block, a link. */
@@ -217,7 +219,9 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && path === "/workout") return json(route, WORKOUT);
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") return json(route, today());
-    if (get && path === "/status") return json(route, fixture("status"));
+    if (get && path === "/status") return json(route, fixture(opts.standing ? "status-standing" : "status"));
+    if (get && path === "/standing") return json(route, fixture("standing")); // SP13 10.3
+    if (get && path === "/standing/measures") return json(route, fixture("standing-measures"));
     if (get && path === "/moments") return json(route, momentsList(q.get("include_hidden") === "true"));
     if (get && path === "/week") return json(route, week());
     if (get && path === "/drafts") return json(route, fixture("drafts"));

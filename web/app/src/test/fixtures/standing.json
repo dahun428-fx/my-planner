@@ -1,0 +1,451 @@
+{
+  "profile_missing": false,
+  "bench": {
+    "version": "2026.1",
+    "effective_from": "2026-11-01"
+  },
+  "axes": [
+    {
+      "axis": "career",
+      "label": "직업",
+      "area": "career",
+      "innate": false,
+      "national": {
+        "score": 79,
+        "low": 71,
+        "high": 87,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "salary_krw",
+          "company_tier",
+          "years_exp",
+          "level_points",
+          "recruiter_contacts_6m",
+          "offer_ratio",
+          "outside_activity_count",
+          "role_points"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 63,
+        "low": 55,
+        "high": 71,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "salary_krw",
+          "company_tier",
+          "years_exp",
+          "level_points",
+          "recruiter_contacts_6m",
+          "offer_ratio",
+          "outside_activity_count",
+          "role_points"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "money",
+      "label": "경제력",
+      "area": "finance",
+      "innate": false,
+      "national": {
+        "score": 61,
+        "low": 53,
+        "high": 69,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "salary_krw",
+          "net_worth_krw",
+          "monthly_saving_krw",
+          "monthly_net_income_krw"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 56,
+        "low": 48,
+        "high": 64,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "salary_krw",
+          "net_worth_krw",
+          "monthly_saving_krw",
+          "monthly_net_income_krw"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "health",
+      "label": "건강",
+      "area": "health",
+      "innate": false,
+      "national": {
+        "score": 73,
+        "low": 65,
+        "high": 81,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "shuttle_run_laps",
+          "grip_rel_pct",
+          "situp_per_min",
+          "bp_sys",
+          "bp_dia",
+          "fasting_glucose",
+          "alt",
+          "smoking",
+          "drinking",
+          "exercise_days_week"
+        ],
+        "missing": [
+          "ldl",
+          "checkup_flag"
+        ],
+        "assumed": [
+          "ldl"
+        ],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 73,
+        "low": 65,
+        "high": 81,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "shuttle_run_laps",
+          "grip_rel_pct",
+          "situp_per_min",
+          "bp_sys",
+          "bp_dia",
+          "fasting_glucose",
+          "alt",
+          "smoking",
+          "drinking",
+          "exercise_days_week"
+        ],
+        "missing": [
+          "ldl",
+          "checkup_flag"
+        ],
+        "assumed": [
+          "ldl"
+        ],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "looks",
+      "label": "외모",
+      "area": "health",
+      "innate": false,
+      "national": {
+        "score": 65,
+        "low": 57,
+        "high": 73,
+        "reliability": "low",
+        "estimate": true,
+        "inputs": [
+          "height_cm",
+          "weight_kg",
+          "body_fat_pct",
+          "waist_cm",
+          "face_rating",
+          "grooming_rating"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 65,
+        "low": 57,
+        "high": 73,
+        "reliability": "low",
+        "estimate": true,
+        "inputs": [
+          "height_cm",
+          "weight_kg",
+          "body_fat_pct",
+          "waist_cm",
+          "face_rating",
+          "grooming_rating"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "relations",
+      "label": "관계",
+      "area": "relationships",
+      "innate": false,
+      "national": {
+        "score": 45,
+        "low": 35,
+        "high": 55,
+        "reliability": "low",
+        "estimate": true,
+        "inputs": [],
+        "missing": [
+          "support_people",
+          "dating_status",
+          "lonely_often"
+        ],
+        "assumed": [],
+        "measured_on": null
+      },
+      "peer": {
+        "score": 45,
+        "low": 35,
+        "high": 55,
+        "reliability": "low",
+        "estimate": true,
+        "inputs": [],
+        "missing": [
+          "support_people",
+          "dating_status",
+          "lonely_often"
+        ],
+        "assumed": [],
+        "measured_on": null
+      }
+    },
+    {
+      "axis": "intellect",
+      "label": "자격·학습 실적",
+      "area": "learning",
+      "innate": false,
+      "national": {
+        "score": 94,
+        "low": 86,
+        "high": 100,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "cert"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 94,
+        "low": 86,
+        "high": 100,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "cert"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "height",
+      "label": "키",
+      "area": null,
+      "innate": true,
+      "national": {
+        "score": 60,
+        "low": 52,
+        "high": 68,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "height_cm"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 60,
+        "low": 52,
+        "high": 68,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "height_cm"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "education",
+      "label": "학벌",
+      "area": null,
+      "innate": true,
+      "national": {
+        "score": 56,
+        "low": 48,
+        "high": 64,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "education_tier",
+          "double_major"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 56,
+        "low": 48,
+        "high": 64,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "education_tier",
+          "double_major"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    },
+    {
+      "axis": "family",
+      "label": "집안",
+      "area": null,
+      "innate": true,
+      "national": {
+        "score": 43,
+        "low": 35,
+        "high": 51,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "family_net_worth_krw",
+          "family_parent_60plus",
+          "family_support"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      },
+      "peer": {
+        "score": 43,
+        "low": 35,
+        "high": 51,
+        "reliability": "mid",
+        "estimate": true,
+        "inputs": [
+          "family_net_worth_krw",
+          "family_parent_60plus",
+          "family_support"
+        ],
+        "missing": [],
+        "assumed": [],
+        "measured_on": "2026-10-01"
+      }
+    }
+  ],
+  "areas": {
+    "career": {
+      "score": 79,
+      "peer_score": 63,
+      "reliability": "mid",
+      "drift": [],
+      "debuff": false,
+      "recovery_quest": null,
+      "hint": null
+    },
+    "finance": {
+      "score": 61,
+      "peer_score": 56,
+      "reliability": "mid",
+      "drift": [],
+      "debuff": false,
+      "recovery_quest": null,
+      "hint": null
+    },
+    "health": {
+      "score": 70,
+      "peer_score": 70,
+      "reliability": "low",
+      "drift": [],
+      "debuff": false,
+      "recovery_quest": null,
+      "hint": null
+    },
+    "relationships": {
+      "score": 45,
+      "peer_score": 45,
+      "reliability": "low",
+      "drift": [],
+      "debuff": false,
+      "recovery_quest": null,
+      "hint": null
+    },
+    "learning": {
+      "score": 94,
+      "peer_score": 94,
+      "reliability": "mid",
+      "drift": [],
+      "debuff": false,
+      "recovery_quest": null,
+      "hint": null
+    },
+    "quality_of_life": {
+      "score": null,
+      "peer_score": null,
+      "reliability": null,
+      "drift": [],
+      "debuff": false,
+      "recovery_quest": null,
+      "hint": "삶의 질은 객관적 기준표가 없어요. 만족 점수와 생활 지표(잠, 걸음, 쉬는 저녁)로 봐요."
+    }
+  },
+  "innate": [
+    {
+      "axis": "height",
+      "label": "키",
+      "score": 60
+    },
+    {
+      "axis": "education",
+      "label": "학벌",
+      "score": 56
+    },
+    {
+      "axis": "family",
+      "label": "집안",
+      "score": 43
+    }
+  ],
+  "markets": {
+    "marriage": {
+      "national": 64,
+      "peer": 60,
+      "excluded": []
+    },
+    "career": {
+      "national": 70,
+      "peer": 65,
+      "excluded": []
+    }
+  },
+  "measures_count": 38
+}

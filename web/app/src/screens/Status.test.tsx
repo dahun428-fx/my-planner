@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { Status as StatusData } from "../api/types.gen";
 import { copy } from "../lib/copy";
+import standingJson from "../test/fixtures/status-standing.json";
 import statusJson from "../test/fixtures/status.json";
 import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
@@ -137,9 +138,11 @@ describe("Status (spec 10.2)", () => {
   });
 
   it("css_module_imported_in_app", () => {
-    // SP7 9장: every screen's CSS module goes out with _app as one stylesheet.
+    // SP7 9장: every screen's CSS module goes out with _app as one stylesheet. SP13: only the
+    // stylesheet, as the memo and schedule screens; the code stays in /status/'s chunk (180KB).
     const app = readFileSync(join(__dirname, "../pages/_app.tsx"), "utf8");
-    expect(app).toMatch(/import "\.\.\/screens\/Status";/);
+    expect(app).toMatch(/import "\.\.\/screens\/Status\.module\.css";/);
+    expect(app).not.toMatch(/import "\.\.\/screens\/Status";/);
   });
 
   it("shows no mark of a falling bonus", async () => {
@@ -190,5 +193,79 @@ describe("Status (spec 10.2)", () => {
       within(healthRow()).getByText("아이폰 단축어로 걸음과 잠을 보내면 건강 스탯의 근거가 돼요. 설정은 README의 'iPhone 단축어'를 봐 주세요."),
     ).toBeInTheDocument();
     expect(screen.queryByText(/마지막 기록/)).toBeNull();
+  });
+});
+
+// SP13 10.1-10.2: the app's /status carries `stats[i].standing` and `innate` (a dashboard device gets neither key).
+describe("Status standing (SP13 10장)", () => {
+  const standing = standingJson as StatusData;
+  const rowOf = (area: string) =>
+    within(sectionOf(copy.statusScreen.statsHeading))
+      .getAllByRole("listitem")
+      .find((r) => r.dataset.area === area)!;
+
+  it("area rows show satisfaction, position, peer, reliability and drift", async () => {
+    serve(standing);
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const career = rowOf("career");
+    expect(career.textContent).toContain("만족 6.5");
+    expect(within(career).getByText("위치 79 (IT 63)")).toBeInTheDocument();
+    const world = within(career).getByText("▼6 세상 변화");
+    expect(world.className).toMatch(/world/);
+    expect(rowOf("relationships").textContent).toContain("만족 7");
+    expect(within(rowOf("relationships")).getByText("위치 45 · 낮음")).toBeInTheDocument();
+    expect(within(rowOf("learning")).getByText("위치 94")).toBeInTheDocument(); // peer the same: no brackets
+    expect(within(rowOf("health")).getByText("▲3 내 변화")).toBeInTheDocument();
+    for (const w of ["상위", "%", "등수"]) expect(sectionOf(copy.statusScreen.statsHeading).textContent).not.toContain(w);
+  });
+
+  it("innate stats group and the detail link", async () => {
+    serve(standing);
+    renderWithProviders(<Status />, { route: "/status/" });
+    const innate = (await screen.findByRole("heading", { level: 2, name: "타고난 스탯" })).closest("section") as HTMLElement;
+    expect(within(innate).getByText("키 60 · 학벌 56 · 집안 43")).toBeInTheDocument();
+    expect(within(innate).getByText("바꿀 수 없는 출발점이에요. 다시 채점하지 않아요.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "객관적 위치 자세히 ›" })).toHaveAttribute("href", "/status/standing/");
+  });
+
+  it("an innate axis with no score is a dash", async () => {
+    serve({ ...standing, innate: standing.innate!.map((i) => (i.axis === "family" ? { ...i, score: null } : i)) });
+    renderWithProviders(<Status />, { route: "/status/" });
+    expect(await screen.findByText("키 60 · 학벌 56 · 집안 —")).toBeInTheDocument();
+  });
+
+  it("an area with no position opens its hint when pressed", async () => {
+    serve(standing);
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const qol = rowOf("quality_of_life");
+    const hint = standing.stats.find((s) => s.area === "quality_of_life")!.standing!.hint!;
+    expect(within(qol).queryByText(hint)).toBeNull();
+    const button = within(qol).getByRole("button", { name: "위치 —" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(button);
+    expect(within(qol).getByText(hint)).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("a position debuff says so with its recovery quest", async () => {
+    const down = { ...standing.stats[2].standing!, drift: [{ kind: "me" as const, delta: -6 }], debuff: true, recovery_quest: "저녁에 20분 걷기" };
+    serve({ ...standing, stats: standing.stats.map((s) => (s.area === "health" ? { ...s, standing: down } : s)) });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const health = rowOf("health");
+    expect(within(health).getByText("▼6 내 변화")).toBeInTheDocument();
+    expect(within(health).getByText("위치 하락 · 회복 퀘스트: 저녁에 20분 걷기")).toBeInTheDocument();
+  });
+
+  it("without standing (dashboard shape) nothing new is drawn", async () => {
+    serve();
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    expect(screen.queryByText(/만족 /)).toBeNull();
+    expect(screen.queryByText(/위치/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "타고난 스탯" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /객관적 위치/ })).toBeNull();
   });
 });

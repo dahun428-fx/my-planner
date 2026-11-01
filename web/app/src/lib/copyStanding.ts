@@ -1,0 +1,76 @@
+// SP13 10.3: the objective standing screen's copy, with the metric and value names (spec 6.2).
+// Kept out of copy.ts so the first screen's bundle does not carry it: only /status/standing/'s chunk
+// and the chat sheet's (ui_measure_confirm) import it. scripts/lint-copy.mjs allows Korean here too.
+// Never "상위 n%" or a rank (D5).
+export const standingCopy = {
+  title: "객관적 위치",
+  // SP13 6.5: ui_measure_confirm (the chat sheet's chunk).
+  card: {
+    title: "측정값 확인",
+    value: (label: string) => `${label} 값`,
+    date: (label: string) => `${label} 측정일`,
+    drop: "빼기",
+    dropLabel: (label: string) => `${label} 빼기`,
+    faceNote: "얼굴 점수는 조명·각도·취향에 따라 ±10 흔들려요.",
+  },
+  back: "‹ 상태창",
+  marketsHeading: "시장 점수",
+  markets: { marriage: "결혼시장", career: "직업시장" },
+  national: (n: number | null) => `전체 ${n ?? "—"}`,
+  peer: (n: number | null) => `IT ${n ?? "—"}`,
+  marriageNote: "나이·성격·가치관이 빠진 서류 스펙 점수예요.",
+  excluded: (labels: string) => `빠짐: ${labels}`,
+  radarHeading: "아홉 축",
+  radarLabel: "아홉 축 레이더: 실선은 전체, 점선은 IT",
+  legendNational: "전체",
+  legendPeer: "IT",
+  axesHeading: "축별 점수",
+  band: (low: number, high: number) => `${low}~${high}`,
+  reliability: { high: "신뢰도 높음", mid: "신뢰도 보통", low: "신뢰도 낮음" },
+  estimate: "추정",
+  noScore: "아직 점수가 없어요",
+  missing: (labels: string) => `미입력: ${labels}`,
+  assumedNote: "빈 항목은 가정값으로 계산했어요.",
+  measuredOn: (date: string) => `측정일 ${Number(String(date).slice(5, 7))}/${Number(String(date).slice(8, 10))}`,
+  measuresHeading: "측정값",
+  measuresEmpty: "아직 측정값이 없어요. 채팅에 결과지 사진을 올리면 확인 카드가 나와요.",
+  measureMeta: (date: string, source: string) => `${Number(String(date).slice(5, 7))}/${Number(String(date).slice(8, 10))} · ${source}`,
+  sources: { photo: "사진", pdf: "PDF", manual: "직접 입력", shortcut: "단축어", import: "가져오기", derived: "자동 계산" },
+  delete: "지우기",
+  deleteLabel: (label: string) => `${label} 지우기`,
+  /** `salary_krw` and every `*_krw`: rounded to 만 원 ("5,500만 원"). */
+  krw: (won: number) => `${Math.round(won / 10_000).toLocaleString("ko-KR")}만 원`,
+  // The metric names the BE leaves out of `missing` (spec 6.2, standing/metrics.py labels).
+  metrics: {
+    profile_birth_year: "출생 연도", profile_sex: "성별", profile_region: "권역", profile_job_family: "직군",
+    height_cm: "키", weight_kg: "몸무게", body_fat_pct: "체지방률", fat_free_mass_kg: "제지방량", skeletal_muscle_kg: "골격근량",
+    waist_cm: "허리둘레", face_rating: "얼굴 평가(참고)", grooming_rating: "관리 평가", bp_sys: "수축기 혈압", bp_dia: "이완기 혈압",
+    fasting_glucose: "공복 혈당", ldl: "LDL 콜레스테롤", alt: "ALT(간 수치)", checkup_flag: "건강검진 판정", shuttle_run_laps: "왕복오래달리기",
+    grip_rel_pct: "상대 악력", situp_per_min: "윗몸일으키기(분당)", run_6k_min: "6km 달리기", squat_1rm_kg: "스쿼트 1RM",
+    bench_1rm_kg: "벤치프레스 1RM", deadlift_1rm_kg: "데드리프트 1RM", smoking: "흡연", drinking: "음주", exercise_days_week: "주당 운동일",
+    salary_krw: "연봉(세전)", company_tier: "회사 등급", role_points: "직무 점수", years_exp: "경력", level_points: "직급 점수",
+    outside_activity_count: "사외 활동 수", recruiter_contacts_6m: "최근 6개월 채용 연락", offer_ratio: "오퍼 비율",
+    net_worth_krw: "순자산", monthly_saving_krw: "월 저축", monthly_net_income_krw: "월 실수령", savings_rate_pct: "저축률",
+    support_people: "기댈 사람 수", monthly_meetups: "월 모임 횟수", dating_status: "연애 상태", lonely_often: "자주 외로움",
+    cert: "자격", education_tier: "학벌", double_major: "복수전공", family_net_worth_krw: "집안 순자산", family_support: "집안 지원",
+    family_parent_60plus: "부모 60세 이상",
+  } as Record<string, string>,
+  // A choice metric's values (spec 6.2), for the list and the confirm card's picker, by metric.
+  values: {
+    profile_sex: { m: "남", f: "여" },
+    profile_region: { capital: "수도권", other: "그 밖" },
+    profile_job_family: { ai_ml: "AI·ML", dev_general: "개발", other: "그 밖" },
+    checkup_flag: { normal: "정상", watch: "주의", abnormal: "이상" },
+    smoking: { none: "안 피움", quit: "끊음", current: "피움" },
+    drinking: { none: "안 마심", monthly_binge: "월 1회 이상 폭음", high_risk: "고위험 음주" },
+    dating_status: { single: "혼자", dating: "연애 중", married: "결혼" },
+    lonely_often: { yes: "예", no: "아니요" },
+    education_tier: { hs: "고졸", college2: "전문대", local_private: "지방 사립대", seoul_mid_low: "인서울 대학", seoul_mid_high: "인서울 주요 대학", top: "최고 명문대" },
+    double_major: { yes: "예", no: "아니요" },
+    family_support: { none: "없음", receive: "받음", support: "드림" },
+    family_parent_60plus: { yes: "예", no: "아니요" },
+    cert: { jlpt_n1: "JLPT N1", jlpt_n2: "JLPT N2", engineer_info: "정보처리기사", aice_associate: "AICE Associate", pro_license: "전문 자격" },
+  } as Record<string, Record<string, string>>,
+  toeic: (score: string) => `TOEIC ${score}`,
+
+} as const;

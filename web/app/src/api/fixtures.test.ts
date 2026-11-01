@@ -31,6 +31,10 @@ const table: [string, ModelName][] = [
   ["status.json", "Status"],
   ["checkin-times.json", "CheckinTimes"],
   ["digest-settings.json", "DigestSettings"],
+  // SP13 10장 (the Task 3 fake person): the app's /status with standing and innate, and the detail screen's two reads.
+  ["status-standing.json", "Status"],
+  ["standing.json", "Standing"],
+  ["standing-measures.json", "StandingMeasures"],
 ];
 
 // The BE before R4a has no `next_before` key at all, so that fixture is checked as the client reads it (key absent -> null).

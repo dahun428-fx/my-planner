@@ -15,7 +15,7 @@ const CACHE = "app-" + BUILD_ID;
 const SHELL = [
   "/", "/todos/", "/schedule/", "/memos/", "/memos/view/", "/more/",
   "/activity/", "/settings/", "/checkin/", "/habits/", "/connect/", "/status/",
-  "/devices/", "/workout/",
+  "/devices/", "/workout/", "/status/standing/",
 ];
 const DEFAULT_TITLE = "비서"; // the app name, as in manifest.webmanifest
 

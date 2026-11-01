@@ -2,10 +2,11 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { copy, habitMeta, momentDay } from "./copy";
+import { standingCopy } from "./copyStanding";
 
 const repoRoot = join(__dirname, "../../../..");
 const srcRoot = join(__dirname, "..");
-const APP_BANNED = ["연속", "스트릭", "달성률", "보너스가 줄", "스탯이 떨어"];
+const APP_BANNED = ["연속", "스트릭", "달성률", "등수", "패배", "뒤처짐", "실패", "보너스가 줄", "스탯이 떨어"];
 
 function readBannedList(): string[] {
   const md = readFileSync(join(repoRoot, "src/my_planner/harness/prompts/system.md"), "utf8");
@@ -45,7 +46,7 @@ describe("copy", () => {
   });
 
   it("no banned words", () => {
-    const values = texts(copy);
+    const values = [...texts(copy), ...texts(standingCopy)];
     expect(values.length).toBeGreaterThan(20);
     const inCopy = values.filter((t) => banned.some((w) => t.includes(w)));
     expect(inCopy).toEqual([]);
@@ -189,6 +190,21 @@ describe("copy", () => {
       c.chipsLabel, ...texts(c.groups), ...texts(c.chips),
     ];
     for (const t of values) expect(banned.filter((w) => t.includes(w))).toEqual([]);
+  });
+
+  it("standing copy is SP13 10장 verbatim", () => {
+    const t = copy.statusScreen;
+    expect(t.innateItem("키", 60)).toBe("키 60");
+    expect(t.innateItem("집안", null)).toBe("집안 —");
+    expect(standingCopy.missing("LDL 콜레스테롤, 건강검진 판정")).toBe("미입력: LDL 콜레스테롤, 건강검진 판정");
+    expect([t.innateHeading, t.innateNote, t.standingLink]).toEqual(["타고난 스탯", "바꿀 수 없는 출발점이에요. 다시 채점하지 않아요.", "객관적 위치 자세히 ›"]);
+    expect([t.sat(7), t.pos(59, 27, "mid"), t.pos(82, 82, "high"), t.pos(45, null, "low"), t.posNone]).toEqual(["만족 7", "위치 59 (IT 27)", "위치 82", "위치 45 · 낮음", "위치 —"]);
+    expect([t.drift({ kind: "me", delta: 3 }), t.drift({ kind: "me", delta: -4 }), t.drift({ kind: "world", delta: -4 })]).toEqual(["▲3 내 변화", "▼4 내 변화", "▼4 세상 변화"]);
+    expect(standingCopy.marriageNote).toBe("나이·성격·가치관이 빠진 서류 스펙 점수예요.");
+    expect(standingCopy.assumedNote).toBe("빈 항목은 가정값으로 계산했어요.");
+    expect(standingCopy.card.faceNote).toBe("얼굴 점수는 조명·각도·취향에 따라 ±10 흔들려요.");
+    // D5: "위치 n" only, never a share or a rank.
+    for (const v of [...texts(t.pos), ...texts(standingCopy)]) expect(v).not.toMatch(/상위|%|100명 중/);
   });
 
   it("areas are glossary names", () => {

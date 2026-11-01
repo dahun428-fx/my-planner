@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-24.5",
+  "version": "2026-11-01.1",
   "components": {
     "ui_todo_list": {
       "origin": "brain",
@@ -1222,6 +1222,111 @@
           "args"
         ],
         "title": "ConfirmProps",
+        "type": "object"
+      }
+    },
+    "ui_measure_confirm": {
+      "origin": "harness",
+      "schema": {
+        "$defs": {
+          "MeasureRow": {
+            "additionalProperties": false,
+            "description": "확인 카드 한 줄(SP13 6.5). 값의 범위는 `propose_measures`·`save_measures`가 `standing.metrics.validate`로 본다.",
+            "properties": {
+              "metric": {
+                "maxLength": 40,
+                "minLength": 1,
+                "title": "Metric",
+                "type": "string"
+              },
+              "label": {
+                "maxLength": 40,
+                "minLength": 1,
+                "title": "Label",
+                "type": "string"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "maxLength": 40,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                ],
+                "title": "Value"
+              },
+              "unit": {
+                "anyOf": [
+                  {
+                    "maxLength": 10,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Unit"
+              },
+              "measured_on": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "title": "Measured On",
+                "type": "string"
+              }
+            },
+            "required": [
+              "metric",
+              "label",
+              "value",
+              "unit",
+              "measured_on"
+            ],
+            "title": "MeasureRow",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "description": "측정값 확인 카드(SP13 6.5). \"저장\"을 누르면 앱이 `/actions save_measures`로 남은 줄을 보낸다.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/$defs/MeasureRow"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Rows",
+            "type": "array"
+          },
+          "source_kind": {
+            "enum": [
+              "photo",
+              "pdf",
+              "manual"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "pattern": "^photo:[1-9][0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref"
+          }
+        },
+        "required": [
+          "rows",
+          "source_kind",
+          "source_ref"
+        ],
+        "title": "MeasureConfirmProps",
         "type": "object"
       }
     }
