@@ -24,6 +24,20 @@
   position: absolute;
   inset: calc((var(--small-control-h) - var(--control-h)) / 2) 0;
 }
+/* SP14: a hint under the label, in --muted; the pill grows to two short lines. */
+.hinted {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  line-height: 1.25;
+}
+.hint {
+  font-size: var(--size-meta);
+  font-weight: 400;
+  color: var(--muted);
+}
 .option[aria-checked="true"] {
   background: var(--surface);
   color: var(--text);

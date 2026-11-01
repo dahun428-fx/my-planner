@@ -1,0 +1,38 @@
+/* SP14 10장: a partner's observation line. Pictogram in --muted (DESIGN.md Pictograms 2), name as a
+   label-sized line, the observation in body text. No --hue: it is a partner's words, not a change. */
+.notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.mark {
+  flex: none;
+  display: inline-flex;
+  padding-top: 0.125rem;
+  color: var(--muted);
+}
+.body {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.name {
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.text {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.meta {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}

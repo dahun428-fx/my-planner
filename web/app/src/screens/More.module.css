@@ -1,0 +1,33 @@
+/* SP14 10장: "비서 메모" opens under its row, on the group's --surface. The chevron turns down when open
+   (as the done fold's); the panel ends with the same inset hairline as a row. */
+.chevron {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.open {
+  transform: rotate(90deg);
+}
+.panel {
+  position: relative;
+  padding: 0.25rem var(--pad) 1rem;
+}
+/* The row after an open panel has no hairline of its own (it is not next to a row): the panel draws it. */
+.panel::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: var(--pad);
+  border-top: 1px solid var(--rule);
+}
+.empty {
+  margin: 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}

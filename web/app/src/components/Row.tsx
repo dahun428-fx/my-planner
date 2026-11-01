@@ -9,10 +9,13 @@ export interface RowProps {
   trailing?: ReactNode;
   href?: string;
   onPress?: () => void;
+  /** With `onPress`: the row opens a panel in place (aria-expanded, aria-controls). */
+  expanded?: boolean;
+  controls?: string;
 }
 
 // One list row, min height --row. Navigation is <a>, an action is <button>, otherwise plain.
-export function Row({ leading, title, meta, trailing, href, onPress }: RowProps) {
+export function Row({ leading, title, meta, trailing, href, onPress, expanded, controls }: RowProps) {
   const inner = (
     <>
       {leading !== undefined && <span className={styles.leading}>{leading}</span>}
@@ -32,7 +35,7 @@ export function Row({ leading, title, meta, trailing, href, onPress }: RowProps)
   }
   if (onPress !== undefined) {
     return (
-      <button type="button" className={`${styles.row} ${styles.interactive}`} onClick={onPress}>
+      <button type="button" className={`${styles.row} ${styles.interactive}`} onClick={onPress} aria-expanded={expanded} aria-controls={controls}>
         {inner}
       </button>
     );

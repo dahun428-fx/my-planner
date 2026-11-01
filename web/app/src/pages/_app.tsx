@@ -22,7 +22,6 @@ import "../screens/Activity";
 import "../screens/Checkin";
 import "../screens/Connect";
 import "../screens/Habits";
-import "../screens/More";
 import "../screens/Today";
 import "../screens/Todos";
 import "../components/LargeTitle";
@@ -50,6 +49,9 @@ import "../screens/Workout.module.css";
 // code (and the QR library) stays in /devices/'s chunk.
 import "../screens/Devices.module.css";
 import "../components/Qr.module.css";
+// SP14 10장: the more screen's stylesheet only (its "비서 메모" panel), for the same reason: its code
+// stays in /more/'s chunk, out of the first screen's 180KB (its rows' Row/Group/icons styles come with Today).
+import "../screens/More.module.css";
 // SP13 10장: the status screen and its standing detail, stylesheets only (CSP, as above). Their code
 // stays in /status/'s and /status/standing/'s chunks, out of the first screen's 180KB.
 import "../screens/Status.module.css";

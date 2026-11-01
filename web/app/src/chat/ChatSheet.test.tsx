@@ -1586,6 +1586,65 @@ describe("ChatSheet partner pick (SP12)", () => {
   });
 });
 
+// SP14 10장: "새로 본 것 n개" under the mate in the partner pick (GET /agents/mate/inbox/count, no brain call).
+describe("ChatSheet partner pick unseen count (SP14)", () => {
+  const withFeatures = (features: string[]) =>
+    server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, features })));
+  const serveCount = (counts: number[]) => {
+    const reads: string[] = [];
+    server.use(
+      http.get(`${BASE}/agents/:agent/inbox/count`, ({ params }) => {
+        reads.push(String(params.agent));
+        return HttpResponse.json({ unseen: counts[Math.min(reads.length - 1, counts.length - 1)] });
+      }),
+    );
+    return reads;
+  };
+
+  it("shows the count under the mate", async () => {
+    withFeatures(["mate", "agent_notes"]);
+    const reads = serveCount([3]);
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText(copy.chat.agents.unseen(3))).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: copy.chat.agents.mate })).toHaveAccessibleDescription(copy.chat.agents.unseen(3));
+    expect(reads).toEqual(["mate"]);
+  });
+
+  it("no line for 0", async () => {
+    withFeatures(["mate", "agent_notes"]);
+    const reads = serveCount([0]);
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await waitFor(() => expect(reads).toEqual(["mate"]));
+    expect(screen.queryByText(/새로 본 것/)).toBeNull();
+  });
+
+  it("reads again after an answer from the mate", async () => {
+    withFeatures(["mate", "agent_notes"]);
+    localStorage.setItem("chat.agent", "mate");
+    serveHistory({ mate: { conversations: [], messages: {} } });
+    const reads = serveCount([2, 0]);
+    serveChat(() => sseResponse(textAnswer("m-9-2", 9, "좋아요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText(copy.chat.agents.unseen(2))).toBeInTheDocument();
+    await sendText(user, "오늘 운동");
+    await screen.findByText("좋아요");
+    await waitFor(() => expect(reads).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByText(/새로 본 것/)).toBeNull());
+  });
+
+  it("no count read without the agent_notes feature", async () => {
+    withFeatures(["mate"]);
+    const reads = serveCount([3]);
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByRole("radio", { name: copy.chat.agents.mate });
+    await ready();
+    expect(reads).toEqual([]);
+    expect(screen.queryByText(/새로 본 것/)).toBeNull();
+  });
+});
+
 // SP12 fix round 1: the partner never flips mid-answer, the mate view has no "elsewhere" lines, the
 // secretary's front chip survives a round trip, and the mate's own wording.
 describe("ChatSheet partner pick, fix round 1 (SP12)", () => {

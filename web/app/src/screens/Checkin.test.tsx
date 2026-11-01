@@ -107,6 +107,16 @@ describe("Checkin", () => {
     expect(await screen.findByText("운동", { selector: "strong" })).toBeInTheDocument();
   });
 
+  it("an observation line shows with its partner's pictogram (SP14 10장)", async () => {
+    serve({ ...brief, text: "좋은 아침이에요.\n\n운동메이트: 가짜 관찰이에요." });
+    renderWithProviders(<Checkin id={brief.id} />);
+    const line = (await screen.findByText("가짜 관찰이에요.")).closest("li")!;
+    expect(line.querySelector('use[href="#p-dumbbell"]')).not.toBeNull();
+    expect(within(line).getByText(copy.agentNames.mate)).toBeInTheDocument();
+    expect(screen.getByText("좋은 아침이에요.")).toBeInTheDocument();
+    expect(screen.queryByText(/운동메이트: 가짜/)).toBeNull();
+  });
+
   it("cards render as parts", async () => {
     serve();
     renderWithProviders(<Checkin id={341} />);

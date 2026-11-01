@@ -53,6 +53,7 @@ describe("sync:design", () => {
 // Spec 9.1 table, in table order. SP9 adds three ids and changes this list with the table.
 const SPEC_IDS = [
   "career", "finance", "health", "relationships", "learning", "quality_of_life", "high", "low", "turning_point", "chapter", "condition", "ladder", "level", "quest", "review", "todo", "habit", "memory", "future", "eye", "eyeoff", "assistant", "home", "curve", "status", "list", "estimate", "settings",
+  "dumbbell", "compass", // SP14 10장: the partners (운동메이트, 라이프 매니저)
 ];
 const DRAFT = fileURLToPath(new URL("../../../docs/design/pictograms-draft.json", import.meta.url));
 

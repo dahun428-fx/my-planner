@@ -4,7 +4,7 @@ import type { UIMessage } from "ai";
 import { useRouter } from "next/router";
 import { type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { failureText } from "../api/actions";
-import { type ApiResult, apiFetch, apiGet } from "../api/client";
+import { type ApiResult, apiFetch, apiGet, getInboxCount } from "../api/client";
 import { dropLocalPhoto, keepLocalPhoto, uploadFailureText, uploadPhoto } from "../api/photos";
 import type { ConversationsClosed, Today } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
@@ -123,6 +123,24 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const sawMate = useRef(false);
   if (state?.kind === "online") sawMate.current = state.health.features?.includes("mate") ?? false;
   const hasMate = !embedded && sawMate.current;
+  // SP14 10장: "새로 본 것 n개" under the mate, only from a BE with `agent_notes` (read on opening, and
+  // again when an answer of the mate ends). Information only: no brain call, nothing to press.
+  const sawNotes = useRef(false);
+  if (state?.kind === "online") sawNotes.current = state.health.features?.includes("agent_notes") ?? false;
+  const hasNotes = hasMate && sawNotes.current;
+  const [unseen, setUnseen] = useState(0);
+  const unseenSeq = useRef(0);
+  const readUnseen = useCallback(() => {
+    const mine = ++unseenSeq.current;
+    void getInboxCount("mate").then((r) => {
+      if (mine === unseenSeq.current && r.kind === "ok") setUnseen(r.data.unseen);
+    });
+  }, []);
+  const readUnseenRef = useRef<(() => void) | null>(null);
+  readUnseenRef.current = hasNotes ? readUnseen : null;
+  useEffect(() => {
+    if (open && hasNotes) readUnseen();
+  }, [open, hasNotes, readUnseen]);
   const agent: Agent = hasMate ? pref : "secretary";
   const agentRef = useRef(agent);
   agentRef.current = agent;
@@ -297,6 +315,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       }
       settle(null);
       onSentRef.current?.();
+      if (agentRef.current === "mate") readUnseenRef.current?.(); // SP14: the mate may have seen more now (the partner never flips mid-answer)
       readTodayRef.current(); // a check-in answered, an event made: the chips may change
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
@@ -873,7 +892,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         onChange={changeAgent}
         options={[
           { value: "secretary", label: copy.chat.agents.secretary },
-          { value: "mate", label: copy.chat.agents.mate },
+          { value: "mate", label: copy.chat.agents.mate, ...(hasNotes && unseen > 0 ? { hint: copy.chat.agents.unseen(unseen) } : {}) },
         ]}
       />
     </div>

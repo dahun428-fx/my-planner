@@ -16,9 +16,12 @@ const WAKE_STALE = "노트북을 깨우는 시각은 아직 그대로예요. reg
 
 // SP12: the BE's plan weekdays are 0(월)~6(일).
 const WORKOUT_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+// SP14 10장: the partners' names (the BE's AGENT_LABELS, the brief's "{이름}: {관찰}" prefix).
+const AGENT_NAMES = { mate: "운동메이트", manager: "라이프 매니저" } as const;
 
 export const copy = {
   appName: "비서",
+  agentNames: AGENT_NAMES,
 
   // SP9 9.1, 10장 "탭" (verbatim).
   tabs: {
@@ -39,6 +42,8 @@ export const copy = {
     connect: "기기 연결",
     devices: "연결된 기기", // device pairing spec 5.1, under "기기 연결"
     workout: "운동", // SP12 부록 A 더보기 줄 (the BE has the mate)
+    agentNotes: "비서 메모", // SP14 10장: the partners' notes of the last 7 days, opened in place
+    agentNotesEmpty: "아직 없어요.",
     back: BACK_MORE,
   },
 
@@ -361,7 +366,8 @@ export const copy = {
       mate_plan: { label: "플랜 고치기", text: "플랜 고치기" },
     },
     // SP12 11.1 / 부록 A 상대 고르기: 머리의 두 칸과 메이트 말풍선의 머리 줄.
-    agents: { label: "대화 상대", secretary: "비서", mate: "운동메이트" },
+    // SP14 10장: "새로 본 것 n개" under a partner's name (0: no line).
+    agents: { label: "대화 상대", secretary: "비서", mate: AGENT_NAMES.mate, unseen: (n: number) => `새로 본 것 ${n}개` },
     // 운동메이트 대화에서 비서 이름이 든 문구: 비서 문구에서 이름만 바꾼 것.
     mate: {
       inputLabel: "운동메이트에게 보낼 말",

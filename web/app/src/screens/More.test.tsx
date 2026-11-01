@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import health from "../test/fixtures/health.json";
 import { BASE, server } from "../test/server";
@@ -60,6 +61,64 @@ describe("More (spec 9.1)", () => {
     localStorage.setItem("mp.mate", "1");
     renderWithProviders(<More hasStatus={false} />, { route: "/more/", conn: "offline" });
     expect(await screen.findByRole("link", { name: copy.more.workout })).toBeInTheDocument();
+  });
+
+  // SP14 10장: "비서 메모" opens in place (no page), the last 7 days of the partners' notes.
+  describe("agent notes row", () => {
+    const withNotes = (notes: unknown[]) => {
+      const reads: string[] = [];
+      server.use(
+        http.get(`${BASE}/health`, () => HttpResponse.json({ ...health, features: ["mate", "agent_notes"] })),
+        http.get(`${BASE}/agents/notes`, ({ request }) => {
+          reads.push(new URL(request.url).search);
+          return HttpResponse.json({ notes });
+        }),
+      );
+      return reads;
+    };
+    const note = (id: number, agent: "mate" | "manager", text: string, day: string) => ({
+      id,
+      agent,
+      text,
+      day,
+      priority: 2,
+      created_at: `${day}T12:00:00Z`,
+      shown_at: null,
+    });
+
+    it("comes after the workout row and lists the notes when pressed", async () => {
+      const reads = withNotes([note(2, "mate", "가짜 관찰 하나예요.", "2026-10-31"), note(1, "manager", "가짜 관찰 둘이에요.", "2026-10-29")]);
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
+      const row = await screen.findByRole("button", { name: copy.more.agentNotes });
+      expect(row).toHaveAttribute("aria-expanded", "false");
+      const workout = screen.getByRole("link", { name: copy.more.workout });
+      expect(Boolean(workout.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+      await userEvent.setup().click(row);
+      expect(row).toHaveAttribute("aria-expanded", "true");
+      const first = (await screen.findByText("가짜 관찰 하나예요.")).closest("li")!;
+      expect(first.querySelector('use[href="#p-dumbbell"]')).not.toBeNull();
+      expect(within(first).getByText(copy.agentNames.mate)).toBeInTheDocument();
+      expect(within(first).getByText("10/31")).toBeInTheDocument();
+      const second = screen.getByText("가짜 관찰 둘이에요.").closest("li")!;
+      expect(second.querySelector('use[href="#p-compass"]')).not.toBeNull();
+      expect(within(second).getByText(copy.agentNames.manager)).toBeInTheDocument();
+      expect(reads).toEqual(["?days=7"]);
+      expect(screen.getByRole("link", { name: "기기 연결" })).toBeInTheDocument(); // still the same page
+    });
+
+    it("says so when there are none", async () => {
+      withNotes([]);
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
+      await userEvent.setup().click(await screen.findByRole("button", { name: copy.more.agentNotes }));
+      expect(await screen.findByText(copy.more.agentNotesEmpty)).toBeInTheDocument();
+    });
+
+    it("no row without the feature", async () => {
+      server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...health, features: ["mate"] })));
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
+      await screen.findByRole("link", { name: copy.more.workout });
+      expect(screen.queryByRole("button", { name: copy.more.agentNotes })).toBeNull();
+    });
   });
 
   it("the page shows the tab bar with no tab marked", () => {

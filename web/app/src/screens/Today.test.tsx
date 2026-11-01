@@ -143,6 +143,17 @@ describe("Today", () => {
     expect(await screen.findByText("운동", { selector: "strong" })).toBeInTheDocument();
   });
 
+  it("an observation line of the brief shows with its partner's pictogram (SP14 10장)", async () => {
+    serve({ ...today, brief: { ...today.brief!, text: "좋은 아침이에요.\n둘\n셋\n\n운동메이트: 가짜 관찰이에요." } });
+    renderWithProviders(<Today />);
+    const line = (await screen.findByText("가짜 관찰이에요.")).closest("li")!;
+    expect(line.querySelector('use[href="#p-dumbbell"]')).not.toBeNull();
+    expect(within(line).getByText(copy.agentNames.mate)).toBeInTheDocument();
+    expect(screen.queryByText(/운동메이트: 가짜/)).toBeNull(); // not in the Markdown body
+    // The fold counts the body only: three lines and a note do not fold.
+    expect(screen.queryByRole("button", { name: copy.today.morePlain })).toBeNull();
+  });
+
   it("empty todos copy", async () => {
     serve(empty);
     renderWithProviders(<Today />);
