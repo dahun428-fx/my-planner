@@ -1,6 +1,6 @@
 # SP13 객관적 위치 — 상태창 "만족 / 위치" 두 줄 상세 설계 (추가 기능)
 
-- 상태: 초안 v1 (Dahun 검토 전)
+- 상태: 초안 v1.1 (문서 리뷰 1회 반영, Dahun 검토 전)
 - 작성일: 2026-11-01
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (상태창 9장, BE HTTP API 계약의 정본), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md), [SP10 사진](2026-10-26-sp10-photos-claude-reads-design.md)
 - 함께 읽기: [SP14 마스터 구조](2026-11-01-sp14-master-hierarchy-design.md), [SP15 라이프 매니저와 전문가 패널](2026-11-01-sp15-life-manager-panel-design.md). 세 스펙은 하나의 작업이고 SP13 → SP14 → SP15 순서로 만든다(Dahun Q10).
@@ -20,7 +20,7 @@
 5. 상태창의 "객관적 위치 자세히"를 누르면 상세 화면(`/status/standing/`)이 열린다: 9축 레이더(두 비교 집단), 축별 막대와 근거·신뢰도·오차 범위, 결혼·연애 시장과 이직·커리어 시장 점수.
 6. 각 점수 옆에 신뢰도(높음/중/낮음)와 오차 범위가 보인다. 입력이 빠진 하위 항목은 "미입력"으로 보이고, 빠진 항목은 점수에 가정값으로 들어갔다는 것이 한 줄로 보인다.
 7. 대시보드 토큰으로 `GET /standing`을 부르면 `403`이다. 대시보드 상태창은 지금처럼 만족 점수만 보인다.
-8. 노트북에서 `my_planner standing import <json>` 한 번으로 2026-11-01 점검 자료(프로젝트 폴더의 `social-level/data/`를 옮긴 JSON)가 측정값으로 들어가고, 상태창에 리포트 v2와 같은 점수(±1)가 나온다.
+8. 노트북에서 `python -m my_planner standing import standing-2026-11-01.json`(프로젝트 폴더 `social-level/`에서 비서가 만들어 둔 JSON, 저장소에는 넣지 않는다) 한 번으로 2026-11-01 점검 자료가 측정값으로 들어가고, 출력 `imported: n, skipped: 0`이 보인다. 상태창 점수는 리포트 v2와 ±3 안이고, 다른 축은 8.2의 외모 가중치 정리 때문이며 그 차이를 노트북 확인 목록에 적는다(수동 확인 단계, 자동 테스트 아님).
 9. 상태창 커버리지 표(11장)의 "이번에 고침" 항목이 모두 반영되어 있다.
 10. 14장의 자동 테스트가 모두 통과한다.
 
@@ -97,12 +97,14 @@ CREATE TABLE standing_measures (
   measured_on   TEXT NOT NULL,            -- 'YYYY-MM-DD' 측정일(올린 날이 아니라)
   source_kind   TEXT NOT NULL CHECK (source_kind IN ('photo','pdf','manual','shortcut','import','derived')),
   source_ref    TEXT,                     -- 'photo:<id>', 'body_day:<date>' 등. 원본 파일 경로는 두지 않는다
-  confidence    TEXT NOT NULL DEFAULT 'mid' CHECK (confidence IN ('high','mid','low')),
+  reliability   TEXT NOT NULL DEFAULT 'mid' CHECK (reliability IN ('high','mid','low')),  -- 기억 카드의 confidence와 다른 말
   created_at    TEXT NOT NULL,
   deleted_at    TEXT,                     -- 지우기는 표시만(되돌리기 24시간)
   CHECK (value_num IS NOT NULL OR value_text IS NOT NULL)
 );
 CREATE INDEX standing_measures_metric ON standing_measures(metric, measured_on) WHERE deleted_at IS NULL;
+
+-- status_xp_ledger.source_kind CHECK에 'standing'을 더한다: 021과 같은 "새 표를 만들어 옮기기" 방식(hooks.py)
 
 CREATE TABLE standing_snapshots (
   period        TEXT NOT NULL,            -- 'YYYY-Qn'
@@ -117,7 +119,7 @@ CREATE TABLE standing_snapshots (
 ```
 
 - 같은 `metric`의 값이 여럿이면 `measured_on`이 가장 늦은 것(같으면 `id`가 큰 것)을 쓴다. 지난 값은 추이 그래프와 하락 이유 나누기에만 쓴다.
-- 측정값은 경험치를 주지 않는다. 대신 분기마다 처음으로 객관적 위치가 생기거나 갱신될 때 X14(10장).
+- 측정값 한 줄마다 경험치를 주지는 않는다. 그 분기에 처음 측정값을 저장하면(가져오기 포함) X14 한 번(10장).
 
 ### 6.2 지표 목록 (`metric`)
 
@@ -129,7 +131,7 @@ CREATE TABLE standing_snapshots (
 | 건강 | `bp_sys`, `bp_dia`, `fasting_glucose`, `ldl`, `alt`, `checkup_flag`(`normal`·`watch`·`abnormal`), `shuttle_run_laps`, `grip_rel_pct`, `run_6k_min`, `squat_1rm_kg`, `bench_1rm_kg`, `deadlift_1rm_kg`, `smoking`(`none`·`quit`·`current`), `drinking`(`none`·`monthly_binge`·`high_risk`) | | 운동 습관은 운동 기록·걸음에서 `derived` |
 | 직업 | `salary_krw`(세전 연봉), `company_tier`(0~20), `role_points`(0~15), `years_exp`, `level_points`(0~6), `outside_activity_count`(0~5), `recruiter_contacts_6m`, `offer_ratio`(최근 1년 최고 오퍼 ÷ 현재 연봉) | | |
 | 경제력 | `net_worth_krw`, `monthly_saving_krw`, `monthly_net_income_krw`, `savings_rate_pct`(없으면 앞의 둘에서 `derived`) | | |
-| 관계 | `support_people`, `monthly_meetups`, `dating_status`(`single`·`dating`·`married`), `lonely_often`(`yes`·`no`) | | `monthly_meetups`는 SP14 이후 일정에서 `derived` 후보(11장) |
+| 관계 | `support_people`, `monthly_meetups`, `dating_status`(`single`·`dating`·`married`), `lonely_often`(`yes`·`no`) | | |
 | 자격 | `cert`(값마다 한 줄: `jlpt_n1`, `toeic:825`, `engineer_info`, `aice_associate` 등) | | |
 | 학벌 | `education_tier`(`hs`·`college2`·`local_private`·`seoul_mid_low`·`seoul_mid_high`·`top`), `double_major`(`yes`·`no`) | | |
 | 집안 | `family_net_worth_krw`, `family_support`(`none`·`receive`·`support`) | | |
@@ -158,7 +160,7 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 - `ui_block` 종류 `measure_confirm`: `{rows: [{metric, label, value, unit, measured_on, editable: true}], source_ref}`. 카드는 SP9c 퀵 칩 카드와 같은 모양을 쓴다.
 - `/actions save_measures {rows, source_ref}`: `confirm` 등급. 응답 확인 문구 "✓ 측정값 {n}개 저장 · {영역} 위치 {이전}→{새}". 되돌리기 24시간(그 줄들에 `deleted_at`).
 - `/actions delete_measure {id}`: 상세 화면에서 밀어서 지우기. 되돌리기 24시간.
-- 감사 기록(`actions_log`)에는 지표 이름과 개수만 남기고 값은 남기지 않는다(로그에 연봉·자산이 남지 않게).
+- 감사 기록(`activity` 표, `risk` = `confirm`)에는 지표 이름과 개수만 남기고 값은 남기지 않는다(로그에 연봉·자산이 남지 않게).
 
 ## 7. 기준표
 
@@ -167,7 +169,7 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 - `src/my_planner/standing/benchmarks/2026.toml`. 맨 위에 `version = "2026.1"`, `effective_from = "2026-11-01"`.
 - 표마다 `source`, `year`, `url`, `estimate = true|false`. 프로젝트 폴더 `social-level/benchmarks/` 세 문서의 값을 옮긴다. 값의 출처 문서를 각 표 위 주석으로 단다.
 - 들어가는 표: 키 평균·SD(사이즈코리아 8차), 체성분(FFMI·체지방 구간), 건강 구간표, 국민체력100 등급 컷, 연봉 백분위 (a) 34~35세 남성·(b) 수도권 AI/ML 6년차, 30대 가구 순자산 분위, 저축률 기준, 커리어 루브릭 Raw → 백분위, 학력 구간, 가구 순자산 분포(집안), 지지망·교류·연애 구간, 자격 기본점, 시장 가중치 두 벌.
-- 나이 구간은 5세 단위 키(`30_34`, `35_39`)로 둔다. 지금 2026년 표가 34~35세 한 구간만 있는 곳(연봉 (a))은 `35_39`에 같은 값을 넣고 `estimate = true`로 둔다.
+- 나이 구간은 5세 단위 키(`30_34`, `35_39`)로 둔다. 지금 2026년 표가 34~35세 한 구간만 있는 곳(연봉 (a))은 `30_34`와 `35_39` 둘 다에 같은 값을 넣고 `estimate = true`로 둔다. 그래서 2026년 안에서는 34세 → 35세가 되어도 세상 변화가 생기지 않는다.
 
 ### 7.2 버전과 갱신
 
@@ -190,7 +192,7 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | 축 | 규칙 요약 | 빈칸이면 |
 |---|---|---|
 | 키 | Φ((키 − 평균)/SD) × 100 | 점수 없음 |
-| 외모 | 몸 70%(허리 30·체지방 25·FFMI 25·BMI 10·관리 10의 가중 평균) + 얼굴·관리 30%(얼굴 15·관리 15) | 빠진 하위 항목은 50으로 가정하고 `assumed`에 적는다. 몸 하위 항목이 하나도 없으면 점수 없음 |
+| 외모 | 몸 70%(허리 30·체지방 28·FFMI 30·BMI 12의 가중 평균) + 얼굴·관리 30%(`face_rating` 15·`grooming_rating` 15). 관리는 한 번만 센다(리포트 v2의 몸 쪽 관리 10을 얼굴·관리 쪽으로 옮김) | 빠진 하위 항목은 50으로 가정하고 `assumed`에 적는다. 몸 하위 항목이 하나도 없으면 점수 없음 |
 | 건강 | 심폐 20·근력 15·근지구력 10·혈압 15·혈당 10·LDL 10·간 5·흡연 5·음주 5·운동 습관 5 | 검진 수치 없이 `checkup_flag='normal'`이면 혈압·혈당·LDL·간을 각 100으로, `confidence`를 한 단계 내린다. 체력 실측이 없으면 `run_6k_min`·1RM으로 등급을 추정(`estimate`) |
 | 직업 | 0.6 × 루브릭 백분위 + 0.4 × 연봉 백분위. 루브릭 = 회사 + 직무 + 연차·레벨 + 외부활동 + 리크루터 + 오퍼 보너스 | 리크루터·오퍼·외부활동 빈칸은 0으로 두되 범위 상단을 "있다면" 값으로 넓힌다(리포트 v2의 27~36) |
 | 경제력 | 0.40 × 연봉 백분위 + 0.45 × 순자산 백분위 + 0.15 × 저축률 점수 | 저축률 빈칸은 25로 가정(재무 전문가 소견) |
@@ -201,11 +203,25 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 
 - **오차 범위**: 축마다 `low`/`high`. 기본 ±5, `estimate` 기준표를 쓰면 ±8, `assumed`가 있으면 그 하위 항목이 0~100일 때의 범위로 넓힌다.
 - **신뢰도**: `high` = 빈칸 없고 기준표가 공식, `mid` = 빈칸 1개 이하 또는 추정 기준표, `low` = 빈칸 2개 이상 또는 `face_rating`만으로 결정되는 항목이 있음.
-- 계산 결과는 리포트 v2의 점수와 ±1 안이어야 한다(테스트 T3, 2026-11-01 가져오기 자료로).
+- 자동 테스트(T3)는 값을 바꾼 고정 자료(`tests/fixtures/standing_sample.json`)와 그 자료로 손계산한 기대값 파일을 쓴다. 기대값은 구현 계획에서 이 장의 규칙으로 계산해 함께 커밋한다. 실제 자료와 리포트 v2의 비교는 수용 기준 8의 노트북 확인이다.
 
 ### 8.3 시장 점수
 
-- `시장 = Σ(축 점수 × 가중치) / 100`, 가중치는 기준표의 두 벌(결혼 20·18·13·10·10·9·7·7·6, 커리어 30·18·12·12·8·7·5·5·3).
+- `시장 = Σ(축 점수 × 가중치) / 100`. 가중치(기준표에 같은 값):
+
+| 축 | 결혼·연애 | 이직·커리어 |
+|---|---|---|
+| career | 20 | 30 |
+| money | 18 | 5 |
+| looks | 13 | 7 |
+| height | 10 | 3 |
+| family | 10 | 5 |
+| education | 9 | 12 |
+| health | 7 | 8 |
+| relations | 7 | 12 |
+| intellect | 6 | 18 |
+| 합 | 100 | 100 |
+
 - 점수 없는 축은 빼고 남은 가중치로 다시 나눈다. 빠진 축은 화면에 "빠짐"으로 적는다.
 - 결혼시장 점수에는 늘 "나이·성격·가치관이 빠진 서류 스펙 점수"를 붙인다.
 
@@ -226,9 +242,13 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 
 | 표시 | 조건 |
 |---|---|
-| "▲n 내 변화" | `Δm ≥ 2` |
-| "▼n 내 변화" + 디버프 + 회복 퀘스트 | `Δm ≤ −3` (작은 흔들림은 무시. 심리 전문가 "±5 안은 해석하지 않음"에 맞춰 경계를 둔다. 15장 D4) |
-| "▼n 세상 변화" (회색, 디버프 없음) | `Δw ≤ −2` |
+| "▲n 내 변화" | `Δm ≥ 5` |
+| "▼n 내 변화" + 디버프 + 회복 퀘스트 | `Δm ≤ −5` |
+| "▼n 세상 변화" (회색, 디버프 없음) | `Δw ≤ −5` |
+
+경계 ±5는 기본 오차 범위(8.2)와 같다. 오차 안의 흔들림은 표시하지 않는다(심리 전문가 "±5 안은 해석하지 않음", 15장 D4).
+
+- **영역 단위**: 영역 줄의 변화는 영역 위치(5.1의 가중 합)에 같은 식을 쓴다. 건강 영역이면 `S`가 `0.6 × health + 0.4 × looks`다. 축 단위 변화는 상세 화면에서만 보인다.
 | 아무 표시 없음 | 그 밖 |
 
 - 둘 다 해당하면 두 줄로 보인다.
@@ -283,13 +303,13 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | 컨디션 | HP | — | — |
 | 몸 기록(걸음·잠) | 건강 활동 보너스 | 객관적 기준과 비교 없음 | **SP13**: 건강 축의 운동 습관 `derived`, 체중 `derived` |
 | 운동 기록 | 경험치 X13, 건강 보너스 | 근력 수준 비교 없음 | **SP13**: 1RM 측정값으로 근력 등급 추정 |
-| 일정 | 없음 | 저녁 일정 수(관계), 일정 밀도(삶의 질)가 안 보임 | SP14 사건 기록에서 `monthly_meetups` 후보를 계산하고 SP15가 근거로 쓴다. 상태창 표시는 하지 않음(15장 D6) |
+| 일정 | 없음 | 저녁 일정 수(관계), 일정 밀도(삶의 질)가 안 보임 | SP15 관계 전문가와 내 속도 표가 일정(시각·종류)을 근거로 읽는다. 자동 측정값·상태창 표시는 하지 않음(15장 D6) |
 | 메모 | 없음 | 메모에 적은 사정이 반영 안 됨 | SP14(사건 기록) → SP15(근거 "내가 한 말") |
 | 이룬 순간 | 상태창 목록 | — | — |
 | 인생 곡선 사건 | 칭호 | — | — |
 | 분기 회고 영역 점수 | 스탯(만족) | 객관적 위치 없음 | **SP13**: 영역 줄 두 숫자 |
 | 사다리 점수 | 대시보드 곡선 | 상태창엔 없음 | 그대로(곡선이 맡음) |
-| 기억 카드 | 없음 | 내 말·규칙이 처방에 안 쓰임 | SP15 근거 "내가 한 말" |
+| 기억 카드 | 아직 없음(SP2 기억 계층이 만들어지지 않음) | 내 말·규칙이 처방에 안 쓰임 | SP15의 "내가 한 말" 표(`owner_statements`)가 먼저 맡고, SP2가 생기면 옮긴다 |
 | 인바디·검진·이력서·자산·사진 (새 자료) | 없음 | 전부 | **SP13**: 측정값과 확인 카드 |
 | 키·학벌·집안 (새 자료) | 없음 | 전부 | **SP13**: 타고난 스탯 |
 
@@ -302,9 +322,9 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | `GET /standing` | 앱 기기, API 토큰 | `{cohorts: {national, peer}, axes: [AxisScore…], areas: {career: {score, peer_score, drift}, …}, innate: […], markets: {marriage: {national, peer}, career: {…}}, bench: {version, effective_from}}` |
 | `GET /standing/measures` | 같음 | 측정값 목록(지운 것 제외), 지표마다 최신과 지난 값 |
 | `POST /actions` `save_measures`, `delete_measure` | 앱 | 6.5 |
-| `GET /status` | 모두 | 앱 기기와 API 토큰에는 `areas[*].standing`(점수, peer, drift, confidence)과 `innate`를 더한다. 대시보드 기기에는 더하지 않는다 |
+| `GET /status` | 모두 | 앱 기기와 API 토큰에는 `stats[*].standing`(점수, peer, drift, reliability)과 최상위 `innate`를 더한다. 대시보드 기기에는 더하지 않는다 |
 
-- "대시보드 기기"는 `devices.client`로 가린다(ADR 0018). 구현 계획에서 `client` 값 목록을 확인하고, 대시보드 값이면 `/standing*`에 `403 forbidden`("이 화면에서는 볼 수 없어요.").
+- "대시보드 기기"는 `devices.client = 'dashboard'`인 기기 토큰이다(ADR 0018, `019_devices.sql`의 CHECK `('app','dashboard')`). 그 토큰이면 `/standing*`에 `403 forbidden`("이 화면에서는 볼 수 없어요."). API 토큰과 `client = 'app'`은 통과.
 - 응답과 로그에 원본 사진 경로를 넣지 않는다. 로그에는 연봉·자산·체성분 값을 남기지 않는다(지표 이름과 개수만).
 
 ## 13. 운영
@@ -324,9 +344,9 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | T5 | 하락 이유: 기준표만 바꾸면 `Δm = 0`, 입력만 바꾸면 `Δw = 0`, 둘 다 바꾸면 합이 맞다. 나이 구간 이동은 세상 변화다 |
 | T6 | `Δm ≤ −3`일 때만 위치 하락 디버프. 고정 축은 표시 없음 |
 | T7 | 대시보드 기기 토큰으로 `/standing` → 403, `/status`에 `standing` 없음. 앱 기기에는 있음 |
-| T8 | `save_measures`는 `confirm` 등급이고 되돌리기 24시간. `actions_log`에 값이 없다 |
+| T8 | `save_measures`는 `confirm` 등급이고 되돌리기 24시간. `activity` 표에 값이 없다 |
 | T9 | `standing import`를 두 번 돌려도 줄 수가 같다 |
-| T10 | X14는 분기마다 한 번, 지워도 남는다 |
+| T10 | X14는 분기마다 한 번(가져오기 포함), 지워도 남는다. 마이그레이션 022 뒤 원장 CHECK가 `standing`을 받는다 |
 | T11 | 금지어 검사가 새 문구(앱, 지시문)에 돈다 |
 | T12 | 앱: 영역 줄 두 숫자, 타고난 스탯, 상세 화면, 확인 카드 고치기·빼기·저장 |
 
@@ -337,6 +357,6 @@ SP15가 생기면 사진·PDF 길의 상대가 비서에서 라이프 매니저�
 | D1 | 측정값을 말로 줄 때도 확인 카드를 거칠까 | 거친다(6.3). 숫자가 점수를 움직여서 |
 | D2 | 삶의 질의 위치 | 비워 둔다. 생활 지표만 상세 화면에 |
 | D3 | 결혼시장 문턱 규칙(외모·직업 20 미만이면 상한 60) | 쓰지 않는다. 근거가 약하고(추정) 벌처럼 읽힌다 |
-| D4 | 위치 하락 디버프 경계 | 내 변화 −3 이하 |
+| D4 | 위치 하락 디버프 경계 | 내 변화 −5 이하(오차 범위와 같게) |
 | D5 | 화면 문구 | "위치 59". "상위 41%"나 "100명 중"은 쓰지 않는다(비교를 부추기지 않게) |
 | D6 | 일정에서 만남 횟수를 자동으로 셀까 | SP13에서는 하지 않는다. SP15 라이프 매니저가 근거로만 쓴다 |

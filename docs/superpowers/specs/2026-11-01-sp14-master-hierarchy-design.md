@@ -1,6 +1,6 @@
 # SP14 마스터 구조 — 사건 기록과 받은편지함 상세 설계 (추가 기능)
 
-- 상태: 초안 v1 (Dahun 검토 전)
+- 상태: 초안 v1.1 (문서 리뷰 반영, Dahun 검토 전)
 - 작성일: 2026-11-01
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md) (하루 끝 작업), [SP9 앱 탭·대화](2026-10-25-sp9-app-tabs-memo-schedule-design.md) (대화 = 세션, 요약), [SP12 운동메이트](2026-10-31-sp12-workout-mate-design.md)
 - 함께 읽기: [SP13 객관적 위치](2026-11-01-sp13-objective-standing-design.md) (먼저 만든다), [SP15 라이프 매니저](2026-11-01-sp15-life-manager-panel-design.md) (이 구조 위에 얹는다)
@@ -26,7 +26,7 @@ Dahun은 가장 위에 **마스터(총괄비서)**가 있고, 그 아래 운동�
 4. 다음 날 아침 브리핑에 마스터가 관찰 한 줄 가운데 **많아야 하나**를 골라 "운동메이트: …" 또는 "라이프 매니저: …"로 붙인다. 아래층 상대는 푸시, 체크인, 브리핑을 직접 보내지 않는다.
 5. 앱에서 운동메이트 대화를 열면, 그 상대가 받은편지함의 안 읽은 사건을 먼저 읽고 첫 답에 반영한다(즉시 판단). 열기만 하고 말을 걸지 않으면 두뇌를 부르지 않는다.
 6. 아래층 상대는 원문 기록을 직접 읽는다. 마스터가 요약해 내려보내지 않는다. 받은편지함에는 "무엇이 생겼나"(종류, id, 영역)만 있다.
-7. 하루 두뇌 호출 상한(`limits.daily_brain_calls`) 안에서 하루 끝 판단은 상대마다 하루 1회, 합쳐서 하루 2회(SP15 뒤 3회)를 넘지 않는다. 사용자 몫이 모자라면 건너뛰고 다음 날 따라잡는다(ADR 0004).
+7. 하루 두뇌 호출 상한(`limits.daily_brain_calls`) 안에서 하루 끝 판단은 상대마다 하루 1회, 합쳐서 하루 1회(SP14만 있을 때, 운동메이트만), SP15 뒤 하루 2회를 넘지 않는다. 사용자 몫이 모자라면 건너뛰고 다음 날 따라잡는다(ADR 0004).
 8. 메모 본문, 할 일 제목, 일정 제목은 사건 기록과 로그에 남지 않는다(id만).
 9. 13장의 자동 테스트가 모두 통과한다.
 
@@ -69,7 +69,9 @@ CREATE TABLE agent_events (
   kind        TEXT NOT NULL,           -- 5.2 목록. 코드가 목록 밖 값을 거절
   ref         TEXT NOT NULL,           -- 'task:12', 'event:7', 'memo:3', 'measure:40' …
   area        TEXT,                    -- 알 수 있으면 영역 하나(할 일·습관·측정값). 메모·일정은 NULL
-  origin      TEXT NOT NULL CHECK (origin IN ('app','telegram','brain','shortcut','job','import'))
+  origin      TEXT NOT NULL CHECK (origin IN ('app','telegram','scheduler','brain','import'))
+                                       -- activity.channel 세 값 + 'brain'(두뇌 도구가 쓴 것) + 'import'(SP13 가져오기).
+                                       -- 단축어(SP9)는 앱 API를 거치므로 'app'
 );
 CREATE INDEX agent_events_day ON agent_events(day);
 
@@ -98,9 +100,9 @@ CREATE TABLE agent_notes (
 
 ### 5.2 사건 종류 (`kind`)
 
-`task_done`, `task_postponed`(날짜를 뒤로 미룸), `task_added`, `task_dropped`, `event_added`, `event_changed`, `event_removed`, `memo_saved`, `habit_checked`, `condition_logged`, `body_logged`, `workout_logged`, `measure_saved`, `moment_saved`, `review_answered`, `draft_accepted`, `draft_dismissed`(SP15), `handoff`(5.4).
+`task_done`, `task_postponed`(날짜를 뒤로 미룸), `task_added`, `task_dropped`, `event_added`, `event_changed`, `event_removed`, `memo_saved`, `habit_checked`, `condition_logged`, `body_logged`, `workout_logged`, `measure_saved`, `moment_saved`, `review_answered`, `suggestion_accepted`, `suggestion_dismissed`(SP15 제안 카드), `handoff`(5.4).
 
-- 쓰는 자리: 각 저장소의 쓰기 함수 안, 같은 트랜잭션(`tests/test_write_paths.py`가 감시하는 쓰기 경로에 `agent_events` 쓰기를 더한다). 되돌리기는 사건을 지우지 않고 반대 사건을 남기지도 않는다(받은 쪽이 원문을 읽으면 되돌린 상태가 보인다).
+- 쓰는 자리: 각 저장소의 쓰기 함수 안, 같은 트랜잭션. 지금 `tests/test_write_paths.py`는 `tools.workout`(SP12)을 감시하지 않는다. 플랜은 이 테스트에 `tools.workout`과 새 표(`agent_events`, `agent_inbox`, `agent_notes`, SP13 `standing_*`)를 먼저 더하고 시작한다. 되돌리기는 사건을 지우지 않고 반대 사건을 남기지도 않는다(받은 쪽이 원문을 읽으면 되돌린 상태가 보인다).
 - 같은 `kind`·`ref`가 1분 안에 다시 오면 하나로 친다(앱의 빠른 토글).
 
 ### 5.3 라우팅 규칙 (코드, `harness/routing.py`)
@@ -111,7 +113,7 @@ CREATE TABLE agent_notes (
 | `event_added`, `event_changed`, `event_removed` | 받음(운동할 시간 판단) | 받음 |
 | `measure_saved` (건강·외모 지표) | 받음 | 받음 |
 | `measure_saved` (그 밖) | — | 받음 |
-| `task_*`, `habit_checked`, `memo_saved`, `moment_saved`, `review_answered`, `draft_*` | — | 받음 |
+| `task_*`, `habit_checked`, `memo_saved`, `moment_saved`, `review_answered`, `suggestion_*` | — | 받음 |
 | `handoff` | 받는 쪽만 | 받는 쪽만 |
 
 - 마스터(비서)는 받은편지함이 없다. 마스터는 지금처럼 모든 표를 읽을 수 있고, 아침 브리핑을 만들 때 관찰 한 줄을 읽는다.
@@ -119,23 +121,24 @@ CREATE TABLE agent_notes (
 
 ### 5.4 넘기기 (`handoff`)
 
-아래층 상대가 다른 아래층 상대에게 알릴 것이 있을 때(예: 라이프 매니저의 건강 전문가가 "체지방 목표 15%"를 정함 → 운동메이트가 루틴에 반영) 도구 `hand_off {to, text≤120, refs}`를 부른다. `agent_notes`에 쓰고(`priority` 3, 아침 브리핑에 안 붙음), 받는 쪽 받은편지함에 `handoff` 사건을 넣는다. 받는 쪽은 다음 판단 때 읽는다. 하루 상대마다 2회 상한.
+아래층 상대가 다른 아래층 상대에게 알릴 것이 있을 때(예: 라이프 매니저의 건강 전문가가 "체지방 목표 15%"를 정함 → 운동메이트가 루틴에 반영) 도구 `hand_off {to, text≤120, refs}`를 부른다. `agent_notes`에 쓰고(`priority` 3, 아침 브리핑에 안 붙음), 받는 쪽 받은편지함에 `handoff` 사건을 넣는다. 받는 쪽은 다음 판단 때 읽는다. 하루 상대마다 2회 상한. `hand_off`는 하루 끝 판단에서만 쓸 수 있다(즉시 판단 대화에서는 도구 목록에 없다).
 
 ### 5.5 SP15 전후
 
-- SP14만 있을 때: 하루 끝 판단은 운동메이트만 돈다. `manager` 받은편지함은 쌓이고, SP15를 켜는 날 최근 14일만 남기고 본 것으로 표시한다(첫 판단이 90일치를 읽지 않게).
+- SP14만 있을 때: 하루 끝 판단은 운동메이트만 돈다. `manager` 받은편지함은 쌓이고, SP15를 켜는 날 최근 7일만 남기고 본 것으로 표시한다(6.1 따라잡기와 같은 7일, 첫 판단이 90일치를 읽지 않게).
 
 ## 6. 하루 끝 판단
 
 ### 6.1 순서와 시각
 
 - 디스패처의 하루 끝 작업 순서: 이룬 순간(SP8) → 하루 끝 판단(운동메이트 → 라이프 매니저) → 정리(보관 기한).
-- 따라잡기: 노트북이 꺼져 있던 날들은 묶어서 한 번만 판단한다(날마다 따로 부르지 않는다). 최대 7일치 받은편지함.
+- 따라잡기: 노트북이 꺼져 있던 날들은 묶어서 한 번만 판단한다(날마다 따로 부르지 않는다). 최대 7일치 받은편지함. 그보다 오래된 안 읽은 줄은 본 것으로 표시한다.
 
 ### 6.2 두뇌 입력
 
 - 그 상대의 지시문(`mate.md`, SP15의 `manager.md`) 뒤에 "하루 끝 판단" 덧붙임 블록(`agent_dayend.md`): 안 읽은 사건 목록(종류, id, 영역, 날짜), 지난 관찰 한 줄 3개, 도구는 그 상대의 읽기 도구 + `write_note` + `hand_off`(쓰기 도구 없음).
-- 결과: `write_note {text, priority, refs}` 0~2회. 관찰이 없으면 아무것도 쓰지 않는다(괜찮다).
+- 운동메이트의 읽기 도구에 측정값 읽기(`get_measures`, 건강·외모 지표만, SP13)를 더한다. ADR 0019의 `MATE_TOOLS` 목록이 바뀌므로 그 ADR 끝에 "SP14에서 측정값 읽기 추가, 하루 끝 판단 때만 `write_note`·`hand_off`" 한 줄을 붙인다.
+- 결과: `write_note {text, priority, refs}` 0~2회. 세 번째 호출은 도구가 거절한다(코드 상한). 관찰이 없으면 아무것도 쓰지 않는다(괜찮다).
 - 관찰 문구 규칙: 한 줄, 120자 이하, 판단과 근거가 있다("이번 주 저녁 일정 5개, 운동 가능한 날은 토요일뿐이에요."). 금지어 검사(SP5 10장) 대상. 비율(%)·연속 기록·"못 했다"류 표현 금지(ADR 0006).
 - 끝나면 그 상대의 받은편지함 줄을 `seen_at`으로 표시한다. 두뇌 실패면 표시하지 않고 다음 날 다시(최대 2회, SP8 순간과 같은 규칙).
 
@@ -146,14 +149,14 @@ CREATE TABLE agent_notes (
 
 ## 7. 즉시 판단 (직접 대화할 때)
 
-- 앱에서 운동메이트(또는 SP15 라이프 매니저) 대화에 메시지를 보내면, 그 대화의 첫 두뇌 호출 앞머리에 "새로 생긴 것" 블록(안 읽은 사건 목록, 많아야 30개)을 붙이고, 호출이 끝나면 `seen_at`을 채운다.
+- 앱에서 운동메이트(또는 SP15 라이프 매니저) 대화에 메시지를 보낼 때마다, 그 호출 앞머리에 "새로 생긴 것" 블록(그때까지 안 읽은 사건, 많아야 30개)을 붙이고, 호출이 성공하면 붙인 줄의 `seen_at`을 채운다. 안 읽은 것이 없으면 블록을 붙이지 않는다(대화 중간에 생긴 사건도 다음 메시지에 붙는다).
 - 대화 시트를 열기만 하면 두뇌를 부르지 않는다. 앱은 `GET /agents/{agent}/inbox/count`로 "새로 본 것 {n}개" 한 줄만 머리에 보인다(누르면 아무 일 없음, 정보만).
 
 ## 8. 마스터의 아침 브리핑
 
 - 아침 브리핑 입력(SP1 `morning_brief.md`)에 "아래층 관찰" 블록: 어제 하루 끝 판단의 `agent_notes` 가운데 `shown_at`이 비어 있고 `priority` 1~2인 것, 우선순위 오름차순.
-- 마스터는 그 가운데 **많아야 하나**를 골라 "운동메이트: …" / "라이프 매니저: …" 한 줄로 붙인다. 고른 줄은 `shown_at`을 채운다. 고르지 않은 줄은 이틀 뒤 버린다(쌓이지 않게).
-- `priority` 1(건강·돈 위험)은 반드시 붙인다. 1이 둘이면 둘 다 붙인다(이 경우만 두 줄).
+- 마스터는 그 가운데 **많아야 하나**를 골라 "운동메이트: …" / "라이프 매니저: …" 한 줄로 붙인다. 고른 줄은 `shown_at`을 채운다. 고르지 않은 줄은 지우지 않고, 이틀이 지나면 브리핑 후보에서만 빠진다("비서 메모" 7일 목록에는 남는다).
+- `priority` 1(건강·돈 위험)은 반드시 붙인다. 1이 둘이면 둘 다 붙인다(이 경우만 두 줄). 이 규칙은 두뇌에 맡기지 않는다: 하네스 코드가 브리핑 답 끝에 `priority` 1 줄을 그대로 덧붙이고(두뇌가 이미 썼으면 덧붙이지 않음), 두뇌는 `priority` 2 가운데 하나만 고른다.
 - 하루 비서가 먼저 보내는 말 상한(3회)은 그대로다. 관찰 한 줄은 아침 브리핑 안에 들어가므로 따로 세지 않는다.
 
 ## 9. ADR 0019와 무엇이 바뀌나
@@ -180,7 +183,7 @@ CREATE TABLE agent_notes (
 ## 12. 운영과 로그
 
 - 로그: 하루 끝 판단마다 `agent_dayend` 한 줄(상대, 사건 수, 관찰 수, 결과). 본문 없음.
-- 비용: 하루 두뇌 호출 +1(SP15 뒤 +2). 따라잡기 묶음으로 노트북이 며칠 꺼져 있어도 같다.
+- 비용: 하루 두뇌 호출 +1(SP15 뒤 +2, 1장 7번과 같음). 따라잡기 묶음으로 노트북이 며칠 꺼져 있어도 같다.
 - 실패: 판단이 2회 실패하면 그 받은편지함을 본 것으로 표시하고 `agent_dayend_failed` 한 줄. 다음 날 쌓인 것부터 다시.
 
 ## 13. 테스트
@@ -191,13 +194,16 @@ CREATE TABLE agent_notes (
 | T2 | 사건에 제목·본문이 없다(`ref`만). 로그에도 없다 |
 | T3 | 라우팅 표대로 받은편지함에 들어간다 |
 | T4 | 1분 안 같은 `kind`·`ref`는 하나 |
-| T5 | 하루 끝 판단은 상대마다 하루 1회, 사용자 몫이 모자라면 건너뛴다. 따라잡기는 묶어서 1회 |
+| T5 | 하루 끝 판단은 상대마다 하루 1회(SP14만: 합계 1회), 사용자 몫이 모자라면 건너뛴다. 따라잡기는 묶어서 1회, 7일보다 오래된 줄은 본 것으로 |
 | T6 | 판단이 쓰기 도구를 받지 않는다(도구 목록 테스트) |
-| T7 | 아침 브리핑에 관찰 많아야 하나, `priority` 1은 반드시, 둘이면 둘 |
-| T8 | 즉시 판단: 메시지를 보낼 때만 앞머리에 붙고 `seen_at`이 채워진다. 시트만 열면 호출 없음 |
+| T7 | 아침 브리핑에 관찰 많아야 하나, `priority` 1은 하네스가 덧붙임(두뇌 답을 가짜로 바꿔도 붙는다), 둘이면 둘. 고르지 않은 줄은 지워지지 않는다 |
+| T8 | 즉시 판단: 메시지를 보낼 때마다 안 읽은 것만 앞머리에 붙고 `seen_at`이 채워진다. 호출 실패면 안 채워진다. 시트만 열면 호출 없음 |
 | T9 | 보관: 90일·30일·1년 |
 | T10 | `hand_off` 하루 2회 상한, 받는 쪽 받은편지함에 들어감 |
 | T11 | 금지어 검사가 `agent_dayend.md`와 관찰 문구에 돈다 |
+| T12 | `write_note` 세 번째 호출은 거절, 0개도 정상(1장 3번) |
+| T13 | 아래층 상대가 푸시·체크인·브리핑을 보내는 경로가 없다: 알림 발송 함수의 호출자가 비서 작업뿐(1장 4번) |
+| T14 | `origin`이 CHECK 밖 값이면 거절, 단축어 경로는 `app` |
 
 ## 14. 만드는 순서
 
