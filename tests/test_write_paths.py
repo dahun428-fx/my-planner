@@ -259,6 +259,11 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     # SP14: 사건은 쓰기 경로마다 같은 트랜잭션에서 `tools.activity.record_agent_event`가
     assert ("agent_events", "my_planner.tools.activity", "my_planner.api.actions", True) in rec.tool_calls
     assert ("agent_inbox", "my_planner.tools.activity") in rec.seen
+    # SP14 이야기(`test_sp14_master_story`): 관찰은 두뇌 갈래의 `tools.agents`, 보인 표시(`shown_at`)는 디스패처,
+    # 읽음 표시와 그날 키는 하루 끝 작업
+    assert ("agent_notes", "my_planner.tools.agents", DISPATCHER, True) in rec.tool_calls
+    assert ("agent_notes", DISPATCHER) in rec.seen
+    assert ("agent_inbox", DAYEND_JOB) in rec.seen and ("app_state", DAYEND_JOB) in rec.seen
 
 
 async def test_sp8_write_paths(tmp_path, monkeypatch):

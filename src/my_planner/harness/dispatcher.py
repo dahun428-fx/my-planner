@@ -35,6 +35,7 @@ from my_planner.harness import dayend as dayend_job
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.brief_notes import brief_block, settle_brief
 from my_planner.harness.chat_photos import message_text, photo_body, photo_content
 from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
@@ -474,6 +475,9 @@ class Dispatcher:
         self._stopping = False
         self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
         self._run_questions: dict[int, int] = {}  # 회차 id → 그 회고에 실은 열린 시드 질문 id(보내면 `asked`)
+        # 회차 id → 아침 브리핑에 실은 관찰 id(보내면 `shown_at`, SP14 8장). 메모리에만: 보내기 전에 다시 켜지면
+        # 표시되지 않고 다음 브리핑 후보로 남는다
+        self._brief_shown: dict[int, tuple[int, ...]] = {}
         # 요약 큐(SP9 7.2): 큐에 든 대화, 이 프로세스에서 이미 해 본 대화(tick마다 다시 넣지 않는다. 하루 한 번 작업이
         # 비우고 최근 7일을 다시 넣는다). 메모리에만 둔다: 재시작 뒤 첫 tick이 남은 것을 다시 넣는다
         self._summary_queued: set[int] = set()
@@ -1956,6 +1960,11 @@ class Dispatcher:
         if result.session_id:
             self.convs.set_session(conv.id, result.session_id)
         text = MAX_TURNS_REPLY if partial else result.text
+        if (repo := self._brief_repo(run, merged)) is not None:
+            # 관찰 줄 정리(8장): 확인 문구를 붙이기 전에. 표시는 보낸 뒤(`_run_delivered`)
+            settled = settle_brief(text, repo.brief_candidates(self._today()))
+            text = settled.text
+            self._brief_shown[run.id] = settled.shown_ids
         confirmations = self._confirmations(run_ctx)
         if confirmations:
             text = f"{text}\n\n{confirmations}"
@@ -2040,6 +2049,7 @@ class Dispatcher:
                 include_habits=any(r.loop is LoopKey.evening_checkin for r in (run, *merged)),  # 오늘 블록(5.7). 주간 블록은 아래
                 habit_day=habit_date,
             ),
+            self._brief_block(run, merged),
             self._habit_week_block(run, merged),
             self._review_records_blocks(run, merged),
             _condition_buttons_note(ask),
@@ -2049,6 +2059,17 @@ class Dispatcher:
             f"## 이번에 물을 질문\n{question[1]}" if question is not None else "",
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
+
+    def _brief_repo(self, run: Run, merged: list[Run]) -> AgentsRepo | None:
+        """아침 브리핑 회차(합친 회차 포함)이고 관찰 저장소가 있으면 그 저장소(SP14 8장). 다른 회차에는 관찰이 없다."""
+        if not any(r.loop is LoopKey.morning_brief for r in (run, *merged)):
+            return None
+        return self.tools.agents if self.tools is not None else None
+
+    def _brief_block(self, run: Run, merged: list[Run]) -> str:
+        """아침 브리핑에만 `## 아래층 관찰`(후보가 없으면 빈 글)."""
+        repo = self._brief_repo(run, merged)
+        return brief_block(repo.brief_candidates(self._today())) if repo is not None else ""
 
     def _habit_week_block(self, run: Run, merged: list[Run]) -> str:
         """주간 회고 회차에만 `## 이번 주 습관`(SP7 5.7)."""
@@ -2224,6 +2245,7 @@ class Dispatcher:
                 self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names, outcome=outcome)
             elif not outcome.sent:
                 self._record_not_sent(run, outcome)
+                self._brief_shown.pop(run.id, None)  # 재전송은 한 번뿐: 표시하지 않고 다음 브리핑 후보로
 
     def _release_carry(self, runs: Iterable[Run]) -> None:
         """넘겨 받은 회고가 끝났으면(보냄, 건너뜀) `carry_review_run_id`를 지운다. 러너는 합칠 때 지우지 않는다."""
@@ -2268,6 +2290,7 @@ class Dispatcher:
         except Exception:
             log.exception("run_touch_error", extra={"run_id": run.id})
         self._save_review(run, merged, text)
+        self._mark_brief_shown(run)
         question = self._run_questions.pop(run.id, None)
         if question is not None and self.tools is not None:
             try:
@@ -2275,6 +2298,18 @@ class Dispatcher:
             except Exception as e:  # noqa: BLE001 - 질문 표시가 안 되면 다음 월말 회고가 다시 싣는다
                 log.warning("curve_question_mark_error", extra={"error_type": type(e).__name__})
         log.info("run_done", extra={"run_id": run.id, "loop": run.loop.value, "conversation_id": conv.id})
+
+    def _mark_brief_shown(self, run: Run) -> None:
+        """보낸 아침 브리핑에 실은 관찰을 보인 것으로(8장). 안 되면 다음 브리핑 후보로 남는다."""
+        ids = self._brief_shown.pop(run.id, ())
+        if not ids or self.tools is None or self.tools.agents is None:
+            return
+        repo = self.tools.agents
+        try:
+            with transaction(repo.conn):
+                repo.mark_shown(ids, self.clock.now())
+        except Exception as e:  # noqa: BLE001 - 종류만 남긴다
+            log.warning("brief_notes_mark_error", extra={"run_id": run.id, "error_type": type(e).__name__})
 
     def _save_review(self, run: Run, merged: list[Run], text: str) -> None:
         """회고가 primary이거나 merged에 있으면 보낸 답(가린 뒤)을 그 주의 파일에 쓴다.

@@ -721,3 +721,42 @@ async def test_measures_card_then_save(tmp_path):
     assert status == 200 and body["confirmation"] == "✓ 측정값 30개 저장" and body["xp"]["gained"] == 20
     assert saved == 30 and snaps > 0
     assert xp["xp_total"] == 20
+
+
+async def test_sp14_master_story(tmp_path):
+    """SP14 1장 1·3·4: 앱에서 할 일 추가·완료, 메이트와 운동 기록, 일정 하나 → 다음 날 04:01 하루 끝 판단(메이트, 관찰
+    하나) → 아침 브리핑 끝에 그 관찰 한 줄. 아래층은 먼저 말하지 않는다. 글은 모두 꾸며 낸 것이다."""
+    note = {"text": "가짜 관찰 한 줄이에요.", "priority": 1, "refs": ["workout:1"]}
+    script = [
+        FakeTurn([("log_workout", {"title": "스쿼트 5x5"})], "기록했어요."),
+        FakeTurn([("write_note", note)], ""),
+        FakeTurn([], "좋은 아침이에요."),
+    ]
+    async with BeEnv.start(tmp_path, start=kst(2026, 11, 1, 13, 0), script=script, dayend=True) as env:
+        env.parts.runner.checkins = False  # 일요일 저녁 회차(체크인·주간 회고) 없이 04:01 하루 한 번 작업만
+        _, added = await env.action("add_task", {"title": "꾸민 할 일", "areas": ["health"]})
+        status, _ = await env.action("complete_task", {"id": added["result"]["id"]})
+        assert status == 200
+        await env.chat("스쿼트 60kg 5x5 했어", agent="mate")
+        status, _ = await env.action("create_event", {"title": "꾸민 저녁 약속", "date": "2026-11-03", "time": "19:00"})
+        assert status == 200
+        env.clock.set(kst(2026, 11, 2, 4, 1))
+        await env.tick()
+        env.parts.runner.checkins = True
+        env.clock.set(kst(2026, 11, 2, 9, 0) + timedelta(seconds=30))
+        await env.tick()
+        kinds = [c["run_ctx"].kind for c in env.brain.calls]
+        (dayend,) = [c["prompt"] for c in env.brain.calls if c["run_ctx"].kind == "dayend"]
+        brief = env.sender.sent[-1].text
+        (shown,) = env.conn.execute("SELECT shown_at FROM agent_notes").fetchall()
+        events = {r["kind"] for r in env.conn.execute("SELECT kind FROM agent_events")}
+        unseen = env.conn.execute(
+            "SELECT COUNT(*) FROM agent_inbox WHERE agent = 'mate' AND seen_at IS NULL"
+        ).fetchone()[0]
+
+    assert kinds == ["chat", "dayend", "run"]
+    assert brief.endswith("\n\n운동메이트: 가짜 관찰 한 줄이에요.")
+    assert shown["shown_at"] is not None
+    assert {"task_added", "task_done", "workout_logged", "event_added"} <= events
+    assert "event_added" in dayend and "workout_logged" not in dayend
+    assert unseen == 0
