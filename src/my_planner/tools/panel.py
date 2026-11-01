@@ -53,6 +53,7 @@ NOT_INTERESTED_DAYS = 30
 STATEMENT_TEXT_MAX = 200
 PREDICTIONS_PER_CONVERSATION = 2
 PREDICTION_MAX_AHEAD_DAYS = 365
+AXIS_MIN, AXIS_MAX = 0, 100  # `axis:<축>` 예측 범위(축 점수 0~100)
 PANEL_REJECTS_MAX = 2  # 한 호출의 거절 수: 처음 하나 + 다시 내기 하나(7.2)
 
 # 전문가 키(Global Constraints 순서). `mcp_adapter.EXPERT_TOOLS`의 키와 같다(시험이 본다)
@@ -111,6 +112,11 @@ def suggestion_view(conn: sqlite3.Connection, s: Suggestion) -> dict[str, Any]:
     }
 
 
+def _in_manager_chat(ctx: RunContext) -> bool:
+    """라이프 매니저 대화 안. 대화 id가 없으면(`source_ref`·대화별 상한을 쓸 수 없다) 쓰지 않는다."""
+    return ctx.agent == "manager" and ctx.kind == "chat" and ctx.conversation_id is not None
+
+
 def _int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
@@ -165,7 +171,7 @@ class PanelTools:
         self, ctx: RunContext, kind: Any = None, title: Any = None, area: Any = None, size_min: Any = None,
         per_week: Any = None, due_hint: Any = None, experts: Any = None, evidence: Any = None,
     ) -> dict[str, Any]:
-        if ctx.agent != "manager" or ctx.kind != "chat":
+        if not _in_manager_chat(ctx):
             return _err(MSG_NOT_HERE)
         if self.panel is None or self.state is None:
             return _err(MSG_NO_PANEL)
@@ -208,6 +214,7 @@ class PanelTools:
             return self._reject(ctx, checked, MSG_UNKNOWN_REF, area, kind)
         if checked == "no_personal_evidence":
             return self._reject(ctx, checked, MSG_NO_PERSONAL, area, kind)
+        # 주간 수 검사와 아래 INSERT 사이에 `await`가 없다: 도구 호출은 동기로 돌아서 다른 호출이 끼어들지 않는다
         if remaining(panel, self.state, today) == 0:
             return self._reject(ctx, "budget_exhausted", MSG_BUDGET, area, kind)
         last = panel.latest_in_area(area)
@@ -237,7 +244,7 @@ class PanelTools:
     def save_statement(
         self, ctx: RunContext, kind: Any = None, area: Any = None, text: Any = None, key: Any = None
     ) -> dict[str, Any]:
-        if ctx.agent != "manager" or ctx.kind != "chat":
+        if not _in_manager_chat(ctx):
             return _err(MSG_NOT_HERE)
         if self.panel is None:
             return _err(MSG_NO_PANEL)
@@ -268,7 +275,9 @@ class PanelTools:
                 sid = panel.add_statement(
                     kind, area, line, key=key, source_ref=f"conversation:{ctx.conversation_id}", now=self.clock.now()
                 )
-        except sqlite3.IntegrityError:  # 지운 결정의 키(`key`는 지운 줄까지 UNIQUE)
+        except sqlite3.IntegrityError as e:  # 지운 결정의 키(`key`는 지운 줄까지 UNIQUE). 다른 제약은 그대로 올린다
+            if "owner_statements.key" not in str(e):
+                raise
             return _err(MSG_ST_KEY_USED)
         log.info("panel_statement", extra={"kind": kind, "id": sid})
         return {"ok": True, "ref": _statement_ref(kind, sid, key)}
@@ -279,7 +288,7 @@ class PanelTools:
     def record_prediction(
         self, ctx: RunContext, metric: Any = None, predicted: Any = None, due: Any = None
     ) -> dict[str, Any]:
-        if ctx.agent != "manager" or ctx.kind != "chat":
+        if not _in_manager_chat(ctx):
             return _err(MSG_NOT_HERE)
         if self.panel is None:
             return _err(MSG_NO_PANEL)
@@ -294,16 +303,16 @@ class PanelTools:
             return _err(MSG_PR_METRIC)
         if isinstance(predicted, bool) or not isinstance(predicted, int | float) or not math.isfinite(predicted):
             return _err(MSG_PR_VALUE)
-        if d is not None and not (d.lo <= predicted <= d.hi):  # type: ignore[operator]
+        lo, hi = (AXIS_MIN, AXIS_MAX) if d is None else (d.lo, d.hi)
+        if not (lo <= predicted <= hi):  # type: ignore[operator]
             return _err(MSG_PR_VALUE)
         today = self.today()
         due_d = _day(due)
         if due_d is None or not today + timedelta(days=1) <= due_d <= today + timedelta(days=PREDICTION_MAX_AHEAD_DAYS):
             return _err(MSG_PR_DUE)
         panel = self.panel
-        if ctx.conversation_id is not None and panel.count_for_conversation(ctx.conversation_id) >= (
-            PREDICTIONS_PER_CONVERSATION
-        ):
+        assert ctx.conversation_id is not None  # `_in_manager_chat`
+        if panel.count_for_conversation(ctx.conversation_id) >= PREDICTIONS_PER_CONVERSATION:
             return _err(MSG_PR_CAP)
         with transaction(panel.conn):
             pid = panel.add_prediction(

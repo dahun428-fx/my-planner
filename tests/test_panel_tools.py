@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import sqlite3
 from datetime import timedelta
 from typing import Any
 
@@ -165,9 +166,9 @@ async def test_propose_only_manager_chat(tmp_path):
         t = env.parts.tools
         sec = RunContext(_conv(env, "secretary"), None, channel="app", in_brain=True)
         dayend = RunContext(None, None, agent="manager", kind="dayend", in_brain=True)
-        outs = [t.propose_suggestion(c, **_args()) for c in (sec, dayend)]
+        outs = [t.propose_suggestion(c, **_args()) for c in (sec, dayend, _manager(None))]
         rows = _rows(env)
-    assert outs == [{"error": MSG_NOT_HERE}] * 2 and MSG_NOT_HERE == "쓸 수 없는 도구예요."
+    assert outs == [{"error": MSG_NOT_HERE}] * 3 and MSG_NOT_HERE == "쓸 수 없는 도구예요."
     assert rows == []
 
 
@@ -287,6 +288,10 @@ async def test_save_statement_rules(tmp_path):
         ]
         sec = t.save_statement(RunContext(_conv(env, "secretary"), None, channel="app", in_brain=True),
                                kind="fact", text="가짜 사실")
+        no_conv = t.save_statement(_manager(None), kind="fact", text="가짜 사실")
+        with transaction(env.conn):
+            env.parts.panel.retire(env.parts.panel.decision("fake_choice").id, env.clock.now())
+        reused = t.save_statement(_manager(conv), kind="decision", area="career", text="가짜 결정 셋", key="fake_choice")
         rows = env.conn.execute(
             "SELECT kind, area, key, text, source_ref FROM owner_statements WHERE key IS NOT 'career_first' ORDER BY id"
         ).fetchall()
@@ -296,11 +301,24 @@ async def test_save_statement_rules(tmp_path):
     assert dec == {"ok": True, "ref": "decision:fake_choice"}
     assert seeded == {"error": "이미 있는 결정이에요."}
     assert all("error" in b for b in bad), bad
-    assert sec == {"error": MSG_NOT_HERE}
+    assert sec == no_conv == {"error": MSG_NOT_HERE}
+    assert reused == {"error": "예전에 쓴 결정 키예요. 다른 키를 써 주세요."}
     assert [tuple(r) for r in rows] == [
         ("fact", "relationships", None, text, f"conversation:{conv}"),
         ("decision", "career", "fake_choice", "가짜 결정 하나", f"conversation:{conv}"),
     ]
+
+
+async def test_save_statement_other_integrity_error_raises(tmp_path, monkeypatch):
+    async with BeEnv.start(tmp_path, start=WED) as env:
+        conv = _conv(env)
+
+        def broken(*a: Any, **kw: Any) -> int:
+            raise sqlite3.IntegrityError("NOT NULL constraint failed: owner_statements.text")
+
+        monkeypatch.setattr(env.parts.panel, "add_statement", broken)
+        with pytest.raises(sqlite3.IntegrityError):
+            env.parts.tools.save_statement(_manager(conv), kind="fact", text="가짜 사실")
 
 
 # --- 예측 (9장) ---
@@ -322,7 +340,13 @@ async def test_record_prediction_rules(tmp_path):
             t.record_prediction(_manager(other), metric="body_fat_pct", predicted=True, due="2027-01-01"),
             t.record_prediction(_manager(other), metric="axis:charm", predicted=50, due="2027-01-01"),
             t.record_prediction(_manager(other), metric="cert", predicted=1, due="2027-01-01"),
+            t.record_prediction(_manager(other), metric="profile_birth_year", predicted=1990, due="2027-01-01"),
         ]
+        axis_bad = [
+            t.record_prediction(_manager(other), metric="axis:health", predicted=101, due="2027-01-01"),
+            t.record_prediction(_manager(other), metric="axis:health", predicted=-1, due="2027-01-01"),
+        ]
+        no_conv = t.record_prediction(_manager(None), metric="weight_kg", predicted=70, due="2027-01-01")
         edge = t.record_prediction(_manager(other), metric="weight_kg", predicted=70, due="2027-11-04")
         sec = t.record_prediction(RunContext(_conv(env, "secretary"), None, channel="app", in_brain=True),
                                   metric="weight_kg", predicted=70, due="2027-01-01")
@@ -330,7 +354,9 @@ async def test_record_prediction_rules(tmp_path):
     assert fat["ok"] is True and axis["ok"] is True and edge["ok"] is True
     assert third == {"error": "예측은 한 대화에 2개까지예요."}
     assert all("error" in b for b in bad), bad
-    assert sec == {"error": MSG_NOT_HERE}
+    assert bad[-1] == {"error": "metric은 숫자 측정값 이름이나 axis:<축>이에요."}
+    assert axis_bad == [{"error": "predicted가 그 지표 범위의 숫자가 아니에요."}] * 2
+    assert sec == no_conv == {"error": MSG_NOT_HERE}
     assert [tuple(r) for r in rows] == [
         ("body_fat_pct", 19.0, "2027-02-02", conv), ("axis:health", 55.0, "2026-11-05", conv),
         ("weight_kg", 70.0, "2027-11-04", other),
