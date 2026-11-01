@@ -25,6 +25,7 @@ AreaName = Literal["career", "finance", "health", "relationships", "learning", "
 _DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
 _WEEK_PATTERN = r"^\d{4}-W\d{2}$"
 _INSTANT_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$"
+PHOTO_REF_PATTERN = r"^photo:[1-9][0-9]*$"  # 측정값 출처(SP13 6.5): 카드 props와 `tools/standing.py`의 검사가 같이 쓴다
 _UNIQUE = {"uniqueItems": True}  # 정수 목록의 서로 다름은 앱 검사기도 본다(빈 곳 10)
 
 
@@ -353,7 +354,7 @@ class MeasureConfirmProps(_Props):
 
     rows: list[MeasureRow] = Field(min_length=1, max_length=30)
     source_kind: Literal["photo", "pdf", "manual"]
-    source_ref: str | None = Field(pattern=r"^photo:[1-9][0-9]*$")
+    source_ref: str | None = Field(pattern=PHOTO_REF_PATTERN)
 
 
 Origin = Literal["brain", "harness"]

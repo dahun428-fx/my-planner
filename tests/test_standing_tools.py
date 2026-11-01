@@ -311,3 +311,18 @@ async def test_standing_daily_catches_up(tmp_path):
 
     assert snaps and {json.loads(r["inputs_json"])["source"] for r in snaps} == {"catch_up"}
 
+
+
+async def test_undo_first_save_keeps_review_snapshot(tmp_path):
+    """첫 기준선 뒤 같은 분기 영역 점수 기록이 스냅숏을 다시 썼으면(`review`) 저장을 되돌려도 그 스냅숏은 남는다."""
+    async with BeEnv.start(tmp_path, start=MON) as env:
+        _, body = await _save(env, _rows())
+        env.clock.advance(minutes=5)
+        status, _ = await env.action("record_area_scores", {"scores": {"health": 7}})
+        assert status == 200
+        ustatus, _ = await _undo(env, body["undo_id"])
+        snaps = _snaps(env, "2026-Q4")
+        live = _measures(env)
+
+    assert ustatus == 200 and live == []
+    assert snaps and {json.loads(r["inputs_json"])["source"] for r in snaps} == {"review"}

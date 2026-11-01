@@ -22,6 +22,7 @@ from my_planner.status.xp import AREA_LABELS, LABEL_STANDING, XP_STANDING
 from my_planner.store.db import transaction
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import SUPERSEDED, measure_target, register_undo
+from my_planner.tools.ui import PHOTO_REF_PATTERN
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
@@ -32,7 +33,7 @@ log = logging.getLogger(__name__)
 
 MEASURES_PER_SAVE_MAX = 30
 SOURCE_KINDS = ("photo", "pdf", "manual")
-_PHOTO_REF = re.compile(r"photo:[1-9][0-9]{0,17}")
+_PHOTO_REF = re.compile(PHOTO_REF_PATTERN)
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _ROW_KEYS = frozenset({"metric", "value", "measured_on", "label", "unit"})  # 카드가 돌려보내는 `label`·`unit`은 읽지 않는다
 
@@ -71,11 +72,11 @@ class StandingTools:
     standing: StandingRepo | None
 
     if TYPE_CHECKING:
-        status: Any
         clock: Clock
         tz: Any
 
         def today(self) -> date: ...
+        def _grant(self, ctx: RunContext, *, source_kind: str, source_ref: str, amount: int, label: str) -> bool: ...
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
 
@@ -192,12 +193,8 @@ class StandingTools:
                 for m, v, on in good
             ]
             baseline = snapshot_if_first(repo.conn, self.clock, today)
-            if self.status is not None:
-                self.status.grant(
-                    at=now, logical_date=today, source_kind="standing",
-                    source_ref=f"standing:{period_of('quarter', today)}", amount=XP_STANDING, label=LABEL_STANDING,
-                    gain=ctx.xp,
-                )
+            self._grant(ctx, source_kind="standing", source_ref=f"standing:{period_of('quarter', today)}",
+                        amount=XP_STANDING, label=LABEL_STANDING)  # X14: 그 분기 처음(지워도 남는다)
             undo: dict[str, Any] = {"measure_ids": ids}
             if baseline is not None:
                 undo["baseline_period"] = baseline
@@ -240,14 +237,18 @@ class StandingTools:
 
 
 def _undo_measures_saved(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
-    """그 줄들에 `deleted_at`. 그 저장이 첫 기준선을 썼으면 그 분기 스냅숏도 지운다(다음 저장이 다시 쓴다)."""
+    """그 줄들에 `deleted_at`. 그 저장이 첫 기준선을 썼고 그 분기 스냅숏이 아직 그 기준선(`source = first`)뿐이면
+    그 스냅숏도 지운다(다음 저장이 다시 쓴다). 그 사이 영역 점수 기록 등으로 다시 쓴 스냅숏은 남긴다."""
     assert tools.standing is not None
     now = tools.clock.now()
     gone = [i for i in undo["measure_ids"] if not tools.standing.delete(i, now)]
     if len(gone) == len(undo["measure_ids"]):
         return SUPERSEDED
-    if undo.get("baseline_period"):
-        tools.standing.delete_snapshots(undo["baseline_period"])
+    period = undo.get("baseline_period")
+    if period:
+        rows = tools.standing.snapshots_for(period)
+        if rows and all(r.inputs.get("source") == "first" for r in rows):
+            tools.standing.delete_snapshots(period)
     return None
 
 
