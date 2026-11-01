@@ -106,6 +106,7 @@ export async function loadHistory(given: number | null | undefined, opts: { notB
     });
   }
   const last = lines[lines.length - 1];
-  const elsewhere = given === undefined && last ? await readElsewhere(last.at) : [];
+  // SP12: "elsewhere" lines (telegram, scheduler) are the secretary's world; the mate view has none.
+  const elsewhere = given === undefined && last && opts.agent !== "mate" ? await readElsewhere(last.at) : [];
   return { kind: "ok", history: { conversationId: id, messages, restored, elsewhere } };
 }

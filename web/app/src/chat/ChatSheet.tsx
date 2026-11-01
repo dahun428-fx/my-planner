@@ -117,9 +117,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // BE, or /health not seen yet) there is no picker and the chat is the secretary's as ever. Embedded
   // (the check-in screen's box) is always the secretary's.
   const [pref, setPref] = useState<Agent>(loadAgent);
-  const sawMate = useRef(false);
-  if (state?.kind === "online") sawMate.current = state.health.features?.includes("mate") ?? false; // offline keeps the last answer
-  const hasMate = !embedded && sawMate.current;
+  const prefRef = useRef(pref);
+  prefRef.current = pref;
+  const [sawMate, setSawMate] = useState(false);
+  useEffect(() => {
+    if (state?.kind === "online") setSawMate(state.health.features?.includes("mate") ?? false); // offline keeps the last answer
+  }, [state]);
+  const hasMate = !embedded && sawMate;
   const agent: Agent = hasMate ? pref : "secretary";
   const agentRef = useRef(agent);
   agentRef.current = agent;
@@ -374,10 +378,6 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       setFailure(null);
     });
   }, [conversationId, setMessages, dropRefused]);
-  // Opening reads the kept pick again (the workout screen opens the sheet on the mate); a changed partner reads its own conversation.
-  useLayoutEffect(() => {
-    if (open && !embedded) setPref(loadAgent());
-  }, [open, embedded]);
   useEffect(() => {
     if (open && !sending.current) load();
   }, [open, load, agent]);
@@ -645,8 +645,18 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     agentRef.current = next;
     clearView(true);
     setWriting(null);
-    setToday(null);
   };
+  // Opening reads the kept pick again (the workout screen opens the sheet on the mate). Same path as the
+  // picker; while a message is still being answered the pick waits for the next opening (the partner never flips mid-answer).
+  useLayoutEffect(() => {
+    if (!open || embedded || sending.current) return;
+    const next = loadAgent();
+    if (next === prefRef.current) return;
+    setPref(next);
+    agentRef.current = hasMate ? next : agentRef.current;
+    clearView(true);
+    setWriting(null);
+  }, [open, embedded, hasMate, clearView]);
   const openList = () => {
     setWriting(null);
     setView("list");
@@ -860,7 +870,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       <Segmented
         ariaLabel={copy.chat.agents.label}
         value={agent}
-        disabled={busy || starting}
+        disabled={busy || starting || uploading}
         onChange={changeAgent}
         options={[
           { value: "secretary", label: copy.chat.agents.secretary },
@@ -872,7 +882,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const listHead = (
     <header className={styles.header}>
       <button type="button" className={styles.back} onClick={() => setView("chat")}>
-        {copy.chat.backToChat}
+        {agent === "mate" ? copy.chat.mate.backToChat : copy.chat.backToChat}
       </button>
       <h2 className={styles.title}>{copy.chat.pastConversations}</h2>
       <div className={styles.headEnd}>{closeButton}</div>
@@ -904,11 +914,11 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         {rows}
         {busy && !answering && phase === "queued" && (
           <p className={styles.status} role="status">
-            {copy.chat.queued}
+            {agent === "mate" ? copy.chat.mate.queued : copy.chat.queued}
           </p>
         )}
         {busy && !answering && phase === "thinking" && (
-          <p className={styles.dots} role="status" aria-label={copy.chat.thinking}>
+          <p className={styles.dots} role="status" aria-label={agent === "mate" ? copy.chat.mate.thinking : copy.chat.thinking}>
             <span className={styles.dot} />
             <span className={styles.dot} />
             <span className={styles.dot} />
@@ -963,7 +973,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
             ref={field}
             className={styles.input}
             rows={fieldRows}
-            aria-label={copy.chat.inputLabel}
+            aria-label={agent === "mate" ? copy.chat.mate.inputLabel : copy.chat.inputLabel}
             placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
             aria-describedby={writing ? WRITING_ID : undefined}
             value={text}

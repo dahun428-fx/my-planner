@@ -385,7 +385,6 @@ describe("chat contract: SP6 cards (golden)", () => {
   });
 });
 
-
 // SP12 5.2: `POST /chat` names the partner; the field is the schema's (an enum of the two).
 describe("ChatRequestBody agent (SP12)", () => {
   const msg = { id: "m1", role: "user" as const, parts: [{ type: "text" as const, text: "오늘 뭐 할까?" }], metadata: { chip: "mate_today" as const } };

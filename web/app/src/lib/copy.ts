@@ -346,6 +346,13 @@ export const copy = {
     },
     // SP12 11.1 / 부록 A 상대 고르기: 머리의 두 칸과 메이트 말풍선의 머리 줄.
     agents: { label: "대화 상대", secretary: "비서", mate: "운동메이트" },
+    // 운동메이트 대화에서 비서 이름이 든 문구: 비서 문구에서 이름만 바꾼 것.
+    mate: {
+      inputLabel: "운동메이트에게 보낼 말",
+      queued: "운동메이트가 앞의 일을 끝내는 중이에요",
+      thinking: "운동메이트가 생각하는 중이에요",
+      backToChat: "‹ 운동메이트",
+    },
     // SP9c 3 한 줄 쓰기: 스펙 5장 그대로(Dahun 확인 필요).
     // (new) the input's example
     write: { todo: "예: 금요일까지 보고서 초안", event: "예: 내일 오후 3시 치과", memo: "떠오른 걸 그대로 적어요" },
