@@ -532,6 +532,12 @@ class WorkoutTools:
                 ctx, "workout_log_updated", workout_log_target(g.id), f"운동 기록 고침: {title}",
                 {"log_id": g.id, "before": before},
             )
+            if "date" in changes and self.status is not None:  # 옮긴 날도 그날의 첫 기록이면 X13. 옛 날짜의 경험치는 그대로
+                self.status.grant(
+                    at=self.clock.now(), logical_date=changes["date"], source_kind="workout_log",
+                    source_ref=workout_day_ref(changes["date"]), amount=XP_WORKOUT_LOG, label=LABEL_WORKOUT_LOG,
+                    area="health", gain=ctx.xp,
+                )
         ctx.events.append(ToolEvent("workout_log_updated", None, {"log_id": g.id, "title": title}))
         log.info("workout_log_updated", extra={"log_id": g.id, "fields": sorted(changes)})
         got = self.workout.log(g.id)

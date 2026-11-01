@@ -232,6 +232,7 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         text=photo_body(photo_ids, text), at=now, sent_at=now, update_ids=[inbound_id], channel="app",
         client_msg_id=cmid, checkin_id=req.checkin_id, sink=sink, conversation_id=conv.id, message_id=req.message.id,
         resume_conversation_id=req.resume_conversation_id, chip=req.chip, photo_ids=photo_ids,
+        agent=agent,
     ))
     log.info("chat_queued", extra={
         "conversation_id": conv.id, "inbound_id": inbound_id, "chip": req.chip, "photos": len(photo_ids),
@@ -349,8 +350,8 @@ def _transcribe_direct(deps: ApiDeps, user_text: str, reply: str, agent: Agent =
         return
     now = deps.clock.now()
     try:
-        t.append(now, "사용자", None, None, user_text, channel="app")
-        t.append(now, "운동메이트" if agent == "mate" else "비서", None, None, reply, channel="app")
+        t.append(now, "사용자", None, None, user_text, channel="app", agent=agent)
+        t.append(now, "운동메이트" if agent == "mate" else "비서", None, None, reply, channel="app", agent=agent)
     except OSError as e:
         log.warning("chat_transcript_failed", extra={"error_type": type(e).__name__})
 

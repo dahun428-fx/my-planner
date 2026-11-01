@@ -761,3 +761,50 @@ async def test_new_conversation_by_agent(tmp_path):
     assert bare == {"closed": []}
     assert mates == {"closed": [m]} and empty == {"closed": [s]}
     assert bad.status == 400 and bad_code == "invalid_request"
+
+
+async def test_queued_mate_message_with_closed_conversation_stays_mate(tmp_path):
+    """기다리는 사이 메이트 대화가 닫혀도 그 메시지는 메이트로 답한다(비서 대화·프롬프트·도구로 새지 않는다)."""
+    from my_planner.harness import prompts
+    from my_planner.harness.brain import ClaudeBrain
+    from my_planner.tools.mcp_adapter import MATE_TOOLS, tool_names_for
+
+    gate = asyncio.Event()
+    script = [FakeTurn([], "먼저 온 것", gate=gate), FakeTurn([], "메이트 답")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+
+        async def send(text, **kw):
+            resp = await env.post("/chat", json=env.chat_body(text, **kw))
+            return resp, await resp.read()
+
+        first = asyncio.create_task(send("비서에게"))
+        while not env.brain.calls:
+            await asyncio.sleep(0)
+        second = asyncio.create_task(send("왼쪽 무릎이 아파", agent="mate"))
+        for _ in range(100):
+            await asyncio.sleep(0)
+        assert env.parts.dispatcher.new_conversation("mate")  # 기다리는 사이 닫힌다
+        gate.set()
+        await first
+        resp, _ = await second
+        await env.drain()
+        call = env.brain.calls[1]
+        assert _agent_of(env, resp) == "mate"
+        ctx = call["run_ctx"]
+        assert ctx.agent == "mate"
+        brain = ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+        assert brain.system_prompt_for(ctx.channel, ctx.agent) == prompts.load("mate.md")
+        assert set(MATE_TOOLS) <= set(tool_names_for(ctx))
+        assert "왼쪽 무릎이 아파" not in env.parts.transcripts.read_range(
+            START.date(), START.date(), drop_app_secretary=True, drop_mate=True
+        )
+
+
+async def test_mate_direct_reply_is_marked_mate_in_transcript(tmp_path):
+    """글 아닌 메시지에 대한 직접 답도 ` @mate`로 남아 비서 `read_transcript`에 보이지 않는다."""
+    async with BeEnv.start(tmp_path, start=START, script=[]) as env:
+        await env.chat("", agent="mate", parts=[{"type": "step-start"}])
+        raw = env.parts.transcripts.path_for(env.clock.now()).read_text(encoding="utf-8")
+        shown = env.parts.transcripts.read_range(START.date(), START.date(), drop_app_secretary=True, drop_mate=True)
+    assert "운동메이트" in raw and raw.count(" @mate") == 2
+    assert NON_TEXT_REPLY not in shown

@@ -119,11 +119,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const [pref, setPref] = useState<Agent>(loadAgent);
   const prefRef = useRef(pref);
   prefRef.current = pref;
-  const [sawMate, setSawMate] = useState(false);
-  useEffect(() => {
-    if (state?.kind === "online") setSawMate(state.health.features?.includes("mate") ?? false); // offline keeps the last answer
-  }, [state]);
-  const hasMate = !embedded && sawMate;
+  // Read during the render (not in an effect) so the first online commit already has the picker; offline keeps the last answer.
+  const sawMate = useRef(false);
+  if (state?.kind === "online") sawMate.current = state.health.features?.includes("mate") ?? false;
+  const hasMate = !embedded && sawMate.current;
   const agent: Agent = hasMate ? pref : "secretary";
   const agentRef = useRef(agent);
   agentRef.current = agent;

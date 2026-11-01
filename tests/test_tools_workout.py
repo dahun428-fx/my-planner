@@ -439,3 +439,14 @@ def test_mate_preamble_drops_old_logs(tmp_path, conn):
     assert _section(_preamble(env), "최근 기록 (14일, 최대 8개)") == "아직 없음"
     env.clock.set(kst(2026, 11, 7, 10, 0))  # 13일 뒤: 14일 안
     assert "보름 전" in _preamble(env)
+
+
+def test_update_log_date_grants_xp_for_new_day(env):
+    lid = env.log()
+    assert "error" not in env.tools.update_workout_log(env.mate(), id=lid, date="2026-10-30")
+    assert [r["source_ref"] for r in env.ledger()] == ["workout_day:2026-10-31", "workout_day:2026-10-30"]  # 옛 날짜는 그대로
+    other = env.log(title="걷기")
+    assert "error" not in env.tools.update_workout_log(env.mate(), id=other, date="2026-10-30")
+    assert len(env.ledger()) == 2  # 이미 있는 날은 겹쳐 주지 않는다
+    assert "error" not in env.tools.update_workout_log(env.mate(), id=other, note="좋았어요")
+    assert len(env.ledger()) == 2

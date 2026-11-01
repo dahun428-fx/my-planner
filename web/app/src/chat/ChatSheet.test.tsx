@@ -1458,7 +1458,8 @@ describe("ChatSheet partner pick (SP12)", () => {
   const withMate = (features: string[] | null = ["mate"]) =>
     server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, ...(features ? { features } : {}) })));
   const MATE_CHIPS = ["오늘 뭐 할까?", "운동 기록하기", "플랜 고치기"];
-  const pick = (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(screen.getByRole("radio", { name }));
+  const pick = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
+    user.click(await screen.findByRole("radio", { name }));
 
   it("switching to mate changes list, chips and request agent", async () => {
     withMate();
@@ -1589,7 +1590,8 @@ describe("ChatSheet partner pick (SP12)", () => {
 // secretary's front chip survives a round trip, and the mate's own wording.
 describe("ChatSheet partner pick, fix round 1 (SP12)", () => {
   const withMate = () => server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, features: ["mate"] })));
-  const pick = (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(screen.getByRole("radio", { name }));
+  const pick = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
+    user.click(await screen.findByRole("radio", { name }));
 
   it("I1: open({agent: mate}) during a secretary answer keeps the secretary", async () => {
     withMate();
