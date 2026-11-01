@@ -85,6 +85,7 @@ from my_planner.panel.report import (
     FULL_BLOCK_REPLIES,
     FULL_CHIP_KEY,
     FULL_FAILED_REPLY,
+    FULL_SAVED_REPLY,
     FullBlock,
     full_chip_due,
     full_diagnosis_block,
@@ -112,6 +113,7 @@ from my_planner.store.repos.state import (
 from my_planner.store.reviews import save_weekly_review
 from my_planner.store.transcripts import (
     AGENT_SPEAKERS,
+    EXPERT_SPEAKER,
     Speaker,
     app_secretary_message_id,
     app_user_message_id,
@@ -1394,8 +1396,11 @@ class Dispatcher:
                     self.tools.agents.mark_seen(conv.agent, block.event_ids, self.clock.now())
             streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
-            if run_ctx.full_diagnosis and result.status == "error":
-                body_text = FULL_FAILED_REPLY  # 횟수에 세지 않는다(리포트를 저장한 진단만 센다, Review Focus 5)
+            if run_ctx.full_diagnosis and result.status in ("error", "max_turns"):
+                # 리포트를 저장했으면 이미 셌다(`save_life_report`). 아니면 세지 않았다(Review Focus 5). 턴 상한의
+                # "이어서 말씀해 주시면"은 쓰지 않는다: 다음 보통 메시지로는 진단을 마칠 수 없다
+                saved = any(e.kind == "life_report_saved" for e in run_ctx.events)
+                body_text = FULL_SAVED_REPLY if saved else FULL_FAILED_REPLY
             else:
                 body_text = app.writer.streamed_reply if streamed else _reply_for(result)
             confirmations = self._confirmations(run_ctx, answer_xp)
@@ -1433,8 +1438,8 @@ class Dispatcher:
                 self._claim_review_step(step, "message")
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
             self._messages_done(update_ids, reply=sent_text, confirmation=confirmations, conversation_id=conv.id)
-            self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names))
-            self._transcribe_expert_notes(conv.id, notes)
+            if self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names)):
+                self._transcribe_expert_notes(conv.id, notes)  # 답 줄이 없으면 소견이 다른 답에 붙지 않게 쓰지 않는다
         log.info(
             "message_handled",
             extra={
@@ -1848,14 +1853,14 @@ class Dispatcher:
                 session_id, config_dir=self.claude_config_dir, event="conversation_session_cleanup",
             )
 
-    def _transcribe_reply(self, conversation_id: int | None, text: str, tools: list[str]) -> None:
-        """보낸 답을 원문 기록에 남긴다. 기록이 안 돼도 사용자는 이미 받았으니 종류만 로그에 남긴다.
+    def _transcribe_reply(self, conversation_id: int | None, text: str, tools: list[str]) -> bool:
+        """보낸 답을 원문 기록에 남긴다(남겼으면 True). 기록이 안 돼도 사용자는 이미 받았으니 종류만 로그에 남긴다.
 
         앱 답은 머리글에 `#m-<대화>-<|inbound_id|> @app`(그 답의 `start.messageId`, 6.4.6)을 붙인다.
         답하는 사이 지운 대화(SP9 7.7)에는 쓰지 않는다.
         """
         if self._deleted(conversation_id):
-            return
+            return False
         app = self._cur
         try:
             if app is not None:
@@ -1868,6 +1873,8 @@ class Dispatcher:
                 self.transcripts.append(self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools)
         except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
             log.warning("reply_transcript_error", extra={"error_type": type(e).__name__})
+            return False
+        return True
 
     def _transcribe_expert_notes(self, conversation_id: int, notes: list[ExpertNote]) -> None:
         """매니저 답 줄 바로 다음에 소견마다 한 항목(`### HH:MM 전문가 [<대화>] (<키>) @app @manager`, SP15).
@@ -2709,7 +2716,8 @@ class Dispatcher:
 
     async def _summarize(self, conv: Conversation, *, skip_last: int = 0) -> summaries.Summary | None:
         """그 대화의 원문 줄(맨 뒤 `skip_last`개 뺌)과 이전 요약으로 요약한다. 상한이면 두뇌 없이 None."""
-        lines = self.transcripts.messages(conv.id)
+        # 전문가 소견 줄(SP15)은 요약에 넣지 않는다: 답 줄의 접힌 덧붙임이다. `skip_last`는 사용자·답 줄을 센다
+        lines = [m for m in self.transcripts.messages(conv.id) if m.speaker != EXPERT_SPEAKER]
         if skip_last:
             lines = lines[:-skip_last]
         if summaries.needs_brain(lines) and self._summary_blocked():

@@ -232,3 +232,97 @@ async def test_no_notes_no_part(tmp_path):
     async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "그냥 답해요.")]) as env:
         _, raw = await env.chat("안녕", agent="manager")
     assert all(c["type"] != "data-expert-notes" for c in parse_sse(raw))
+
+
+# --- SP15-13 뒤 고침: 실패 답, 요약·기록의 소견 줄, 남은 호출 경계 ---
+
+
+def _saving_turn(status: str, error: str | None = None) -> FakeTurn:
+    from test_life_report import _report
+
+    return FakeTurn([("save_life_report", {"report": _report()})], "", status=status, error=error)
+
+
+async def test_full_diagnosis_saved_then_error_says_saved(tmp_path):
+    from my_planner.panel.report import FULL_SAVED_REPLY
+
+    async with BeEnv.start(tmp_path, start=START, script=[_saving_turn("error", "cli")]) as env:
+        _, raw = await env.chat("전체 진단", agent="manager", chip="manager_full")
+        calls = len(env.brain.calls)
+        days = json.loads(env.parts.state.get(FULL_DAYS_KEY) or "[]")
+    text = _texts(raw)
+    assert calls == 1
+    assert text == FULL_SAVED_REPLY and text != FULL_FAILED_REPLY and "세지 않았" not in text
+    assert days == [START.date().isoformat()]
+
+
+async def test_full_diagnosis_max_turns(tmp_path):
+    from my_planner.panel.report import FULL_SAVED_REPLY
+
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "", status="max_turns")]) as env:
+        _, raw = await env.chat("전체 진단", agent="manager", chip="manager_full")
+        days = env.parts.state.get(FULL_DAYS_KEY)
+    assert _texts(raw) == FULL_FAILED_REPLY
+    assert START.date().isoformat() not in json.loads(days or "[]")
+    async with BeEnv.start(tmp_path / "saved", start=START, script=[_saving_turn("max_turns")]) as env:
+        _, raw = await env.chat("전체 진단", agent="manager", chip="manager_full")
+    assert _texts(raw) == FULL_SAVED_REPLY
+    async with BeEnv.start(tmp_path / "plain", start=START, script=[FakeTurn([], "", status="max_turns")]) as env:
+        _, raw = await env.chat("요즘 어때?", agent="manager")
+    assert _texts(raw) != FULL_FAILED_REPLY  # 보통 매니저 메시지는 그대로(턴 상한 문구)
+
+
+async def test_full_diagnosis_starts_with_three_calls_left(tmp_path):
+    script = [FakeTurn([], "진단을 정리했어요.")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        env.conn.execute(
+            "INSERT INTO usage_state (date, brain_calls) VALUES (?, ?) "
+            "ON CONFLICT (date) DO UPDATE SET brain_calls = excluded.brain_calls",
+            (START.date().isoformat(), LIMITS.daily_brain_calls - 3),
+        )
+        env.conn.commit()
+        _, raw = await env.chat("전체 진단", agent="manager", chip="manager_full")
+        calls = len(env.brain.calls)
+    assert calls == 1
+    assert _texts(raw) == "진단을 정리했어요."
+
+
+async def test_summary_input_has_no_expert_lines(tmp_path, monkeypatch):
+    from my_planner.harness import dispatcher as dispatcher_mod
+
+    notes = (ExpertNote("career", "가짜 커리어 소견"),)
+    script = [FakeTurn([], "첫 답이에요.", expert_notes=notes), FakeTurn([], "둘째 답이에요.", expert_notes=notes)]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+        resp, _ = await env.chat("일 쪽 봐 줘", agent="manager")
+        await env.chat("하나 더", agent="manager")
+        d = env.parts.dispatcher
+        conv = d.convs.get(_cid(resp))
+        seen: list = []
+
+        async def fake_summarize(conv, lines, prev, caller, *, max_chars):
+            seen.append(list(lines))
+
+        monkeypatch.setattr(dispatcher_mod.summaries, "summarize", fake_summarize)
+        await d._summarize(conv)
+        await d._summarize(conv, skip_last=1)
+    full, skipped = seen
+    assert [m.speaker for m in full] == ["사용자", "라이프 매니저", "사용자", "라이프 매니저"]
+    assert [m.speaker for m in skipped] == ["사용자", "라이프 매니저", "사용자"]
+
+
+async def test_expert_notes_skipped_when_reply_not_transcribed(tmp_path):
+    notes = (ExpertNote("career", "가짜 커리어 소견"),)
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "답이에요.", expert_notes=notes)]) as env:
+        tr = env.parts.transcripts
+        real = tr.append
+
+        def flaky(at, speaker, *a, **kw):
+            if speaker == "라이프 매니저":
+                raise OSError("disk")
+            return real(at, speaker, *a, **kw)
+
+        tr.append = flaky
+        _, raw = await env.chat("일 쪽 봐 줘", agent="manager")
+        text = tr.path_for(env.clock.now()).read_text(encoding="utf-8")
+    assert any(c["type"] == "data-expert-notes" for c in parse_sse(raw))  # 스트림에는 그대로
+    assert "전문가 [" not in text and "가짜 커리어 소견" not in text
