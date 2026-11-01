@@ -13,6 +13,7 @@ from typing import Any, Literal, Protocol
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    HookMatcher,
     McpSdkServerConfig,
     RateLimitEvent,
     ResultError,
@@ -26,6 +27,14 @@ from claude_agent_sdk import (
 from my_planner.domain import Agent, RunContext
 from my_planner.harness import prompts
 from my_planner.harness.photo_reader import UserContent
+from my_planner.panel.experts import (
+    EXPERTS_PER_MESSAGE,
+    SUBAGENT_HOOK_MATCHER,
+    SUBAGENT_TOOL,
+    ExpertNote,
+    SubagentGate,
+    collect_expert_notes,
+)
 from my_planner.tools.mcp_adapter import (
     SERVER_NAME,
     allowed_tool_patterns,
@@ -64,6 +73,7 @@ class BrainResult:
     error: str | None = None  # auth_error면 "login" | "billing"
     resume_failed: bool = False
     retry_at: datetime | None = None  # rate_limited일 때 재개 시각(UTC)
+    expert_notes: tuple[ExpertNote, ...] = ()  # 전문가 소견 원문(부른 순서). 상태가 ok일 때만(SP15)
 
 
 # 세션 저장을 끄는 CLI 플래그(SP8 6.3). SDK는 값이 None인 열쇠를 `--<flag>`로 그대로 넘긴다
@@ -79,11 +89,17 @@ class Brain(Protocol):
 
     `prompt`가 글·이미지 블록 목록(`UserContent`)이면 SDK 스트리밍 입력의 사용자 메시지 하나로 보낸다(SP10 5.4·5.5,
     스파이크 S1). 글이면 지금 경로 그대로다.
+
+    `agents`(전문가 서브에이전트 정의, SP15)가 있으면 서브에이전트 호출 도구를 열고, 한 호출의 전문가 수를
+    `subagent_cap`(없으면 `EXPERTS_PER_MESSAGE`)으로 막는다. `disallowed_tools`는 본 스레드에서 뺄 도구다(SP15 스파이크
+    S1: 넘기면 서브에이전트 시작이 깨져 지금은 넘기지 않는다).
     """
 
     async def run(
         self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
         system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
+        agents: dict[str, Any] | None = None, subagent_cap: int | None = None,
+        disallowed_tools: list[str] | None = None,
     ) -> BrainResult: ...
 
 
@@ -98,16 +114,25 @@ def build_options(
     include_partial_messages: bool = False,
     fork_session: bool = False,
     extra_args: dict[str, str | None] | None = None,
+    agents: dict[str, Any] | None = None,
+    hooks: dict[Any, list[HookMatcher]] | None = None,
+    disallowed_tools: list[str] | None = None,
 ) -> ClaudeAgentOptions:
     """스펙 5.3 두뇌 실행 설정. S2: strict MCP는 필드로, S3: cli_path는 기본 None(번들 CLI).
 
     `include_partial_messages`: 글 조각 스트리밍(SP3-4 S11, 티켓 06b). `fork_session`: 회차 대화 가르기(7.2, 티켓 07).
     `extra_args`: CLI 플래그(순간 호출의 `no-session-persistence`, SP8 6.3). 없으면 빈 dict.
+    `agents`: 전문가 서브에이전트(SP15, 스파이크 S1). 있으면 내장 도구는 서브에이전트 호출 도구 하나만 열고 `hooks`
+    (호출 문지기)를 함께 넘긴다. 없으면 내장 도구 없음 그대로.
     """
+    builtin = [SUBAGENT_TOOL] if agents else []
     return ClaudeAgentOptions(
-        tools=[],
+        tools=builtin,
         mcp_servers={SERVER_NAME: server},
-        allowed_tools=allowed_tool_patterns(),
+        allowed_tools=[*builtin, *allowed_tool_patterns()],
+        disallowed_tools=list(disallowed_tools or []),
+        agents=agents or None,
+        hooks=hooks if agents else None,
         permission_mode="dontAsk",
         strict_mcp_config=True,
         setting_sources=[],
@@ -244,8 +269,13 @@ class ClaudeBrain:
     async def run(
         self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
         system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
+        agents: dict[str, Any] | None = None, subagent_cap: int | None = None,
+        disallowed_tools: list[str] | None = None,
     ) -> BrainResult:
         server = build_planner_server(self._tools_factory(), run_ctx)
+        # 전문가 호출 문지기는 호출마다 새로(전문가 수는 이 호출 안에서만 센다). 훅은 "Agent"와 "Task" 둘 다 본다(S1)
+        gate = SubagentGate(subagent_cap if subagent_cap is not None else EXPERTS_PER_MESSAGE) if agents else None
+        hooks = {"PreToolUse": [HookMatcher(matcher=SUBAGENT_HOOK_MATCHER, hooks=[gate])]} if gate else None
         # 앱 채팅(스트림 쓰개가 있음)만 글 조각을 받는다(SP3-4 S11, 6.4.1). 조각이 안 오면 06처럼 끝난 뒤 글 블록 하나
         options = build_options(
             server=server,
@@ -260,6 +290,9 @@ class ClaudeBrain:
             fork_session=fork_session and session_id is not None,
             # 하루 끝 순간 호출은 이어 쓰지 않으므로 세션 jsonl을 쓰지 않는다(SP8 6.3, 디스패처가 호출 뒤 한 번 더 지운다)
             extra_args=None if persist_session else NO_SESSION_PERSISTENCE,
+            agents=agents,
+            hooks=hooks,
+            disallowed_tools=disallowed_tools,
         )
         messages: list[object] = []
         text_stream = _TextStreamer(run_ctx.stream) if run_ctx.stream is not None else None
@@ -293,6 +326,7 @@ class ClaudeBrain:
             # CLI가 뜨지 않은 것은 세션이 깨진 것이 아니다: 새 세션 대체 경로로 또 부르거나 세션 id를 지우지 않게
             resume_failed=error != "start_timeout" and detect_resume_failed(session_id, messages, status),
             retry_at=retry_at,
+            expert_notes=collect_expert_notes(messages) if status == "ok" and agents else (),
         )
 
 

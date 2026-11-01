@@ -207,7 +207,7 @@ def test_brain_result_carries_no_tool_events():
     from my_planner.harness.brain import BrainResult
 
     assert [f.name for f in fields(BrainResult)] == [
-        "text", "session_id", "turns", "status", "error", "resume_failed", "retry_at",
+        "text", "session_id", "turns", "status", "error", "resume_failed", "retry_at", "expert_notes",
     ]
 
 
@@ -548,3 +548,87 @@ async def test_start_timeout_on_resume_is_not_resume_failed(tmp_path, monkeypatc
     result = await b.run("hi", session_id="s1", run_ctx=RunContext(conversation_id=1, run_id=None, events=[]))
     assert (result.status, result.error, result.resume_failed) == ("error", "start_timeout", False)
     assert result.session_id == "s1"
+
+
+# --- SP15 Task 11: 전문가 서브에이전트 연결 ---
+
+
+def test_build_options_with_agents(tmp_path):
+    from claude_agent_sdk import HookMatcher
+
+    from my_planner.panel.experts import SUBAGENT_TOOL, expert_definitions
+
+    plain, _, _ = _options(tmp_path)
+    assert plain.tools == []
+    assert plain.agents is None
+    assert plain.allowed_tools == allowed_tool_patterns()
+    assert plain.disallowed_tools == []
+
+    server = build_planner_server(None, RunContext(conversation_id=None, run_id=None, events=[]))
+    agents = expert_definitions()
+    hooks = {"PreToolUse": [HookMatcher(matcher=SUBAGENT_TOOL, hooks=[])]}
+    opts = build_options(
+        server=server, session_id=None, workdir=tmp_path / "wd", max_turns=12, system_prompt="시스템",
+        agents=agents, hooks=hooks,
+    )
+    assert opts.tools == [SUBAGENT_TOOL]
+    assert SUBAGENT_TOOL in opts.allowed_tools
+    assert "mcp__planner__*" in opts.allowed_tools
+    assert opts.agents is agents
+    assert opts.hooks is hooks
+    assert opts.disallowed_tools == []  # 스파이크 disallow_main_ok=False: 기본은 막지 않는다
+
+
+async def test_claude_brain_wires_experts_and_collects_notes(tmp_path, monkeypatch):
+    from claude_agent_sdk import ToolResultBlock, ToolUseBlock, UserMessage
+
+    from my_planner.panel.experts import (
+        SUBAGENT_TOOL,
+        ExpertNote,
+        SubagentGate,
+        expert_definitions,
+    )
+
+    use = ToolUseBlock(id="t1", name=SUBAGENT_TOOL, input={"subagent_type": "finance", "prompt": "물음"})
+    msgs = [
+        AssistantMessage(content=[use], model="claude"),
+        UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="재무 소견")]),
+        _result(result="정리한 답"),
+    ]
+    seen: list = []
+    brain = _patch_query(monkeypatch, tmp_path, msgs, seen)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[])
+    agents = expert_definitions()
+    result = await brain.run("hi", session_id=None, run_ctx=ctx, agents=agents, subagent_cap=6)
+
+    assert result.status == "ok"
+    assert result.expert_notes == (ExpertNote("finance", "재무 소견"),)
+    opts = seen[0]
+    assert opts.agents is agents and opts.tools == [SUBAGENT_TOOL]
+    (matcher,) = opts.hooks["PreToolUse"]
+    assert SUBAGENT_TOOL in matcher.matcher.split("|") and "Task" in matcher.matcher.split("|")
+    (gate,) = matcher.hooks
+    assert isinstance(gate, SubagentGate) and gate.cap == 6
+
+    # 전문가 없이 부르면 지금 그대로(도구 없음, 훅 없음), 소견도 없다
+    plain = await brain.run("hi", session_id=None, run_ctx=ctx)
+    assert seen[1].tools == [] and seen[1].agents is None and not seen[1].hooks
+    assert plain.expert_notes == ()
+
+
+async def test_claude_brain_no_notes_unless_ok(tmp_path, monkeypatch):
+    from claude_agent_sdk import ToolResultBlock, ToolUseBlock, UserMessage
+
+    from my_planner.panel.experts import SUBAGENT_TOOL, expert_definitions
+
+    use = ToolUseBlock(id="t1", name=SUBAGENT_TOOL, input={"subagent_type": "psych"})
+    msgs = [
+        AssistantMessage(content=[use], model="claude"),
+        UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="소견")]),
+        _result(subtype="error_max_turns", terminal_reason="max_turns"),
+    ]
+    brain = _patch_query(monkeypatch, tmp_path, msgs)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[])
+    result = await brain.run("hi", session_id=None, run_ctx=ctx, agents=expert_definitions(), subagent_cap=2)
+    assert result.status == "max_turns"
+    assert result.expert_notes == ()
