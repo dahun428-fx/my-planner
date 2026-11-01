@@ -146,6 +146,7 @@ async def test_propose_shape_errors_not_counted(tmp_path):
             _args(due_hint="2026-11-03"), _args(due_hint="2027-01-04"), _args(due_hint="11/05"),
             _args(experts=[]), _args(experts=["career", "career"]), _args(experts=["coach"]),
             _args(experts=list(EXPERT_KEYS) + ["career"]), _args(evidence=[]), _args(evidence="task:1"),
+            _args(kind="habit", per_week=3, title="가" * 41),  # 습관 제목 한도 40
         ]
         outs = [t.propose_suggestion(ctx, **a) for a in bad]
         edge = [

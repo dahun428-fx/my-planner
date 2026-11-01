@@ -43,7 +43,13 @@ from my_planner.tools.activity import (
     task_target,
 )
 from my_planner.tools.confirmations import habit_kind_label
-from my_planner.tools.habits import HABIT_ACTIVE_MAX, MSG_CAP, MSG_DUPLICATE
+from my_planner.tools.habits import (
+    HABIT_ACTIVE_MAX,
+    HABIT_TITLE_MAX,
+    MSG_CAP,
+    MSG_DUPLICATE,
+    MSG_TITLE_LONG,
+)
 from my_planner.tools.moments import _bad_char
 from my_planner.tools.ui import banned_words
 
@@ -230,6 +236,8 @@ class PanelTools:
             return _err(MSG_TITLE)
         if (bad := _banned(title_s)) is not None:
             return _err(bad)
+        if kind == "habit" and len(title_s) > HABIT_TITLE_MAX:
+            return _err(MSG_TITLE_LONG)  # 받을 수 없는 카드가 되지 않게(습관 제목 한도)
         if area not in AREAS:
             return _err(MSG_AREA)
         if not _int(size_min) or not SUGGESTION_SIZE_MIN <= size_min <= SUGGESTION_SIZE_MAX:
@@ -391,7 +399,7 @@ class PanelTools:
             if s.kind == "task":
                 t = self.tasks.create(
                     title=s.title, areas=[Area(s.area)], status=TaskStatus.open,
-                    planned_for=s.due_hint if s.due_hint is not None else self.today(),
+                    planned_for=max(s.due_hint, self.today()) if s.due_hint is not None else self.today(),  # 늦게 받아도 지난 날이 아니게
                 )
                 self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, "task_added",
                                           inbound_id=ctx.inbound_id, data=self._event_data(t))
