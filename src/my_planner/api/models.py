@@ -571,6 +571,13 @@ class ConversationsClosed(_Model):
     closed: list[int]
 
 
+class ExpertNoteOut(_Model):
+    """라이프 매니저 답에 붙은 전문가 소견 하나(SP15 1장 2). `text`는 소견 원문(가린 글)."""
+
+    expert: Literal["career", "finance", "health", "image", "relationship", "psych"]
+    text: str
+
+
 class MessageItem(_Model):
     """대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.
     `photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를
@@ -585,6 +592,9 @@ class MessageItem(_Model):
     # 앱 사용자 메시지에 붙은 사진(SP10 5.3, 보낸 순서). 사진이 있는 줄은 `text`에서 앞의 `[사진 #id]` 표시를 뗀다
     # (사진만이면 ""). 다른 줄은 빈 목록. 배포 순서가 엇갈려도 모양 검사를 넘게 required가 아니다(BE는 늘 싣는다)
     photos: list[PhotoRef] = []
+    # 라이프 매니저 줄의 전문가 소견(SP15, 부른 순서). 원문 기록의 `전문가` 항목은 따로 줄이 되지 않고 여기 붙는다.
+    # 다른 줄은 빈 목록. `photos`처럼 required가 아니다(BE는 늘 싣는다)
+    expert_notes: list[ExpertNoteOut] = []
 
 
 class Messages(_Model):

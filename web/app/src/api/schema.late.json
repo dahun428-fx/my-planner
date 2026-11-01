@@ -229,6 +229,30 @@
     },
     "Messages": {
       "$defs": {
+        "ExpertNoteOut": {
+          "additionalProperties": false,
+          "properties": {
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "expert",
+            "text"
+          ],
+          "type": "object"
+        },
         "MessageItem": {
           "additionalProperties": false,
           "properties": {
@@ -241,6 +265,13 @@
                 "app"
               ],
               "type": "string"
+            },
+            "expert_notes": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ExpertNoteOut"
+              },
+              "type": "array"
             },
             "id": {
               "type": "string"

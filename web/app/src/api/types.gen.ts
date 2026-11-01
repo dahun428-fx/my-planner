@@ -1185,11 +1185,22 @@ export interface Messages {
 export interface MessageItem {
   at: string;
   channel: "telegram" | "app";
+  expert_notes?: ExpertNoteOut[];
   id: string;
   photos?: PhotoRef[];
   speaker: "user" | "secretary" | "mate" | "manager";
   text: string;
   tools: string[];
+}
+/**
+ * 라이프 매니저 답에 붙은 전문가 소견 하나(SP15 1장 2). `text`는 소견 원문(가린 글).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ExpertNoteOut".
+ */
+export interface ExpertNoteOut {
+  expert: "career" | "finance" | "health" | "image" | "relationship" | "psych";
+  text: string;
 }
 /**
  * 오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`

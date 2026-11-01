@@ -65,6 +65,7 @@ from my_planner.store.repos.photos import Photo, PhotosRepo
 from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
+from my_planner.store.transcripts import EXPERT_SPEAKER
 from my_planner.store.views import (
     condition_dict,
     conditions_view,
@@ -610,10 +611,18 @@ def get_conversation_messages(conn: sqlite3.Connection, deps: ApiDeps, request: 
                 text = strip_marks(m.text, marks)
         return {
             "id": m.id, "at": m.at, "speaker": _SPEAKERS.get(m.speaker, "secretary"),
-            "text": text, "tools": m.tools, "channel": m.channel, "photos": photos,
+            "text": text, "tools": m.tools, "channel": m.channel, "photos": photos, "expert_notes": [],
         }
 
-    return dump(Messages, {"items": [item(m) for m in lines]})
+    # 전문가 소견 항목(SP15)은 따로 줄이 되지 않고 바로 앞 라이프 매니저 줄의 `expert_notes`에 붙는다
+    items: list[dict[str, Any]] = []
+    for m in lines:
+        if m.speaker == EXPERT_SPEAKER:
+            if items and items[-1]["speaker"] == "manager" and m.expert:
+                items[-1]["expert_notes"].append({"expert": m.expert, "text": m.text})
+            continue
+        items.append(item(m))
+    return dump(Messages, {"items": items})
 
 
 # --- 카탈로그와 스키마 ---

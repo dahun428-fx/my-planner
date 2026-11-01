@@ -4734,6 +4734,34 @@
     },
     "Messages": {
       "$defs": {
+        "ExpertNoteOut": {
+          "additionalProperties": false,
+          "description": "라이프 매니저 답에 붙은 전문가 소견 하나(SP15 1장 2). `text`는 소견 원문(가린 글).",
+          "properties": {
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "title": "Expert",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "expert",
+            "text"
+          ],
+          "title": "ExpertNoteOut",
+          "type": "object"
+        },
         "MessageItem": {
           "additionalProperties": false,
           "description": "대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.\n`photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를\n뗀 글이다(사진만이면 빈 문자열).",
@@ -4749,6 +4777,14 @@
               ],
               "title": "Channel",
               "type": "string"
+            },
+            "expert_notes": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ExpertNoteOut"
+              },
+              "title": "Expert Notes",
+              "type": "array"
             },
             "id": {
               "title": "Id",

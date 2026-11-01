@@ -125,3 +125,13 @@ def test_brain_defaults_and_local_cli_path(tmp_path):
 def test_brain_start_timeout_must_be_below_brain_timeout(tmp_path):
     with pytest.raises(ValueError, match="start_timeout_s"):
         load_settings(_root(tmp_path, local="[brain]\nstart_timeout_s = 300\n"))
+
+
+def test_manager_limits_and_their_timeouts(tmp_path):
+    """SP15 6.2: 라이프 매니저 보통 메시지와 전체 진단의 한도. 두 시간 상한도 CLI 시작 대기보다 길어야 한다."""
+    s = load_settings(_root(tmp_path))
+    assert (s.limits.manager_message.max_turns, s.limits.manager_message.brain_timeout_s) == (12, 300)
+    assert (s.limits.full_diagnosis.max_turns, s.limits.full_diagnosis.brain_timeout_s) == (30, 900)
+    for table in ("manager_message", "full_diagnosis"):
+        with pytest.raises(ValueError, match=f"limits.{table}.brain_timeout_s"):
+            load_settings(_root(tmp_path, local=f"[limits.{table}]\nbrain_timeout_s = 120\n"))

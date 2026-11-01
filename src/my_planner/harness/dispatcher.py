@@ -75,6 +75,18 @@ from my_planner.harness.stream import (
 )
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
+from my_planner.panel.experts import (
+    EXPERTS_FULL,
+    EXPERTS_PER_MESSAGE,
+    ExpertNote,
+    expert_definitions,
+)
+from my_planner.panel.report import (
+    FULL_BLOCK_REPLIES,
+    FULL_FAILED_REPLY,
+    FullBlock,
+    full_diagnosis_block,
+)
 from my_planner.status.snapshot import status_snapshot
 from my_planner.status.xp import (
     LABEL_CHECKIN_REPLY,
@@ -198,6 +210,9 @@ class Outbound:
     # 퀵 칩 차례의 하네스 결과 카드 `(컴포넌트, props, 출력)`(SP9c 4.4). 정상 답 경로에서만 `_reply_out`이 싣는다.
     # 앱 `harness_cards`가 맨 뒤에 `h_chip`으로 붙인다
     chip_cards: list[tuple[str, dict[str, Any], dict[str, Any]]] = field(default_factory=list)
+    # 라이프 매니저 답의 전문가 소견 `{"expert", "text"}`(SP15 1장 2, 부른 순서). 마지막 두뇌 결과가 ok일 때만.
+    # 앱 답 스트림의 `data-expert-notes`(finish-step 뒤, data-activity 앞)
+    expert_notes: list[dict[str, str]] = field(default_factory=list)
 
 
 class Sender(Protocol):
@@ -1147,6 +1162,11 @@ class Dispatcher:
             return
         # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
         chip_of = _chip_of(batch[0]) if self._cur is not None else _NO_CHIP
+        if chip_of.chip == "manager_full" and (why := self._full_diagnosis_block()) is not None:
+            # 전체 진단 상한(SP15 6.2): 하루 1회·주 2회·사용자 몫 안의 남은 호출. 두뇌 없이 고정 답
+            if await self._fixed_reply(batch, FULL_BLOCK_REPLIES[why], update_ids):
+                log.info("full_diagnosis_blocked", extra={"update_ids": update_ids, "reason": why})
+            return
         # 사진(SP10 5.5): 부를 때 파일에서 읽는다. 읽힌 사진만 두뇌 입력에 넣고 `(사진 n장)`도 그 수로 센다
         images = await self._message_images([i for m in batch for i in m.photo_ids])
         loaded = {pid for pid, _ in images}
@@ -1196,6 +1216,8 @@ class Dispatcher:
         review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
         run_ctx = self._message_ctx(conv.id, lead, chip_of)
+        # 라이프 매니저(SP15 6.2): 전문가 서브에이전트 정의와 한 호출의 전문가 수, 턴·시간 상한. 모든 두뇌 호출이 같은 값
+        brain_kw = self._manager_brain_kw(run_ctx) if conv.agent == "manager" else {}
         # 즉시 판단(SP14 7장): 메이트 대화의 메시지마다 안 읽은 사건 블록. 비서에는 붙이지 않는다
         block = (
             inbox_block(self.tools.agents, conv.agent, self._today())
@@ -1271,7 +1293,7 @@ class Dispatcher:
                 app.writer.start_step()
             with self._stoppable(run_ctx, answer_xp, conv.id, brain=True) as box:
                 result = box.result = await self._call_brain(
-                    prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork,
+                    prompt, session_id=session_id, run_ctx=run_ctx, fork_session=fork, **brain_kw,
                 )
             # 가르기가 답을 냈는데 원래 세션 id를 그대로 돌려줬다: 갈라지지 않고 원래 세션을 이었다. 가르기 실패로
             # 본다(그 세션은 쓰지 않고, 다음 메시지부터 대체 경로). 바로 대체 경로로 다시 부르는 것은 도구가 쓰지
@@ -1304,13 +1326,17 @@ class Dispatcher:
                     log.warning("fork_session_failed", extra={"conversation_id": conv.id})
                 run_ctx = self._message_ctx(conv.id, lead, chip_of)
                 with self._stoppable(run_ctx, answer_xp, conv.id, brain=True) as box:
-                    result = box.result = await self._call_brain(prompt, session_id=None, run_ctx=run_ctx)
+                    result = box.result = await self._call_brain(
+                        prompt, session_id=None, run_ctx=run_ctx, **brain_kw,
+                    )
             # 그 밖의 오류: 2, 4, 8초 간격으로 3회까지 다시 부른다(스펙 5.3). resume 실패 대체 경로가 먼저다
             capped = False
             for delay in MESSAGE_RETRY_DELAYS_S:
                 if result.status != "error":
                     break
                 if result.error == "start_timeout":  # CLI가 대기 시간 안에 뜨지 않았다: 또 기다리게 하지 않는다
+                    break
+                if run_ctx.full_diagnosis:  # 전체 진단(SP15): 900초 × 전문가 6명을 다시 돌리지 않는다. 고정 답으로
                     break
                 if run_ctx.events:  # 도구가 이미 데이터를 바꿨다: 다시 부르지 않는다(중복 쓰기 방지, 스펙 5.4-3)
                     break
@@ -1323,7 +1349,7 @@ class Dispatcher:
                 with self._stoppable(run_ctx, answer_xp, conv.id, brain=True) as box:
                     result = box.result = await self._call_brain(
                         prompt, session_id=None if fell_back else session_id, run_ctx=run_ctx,
-                        fork_session=fork and not fell_back,
+                        fork_session=fork and not fell_back, **brain_kw,
                     )
             if app is not None:
                 app.past_stop = True  # 마지막 두뇌 호출 뒤: 여기부터 멈추기는 "done"
@@ -1363,7 +1389,10 @@ class Dispatcher:
                     self.tools.agents.mark_seen(conv.agent, block.event_ids, self.clock.now())
             streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
-            body_text = app.writer.streamed_reply if streamed else _reply_for(result)
+            if run_ctx.full_diagnosis and result.status == "error":
+                body_text = FULL_FAILED_REPLY  # 횟수에 세지 않는다(리포트를 저장한 진단만 센다, Review Focus 5)
+            else:
+                body_text = app.writer.streamed_reply if streamed else _reply_for(result)
             confirmations = self._confirmations(run_ctx, answer_xp)
             # 두뇌가 제대로 답했을 때만 첫 단계를 붙인다(일반 문구 아래에는 묻지 않는다)
             step = (
@@ -1387,6 +1416,8 @@ class Dispatcher:
                 _outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids, chip_cards=cards
             )
             out.streamed = streamed
+            notes = list(result.expert_notes) if result.status == "ok" else []
+            out.expert_notes = [{"expert": n.expert, "text": n.text} for n in notes]
             if step is not None:
                 out.ladder = step.ladder
             if not await self._send_reply(out, update_ids, conv.id):
@@ -1396,6 +1427,7 @@ class Dispatcher:
             # 보낸 뒤에만 처리 완료, 그다음 비서 원문 기록(기록이 안 돼도 다시 답하지 않는다)
             self._messages_done(update_ids, reply=sent_text, confirmation=confirmations, conversation_id=conv.id)
             self._transcribe_reply(conv.id, reply, list(run_ctx.tool_names))
+            self._transcribe_expert_notes(conv.id, notes)
         log.info(
             "message_handled",
             extra={
@@ -1575,7 +1607,30 @@ class Dispatcher:
         return RunContext(
             conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead, channel="app",
             stream=app.writer, chip=chip.chip, chip_text=chip.text, agent=self._agent_of(conversation_id),
+            # 전체 진단(SP15): 첫 호출과 resume 실패 대체 경로가 같은 깃발(`save_life_report`가 이것을 본다)
+            full_diagnosis=chip.chip == "manager_full",
         )
+
+    def _manager_brain_kw(self, run_ctx: RunContext) -> dict[str, Any]:
+        """라이프 매니저 두뇌 호출의 인자(SP15 6.2). 보통 메시지는 전문가 2명·`limits.manager_message`, 전체 진단은
+        6명·`limits.full_diagnosis`. 본 스레드 `disallowed_tools`는 넘기지 않는다: 스파이크 S1 `disallow_main_ok=False`
+        (본 스레드에서 빼면 서브에이전트도 그 도구를 못 받는다. 전문가 전용 도구는 모두 읽기라 받아들인다)."""
+        limits = self.settings.limits
+        full = run_ctx.full_diagnosis
+        lim = limits.full_diagnosis if full else limits.manager_message
+        return {
+            "agents": expert_definitions(),
+            "subagent_cap": EXPERTS_FULL if full else EXPERTS_PER_MESSAGE,
+            "max_turns": lim.max_turns,
+            "timeout_s": lim.brain_timeout_s,
+        }
+
+    def _full_diagnosis_block(self) -> FullBlock | None:
+        """전체 진단을 막는 이유(`day`·`week`·`calls`) 또는 None. 남은 호출은 사용자 몫(하루 마지막
+        `MOMENTS_RESERVE_CALLS`회 창) 안에서 센다(스펙 6.2)."""
+        today = self._today()
+        left = self.settings.limits.daily_brain_calls - self.state.usage(today).brain_calls
+        return full_diagnosis_block(self.state, today, min(moments_job.MOMENTS_RESERVE_CALLS, left))
 
     def _agent_of(self, conversation_id: int | None) -> Agent:
         """그 대화의 상대. 대화가 없으면 비서."""
@@ -1793,6 +1848,20 @@ class Dispatcher:
                 self.transcripts.append(self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools)
         except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
             log.warning("reply_transcript_error", extra={"error_type": type(e).__name__})
+
+    def _transcribe_expert_notes(self, conversation_id: int, notes: list[ExpertNote]) -> None:
+        """매니저 답 줄 바로 다음에 소견마다 한 항목(`### HH:MM 전문가 [<대화>] (<키>) @app @manager`, SP15).
+        새 세션의 지난 내용(`recent_entries`)에는 들어가지 않는다."""
+        if not notes or self._deleted(conversation_id):
+            return
+        try:
+            for n in notes:
+                self.transcripts.append(
+                    self.clock.now(), "전문가", conversation_id, n.expert, redact(n.text)[0],
+                    channel="app", agent="manager",
+                )
+        except Exception as e:  # noqa: BLE001 - 본문 없이 종류만 남긴다
+            log.warning("expert_note_transcript_error", extra={"error_type": type(e).__name__})
 
     def _capped(self) -> bool:
         return self.state.usage(self._today()).brain_calls >= self.settings.limits.daily_brain_calls
@@ -2415,10 +2484,14 @@ class Dispatcher:
     async def _call_brain(
         self, prompt: str | UserContent, *, session_id: str | None, run_ctx: RunContext, fork_session: bool = False,
         system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
+        agents: dict[str, Any] | None = None, subagent_cap: int | None = None,
+        disallowed_tools: list[str] | None = None, timeout_s: float | None = None,
     ) -> BrainResult:
         """두뇌를 부르는 동안 5초마다 '입력 중'을 보낸다. `fork_session`: `session_id`를 갈라 새 세션으로(7.2).
 
         `system_prompt`, `max_turns`, `persist_session`: 하루 끝 순간 호출(SP8 6.3). 순간 호출은 '입력 중'이 없다.
+        `agents`, `subagent_cap`, `disallowed_tools`: 라이프 매니저의 전문가 서브에이전트(SP15 6.2). `timeout_s`: 이 호출의
+        시간 상한(없으면 `limits.brain_timeout_s`).
         """
         if run_ctx.stream is not None:
             run_ctx.stream.begin_attempt()  # 앞 시도가 글을 보냈으면 새 단계로 나눈다(06b)
@@ -2432,7 +2505,7 @@ class Dispatcher:
             # 메시지 백오프와 회차 재실행 규칙을 그대로 따른다(도구가 이미 썼으면 다시 부르지 않는다).
             # anyio 취소 범위를 쓴다: SDK가 CLI 자식을 정리하는 차폐 구간(close())이 끝까지 돈다.
             # asyncio.wait_for의 날 취소는 그 차폐 안의 다음 await에서 터져 자식이 고아로 남을 수 있다
-            with anyio.fail_after(self.settings.limits.brain_timeout_s):
+            with anyio.fail_after(timeout_s if timeout_s is not None else self.settings.limits.brain_timeout_s):
                 # 기본값이 아닐 때만 넘긴다: SP1의 두뇌 구현(시험용 포함)은 이 인자들을 모른다
                 extra: dict[str, Any] = {"fork_session": True} if fork_session else {}
                 if system_prompt is not None:
@@ -2441,6 +2514,12 @@ class Dispatcher:
                     extra["max_turns"] = max_turns
                 if not persist_session:
                     extra["persist_session"] = False
+                if agents is not None:
+                    extra["agents"] = agents
+                if subagent_cap is not None:
+                    extra["subagent_cap"] = subagent_cap
+                if disallowed_tools is not None:
+                    extra["disallowed_tools"] = disallowed_tools
                 # 이 호출 안의 도구 쓰기만 사건 출처 `brain`(SP14 5.1). 끝나면 앞 값으로 되돌린다(같은 ctx의 뒤 쓰기는 아님)
                 was_in_brain, run_ctx.in_brain = run_ctx.in_brain, True
                 try:
