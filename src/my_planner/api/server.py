@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 from aiohttp import web
 
 from my_planner.api.actions import get_activity, post_actions, post_undo
+from my_planner.api.agents import get_agent_notes, get_inbox_count
 from my_planner.api.auth import AuthLimiter, bearer_ok
 from my_planner.api.body import BODY_MAX_BYTES, BODY_PATH, post_body
 from my_planner.api.calendar import (
@@ -306,6 +307,8 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/settings/digests", get_digest_settings),
     ("/settings/calendar", get_calendar_settings),
     ("/devices", get_devices),  # 기기 연결 스펙 4.5
+    ("/agents/notes", get_agent_notes),  # SP14. 대시보드 기기는 403
+    ("/agents/{agent}/inbox/count", get_inbox_count),
 )
 
 

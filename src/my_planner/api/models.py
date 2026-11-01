@@ -979,6 +979,28 @@ class StandingMeasures(_Model):
     measures: list[StandingMeasure]
 
 
+class InboxCount(_Model):
+    """`GET /agents/{agent}/inbox/count`: 오늘 −7일부터의 안 읽은 사건 수."""
+
+    unseen: int
+
+
+class AgentNoteOut(_Model):
+    id: int
+    agent: Literal["mate", "manager"]
+    day: str
+    text: str
+    priority: Literal[1, 2, 3]
+    shown_at: str | None
+    created_at: str
+
+
+class AgentNotes(_Model):
+    """`GET /agents/notes`: 관찰 목록(최신 먼저)."""
+
+    notes: list[AgentNoteOut]
+
+
 class UiComponent(_Model):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -1512,6 +1534,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "Status": Status,
     "Standing": Standing,
     "StandingMeasures": StandingMeasures,
+    "InboxCount": InboxCount,
+    "AgentNotes": AgentNotes,
+    "AgentNoteOut": AgentNoteOut,
     "Moment": Moment,
     "MomentsList": MomentsList,
     "BodyPostBody": BodyPostBody,

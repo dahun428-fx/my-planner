@@ -13,6 +13,8 @@ export interface ApiModels {
   ActionRejected: ActionRejected;
   ActionRequestBody: ActionRequestBody;
   ActivityResponse: ActivityResponse;
+  AgentNoteOut: AgentNoteOut;
+  AgentNotes: AgentNotes;
   BodyPostBody: BodyPostBody;
   BodySaved: BodySaved;
   CalendarPutBody: CalendarPutBody;
@@ -46,6 +48,7 @@ export interface ApiModels {
   HabitHistory: HabitHistory;
   HabitsList: HabitsList;
   Health: Health;
+  InboxCount: InboxCount;
   Memo: Memo;
   MemoItem: MemoItem;
   MemoList: MemoList;
@@ -213,6 +216,28 @@ export interface ActivityItem {
   summary: string;
   undo_id: number | null;
   undone_at: string | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "AgentNoteOut".
+ */
+export interface AgentNoteOut {
+  agent: "mate" | "manager";
+  created_at: string;
+  day: string;
+  id: number;
+  priority: 1 | 2 | 3;
+  shown_at: string | null;
+  text: string;
+}
+/**
+ * `GET /agents/notes`: 관찰 목록(최신 먼저).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "AgentNotes".
+ */
+export interface AgentNotes {
+  notes: AgentNoteOut[];
 }
 /**
  * `POST /body` 요청 (SP8 7.3, 아이폰 단축어). 최상위 키는 `days` 하나. `client_msg_id`는 없다(7.2).
@@ -1057,6 +1082,15 @@ export interface HealthVersion {
   app: string;
   schema: number | null;
   ui_catalog: string;
+}
+/**
+ * `GET /agents/{agent}/inbox/count`: 오늘 −7일부터의 안 읽은 사건 수.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "InboxCount".
+ */
+export interface InboxCount {
+  unseen: number;
 }
 /**
  * `GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).

@@ -87,6 +87,7 @@
   },
   "disk_low": false,
   "features": [
-    "mate"
+    "mate",
+    "agent_notes"
   ]
 }
