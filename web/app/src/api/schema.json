@@ -443,6 +443,14 @@
       },
       "additionalProperties": false,
       "properties": {
+        "agent": {
+          "default": "secretary",
+          "enum": [
+            "secretary",
+            "mate"
+          ],
+          "type": "string"
+        },
         "checkin_id": {
           "anyOf": [
             {
@@ -462,7 +470,10 @@
                 "event",
                 "memo",
                 "today",
-                "next"
+                "next",
+                "mate_today",
+                "mate_log",
+                "mate_plan"
               ],
               "type": "string"
             },
@@ -3617,6 +3628,20 @@
         "errors": {
           "$ref": "#/$defs/HealthErrors"
         },
+        "features": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "inbound_pending_oldest_at": {
           "anyOf": [
             {
@@ -4019,7 +4044,8 @@
             "speaker": {
               "enum": [
                 "user",
-                "secretary"
+                "secretary",
+                "mate"
               ],
               "type": "string"
             },
@@ -5035,12 +5061,16 @@
             },
             "tasks": {
               "type": "integer"
+            },
+            "workout_days": {
+              "type": "integer"
             }
           },
           "required": [
             "tasks",
             "habit_checks",
-            "body_days"
+            "body_days",
+            "workout_days"
           ],
           "type": "object"
         },
@@ -6627,6 +6657,345 @@
         "end",
         "priorities",
         "days"
+      ],
+      "type": "object"
+    },
+    "Workout": {
+      "$defs": {
+        "BodyNoteOut": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "equipment",
+                "injury",
+                "preference",
+                "availability",
+                "other"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "text",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "WorkoutLogItemOut": {
+          "additionalProperties": false,
+          "properties": {
+            "distance_km": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "reps": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sets": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "weight_kg": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "sets",
+            "reps",
+            "weight_kg",
+            "minutes",
+            "distance_km"
+          ],
+          "type": "object"
+        },
+        "WorkoutLogOut": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "type": "string"
+            },
+            "effort": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": "integer"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/WorkoutLogItemOut"
+              },
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "title",
+            "session_id",
+            "effort",
+            "note",
+            "items"
+          ],
+          "type": "object"
+        },
+        "WorkoutPlan": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sessions": {
+              "items": {
+                "$ref": "#/$defs/WorkoutPlanSession"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "note",
+            "created_at",
+            "sessions"
+          ],
+          "type": "object"
+        },
+        "WorkoutPlanItem": {
+          "additionalProperties": false,
+          "properties": {
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reps": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "sets": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "weight_kg": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "sets",
+            "reps",
+            "weight_kg",
+            "minutes",
+            "note"
+          ],
+          "type": "object"
+        },
+        "WorkoutPlanSession": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/WorkoutPlanItem"
+              },
+              "type": "array"
+            },
+            "label": {
+              "type": "string"
+            },
+            "position": {
+              "type": "integer"
+            },
+            "weekdays": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "position",
+            "label",
+            "weekdays",
+            "items"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "logs": {
+          "items": {
+            "$ref": "#/$defs/WorkoutLogOut"
+          },
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/BodyNoteOut"
+          },
+          "type": "array"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkoutPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "plan",
+        "logs",
+        "notes"
       ],
       "type": "object"
     }

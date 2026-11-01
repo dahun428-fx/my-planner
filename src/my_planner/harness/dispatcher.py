@@ -19,6 +19,7 @@ import anyio
 
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import (
+    Agent,
     Cadence,
     Channel,
     ConversationKind,
@@ -41,6 +42,7 @@ from my_planner.harness.context import (
     moments_week_block,
     recent_areas_block,
 )
+from my_planner.harness.mate_context import build_mate_preamble
 from my_planner.harness.photo_reader import (
     PhotoGone,
     PhotoReader,
@@ -89,6 +91,7 @@ from my_planner.store.repos.state import (
 )
 from my_planner.store.reviews import save_weekly_review
 from my_planner.store.transcripts import (
+    Speaker,
     app_secretary_message_id,
     app_user_message_id,
     erase_conversation,
@@ -139,6 +142,8 @@ class Inbound:
     chip: str | None = None
     # 앱: 붙인 사진 id(SP10 5.5, 보낸 순서: `for_message`의 연결 `rowid` 순). `text`는 `[사진 #12] {글}` 본문이다. 다시 넣을 때는 `for_message`로 다시 읽는다
     photo_ids: list[int] = field(default_factory=list)
+    # 앱: 대화 상대(SP12 5.1). 받을 때 정한 값(`inbound_pending.agent`)을 다시 넣을 때도 그대로 쓴다
+    agent: Agent = "secretary"
 
 
 @dataclass
@@ -639,30 +644,33 @@ class Dispatcher:
 
     def route_app_message(
         self, at: datetime, *, conversation_id: int | None, checkin_id: int | None, plan: bool = False,
-        resume_conversation_id: int | None = None,
+        resume_conversation_id: int | None = None, agent: Agent = "secretary",
     ) -> Conversation:
         """앱 메시지의 대화를 받을 때 고른다(동기, 7.2). 필요하면 새 앱 대화를 연다(4.3: 앱이 여는 대화는 여기서만).
 
-        `plan=True`(`/plan [주제]`): 앱 통로의 새 계획 대화를 연다(그 통로에 열려 있던 것은 닫는다).
-        `resume_conversation_id`: 목록에서 고른 대화(SP9 7.3 0번 규칙).
+        `plan=True`(`/plan [주제]`): 앱 통로의 새 계획 대화를 연다(그 통로에 열려 있던 것은 닫는다). 비서만.
+        `resume_conversation_id`: 목록에서 고른 대화(SP9 7.3 0번 규칙). 상대가 다르면 `ValueError("agent_mismatch")`.
+        `agent`: 대화 상대(SP12 5.2). 상대마다 따로 고른다.
         """
-        if plan:
+        if plan and agent == "secretary":
             return self.router.start_plan("app")
         return self.router.for_app_message(
             at, conversation_id=conversation_id, checkin_id=checkin_id, resume_conversation_id=resume_conversation_id,
+            agent=agent,
         )
 
-    def current_app_conversation(self, conversation_id: int | None) -> Conversation | None:
+    def current_app_conversation(self, conversation_id: int | None, agent: Agent = "secretary") -> Conversation | None:
         """두뇌를 거치지 않는 앱 답(명령, 글 아닌 메시지)이 알릴 대화. 새 대화는 열지 않는다.
 
-        앱이 보낸 id가 열린 앱 대화면 그것, 아니면 지금 이어질 앱 대화(열린 앱 `plan`, 30분 안의 앱 `chat`), 없으면 None.
+        앱이 보낸 id가 그 상대의 열린 앱 대화면 그것, 아니면 지금 이어질 그 상대의 앱 대화(열린 앱 `plan`, 30분 안의
+        앱 `chat`), 없으면 None.
         """
         now = self.clock.now()
         conv = self.convs.get(conversation_id) if conversation_id is not None else None
         # 보낸 id도 라우팅과 같은 규칙으로 본다(계획 2시간, chat 30분, 회차 답장 창. 06 리뷰 N1)
-        if conv is not None and conv.channel == "app" and self.router.continues(conv, now):
+        if conv is not None and conv.channel == "app" and conv.agent == agent and self.router.continues(conv, now):
             return conv
-        return self.router.current_app(now)
+        return self.router.current_app(now, agent)
 
     def has_inflight(self, client_msg_id: str) -> bool:
         """같은 `client_msg_id`의 앱 메시지가 큐에 있거나 처리 중이다."""
@@ -690,7 +698,7 @@ class Dispatcher:
             text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
             channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=sink,
             conversation_id=row.conversation_id, message_id=message_id,
-            resume_conversation_id=row.resume_conversation_id, photo_ids=photo_ids,
+            resume_conversation_id=row.resume_conversation_id, photo_ids=photo_ids, agent=row.agent,
         ))
         return True
 
@@ -816,13 +824,15 @@ class Dispatcher:
         if cid is not None and not self._deleted(cid):
             id_conv = id_conversation if id_conversation is not None else cid
             try:
+                agent = self._agent_of(cid)
                 if not user_logged:
                     self.transcripts.append(
                         at, "사용자", cid, None, redact(text)[0], channel="app",
-                        message_id=app_user_message_id(id_conv, inbound_id, user_message_id),
+                        message_id=app_user_message_id(id_conv, inbound_id, user_message_id), agent=agent,
                     )
                 self.transcripts.append(
-                    self.clock.now(), "비서", cid, None, STOPPED_REPLY, channel="app", message_id=message_id,
+                    self.clock.now(), self._speaker(cid), cid, None, STOPPED_REPLY, channel="app",
+                    message_id=message_id, agent=agent,
                 )
             except Exception as e:  # noqa: BLE001 - 본문과 경로 없이 종류만 남긴다
                 log.warning("reply_transcript_error", extra={"error_type": type(e).__name__})
@@ -888,7 +898,7 @@ class Dispatcher:
         if conv is None or conv.closed_at is not None:
             conv = self.route_app_message(
                 self.clock.now(), conversation_id=None, checkin_id=slot.inbound.checkin_id,
-                resume_conversation_id=slot.inbound.resume_conversation_id,
+                resume_conversation_id=slot.inbound.resume_conversation_id, agent=slot.inbound.agent,
             )
             slot.conversation_id = conv.id
             slot.writer.metadata = self.chat_metadata(conv.id)
@@ -1136,7 +1146,7 @@ class Dispatcher:
             redacted=any(r for _, r in redacted_parts) or any(m.recovered and MASK in m.text for m in batch),
             stale_hours=stale_hours if stale_hours > limits.stale_message_hours else None,
             truncated_to=limits.input_max_chars if truncated else None,
-            elsewhere=self._elsewhere(conv, channel),
+            elsewhere=self._elsewhere(conv, channel) if conv.agent == "secretary" else None,  # 메이트는 없음(SP12 5.4)
         )
         # 두뇌가 답하는 동안 tick이 이 대화를 만료로 닫지 않도록 받은 즉시 활동으로 기록한다
         self.convs.touch(conv.id)
@@ -1151,6 +1161,7 @@ class Dispatcher:
         review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
         run_ctx = self._message_ctx(conv.id, lead, chip_of)
+        # `_recorded_condition()`은 메이트에도 붙인다(SP12 5.4: 이어진 세션에서도 오늘 컨디션 기록 여부를 본다)
         body = _join(
             self._recorded_condition(),
             chip_block(chip_of.chip) if chip_of.chip is not None else "",
@@ -1182,8 +1193,12 @@ class Dispatcher:
                 if origin is not None and origin.session_id is not None:
                     session_id, fork = origin.session_id, True
             resumed = session_id is not None
-            # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택").
-            instructions = "" if conv.kind is ConversationKind.run else prompts.load(CONVERSATION_PROMPTS[conv.kind])
+            # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택"). 메이트 규칙은 모두 시스템
+            # 지시문 `mate.md`에 있어 차례 지시문을 붙이지 않는다(SP12 5.4)
+            mate = conv.agent == "mate"
+            instructions = (
+                "" if conv.kind is ConversationKind.run or mate else prompts.load(CONVERSATION_PROMPTS[conv.kind])
+            )
             history = ""
             if not resumed and conv.kind is ConversationKind.run:
                 # 세션이 없는 회차 대화: 두뇌가 자기가 보낸 회차 메시지를 알도록 최근 원문을 붙인다.
@@ -1197,7 +1212,7 @@ class Dispatcher:
             prompt: str | UserContent = photo_content(_join(
                 notices,
                 "" if resumed else instructions,
-                self._preamble(resumed, include_habits=True),
+                self._conversation_preamble(conv, resumed),
                 "" if resumed else origin_text,
                 continued,
                 rolled,
@@ -1232,7 +1247,7 @@ class Dispatcher:
                 prompt = photo_content(_join(
                     notices,
                     instructions,
-                    self._preamble(False, include_habits=True),
+                    self._conversation_preamble(conv, False),
                     origin_text,
                     self._continued_text(conv),
                     self._past_text(conv, len(batch)),
@@ -1500,15 +1515,25 @@ class Dispatcher:
             log.warning("run_answer_record_error", extra={"run_id": run_id, "error_type": type(e).__name__})
 
     def _message_ctx(self, conversation_id: int, lead: int, chip: _Chip | None = None) -> RunContext:
-        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1), 퀵 칩(SP9c 4.2)을 싣는다."""
+        """사용자 메시지 처리의 도구 맥락. 앱이면 통로 `app`과 스트림 쓰개(도구 조각, 6.4.1), 퀵 칩(SP9c 4.2), 대화
+        상대(SP12 5.1, 도구 목록·지시문을 고른다)를 싣는다."""
         app = self._cur
         if app is None:
             return RunContext(conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead)
         chip = chip or _NO_CHIP
         return RunContext(
             conversation_id=conversation_id, run_id=None, events=[], inbound_id=lead, channel="app",
-            stream=app.writer, chip=chip.chip, chip_text=chip.text,
+            stream=app.writer, chip=chip.chip, chip_text=chip.text, agent=self._agent_of(conversation_id),
         )
+
+    def _agent_of(self, conversation_id: int | None) -> Agent:
+        """그 대화의 상대. 대화가 없으면 비서."""
+        conv = self.convs.get(conversation_id) if conversation_id is not None else None
+        return conv.agent if conv is not None else "secretary"
+
+    def _speaker(self, conversation_id: int | None) -> Speaker:
+        """답 줄의 화자(원문 기록): 메이트 대화면 `운동메이트`(SP12 14장), 아니면 `비서`."""
+        return "운동메이트" if self._agent_of(conversation_id) == "mate" else "비서"
 
     def _reply_out(
         self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int],
@@ -1571,7 +1596,8 @@ class Dispatcher:
                 cid = app.id_conversation
                 mid = app_user_message_id(cid, lead, m.message_id) if cid is not None else None
                 self.transcripts.append(
-                    m.at, "사용자", conversation_id, None, redact(m.text)[0], channel="app", message_id=mid
+                    m.at, "사용자", conversation_id, None, redact(m.text)[0], channel="app", message_id=mid,
+                    agent=self._agent_of(conversation_id),
                 )
             else:
                 self.transcripts.append(m.at, "사용자", conversation_id, None, redact(m.text)[0])
@@ -1704,8 +1730,8 @@ class Dispatcher:
             if app is not None:
                 mid = app.secretary_id()  # 그 답의 `start.messageId`(다시 고른 대화로 가도 같다)
                 self.transcripts.append(
-                    self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools, channel="app",
-                    message_id=mid,
+                    self.clock.now(), self._speaker(conversation_id), conversation_id, None, redact(text)[0],
+                    tools=tools, channel="app", message_id=mid, agent=self._agent_of(conversation_id),
                 )
             else:
                 self.transcripts.append(self.clock.now(), "비서", conversation_id, None, redact(text)[0], tools=tools)
@@ -2237,6 +2263,22 @@ class Dispatcher:
     def _today(self) -> date:
         return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
 
+    def _conversation_preamble(self, conv: Conversation, resumed: bool) -> str:
+        """사용자 메시지 차례의 앞머리(새 세션에만). 메이트 대화는 메이트 앞머리(SP12 5.4·5.5), 비서는 지금 그대로."""
+        if conv.agent == "mate":
+            return "" if resumed else self._mate_preamble(self.clock.now())
+        return self._preamble(resumed, include_habits=True)
+
+    def _mate_preamble(self, now: datetime) -> str:
+        """메이트 앞머리(SP12 5.5): 오늘, 오늘 몸, 오늘 일정, 몸 메모, 지금 플랜, 최근 기록. 모두 DB에서 읽는다."""
+        if self.tools is None:
+            return ""
+        return build_mate_preamble(
+            now=now, tz=self.settings.timezone, boundary=self.settings.day_boundary,
+            conditions=self.tools.conditions, body=getattr(self.tools, "body", None),
+            events=getattr(self.tools, "events", None), workout=getattr(self.tools, "workout", None),
+        )
+
     def _preamble(
         self, resumed: bool, *, merged: list[str] | None = None, include_habits: bool = False,
         habit_day: date | None = None,
@@ -2377,10 +2419,10 @@ class Dispatcher:
 
     # --- 대화 목록 (SP9 7.3, 7.7) ---
 
-    def new_conversation(self) -> list[int]:
-        """`POST /conversations/new`: 열린 앱 `chat`·`plan`을 닫는다(요약은 다음 tick이 큐에 넣는다). 닫은 id."""
-        closed = self.router.new_app_conversation()
-        log.info("conversation_new", extra={"closed": len(closed)})
+    def new_conversation(self, agent: Agent = "secretary") -> list[int]:
+        """`POST /conversations/new`: 그 상대의 열린 앱 `chat`·`plan`을 닫는다(요약은 다음 tick이 큐에 넣는다). 닫은 id."""
+        closed = self.router.new_app_conversation(agent)
+        log.info("conversation_new", extra={"closed": len(closed), "agent": agent})
         return closed
 
     def delete_conversation(self, conversation_id: int) -> bool:
@@ -2567,7 +2609,7 @@ class Dispatcher:
         s = self.settings
         inp = moments_job.build_moments_input(
             d, tasks=tools.tasks, habits=tools.habits, conditions=tools.conditions, transcripts=self.transcripts,
-            tz=s.timezone, boundary=s.day_boundary,
+            tz=s.timezone, boundary=s.day_boundary, workout=getattr(tools, "workout", None),
         )
         if not inp.has_data:
             moments_job.mark_empty(repo, d, self.clock.now())
@@ -2824,7 +2866,7 @@ def _week_label(monday: date) -> str:
     )
 
 
-# 칩 알림 끝에 공통 규칙(4.3, `chip_common.md`)을 붙이는 칩: 글로 무엇을 저장하는 칩만
+# 칩 알림 끝에 공통 규칙(4.3, `chip_common.md`)을 붙이는 칩: 글로 무엇을 저장하는 칩만. 메이트 칩(SP12 5.7)은 붙이지 않는다
 _SAVING_CHIPS = frozenset({"todo", "event", "memo"})
 
 

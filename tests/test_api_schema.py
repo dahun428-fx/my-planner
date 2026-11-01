@@ -24,7 +24,7 @@ EXPECTED_MODELS = {
     "UndoRequestBody", "UndoResponse", "ActivityResponse", "ChatRequestBody",
     "ChatStopBody", "ChatStopped",  # 답 멈추기
     "VapidPublicKey", "PushSubscribeBody", "PushSubscribed", "PushTestResult", "NotifySettings", "NotifyPutBody",
-    "Habit", "HabitsList", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
+    "Habit", "HabitsList", "Workout", "HabitHistory", "ClientErrorBody", "RecoveryNoticeBody", "RecoveryNoticeSent",
     "CheckinTimes", "CheckinTimePutBody", "CheckinTimesUpdated",  # SP9 8장
     "DigestSlot", "DigestSettings", "DigestSettingPutBody", "DigestSettingsUpdated",  # SP9b 5장
     "Memo", "MemoItem", "MemoList",  # SP9 6.4

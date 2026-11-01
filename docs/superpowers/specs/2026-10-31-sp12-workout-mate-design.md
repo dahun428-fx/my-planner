@@ -1,6 +1,6 @@
 # SP12 운동메이트 상세 설계 (추가 기능)
 
-- 상태: 확정 v3.2 (Dahun 2026-10-31 "진행": Q1~Q4와 15장 D1~D10·부록 A를 추천대로 확정)
+- 상태: 확정 v3.4 (Dahun 2026-10-31 "진행": Q1~Q4와 15장 D1~D10·부록 A를 추천대로 확정)
 - 작성일: 2026-10-31
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP3-4 스펙](2026-10-24-sp3-4-life-curve-dashboard-design.md) (BE HTTP API 계약의 정본), [SP7 습관](2026-10-24-sp7-habits-design.md), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md) (몸 기록, 활동 보너스), [SP9 앱 탭·대화](2026-10-25-sp9-app-tabs-memo-schedule-design.md) (대화 = 세션, 요약), [SP10 사진](2026-10-26-sp10-photos-claude-reads-design.md)
 - 용어: [`GLOSSARY.md`](../../../GLOSSARY.md) (이번에 "운동메이트", "운동 플랜", "운동 기록", "몸 메모", "대화 상대" 추가). 결정 기록: [ADR 0019](../../adr/0019-workout-mate-is-a-second-agent-in-be.md) 추가
@@ -138,7 +138,7 @@ SP9 7.3의 규칙을 상대마다 따로 돈다.
 
 ```
 ## 오늘
-2026-10-31 (토), 논리적 날짜
+2026-10-31 (토) 14:20, 논리적 날짜
 
 ## 오늘 몸
 - 컨디션: 3 (기록 없으면 "기록 없음")
@@ -474,6 +474,14 @@ CREATE TABLE workout_log_items (
 ## 변경 기록
 
 - v1 (2026-10-31): 첫 초안. Q1~Q4 반영.
+- v3.4 (2026-10-31): 구현 중 바뀐 결정.
+  - 스파이크 S1(Task 0)은 클라우드에 Claude 로그인이 없어 노트북 체크리스트(`sp12/laptop-checklist.md`)로 옮겼다.
+  - 이룬 순간 입력 줄은 `[workout:<id>]` 태그를 쓴다.
+  - 메이트 대화는 입력창 이름표, 대기 중, 생각 중 문구를 비서와 따로 둔다.
+  - 앱이 메이트 기능을 `localStorage` `mp.mate`에 기억해 오프라인에서도 더보기 → 운동이 보인다.
+  - 서비스 워커 셸에 `/workout/`을 더했다.
+  - `delete_workout_log`는 공용 `useConfirmedAction` 훅을 쓴다.
+- v3.3 (2026-10-31): 앞머리 `## 오늘`에 지금 시각.
 - v3.2 (2026-10-31): 계획 리뷰에서 정정. `ui_rules.md` 떼기 대신 `mate.md` 하나(5.4), 12.4를 5.4 표와 맞춤, `undo_json` 모양(7.2), 메이트 칩 키(5.7), 표 다섯(4장).
 - v3 (2026-10-31): doc-reviewer 2회 반영. 플랜 되돌리기는 공통 대상 `workout_plan:current`로 가장 최근 변경만(7.2), `LOG_BACKDATE_DAYS = 6` 맞춤, 메이트도 `_recorded_condition` 매 호출, 원문 기록 정규식·화자 변환, 테스트 파일 이름, 원장 `workout_day:` 머리말, D7 예외.
 - v2 (2026-10-31): doc-reviewer 1회 반영. 라우터의 상대 인자 자리 표(5.2), 첫 프롬프트 조각 표(5.4), 도구 판정 순서와 `record_condition`(5.3), 플랜 되돌리기 대상 둘(7.2), 기록 날짜 오늘−6로 SP7과 맞춤(8.2), 경험치 X13과 원장 칸(10장), 활동 `kind`·`actor`(8.2), 몸 메모 지우기 활동(6.3), 원문 기록 화자와 읽기 제외(14장), 테스트 명령 표(12장), 몸 숫자 대가 정정(5.5).

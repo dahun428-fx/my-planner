@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from my_planner.clock import Clock, from_iso, to_iso
-from my_planner.domain import Channel, ConversationKind
+from my_planner.domain import Agent, Channel, ConversationKind
 from my_planner.store.db import transaction
 
 
@@ -33,6 +33,7 @@ class Conversation:
     user_messages: int = 0
     deleted_at: datetime | None = None
     continued_from: int | None = None  # 지난 대화를 골라 새로 연 `chat`이면 그 대화(7.3)
+    agent: Agent = "secretary"  # 대화 상대(SP12 5.1). 메이트 대화는 늘 앱 통로의 `chat`
 
 
 def _row(r: sqlite3.Row) -> Conversation:
@@ -53,6 +54,7 @@ def _row(r: sqlite3.Row) -> Conversation:
         user_messages=r["user_messages"],
         deleted_at=from_iso(r["deleted_at"]) if r["deleted_at"] else None,
         continued_from=r["continued_from"],
+        agent=r["agent"],
     )
 
 
@@ -76,17 +78,19 @@ class ConversationsRepo:
     def open(
         self, kind: ConversationKind | str, logical_date: date, run_id: int | None = None, *,
         channel: Channel = "telegram", forked_from: int | None = None, continued_from: int | None = None,
+        agent: Agent = "secretary",
     ) -> Conversation:
         """`forked_from`: 다른 통로의 회차 대화를 갈라 연 대화면 그 원래 대화(SP3-4 7.2 가르기).
 
-        `continued_from`: 지난 대화(계획, 창이 지난 회차)를 골라 새로 연 `chat`이면 그 대화(SP9 7.3)."""
+        `continued_from`: 지난 대화(계획, 창이 지난 회차)를 골라 새로 연 `chat`이면 그 대화(SP9 7.3).
+        `agent`: 대화 상대(SP12 5.1)."""
         now = to_iso(self.clock.now())
         with transaction(self.conn):
             cur = self.conn.execute(
                 "INSERT INTO conversations (kind, run_id, logical_date, opened_at, last_message_at, channel, "
-                "forked_from, continued_from) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "forked_from, continued_from, agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ConversationKind(kind).value, run_id, logical_date.isoformat(), now, now, channel, forked_from,
-                 continued_from),
+                 continued_from, agent),
             )
         conv = self.get(cur.lastrowid)
         assert conv is not None
@@ -227,12 +231,14 @@ class ConversationsRepo:
         ).fetchone()
         return _row(r) if r is not None else None
 
-    def latest_open(self, kind: ConversationKind | str, channel: Channel = "telegram") -> Conversation | None:
-        """그 통로의 열린 대화 가운데 마지막 메시지가 가장 최근인 것(SP3-4 7.1: 통로마다 따로)."""
+    def latest_open(
+        self, kind: ConversationKind | str, channel: Channel = "telegram", agent: Agent = "secretary",
+    ) -> Conversation | None:
+        """그 통로·그 상대의 열린 대화 가운데 마지막 메시지가 가장 최근인 것(SP3-4 7.1: 통로마다, SP12 5.2: 상대마다 따로)."""
         r = self.conn.execute(
-            "SELECT * FROM conversations WHERE kind = ? AND channel = ? AND closed_at IS NULL "
+            "SELECT * FROM conversations WHERE kind = ? AND channel = ? AND agent = ? AND closed_at IS NULL "
             "ORDER BY last_message_at DESC, id DESC LIMIT 1",
-            (ConversationKind(kind).value, channel),
+            (ConversationKind(kind).value, channel, agent),
         ).fetchone()
         return _row(r) if r is not None else None
 
@@ -257,14 +263,16 @@ class ConversationsRepo:
     def recent(
         self, *, channel: str | None = None, limit: int = 20, q: str | None = None,
         before: tuple[datetime, int] | None = None, closed_only: bool = False, since: datetime | None = None,
+        agent: Agent = "secretary",
     ) -> list[Conversation]:
-        """마지막 메시지가 최근인 것부터, 지운 대화는 뺀다(7.6). `channel`을 주면 그 통로 대화만.
+        """마지막 메시지가 최근인 것부터, 지운 대화는 뺀다(7.6). `channel`을 주면 그 통로 대화만. `agent`: 그 상대의
+        대화만(SP12 5.2).
 
         `q`: 제목·요약 검색(3글자 이상 trigram, 미만 LIKE). `before`: (`last_message_at`, `id`) 커서(쪽 넘기기).
         `closed_only`, `since`: `find_conversations`(7.5)의 닫힌 대화, 그 시각 뒤에 말이 있었던 것.
         """
-        where: list[str] = ["deleted_at IS NULL"]
-        args: list[object] = []
+        where: list[str] = ["deleted_at IS NULL", "agent = ?"]
+        args: list[object] = [agent]
         if channel is not None:
             where.append("channel = ?")
             args.append(channel)

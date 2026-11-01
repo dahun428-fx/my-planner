@@ -49,8 +49,12 @@ def _bonuses(status: StatusRepo, today: date, tz: str | tzinfo, boundary: time) 
     zone = ZoneInfo(tz) if isinstance(tz, str) else tz
     from_utc = datetime.combine(today - timedelta(days=WINDOW_DAYS), boundary, tzinfo=zone).astimezone(UTC)
     rows = status.activity_rows(from_utc, window_start(today), today)
-    points = area_points(rows.tasks, rows.checks, rows.body, today, tz=tz, boundary=boundary)
-    counts = activity_counts(rows.tasks, rows.checks, rows.body, today, tz=tz, boundary=boundary)
+    points = area_points(
+        rows.tasks, rows.checks, rows.body, today, tz=tz, boundary=boundary, workout_days=rows.workout_days
+    )
+    counts = activity_counts(
+        rows.tasks, rows.checks, rows.body, today, tz=tz, boundary=boundary, workout_days=rows.workout_days
+    )
     return area_bonus(points, today, counts)
 
 
@@ -84,7 +88,10 @@ def _bonus_fields(base: int | None, b: Bonus) -> dict[str, Any]:
     return {
         "bonus": float(b.bonus),
         "effective_score": float(eff) if eff is not None else None,
-        "activity": {"tasks": b.counts.tasks, "habit_checks": b.counts.habit_checks, "body_days": b.counts.body_days},
+        "activity": {
+            "tasks": b.counts.tasks, "habit_checks": b.counts.habit_checks, "body_days": b.counts.body_days,
+            "workout_days": b.counts.workout_days,
+        },
     }
 
 

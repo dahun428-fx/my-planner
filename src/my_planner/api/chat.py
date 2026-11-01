@@ -36,6 +36,7 @@ from my_planner.api.models import (
     ChatStopped,
     ConversationsClosed,
     ErrorCode,
+    NewConversationBody,
     dump,
     error_response,
 )
@@ -47,6 +48,7 @@ from my_planner.bot.commands import (
     run_command,
 )
 from my_planner.bot.telegram_io import NON_TEXT_MARK, NON_TEXT_REPLY
+from my_planner.domain import Agent
 from my_planner.harness.chat_photos import MESSAGE_PHOTOS_MAX, photo_body
 from my_planner.harness.dispatcher import FALLBACK_REPLY, Inbound
 from my_planner.harness.redact import redact
@@ -79,6 +81,7 @@ IN_FLIGHT = "같은 메시지를 처리하고 있어요. 잠시 뒤에 다시 �
 # SP10 8장: `400 photo_not_found`(채팅 `data-photo`)는 "올리지 못했어요", `422 too_many_photos`는 메시지 4장 상한
 PHOTO_NOT_FOUND = "사진을 올리지 못했어요. 다시 보내 주세요."
 TOO_MANY_PHOTOS = "한 번에 사진 4장까지 보낼 수 있어요."
+AGENT_MISMATCH = "이 대화는 다른 상대예요."  # SP12 부록 A: 고른 대화의 상대가 요청의 `agent`와 다르다
 
 
 class _PhotoRefused(Exception):
@@ -159,7 +162,9 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
             log.info("chat_resubmitted")
             return await stream_sink(request, deps, sink, row.conversation_id)
         d.record_chat_reply(cmid, FALLBACK_REPLY, conversation_id=row.conversation_id)
-        return await _direct_reply(request, deps, d, sink, FALLBACK_REPLY, row.conversation_id, row.checkin_id)
+        return await _direct_reply(
+            request, deps, d, sink, FALLBACK_REPLY, row.conversation_id, row.checkin_id, row.agent
+        )
 
     text = message_text(req.message.parts)
     now = deps.clock.now()
@@ -173,12 +178,18 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         return error_response(e.status, e.code, e.message)
 
     # 글이 아닌 메시지(사진도 없음), 명령: 두뇌 없이 글 조각 하나
+    agent = req.agent
     if not text.strip() and not photo_ids:
-        _transcribe_direct(deps, NON_TEXT_MARK, NON_TEXT_REPLY)
+        _transcribe_direct(deps, NON_TEXT_MARK, NON_TEXT_REPLY, agent)
         d.record_chat_reply(cmid, NON_TEXT_REPLY)
-        return await _direct_reply(request, deps, d, sink, NON_TEXT_REPLY, req.conversation_id, req.checkin_id)
-    # 퀵 칩(SP9c 4.1)이면 명령을 해석하지 않는다: `/`로 시작해도 그대로 메시지다
-    cmd = command_of(text) if d.tools is not None and req.chip is None and not photo_ids else None
+        return await _direct_reply(
+            request, deps, d, sink, NON_TEXT_REPLY, req.conversation_id, req.checkin_id, agent
+        )
+    # 퀵 칩(SP9c 4.1)이면 명령을 해석하지 않는다: `/`로 시작해도 그대로 메시지다. 메이트(SP12 5.7)도 명령이 없다
+    cmd = (
+        command_of(text)
+        if d.tools is not None and req.chip is None and not photo_ids and agent == "secretary" else None
+    )
     if cmd is not None and cmd != "/plan":
         assert d.tools is not None
         cdeps = CommandDeps(
@@ -198,15 +209,21 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         text = plan_topic(text)
 
     # 4. 대화를 받을 때 고르고, 저장한 뒤 두뇌 갈래에 넣는다
-    conv = d.route_app_message(
-        now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan,
-        resume_conversation_id=req.resume_conversation_id,
-    )
+    try:
+        conv = d.route_app_message(
+            now, conversation_id=req.conversation_id, checkin_id=req.checkin_id, plan=plan,
+            resume_conversation_id=req.resume_conversation_id, agent=agent,
+        )
+    except ValueError as e:
+        if str(e) != "agent_mismatch":
+            raise
+        log.info("chat_agent_mismatch", extra={"agent": agent})
+        return error_response(400, "invalid_request", AGENT_MISMATCH)
     inbound_id = d.state.next_app_inbound_id()
     d.state.add_pending_inbound(
         inbound_id, photo_body(photo_ids, redact(text)[0]), now, now, channel="app", client_msg_id=cmid,
         checkin_id=req.checkin_id, conversation_id=conv.id, resume_conversation_id=req.resume_conversation_id,
-        photo_ids=photo_ids,
+        photo_ids=photo_ids, agent=agent,
     )
     writer = UiMessageWriter(sink, app_secretary_message_id(conv.id, inbound_id))
     writer.start({**d.chat_metadata(conv.id), "checkin_id": req.checkin_id})
@@ -215,9 +232,11 @@ async def post_chat(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
         text=photo_body(photo_ids, text), at=now, sent_at=now, update_ids=[inbound_id], channel="app",
         client_msg_id=cmid, checkin_id=req.checkin_id, sink=sink, conversation_id=conv.id, message_id=req.message.id,
         resume_conversation_id=req.resume_conversation_id, chip=req.chip, photo_ids=photo_ids,
+        agent=agent,
     ))
     log.info("chat_queued", extra={
         "conversation_id": conv.id, "inbound_id": inbound_id, "chip": req.chip, "photos": len(photo_ids),
+        "agent": agent,
     })
     return await stream_sink(request, deps, sink, conv.id)
 
@@ -247,9 +266,20 @@ NO_CONVERSATION = "없는 대화예요."
 
 
 async def post_new_conversation(request: web.Request, deps: ApiDeps) -> web.StreamResponse:
-    """`POST /conversations/new`: 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화다. `{"closed": [id…]}`."""
+    """`POST /conversations/new`: 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화다. `{"closed": [id…]}`.
+
+    본문 `{agent?}`(SP12 11.3): 그 상대의 대화만 닫는다. 본문이 없거나 `{}`이면 비서(지금 그대로).
+    """
     assert deps.dispatcher is not None
-    closed = deps.dispatcher.new_conversation()
+    raw = await request.read()
+    body = await read_json_object(request) if raw else {}
+    if body is None:
+        return error_response(400, "invalid_request", BAD_BODY)
+    try:
+        req = NewConversationBody.model_validate(body)
+    except ValidationError:
+        return error_response(400, "invalid_request", BAD_BODY)
+    closed = deps.dispatcher.new_conversation(req.agent)
     return web.json_response(dump(ConversationsClosed, {"closed": closed}))
 
 
@@ -296,7 +326,7 @@ async def _replay(
 
 async def _direct_reply(
     request: web.Request, deps: ApiDeps, d: Dispatcher, sink: QueueSink, reply: str,
-    conversation_id: int | None, checkin_id: int | None,
+    conversation_id: int | None, checkin_id: int | None, agent: Agent = "secretary",
 ) -> web.StreamResponse:
     """두뇌를 거치지 않은 답(명령, 글 아닌 메시지). 새 대화는 열지 않는다.
 
@@ -304,7 +334,7 @@ async def _direct_reply(
     둘 다 없으면(아직 앱 대화가 없다) `conversation_id: null`이고 `x-conversation-id`는 보내지 않는다(알릴 대화가 없다).
     `inbound_id`가 없으므로 `messageId`도 없다(6.4.6).
     """
-    current = d.current_app_conversation(conversation_id)
+    current = d.current_app_conversation(conversation_id, agent)
     conversation_id = current.id if current is not None else None
     writer = UiMessageWriter(sink, None)
     meta = d.chat_metadata(conversation_id)
@@ -313,15 +343,15 @@ async def _direct_reply(
     return await stream_sink(request, deps, sink, conversation_id)
 
 
-def _transcribe_direct(deps: ApiDeps, user_text: str, reply: str) -> None:
+def _transcribe_direct(deps: ApiDeps, user_text: str, reply: str, agent: Agent = "secretary") -> None:
     """명령과 글 아닌 메시지는 텔레그램처럼 대화 밖(`[-]`)으로, 앱 머리글(` @app`)로 남긴다."""
     t = deps.transcripts
     if t is None:
         return
     now = deps.clock.now()
     try:
-        t.append(now, "사용자", None, None, user_text, channel="app")
-        t.append(now, "비서", None, None, reply, channel="app")
+        t.append(now, "사용자", None, None, user_text, channel="app", agent=agent)
+        t.append(now, "운동메이트" if agent == "mate" else "비서", None, None, reply, channel="app", agent=agent)
     except OSError as e:
         log.warning("chat_transcript_failed", extra={"error_type": type(e).__name__})
 

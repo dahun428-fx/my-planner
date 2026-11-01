@@ -146,3 +146,15 @@ describe("quickChips", () => {
     expect(quickChips(null, at("2026-10-27T13:00:00Z"))).toEqual(FIXED_CHIPS);
   });
 });
+
+describe("mate chips (SP12 5.7)", () => {
+  it("are the three of Appendix A, whatever /today says", () => {
+    const soon = today({ events: [event("2026-10-27T01:00:00Z")] });
+    for (const t of [null, soon]) {
+      const chips = quickChips(t, new Date("2026-10-27T00:00:00Z"), "mate");
+      expect(chips.map((c) => c.label)).toEqual(["오늘 뭐 할까?", "운동 기록하기", "플랜 고치기"]);
+      expect(chips.map((c) => c.wire)).toEqual(["mate_today", "mate_log", "mate_plan"]);
+      expect(chips.every((c) => c.mode === "send")).toBe(true);
+    }
+  });
+});

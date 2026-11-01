@@ -622,7 +622,7 @@ describe("ChatSheet photos, fix round 1", () => {
     await user.click(await screen.findByRole("button", { name: copy.chat.pastConversations }));
     await user.click((await screen.findByText("책 고르기")).closest("button") as HTMLElement);
     expect(await screen.findByText("사피엔스 어때요")).toBeInTheDocument();
-    expect(sheetState.pickedConversationId).toBe(3);
+    expect(sheetState.secretary.pickedConversationId).toBe(3);
     await waitFor(() => expect(screen.getByRole("textbox", { name: copy.chat.inputLabel })).toBeEnabled());
     await pick(user, [picture()]);
     await screen.findByRole("list", { name: copy.chat.tray });

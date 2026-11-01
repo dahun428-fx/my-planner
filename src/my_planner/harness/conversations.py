@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from my_planner.clock import logical_date
-from my_planner.domain import Channel, ConversationKind, RunStatus
+from my_planner.domain import Agent, Channel, ConversationKind, RunStatus
 from my_planner.loop.schedule import Due, reply_window_end
 
 if TYPE_CHECKING:
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 
 CHANNELS: tuple[Channel, ...] = ("telegram", "app")
+AGENTS: tuple[Agent, ...] = ("secretary", "mate")
 
 
 class ConversationRouter:
@@ -24,6 +25,9 @@ class ConversationRouter:
 
     대화와 그 규칙은 통로마다 따로다(SP3-4 7.1): 텔레그램에서 연 `chat`을 앱이 잇지 않고, 계획 모드도 통로마다 하나다.
     통로를 받는 함수의 기본값은 `telegram`이다(SP1 동작 그대로).
+
+    상대(SP12 5.2)도 따로 돈다: 비서와 메이트는 같은 앱 통로에서 서로의 대화를 잇거나 닫지 않는다. 메이트에는 회차·
+    계획 규칙이 없고 30분 규칙만 있다. 상대를 받는 함수의 기본값은 `secretary`다(지금 호출과 텔레그램 그대로).
     """
 
     def __init__(
@@ -78,15 +82,16 @@ class ConversationRouter:
         found = [self._open_plan(now, ch) for ch in CHANNELS]  # 통로마다 본다(만료된 것은 닫는다)
         return any(c is not None for c in found)
 
-    def keep_alive(self, at: datetime, channel: Channel = "telegram") -> None:
-        """사용자 메시지가 도착했다: 그 통로에서 아직 만료 전인 `plan`·`chat` 대화를 활동으로 기록한다.
+    def keep_alive(self, at: datetime, channel: Channel = "telegram", agent: Agent = "secretary") -> None:
+        """사용자 메시지가 도착했다: 그 통로·그 상대의 아직 만료 전인 `plan`·`chat` 대화를 활동으로 기록한다.
 
-        메시지가 큐에서 기다리는 동안 tick이 그 대화를 만료로 닫지 않게 한다. 새 대화는 열지 않는다.
+        메시지가 큐에서 기다리는 동안 tick이 그 대화를 만료로 닫지 않게 한다. 새 대화는 열지 않는다. 메이트는 `chat`만.
         """
-        plan = self._open_plan(at, channel)
-        if plan is not None:
-            self._touch(plan)
-        chat = self.convs.latest_open(ConversationKind.chat, channel)
+        if agent == "secretary":
+            plan = self._open_plan(at, channel)
+            if plan is not None:
+                self._touch(plan)
+        chat = self.convs.latest_open(ConversationKind.chat, channel, agent)
         if chat is not None and at - chat.last_message_at <= self._idle():
             self._touch(chat)
 
@@ -110,7 +115,7 @@ class ConversationRouter:
 
     def for_user_message(
         self, at: datetime, *, sent_at: datetime | None = None, channel: Channel = "telegram",
-        checkin_id: int | None = None, asked_id: int | None = None,
+        checkin_id: int | None = None, asked_id: int | None = None, agent: Agent = "secretary",
     ) -> Conversation:
         """사용자 메시지의 대화(SP3-4 7.2, SP1 5.3 표에 통로를 더한 것). 위에서부터 처음 맞는 것:
 
@@ -123,32 +128,35 @@ class ConversationRouter:
 
         답장 창은 보낸 시각 `sent_at`으로 본다(노트북이 잠든 동안 보낸 답도 그 회차에 잇는다). 2·4·5는 받은 시각
         `at`으로 본다. 텔레그램만 쓰면 SP1과 같다.
+
+        메이트(`agent="mate"`, SP12 5.2-2)는 1~3번을 건너뛰고 4·5번을 메이트 대화끼리만 본다.
         """
         when = sent_at if sent_at is not None else at
-        if checkin_id is not None:
-            run = self._checkin_run(checkin_id, when)
+        if agent == "secretary":
+            if checkin_id is not None:
+                run = self._checkin_run(checkin_id, when)
+                if run is not None:
+                    return self._run_side(run, channel)
+            plan = self._open_plan(at, channel)
+            if plan is not None:
+                return plan
+            run = self._run_in_window_by(when)
             if run is not None:
                 return self._run_side(run, channel)
-        plan = self._open_plan(at, channel)
-        if plan is not None:
-            return plan
-        run = self._run_in_window_by(when)
-        if run is not None:
-            return self._run_side(run, channel)
         if asked_id is not None:
             asked = self.convs.get(asked_id)
             if (
                 asked is not None and asked.channel == channel and asked.kind is ConversationKind.chat
-                and asked.closed_at is None and at - asked.last_message_at <= self._idle()
+                and asked.agent == agent and asked.closed_at is None and at - asked.last_message_at <= self._idle()
             ):
                 return asked
-        cur = self.convs.latest_open(ConversationKind.chat, channel)
+        cur = self.convs.latest_open(ConversationKind.chat, channel, agent)
         if cur is not None and at - cur.last_message_at <= self._idle():
             return cur
         if cur is not None:
             self.convs.close(cur.id)
         tz, boundary = self.settings.timezone, self.settings.day_boundary
-        return self.convs.open(ConversationKind.chat, logical_date(at, tz, boundary), channel=channel)
+        return self.convs.open(ConversationKind.chat, logical_date(at, tz, boundary), channel=channel, agent=agent)
 
     def run_in_window(self, run: Run, at: datetime) -> bool:
         """보낸(`done`) 회차이고, `at`(보낸 시각)이 보낸 뒤이고 답장 창(합친 회차는 가장 늦은 끝) 안이다."""
@@ -208,7 +216,7 @@ class ConversationRouter:
 
     def for_app_message(
         self, at: datetime, *, conversation_id: int | None, checkin_id: int | None,
-        resume_conversation_id: int | None = None,
+        resume_conversation_id: int | None = None, agent: Agent = "secretary",
     ) -> Conversation:
         """앱 메시지의 대화(SP3-4 7.2, 6.4.1). 받을 때 고른다(`for_user_message`의 규칙, 앱의 보낸 시각은 받은 시각).
 
@@ -216,19 +224,20 @@ class ConversationRouter:
         쪽으로 간다(`_resumed`). `checkin_id`가 함께 와도 0번이 먼저다(스펙 7.3, 계획 Review Focus 5: 앱은 둘을 함께
         싣지 않는다). 고른 대화가 없거나 지웠거나 텔레그램 대화면 1~5번 그대로.
 
-        고른 대화는 활동으로 기록해 큐에서 기다리는 동안 tick이 닫지 않게 한다.
+        고른 대화는 활동으로 기록해 큐에서 기다리는 동안 tick이 닫지 않게 한다. `agent`: 요청의 상대(SP12 5.2). 고른
+        대화의 상대가 다르면 `ValueError("agent_mismatch")`.
         """
-        conv = self._resumed(resume_conversation_id, at) if resume_conversation_id is not None else None
+        conv = self._resumed(resume_conversation_id, at, agent) if resume_conversation_id is not None else None
         if conv is None:
             conv = self.for_user_message(
-                at, sent_at=at, channel="app", checkin_id=checkin_id, asked_id=conversation_id
+                at, sent_at=at, channel="app", checkin_id=checkin_id, asked_id=conversation_id, agent=agent,
             )
         self._touch(conv)
         touched = self.convs.get(conv.id)
         assert touched is not None
         return touched
 
-    def _resumed(self, conversation_id: int, at: datetime) -> Conversation | None:
+    def _resumed(self, conversation_id: int, at: datetime, agent: Agent = "secretary") -> Conversation | None:
         """0번 규칙(SP9 7.3): 목록에서 고른 대화 쪽. 앱 통로가 아니거나 지운 대화면 None(1~5번으로).
 
         - 이미 이어 갈 수 있으면(열린 `chat`은 30분과 상관없이, 2시간 안의 `plan`) 다시 열기 없이 그 대화.
@@ -237,14 +246,19 @@ class ConversationRouter:
         - 닫힌 `plan`, 창이 지난 `run`: 그 대화를 이어 가는 `chat`(`continued_from`, 첫 호출 앞머리에 그 대화의
           요약). 앱은 그 화면을 떠날 때까지 같은 id를 실으므로, 그 대화를 이어 가는 가장 최근 `chat`(지우지 않은 것)이
           있으면 그것이다. 닫혔으면 `chat` 갈래처럼 다시 연다(30분 규칙을 보지 않는다). 없을 때만 새로 연다.
+
+        고른 대화의 상대가 요청의 `agent`와 다르면 `ValueError("agent_mismatch")`(SP12 5.2-1, API는 400). 닫기는 그
+        상대의 열린 대화만 하고, `continued_from`으로 여는 `chat`은 고른 대화의 상대를 물려받는다.
         """
         conv = self.convs.get(conversation_id)
         if conv is None or conv.channel != "app" or conv.deleted_at is not None:
             return None
+        if conv.agent != agent:
+            raise ValueError("agent_mismatch")
         if conv.kind is ConversationKind.chat:
             if conv.closed_at is None:
                 return conv
-            self._close_app_talks()
+            self._close_app_talks(conv.agent)
             self.convs.reopen(conv.id, at)
             got = self.convs.get(conv.id)
             assert got is not None
@@ -261,18 +275,19 @@ class ConversationRouter:
                     return self._run_side(primary, "app")
         follow = self.convs.latest_follow(conv.id)
         if follow is not None:
-            return self._resumed(follow.id, at)
-        self._close_app_talks()
+            return self._resumed(follow.id, at, conv.agent)
+        self._close_app_talks(conv.agent)
         tz, boundary = self.settings.timezone, self.settings.day_boundary
         return self.convs.open(
             ConversationKind.chat, logical_date(at, tz, boundary), channel="app", continued_from=conv.id,
+            agent=conv.agent,
         )
 
-    def _close_app_talks(self) -> list[int]:
-        """열린 앱 `chat`·`plan` 대화를 닫는다. 닫은 id(요약은 다음 tick이 큐에 넣는다)."""
+    def _close_app_talks(self, agent: Agent = "secretary") -> list[int]:
+        """그 상대의 열린 앱 `chat`·`plan` 대화를 닫는다. 닫은 id(요약은 다음 tick이 큐에 넣는다)."""
         closed: list[int] = []
         for kind in (ConversationKind.chat, ConversationKind.plan):
-            while (cur := self.convs.latest_open(kind, "app")) is not None:
+            while (cur := self.convs.latest_open(kind, "app", agent)) is not None:
                 self.convs.close(cur.id)
                 closed.append(cur.id)
         return closed
@@ -287,9 +302,9 @@ class ConversationRouter:
             return None
         return conv
 
-    def new_app_conversation(self) -> list[int]:
-        """`POST /conversations/new`(SP9 7.3): 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화가 된다."""
-        return self._close_app_talks()
+    def new_app_conversation(self, agent: Agent = "secretary") -> list[int]:
+        """`POST /conversations/new`(SP9 7.3): 그 상대의 열린 앱 `chat`·`plan`을 닫는다. 다음 메시지는 새 대화가 된다."""
+        return self._close_app_talks(agent)
 
     def continues(self, conv: Conversation, at: datetime) -> bool:
         """그 대화가 지금 메시지를 이을 수 있다(열려 있고, 그 종류의 규칙 안: 계획 2시간, chat 30분, 회차 답장 창)."""
@@ -302,12 +317,14 @@ class ConversationRouter:
         run = self.runs.get(conv.run_id) if self.runs is not None and conv.run_id is not None else None
         return run is not None and self.run_in_window(self._primary(run), at)
 
-    def current_app(self, at: datetime) -> Conversation | None:
-        """지금 앱 메시지가 이어질 대화(열린 앱 `plan`, 30분 안의 앱 `chat`). 새 대화는 열지 않는다."""
-        conv = self._open_plan(at, "app")
-        if conv is not None:
-            return conv
-        cur = self.convs.latest_open(ConversationKind.chat, "app")
+    def current_app(self, at: datetime, agent: Agent = "secretary") -> Conversation | None:
+        """지금 그 상대의 앱 메시지가 이어질 대화(열린 앱 `plan`, 30분 안의 앱 `chat`. 메이트는 `chat`만). 새 대화는
+        열지 않는다."""
+        if agent == "secretary":
+            conv = self._open_plan(at, "app")
+            if conv is not None:
+                return conv
+        cur = self.convs.latest_open(ConversationKind.chat, "app", agent)
         return cur if cur is not None and at - cur.last_message_at <= self._idle() else None
 
     def for_run(self, run: Run) -> Conversation:
@@ -316,10 +333,14 @@ class ConversationRouter:
         return self.convs.open(ConversationKind.run, logical_date(self.clock.now(), tz, boundary), run_id=run.id)
 
     def close_expired(self) -> None:
-        """마지막 메시지 후 30분이 지난 `chat` 대화와 2시간이 지난 `plan` 대화를 닫는다. 러너가 tick마다 부른다."""
+        """마지막 메시지 후 30분이 지난 `chat` 대화와 2시간이 지난 `plan` 대화를 닫는다. 러너가 tick마다 부른다.
+
+        `chat`은 통로 × 상대마다 본다(SP12 5.2): 메이트 대화가 더 최근이어도 30분 지난 비서 대화는 닫힌다."""
         now = self.clock.now()
         for ch in CHANNELS:
-            cur = self.convs.latest_open(ConversationKind.chat, ch)
-            if cur is not None and now - cur.last_message_at > self._idle():
-                self.convs.close(cur.id)
+            # 메이트 대화는 늘 앱 통로다(SP12 5.1)
+            for agent in AGENTS if ch == "app" else ("secretary",):
+                cur = self.convs.latest_open(ConversationKind.chat, ch, agent)
+                if cur is not None and now - cur.last_message_at > self._idle():
+                    self.convs.close(cur.id)
             self._open_plan(now, ch)

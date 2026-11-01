@@ -35,6 +35,8 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         return memo_line(e.kind, title, e.data.get("photos"))
     if e.kind in EVENT_KINDS:
         return event_line(e.kind, e.data)
+    if e.kind in WORKOUT_KINDS:
+        return workout_line(e.kind, e.data)
     if e.kind in HABIT_KINDS:
         day = e.data.get("date")
         return habit_line(
@@ -144,6 +146,29 @@ def confirm_event_delete_summary(scope: str, title: str, day: date | None) -> st
     if scope == "following" and day is not None:
         return f"이후 반복을 끝내요: {title} ({_md(day)}부터)"
     return f"일정을 지워요: {title}"
+
+
+# --- 운동메이트 (SP12 부록 A). 활동 `summary`는 앞의 `✓ `를 뗀 글(스펙 6.3, 7.2, 8.2) ---
+
+WORKOUT_KINDS = frozenset({"workout_plan_set", "workout_logged", "workout_log_updated", "body_note_dropped"})
+
+
+def workout_line(kind: str, data: dict[str, Any]) -> str:
+    """확인 문구 한 줄. `workout_plan_set`은 `cleared`면 내림. 기록 숫자·메모 글은 넣지 않는다(14장)."""
+    if kind == "workout_plan_set":
+        return "✓ 운동 플랜 내림" if data.get("cleared") else "✓ 운동 플랜 바꿈"
+    if kind == "workout_logged":
+        return f"✓ 운동 기록: {data.get('title', '')}"
+    if kind == "workout_log_updated":
+        return f"✓ 운동 기록 고침: {data.get('title', '')}"
+    if kind == "body_note_dropped":
+        return "✓ 몸 메모 지움"
+    raise ValueError(f"운동 확인 문구가 없는 종류: {kind}")
+
+
+def confirm_workout_log_delete_summary(title: str, d: date) -> str:
+    """확인 카드(부록 A): `운동 기록 '하체'(10-30)를 지울까요?`."""
+    return f"운동 기록 '{title}'({d:%m-%d})를 지울까요?"
 
 
 # --- 습관 (SP7 스펙 5.4 규칙 H4, 부록 A) ---

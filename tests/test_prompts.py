@@ -18,8 +18,8 @@ def test_prompts_have_no_banned_words():
     assert {"system.md", "chat.md"} <= names
     for f in files:
         text = f.read_text(encoding="utf-8")
-        if f.name == "system.md":  # 금지어 목록 자체는 뺀다
-            assert _BANNED_BLOCK.search(text), "system.md에 banned-words 블록이 있어야 한다"
+        if f.name in ("system.md", "mate.md"):  # 금지어 목록 자체는 뺀다(메이트는 그 블록을 그대로 싣는다, SP12)
+            assert _BANNED_BLOCK.search(text), f"{f.name}에 banned-words 블록이 있어야 한다"
             text = _BANNED_BLOCK.sub("", text)
         for word in BANNED:
             assert word not in text, (f.name, word)
@@ -45,7 +45,7 @@ def test_banned_words_include_new_three():
     # 새 세 낱말은 지시문 어디에도 없다. system.md는 금지어 블록과 금지 표현을 인용하는 원칙 12 줄만 뺀다
     for f in sorted(prompts.PROMPTS_DIR.glob("*.md")):
         text = f.read_text(encoding="utf-8")
-        if f.name == "system.md":
+        if f.name in ("system.md", "mate.md"):
             text = _BANNED_BLOCK.sub("", text)
             text = "\n".join(line for line in text.splitlines() if not line.startswith("12. "))
         for word in ("끊겼", "며칠째", "남음"):
@@ -175,8 +175,16 @@ def test_chip_prompts_are_spec_text():
     text = SP9C_SPEC.read_text(encoding="utf-8")
     section = text[text.index("\n### 4.3"):text.index("\n### 4.4")]
     rows = dict(re.findall(r'^- `(\w+)`: "(.+)"$', section, re.MULTILINE))
-    assert set(rows) == set(get_args(ChipKey)) == {"todo", "event", "memo", "today", "next"}
-    for key, sentence in rows.items():
+    assert set(rows) == {"todo", "event", "memo", "today", "next"}
+    mate = {
+        "mate_today": "`오늘 뭐 할까?` 버튼입니다. 앞머리의 오늘 몸·일정·최근 기록을 보고 세션 하나를 `ui_block`으로 "
+                      "제안하고, `ui_choice`로 그대로 / 가볍게 / 오늘은 쉬기를 내밉니다.",
+        "mate_log": "`운동 기록하기` 버튼입니다. 오늘 한 운동을 짧게 말해 달라고 한 문장으로 묻습니다. 아직 기록하지 않습니다.",
+        "mate_plan": "`플랜 고치기` 버튼입니다. 지금 플랜을 `ui_block`으로 보여 주고 무엇을 바꿀지 한 문장으로 묻습니다. "
+                     "플랜이 없으면 주 몇 번, 한 번에 몇 분이 좋은지 묻습니다.",
+    }
+    assert set(get_args(ChipKey)) == set(rows) | {"mate_today", "mate_log", "mate_plan"}
+    for key, sentence in {**rows, **mate}.items():
         got = prompts.load(f"chip_{key}.md")
         assert got == sentence, key
         assert [w for w in banned_words() if w in got] == [], key

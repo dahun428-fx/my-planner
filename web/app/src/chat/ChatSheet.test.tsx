@@ -71,7 +71,7 @@ const history = (conversationId: number, items: HistoryItem[], extra: Parameters
   serveHistory({ conversations: [{ id: conversationId, last_message_at: items[items.length - 1]?.at ?? "2026-10-24T00:00:00Z" }], messages: { [conversationId]: items }, ...extra });
 
 async function ready() {
-  const input = await screen.findByRole("textbox", { name: copy.chat.inputLabel });
+  const input = await screen.findByRole("textbox", { name: /에게 보낼 말$/ }); // the secretary's or the mate's
   await waitFor(() => expect(input).toBeEnabled());
   return input;
 }
@@ -1450,5 +1450,239 @@ describe("ChatSheet stop", () => {
     await waitFor(() => expect(stops).toHaveLength(1));
     expect(stops[0]).toEqual({ client_msg_id: bodies[1].client_msg_id });
     expect(bodies[1].client_msg_id).not.toBe(bodies[0].client_msg_id);
+  });
+});
+
+// SP12 11.1 / 부록 A: the partner pick in the head. Only a BE that says `features: ["mate"]` has it.
+describe("ChatSheet partner pick (SP12)", () => {
+  const withMate = (features: string[] | null = ["mate"]) =>
+    server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, ...(features ? { features } : {}) })));
+  const MATE_CHIPS = ["오늘 뭐 할까?", "운동 기록하기", "플랜 고치기"];
+  const pick = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
+    user.click(await screen.findByRole("radio", { name }));
+
+  it("switching to mate changes list, chips and request agent", async () => {
+    withMate();
+    const seen = serveHistory({
+      conversations: [{ id: 5, last_message_at: "2026-10-24T01:01:00Z" }],
+      messages: { 5: [{ id: "m-5-1", at: "2026-10-24T01:01:00Z", speaker: "secretary", text: "비서 대화" }] },
+      mate: {
+        conversations: [{ id: 9, last_message_at: "2026-10-24T02:00:00Z" }],
+        messages: { 9: [{ id: "m-9-1", at: "2026-10-24T02:00:00Z", speaker: "mate", text: "메이트 대화" }] },
+      },
+    });
+    const bodies = serveChat(() => sseResponse(textAnswer("m-9-2", 9, "좋아요")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("비서 대화")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: copy.chat.chips.todo.label })).toBeInTheDocument();
+    await pick(user, "운동메이트");
+    expect(await screen.findByText("메이트 대화")).toBeInTheDocument();
+    expect(screen.queryByText("비서 대화")).toBeNull();
+    expect(seen.agents.at(-1)).toBe("mate");
+    const chips = within(screen.getByRole("group", { name: copy.chat.chipsLabel })).getAllByRole("button");
+    expect(chips.map((c) => c.textContent)).toEqual(MATE_CHIPS);
+    expect(screen.getByText("운동메이트", { selector: "p" })).toBeInTheDocument(); // the head line of its answer
+    await user.click(screen.getByRole("button", { name: "운동 기록하기" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ agent: "mate", chip: "mate_log", conversation_id: 9 });
+    // The list is the mate's too.
+    const listed: (string | null)[] = [];
+    server.use(
+      http.get(`${BASE}/conversations`, ({ request }) => {
+        listed.push(new URL(request.url).searchParams.get("agent"));
+        return HttpResponse.json({ items: [], next_before: null });
+      }),
+    );
+    await screen.findByText("좋아요");
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await waitFor(() => expect(listed).toEqual(["mate"]));
+  });
+
+  it("the choice is kept for the next opening", async () => {
+    withMate();
+    serveHistory({ mate: { conversations: [], messages: {} } });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await pick(user, "운동메이트");
+    expect(localStorage.getItem("chat.agent")).toBe("mate");
+    unmount();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "운동메이트" })).toBeChecked());
+  });
+
+  it.each([[null], [[] as string[]]])("hides mate when health has no features (%j)", async (features) => {
+    withMate(features);
+    localStorage.setItem("chat.agent", "mate"); // a kept pick does not show a partner the BE lacks
+    const bodies = serveChat(() => sseResponse(textAnswer("m-5-2", 5, "네")));
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "비서 대화" }]);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("비서 대화")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    expect(screen.getByRole("button", { name: copy.chat.chips.todo.label })).toBeInTheDocument();
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty("agent");
+  });
+
+  it("picked conversation is per agent", async () => {
+    withMate();
+    serveHistory({ messages: { 3: [{ id: "m-3-1", at: "2026-10-20T01:05:00Z", speaker: "secretary", text: "사피엔스 어때요" }] } });
+    server.use(
+      http.get(`${BASE}/conversations`, ({ request }) => {
+        const mate = new URL(request.url).searchParams.get("agent") === "mate";
+        return HttpResponse.json({
+          items: mate
+            ? []
+            : [{ id: 3, kind: "chat", channel: "app", run_id: null, opened_at: "2026-10-20T01:00:00Z", last_message_at: "2026-10-20T01:05:00Z", closed_at: null, title: "책 고르기", summary: null }],
+          next_before: null,
+        });
+      }),
+    );
+    const bodies = serveChat(() => sseResponse(textAnswer("m-x", 3, "네")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await user.click((await screen.findByText("책 고르기")).closest("button") as HTMLElement);
+    await screen.findByText("사피엔스 어때요");
+    await pick(user, "운동메이트");
+    await waitFor(() => expect(screen.queryByText("사피엔스 어때요")).toBeNull());
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ agent: "mate" });
+    expect(bodies[0]).not.toHaveProperty("resume_conversation_id");
+    await screen.findByText("네");
+    await pick(user, "비서");
+    expect(await screen.findByText("사피엔스 어때요")).toBeInTheDocument();
+    await sendText(user, "다시");
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ resume_conversation_id: 3 });
+    expect(bodies[1]).not.toHaveProperty("agent");
+  });
+
+  it("new conversation posts agent", async () => {
+    withMate();
+    const posts: (unknown)[] = [];
+    server.use(
+      http.post(`${BASE}/conversations/new`, async ({ request }) => {
+        const text = await request.text();
+        posts.push(text === "" ? null : JSON.parse(text));
+        return HttpResponse.json({ closed: [] });
+      }),
+    );
+    serveHistory({ mate: { conversations: [], messages: {} } });
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(posts).toEqual([null])); // the secretary: no body, as ever
+    await pick(user, "운동메이트");
+    await ready();
+    await user.click(screen.getByRole("button", { name: copy.chat.newConversation }));
+    await waitFor(() => expect(posts).toEqual([null, { agent: "mate" }]));
+  });
+});
+
+// SP12 fix round 1: the partner never flips mid-answer, the mate view has no "elsewhere" lines, the
+// secretary's front chip survives a round trip, and the mate's own wording.
+describe("ChatSheet partner pick, fix round 1 (SP12)", () => {
+  const withMate = () => server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, features: ["mate"] })));
+  const pick = async (user: ReturnType<typeof userEvent.setup>, name: string) =>
+    user.click(await screen.findByRole("radio", { name }));
+
+  it("I1: open({agent: mate}) during a secretary answer keeps the secretary", async () => {
+    withMate();
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "비서 대화" }]);
+    const gate = gatedResponse(textAnswer("m-5-2", 5, "비서 답이에요"), [4]);
+    const bodies = serveChat(gate.response, () => sseResponse(textAnswer("m-5-3", 5, "또 비서 답")));
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("비서 대화");
+    await waitFor(() => expect(screen.getByRole("radiogroup")).toBeInTheDocument());
+    await sendText(user, "안녕");
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    localStorage.setItem("chat.agent", "mate"); // what _app's open({agent: "mate"}) leaves
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    rerender(<ChatSheet open onClose={() => {}} />);
+    expect(screen.getByRole("radio", { name: "비서" })).toBeChecked();
+    gate.release();
+    expect(await screen.findByText("비서 답이에요")).toBeInTheDocument();
+    expect(screen.queryByText("운동메이트", { selector: "p" })).toBeNull();
+    await sendText(user, "또");
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ conversation_id: 5 });
+    expect(bodies[1]).not.toHaveProperty("agent");
+  });
+
+  it("I1: when idle, a reopening with the mate kept switches the way the picker does", async () => {
+    withMate();
+    serveHistory({
+      conversations: [{ id: 5, last_message_at: "2026-10-24T01:01:00Z" }],
+      messages: { 5: [{ id: "m-5-1", at: "2026-10-24T01:01:00Z", speaker: "secretary", text: "비서 대화" }] },
+      mate: { conversations: [{ id: 9, last_message_at: "2026-10-24T02:00:00Z" }], messages: { 9: [{ id: "m-9-1", at: "2026-10-24T02:00:00Z", speaker: "mate", text: "메이트 대화" }] } },
+    });
+    const { rerender } = renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByText("비서 대화");
+    await waitFor(() => expect(screen.getByRole("radiogroup")).toBeInTheDocument());
+    rerender(<ChatSheet open={false} onClose={() => {}} />);
+    localStorage.setItem("chat.agent", "mate");
+    rerender(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("메이트 대화")).toBeInTheDocument();
+    expect(screen.queryByText("비서 대화")).toBeNull();
+    expect(screen.getByRole("radio", { name: "운동메이트" })).toBeChecked();
+  });
+
+  it("I2: the mate view reads no elsewhere lines", async () => {
+    withMate();
+    localStorage.setItem("chat.agent", "mate");
+    const seen = serveHistory({
+      mate: { conversations: [{ id: 9, last_message_at: "2026-10-24T02:00:00Z" }], messages: { 9: [{ id: "m-9-1", at: "2026-10-24T02:00:00Z", speaker: "mate", text: "메이트 대화" }] } },
+      activity: [{ id: 1, at: "2026-10-24T03:00:00Z", channel: "telegram", summary: "텔레그램에서 바뀜" }],
+    });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("메이트 대화")).toBeInTheDocument();
+    await ready();
+    expect(seen.activitySince).toEqual([]);
+    expect(screen.queryByText(copy.chat.elsewhere("텔레그램에서 바뀜"))).toBeNull();
+  });
+
+  it("I3: the secretary's front chip is back after secretary -> mate -> secretary", async () => {
+    withMate();
+    server.use(
+      http.get(`${BASE}/today`, () =>
+        HttpResponse.json({
+          ...todayJson,
+          checkins: [{ ...todayJson.checkins[1], sent_at: new Date(Date.now() - 60_000).toISOString(), reply_until: new Date(Date.now() + 3_600_000).toISOString() }],
+        }),
+      ),
+    );
+    serveHistory({ mate: { conversations: [], messages: {} } });
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByRole("button", { name: copy.chat.chips.checkin.label });
+    await screen.findByRole("radio", { name: "운동메이트" });
+    await pick(user, "운동메이트");
+    await waitFor(() => expect(screen.queryByRole("button", { name: copy.chat.chips.checkin.label })).toBeNull());
+    await pick(user, "비서");
+    expect(await screen.findByRole("button", { name: copy.chat.chips.checkin.label })).toBeInTheDocument();
+  });
+
+  it("the mate's input and waiting lines name the mate", async () => {
+    withMate();
+    localStorage.setItem("chat.agent", "mate");
+    serveHistory({ mate: { conversations: [], messages: {} } });
+    const gate = gatedResponse(sse([{ type: "start", messageId: "m-9-1", messageMetadata: { conversation_id: 9, channel: "app", kind: "chat", checkin_id: null } }, { type: "data-status", data: { state: "thinking" }, transient: true }, { type: "finish" }, "[DONE]"]), [2]);
+    serveChat(gate.response);
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const input = await screen.findByRole("textbox", { name: "운동메이트에게 보낼 말" });
+    await waitFor(() => expect(input).toBeEnabled());
+    await user.type(input, "안녕");
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    expect(await screen.findByRole("status", { name: copy.chat.mate.thinking })).toBeInTheDocument();
+    gate.release();
   });
 });

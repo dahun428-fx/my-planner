@@ -61,6 +61,7 @@ export function MessageView({
   onOpen,
   onOpenPath,
   onOpenPhoto,
+  speakerName,
 }: {
   message: UIMessage;
   parts: ViewPart[];
@@ -72,6 +73,8 @@ export function MessageView({
   onOpenPath?(path: string): void;
   /** SP10 7.5: a photo of my bubble pressed: shown big, with the others of the message. */
   onOpenPhoto?(ids: number[], index: number): void;
+  /** SP12 11.1: the head line over the partner's answer ("운동메이트"). The secretary has none. */
+  speakerName?: string;
 }) {
   const { check, settled } = useCatalog();
   if (message.role === "user") {
@@ -107,6 +110,7 @@ export function MessageView({
   const shown = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
   return (
     <CopyHold side="theirs" className={styles.theirs} data-message={message.id}>
+      {speakerName && <p className={styles.speaker}>{speakerName}</p>}
       {shown.map((p, i) => {
         if (p.kind === "text") {
           return (

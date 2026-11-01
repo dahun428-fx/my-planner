@@ -3,7 +3,7 @@
   "version": {
     "app": "0.2.0",
     "api": "v1",
-    "schema": 20,
+    "schema": 21,
     "ui_catalog": "2026-10-24.5"
   },
   "now": "2026-10-24T08:00:05Z",
@@ -39,5 +39,8 @@
     "subscriptions": 0,
     "last_success_at": null
   },
-  "disk_low": false
+  "disk_low": false,
+  "features": [
+    "mate"
+  ]
 }

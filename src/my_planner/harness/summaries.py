@@ -69,9 +69,11 @@ def fallback_title(lines: list[TranscriptMessage]) -> str:
 
 
 def needs_brain(lines: list[TranscriptMessage]) -> bool:
-    """짧은 대화(사용자 메시지 1개 이하, 비서 답 합쳐 200자 미만)는 두뇌 없이 제목만 정한다(7.2)."""
+    """짧은 대화(사용자 메시지 1개 이하, 답 합쳐 200자 미만)는 두뇌 없이 제목만 정한다(7.2).
+
+    답은 사용자 아닌 화자 모두(비서, 메이트 `운동메이트`: SP12 5.6 같은 규칙)."""
     users = sum(1 for m in lines if m.speaker == "사용자")
-    replies = sum(len(m.text) for m in lines if m.speaker == "비서")
+    replies = sum(len(m.text) for m in lines if m.speaker != "사용자")
     return users > 1 or replies >= SHORT_REPLY_CHARS
 
 

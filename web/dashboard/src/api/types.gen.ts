@@ -80,6 +80,7 @@ export interface ApiModels {
   UndoResponse: UndoResponse;
   VapidPublicKey: VapidPublicKey;
   Week: Week;
+  Workout: Workout;
 }
 /**
  * 적용(200). `undo_id`는 되돌릴 수 있을 때만 있고 값은 `activity_id`와 같다.
@@ -276,8 +277,10 @@ export interface CalendarSettings {
  * via the `definition` "ChatRequestBody".
  */
 export interface ChatRequestBody {
+  agent?: "secretary" | "mate";
   checkin_id?: number | null;
-  chip?: ("todo" | "event" | "memo" | "today" | "next") | null;
+  chip?:
+    ("todo" | "event" | "memo" | "today" | "next" | "mate_today" | "mate_log" | "mate_plan") | null;
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;
@@ -966,6 +969,7 @@ export interface Health {
   brain: HealthBrain;
   disk_low?: boolean;
   errors: HealthErrors;
+  features?: string[] | null;
   inbound_pending_oldest_at: string | null;
   last_tick_at: string | null;
   notify: HealthNotify;
@@ -1128,7 +1132,7 @@ export interface MessageItem {
   channel: "telegram" | "app";
   id: string;
   photos?: PhotoRef[];
-  speaker: "user" | "secretary";
+  speaker: "user" | "secretary" | "mate";
   text: string;
   tools: string[];
 }
@@ -1471,7 +1475,7 @@ export interface StatusStat {
   score: number | null;
 }
 /**
- * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.
+ * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`·`workout_days`는 건강만, 다른 영역은 0.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "StatActivity".
@@ -1480,6 +1484,7 @@ export interface StatActivity {
   body_days: number;
   habit_checks: number;
   tasks: number;
+  workout_days: number;
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -1652,4 +1657,84 @@ export interface WeekDay {
   is_today: boolean;
   todos: Todo[];
   weekday: string;
+}
+/**
+ * `GET /workout`: 지금 플랜(없으면 null), 최근 28일 기록(날짜 내림차순), 몸 메모.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "Workout".
+ */
+export interface Workout {
+  logs: WorkoutLogOut[];
+  notes: BodyNoteOut[];
+  plan: WorkoutPlan | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "WorkoutLogOut".
+ */
+export interface WorkoutLogOut {
+  date: string;
+  effort: number | null;
+  id: number;
+  items: WorkoutLogItemOut[];
+  note: string | null;
+  session_id: number | null;
+  title: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "WorkoutLogItemOut".
+ */
+export interface WorkoutLogItemOut {
+  distance_km: number | null;
+  minutes: number | null;
+  name: string;
+  reps: number | null;
+  sets: number | null;
+  weight_kg: number | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "BodyNoteOut".
+ */
+export interface BodyNoteOut {
+  id: number;
+  kind: "equipment" | "injury" | "preference" | "availability" | "other";
+  text: string;
+  updated_at: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "WorkoutPlan".
+ */
+export interface WorkoutPlan {
+  created_at: string;
+  id: number;
+  note: string | null;
+  sessions: WorkoutPlanSession[];
+  title: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "WorkoutPlanSession".
+ */
+export interface WorkoutPlanSession {
+  id: number;
+  items: WorkoutPlanItem[];
+  label: string;
+  position: number;
+  weekdays: number[] | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "WorkoutPlanItem".
+ */
+export interface WorkoutPlanItem {
+  minutes: number | null;
+  name: string;
+  note: string | null;
+  reps: string | null;
+  sets: number | null;
+  weight_kg: number | null;
 }

@@ -7,8 +7,8 @@ import { useConnection } from "./ConnectionProvider";
 import { usePolling } from "./polling";
 
 // Spec 4.6: the last good GET /today and GET /week, kept on the device with the time they arrived
-// and the BE address they came from. Only those two responses are ever stored.
-export type SnapKey = "today" | "week";
+// and the BE address they came from. SP12 11.3 adds GET /workout; only those three are ever stored.
+export type SnapKey = "today" | "week" | "workout";
 
 interface Stored {
   data: unknown;

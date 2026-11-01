@@ -437,3 +437,16 @@ async def test_find_conversations_no_transcript(tmp_path):
     assert "110-123-456789" not in d["summary"] and "[가림]" in d["summary"]  # redact()
     assert [i["id"] for i in short["items"]] == [b] and len(old["items"]) == 2 and none["items"] == []
     assert all("error" in r for r in bad)
+
+
+def test_needs_brain_counts_mate_replies():
+    """SP12 5.6: 메이트 대화도 같은 요약 규칙이다. 메이트(`운동메이트`) 답 글자도 200자 규칙에 센다."""
+    from my_planner.harness.summaries import SHORT_REPLY_CHARS, needs_brain
+    from my_planner.store.transcripts import TranscriptMessage
+
+    def talk(speaker, reply):
+        return [TranscriptMessage(START, "사용자", "오늘 뭐 할까?"), TranscriptMessage(START, speaker, reply)]
+
+    for speaker in ("비서", "운동메이트"):
+        assert needs_brain(talk(speaker, "가" * SHORT_REPLY_CHARS)) is True, speaker
+        assert needs_brain(talk(speaker, "가" * (SHORT_REPLY_CHARS - 1))) is False, speaker

@@ -638,7 +638,7 @@ _SPECS["save_moments"] = (
     (
         "그날의 이룬 순간 0~3개를 저장하고 그날을 정리한 날로 적습니다. date는 입력의 날짜(YYYY-MM-DD)입니다. "
         "text는 앞뒤 공백을 뺀 60자 안의 한 줄(줄바꿈 없음), area는 영역 하나 또는 null, sources는 입력에 나온 참조"
-        "(task:<번호>, habit:<번호>, condition, chat) 1~5개입니다. 쓸 거리가 없으면 moments를 빈 배열로 부릅니다."
+        "(task:<번호>, habit:<번호>, workout:<번호>, condition, chat) 1~5개입니다. 쓸 거리가 없으면 moments를 빈 배열로 부릅니다."
     ),
     _schema(
         {
@@ -663,10 +663,165 @@ _SPECS["save_moments"] = (
 
 NO_TOOL_KINDS = frozenset({"summary", "photo_read"})  # 도구를 주지 않는 실행 종류
 
+# 메이트 대화(`RunContext.agent == "mate"`, SP12 5.3)에 주는 도구. 이 목록에 있는 것만 쓴다(할 일·습관·메모·일정·
+# 카드 도구는 비서 몫이다). 운동 도구 여덟은 메이트에만 있다(`TOOL_NAMES`, `APP_ONLY_TOOLS`에 없다)
+MATE_TOOLS: list[str] = [
+    "get_mate_context", "save_body_note", "drop_body_note", "set_workout_plan", "log_workout", "update_workout_log",
+    "delete_workout_log", "list_workouts",
+    "record_condition", "find_conversations", "ui_block", "ui_choice", "ui_summary_card",
+]
+
+# 운동메이트 도구(SP12 5.3, 6장, 7.3, 8장)
+_NOTE_ID = {"type": "integer", "description": "몸 메모 번호"}
+_LOG_ID = {"type": "integer", "description": "운동 기록 번호"}
+
+
+def _null_int(lo: int, hi: int, desc: str) -> dict[str, Any]:
+    return {"type": ["integer", "null"], "minimum": lo, "maximum": hi, "description": desc}
+
+
+_PLAN_ITEM = _schema(
+    {
+        "name": {"type": "string", "description": "1~30자. 최근 기록과 같은 이름을 씁니다"},
+        "sets": _null_int(1, 10, "세트 수"),
+        "reps": {"type": ["string", "null"], "description": "1~10자 글: \"10\", \"8-10\", \"최대\""},
+        "weight_kg": {"type": ["number", "null"], "minimum": 0, "maximum": 500,
+                      "description": "0.5 단위. 맨몸이거나 무게를 모르면 null"},
+        "minutes": _null_int(1, 180, "유산소·스트레칭 시간(분)"),
+        "note": {"type": ["string", "null"], "description": "60자까지"},
+    },
+    ["name"],
+)
+_LOG_ITEM = _schema(
+    {
+        "name": {"type": "string", "description": "1~30자"},
+        "sets": _null_int(1, 20, "세트 수"),
+        "reps": _null_int(1, 200, "한 세트 횟수(정수)"),
+        "weight_kg": {"type": ["number", "null"], "minimum": 0, "maximum": 500,
+                      "description": "세트마다 다르면 가장 무거운 세트 무게"},
+        "minutes": _null_int(1, 600, "시간(분)"),
+        "distance_km": {"type": ["number", "null"], "minimum": 0, "maximum": 200, "description": "거리(km)"},
+    },
+    ["name"],
+)
+_LOG_ITEMS = {"type": ["array", "null"], "items": _LOG_ITEM, "maxItems": 20, "description": "한 운동에 한 줄, 20줄까지"}
+_LOG_DATE = {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD. 빼면 오늘. 오늘 포함 7일 안만"}
+_SPECS.update({
+    "get_mate_context": (
+        "앞머리와 같은 내용(오늘 몸, 오늘 일정, 몸 메모, 지금 플랜, 최근 기록)을 지금 값으로 다시 읽습니다. 긴 대화 중간에 씁니다.",
+        _schema({}, []),
+    ),
+    "save_body_note": (
+        (
+            "몸 메모 한 줄을 더하거나(id 없음) 고칩니다(id). 장비, 부상·통증, 선호, 운동할 수 있는 때를 들으면 묻지 않고 "
+            "부릅니다. 저장했다고 따로 말하지 않습니다. 같은 뜻의 메모가 있으면 새로 더하지 않고 그 id로 고칩니다. "
+            "kind는 equipment(장비), injury(부상·통증), preference(선호), availability(가능한 때), other(기타)입니다. "
+            "text는 120자까지, 메모는 30개까지입니다. 비밀번호, 계좌번호 같은 정보는 쓰지 않습니다."
+        ),
+        _schema(
+            {
+                "kind": {"enum": ["equipment", "injury", "preference", "availability", "other"]},
+                "text": {"type": "string", "description": "1~120자"},
+                "id": {"type": ["integer", "null"], "description": "고칠 몸 메모 번호. 더할 때는 뺍니다"},
+            },
+            ["kind", "text"],
+        ),
+    ),
+    "drop_body_note": (
+        "몸 메모를 지웁니다. 사용자가 \"이제 무릎 괜찮아\"처럼 그 메모가 더는 맞지 않다고 말할 때 부릅니다.",
+        _schema({"id": _NOTE_ID}, ["id"]),
+    ),
+    "set_workout_plan": (
+        (
+            "운동 플랜을 통째로 바꿉니다. 작은 변경(\"목요일만 빼줘\")도 지금 플랜을 고친 전체를 보냅니다. 앞 플랜은 남습니다. "
+            "sessions는 1~7개이고 position은 1부터 차례로, weekdays는 0(월)~6(일) 배열 또는 요일 자유면 null, items는 "
+            "세션마다 1~12개입니다. 사용자가 플랜 없이 하겠다고 하면 sessions를 빈 배열로 부릅니다(지금 플랜을 내립니다)."
+        ),
+        _schema(
+            {
+                "title": {"type": ["string", "null"], "description": "1~30자. 내릴 때는 null"},
+                "note": {"type": ["string", "null"], "description": "300자까지"},
+                "sessions": {
+                    "type": "array",
+                    "maxItems": 7,
+                    "items": _schema(
+                        {
+                            "position": {"type": "integer", "minimum": 1, "maximum": 7},
+                            "label": {"type": "string", "description": "1~20자. \"하체\", \"가볍게 걷기\""},
+                            "weekdays": {"type": ["array", "null"], "items": {"type": "integer", "minimum": 0,
+                                                                              "maximum": 6}},
+                            "items": {"type": "array", "items": _PLAN_ITEM, "minItems": 1, "maxItems": 12},
+                        },
+                        ["position", "label", "weekdays", "items"],
+                    ),
+                },
+            },
+            ["title", "note", "sessions"],
+        ),
+    ),
+    "log_workout": (
+        (
+            "사용자가 한 운동을 말할 때만 기록 하나를 남깁니다. 숫자가 빠졌으면 빈칸(null)으로 두고 되묻지 않습니다. "
+            "\"스쿼트 60kg 5x5\"는 sets 5, reps 5, weight_kg 60입니다. 운동 줄 없이 note만 남겨도 됩니다. "
+            "date는 빼면 오늘이고 오늘 포함 7일 안만 됩니다. 플랜의 세션을 했으면 session_id를 넣습니다. "
+            "effort는 힘든 정도 1(가벼움)~5(아주 힘듦)입니다."
+        ),
+        _schema(
+            {
+                "title": {"type": "string", "description": "1~30자. \"하체\", \"걷기\""},
+                "date": _LOG_DATE,
+                "session_id": {"type": ["integer", "null"], "description": "지금 플랜의 세션 번호"},
+                "effort": _null_int(1, 5, "힘든 정도"),
+                "note": {"type": ["string", "null"], "description": "200자까지"},
+                "items": _LOG_ITEMS,
+            },
+            ["title"],
+        ),
+    ),
+    "update_workout_log": (
+        (
+            "운동 기록을 고칩니다(\"아 60이 아니라 65였어\"). 바꿀 칸만 넣습니다. items를 넣으면 운동 줄 전체를 바꿉니다."
+        ),
+        _schema(
+            {
+                "id": _LOG_ID,
+                "title": {"type": "string", "description": "1~30자"},
+                "date": _LOG_DATE,
+                "session_id": {"type": ["integer", "null"]},
+                "effort": _null_int(1, 5, "힘든 정도"),
+                "note": {"type": ["string", "null"], "description": "200자까지"},
+                "items": _LOG_ITEMS,
+            },
+            ["id"],
+        ),
+    ),
+    "delete_workout_log": (
+        (
+            "운동 기록을 지우자고 확인을 묻습니다(바로 지우지 않습니다). 결과는 needs_confirm이고 앱에 확인 카드가 붙습니다: "
+            "지웠다고 말하지 않습니다. 사용자가 지워 달라고 할 때만 부릅니다."
+        ),
+        _schema({"id": _LOG_ID}, ["id"]),
+    ),
+    "list_workouts": (
+        (
+            "운동 기록을 찾습니다. days는 오늘 포함 기간(기본 28, 최대 180), name은 운동 이름 부분 일치입니다. "
+            "최근 것부터 나옵니다."
+        ),
+        _schema(
+            {
+                "days": {"type": "integer", "minimum": 1, "maximum": 180},
+                "name": {"type": ["string", "null"], "description": "1~30자"},
+            },
+            [],
+        ),
+    ),
+})
+
 
 def tool_names_for(ctx: RunContext) -> list[str]:
     """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
+    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만. 호출 종류(순간·요약·사진 읽기)가 상대보다 먼저다.
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
@@ -674,6 +829,8 @@ def tool_names_for(ctx: RunContext) -> list[str]:
     # 대화 요약(SP9 7.2), 사진 읽기(SP10 5.4): 도구 없음. 사진 속 글이 지시처럼 보여도 쓸 도구가 없다
     if ctx.kind in NO_TOOL_KINDS:
         return []
+    if ctx.agent == "mate":
+        return list(MATE_TOOLS)
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 

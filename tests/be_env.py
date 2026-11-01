@@ -216,12 +216,15 @@ class BeEnv:
         self, text: str | None = None, *, client_msg_id: str | None = None, conversation_id: int | None = None,
         checkin_id: int | None = None, parts: list[dict[str, Any]] | None = None, message_id: str = "msg-1",
         resume_conversation_id: int | None = None, chip: str | None = None,
+        agent: str | None = None,
     ) -> dict[str, Any]:
         extra: dict[str, Any] = (
             {"resume_conversation_id": resume_conversation_id} if resume_conversation_id is not None else {}
         )
         if chip is not None:  # 퀵 칩(SP9c 4.1). 없으면 칸을 싣지 않는다
             extra["chip"] = chip
+        if agent is not None:  # 대화 상대(SP12). 없으면 칸을 싣지 않는다(비서)
+            extra["agent"] = agent
         return {
             **extra,
             "client_msg_id": client_msg_id or f"cm-{next(self._ids)}",

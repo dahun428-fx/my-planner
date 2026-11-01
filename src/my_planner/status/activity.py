@@ -23,6 +23,7 @@ HABIT_POINT = Fraction(1, 2)  # 0.5
 BODY_STEPS_MIN = 6000
 BODY_SLEEP_MIN = 420
 BODY_POINT = Fraction(1, 2)  # 0.5
+WORKOUT_POINT = Fraction(1, 2)  # 0.5, 운동 기록이 있는 날(SP12 10장). 같은 날 여러 기록도 한 번
 DAY_CAP = 3
 BONUS_FULL = 10
 BONUS_MAX = 2
@@ -57,6 +58,7 @@ class ActivityCounts:
     tasks: int
     habit_checks: int
     body_days: int
+    workout_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -95,7 +97,7 @@ def _task_days(
 
 def area_points(
     tasks: Iterable[DoneTask], checks: Iterable[HabitCheckRow], body: Iterable[BodyDayRow], today: date, *,
-    tz: str | tzinfo, boundary: time,
+    tz: str | tzinfo, boundary: time, workout_days: frozenset[date] = frozenset(),
 ) -> dict[str, dict[date, Fraction]]:
     """영역마다 창(`today − 27 .. today`) 안 날짜별 점수 `p(a, day)`, 하루 상한 3을 적용한 값(5.2). 영역 6개 모두."""
     raw: dict[str, dict[date, Fraction]] = {a: {} for a in _AREAS}
@@ -114,14 +116,17 @@ def area_points(
     for b in body:
         if _in_window(b.date, today):
             add(Area.health.value, b.date, _body_point(b))
+    for d in workout_days:
+        if _in_window(d, today):
+            add(Area.health.value, d, WORKOUT_POINT)
     return {a: {d: min(Fraction(DAY_CAP), p) for d, p in days.items()} for a, days in raw.items()}
 
 
 def activity_counts(
     tasks: Iterable[DoneTask], checks: Iterable[HabitCheckRow], body: Iterable[BodyDayRow], today: date, *,
-    tz: str | tzinfo, boundary: time,
+    tz: str | tzinfo, boundary: time, workout_days: frozenset[date] = frozenset(),
 ) -> dict[str, ActivityCounts]:
-    """창 안의 가중하지 않은 개수(5.6): 끝낸 할 일, 습관 체크, 셈에 든 몸 기록 날(건강만). 영역 6개 모두."""
+    """창 안의 가중하지 않은 개수(5.6): 끝낸 할 일, 습관 체크, 셈에 든 몸 기록 날·운동 기록 날(건강만). 영역 6개 모두."""
     n_tasks = dict.fromkeys(_AREAS, 0)
     n_checks = dict.fromkeys(_AREAS, 0)
     for t, _day in _task_days(tasks, today, tz, boundary):
@@ -132,9 +137,11 @@ def activity_counts(
         if _in_window(c.date, today) and c.area in n_checks:
             n_checks[c.area] += 1
     body_days = len({b.date for b in body if _in_window(b.date, today) and _body_point(b) > 0})
+    n_workout = len({d for d in workout_days if _in_window(d, today)})
     return {
         a: ActivityCounts(tasks=n_tasks[a], habit_checks=n_checks[a],
-                          body_days=body_days if a == Area.health.value else 0)
+                          body_days=body_days if a == Area.health.value else 0,
+                          workout_days=n_workout if a == Area.health.value else 0)
         for a in _AREAS
     }
 
@@ -164,7 +171,7 @@ def area_bonus(
             if 0 <= d < WINDOW_DAYS:
                 s += p * Fraction(WINDOW_DAYS - d, WINDOW_DAYS)
         out[a] = Bonus(score_s=s, bonus=round_bonus(s),
-                       counts=counts.get(a, ActivityCounts(tasks=0, habit_checks=0, body_days=0)))
+                       counts=counts.get(a, ActivityCounts(tasks=0, habit_checks=0, body_days=0, workout_days=0)))
     return out
 
 

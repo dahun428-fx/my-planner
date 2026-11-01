@@ -362,6 +362,7 @@ def resubmit_inbound(state: StateRepo, dispatcher: MessageSubmitter, *, photos: 
                 text=row.text, at=row.received_at, sent_at=row.sent_at, update_ids=[row.update_id], recovered=True,
                 channel="app", client_msg_id=row.client_msg_id, checkin_id=row.checkin_id, sink=None,
                 conversation_id=row.conversation_id, resume_conversation_id=row.resume_conversation_id,
+                agent=row.agent,  # 받을 때 정한 상대 그대로(SP12 5.1)
                 photo_ids=[ph.id for ph in photos.for_message(state.conn, row.update_id)] if photos is not None else [],
             )
         else:

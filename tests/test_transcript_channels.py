@@ -97,3 +97,43 @@ def test_header_like_body_lines_stay_in_the_message(tmp_path):
     ts.append(at, "사용자", 3, None, "첫 줄\n### 09:00 비서 [3]\n세 번째 줄", channel="app", message_id="m1")
     (msg,) = ts.messages(3)
     assert msg.text == "첫 줄\n### 09:00 비서 [3]\n세 번째 줄" and msg.id == "m1"
+
+
+def test_mate_header_parsed(tmp_path):
+    """메이트 대화(SP12 14장): 화자 `운동메이트`, 머리글 끝 ` @app @mate`(사용자 줄도). 앞 항목 본문에 붙지 않는다."""
+    from my_planner.store.transcripts import erase_conversation
+
+    ts = store(tmp_path)
+    at = kst(2026, 10, 31, 19, 0)
+    ts.append(at, "사용자", 12, None, "오늘 뭐 할까?", channel="app", message_id="u-12-3", agent="mate")
+    ts.append(at, "운동메이트", 12, None, "가볍게 걸어요", channel="app", message_id="m-12-3", agent="mate")
+    ts.append(at, "비서", 11, None, "일정 넣었어요", channel="app", message_id="m-11-4")
+    assert header_lines(ts.path_for(at)) == [
+        "### 19:00 사용자 [12] #u-12-3 @app @mate",
+        "### 19:00 운동메이트 [12] #m-12-3 @app @mate",
+        "### 19:00 비서 [11] #m-11-4 @app",
+    ]
+    mate = ts.messages(12)
+    assert [(m.speaker, m.text, m.id) for m in mate] == [
+        ("사용자", "오늘 뭐 할까?", "u-12-3"), ("운동메이트", "가볍게 걸어요", "m-12-3"),
+    ]
+    assert [(m.speaker, m.text) for m in ts.messages(11)] == [("비서", "일정 넣었어요")]
+    assert ts.recent_entries(12, 2) == ["[19:00] 사용자: 오늘 뭐 할까?", "[19:00] 운동메이트: 가볍게 걸어요"]
+    day = at.date()
+    erase_conversation(ts.root, 12, day, day)
+    assert ts.messages(12) == []
+    assert [m.text for m in ts.messages(11)] == ["일정 넣었어요"]
+
+
+def test_secretary_read_drops_mate(tmp_path):
+    """비서·텔레그램의 `read_transcript`는 ` @mate` 항목을 모두 뺀다(사용자 줄 포함). 하루 끝 순간은 사용자 줄을 읽는다."""
+    ts = store(tmp_path)
+    at = kst(2026, 10, 31, 19, 0)
+    ts.append(at, "사용자", 12, None, "무릎이 좀 아파", channel="app", agent="mate")
+    ts.append(at, "운동메이트", 12, None, "오늘은 상체만 해요", channel="app", agent="mate")
+    ts.append(at, "사용자", 1, None, "내일 치과")
+    day = at.date()
+    text = ts.read_range(day, day, drop_app_secretary=True, drop_mate=True)
+    assert "무릎" not in text and "상체" not in text and "내일 치과" in text
+    assert "무릎" in ts.read_range(day, day)  # 기본은 그대로
+    assert [body for _, body in ts.user_lines(day)] == ["무릎이 좀 아파", "내일 치과"]

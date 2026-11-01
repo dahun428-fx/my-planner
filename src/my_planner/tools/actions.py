@@ -83,12 +83,14 @@ from my_planner.tools.activity import (
 from my_planner.tools.confirmations import (
     confirm_declined_summary,
     confirm_habit_archive_summary,
+    confirm_workout_log_delete_summary,
     period_label,
     render_confirmations,
     rest_days_summary,
     undo_summary,
     with_level_up,
 )
+from my_planner.tools.workout import body_note_target, workout_log_target
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -261,6 +263,24 @@ def _moment_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
     """순간 하나(`moment:<id>`). 토큰 뒤에 그 순간을 숨기거나 지우면 `stale`이다."""
     i = _int(args.get("id"))
     return [moment_target(i)] if i is not None else []
+
+
+def workout_log_delete_needs_confirm(tools: Tools, args: dict[str, Any], today: date) -> str | None:
+    """운동 화면의 기록 지우기(SP12 8.2): 기록이 있으면 늘 묻는다. 없는 기록은 묻지 않는다(도구가 거절한다)."""
+    i = _int(args.get("id"))
+    g = tools.workout.log(i) if tools.workout is not None and i is not None else None
+    return confirm_workout_log_delete_summary(g.title, g.date) if g is not None else None
+
+
+def _workout_log_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    """기록 하나(`workout_log:<id>`). 토큰 뒤에 그 기록을 고치거나 지우면 `stale`이다."""
+    i = _int(args.get("id"))
+    return [workout_log_target(i)] if i is not None else []
+
+
+def _body_note_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
+    i = _int(args.get("id"))
+    return [body_note_target(i)] if i is not None else []
 
 
 def _habit_target(tasks: TasksRepo, args: dict[str, Any]) -> list[str]:
@@ -693,6 +713,11 @@ ACTIONS: dict[str, ActionSpec] = {
     "hide_moment": ActionSpec("hide_moment", target=_moment_target),
     "unhide_moment": ActionSpec("unhide_moment", target=_moment_target),
     "delete_moment": ActionSpec("delete_moment", needs_confirm=moment_delete_needs_confirm, target=_moment_target),
+    # 운동 화면(SP12 6.3, 8.2): 몸 메모 지우기는 바로(되돌리기 토스트), 기록 지우기는 확인
+    "drop_body_note": ActionSpec("drop_body_note", target=_body_note_target),
+    "delete_workout_log": ActionSpec(
+        "delete_workout_log", needs_confirm=workout_log_delete_needs_confirm, target=_workout_log_target
+    ),
     # 스케줄(SP9 5.5·5.6). 앱에서 사용자가 누른 것은 확인 없이 적용하고 되돌리기를 준다. 두뇌의 고치기(시각류)·지우기
     # 확인 카드와 회차 차례의 만들기 확인도 이 동작(+ 토큰)으로 적용한다
     "create_event": ActionSpec("create_event"),

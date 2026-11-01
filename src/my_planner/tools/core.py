@@ -107,6 +107,7 @@ from my_planner.tools.memos import MemoTools
 from my_planner.tools.moments import MomentTools
 from my_planner.tools.photos import PhotoTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
+from my_planner.tools.workout import WorkoutTools
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -120,6 +121,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.photos import PhotosRepo
     from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.state import StateRepo
+    from my_planner.store.repos.workout import WorkoutRepo
 
 log = logging.getLogger(__name__)
 
@@ -212,7 +214,7 @@ def _result_before(a: Activity) -> dict[str, Any]:
 
 class Tools(
     MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, PhotoTools, BodyTools, EventTools,
-    ConversationTools,
+    ConversationTools, WorkoutTools,
 ):
     def __init__(
         self,
@@ -243,6 +245,7 @@ class Tools(
         conversations: ConversationsRepo | None = None,
         photos: PhotosRepo | None = None,
         photo_files: PhotoFiles | None = None,
+        workout: WorkoutRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -284,6 +287,8 @@ class Tools(
         # 사진(SP10 5.1·5.2). 둘 중 하나라도 None이면 사진 동작과 `create_memo(photo_ids)`가 거절한다
         self.photos = photos
         self.photo_files = photo_files
+        # 운동메이트(SP12 6~8장): 몸 메모, 플랜, 기록. None이면 운동 도구·동작이 거절한다. 내보내기는 없다
+        self.workout = workout
 
     # --- 공통 ---
 
@@ -1612,10 +1617,11 @@ class Tools(
             # 앱 통로는 이 대화의 줄만: 다른 대화의 원문은 두뇌에 주지 않는다(SP9 7.5, ADR 0014). 대화가 없으면 빈 글
             if ctx.conversation_id is None:
                 return {"from": start.isoformat(), "to": end.isoformat(), "text": ""}
-            text = self.transcripts.read_range(start, end, only_conversation=ctx.conversation_id)
+            text = self.transcripts.read_range(start, end, only_conversation=ctx.conversation_id, drop_mate=True)
             return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
-        # 텔레그램 통로(회차 차례 포함)는 앱 대화의 비서 줄을 받지 않는다: 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 11장)
-        text = self.transcripts.read_range(start, end, drop_app_secretary=True)
+        # 텔레그램 통로(회차 차례 포함)는 앱 대화의 비서 줄을 받지 않는다: 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 11장).
+        # 메이트 대화의 줄은 어느 통로든 받지 않는다(SP12 14장)
+        text = self.transcripts.read_range(start, end, drop_app_secretary=True, drop_mate=True)
         return {"from": start.isoformat(), "to": end.isoformat(), "text": text}
 
 

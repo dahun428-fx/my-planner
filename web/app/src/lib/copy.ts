@@ -14,6 +14,9 @@ const FROM_TODAY = "오늘부터 적용돼요";
 const FROM_TOMORROW = "내일부터 적용돼요";
 const WAKE_STALE = "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요.";
 
+// SP12: the BE's plan weekdays are 0(월)~6(일).
+const WORKOUT_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
 export const copy = {
   appName: "비서",
 
@@ -35,6 +38,7 @@ export const copy = {
     status: "상태창",
     connect: "기기 연결",
     devices: "연결된 기기", // device pairing spec 5.1, under "기기 연결"
+    workout: "운동", // SP12 부록 A 더보기 줄 (the BE has the mate)
     back: BACK_MORE,
   },
 
@@ -339,6 +343,19 @@ export const copy = {
       checkin: { label: "체크인 하기", text: "체크인 할게요" },
       review: { label: "이번 주 돌아보기", text: "이번 주 돌아볼래요" },
       next: { label: "다음 일정 보기", text: "다음 일정 알려줘" },
+      // SP12 부록 A 퀵 칩: 운동메이트 대화의 고정 셋. 보내는 문장은 라벨 그대로.
+      mate_today: { label: "오늘 뭐 할까?", text: "오늘 뭐 할까?" },
+      mate_log: { label: "운동 기록하기", text: "운동 기록하기" },
+      mate_plan: { label: "플랜 고치기", text: "플랜 고치기" },
+    },
+    // SP12 11.1 / 부록 A 상대 고르기: 머리의 두 칸과 메이트 말풍선의 머리 줄.
+    agents: { label: "대화 상대", secretary: "비서", mate: "운동메이트" },
+    // 운동메이트 대화에서 비서 이름이 든 문구: 비서 문구에서 이름만 바꾼 것.
+    mate: {
+      inputLabel: "운동메이트에게 보낼 말",
+      queued: "운동메이트가 앞의 일을 끝내는 중이에요",
+      thinking: "운동메이트가 생각하는 중이에요",
+      backToChat: "‹ 운동메이트",
     },
     // SP9c 3 한 줄 쓰기: 스펙 5장 그대로(Dahun 확인 필요).
     // (new) the input's example
@@ -721,6 +738,29 @@ export const copy = {
     openTodos: "할 일 화면에서 보기",
     openActivity: "기록에서 보기",
     periodFailed: "할 일을 불러오지 못했어요",
+  },
+
+  // SP12 11.2 운동 화면. 부록 A 그대로가 아닌 줄은 (new)로 표시한다(PR "새 문구").
+  workout: {
+    title: "운동",
+    back: BACK_MORE,
+    planHeading: "지금 플랜",
+    logsHeading: "최근 기록",
+    notesHeading: "몸 메모",
+    planEmpty: "운동메이트와 이야기하면서 플랜을 짜요",
+    talk: "운동메이트와 이야기하기",
+    logsEmpty: "아직 기록이 없어요",
+    notesHint: "운동메이트가 대화에서 알게 된 것을 적어 둬요. 지우면 다음 대화부터 잊어요.",
+    noteKinds: { equipment: "장비", injury: "부상·통증", preference: "선호", availability: "가능한 때", other: "기타" },
+    delete: "지우기", // same word as the memo's
+    keep: "그대로 두기", // (new) the log-delete sheet's other button
+    weekdays: WORKOUT_DAYS, // (new) the plan's days by BE number 0(월)~6(일); the screen joins them "월·목"
+    sessionItems: (n: number) => `운동 ${n}개`, // (new) the plan session's and the log row's count of lines
+    sets: (n: number) => `${n}세트`, // (new)
+    kg: (n: number) => `${n}kg`, // (new)
+    minutes: (n: number) => `${n}분`, // (new)
+    km: (n: number) => `${n}km`, // (new)
+    expandLabel: (title: string) => `${title} 펼치기`, // (new)
   },
 
   // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,

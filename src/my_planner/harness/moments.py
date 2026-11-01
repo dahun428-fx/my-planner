@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.store.repos.tasks import TasksRepo
+    from my_planner.store.repos.workout import WorkoutRepo
     from my_planner.store.transcripts import TranscriptStore
 
 log = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ def mark_empty(repo: MomentsRepo, day: date, now: datetime) -> None:
 class MomentsInput:
     text: str
     refs: frozenset[str]  # `sources`에 쓸 수 있는 값(M2)
-    has_data: bool  # 끝낸 할 일·습관 체크·사용자 메시지 가운데 하나라도 있다(컨디션만이면 거짓)
+    has_data: bool  # 끝낸 할 일·습관 체크·운동 기록·사용자 메시지 가운데 하나라도 있다(컨디션만이면 거짓)
 
 
 def _area_names(areas: list[str]) -> str:
@@ -113,9 +114,10 @@ def build_moments_input(
     transcripts: TranscriptStore,
     tz: str | tzinfo,
     boundary: time,
+    workout: WorkoutRepo | None = None,
 ) -> MomentsInput:
     """그날의 두뇌 입력. 끝낸 할 일 최대 20개(논리적 날짜, 초안·소프트 삭제 뺌), 그날 습관 체크 전부, 컨디션 점수,
-    그날 원문 기록의 **사용자 줄만**(합쳐 6,000자, 넘으면 오래된 줄부터 뺀다). 메모·할 일 메모·컨디션 메모는 읽지 않는다."""
+    그날 운동 기록(제목만, SP12 5.6), 그날 원문 기록의 **사용자 줄만**(합쳐 6,000자, 넘으면 오래된 줄부터 뺀다). 메모·할 일 메모·컨디션 메모는 읽지 않는다."""
     refs: set[str] = set()
     done = [
         t for t in tasks.list(status="done", from_=day, to=day, limit=MOMENTS_TASKS_MAX)
@@ -135,6 +137,12 @@ def build_moments_input(
                 continue
             refs.add(f"habit:{h.id}")
             habit_lines.append(f"- [habit:{h.id}] {_one_line(h.title)} · {_area_names([h.area.value])}")
+
+    workout_lines = []
+    if workout is not None:
+        for g in sorted(workout.logs(day, day), key=lambda g: g.id):
+            refs.add(f"workout:{g.id}")
+            workout_lines.append(f"- [workout:{g.id}] {_one_line(g.title)}")
 
     cond = conditions.get(day) if conditions is not None else None
     if cond is not None:
@@ -161,13 +169,17 @@ def build_moments_input(
         "## 체크한 습관",
         *(habit_lines or [none]),
         "",
+        *(["## 운동 기록", *workout_lines, ""] if workout_lines else []),  # 기록이 없으면 섹션을 빼 입력이 그대로다
         "## 컨디션",
         f"{cond.score}/5" if cond is not None else "없음",
         "",
         "## 사용자 메시지 (두 통로, 오래된 것부터)",
         *(chat or [none]),
     ])
-    return MomentsInput(text=text, refs=frozenset(refs), has_data=bool(done or habit_lines or all_chat))
+    return MomentsInput(
+        text=text, refs=frozenset(refs),
+        has_data=bool(done or habit_lines or workout_lines or all_chat),
+    )
 
 
 # --- 지시문 (6.3) ---

@@ -50,7 +50,7 @@ CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
 def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None),
-                  events=(None, None), photos=(None, None)):
+                  events=(None, None), photos=(None, None), workout=(None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
@@ -60,6 +60,7 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
     mv, mh, md = moments  # 이룬 순간 셋(보임, 숨김, 지울 것)
     ev, er = events  # 매일 일정 하나, 놓친 알림 행이 있는 일정
     pf, pa = photos  # 사진 둘(붙지 않음, `mp`에 붙음)
+    wn, wl = workout  # 몸 메모 하나, 운동 기록 하나
     return {
         "add_task": {"title": "새 일", "areas": ["learning"]},
         "update_task": {"id": a, "note": "꾸민 메모"},
@@ -106,6 +107,9 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "update_event": {"id": ev, "time": "15:00"},
         "delete_event": {"id": ev, "scope": "one", "date": "2026-10-25"},
         "dismiss_missed_reminder": {"event_id": er, "date": "2026-10-24"},  # 활동은 남기지 않는다
+        # 운동 화면(SP12 6.3, 8.2). 기록 지우기는 앱에서 늘 확인을 받으므로 토큰을 따로 만든다
+        "drop_body_note": {"id": wn},
+        "delete_workout_log": {"id": wl},
     }
 
 
@@ -150,12 +154,16 @@ async def test_every_public_action_applies(tmp_path, action):
                             bytes=10, width=10, height=10, origin="memo", now=now).id for i in (1, 2))
         ps.attach(env.conn, mp.id, pa)
         env.conn.commit()
+        wk = env.parts.tools.workout
+        with transaction(env.conn):
+            wn = wk.add_note("equipment", "꾸민 장비", now).id
+            wl = wk.add_log(env.parts.tools.today(), "꾸민 운동", None, None, None, [], now).id
         cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()),
-                              (mv, mh, md), (ev, er), (pf, pa))
+                              (mv, mh, md), (ev, er), (pf, pa), (wn, wl))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         token = None
-        if action == "delete_moment":
+        if action in ("delete_moment", "delete_workout_log"):
             _, ask = await env.action(action, args)
             token = ask["confirm_token"]
         if action == "decline_confirm":

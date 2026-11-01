@@ -242,7 +242,7 @@ def test_reopened_and_soft_deleted_tasks_not_counted(conn):
     done_task(conn, "꾸민 끝낸 일", SUN, "career")
     done_task(conn, "꾸민 그만둔 일", SUN, "career", status="dropped")
     c = stat(snap(conn, now=SUN), "career")
-    assert c["activity"] == {"tasks": 1, "habit_checks": 0, "body_days": 0}
+    assert c["activity"] == {"tasks": 1, "habit_checks": 0, "body_days": 0, "workout_days": 0}
     assert c["bonus"] == 0.2  # S = 1 → 0.2
 
 
@@ -250,7 +250,7 @@ def test_deleted_habit_checks_excluded_paused_and_archived_included(conn):
     for status_, deleted in (("active", False), ("paused", False), ("archived", False), ("active", True)):
         check(conn, habit(conn, "health", status=status_, deleted=deleted), SUN_DAY)
     h = stat(snap(conn, now=SUN), "health")
-    assert h["activity"] == {"tasks": 0, "habit_checks": 3, "body_days": 0}
+    assert h["activity"] == {"tasks": 0, "habit_checks": 3, "body_days": 0, "workout_days": 0}
     assert h["bonus"] == 0.3  # S = 1.5
 
 
@@ -280,11 +280,11 @@ def test_stats_have_bonus_fields_and_counts(conn):
     h = stat(body, "health")
     assert {k: h[k] for k in ("score", "bonus", "effective_score", "activity")} == {
         "score": 4, "bonus": 1.5, "effective_score": 5.5,
-        "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0},
+        "activity": {"tasks": 0, "habit_checks": 28, "body_days": 0, "workout_days": 0},
     }
     c = stat(body, "career")
     assert (c["score"], c["bonus"], c["effective_score"]) == (None, 0.0, None)
-    assert c["activity"] == {"tasks": 0, "habit_checks": 0, "body_days": 0}
+    assert c["activity"] == {"tasks": 0, "habit_checks": 0, "body_days": 0, "workout_days": 0}
     assert all(isinstance(s["bonus"], float) for s in body["stats"])
 
 

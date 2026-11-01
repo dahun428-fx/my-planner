@@ -618,3 +618,193 @@ async def test_chat_chip_block_comes_before_message_and_only_on_chip_turns(tmp_p
     assert block in chip_prompt and chip_prompt.count("## 버튼") == 1
     assert "## 버튼" not in plain_prompt and "## 메시지\n고마워요" in plain_prompt
     assert plain_ctx.chip is None and plain_ctx.chip_text is None
+
+
+# --- 대화 상대 (SP12 5, 11.3) ---
+
+
+def _agent_of(env, resp):
+    return env.conn.execute(
+        "SELECT agent FROM conversations WHERE id = ?", (int(resp.headers["x-conversation-id"]),)
+    ).fetchone()[0]
+
+
+async def test_chat_agent_mate_opens_mate_conversation(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "오늘은 하체예요.")]) as env:
+        resp, raw = await env.chat("오늘 뭐 하지", agent="mate")
+        row = env.conn.execute("SELECT * FROM conversations").fetchone()
+    chunks = parse_sse(raw)
+    assert row["agent"] == "mate" and row["channel"] == "app" and row["kind"] == "chat"
+    assert resp.headers["x-conversation-id"] == str(row["id"])
+    assert chunks[0]["messageId"] == f"m-{row['id']}-1"
+    assert chunks[0]["messageMetadata"]["conversation_id"] == row["id"]
+
+
+async def test_chat_agent_default_is_secretary(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네")]) as env:
+        resp, _ = await env.chat("안녕")
+        agent = _agent_of(env, resp)
+    assert agent == "secretary"
+
+
+async def test_chat_agent_bad_value_is_invalid_request(tmp_path):
+    async with BeEnv.start(tmp_path, start=START) as env:
+        resp = await env.post("/chat", json={**env.chat_body("안녕"), "agent": "bogus"})
+        body = await resp.json()
+        pending = env.conn.execute("SELECT COUNT(*) FROM inbound_pending").fetchone()[0]
+    assert resp.status == 400 and body["error"]["code"] == "invalid_request" and pending == 0
+
+
+async def test_chat_resume_other_agent_is_mismatch(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네")]) as env:
+        resp, _ = await env.chat("비서에게")
+        sec = int(resp.headers["x-conversation-id"])
+        env.parts.dispatcher.new_conversation()  # 비서 대화를 닫는다
+        bad = await env.post("/chat", json={**env.chat_body("메이트에게", resume_conversation_id=sec), "agent": "mate"})
+        body = await bad.json()
+        pending = env.conn.execute("SELECT COUNT(*) FROM inbound_pending").fetchone()[0]
+    assert bad.status == 400 and body["error"] == {"code": "invalid_request", "message": "이 대화는 다른 상대예요."}
+    assert pending == 0
+
+
+async def test_chat_chip_must_match_agent(tmp_path):
+    async with BeEnv.start(tmp_path, start=START) as env:
+        statuses = [
+            (await env.post("/chat", json={**env.chat_body("안녕", chip=chip), "agent": agent})).status
+            for agent, chip in (("mate", "todo"), ("secretary", "mate_log"), ("secretary", "mate_today"))
+        ]
+        calls = len(env.brain.calls)
+    assert statuses == [400, 400, 400] and calls == 0
+
+
+async def test_chat_mate_chip_goes_to_brain(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "좋아요.")]) as env:
+        resp, raw = await env.chat("오늘 뭐 할까?", agent="mate", chip="mate_today")
+    assert resp.status == 200 and _text(parse_sse(raw)) == "좋아요."
+
+
+async def test_chat_mate_with_checkin_is_invalid_request(tmp_path):
+    async with BeEnv.start(tmp_path, start=START) as env:
+        resp = await env.post("/chat", json={**env.chat_body("안녕", checkin_id=1), "agent": "mate"})
+    assert resp.status == 400
+
+
+async def test_chat_mate_slash_plan_goes_to_brain_without_plan_conversation(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "하체 플랜이에요.")]) as env:
+        _, raw = await env.chat("/plan 하체", agent="mate")
+        kinds = [r[0] for r in env.conn.execute("SELECT kind FROM conversations")]
+        assert len(env.brain.calls) == 1
+    assert kinds == ["chat"] and _text(parse_sse(raw)) == "하체 플랜이에요."
+
+
+async def test_conversations_list_by_agent(tmp_path):
+    from test_api_read import get_json
+
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네"), FakeTurn([], "좋아요")]) as env:
+        sec, _ = await env.chat("비서에게")
+        mate, _ = await env.chat("메이트에게", agent="mate")
+        default = await get_json(env, "/conversations")
+        secretary = await get_json(env, "/conversations?agent=secretary")
+        mates = await get_json(env, "/conversations?agent=mate")
+        bad = await env.get("/conversations?agent=bogus")
+        bad_code = (await bad.json())["error"]["code"]
+    assert [i["id"] for i in default["items"]] == [int(sec.headers["x-conversation-id"])]
+    assert secretary == default
+    assert [i["id"] for i in mates["items"]] == [int(mate.headers["x-conversation-id"])]
+    assert bad.status == 400 and bad_code == "invalid_request"
+
+
+async def test_mate_transcript_speaker_is_mate(tmp_path):
+    from test_api_read import get_json
+
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "좋아요")]) as env:
+        resp, _ = await env.chat("메이트에게", agent="mate")
+        cid = resp.headers["x-conversation-id"]
+        body = await get_json(env, f"/conversations/{cid}/messages")
+    assert [m["speaker"] for m in body["items"]] == ["user", "mate"]
+
+
+async def test_pending_inbound_keeps_agent(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "좋아요")]) as env:
+        state = env.parts.dispatcher.state
+        seen = []
+        orig = state.add_pending_inbound
+
+        def spy(*args, **kw):
+            orig(*args, **kw)
+            seen.append(state.pending_by_client_msg_id(kw["client_msg_id"]).agent)
+
+        state.add_pending_inbound = spy
+        await env.chat("메이트에게", agent="mate")
+    assert seen == ["mate"]
+
+
+async def test_chat_mate_empty_message_reply_is_mate_conversation_or_null(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네"), FakeTurn([], "좋아요")]) as env:
+        await env.chat("비서에게")
+        resp, _ = await env.chat("", agent="mate", parts=[{"type": "step-start"}])
+        header = resp.headers.get("x-conversation-id")
+        agent = _agent_of(env, resp) if header else None
+    assert header is None or agent == "mate"
+
+
+async def test_new_conversation_by_agent(tmp_path):
+    async with BeEnv.start(tmp_path, start=START, script=[FakeTurn([], "네"), FakeTurn([], "좋아요")]) as env:
+        sec, _ = await env.chat("비서에게")
+        mate, _ = await env.chat("메이트에게", agent="mate")
+        s, m = int(sec.headers["x-conversation-id"]), int(mate.headers["x-conversation-id"])
+        mates = await (await env.post("/conversations/new", json={"agent": "mate"})).json()
+        empty = await (await env.post("/conversations/new", json={})).json()  # 비서(이미 닫을 게 있다)
+        bad = await env.post("/conversations/new", json={"agent": "x"})
+        bad_code = (await bad.json())["error"]["code"]
+        bare = await (await env.post("/conversations/new")).json()  # 본문 없음도 비서
+    assert bare == {"closed": []}
+    assert mates == {"closed": [m]} and empty == {"closed": [s]}
+    assert bad.status == 400 and bad_code == "invalid_request"
+
+
+async def test_queued_mate_message_with_closed_conversation_stays_mate(tmp_path):
+    """기다리는 사이 메이트 대화가 닫혀도 그 메시지는 메이트로 답한다(비서 대화·프롬프트·도구로 새지 않는다)."""
+    from my_planner.harness import prompts
+    from my_planner.harness.brain import ClaudeBrain
+    from my_planner.tools.mcp_adapter import MATE_TOOLS, tool_names_for
+
+    gate = asyncio.Event()
+    script = [FakeTurn([], "먼저 온 것", gate=gate), FakeTurn([], "메이트 답")]
+    async with BeEnv.start(tmp_path, start=START, script=script) as env:
+
+        async def send(text, **kw):
+            resp = await env.post("/chat", json=env.chat_body(text, **kw))
+            return resp, await resp.read()
+
+        first = asyncio.create_task(send("비서에게"))
+        while not env.brain.calls:
+            await asyncio.sleep(0)
+        second = asyncio.create_task(send("왼쪽 무릎이 아파", agent="mate"))
+        for _ in range(100):
+            await asyncio.sleep(0)
+        assert env.parts.dispatcher.new_conversation("mate")  # 기다리는 사이 닫힌다
+        gate.set()
+        await first
+        resp, _ = await second
+        await env.drain()
+        call = env.brain.calls[1]
+        assert _agent_of(env, resp) == "mate"
+        ctx = call["run_ctx"]
+        assert ctx.agent == "mate"
+        brain = ClaudeBrain(lambda: None, tmp_path / "wd", max_turns=10)
+        assert brain.system_prompt_for(ctx.channel, ctx.agent) == prompts.load("mate.md")
+        assert set(MATE_TOOLS) <= set(tool_names_for(ctx))
+        assert "왼쪽 무릎이 아파" not in env.parts.transcripts.read_range(
+            START.date(), START.date(), drop_app_secretary=True, drop_mate=True
+        )
+
+
+async def test_mate_direct_reply_is_marked_mate_in_transcript(tmp_path):
+    """글 아닌 메시지에 대한 직접 답도 ` @mate`로 남아 비서 `read_transcript`에 보이지 않는다."""
+    async with BeEnv.start(tmp_path, start=START, script=[]) as env:
+        await env.chat("", agent="mate", parts=[{"type": "step-start"}])
+        raw = env.parts.transcripts.path_for(env.clock.now()).read_text(encoding="utf-8")
+        shown = env.parts.transcripts.read_range(START.date(), START.date(), drop_app_secretary=True, drop_mate=True)
+    assert "운동메이트" in raw and raw.count(" @mate") == 2
+    assert NON_TEXT_REPLY not in shown

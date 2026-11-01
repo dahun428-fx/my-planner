@@ -493,3 +493,26 @@ def test_ledger_rejects_non_positive_amount(conn):
                 "VALUES ('2026-10-24T00:00:00Z', '2026-10-24', 'condition', ?, ?, '컨디션 기록')",
                 (f"date:{amount}", amount),
             )
+
+
+def test_x13_label_in_recent(tmp_path, conn):
+    """X13은 상태창 최근 경험치에 라벨 "운동 기록"으로만 나온다. 기록 제목은 없다."""
+    from datetime import time
+
+    from test_tools_workout import WorkoutEnv
+
+    from my_planner.status.snapshot import status_snapshot
+    from my_planner.store.repos.conditions import ConditionsRepo
+    from my_planner.store.repos.curve import CurveRepo
+    from my_planner.store.repos.tasks import TasksRepo
+
+    env = WorkoutEnv(tmp_path, conn)
+    assert "error" not in env.tools.log_workout(env.mate(), title="비밀 하체 데이")
+    body = status_snapshot(
+        now=env.clock.now(), tz="Asia/Seoul", boundary=time(4, 0), status=env.status, curve=CurveRepo(conn, env.clock),
+        tasks=TasksRepo(conn, env.clock), conditions=ConditionsRepo(conn, env.clock), include_sensitive=False,
+    )
+    assert body["recent_xp"][0]["label"] == "운동 기록" and body["recent_xp"][0]["amount"] == 5
+    assert "비밀" not in str(body["recent_xp"])
+    health = next(s for s in body["stats"] if s["area"] == "health")
+    assert health["activity"]["workout_days"] == 1

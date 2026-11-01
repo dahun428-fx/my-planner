@@ -48,7 +48,10 @@ export type ActionName =
   | "delete_moment"
   // SP10 5.3: a memo's photos (detach has undo; attach does not).
   | "attach_photo"
-  | "detach_photo";
+  | "detach_photo"
+  // SP12 11.3: the workout screen's deletes (a body note has undo; a log asks first, then undoes).
+  | "drop_body_note"
+  | "delete_workout_log";
 
 // SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
 // message), and two devices editing one memo answer 409 memo_conflict (conflict shape). SP9 5.1: the

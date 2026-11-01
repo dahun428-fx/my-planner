@@ -23,7 +23,7 @@ from claude_agent_sdk import (
     query,
 )
 
-from my_planner.domain import RunContext
+from my_planner.domain import Agent, RunContext
 from my_planner.harness import prompts
 from my_planner.harness.photo_reader import UserContent
 from my_planner.tools.mcp_adapter import (
@@ -229,8 +229,12 @@ class ClaudeBrain:
         # 앱 통로는 `system.md` 뒤에 `channel_app.md`(화면 도구·카드 도구 지시)를 붙인다(SP3-4 6.4.7)
         app_part = prompts.load("channel_app.md").strip()
         self._app_system_prompt = f"{self._system_prompt}\n\n{app_part}" if app_part else self._system_prompt
+        self._mate_system_prompt = prompts.load("mate.md")
 
-    def system_prompt_for(self, channel: str) -> str:
+    def system_prompt_for(self, channel: str, agent: Agent = "secretary") -> str:
+        """그 통로·그 상대의 기본 지시문. 메이트는 `mate.md` 하나(화면 조각 규칙도 그 안에, SP12 5.4), 비서는 그대로."""
+        if agent == "mate":
+            return self._mate_system_prompt
         return self._app_system_prompt if channel == "app" else self._system_prompt
 
     async def run(
@@ -244,7 +248,7 @@ class ClaudeBrain:
             session_id=session_id,
             workdir=self._workdir,
             max_turns=max_turns if max_turns is not None else self._max_turns,
-            system_prompt=system_prompt if system_prompt is not None else self.system_prompt_for(run_ctx.channel),
+            system_prompt=system_prompt if system_prompt is not None else self.system_prompt_for(run_ctx.channel, run_ctx.agent),
             cli_path=self._cli_path,
             include_partial_messages=run_ctx.stream is not None,
             # S11: `resume=<원래 세션>` + `fork_session=True`면 CLI가 새 세션 id로 갈라 시작한다(결과의 session_id).

@@ -24,6 +24,7 @@ XP_SECRETARY: Final = (5, 10)  # X10 비서가 주는 값
 SECRETARY_DAILY_MAX: Final = 3  # X10 하루 3회까지
 SECRETARY_REASON_MAX: Final = 60  # X10 `reason` 글자 수(10장)
 XP_HABIT_CHECK: Final = 3  # X11 습관 체크(SP7 5.6). 습관·날짜마다 한 번. 주간 목표 보상은 두지 않는다
+XP_WORKOUT_LOG: Final = 5  # X13 운동 기록(SP12 10장). 날짜마다 처음 남긴 기록에만. X12는 다시 쓰지 않는다
 REST_DAY_MAX_DAYS: Final = 14  # X9 한 번에 보는 날 수(9.1)
 
 # 원장 `label`(상태창 "최근 경험치" 줄, 5.5). 제목은 넣지 않는다. X10은 비서가 준 사유(`reason`)를 쓴다
@@ -36,6 +37,7 @@ LABEL_WHEEL: Final = "영역 점수"  # X7
 LABEL_YEAR_REVIEW: Final = "연말 회고"  # X8
 LABEL_REST_DAY: Final = "쉬는 날"  # X9
 LABEL_HABIT_CHECK: Final = "습관 체크"  # X11. 습관 제목은 넣지 않는다(SP7 5.6)
+LABEL_WORKOUT_LOG: Final = "운동 기록"  # X13. 기록 제목은 넣지 않는다(SP12 10장)
 
 # 영역 이름(스펙 영역 6개, 표시 순서)
 AREA_LABELS: Final = {

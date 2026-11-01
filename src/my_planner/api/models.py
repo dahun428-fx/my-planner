@@ -169,6 +169,8 @@ class Health(_Model):
     # 데이터 폴더 드라이브의 남은 공간이 5GB 아래(SP10 5.6 4번). 경고만이고 `status`는 바꾸지 않는다.
     # 앱·대시보드가 BE보다 먼저 배포되거나 BE가 되돌아가도 모양 검사를 넘게 required가 아니다
     disk_low: bool = False
+    # 이 서버가 켠 기능 이름(SP12 11.3). 앱이 "운동" 줄·메이트 칸을 보일지 정한다. 예전 BE 응답도 검사를 넘게 선택 칸
+    features: list[str] | None = None
 
 
 class SafeModeHealth(_Model):
@@ -556,6 +558,12 @@ class Conversations(_Model):
     next_before: str | None = None
 
 
+class NewConversationBody(_Model):
+    """`POST /conversations/new` 요청(SP12 11.3). 본문이 없거나 `{}`이면 비서."""
+
+    agent: Literal["secretary", "mate"] = "secretary"
+
+
 class ConversationsClosed(_Model):
     """`POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id."""
 
@@ -569,7 +577,7 @@ class MessageItem(_Model):
 
     id: str
     at: str
-    speaker: Literal["user", "secretary"]
+    speaker: Literal["user", "secretary", "mate"]  # `mate`: 운동메이트(SP12)
     text: str
     tools: list[str]
     channel: ChannelName
@@ -753,11 +761,12 @@ class StatusHp(_Model):
 
 
 class StatActivity(_Model):
-    """지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0."""
+    """지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`·`workout_days`는 건강만, 다른 영역은 0."""
 
     tasks: int
     habit_checks: int
     body_days: int
+    workout_days: int
 
 
 class StatusStat(_Model):
@@ -928,7 +937,7 @@ class ChatMessage(BaseModel):
 
 
 # 입력창의 퀵 칩(SP9c 4.1). 두뇌 차례 본문에 `## 버튼` 블록(`harness/prompts/chip_<키>.md`)을 붙인다
-ChipKey = Literal["todo", "event", "memo", "today", "next"]
+ChipKey = Literal["todo", "event", "memo", "today", "next", "mate_today", "mate_log", "mate_plan"]  # 메이트 셋(SP12 5.7)
 
 
 class ChatRequestBody(_Model):
@@ -944,11 +953,22 @@ class ChatRequestBody(_Model):
     resume_conversation_id: int | None = None
     message: ChatMessage
     chip: ChipKey | None = None
+    # 대화 상대(SP12 5.1). 없으면 비서라 지금 호출은 그대로다
+    agent: Literal["secretary", "mate"] = "secretary"
 
     @model_validator(mode="after")
     def _chip_not_with_checkin(self) -> ChatRequestBody:
         if self.chip is not None and self.checkin_id is not None:
             raise ValueError("chip과 checkin_id는 같이 올 수 없다")
+        return self
+
+    @model_validator(mode="after")
+    def _agent_rules(self) -> ChatRequestBody:
+        """메이트는 회차가 없고(SP12 5.1), 칩 키는 상대에 맞아야 한다(메이트 칩은 메이트에게만, 비서 칩은 비서에게만)."""
+        if self.agent == "mate" and self.checkin_id is not None:
+            raise ValueError("메이트에는 회차가 없다")
+        if self.chip is not None and self.chip.startswith("mate_") != (self.agent == "mate"):
+            raise ValueError("칩과 상대가 맞지 않는다")
         return self
 
 
@@ -1300,6 +1320,70 @@ def dump(model: type[BaseModel], body: Any) -> dict[str, Any]:
     return model.model_validate(to_api_times(body)).model_dump(mode="json", by_alias=True, exclude_unset=True)
 
 
+# --- 운동 (SP12 11.3) ---
+
+BodyNoteKind = Literal["equipment", "injury", "preference", "availability", "other"]
+
+
+class WorkoutPlanItem(_Model):
+    name: str
+    sets: int | None
+    reps: str | None
+    weight_kg: float | None
+    minutes: int | None
+    note: str | None
+
+
+class WorkoutPlanSession(_Model):
+    id: int
+    position: int
+    label: str
+    weekdays: list[int] | None  # 0(월)~6(일). null이면 요일 자유
+    items: list[WorkoutPlanItem]
+
+
+class WorkoutPlan(_Model):
+    id: int
+    title: str
+    note: str | None
+    created_at: str
+    sessions: list[WorkoutPlanSession]
+
+
+class WorkoutLogItemOut(_Model):
+    name: str
+    sets: int | None
+    reps: int | None
+    weight_kg: float | None
+    minutes: int | None
+    distance_km: float | None
+
+
+class WorkoutLogOut(_Model):
+    id: int
+    date: str
+    title: str
+    session_id: int | None
+    effort: int | None  # 1 가벼움 ~ 5 아주 힘듦
+    note: str | None
+    items: list[WorkoutLogItemOut]
+
+
+class BodyNoteOut(_Model):
+    id: int
+    kind: BodyNoteKind
+    text: str
+    updated_at: str
+
+
+class Workout(_Model):
+    """`GET /workout`: 지금 플랜(없으면 null), 최근 28일 기록(날짜 내림차순), 몸 메모."""
+
+    plan: WorkoutPlan | None
+    logs: list[WorkoutLogOut]
+    notes: list[BodyNoteOut]
+
+
 MODELS: dict[str, type[BaseModel]] = {
     "Error": ErrorBody,
     "Health": Health,
@@ -1359,6 +1443,7 @@ MODELS: dict[str, type[BaseModel]] = {
     "DigestSettingsUpdated": DigestSettingsUpdated,
     "Habit": Habit,
     "HabitsList": HabitsList,
+    "Workout": Workout,
     "HabitHistory": HabitHistory,
     "Memo": Memo,
     "MemoItem": MemoItem,
@@ -1382,3 +1467,4 @@ def schema_bundle() -> dict[str, Any]:
         "api": "v1",
         "models": {name: model.model_json_schema(by_alias=True) for name, model in sorted(MODELS.items())},
     }
+
