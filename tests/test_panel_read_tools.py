@@ -107,7 +107,7 @@ def test_expert_tools_read_only():
 async def test_panel_write_skeleton_not_ready(tmp_path):
     async with BeEnv.start(tmp_path, start=MON) as env:
         t = env.parts.tools
-        for name in (*PANEL_WRITE_TOOLS[:3], *REPORT_TOOLS):
+        for name in REPORT_TOOLS:  # 패널 쓰기 셋은 SP15-08이 채웠다(`test_panel_tools.py`)
             assert getattr(t, name)(_manager(1)) == {"error": "아직 없어요."}, name
 
 

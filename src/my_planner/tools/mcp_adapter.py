@@ -11,6 +11,7 @@ from my_planner.domain import InboxAgent, RunContext
 from my_planner.standing.metrics import METRICS
 from my_planner.timefmt import to_api_times
 from my_planner.tools.events import ui_event_items
+from my_planner.tools.panel import EXPERT_KEYS
 from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
 
 SERVER_NAME = "planner"
@@ -966,11 +967,90 @@ _SPECS.update({
         _schema({}, []),
     ),
 })
-# 패널 쓰기 도구(SP15 5.4, 7장, 9장, 10장). 지금은 뼈대다: 계획 Task 8·13이 설명과 입력을 채운다
+# 패널 쓰기 도구(SP15 5.4, 7장, 9장, 10장). 값의 범위·근거·주간 수는 도구가 다시 본다(`tools/panel.py`).
+# `save_life_report`는 아직 뼈대다: 계획 Task 13이 설명과 입력을 채운다
+_EVIDENCE = {
+    "type": "array",
+    "minItems": 1,
+    "maxItems": 8,
+    "description": "근거 1~8개. 내 기록(record)이나 내가 한 말(statement)이 하나는 있어야 합니다",
+    "items": _schema(
+        {
+            "type": {"enum": ["record", "statement", "external"]},
+            "ref": {
+                "type": "string",
+                "description": (
+                    "record: task:<id>, event:<id>, habit:<id>, checkin:<날짜>, body_day:<날짜>, workout:<id>, "
+                    "measure:<id>, moment:<id>, suggestion:<id> / statement: statement:<id>, memo:<id>, "
+                    "review:<분기>:<영역>, decision:<key> / external: bench:<기준표 키>"
+                ),
+            },
+            "note": {"type": "string", "description": "카드의 \"근거 보기\"에 보일 한 줄(120자 이하)"},
+        },
+        ["type", "ref", "note"],
+    ),
+}
 _SPECS.update({
-    "propose_suggestion": ("패널 제안 카드를 냅니다. 아직 준비 중입니다.", _schema({}, [])),
-    "save_statement": ("내가 한 말 한 줄을 저장합니다. 아직 준비 중입니다.", _schema({}, [])),
-    "record_prediction": ("측정값 예측 하나를 남깁니다. 아직 준비 중입니다.", _schema({}, [])),
+    "propose_suggestion": (
+        (
+            "패널 제안 카드 하나를 냅니다(할 일 또는 습관). 사용자가 카드에서 \"받기\"를 눌러야 할 일·습관이 생깁니다. "
+            "근거는 읽기 도구가 준 ref만 씁니다. 거절되면 error와 rejected(이유 코드)가 옵니다: unknown_ref·"
+            "no_personal_evidence면 근거를 고치거나 질문으로 바꾸고, budget_exhausted면 이번 주는 더 내지 않고, "
+            "too_big_again이면 더 작게, not_interested_recent면 다른 것을 냅니다. 한 메시지에 다시 내기는 1번입니다."
+        ),
+        _schema(
+            {
+                "kind": {"enum": ["task", "habit"]},
+                "title": {"type": "string", "description": "카드 제목 한 줄(60자 이하)"},
+                "area": {"enum": _AREAS},
+                "size_min": {"type": "integer", "minimum": 5, "maximum": 120, "description": "예상 소요(분)"},
+                "per_week": {
+                    "type": ["integer", "null"], "minimum": 1, "maximum": 7,
+                    "description": "습관이면 주 몇 번(1~7), 할 일이면 null",
+                },
+                "due_hint": {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD(오늘~60일 뒤) 또는 null"},
+                "experts": {
+                    "type": "array", "items": {"enum": list(EXPERT_KEYS)}, "minItems": 1, "maxItems": 6,
+                    "uniqueItems": True, "description": "이 제안을 낸 전문가 키",
+                },
+                "evidence": _EVIDENCE,
+            },
+            ["kind", "title", "area", "size_min", "experts", "evidence"],
+        ),
+    ),
+    "save_statement": (
+        (
+            "사용자가 직접 한 말(사실, 선호, 결정) 한 줄을 확인 카드 없이 저장하고 ref를 돌려받습니다. 질문에 대한 "
+            "답이나 \"나는 ~하고 싶어\" 같은 말만, 사용자의 말 그대로에 가깝게 씁니다. 결정(decision)에는 짧은 영문 "
+            "key가 있어야 합니다. 비밀번호·주민번호·전화번호 같은 식별 정보는 저장하지 않습니다."
+        ),
+        _schema(
+            {
+                "kind": {"enum": ["fact", "preference", "decision"]},
+                "area": {"type": ["string", "null"], "enum": [*_AREAS, None], "description": "영역 또는 null"},
+                "text": {"type": "string", "description": "한 줄(200자 이하)"},
+                "key": {"type": ["string", "null"], "description": "결정만: 영문 소문자와 _ 3~30자(예: career_first)"},
+            },
+            ["kind", "text"],
+        ),
+    ),
+    "record_prediction": (
+        (
+            "숫자 목표에 기한을 붙여 말했을 때 그 예측 하나를 남깁니다(한 대화 2개까지). 기한이 지나면 실제 값과 "
+            "맞춰 봅니다. metric은 숫자 측정값 이름이나 axis:<축>입니다."
+        ),
+        _schema(
+            {
+                "metric": {
+                    "type": "string",
+                    "description": "숫자 측정값 이름(예: body_fat_pct, weight_kg) 또는 axis:career 같은 축",
+                },
+                "predicted": {"type": "number", "description": "예측 값(측정값이면 그 범위 안)"},
+                "due": {"type": "string", "description": "기한 YYYY-MM-DD(내일~365일 뒤)"},
+            },
+            ["metric", "predicted", "due"],
+        ),
+    ),
     "save_life_report": ("전체 진단의 인생 리포트를 저장합니다. 아직 준비 중입니다.", _schema({}, [])),
 })
 

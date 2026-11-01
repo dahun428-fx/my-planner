@@ -278,7 +278,7 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
     회차 차례의 확인(`out.confirms`)은 여기서 만들지 않는다: 앱은 체크인 상세 `cards`로 받는다(10.1 A5,
     `harness.checkins.checkin_cards`). 사용자 차례에서 두뇌가 물은 확인(SP9 8장 `set_checkin_time`,
     `out.confirm_cards`)만 `ui_confirm`(출력 `{"ok": true}`)으로 붙이고, 측정값 확인 카드(SP13, `out.measure_cards`)를
-    `ui_measure_confirm`으로 붙이고, 그 뒤 맨 끝에 퀵 칩 결과 카드
+    `ui_measure_confirm`으로, 패널 제안 카드(SP15, `out.suggestion_cards`)를 `ui_panel_suggestion`으로 붙이고, 그 뒤 맨 끝에 퀵 칩 결과 카드
     (`out.chip_cards`, SP9c 4.4)를 `h_chip`으로 붙인다.
 
     초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
@@ -305,6 +305,10 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
         cards.append(("h_confirm", "ui_confirm", dict(props), {"ok": True}))
     for props in out.measure_cards:  # 측정값 확인 카드(SP13 6.5): 확인 카드 다음
         cards.append(("h_measure", "ui_measure_confirm", dict(props), {"ok": True}))
+    for card in out.suggestion_cards:  # 패널 제안 카드(SP15 7장): 측정값 카드 다음, 칩 카드 앞
+        if card.get("data") is not None:
+            cards.append(("h_suggest", "ui_panel_suggestion", {"suggestion_id": card["suggestion_id"]},
+                          {"ok": True, "data": {"suggestion": card["data"]}}))
     # 퀵 칩 결과 카드(SP9c 4.4): 확인 카드 다음 맨 뒤. 두뇌 쪽 컴포넌트지만 하네스 조각이다
     for component, props, output in out.chip_cards:
         cards.append(("h_chip", component, dict(props), output))

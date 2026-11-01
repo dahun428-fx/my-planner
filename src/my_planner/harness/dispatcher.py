@@ -107,6 +107,7 @@ from my_planner.tools.actions import ActionDeps, ActionRequest, ActionResult
 from my_planner.tools.actions import apply_action as _apply_action
 from my_planner.tools.activity import undoable_now
 from my_planner.tools.confirmations import render_confirmations, with_level_up
+from my_planner.tools.panel import suggestion_view
 
 if TYPE_CHECKING:
     from my_planner.config import Settings
@@ -167,6 +168,9 @@ class Outbound:
     confirm_cards: list[dict[str, Any]] = field(default_factory=list)
     # 측정값 확인 카드 `ui_measure_confirm` props(SP13 6.5, `propose_measures`): `/chat` 스트림의 하네스 조각(확인 카드 다음)
     measure_cards: list[dict[str, Any]] = field(default_factory=list)
+    # 패널 제안 카드 `ui_panel_suggestion`(SP15 7장, `propose_suggestion`): `{"suggestion_id", "data"}`. `data`는
+    # `suggestion_view`(앱 답이면 `_reply_out`이 채운다). `/chat` 스트림의 하네스 조각(측정값 카드 다음)
+    suggestion_cards: list[dict[str, Any]] = field(default_factory=list)
     # 앱 답(SP3-4 7.5 M4): 확인 문구는 글에 붙이지 않고 `data-activity.confirmation`으로 간다(6.4.1)
     channel: Channel = "telegram"
     confirmation: str | None = None
@@ -1594,6 +1598,11 @@ class Dispatcher:
         out.undo_ids = list(undo_ids)
         if out.draft_task_ids and self.tools is not None:
             out.draft_todos = self.tools.ui_todo_refs(out.draft_task_ids, drafts=True)
+        panel = self.tools.panel if self.tools is not None else None
+        if out.suggestion_cards and panel is not None:
+            for card in out.suggestion_cards:
+                s = panel.suggestion(card["suggestion_id"])
+                card["data"] = suggestion_view(panel.conn, s) if s is not None else None
         curve = self.tools.curve if self.tools is not None else None
         if curve is not None:
             if out.draft_milestone_ids:
@@ -2996,6 +3005,9 @@ def _outbound(text: str, run_ctx: RunContext) -> Outbound:
         measure_cards=[
             {"rows": list(e.data["rows"]), "source_kind": e.data["source_kind"], "source_ref": e.data["source_ref"]}
             for e in run_ctx.events if e.kind == "measures_proposed"
+        ],
+        suggestion_cards=[
+            {"suggestion_id": e.data["id"], "data": None} for e in run_ctx.events if e.kind == "suggestion_proposed"
         ],
     )
 
