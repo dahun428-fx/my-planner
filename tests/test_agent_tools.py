@@ -55,6 +55,12 @@ def _ok(out: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _records(t) -> None:
+    """관찰 refs가 가리킬 기록: 일정 1, 운동 기록 1(refs는 있는 기록이어야 한다, SP15-04)."""
+    _ok(t.create_event(_user(), title="가짜 일정", date="2026-11-05", time="14:00"))
+    _ok(t.log_workout(_user(), title="가짜 운동"))
+
+
 def _notes(env) -> list[dict[str, Any]]:
     return [dict(r) for r in env.conn.execute("SELECT * FROM agent_notes ORDER BY id")]
 
@@ -116,7 +122,8 @@ async def test_write_note_third_call_rejected(tmp_path, caplog):
     async with BeEnv.start(tmp_path, start=MON) as env:
         t = env.parts.tools
         ctx = _dayend()
-        first = _ok(t.write_note(ctx, text=GOOD, priority=2, refs=["event:7", "workout:12"]))
+        _records(t)
+        first = _ok(t.write_note(ctx, text=GOOD, priority=2, refs=["event:1", "workout:1"]))
         assert first["ok"] is True
         assert t.write_note(ctx, text="가" * 121, priority=2, refs=["workout:1"]) == {"error": BAD_TEXT}
         _ok(t.write_note(ctx, text="  지난주보다 하체 무게가 조금 올랐어요.  ", priority=1, refs=["workout:1"]))
@@ -168,6 +175,7 @@ async def test_hand_off_cap_and_inbox(tmp_path):
     async with BeEnv.start(tmp_path, start=MON) as env:
         t = env.parts.tools
         ctx = _dayend()
+        _records(t)
         assert t.hand_off(ctx, to="mate", text=HANDOFF, refs=["workout:1"]) == {"error": BAD_TO}
         assert t.hand_off(ctx, to="secretary", text=HANDOFF, refs=["workout:1"]) == {"error": BAD_TO}
         a = _ok(t.hand_off(ctx, to="manager", text=HANDOFF, refs=["workout:1"]))
@@ -175,8 +183,8 @@ async def test_hand_off_cap_and_inbox(tmp_path):
         assert t.hand_off(ctx, to="manager", text=HANDOFF, refs=["workout:1"]) == {"error": HANDOFF_CAP}
         assert ctx.notes_written == 0
         notes = _notes(env)
-        manager = _inbox(env, "manager")
-        mate = _inbox(env, "mate")
+        manager = [x for x in _inbox(env, "manager") if x[0] == "handoff"]
+        mate = [x for x in _inbox(env, "mate") if x[0] == "handoff"]
         candidates = AgentsRepo(env.conn, env.clock).brief_candidates(DAY)
     assert [r["priority"] for r in notes] == [3, 3]
     assert manager == [("handoff", f"note:{a['id']}"), ("handoff", f"note:{b['id']}")]
@@ -201,3 +209,50 @@ async def test_get_measures_health_looks_only(tmp_path):
         "reliability": "mid",
     }]}
     assert MATE_TOOLS.index("get_measures") == MATE_TOOLS.index("list_workouts") + 1 == 8
+
+
+# --- refs 존재 확인 (SP15-04) ---
+
+
+def _missing(ref: str) -> dict[str, str]:
+    return {"error": f"refs에 없는 기록이 있어요: {ref}"}
+
+
+async def test_note_refs_must_exist(tmp_path):
+    async with BeEnv.start(tmp_path, start=MON) as env:
+        t = env.parts.tools
+        ctx = _dayend()
+        assert t.write_note(ctx, text=GOOD, priority=2, refs=["workout:999"]) == _missing("workout:999")
+        assert t.write_note(ctx, text=GOOD, priority=2, refs=["foo:1"]) == _missing("foo:1")
+        assert t.hand_off(ctx, to="manager", text=HANDOFF, refs=["workout:999"]) == _missing("workout:999")
+        assert t.hand_off(ctx, to="manager", text=HANDOFF, refs=["foo:1"]) == _missing("foo:1")
+        assert _notes(env) == [] and _inbox(env, "manager") == []
+        assert ctx.notes_written == 0
+        wid = _ok(t.log_workout(_user(), title="가짜 운동"))["log"]["id"]
+        assert wid == 1
+        _ok(t.write_note(ctx, text=GOOD, priority=2, refs=["workout:1"]))
+        _ok(t.hand_off(ctx, to="manager", text=HANDOFF, refs=["workout:1"]))
+        # 관찰 참조(`note:<id>`)도 있어야 한다
+        assert t.write_note(ctx, text=GOOD, priority=2, refs=["note:999"]) == _missing("note:999")
+        _ok(t.write_note(ctx, text=GOOD, priority=2, refs=["note:1"]))
+        assert len(_notes(env)) == 3
+
+
+async def test_note_refs_allow_inbox_event_of_removed_row(tmp_path):
+    async with BeEnv.start(tmp_path, start=MON) as env:
+        t = env.parts.tools
+        eid = _ok(t.create_event(_user(), title="가짜 일정", date="2026-11-05", time="14:00"))["id"]
+        _ok(t.delete_event(_user(), id=eid, scope="all"))
+        ref = f"event:{eid}"
+        assert ("event_removed", ref) in _inbox(env, "mate")
+        # `event_removed`는 두 상대에게 간다. 매니저 쪽 줄은 보관 정리로 사라진 것으로 둔다
+        env.conn.execute(
+            "DELETE FROM agent_inbox WHERE agent = 'manager' AND event_id IN (SELECT id FROM agent_events WHERE ref = ?)",
+            (ref,),
+        )
+        env.conn.commit()
+        assert ("event_removed", ref) not in _inbox(env, "manager")
+        _ok(t.write_note(_dayend("mate"), text=GOOD, priority=2, refs=[ref]))
+        assert t.write_note(_dayend("manager"), text=GOOD, priority=2, refs=[ref]) == _missing(ref)
+        assert t.hand_off(_dayend("manager"), to="mate", text=HANDOFF, refs=[ref]) == _missing(ref)
+        assert len(_notes(env)) == 1
