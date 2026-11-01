@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from "react";
+import { useRouter } from "next/router";
+import { type ComponentType, useEffect, useId, useState } from "react";
 import { type ApiResult, getAgentNotes } from "../api/client";
 import type { AgentNotes } from "../api/types.gen";
 import { AgentNoteLines } from "../components/AgentNoteLines";
@@ -9,6 +10,7 @@ import { LargeTitle } from "../components/LargeTitle";
 import { Row } from "../components/Row";
 import { Skeleton } from "../components/Skeleton";
 import { copy } from "../lib/copy";
+import { copyPanel } from "../lib/copyPanel";
 import { useConnection } from "../lib/ConnectionProvider";
 import { HAS_STATUS_PAGE } from "../lib/nav";
 import page from "../styles/page.module.css";
@@ -65,6 +67,66 @@ function AgentNotesRow() {
   );
 }
 
+// SP15 5.4: the list is its own chunk, loaded on the first open, so its stylesheet comes with it as a
+// <link> (CSP style-src 'self') and never adds to _app (the first screen's budget). An object so a
+// test can make the import fail.
+export const statementsChunk = {
+  load: () => import("./panelScreens"),
+};
+const STATEMENTS_HASH = "#statements";
+const atStatements = (asPath: string) =>
+  asPath.endsWith(STATEMENTS_HASH) || (typeof window !== "undefined" && window.location.hash === STATEMENTS_HASH);
+
+// SP15 5.4: "내가 한 말" opens in place like "비서 메모". An evidence link (`/more/#statements`) comes in
+// with it open; `id="statements"` sits on the row's title, so the move scrolls to the row.
+function StatementsRow() {
+  const { asPath } = useRouter();
+  const [open, setOpen] = useState(() => atStatements(asPath));
+  const [List, setList] = useState<ComponentType | null>(null);
+  const [failed, setFailed] = useState(false);
+  const id = useId();
+  useEffect(() => {
+    if (!atStatements(asPath)) return;
+    setOpen(true);
+    // On a cold start the row comes after /health, too late for the browser's own jump to the hash.
+    document.getElementById("statements")?.scrollIntoView?.({ block: "center" });
+  }, [asPath]);
+  useEffect(() => {
+    if (!open || List || failed) return;
+    let live = true;
+    statementsChunk
+      .load()
+      .then((m) => live && setList(() => m.OwnerStatements))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [open, List, failed]);
+  let panel: React.ReactNode = <Skeleton size="row" />;
+  if (List) panel = <List />;
+  else if (failed) panel = <BlockError code="chunk" onRetry={() => setFailed(false)} />;
+  return (
+    <>
+      <Row
+        title={<span id="statements">{copyPanel.statements.title}</span>}
+        onPress={() => setOpen((o) => !o)}
+        expanded={open}
+        controls={open ? id : undefined}
+        trailing={
+          <span className={`${styles.chevron} ${open ? styles.open : ""}`}>
+            <Icon name="chevron" />
+          </span>
+        }
+      />
+      {open && (
+        <div id={id} className={styles.panel}>
+          {panel}
+        </div>
+      )}
+    </>
+  );
+}
+
 // SP9 9.1: off the tabs, large title "더보기" and no back link; one grouped list. "상태창" only
 // while the build has /status/ (SP8). Each screen under it goes back with "‹ 더보기".
 export function More({ hasStatus = HAS_STATUS_PAGE }: { hasStatus?: boolean }) {
@@ -80,6 +142,8 @@ export function More({ hasStatus = HAS_STATUS_PAGE }: { hasStatus?: boolean }) {
   });
   // SP14 10장: "비서 메모" only while the BE says `agent_notes` (the notes are read live, so offline has no row).
   const hasNotes = state?.kind === "online" && (state.health.features?.includes("agent_notes") ?? false);
+  // SP15 5.4: "내가 한 말" only while the BE has the life manager (read live, like the notes).
+  const hasStatements = state?.kind === "online" && (state.health.features?.includes("manager") ?? false);
   // Online, the live answer decides in the same render as "비서 메모" (no frame with notes but no "운동").
   const hasMate = state?.kind === "online" ? (state.health.features?.includes("mate") ?? false) : storedMate;
   useEffect(() => {
@@ -104,6 +168,7 @@ export function More({ hasStatus = HAS_STATUS_PAGE }: { hasStatus?: boolean }) {
         {hasStatus && link(copy.more.status, "/status/")}
         {hasMate && link(copy.more.workout, "/workout/")}
         {hasNotes && <AgentNotesRow />}
+        {hasStatements && <StatementsRow />}
         {link(copy.more.connect, "/connect/")}
         {link(copy.more.devices, "/devices/") /* device pairing spec 5.1 */}
       </Group>

@@ -6,6 +6,8 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { Status as StatusData } from "../api/types.gen";
 import { copy } from "../lib/copy";
+import { copyPanel } from "../lib/copyPanel";
+import healthJson from "../test/fixtures/health.json";
 import standingJson from "../test/fixtures/status-standing.json";
 import statusJson from "../test/fixtures/status.json";
 import { renderWithProviders } from "../test/render";
@@ -227,6 +229,27 @@ describe("Status standing (SP13 10장)", () => {
     expect(within(innate).getByText("키 60 · 학벌 56 · 집안 43")).toBeInTheDocument();
     expect(within(innate).getByText("바꿀 수 없는 출발점이에요. 다시 채점하지 않아요.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "객관적 위치 자세히 ›" })).toHaveAttribute("href", "/status/standing/");
+  });
+
+  // SP15 10장: with the life manager, "인생 리포트" is the line after the detail link.
+  it("the life report line follows the detail link with the manager feature", async () => {
+    serve(standing);
+    server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, features: ["manager"] })));
+    renderWithProviders(<Status />, { route: "/status/" });
+    const link = await screen.findByRole("link", { name: copyPanel.report.link });
+    expect(link).toHaveAttribute("href", "/status/report/");
+    const detail = screen.getByRole("link", { name: "객관적 위치 자세히 ›" });
+    expect(detail.nextElementSibling).toBe(link);
+  });
+
+  it("no life report line without the manager feature", async () => {
+    let healthReads = 0;
+    serve(standing);
+    server.use(http.get(`${BASE}/health`, () => (healthReads++, HttpResponse.json({ ...healthJson, features: ["mate"] }))));
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("link", { name: "객관적 위치 자세히 ›" });
+    await waitFor(() => expect(healthReads).toBeGreaterThan(0));
+    expect(screen.queryByRole("link", { name: copyPanel.report.link })).toBeNull();
   });
 
   it("an innate axis with no score is a dash", async () => {

@@ -214,6 +214,25 @@ export function managerSse(): string {
   ].join("");
 }
 
+/** SP15 10장: two saved life reports (newest first); the body is the app's fake fixture, the older one a changed copy. */
+const LIFE_REPORTS = [
+  { id: 2, created_at: "2026-10-31T11:00:00Z" },
+  { id: 1, created_at: "2026-08-02T11:00:00Z" },
+];
+export const OLD_REPORT_LINE = "가짜 지난 진단 한 줄이에요.";
+function lifeReport(id: number): unknown {
+  const r = fixture("life_report") as { report: { summary: { line: string } } };
+  if (id !== 1) return r;
+  return { ...r, id: 1, created_at: LIFE_REPORTS[1].created_at, report: { ...r.report, summary: { ...r.report.summary, line: OLD_REPORT_LINE } } };
+}
+
+/** SP15 5.4: what I said (fake). */
+export const OWNER_STATEMENTS = [
+  { id: 5, kind: "decision", area: "career", text: "올해는 이직보다 지금 팀이 먼저예요", created_at: "2026-10-30T03:00:00Z" },
+  { id: 4, kind: "preference", area: null, text: "아침보다 저녁이 편해요", created_at: "2026-10-12T03:00:00Z" },
+];
+const ACTION_CONFIRMATIONS: Record<string, string> = { accept_suggestion: "제안을 받았어요", retire_statement: "내가 한 말을 지웠어요" };
+
 /** SP14 10장: fake partner notes (no real values). */
 export const AGENT_NOTE_LINE = "토요일 오전이 몇 주째 비어 있어요. 가볍게 걷기를 넣어 볼까요?";
 const AGENT_NOTES = {
@@ -263,6 +282,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
   const sseHeaders = JSON.parse(golden("headers.json")) as Record<string, string>;
   const chatBodies: unknown[] = [];
   const stopBodies: unknown[] = [];
+  const actionBodies: unknown[] = [];
+  let statements = OWNER_STATEMENTS;
 
   const json = (route: Route, body: unknown, status = 200) =>
     route.fulfill({ status, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -285,6 +306,17 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     if (get && opts.manager && path === "/agents/manager/inbox/count") return json(route, { unseen: 2 });
     if (get && opts.manager && path === "/panel/budget") return json(route, { remaining: 1, full_diagnosis_ok: true });
     if (get && opts.manager && path === "/panel/suggestions") return json(route, { items: [PANEL_SUGGESTION] });
+    // SP15 10장, 5.4: the life report list and body (the app's fake fixture) and what I said.
+    if (get && opts.manager && path === "/life-reports") return json(route, { items: LIFE_REPORTS });
+    const reportPath = /^\/life-reports\/(\d+)$/.exec(path);
+    if (get && opts.manager && reportPath) return json(route, lifeReport(Number(reportPath[1])));
+    if (get && opts.manager && path === "/owner-statements") return json(route, { items: statements });
+    if (req.method() === "POST" && opts.manager && path === "/actions") {
+      const body = req.postDataJSON() as { action: string; args: { id: number } };
+      actionBodies.push(body);
+      if (body.action === "retire_statement") statements = statements.filter((st) => st.id !== body.args.id);
+      return json(route, { status: "applied", activity_id: 90 + actionBodies.length, undo_id: 90 + actionBodies.length, result: { ok: true }, confirmation: ACTION_CONFIRMATIONS[body.action] ?? "" });
+    }
     if (get && path === "/workout") return json(route, WORKOUT);
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") {
@@ -331,7 +363,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     }
     return json(route, { error: { code: "not_found", message: `no fixture for ${req.method()} ${path}` } }, 404);
   });
-  return { chatBodies, stopBodies };
+  return { chatBodies, stopBodies, actionBodies };
 }
 
 /** The BE stops answering (network error), as when the laptop sleeps (spec 5.5.4). */

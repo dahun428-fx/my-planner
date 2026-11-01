@@ -10,6 +10,7 @@ import { Pictogram } from "../components/pictograms.gen";
 import { Skeleton } from "../components/Skeleton";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { copyPanel } from "../lib/copyPanel";
 import { usePolling } from "../lib/polling";
 import page from "../styles/page.module.css";
 import styles from "./Status.module.css";
@@ -120,8 +121,11 @@ function Stats({ stats, body }: { stats: StatusStat[]; body: StatusData["body"] 
   );
 }
 
-/** SP13 10.2: the three axes that are a starting point, never scored again; then the line to the detail screen. */
-function Innate({ items }: { items: InnateItem[] }) {
+/**
+ * SP13 10.2: the three axes that are a starting point, never scored again; then the line to the detail
+ * screen, and (SP15 10장) with the life manager the line to the life report.
+ */
+function Innate({ items, hasReport }: { items: InnateItem[]; hasReport: boolean }) {
   return (
     <Group heading={T.innateHeading}>
       <p className={styles.innate}>{items.map((i) => T.innateItem(i.label, i.score)).join(" · ")}</p>
@@ -129,6 +133,12 @@ function Innate({ items }: { items: InnateItem[] }) {
       <Link href="/status/standing/" className={styles.detail}>
         {T.standingLink}
       </Link>
+      {hasReport && (
+        <Link href="/status/report/" className={styles.detail}>
+          {copyPanel.report.link}
+          <span aria-hidden="true">&nbsp;›</span>
+        </Link>
+      )}
     </Group>
   );
 }
@@ -174,6 +184,7 @@ export function Status() {
   const { state, recheck } = useConnection();
   const { result, refresh } = usePolling<StatusData>(() => apiGet<StatusData>("/status", "Status"));
   const offline = state?.kind === "offline" || result?.kind === "offline";
+  const hasReport = state?.kind === "online" && (state.health.features?.includes("manager") ?? false);
 
   let body;
   if (result?.kind === "ok" && !offline) {
@@ -181,7 +192,7 @@ export function Status() {
       <>
         <Level data={result.data} />
         <Stats stats={result.data.stats} body={result.data.body} />
-        {result.data.innate && <Innate items={result.data.innate} />}
+        {result.data.innate && <Innate items={result.data.innate} hasReport={hasReport} />}
         <Recent stats={result.data.stats} />
         <StatusMoments moments={result.data.moments} hiddenCount={result.data.moments_hidden} onChanged={() => void refresh()} />
       </>

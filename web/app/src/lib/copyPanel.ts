@@ -1,7 +1,8 @@
 // SP15 11장: the life manager's copy in the app (partner chips, the budget line, expert notes, the
-// panel suggestion card). Kept out of copy.ts so the first screen's bundle does not carry it: only
-// the chat sheet's chunk imports it. scripts/lint-copy.mjs allows Korean here too. The partner's
-// name is copy.agentNames.manager. The budget line names no cap, and none of the banned words (plan ruling).
+// panel suggestion card, the life report, the more screen's statements). Kept out of copy.ts so the
+// first screen's bundle does not carry it: only the chat sheet's and the page chunks import it.
+// scripts/lint-copy.mjs allows Korean here too. The partner's name is copy.agentNames.manager. The
+// budget line names no cap, and none of the banned words (plan ruling).
 export const copyPanel = {
   chips: {
     manager_full: "전체 진단",
@@ -50,7 +51,50 @@ export const copyPanel = {
     thinking: "라이프 매니저가 생각하는 중이에요",
     backToChat: "‹ 라이프 매니저",
   },
+  // SP15 10장: `/status/report/` (its own page's chunk) and the status screen's line to it. No "%" and no rank words.
+  report: {
+    title: "인생 리포트",
+    link: "인생 리포트",
+    empty: "아직 리포트가 없어요. 라이프 매니저에게 전체 진단을 해 보세요.",
+    past: "지난 리포트",
+    sections: {
+      summary: "세 통로 요약",
+      scores: "점수판",
+      levers: "지렛대 지도",
+      experts: "전문가 소견",
+      scenario: "3년 하면 / 안 하면",
+      roadmap: "90일 로드맵",
+      thisWeek: "이번 주",
+      questions: "남은 질문",
+    },
+    estimate: "추정",
+    doIt: "하면",
+    dontDo: "안 하면",
+    avoid: "하지 말 것",
+    // The six axes a lever can move (BE standing AXIS_LABELS, without the three innate ones).
+    axes: {
+      career: "직업",
+      money: "경제력",
+      health: "건강",
+      looks: "외모",
+      relations: "관계",
+      intellect: "자격·학습 실적",
+    },
+    radarLabel: "여섯 축 레이더: 전체 점수",
+    dumbbellLabel: (axis: string) => `${axis}: 전체와 IT 점수`,
+    leverLabel: "지렛대 지도: 행동에서 축으로, 굵을수록 강해요",
+    roadmapLabel: (track: string) => `${track} 기간`,
+  },
+  // SP15 5.4: the more screen's "내가 한 말" (opens in place, like "비서 메모").
+  statements: {
+    title: "내가 한 말",
+    empty: "아직 없어요.",
+    retire: "지우기",
+    kinds: { fact: "사실", preference: "성향", decision: "결정" },
+  },
 } as const;
+
+export type ReportAxis = keyof typeof copyPanel.report.axes;
 
 export type ExpertKey = keyof typeof copyPanel.experts;
 export type DismissReason = keyof typeof copyPanel.reasons;

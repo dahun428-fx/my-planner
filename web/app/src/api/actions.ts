@@ -57,7 +57,9 @@ export type ActionName =
   | "delete_measure"
   // SP15 12장: the panel suggestion card's "받기" (undo 24 h, removes what it made) and "버리기" (with a reason).
   | "accept_suggestion"
-  | "dismiss_suggestion";
+  | "dismiss_suggestion"
+  // SP15 5.4: the more screen's "내가 한 말" row's "지우기" (with undo).
+  | "retire_statement";
 
 // SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
 // message), and two devices editing one memo answer 409 memo_conflict (conflict shape). SP9 5.1: the

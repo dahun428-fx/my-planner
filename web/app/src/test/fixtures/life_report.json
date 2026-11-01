@@ -1,0 +1,53 @@
+{
+  "id": 2,
+  "created_at": "2026-10-31T11:00:00Z",
+  "report": {
+    "version": 1,
+    "summary": {
+      "line": "가짜 진단: 체력과 저축이 다른 축을 받치는 통로예요.",
+      "paths": [
+        "가짜 통로 하나: 아침 운동이 오후 집중을 받쳐요",
+        "가짜 통로 둘: 월 저축이 이직 선택지를 넓혀요",
+        "가짜 통로 셋: 주말 모임이 관계 축을 채워요"
+      ]
+    },
+    "scores": {
+      "career": { "national": 71, "peer": 58, "reliability": "high", "estimate": false },
+      "money": { "national": 64, "peer": 52, "reliability": "mid", "estimate": false },
+      "health": { "national": 55, "peer": 60, "reliability": "mid", "estimate": false },
+      "looks": { "national": 48, "peer": 50, "reliability": "low", "estimate": true },
+      "relations": { "national": 42, "peer": 45, "reliability": "mid", "estimate": false },
+      "intellect": { "national": 67, "peer": null, "reliability": "high", "estimate": false },
+      "height": { "national": 60, "peer": 57, "reliability": "high", "estimate": false },
+      "education": { "national": 56, "peer": 49, "reliability": "high", "estimate": false },
+      "family": { "national": 43, "peer": 44, "reliability": "mid", "estimate": true }
+    },
+    "levers": [
+      { "action": "가짜 행동: 아침 20분 걷기", "axis": "health", "strength": "strong" },
+      { "action": "가짜 행동: 아침 20분 걷기", "axis": "looks", "strength": "mid" },
+      { "action": "가짜 행동: 월급날 자동 이체", "axis": "money", "strength": "strong" },
+      { "action": "가짜 행동: 사이드 프로젝트 한 줄 기록", "axis": "career", "strength": "mid" },
+      { "action": "가짜 행동: 격주 모임 하나", "axis": "relations", "strength": "weak" }
+    ],
+    "experts": [
+      { "expert": "career", "line": "가짜 커리어 소견이에요.", "prescriptions": ["가짜 커리어 처방 하나", "가짜 커리어 처방 둘", "가짜 커리어 처방 셋"], "avoid": ["가짜 커리어 금지 하나"] },
+      { "expert": "finance", "line": "가짜 재무 소견이에요.", "prescriptions": ["가짜 재무 처방 하나", "가짜 재무 처방 둘", "가짜 재무 처방 셋"], "avoid": ["가짜 재무 금지 하나"] },
+      { "expert": "health", "line": "가짜 건강 소견이에요.", "prescriptions": ["가짜 건강 처방 하나", "가짜 건강 처방 둘", "가짜 건강 처방 셋", "가짜 건강 처방 넷"], "avoid": ["가짜 건강 금지 하나", "가짜 건강 금지 둘"] },
+      { "expert": "image", "line": "가짜 이미지 소견이에요.", "prescriptions": ["가짜 이미지 처방 하나", "가짜 이미지 처방 둘", "가짜 이미지 처방 셋"], "avoid": ["가짜 이미지 금지 하나"] },
+      { "expert": "relationship", "line": "가짜 관계 소견이에요.", "prescriptions": ["가짜 관계 처방 하나", "가짜 관계 처방 둘", "가짜 관계 처방 셋"], "avoid": ["가짜 관계 금지 하나"] },
+      { "expert": "psych", "line": "가짜 심리 소견이에요.", "prescriptions": ["가짜 심리 처방 하나", "가짜 심리 처방 둘", "가짜 심리 처방 셋"], "avoid": ["가짜 심리 금지 하나"] }
+    ],
+    "scenario": {
+      "do": "가짜 시나리오: 3년 하면 체력과 저축이 함께 올라가요.",
+      "dont": "가짜 시나리오: 3년 안 하면 지금 자리에 머물러요.",
+      "estimate": true
+    },
+    "roadmap": [
+      { "track": "가짜 트랙: 체력", "kpi": "가짜 지표: 주 3번 걷기", "start": "2026-11-01", "end": "2027-01-29" },
+      { "track": "가짜 트랙: 저축", "kpi": "가짜 지표: 매달 자동 이체", "start": "2026-11-10", "end": "2026-12-31" }
+    ],
+    "this_week": [31, 99],
+    "questions": ["가짜 질문: 주말 오전은 비워 둘 수 있나요?"],
+    "closing": "이 숫자는 이번 분기 조건의 측정값이지 나 자신이 아니다."
+  }
+}

@@ -1,0 +1,57 @@
+/* SP15 5.4 "내가 한 말": a line per statement inside the more screen's open panel (More.module.css .panel),
+   the text in body size, kind · area · date under it, and a "지우기" text button (44px hit area). */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.line {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+.line + .line {
+  border-top: 1px solid var(--rule);
+}
+.body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.125rem;
+}
+.text {
+  font-size: var(--size-body);
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.meta {
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.retire {
+  flex: none;
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 0 0 0.25rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.retire:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.retire:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.empty {
+  margin: 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
