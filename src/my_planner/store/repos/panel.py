@@ -188,8 +188,8 @@ class PanelRepo:
         r = self.conn.execute(f"SELECT {_SG_COLS} FROM panel_suggestions WHERE id = ?", (suggestion_id,)).fetchone()
         return _suggestion(r) if r is not None else None
 
-    def suggestions(self, *, state: str | None = None, since: date | None = None) -> list[Suggestion]:
-        """최신 먼저. `since`는 만든 시각(UTC)이 그 날 0시(UTC) 이후인 것."""
+    def suggestions(self, *, state: str | None = None, since: datetime | None = None) -> list[Suggestion]:
+        """최신 먼저. `since`는 만든 시각이 그 시각 이후인 것(논리적 날짜 창은 부르는 쪽이 그 날 04:00 현지로 넘긴다)."""
         sql = f"SELECT {_SG_COLS} FROM panel_suggestions WHERE 1 = 1"
         args: list[str] = []
         if state is not None:
@@ -197,7 +197,7 @@ class PanelRepo:
             args.append(state)
         if since is not None:
             sql += " AND created_at >= ?"
-            args.append(since.isoformat())
+            args.append(to_iso(since))
         sql += " ORDER BY created_at DESC, id DESC"
         return [_suggestion(r) for r in self.conn.execute(sql, args)]
 

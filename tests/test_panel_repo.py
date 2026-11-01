@@ -95,7 +95,8 @@ def test_suggestion_queries(p):
     assert p.suggestion(habit).per_week == 3
     assert p.first_week() == "2026-W44"
     assert [s.id for s in p.suggestions()] == [new, habit, old]
-    assert [s.id for s in p.suggestions(since=TODAY - timedelta(days=1))] == [new, habit]
+    assert [s.id for s in p.suggestions(since=NOW - timedelta(days=1))] == [new, habit]
+    assert [s.id for s in p.suggestions(since=NOW - timedelta(days=1, seconds=-1))] == [new]
     assert sorted(s.id for s in p.in_weeks(["2026-W44", "2026-W45"])) == [old, habit, new]
     assert p.in_weeks([]) == []
     assert p.latest_in_area("career").id == new
