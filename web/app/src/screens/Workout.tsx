@@ -91,7 +91,7 @@ export function Workout() {
   const sessionRow = (s: WorkoutPlanSession) => {
     const meta = [s.weekdays ? s.weekdays.map((d) => copy.workout.weekdays[d]).filter(Boolean).join("·") : "", copy.workout.sessionItems(s.items.length)].filter(Boolean).join(" · ");
     return (
-      <div key={s.id}>
+      <div key={s.id} className={styles.session}>
         {expandRow(
           `s${s.id}`,
           s.label,
@@ -145,8 +145,8 @@ export function Workout() {
       actions={[{ label: copy.workout.delete, tone: "negative", onPress: () => void dropNote(n.id) }]}
     >
       <div className={styles.note}>
-        <span className={styles.meta}>{copy.workout.noteKinds[n.kind]}</span>
         <span className={styles.title}>{n.text}</span>
+        <span className={styles.meta}>{copy.workout.noteKinds[n.kind]}</span>
       </div>
     </SwipeRow>
   );
@@ -156,10 +156,15 @@ export function Workout() {
     body = (
       <>
         {data.plan ? (
-          <Group paper heading={copy.workout.planHeading}>
-            <p className={styles.planTitle}>{data.plan.title}</p>
-            {data.plan.sessions.map(sessionRow)}
-          </Group>
+          <>
+            <Group paper heading={copy.workout.planHeading}>
+              <p className={styles.planTitle}>{data.plan.title}</p>
+              {data.plan.sessions.map(sessionRow)}
+            </Group>
+            <button type="button" className={`${styles.talk} ${styles.talkQuiet}`} disabled={!canChat} onClick={() => chat.open({ agent: "mate" })}>
+              {copy.workout.talk}
+            </button>
+          </>
         ) : (
           <>
             <Group paper heading={copy.workout.planHeading}>
