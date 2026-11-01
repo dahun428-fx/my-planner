@@ -1,0 +1,33 @@
+{
+ "today": "2026-11-01",
+ "national": {
+  "height": 60,
+  "looks": 65,
+  "health": 73,
+  "career": 79,
+  "money": 61,
+  "relations": 58,
+  "intellect": 94,
+  "education": 56,
+  "family": 43,
+  "markets": {
+   "marriage": 65,
+   "career": 72
+  }
+ },
+ "peer": {
+  "height": 60,
+  "looks": 65,
+  "health": 73,
+  "career": 63,
+  "money": 56,
+  "relations": 58,
+  "intellect": 94,
+  "education": 56,
+  "family": 43,
+  "markets": {
+   "marriage": 61,
+   "career": 67
+  }
+ }
+}
