@@ -3,6 +3,7 @@ import { apiFetch } from "../api/client";
 import type { Conversations } from "../api/types.gen";
 import { validateModel } from "../api/validate";
 import { loadParts } from "./localParts";
+import type { Agent } from "./agent";
 import type { ViewPart } from "./parts";
 import type { WireChip } from "./quickChips";
 
@@ -14,7 +15,7 @@ const ELSEWHERE_MAX = 3;
  */
 export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number; chip?: WireChip };
 /** `photos`: SP10 5.3, the ids of an app user line's photos in send order (its text has the marks already taken off by the BE). */
-type Line = { id?: string; at: string; speaker: "user" | "secretary"; text: string; photos: number[] };
+type Line = { id?: string; at: string; speaker: "user" | "secretary" | "mate"; text: string; photos: number[] };
 
 // A BE before SP10 has no `photos`: none. Read leniently, like the ids.
 const photoIdsOf = (v: unknown): number[] =>
@@ -39,7 +40,7 @@ export function readLines(data: unknown): Line[] | null {
   if (!isObj(data) || !Array.isArray(data.items)) return null;
   const out: Line[] = [];
   for (const m of data.items) {
-    if (!isObj(m) || typeof m.at !== "string" || typeof m.text !== "string" || (m.speaker !== "user" && m.speaker !== "secretary")) return null;
+    if (!isObj(m) || typeof m.at !== "string" || typeof m.text !== "string" || (m.speaker !== "user" && m.speaker !== "secretary" && m.speaker !== "mate")) return null;
     out.push({
       id: typeof m.id === "string" && m.id !== "" ? m.id : undefined,
       at: m.at,
@@ -66,12 +67,12 @@ export async function readElsewhere(since: string): Promise<string[]> {
 const failure = (r: { kind: string; code?: string }): HistoryResult => (r.kind === "offline" ? { kind: "offline" } : { kind: "failed", code: r.code ?? r.kind });
 
 /** `notBefore` (SP9 9.5, after "새 대화"): the latest conversation counts only when its last line is after it. */
-export async function loadHistory(given: number | null | undefined, opts: { notBefore?: string | null } = {}): Promise<HistoryResult> {
+export async function loadHistory(given: number | null | undefined, opts: { notBefore?: string | null; agent?: Agent } = {}): Promise<HistoryResult> {
   let id: number | null = null;
   if (given !== undefined) {
     id = given;
   } else {
-    const r = await apiFetch<Conversations>("GET", "/conversations?channel=app&limit=3", { model: "Conversations" });
+    const r = await apiFetch<Conversations>("GET", `/conversations?channel=app&limit=3${opts.agent === "mate" ? "&agent=mate" : ""}`, { model: "Conversations" });
     if (r.kind !== "ok") return failure(r);
     if (!validateModel("Conversations", r.data)) return { kind: "failed", code: "shape" };
     const latest = [...r.data.items].sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1))[0];
@@ -89,7 +90,7 @@ export async function loadHistory(given: number | null | undefined, opts: { notB
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     const mid = l.id ?? `h-${id}-${i}`;
-    if (l.id && l.speaker === "secretary") {
+    if (l.id && l.speaker !== "user") {
       const parts = await loadParts(l.id);
       if (parts) restored[mid] = parts.map((p) => (p.kind === "ui" ? { ...p, restored: true } : p));
     }

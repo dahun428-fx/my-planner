@@ -11,13 +11,15 @@ import { SwipeRow } from "../components/SwipeRow";
 import { useToast } from "../components/Toast";
 import { copy } from "../lib/copy";
 import { addDays, formatKst } from "../lib/time";
+import type { Agent } from "./agent";
 import styles from "./ConversationList.module.css";
 
 const SEARCH_WAIT_MS = 300;
 const PAGE = 30;
 
-const listPath = (q: string, before?: string) => {
+const listPath = (agent: Agent, q: string, before?: string) => {
   const p = new URLSearchParams({ channel: "app", limit: String(PAGE) });
+  if (agent === "mate") p.set("agent", agent); // SP12: the secretary's request stays as it was
   if (q) p.set("q", q);
   if (before) p.set("before", before);
   return `/conversations?${p.toString()}`;
@@ -66,6 +68,8 @@ const titleOf = (c: ConversationItem) => c.title?.trim() || copy.chat.untitled;
 export interface ConversationListProps {
   /** 오프라인·답 오는 중: 목록만 보인다(열기, 새 대화, 지우기 없음. 답이 오는 동안 다른 대화로 바꾸지 않는다). */
   readOnly: boolean;
+  /** SP12 11.1: whose conversations (the list is per partner). Left out: the secretary. */
+  agent?: Agent;
   onOpen(id: number): void;
   onNew(): void;
   /** 지운 뒤(화면의 대화였으면 시트가 비운다). */
@@ -76,7 +80,7 @@ export interface ConversationListProps {
 
 // SP9 9.5 대화 목록: 맨 위 "새 대화", 검색창(입력이 멈추고 300ms 뒤 `q`), 날짜 묶음, 줄 = 제목 + 요약 앞 한 줄 +
 // 시각. 체크인 대화는 제목 앞에 "체크인". 줄을 밀면 "지우기"(확인 시트, 되돌릴 수 없음). 카드 없이 이어지는 종이 목록.
-export function ConversationList({ readOnly, onOpen, onNew, onDeleted, now }: ConversationListProps) {
+export function ConversationList({ readOnly, agent = "secretary", onOpen, onNew, onDeleted, now }: ConversationListProps) {
   const toast = useToast();
   const [typed, setTyped] = useState("");
   const [query, setQuery] = useState<string | null>(null);
@@ -91,10 +95,10 @@ export function ConversationList({ readOnly, onOpen, onNew, onDeleted, now }: Co
   const load = useCallback((q: string) => {
     const mine = ++seq.current;
     setOlder(null);
-    void apiGet<Conversations>(listPath(q), "Conversations").then((r) => {
+    void apiGet<Conversations>(listPath(agent, q), "Conversations").then((r) => {
       if (mine === seq.current) setResult(r);
     });
-  }, []);
+  }, [agent]);
 
   // 첫 읽기는 바로, 검색어는 입력이 멈추고 300ms 뒤.
   useEffect(() => {
@@ -122,7 +126,7 @@ export function ConversationList({ readOnly, onOpen, onNew, onDeleted, now }: Co
     setLoadingMore(true);
     const mine = seq.current;
     try {
-      const r = await apiGet<Conversations>(listPath(query ?? "", cursor), "Conversations");
+      const r = await apiGet<Conversations>(listPath(agent, query ?? "", cursor), "Conversations");
       if (mine !== seq.current) return;
       if (r.kind !== "ok") {
         toast.show({ text: failureText(r) });

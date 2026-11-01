@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import { Component as ReactComponent, type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatSheetProps } from "../chat/ChatSheet";
 import { chatSheetChunk } from "../chat/loadChatSheet";
+import { saveAgent } from "../chat/agent";
 import { type ChatSheetApi, ChatSheetContext } from "../chat/sheetContext";
 import { ToastProvider, useToast } from "../components/Toast";
 import { ConnectionProvider, useConnection } from "../lib/ConnectionProvider";
@@ -103,7 +104,8 @@ function ChatHost({ children }: { children: ReactNode }) {
 
   const api = useMemo<ChatSheetApi>(
     () => ({
-      open: () => {
+      open: (opts) => {
+        if (opts?.agent) saveAgent(opts.agent); // SP12 11.2: the sheet reads the kept pick when it opens
         setOpen(true);
         if (sheetRef.current || loading.current) return;
         loading.current = true;

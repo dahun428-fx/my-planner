@@ -1,13 +1,14 @@
 import "./zodJitless"; // first: before "ai" builds its schemas
 import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
 import type { Conn } from "../lib/connection";
+import type { Agent } from "./agent";
 import type { WireChip } from "./quickChips";
 
 /**
  * What the next POST /chat carries besides the message (SP3-4 6.4.1). `resumeConversationId`: the
  * conversation picked from the list (SP9 7.3 rule 0), sent with every message while it is shown.
  */
-export type ChatCtx = { conversationId: number | null; checkinId: number | null; resumeConversationId?: number | null };
+export type ChatCtx = { conversationId: number | null; checkinId: number | null; resumeConversationId?: number | null; agent?: Agent };
 
 export interface ChatBody {
   client_msg_id: string;
@@ -16,6 +17,8 @@ export interface ChatBody {
   resume_conversation_id?: number;
   /** SP9c 4.1: the quick chip the message came from (`metadata.chip`). */
   chip?: WireChip;
+  /** SP12: left out for the secretary, so a BE from before the mate sees the same body as ever. */
+  agent?: "mate";
   message: UIMessage;
 }
 
@@ -74,6 +77,7 @@ export function buildChatBody(messages: UIMessage[], ctx: ChatCtx): ChatBody {
   if (checkinId === null && ctx.resumeConversationId != null) body.resume_conversation_id = ctx.resumeConversationId;
   const chip = ownChip(message);
   if (chip !== undefined) body.chip = chip;
+  if (ctx.agent === "mate") body.agent = "mate";
   return body;
 }
 

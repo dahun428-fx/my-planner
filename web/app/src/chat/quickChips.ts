@@ -2,6 +2,7 @@ import type { ChatRequestBody, CheckinSummary, Today } from "../api/types.gen";
 import type { IconName } from "../components/icons";
 import { copy } from "../lib/copy";
 import { logicalDateOf } from "../lib/time";
+import type { Agent } from "./agent";
 
 // SP9 9.5 퀵 칩: 입력창 위 고정 칩 4개와, 때에 맞는 칩 1개(맨 앞). 판단 재료는 `GET /today`뿐이다(BE에 새 경로 없음).
 
@@ -26,7 +27,7 @@ export interface Chip {
 }
 
 export const isWriteKey = (key: string): key is WriteKey => key in copy.chat.write;
-const WIRE = ["todo", "event", "memo", "today", "next"] as const satisfies readonly WireChip[];
+const WIRE = ["todo", "event", "memo", "today", "next", "mate_today", "mate_log", "mate_plan"] as const satisfies readonly WireChip[];
 const isWire = (key: string): key is WireChip => (WIRE as readonly string[]).includes(key);
 
 const chip = (key: ChipKey, icon: IconName, checkinId?: number): Chip => ({
@@ -39,6 +40,8 @@ const chip = (key: ChipKey, icon: IconName, checkinId?: number): Chip => ({
 });
 
 export const FIXED_CHIPS: readonly Chip[] = [chip("todo", "todos"), chip("event", "schedule"), chip("memo", "memo"), chip("today", "today")];
+/** SP12 5.7: 운동메이트 대화의 고정 3개. 때에 따라 바뀌는 칩은 없다. */
+export const MATE_CHIPS: readonly Chip[] = [chip("mate_today", "today"), chip("mate_log", "memo"), chip("mate_plan", "todos")];
 
 /** "3시간 안에 시작하는 일정"(9.5, 15장 8번). 꼭 3:00 뒤는 든다. */
 export const NEXT_EVENT_MS = 3 * 60 * 60_000;
@@ -79,8 +82,9 @@ export function frontChip(today: Today, now: Date): Chip | null {
   return soon ? chip("next", "schedule") : null;
 }
 
-/** 칩 줄 전체: 맨 앞 칩(있으면) + 고정 4개. `/today`를 못 받았으면 고정 4개만. */
-export function quickChips(today: Today | null, now: Date): readonly Chip[] {
+/** 칩 줄 전체: 맨 앞 칩(있으면) + 고정 4개. `/today`를 못 받았으면 고정 4개만. 운동메이트는 고정 3개뿐. */
+export function quickChips(today: Today | null, now: Date, agent: Agent = "secretary"): readonly Chip[] {
+  if (agent === "mate") return MATE_CHIPS;
   const front = today ? frontChip(today, now) : null;
   return front ? [front, ...FIXED_CHIPS] : FIXED_CHIPS;
 }

@@ -9,6 +9,7 @@ import { dropLocalPhoto, keepLocalPhoto, uploadFailureText, uploadPhoto } from "
 import type { ConversationsClosed, Today } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Icon } from "../components/icons";
+import { Segmented } from "../components/Segmented";
 import { PhotoViewer } from "../components/PhotoViewer";
 import { Sheet } from "../components/Sheet";
 import { CHAT_ACTIVITY_MS, useToast } from "../components/Toast";
@@ -32,7 +33,8 @@ import { PhotoTray, type TrayPhoto, TRAY_MAX, trayPhoto } from "./PhotoTray";
 import { conversationIdOf, toViewParts, type ViewPart } from "./parts";
 import { QuickChips, WRITING_ID } from "./QuickChips";
 import { type Chip, isWriteKey, quickChips, type WireChip } from "./quickChips";
-import { sheetState } from "./sheetContext";
+import { type Agent, loadAgent, saveAgent } from "./agent";
+import { resetSheetState, sheetState } from "./sheetContext";
 import { stopOnBe } from "./stop";
 import { type ChatCtx, InFlightError, makeTransport } from "./transport";
 
@@ -103,12 +105,27 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const toast = useToast();
   const toastRef = useRef(toast);
   toastRef.current = toast;
-  const ctx = useRef<ChatCtx>({ conversationId: null, checkinId: checkinId ?? null });
+  const ctx = useRef<ChatCtx>({
+    conversationId: null,
+    checkinId: checkinId ?? null,
+  });
   ctx.current.checkinId = checkinId ?? null;
   // SP9 7.3: the conversation picked from the list goes with every message (never from the check-in screen's box).
   const embeddedRef = useRef(embedded);
   embeddedRef.current = embedded;
-  const picked = () => (embeddedRef.current ? null : sheetState.pickedConversationId);
+  // SP12 11.1: the partner. The pick is kept on the device; without the `mate` feature on the BE (an older
+  // BE, or /health not seen yet) there is no picker and the chat is the secretary's as ever. Embedded
+  // (the check-in screen's box) is always the secretary's.
+  const [pref, setPref] = useState<Agent>(loadAgent);
+  const sawMate = useRef(false);
+  if (state?.kind === "online") sawMate.current = state.health.features?.includes("mate") ?? false; // offline keeps the last answer
+  const hasMate = !embedded && sawMate.current;
+  const agent: Agent = hasMate ? pref : "secretary";
+  const agentRef = useRef(agent);
+  agentRef.current = agent;
+  ctx.current.agent = agent;
+  const cur = () => sheetState[agentRef.current];
+  const picked = () => (embeddedRef.current ? null : cur().pickedConversationId);
 
   const [phase, setPhase] = useState<"queued" | "thinking" | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -148,7 +165,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const [uploading, setUploading] = useState(false);
   const pinned = useRef(new Set<number>());
   const lastSent = useRef<TrayPhoto[]>([]);
-  const [viewing, setViewing] = useState<{ ids: number[]; index: number } | null>(null);
+  const [viewing, setViewing] = useState<{
+    ids: number[];
+    index: number;
+  } | null>(null);
   const pickerInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
 
@@ -294,7 +314,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     const i = all.findIndex((m) => m.id === message.id);
     const shown: UIMessage =
       i === -1
-        ? { id: message.id, role: "assistant", parts: [line], metadata: { ...metaOf(message), at: new Date().toISOString() } }
+        ? {
+            id: message.id,
+            role: "assistant",
+            parts: [line],
+            metadata: { ...metaOf(message), at: new Date().toISOString() },
+          }
         : { ...all[i], parts: [...all[i].parts, line] };
     setMessages(i === -1 ? [...all, shown] : all.map((m, k) => (k === i ? shown : m)));
     // Stopped before its start, the id is the app's own: no BE line will ever carry it, so nothing is kept.
@@ -328,8 +353,11 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setLoading(true);
     setLoadError(null);
     const pick = picked();
-    const notBefore = pick === null && conversationId === undefined && !embeddedRef.current ? sheetState.freshSince : null;
-    void loadHistory(pick ?? conversationId, { notBefore }).then((r) => {
+    const notBefore = pick === null && conversationId === undefined && !embeddedRef.current ? cur().freshSince : null;
+    void loadHistory(pick ?? conversationId, {
+      notBefore,
+      agent: agentRef.current,
+    }).then((r) => {
       if (mine !== seq.current) return;
       setLoading(false);
       if (r.kind === "offline") return; // the last view stays, read-only (F9)
@@ -346,9 +374,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       setFailure(null);
     });
   }, [conversationId, setMessages, dropRefused]);
+  // Opening reads the kept pick again (the workout screen opens the sheet on the mate); a changed partner reads its own conversation.
+  useLayoutEffect(() => {
+    if (open && !embedded) setPref(loadAgent());
+  }, [open, embedded]);
   useEffect(() => {
     if (open && !sending.current) load();
-  }, [open, load]);
+  }, [open, load, agent]);
   // The sheet stays mounted while closed (_app): a refused message's own bytes go when it closes.
   useEffect(() => {
     if (!open) dropRefused();
@@ -358,7 +390,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   useEffect(() => {
     if (embedded) return;
     if (!open) {
-      sheetState.pickedConversationId = null;
+      for (const a of ["secretary", "mate"] as const) sheetState[a].pickedConversationId = null;
       focusAfter.current = null;
       setView("chat");
       setWriting(null);
@@ -366,28 +398,28 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   }, [open, embedded]);
   useEffect(
     () => () => {
-      if (!embeddedRef.current) {
-        sheetState.pickedConversationId = null;
-        sheetState.freshSince = null;
-      }
+      if (!embeddedRef.current) resetSheetState();
     },
     [],
   );
 
   // An empty chat: the next message is a new conversation (no id, no pick).
-  const clearView = useCallback(() => {
-    seq.current += 1; // a history still coming is not shown
-    dropRefused();
-    sheetState.pickedConversationId = null;
-    ctx.current.conversationId = null;
-    setLoading(false);
-    setMessages([]);
-    setHistoryCount(0);
-    setRestored({});
-    setElsewhere([]);
-    setFailure(null);
-    setLoadError(null);
-  }, [setMessages, dropRefused]);
+  const clearView = useCallback(
+    (keepPick = false) => {
+      seq.current += 1; // a history still coming is not shown
+      dropRefused();
+      if (!keepPick) sheetState[agentRef.current].pickedConversationId = null;
+      ctx.current.conversationId = null;
+      setLoading(false);
+      setMessages([]);
+      setHistoryCount(0);
+      setRestored({});
+      setElsewhere([]);
+      setFailure(null);
+      setLoadError(null);
+    },
+    [setMessages, dropRefused],
+  );
 
   // Also on the way back from the list screen: the log is a fresh element then (review round 1).
   useEffect(() => {
@@ -427,15 +459,21 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setInFlight(true);
     setFailure(null);
     setPhase(null);
-    if (!embedded) sheetState.freshSince = null; // said something: the latest conversation is this one again
-    const metadata: Meta = { at: new Date().toISOString(), ...(checkinId === undefined ? {} : { checkin_id: checkinId }) };
+    if (!embedded) cur().freshSince = null; // said something: the latest conversation is this one again
+    const metadata: Meta = {
+      at: new Date().toISOString(),
+      ...(checkinId === undefined ? {} : { checkin_id: checkinId }),
+    };
     if (chip) metadata.chip = chip;
     const id = newClientMsgId();
     sentId.current = id;
     sentAt.current = performance.now();
     const parts: UIMessage["parts"] = [
       ...(t === "" ? [] : [{ type: "text" as const, text: t }]),
-      ...photoIds.map((photo_id) => ({ type: "data-photo" as const, data: { photo_id } })),
+      ...photoIds.map((photo_id) => ({
+        type: "data-photo" as const,
+        data: { photo_id },
+      })),
     ];
     void sendMessage({ id, role: "user", parts, metadata });
     return true;
@@ -458,7 +496,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     let failed: ApiResult<unknown> | null = c ? null : { kind: "offline" };
     for (const p of items) {
       if (failed || !c) break;
-      const up = await uploadPhoto(c, { image: p.image, thumb: p.thumb, origin: "chat", clientMsgId: newClientMsgId() });
+      const up = await uploadPhoto(c, {
+        image: p.image,
+        thumb: p.thumb,
+        origin: "chat",
+        clientMsgId: newClientMsgId(),
+      });
       if (up.kind !== "ok") {
         failed = up;
         break;
@@ -471,7 +514,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setUploading(false);
     if (failed || !c) {
       if (c) for (const id of ids) dropLocalPhoto(c, id);
-      toastRef.current.show({ text: failed ? uploadFailureText(failed) : copy.photos.uploadFailed });
+      toastRef.current.show({
+        text: failed ? uploadFailureText(failed) : copy.photos.uploadFailed,
+      });
       if (fromCamera) backToTray(items, 1);
       return;
     }
@@ -567,7 +612,11 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   );
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
   const pressChip = (chip: Chip) => {
-    if (chip.mode === "send") return void send(chip.text, { checkinId: chip.checkinId, chip: chip.wire });
+    if (chip.mode === "send")
+      return void send(chip.text, {
+        checkinId: chip.checkinId,
+        chip: chip.wire,
+      });
     setWriting(chip);
     field.current?.focus();
   };
@@ -587,6 +636,17 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const chooseLabel = (label: string) => {
     if (send(label)) setWriting(null);
   };
+  // SP12 11.1: another partner is another conversation: the screen empties (the pick of the one left stays
+  // for its way back) and the new one's open conversation is read by the effect above.
+  const changeAgent = (next: Agent) => {
+    if (next === agent || sending.current || busy) return;
+    saveAgent(next);
+    setPref(next);
+    agentRef.current = next;
+    clearView(true);
+    setWriting(null);
+    setToday(null);
+  };
   const openList = () => {
     setWriting(null);
     setView("list");
@@ -596,8 +656,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const openPicked = (id: number) => {
     if (sending.current) return; // an answer still coming stays on screen
     clearView();
-    sheetState.pickedConversationId = id;
-    sheetState.freshSince = null;
+    cur().pickedConversationId = id;
+    cur().freshSince = null;
     focusAfter.current = "list";
     setView("chat");
     load();
@@ -606,7 +666,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const startNew = async () => {
     if (starting || busy || readOnly) return;
     setStarting(true);
-    const r = await apiFetch<ConversationsClosed>("POST", "/conversations/new", { model: "ConversationsClosed" });
+    const r = await apiFetch<ConversationsClosed>("POST", "/conversations/new", {
+      model: "ConversationsClosed",
+      ...(agent === "mate" ? { body: { agent } } : {}), // no body = the secretary's (SP12 5.2)
+    });
     setStarting(false);
     if (r.kind !== "ok") {
       toastRef.current.show({ text: failureText(r) });
@@ -614,15 +677,15 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     }
     clearView();
     setWriting(null);
-    sheetState.freshSince = new Date().toISOString();
+    cur().freshSince = new Date().toISOString();
     if (view === "list") focusAfter.current = "input"; // from the head, its icon keeps the focus
     setView("chat");
   };
   // A deleted conversation that is on screen leaves an empty chat (the BE closed it first, 7.6).
   const onDeleted = (id: number) => {
-    if (id === ctx.current.conversationId || id === sheetState.pickedConversationId) {
+    if (id === ctx.current.conversationId || id === cur().pickedConversationId) {
       clearView();
-      sheetState.freshSince = new Date().toISOString();
+      cur().freshSince = new Date().toISOString();
     }
   };
 
@@ -740,6 +803,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         onOpen={openScreen}
         onOpenPath={openPath}
         onOpenPhoto={(ids, index) => setViewing({ ids, index })}
+        speakerName={agent === "mate" ? copy.chat.agents.mate : undefined}
       />,
     );
     if (i === historyCount - 1) rows.push(elsewhereLines);
@@ -750,7 +814,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (at !== null) prevAt = at;
   });
 
-  const chips = quickChips(today, new Date(now));
+  const chips = quickChips(today, new Date(now), agent);
 
   const last = messages[messages.length - 1];
   const answering = busy && last?.role === "assistant" && toViewParts(last).length > 0;
@@ -773,7 +837,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         <Icon name="list" />
       </button>
       <div className={styles.heading}>
-        <h2 className={styles.title}>{copy.chat.title}</h2>
+        <h2 className={styles.title}>{agent === "mate" ? copy.chat.agents.mate : copy.chat.title}</h2>
         <p className={styles.subtitle}>{copy.chat.subtitle}</p>
       </div>
       <div className={styles.headEnd}>
@@ -790,6 +854,21 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       </div>
     </header>
   );
+  // SP12 11.1: the partner pick under the head, the app's own Segmented, only when the BE has the mate.
+  const agentPick = hasMate && (
+    <div className={styles.agents}>
+      <Segmented
+        ariaLabel={copy.chat.agents.label}
+        value={agent}
+        disabled={busy || starting}
+        onChange={changeAgent}
+        options={[
+          { value: "secretary", label: copy.chat.agents.secretary },
+          { value: "mate", label: copy.chat.agents.mate },
+        ]}
+      />
+    </div>
+  );
   const listHead = (
     <header className={styles.header}>
       <button type="button" className={styles.back} onClick={() => setView("chat")}>
@@ -805,7 +884,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       <Sheet open={open} onClose={onClose} tall ariaLabel={copy.chat.title}>
         <div className={styles.frame}>
           {listHead}
-          <ConversationList readOnly={readOnly || busy || starting} onOpen={openPicked} onNew={() => void startNew()} onDeleted={onDeleted} />
+          <ConversationList
+            readOnly={readOnly || busy || starting}
+            agent={agent}
+            onOpen={openPicked}
+            onNew={() => void startNew()}
+            onDeleted={onDeleted}
+          />
         </div>
       </Sheet>
     );
@@ -814,6 +899,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const content = (
     <div className={embedded ? styles.embedded : styles.frame}>
       {!embedded && chatHead}
+      {!embedded && agentPick}
       <div ref={list} className={styles.list} role="log" aria-label={copy.chat.messages}>
         {rows}
         {busy && !answering && phase === "queued" && (
@@ -860,7 +946,13 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
                     dimmed: tray.length >= TRAY_MAX,
                     onSelect: pressCamera,
                   },
-                  { key: "photo", label: copy.photos.button, icon: "photo", dimmed: tray.length >= TRAY_MAX, onSelect: pickPhotos },
+                  {
+                    key: "photo",
+                    label: copy.photos.button,
+                    icon: "photo",
+                    dimmed: tray.length >= TRAY_MAX,
+                    onSelect: pickPhotos,
+                  },
                 ]}
               />
               <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden tabIndex={-1} onChange={(e) => void onCamera(e)} />

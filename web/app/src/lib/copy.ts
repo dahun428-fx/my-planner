@@ -339,7 +339,13 @@ export const copy = {
       checkin: { label: "체크인 하기", text: "체크인 할게요" },
       review: { label: "이번 주 돌아보기", text: "이번 주 돌아볼래요" },
       next: { label: "다음 일정 보기", text: "다음 일정 알려줘" },
+      // SP12 부록 A 퀵 칩: 운동메이트 대화의 고정 셋. 보내는 문장은 라벨 그대로.
+      mate_today: { label: "오늘 뭐 할까?", text: "오늘 뭐 할까?" },
+      mate_log: { label: "운동 기록하기", text: "운동 기록하기" },
+      mate_plan: { label: "플랜 고치기", text: "플랜 고치기" },
     },
+    // SP12 11.1 / 부록 A 상대 고르기: 머리의 두 칸과 메이트 말풍선의 머리 줄.
+    agents: { label: "대화 상대", secretary: "비서", mate: "운동메이트" },
     // SP9c 3 한 줄 쓰기: 스펙 5장 그대로(Dahun 확인 필요).
     // (new) the input's example
     write: { todo: "예: 금요일까지 보고서 초안", event: "예: 내일 오후 3시 치과", memo: "떠오른 걸 그대로 적어요" },
