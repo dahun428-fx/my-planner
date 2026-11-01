@@ -277,7 +277,8 @@ export interface CalendarSettings {
  */
 export interface ChatRequestBody {
   checkin_id?: number | null;
-  chip?: ("todo" | "event" | "memo" | "today" | "next") | null;
+  chip?:
+    ("todo" | "event" | "memo" | "today" | "next" | "mate_today" | "mate_log" | "mate_plan") | null;
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;

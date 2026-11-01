@@ -928,7 +928,7 @@ class ChatMessage(BaseModel):
 
 
 # 입력창의 퀵 칩(SP9c 4.1). 두뇌 차례 본문에 `## 버튼` 블록(`harness/prompts/chip_<키>.md`)을 붙인다
-ChipKey = Literal["todo", "event", "memo", "today", "next"]
+ChipKey = Literal["todo", "event", "memo", "today", "next", "mate_today", "mate_log", "mate_plan"]  # 메이트 셋(SP12 5.7)
 
 
 class ChatRequestBody(_Model):

@@ -42,6 +42,7 @@ from my_planner.harness.context import (
     moments_week_block,
     recent_areas_block,
 )
+from my_planner.harness.mate_context import build_mate_preamble
 from my_planner.harness.photo_reader import (
     PhotoGone,
     PhotoReader,
@@ -2269,8 +2270,14 @@ class Dispatcher:
         return self._preamble(resumed, include_habits=True)
 
     def _mate_preamble(self, now: datetime) -> str:
-        """메이트 앞머리(SP12 5.5). Task 3이 `build_mate_preamble`로 채운다. 앱은 메이트를 아직 열 수 없다."""
-        return ""
+        """메이트 앞머리(SP12 5.5): 오늘, 오늘 몸, 오늘 일정, 몸 메모, 지금 플랜, 최근 기록. 모두 DB에서 읽는다."""
+        if self.tools is None:
+            return ""
+        return build_mate_preamble(
+            now=now, tz=self.settings.timezone, boundary=self.settings.day_boundary,
+            conditions=self.tools.conditions, body=getattr(self.tools, "body", None),
+            events=getattr(self.tools, "events", None), workout=getattr(self.tools, "workout", None),
+        )
 
     def _preamble(
         self, resumed: bool, *, merged: list[str] | None = None, include_habits: bool = False,
@@ -2859,7 +2866,7 @@ def _week_label(monday: date) -> str:
     )
 
 
-# 칩 알림 끝에 공통 규칙(4.3, `chip_common.md`)을 붙이는 칩: 글로 무엇을 저장하는 칩만
+# 칩 알림 끝에 공통 규칙(4.3, `chip_common.md`)을 붙이는 칩: 글로 무엇을 저장하는 칩만. 메이트 칩(SP12 5.7)은 붙이지 않는다
 _SAVING_CHIPS = frozenset({"todo", "event", "memo"})
 
 

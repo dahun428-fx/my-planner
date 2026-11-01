@@ -252,6 +252,15 @@ class WorkoutRepo:
                 "UPDATE workout_plans SET replaced_at = NULL WHERE id = ?", (prev_id,)
             )
 
+    def has_session(self, id: int) -> bool:
+        """그 세션 행이 있다(지난 플랜의 세션도. 기록의 `session_id`가 가리킬 수 있다, 7.2)."""
+        return (
+            self.conn.execute(
+                "SELECT 1 FROM workout_plan_sessions WHERE id = ?", (id,)
+            ).fetchone()
+            is not None
+        )
+
     def undo_clear(self, plan_id: int) -> None:
         cur = self.conn.execute(
             "UPDATE workout_plans SET cleared_at = NULL WHERE id = ?", (plan_id,)

@@ -90,6 +90,7 @@ from my_planner.store.repos.runs import RunsRepo
 from my_planner.store.repos.state import StateRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
+from my_planner.store.repos.workout import WorkoutRepo
 from my_planner.store.transcripts import TranscriptStore
 from my_planner.tools.core import Tools
 
@@ -270,6 +271,7 @@ def build_be(
     photos = PhotosRepo(settings.timezone, settings.day_boundary)
     body = BodyRepo(conn, clock)
     events = EventsRepo(conn, clock, settings.timezone)
+    workout = WorkoutRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -302,6 +304,7 @@ def build_be(
         conversations=convs,  # `find_conversations`(SP9 7.5): 제목·요약만
         # 사진(SP10 5.1·5.2): 바이트는 `data/photos/`에만
         photos=photos, photo_files=PhotoFiles(paths.data_dir / "photos"),
+        workout=workout,  # 운동메이트 도구·동작(SP12 6~8장), 메이트 앞머리(5.5)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다

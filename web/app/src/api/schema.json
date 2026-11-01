@@ -462,7 +462,10 @@
                 "event",
                 "memo",
                 "today",
-                "next"
+                "next",
+                "mate_today",
+                "mate_log",
+                "mate_plan"
               ],
               "type": "string"
             },
