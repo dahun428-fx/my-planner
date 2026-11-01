@@ -25,7 +25,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.17.2,<0.18", "hypothesis>=6
 where = ["src"]
 
 [tool.setuptools.package-data]
-my_planner = ["store/migrations/*.sql", "harness/prompts/*.md"]
+my_planner = ["store/migrations/*.sql", "harness/prompts/*.md", "standing/benchmarks/*.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
