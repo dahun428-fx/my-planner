@@ -47,6 +47,7 @@ from my_planner.harness.context import (
     recent_areas_block,
 )
 from my_planner.harness.inbox import inbox_block
+from my_planner.harness.manager_context import budget_block, build_manager_preamble
 from my_planner.harness.mate_context import build_mate_preamble
 from my_planner.harness.photo_reader import (
     PhotoGone,
@@ -1201,13 +1202,13 @@ class Dispatcher:
             if conv.agent in INBOX_AGENTS and self.tools is not None and self.tools.agents is not None else None
         )
         # `_recorded_condition()`은 메이트에도 붙인다(SP12 5.4: 이어진 세션에서도 오늘 컨디션 기록 여부를 본다)
-        body = _join(
+        head = _join(
             self._recorded_condition(),
             chip_block(chip_of.chip) if chip_of.chip is not None else "",
             block.text if block is not None else "",
-            f"## 메시지\n{text}",
-            step_note(review_step, where="답"),
         )
+        tail = _join(f"## 메시지\n{text}", step_note(review_step, where="답"))
+        body = _join(head, tail)
         with self._awake.hold():
             fell_back = False
             self._log_user_lines(batch, conv.id, pending, lead)
@@ -1258,7 +1259,11 @@ class Dispatcher:
                 continued,
                 rolled,
                 f"## 최근 대화\n{history}" if history else "",
-                body,
+                head,
+                # 라이프 매니저의 이어진 세션: 메시지마다 주간 제안 블록("새로 생긴 것" 다음, `## 메시지` 앞, SP15 5.3).
+                # 새 세션은 앞머리에 이미 있다
+                self._manager_budget() if resumed and conv.agent == "manager" else "",
+                tail,
             ), images)
             if app is not None:
                 if not thinking:
@@ -2357,11 +2362,11 @@ class Dispatcher:
     def _conversation_preamble(self, conv: Conversation, resumed: bool) -> str:
         """사용자 메시지 차례의 앞머리(새 세션에만). 메이트 대화는 메이트 앞머리(SP12 5.4·5.5), 비서는 지금 그대로.
 
-        라이프 매니저는 아직 빈 글이다(SP15 앞머리는 뒤 Task가 채운다)."""
+        라이프 매니저는 매니저 앞머리(SP15 5.3). 이어진 세션의 주간 제안 블록은 메시지 본문 쪽(`_manager_budget`)."""
         if conv.agent == "mate":
             return "" if resumed else self._mate_preamble(self.clock.now())
         if conv.agent == "manager":
-            return ""
+            return "" if resumed else self._manager_preamble(self.clock.now())
         return self._preamble(resumed, include_habits=True)
 
     def _mate_preamble(self, now: datetime) -> str:
@@ -2373,6 +2378,14 @@ class Dispatcher:
             conditions=self.tools.conditions, body=getattr(self.tools, "body", None),
             events=getattr(self.tools, "events", None), workout=getattr(self.tools, "workout", None),
         )
+
+    def _manager_preamble(self, now: datetime) -> str:
+        """라이프 매니저 앞머리(SP15 5.3). 측정값 숫자가 들어가므로 로그에 남기지 않는다."""
+        s = self.settings
+        return build_manager_preamble(self.state.conn, self.clock, now=now, tz=s.timezone, boundary=s.day_boundary)
+
+    def _manager_budget(self) -> str:
+        return budget_block(self.state.conn, self.clock, self._today())
 
     def _preamble(
         self, resumed: bool, *, merged: list[str] | None = None, include_habits: bool = False,
