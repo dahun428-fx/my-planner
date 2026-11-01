@@ -9,7 +9,7 @@ const validators = new Map<ModelName, Validator>();
 
 // The BE contract says adding a field is not breaking and clients ignore unknown fields. The
 // generated schema closes every object, so that is opened here once, for every model and $def.
-function openObjects(node: unknown): unknown {
+export function openObjects(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(openObjects);
   if (!node || typeof node !== "object") return node;
   const out: Record<string, unknown> = {};

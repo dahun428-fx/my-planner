@@ -5,7 +5,7 @@ import { clear } from "idb-keyval";
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { validateModel } from "../api/validate";
+import { validateLateModel } from "../api/validateLate";
 import { copy } from "../lib/copy";
 import { events, gatedResponse, golden, serveChat, sse, sseResponse } from "../test/chat";
 import todayJson from "../test/fixtures/today.json";
@@ -385,7 +385,7 @@ describe("chat contract: SP6 cards (golden)", () => {
   });
 });
 
-// SP12 5.2: `POST /chat` names the partner; the field is the schema's (an enum of the two).
+// SP12 5.2: `POST /chat` names the partner; the field is the schema's (an enum of the partners).
 describe("ChatRequestBody agent (SP12)", () => {
   const msg = { id: "m1", role: "user" as const, parts: [{ type: "text" as const, text: "오늘 뭐 할까?" }], metadata: { chip: "mate_today" as const } };
 
@@ -393,19 +393,22 @@ describe("ChatRequestBody agent (SP12)", () => {
     const body = buildChatBody([msg], { conversationId: null, checkinId: null, agent: "mate" });
     expect(body.agent).toBe("mate");
     expect(body.chip).toBe("mate_today");
-    expect(validateModel("ChatRequestBody", body)).toBe(true);
+    expect(validateLateModel("ChatRequestBody", body)).toBe(true);
   });
 
   it("the secretary's body carries no agent and still matches", () => {
     const body = buildChatBody([msg], { conversationId: null, checkinId: null, agent: "secretary" });
     expect(body).not.toHaveProperty("agent");
-    expect(validateModel("ChatRequestBody", body)).toBe(true);
+    expect(validateLateModel("ChatRequestBody", body)).toBe(true);
   });
 
-  it("the schema takes only the two partners", () => {
+  it("the schema takes only the three partners (SP15 adds the life manager)", () => {
     const base = { client_msg_id: "m1", message: { id: "m1", role: "user", parts: [{ type: "text", text: "x" }] } };
-    expect(validateModel("ChatRequestBody", { ...base, agent: "secretary" })).toBe(true);
-    expect(validateModel("ChatRequestBody", { ...base, agent: "mate" })).toBe(true);
-    expect(validateModel("ChatRequestBody", { ...base, agent: "coach" })).toBe(false);
+    expect(validateLateModel("ChatRequestBody", { ...base, agent: "secretary" })).toBe(true);
+    expect(validateLateModel("ChatRequestBody", { ...base, agent: "mate" })).toBe(true);
+    expect(validateLateModel("ChatRequestBody", { ...base, agent: "manager" })).toBe(true);
+    expect(validateLateModel("ChatRequestBody", { ...base, agent: "manager", chip: "manager_full" })).toBe(true);
+    expect(validateLateModel("ChatRequestBody", { ...base, agent: "manager", chip: "manager_week" })).toBe(true);
+    expect(validateLateModel("ChatRequestBody", { ...base, agent: "coach" })).toBe(false);
   });
 });

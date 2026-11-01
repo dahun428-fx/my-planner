@@ -230,11 +230,15 @@ class ClaudeBrain:
         app_part = prompts.load("channel_app.md").strip()
         self._app_system_prompt = f"{self._system_prompt}\n\n{app_part}" if app_part else self._system_prompt
         self._mate_system_prompt = prompts.load("mate.md")
+        self._manager_system_prompt = prompts.load("manager.md")
 
     def system_prompt_for(self, channel: str, agent: Agent = "secretary") -> str:
-        """그 통로·그 상대의 기본 지시문. 메이트는 `mate.md` 하나(화면 조각 규칙도 그 안에, SP12 5.4), 비서는 그대로."""
+        """그 통로·그 상대의 기본 지시문. 메이트는 `mate.md` 하나(화면 조각 규칙도 그 안에, SP12 5.4), 라이프 매니저는
+        `manager.md` 하나(SP15), 비서는 그대로."""
         if agent == "mate":
             return self._mate_system_prompt
+        if agent == "manager":
+            return self._manager_system_prompt
         return self._app_system_prompt if channel == "app" else self._system_prompt
 
     async def run(

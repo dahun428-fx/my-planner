@@ -1,0 +1,320 @@
+{
+  "api": "v1",
+  "models": {
+    "ChatRequestBody": {
+      "$defs": {
+        "ChatMessage": {
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "parts": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "maxItems": 100,
+              "type": "array"
+            },
+            "role": {
+              "const": "user",
+              "type": "string"
+            }
+          },
+          "required": [
+            "role"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "default": "secretary",
+          "enum": [
+            "secretary",
+            "mate",
+            "manager"
+          ],
+          "type": "string"
+        },
+        "checkin_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "chip": {
+          "anyOf": [
+            {
+              "enum": [
+                "todo",
+                "event",
+                "memo",
+                "today",
+                "next",
+                "mate_today",
+                "mate_log",
+                "mate_plan",
+                "manager_full",
+                "manager_week"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "message": {
+          "$ref": "#/$defs/ChatMessage"
+        },
+        "resume_conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "client_msg_id",
+        "message"
+      ],
+      "type": "object"
+    },
+    "Conversations": {
+      "$defs": {
+        "ConversationItem": {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "type": "string"
+            },
+            "closed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "run",
+                "chat",
+                "plan"
+              ],
+              "type": "string"
+            },
+            "last_message_at": {
+              "type": "string"
+            },
+            "opened_at": {
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "channel",
+            "run_id",
+            "opened_at",
+            "last_message_at",
+            "closed_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ConversationItem"
+          },
+          "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "Messages": {
+      "$defs": {
+        "MessageItem": {
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "channel": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "type": "array"
+            },
+            "speaker": {
+              "enum": [
+                "user",
+                "secretary",
+                "mate",
+                "manager"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "speaker",
+            "text",
+            "tools",
+            "channel"
+          ],
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MessageItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    }
+  }
+}

@@ -305,10 +305,22 @@ export interface CalendarSettings {
  * via the `definition` "ChatRequestBody".
  */
 export interface ChatRequestBody {
-  agent?: "secretary" | "mate";
+  agent?: "secretary" | "mate" | "manager";
   checkin_id?: number | null;
   chip?:
-    ("todo" | "event" | "memo" | "today" | "next" | "mate_today" | "mate_log" | "mate_plan") | null;
+    | (
+        | "todo"
+        | "event"
+        | "memo"
+        | "today"
+        | "next"
+        | "mate_today"
+        | "mate_log"
+        | "mate_plan"
+        | "manager_full"
+        | "manager_week"
+      )
+    | null;
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;
@@ -1169,7 +1181,7 @@ export interface MessageItem {
   channel: "telegram" | "app";
   id: string;
   photos?: PhotoRef[];
-  speaker: "user" | "secretary" | "mate";
+  speaker: "user" | "secretary" | "mate" | "manager";
   text: string;
   tools: string[];
 }

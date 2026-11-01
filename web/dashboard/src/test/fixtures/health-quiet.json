@@ -42,6 +42,7 @@
   "disk_low": false,
   "features": [
     "mate",
-    "agent_notes"
+    "agent_notes",
+    "manager"
   ]
 }

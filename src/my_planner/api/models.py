@@ -562,7 +562,7 @@ class Conversations(_Model):
 class NewConversationBody(_Model):
     """`POST /conversations/new` 요청(SP12 11.3). 본문이 없거나 `{}`이면 비서."""
 
-    agent: Literal["secretary", "mate"] = "secretary"
+    agent: Literal["secretary", "mate", "manager"] = "secretary"
 
 
 class ConversationsClosed(_Model):
@@ -578,7 +578,7 @@ class MessageItem(_Model):
 
     id: str
     at: str
-    speaker: Literal["user", "secretary", "mate"]  # `mate`: 운동메이트(SP12)
+    speaker: Literal["user", "secretary", "mate", "manager"]  # `mate`: 운동메이트(SP12), `manager`: 라이프 매니저(SP15)
     text: str
     tools: list[str]
     channel: ChannelName
@@ -1070,7 +1070,20 @@ class ChatMessage(BaseModel):
 
 
 # 입력창의 퀵 칩(SP9c 4.1). 두뇌 차례 본문에 `## 버튼` 블록(`harness/prompts/chip_<키>.md`)을 붙인다
-ChipKey = Literal["todo", "event", "memo", "today", "next", "mate_today", "mate_log", "mate_plan"]  # 메이트 셋(SP12 5.7)
+ChipKey = Literal[
+    "todo", "event", "memo", "today", "next",
+    "mate_today", "mate_log", "mate_plan",  # 메이트 셋(SP12 5.7)
+    "manager_full", "manager_week",  # 라이프 매니저 둘(SP15)
+]
+
+
+def _chip_agent(chip: str) -> str:
+    """칩 키의 상대: `mate_`로 시작하면 메이트, `manager_`로 시작하면 라이프 매니저, 그 밖은 비서."""
+    if chip.startswith("mate_"):
+        return "mate"
+    if chip.startswith("manager_"):
+        return "manager"
+    return "secretary"
 
 
 class ChatRequestBody(_Model):
@@ -1086,8 +1099,8 @@ class ChatRequestBody(_Model):
     resume_conversation_id: int | None = None
     message: ChatMessage
     chip: ChipKey | None = None
-    # 대화 상대(SP12 5.1). 없으면 비서라 지금 호출은 그대로다
-    agent: Literal["secretary", "mate"] = "secretary"
+    # 대화 상대(SP12 5.1, SP15). 없으면 비서라 지금 호출은 그대로다
+    agent: Literal["secretary", "mate", "manager"] = "secretary"
 
     @model_validator(mode="after")
     def _chip_not_with_checkin(self) -> ChatRequestBody:
@@ -1097,10 +1110,11 @@ class ChatRequestBody(_Model):
 
     @model_validator(mode="after")
     def _agent_rules(self) -> ChatRequestBody:
-        """메이트는 회차가 없고(SP12 5.1), 칩 키는 상대에 맞아야 한다(메이트 칩은 메이트에게만, 비서 칩은 비서에게만)."""
-        if self.agent == "mate" and self.checkin_id is not None:
-            raise ValueError("메이트에는 회차가 없다")
-        if self.chip is not None and self.chip.startswith("mate_") != (self.agent == "mate"):
+        """메이트·라이프 매니저는 회차가 없고(SP12 5.1, SP15), 칩 키는 상대에 맞아야 한다(`mate_` 칩은 메이트에게만,
+        `manager_` 칩은 라이프 매니저에게만, 그 밖 칩은 비서에게만)."""
+        if self.agent != "secretary" and self.checkin_id is not None:
+            raise ValueError("비서가 아닌 상대에는 회차가 없다")
+        if self.chip is not None and _chip_agent(self.chip) != self.agent:
             raise ValueError("칩과 상대가 맞지 않는다")
         return self
 

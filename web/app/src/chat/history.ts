@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import { apiFetch } from "../api/client";
 import type { Conversations } from "../api/types.gen";
-import { validateModel } from "../api/validate";
+import { apiGetLate } from "../api/validateLate";
 import { loadParts } from "./localParts";
 import type { Agent } from "./agent";
 import type { ViewPart } from "./parts";
@@ -72,9 +72,8 @@ export async function loadHistory(given: number | null | undefined, opts: { notB
   if (given !== undefined) {
     id = given;
   } else {
-    const r = await apiFetch<Conversations>("GET", `/conversations?channel=app&limit=3${opts.agent === "mate" ? "&agent=mate" : ""}`, { model: "Conversations" });
+    const r = await apiGetLate<Conversations>(`/conversations?channel=app&limit=3${opts.agent === "mate" ? "&agent=mate" : ""}`, "Conversations");
     if (r.kind !== "ok") return failure(r);
-    if (!validateModel("Conversations", r.data)) return { kind: "failed", code: "shape" };
     const latest = [...r.data.items].sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1))[0];
     id = latest?.id ?? null;
     if (latest && opts.notBefore && Date.parse(latest.last_message_at) < Date.parse(opts.notBefore)) id = null;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { failureText } from "../api/actions";
-import { type ApiResult, apiFetch, apiGet } from "../api/client";
+import { type ApiResult, apiFetch } from "../api/client";
 import type { ConversationItem, Conversations } from "../api/types.gen";
+import { apiGetLate } from "../api/validateLate";
 import { BlockError } from "../components/BlockError";
 import { ConfirmSheet } from "../components/ConfirmSheet";
 import { Group } from "../components/Group";
@@ -95,7 +96,7 @@ export function ConversationList({ readOnly, agent = "secretary", onOpen, onNew,
   const load = useCallback((q: string) => {
     const mine = ++seq.current;
     setOlder(null);
-    void apiGet<Conversations>(listPath(agent, q), "Conversations").then((r) => {
+    void apiGetLate<Conversations>(listPath(agent, q), "Conversations").then((r) => {
       if (mine === seq.current) setResult(r);
     });
   }, [agent]);
@@ -126,7 +127,7 @@ export function ConversationList({ readOnly, agent = "secretary", onOpen, onNew,
     setLoadingMore(true);
     const mine = seq.current;
     try {
-      const r = await apiGet<Conversations>(listPath(agent, query ?? "", cursor), "Conversations");
+      const r = await apiGetLate<Conversations>(listPath(agent, query ?? "", cursor), "Conversations");
       if (mine !== seq.current) return;
       if (r.kind !== "ok") {
         toast.show({ text: failureText(r) });

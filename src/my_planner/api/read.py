@@ -46,6 +46,7 @@ from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_ra
 from my_planner.domain import Cadence, LoopKey, RunStatus, TaskStatus
 from my_planner.harness.chat_photos import leading_photo_ids, strip_marks
 from my_planner.harness.checkins import checkin_detail, checkin_summaries
+from my_planner.harness.conversations import AGENTS
 from my_planner.harness.summaries import LIST_SUMMARY_CHARS
 from my_planner.status.snapshot import status_snapshot
 from my_planner.store.exports import week_bounds
@@ -552,8 +553,8 @@ def get_conversations(conn: sqlite3.Connection, deps: ApiDeps, request: web.Requ
     if channel is not None and channel not in ("telegram", "app"):
         raise _bad("channel은 telegram 또는 app이어야 해요.")
     agent = request.query.get("agent", "secretary")  # SP12 11.3: 없으면 비서(지금 동작 그대로)
-    if agent not in ("secretary", "mate"):
-        raise _bad("agent는 secretary 또는 mate여야 해요.")
+    if agent not in AGENTS:
+        raise _bad("agent는 secretary, mate, manager 가운데 하나예요.")
     raw = request.query.get("limit")
     limit = CONVERSATIONS_DEFAULT_LIMIT
     if raw is not None:
@@ -584,7 +585,7 @@ def get_conversations(conn: sqlite3.Connection, deps: ApiDeps, request: web.Requ
 
 
 CONVERSATION_QUERY_MAX = 100
-_SPEAKERS = {"사용자": "user", "운동메이트": "mate"}  # 그 밖(비서)은 secretary
+_SPEAKERS = {"사용자": "user", "운동메이트": "mate", "라이프 매니저": "manager"}  # 그 밖(비서)은 secretary
 
 
 def get_conversation_messages(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any]:

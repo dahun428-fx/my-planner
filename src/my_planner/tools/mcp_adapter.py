@@ -861,6 +861,9 @@ DAYEND_READ_TOOLS: dict[InboxAgent, list[str]] = {
     "mate": ["get_mate_context", "list_workouts", "get_measures", "list_events", "find_conversations"],
 }
 DAYEND_TOOLS: list[str] = ["write_note", "hand_off"]
+# 라이프 매니저 대화(`RunContext.agent == "manager"`, SP15)에 주는 도구. 비서 도구로 새지 않게 따로 둔다.
+# 지금은 같은 상대의 지난 대화 찾기 하나뿐이다(SP15 계획 Task 7이 읽기·제안 도구로 바꾼다)
+MANAGER_TOOLS: list[str] = ["find_conversations"]
 _NOTE_REFS = {
     "type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5,
     "description": "근거로 본 참조(workout:12, event:7 같은 것) 1~5개",
@@ -894,7 +897,7 @@ _SPECS.update({
 def tool_names_for(ctx: RunContext) -> list[str]:
     """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
-    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
+    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만, 라이프 매니저 대화(SP15)는 `MANAGER_TOOLS`만. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
@@ -906,6 +909,8 @@ def tool_names_for(ctx: RunContext) -> list[str]:
         return []
     if ctx.agent == "mate":
         return list(MATE_TOOLS)
+    if ctx.agent == "manager":
+        return list(MANAGER_TOOLS)
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 

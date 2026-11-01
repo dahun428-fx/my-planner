@@ -18,7 +18,8 @@ def test_prompts_have_no_banned_words():
     assert {"system.md", "chat.md"} <= names
     for f in files:
         text = f.read_text(encoding="utf-8")
-        if f.name in ("system.md", "mate.md"):  # 금지어 목록 자체는 뺀다(메이트는 그 블록을 그대로 싣는다, SP12)
+        # 금지어 목록 자체는 뺀다(메이트·라이프 매니저는 그 블록을 그대로 싣는다, SP12, SP15)
+        if f.name in ("system.md", "mate.md", "manager.md"):
             assert _BANNED_BLOCK.search(text), f"{f.name}에 banned-words 블록이 있어야 한다"
             text = _BANNED_BLOCK.sub("", text)
         for word in BANNED:
@@ -45,7 +46,7 @@ def test_banned_words_include_new_three():
     # 새 세 낱말은 지시문 어디에도 없다. system.md는 금지어 블록과 금지 표현을 인용하는 원칙 12 줄만 뺀다
     for f in sorted(prompts.PROMPTS_DIR.glob("*.md")):
         text = f.read_text(encoding="utf-8")
-        if f.name in ("system.md", "mate.md"):
+        if f.name in ("system.md", "mate.md", "manager.md"):
             text = _BANNED_BLOCK.sub("", text)
             text = "\n".join(line for line in text.splitlines() if not line.startswith("12. "))
         for word in ("끊겼", "며칠째", "남음"):
@@ -187,8 +188,16 @@ def test_chip_prompts_are_spec_text():
         "mate_log": "`운동 기록하기` 버튼입니다. 오늘 한 운동을 짧게 말해 달라고 한 문장으로 묻습니다. 아직 기록하지 않습니다.",
         "mate_plan": "`플랜 고치기` 버튼입니다. 지금 플랜을 `ui_block`으로 보여 주고 무엇을 바꿀지 한 문장으로 묻습니다. "
                      "플랜이 없으면 주 몇 번, 한 번에 몇 분이 좋은지 묻습니다.",
+        # 라이프 매니저 둘(SP15 계획 Task 3)
+        "manager_full": "`전체 진단` 버튼입니다. 전문가 6명을 모두 불러 소견을 받고, 인생 리포트를 `save_life_report`로 "
+                        "저장한 뒤, 답은 한 줄 진단과 이번 주 카드만 짧게 말합니다. 끝에 \"이 숫자는 이번 분기 조건의 "
+                        "측정값이지 나 자신이 아니다.\"를 붙입니다.",
+        "manager_week": "`이번 주 뭐부터?` 버튼입니다. 앞머리의 내 속도 표와 주간 제안을 보고 이번 주 하나를 고릅니다. "
+                        "근거가 있으면 `propose_suggestion`으로 카드 하나를 내고, 없으면 질문 하나를 합니다.",
     }
-    assert set(get_args(ChipKey)) == set(rows) | {"mate_today", "mate_log", "mate_plan"}
+    assert set(get_args(ChipKey)) == set(rows) | {
+        "mate_today", "mate_log", "mate_plan", "manager_full", "manager_week",
+    }
     for key, sentence in {**rows, **mate}.items():
         got = prompts.load(f"chip_{key}.md")
         assert got == sentence, key
@@ -217,3 +226,45 @@ def test_agent_dayend_prompt_has_no_banned_words():
         assert word not in text, word
     for phrase in ("write_note", "hand_off", "120자", "많아야 2개", "하루 2번까지"):
         assert phrase in text, phrase
+
+
+# --- SP15: 라이프 매니저 지시문 ---
+
+
+def _manager() -> str:
+    return (prompts.PROMPTS_DIR / "manager.md").read_text(encoding="utf-8")
+
+
+def test_manager_prompt_rules():
+    """`manager.md`에 충돌 정리 순서, 전문가 수 상한, 목표 1.25배, 전체 진단 끝 문장, 외부 기준 "참고:"가 있다(T12)."""
+    text = _manager()
+    for phrase in (
+        "1. Dahun이 내린 결정", "한 메시지에 많아야 2명", "1.25배",
+        "이 숫자는 이번 분기 조건의 측정값이지 나 자신이 아니다.", "참고:",
+    ):
+        assert phrase in text, phrase
+
+
+def test_manager_banned_block_is_system_block():
+    """`manager.md`의 금지어 블록은 `system.md`의 블록 그대로다."""
+    assert _BANNED_BLOCK.search(_manager()).group(0) == _BANNED_BLOCK.search(_system()).group(0)
+
+
+def test_measure_path_moves_to_manager():
+    """측정값 사진·숫자는 라이프 매니저가 `propose_measures` 확인 카드로 받는다(스펙 2장, SP13 6.3).
+
+    비서 `channel_app.md`의 `propose_measures` 줄은 그대로 둔다(비서 지시문과 도구는 바꾸지 않는다)."""
+    text = _manager()
+    assert "propose_measures" in text
+    assert "카드에서 확인하고 저장해 주세요." in text
+    app = (prompts.PROMPTS_DIR / "channel_app.md").read_text(encoding="utf-8")
+    lines = [line for line in app.splitlines() if "propose_measures" in line]
+    assert lines == _CHANNEL_APP_MEASURE_LINES
+
+
+# 지금 `channel_app.md`의 측정값 줄 그대로(SP13 6.3)
+_CHANNEL_APP_MEASURE_LINES = [
+    ('- 인바디·검진표·급여명세·자산 화면 같은 결과지 사진이 오거나, 사용자가 "연봉 5,500이야"처럼 숫자를 말하면 '
+    'propose_measures로 확인 카드를 냅니다. 묻지 않고 저장하는 길은 없습니다. '
+    '카드를 냈으면 "카드에서 확인하고 저장해 주세요."라고만 말합니다.'),
+]

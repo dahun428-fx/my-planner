@@ -655,7 +655,8 @@
           "default": "secretary",
           "enum": [
             "secretary",
-            "mate"
+            "mate",
+            "manager"
           ],
           "title": "Agent",
           "type": "string"
@@ -683,7 +684,9 @@
                 "next",
                 "mate_today",
                 "mate_log",
-                "mate_plan"
+                "mate_plan",
+                "manager_full",
+                "manager_week"
               ],
               "type": "string"
             },
@@ -4763,7 +4766,8 @@
               "enum": [
                 "user",
                 "secretary",
-                "mate"
+                "mate",
+                "manager"
               ],
               "title": "Speaker",
               "type": "string"

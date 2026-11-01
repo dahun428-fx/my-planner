@@ -59,7 +59,7 @@ from my_planner.harness.stream import (
     UiMessageWriter,
     write_reply,
 )
-from my_planner.store.transcripts import app_secretary_message_id
+from my_planner.store.transcripts import AGENT_SPEAKERS, app_secretary_message_id
 from my_planner.tools.actions import REUSED_ID
 
 if TYPE_CHECKING:
@@ -351,7 +351,7 @@ def _transcribe_direct(deps: ApiDeps, user_text: str, reply: str, agent: Agent =
     now = deps.clock.now()
     try:
         t.append(now, "사용자", None, None, user_text, channel="app", agent=agent)
-        t.append(now, "운동메이트" if agent == "mate" else "비서", None, None, reply, channel="app", agent=agent)
+        t.append(now, AGENT_SPEAKERS[agent], None, None, reply, channel="app", agent=agent)
     except OSError as e:
         log.warning("chat_transcript_failed", extra={"error_type": type(e).__name__})
 

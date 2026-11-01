@@ -96,6 +96,7 @@ from my_planner.store.repos.state import (
 )
 from my_planner.store.reviews import save_weekly_review
 from my_planner.store.transcripts import (
+    AGENT_SPEAKERS,
     Speaker,
     app_secretary_message_id,
     app_user_message_id,
@@ -1228,11 +1229,12 @@ class Dispatcher:
                 if origin is not None and origin.session_id is not None:
                     session_id, fork = origin.session_id, True
             resumed = session_id is not None
-            # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택"). 메이트 규칙은 모두 시스템
-            # 지시문 `mate.md`에 있어 차례 지시문을 붙이지 않는다(SP12 5.4)
-            mate = conv.agent == "mate"
+            # 회차 대화에 답할 때는 지시문 없이 메시지만 넘긴다(스펙 5.3 "프롬프트 선택"). 메이트·라이프 매니저 규칙은
+            # 모두 시스템 지시문(`mate.md`·`manager.md`)에 있어 차례 지시문을 붙이지 않는다(SP12 5.4, SP15)
+            secretary = conv.agent == "secretary"
             instructions = (
-                "" if conv.kind is ConversationKind.run or mate else prompts.load(CONVERSATION_PROMPTS[conv.kind])
+                "" if conv.kind is ConversationKind.run or not secretary
+                else prompts.load(CONVERSATION_PROMPTS[conv.kind])
             )
             history = ""
             if not resumed and conv.kind is ConversationKind.run:
@@ -1572,8 +1574,8 @@ class Dispatcher:
         return conv.agent if conv is not None else "secretary"
 
     def _speaker(self, conversation_id: int | None) -> Speaker:
-        """답 줄의 화자(원문 기록): 메이트 대화면 `운동메이트`(SP12 14장), 아니면 `비서`."""
-        return "운동메이트" if self._agent_of(conversation_id) == "mate" else "비서"
+        """답 줄의 화자(원문 기록): 그 대화 상대의 이름(`운동메이트`·`라이프 매니저`·`비서`, SP12 14장, SP15 13장)."""
+        return AGENT_SPEAKERS[self._agent_of(conversation_id)]
 
     def _reply_out(
         self, out: Outbound, confirmation: str, activity_ids: list[int], undo_ids: list[int],
@@ -2344,9 +2346,13 @@ class Dispatcher:
         return logical_date(self.clock.now(), self.settings.timezone, self.settings.day_boundary)
 
     def _conversation_preamble(self, conv: Conversation, resumed: bool) -> str:
-        """사용자 메시지 차례의 앞머리(새 세션에만). 메이트 대화는 메이트 앞머리(SP12 5.4·5.5), 비서는 지금 그대로."""
+        """사용자 메시지 차례의 앞머리(새 세션에만). 메이트 대화는 메이트 앞머리(SP12 5.4·5.5), 비서는 지금 그대로.
+
+        라이프 매니저는 아직 빈 글이다(SP15 앞머리는 뒤 Task가 채운다)."""
         if conv.agent == "mate":
             return "" if resumed else self._mate_preamble(self.clock.now())
+        if conv.agent == "manager":
+            return ""
         return self._preamble(resumed, include_habits=True)
 
     def _mate_preamble(self, now: datetime) -> str:
