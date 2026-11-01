@@ -2717,10 +2717,19 @@ class Dispatcher:
             dayend_day=day,
         )
         result: BrainResult | None = None
+        raised = False
         try:
             result = await self._call_brain(
                 inp.text, session_id=None, run_ctx=run_ctx, system_prompt=dayend_job.dayend_system_prompt(agent),
                 max_turns=dayend_job.DAYEND_MAX_TURNS, persist_session=False,
+            )
+        except _Stopped:
+            raise
+        except Exception as e:  # noqa: BLE001 - 두뇌 구현의 예외도 실패 한 번으로 센다(글 없이 종류만)
+            log.warning("agent_dayend_brain_error", extra={"agent": agent, "error_type": type(e).__name__})
+            raised = True
+            result = BrainResult(
+                text="", session_id=run_ctx.brain_session_id, turns=0, status="error", error=type(e).__name__,
             )
         finally:
             # 순간 호출과 같은 방식(SP8 6.3, 결정 18): 결과가 무엇이든 그 세션 파일을 지운다
@@ -2738,7 +2747,8 @@ class Dispatcher:
             repo, self.state, agent, today, inp, result, run_ctx.notes_written, self.clock.now(),
         )
         handoffs = repo.handoffs_on(agent, day) - handoffs_before
-        self._log_dayend(agent, inp.events, run_ctx.notes_written, handoffs, outcome, started)
+        shown = "error" if raised and outcome != "ok" else outcome  # 예외로 끝난 시도(`settle`은 retry·failed로 셌다)
+        self._log_dayend(agent, inp.events, run_ctx.notes_written, handoffs, shown, started)
 
     @staticmethod
     def _log_dayend(agent: str, events: int, notes: int, handoffs: int, result: str, started: float) -> None:

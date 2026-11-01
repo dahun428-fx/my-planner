@@ -275,6 +275,46 @@ async def test_failure_retries_next_day_then_marks_seen(tmp_path, caplog):
         assert len(dayend_calls(env)) == 3
 
 
+async def test_brain_exception_counts_as_attempt(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    script = [
+        FakeTurn([], "", session_id=SID, raises=RuntimeError("꾸민 두뇌 오류 workout:1")),
+        FakeTurn([], "", session_id=None, raises=RuntimeError("꾸민 두뇌 오류 workout:1")),
+    ]
+    async with started(tmp_path, script, claude=True) as env:
+        mine, other = _session_files(tmp_path)
+        state = env.parts.state
+        key = DAYEND_ATTEMPTS_KEY.format(agent="mate")
+        ev(env, "workout_logged", "workout:1", date(2026, 11, 1), "health")
+        await tick_at(env)
+        assert len(unseen_ids(env)) == 1 and state.get(key) == "1"
+        assert not mine.exists() and other.exists()  # 예외 때도 세션 파일을 지운다
+        await tick_at(env, NEXT)
+        assert unseen_ids(env) == [] and state.get(key) == "0"
+        assert [r.result for r in records(caplog, "agent_dayend")] == ["error", "error"]
+        assert len(records(caplog, "agent_dayend_failed")) == 1
+        errs = records(caplog, "agent_dayend_brain_error")
+        assert [(r.agent, r.error_type) for r in errs] == [("mate", "RuntimeError")] * 2
+        assert records(caplog, "agent_dayend_error") == []
+        for r in records(caplog, "agent_dayend") + errs:
+            assert "꾸민 두뇌 오류" not in str(r.__dict__) and "workout:1" not in str(r.__dict__)
+
+
+async def test_auth_error_limited_keeps_attempts(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    script = [FakeTurn([], "", status="error", error="x"), FakeTurn([], "", status="auth_error", error="login")]
+    async with started(tmp_path, script) as env:
+        state = env.parts.state
+        key = DAYEND_ATTEMPTS_KEY.format(agent="mate")
+        ev(env, "workout_logged", "workout:1", date(2026, 11, 1), "health")
+        await tick_at(env)
+        assert state.get(key) == "1"
+        await tick_at(env, NEXT)
+        assert state.get(key) == "1" and len(unseen_ids(env)) == 1
+        assert [r.result for r in records(caplog, "agent_dayend")] == ["retry", "limited"]
+        assert records(caplog, "agent_dayend_failed") == []
+
+
 async def test_notes_written_counts_even_when_status_not_ok(tmp_path):
     async with started(tmp_path, [FakeTurn([note()], "", status="max_turns")]) as env:
         ev(env, "workout_logged", "workout:3", date(2026, 11, 1), "health")
