@@ -283,7 +283,7 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
     `harness.checkins.checkin_cards`). 사용자 차례에서 두뇌가 물은 확인(SP9 8장 `set_checkin_time`,
     `out.confirm_cards`)만 `ui_confirm`(출력 `{"ok": true}`)으로 붙이고, 측정값 확인 카드(SP13, `out.measure_cards`)를
     `ui_measure_confirm`으로, 패널 제안 카드(SP15, `out.suggestion_cards`)를 `ui_panel_suggestion`으로 붙이고, 그 뒤 맨 끝에 퀵 칩 결과 카드
-    (`out.chip_cards`, SP9c 4.4)를 `h_chip`으로 붙인다.
+    (`out.chip_cards`, SP9c 4.4)를 `h_chip`으로, 분기 회고 뒤 전체 진단 칩(SP15, `out.full_chip`)을 `h_fullchip`으로 붙인다.
 
     초안 카드 `ui_todo_draft`의 출력은 `{"ok": true, "data": {"todos": [TodoRef]}}`(초안 포함, 디스패처가 채운
     `out.draft_todos`), 사건·챕터 초안 카드는 `{"ok": true, "data": {"milestones": […]}}`·`{"data": {"chapters": […]}}`
@@ -316,6 +316,8 @@ def harness_cards(out: Outbound) -> list[HarnessCard]:
     # 퀵 칩 결과 카드(SP9c 4.4): 확인 카드 다음 맨 뒤. 두뇌 쪽 컴포넌트지만 하네스 조각이다
     for component, props, output in out.chip_cards:
         cards.append(("h_chip", component, dict(props), output))
+    if out.full_chip is not None:  # 분기 회고 뒤 "전체 진단" 칩(SP15 10장, D3): 칩 카드 다음 맨 뒤
+        cards.append(("h_fullchip", "ui_full_diagnosis_chip", {"period": out.full_chip}, {"ok": True, "data": {}}))
     return cards
 
 

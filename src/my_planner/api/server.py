@@ -55,6 +55,8 @@ from my_planner.api.devices import (
 from my_planner.api.health import ErrorCounter, health_view, safe_mode_view
 from my_planner.api.models import ApiError, error_response
 from my_planner.api.panel import (
+    get_life_report,
+    get_life_reports,
     get_owner_statements,
     get_panel_budget,
     get_panel_suggestions,
@@ -317,6 +319,8 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/panel/suggestions", get_panel_suggestions),  # SP15 12장. 셋 다 대시보드 기기는 403
     ("/panel/budget", get_panel_budget),
     ("/owner-statements", get_owner_statements),
+    ("/life-reports", get_life_reports),  # SP15 10장, 12장. 대시보드 기기는 403
+    ("/life-reports/{id}", get_life_report),
 )
 
 

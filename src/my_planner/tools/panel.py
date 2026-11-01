@@ -6,13 +6,14 @@
   거절(`rejected`)은 두뇌가 고쳐 다시 낼 수 있게 이유 코드를 싣고, 한 호출에 거절 둘이면 더 받지 않는다(7.2 다시 내기 1회).
 - `save_statement`: 내가 한 말 한 줄(확인 카드 없음). 식별 정보는 저장하지 않는다.
 - `record_prediction`: 숫자 지표·축의 예측 하나(한 대화 2개).
-- `save_life_report`는 계획 Task 13이 채운다.
+- `save_life_report`: 전체 진단(`ctx.full_diagnosis`)에서만, 한 호출에 한 번. 검사는 `panel.report.build_report`.
 
 로그에는 결과 코드·영역·종류·지표 이름만 남긴다(제목·근거 글·말·예측 숫자 없음, 스펙 13장).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import re
@@ -30,6 +31,7 @@ from my_planner.panel.evidence import (
     evidence_href,
     parse_evidence,
 )
+from my_planner.panel.report import build_report, mark_full_diagnosis
 from my_planner.standing.metrics import METRICS
 from my_planner.standing.score import AREAS, AXES
 from my_planner.status.xp import AREA_LABELS
@@ -109,6 +111,8 @@ MSG_ST_KEY_USED = "예전에 쓴 결정 키예요. 다른 키를 써 주세요."
 MSG_PR_METRIC = "metric은 숫자 측정값 이름이나 axis:<축>이에요."
 MSG_PR_VALUE = "predicted가 그 지표 범위의 숫자가 아니에요."
 MSG_PR_DUE = f"due는 내일부터 {PREDICTION_MAX_AHEAD_DAYS}일 안의 YYYY-MM-DD예요."
+MSG_REPORT_NOT_FULL = "전체 진단에서만 저장해요."
+MSG_REPORT_SAVED = "이번 진단의 리포트는 이미 저장했어요."
 MSG_PR_CAP = f"예측은 한 대화에 {PREDICTIONS_PER_CONVERSATION}개까지예요."
 
 # 받기·버리기·말 지우기(계획 Task 9, `/actions`)
@@ -497,8 +501,27 @@ class PanelTools:
     # --- 인생 리포트 (10장) ---
 
     @_tool
-    def save_life_report(self, ctx: RunContext, **_: Any) -> dict[str, Any]:
-        return _err("아직 없어요.")
+    def save_life_report(self, ctx: RunContext, report: Any = None) -> dict[str, Any]:
+        """인생 리포트 저장(10장). 저장과 진단 횟수 기록(`mark_full_diagnosis`)이 한 트랜잭션이다. 사건
+        `life_report_saved`가 있으면 디스패처가 두뇌를 다시 부르지 않는다."""
+        if not (ctx.full_diagnosis and _in_manager_chat(ctx)):
+            return _err(MSG_REPORT_NOT_FULL)
+        if self.panel is None or self.state is None:
+            return _err(MSG_NO_PANEL)
+        if any(e.kind == "life_report_saved" for e in ctx.events):
+            return _err(MSG_REPORT_SAVED)
+        panel = self.panel
+        today = self.today()
+        built = build_report(panel.conn, self.clock, today, report)
+        if isinstance(built, str):
+            log.info("life_report_rejected")
+            return _err(built)
+        with transaction(panel.conn):
+            rid = panel.add_report(json.dumps(built, ensure_ascii=False), self.clock.now())
+            mark_full_diagnosis(self.state, today)
+        ctx.events.append(ToolEvent("life_report_saved", None, {"id": rid}))
+        log.info("life_report_saved", extra={"id": rid})
+        return {"ok": True, "id": rid}
 
 
 def _statement_ref(kind: str, sid: int, key: str | None) -> str:

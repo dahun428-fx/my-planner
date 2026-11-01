@@ -353,7 +353,7 @@ def test_ui_events_catalog_entry():
     from my_planner.tools.ui import UI_CATALOG_VERSION, UI_COMPONENTS
 
     entry = UI_COMPONENTS["ui_events"]
-    assert entry["origin"] == "brain" and UI_CATALOG_VERSION == "2026-11-01.2"
+    assert entry["origin"] == "brain" and UI_CATALOG_VERSION == "2026-11-01.3"
     assert "ui_events" in BRAIN_COMPONENTS and "ui_events" not in PINNABLE_COMPONENTS
     assert "ui_events" in tool_names_for(RunContext(None, None, channel="app"))  # 9.8: 두뇌가 그린다(앱에만)
     assert "ui_events" not in tool_names_for(RunContext(None, None, channel="telegram"))
@@ -370,12 +370,26 @@ def test_ui_panel_suggestion_catalog_entry():
     """SP15-08: 패널 제안 카드는 하네스 조각이다(두뇌 화면 도구도 고정 카드도 아니다). props는 제안 번호 하나."""
     from my_planner.tools.ui import UI_CATALOG_VERSION, UI_COMPONENTS
 
-    assert UI_CATALOG_VERSION == "2026-11-01.2"
+    assert UI_CATALOG_VERSION == "2026-11-01.3"
     entry = UI_COMPONENTS["ui_panel_suggestion"]
     assert entry["origin"] == "harness"
     assert "ui_panel_suggestion" not in BRAIN_COMPONENTS and "ui_panel_suggestion" not in PINNABLE_COMPONENTS
-    assert list(UI_COMPONENTS)[-1] == "ui_panel_suggestion"
+    assert list(UI_COMPONENTS)[-2] == "ui_panel_suggestion"
     assert entry["schema"]["required"] == ["suggestion_id"] and entry["schema"]["additionalProperties"] is False
     assert validate_props("ui_panel_suggestion", {"suggestion_id": 3}) is None
     for bad in ({}, {"suggestion_id": 0}, {"suggestion_id": "3"}, {"suggestion_id": 3, "title": "가짜"}):
         assert validate_props("ui_panel_suggestion", bad) is not None, bad
+
+
+def test_ui_full_diagnosis_chip_catalog_entry():
+    """SP15-13: 분기 회고 뒤 "전체 진단" 칩은 하네스 조각이다. props는 분기 하나."""
+    from my_planner.tools.ui import UI_CATALOG_VERSION, UI_COMPONENTS
+
+    assert UI_CATALOG_VERSION == "2026-11-01.3"
+    entry = UI_COMPONENTS["ui_full_diagnosis_chip"]
+    assert entry["origin"] == "harness" and list(UI_COMPONENTS)[-1] == "ui_full_diagnosis_chip"
+    assert "ui_full_diagnosis_chip" not in BRAIN_COMPONENTS and "ui_full_diagnosis_chip" not in PINNABLE_COMPONENTS
+    assert entry["schema"]["required"] == ["period"] and entry["schema"]["additionalProperties"] is False
+    assert validate_props("ui_full_diagnosis_chip", {"period": "2026-Q4"}) is None
+    for bad in ({}, {"period": "2026-11"}, {"period": "2026-Q4", "x": 1}):
+        assert validate_props("ui_full_diagnosis_chip", bad) is not None, bad

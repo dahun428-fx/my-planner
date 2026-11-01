@@ -4400,6 +4400,373 @@
       "title": "InboxCount",
       "type": "object"
     },
+    "LifeReportOut": {
+      "$defs": {
+        "LifeReportBody": {
+          "additionalProperties": false,
+          "description": "저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1).",
+          "properties": {
+            "closing": {
+              "title": "Closing",
+              "type": "string"
+            },
+            "experts": {
+              "items": {
+                "$ref": "#/$defs/LifeReportExpert"
+              },
+              "title": "Experts",
+              "type": "array"
+            },
+            "levers": {
+              "items": {
+                "$ref": "#/$defs/LifeReportLever"
+              },
+              "title": "Levers",
+              "type": "array"
+            },
+            "questions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Questions",
+              "type": "array"
+            },
+            "roadmap": {
+              "items": {
+                "$ref": "#/$defs/LifeReportTrack"
+              },
+              "title": "Roadmap",
+              "type": "array"
+            },
+            "scenario": {
+              "$ref": "#/$defs/LifeReportScenario"
+            },
+            "scores": {
+              "additionalProperties": {
+                "$ref": "#/$defs/LifeReportScore"
+              },
+              "propertyNames": {
+                "enum": [
+                  "career",
+                  "money",
+                  "health",
+                  "looks",
+                  "relations",
+                  "intellect",
+                  "height",
+                  "education",
+                  "family"
+                ]
+              },
+              "title": "Scores",
+              "type": "object"
+            },
+            "summary": {
+              "$ref": "#/$defs/LifeReportSummary"
+            },
+            "this_week": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "This Week",
+              "type": "array"
+            },
+            "version": {
+              "const": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "version",
+            "summary",
+            "scores",
+            "levers",
+            "experts",
+            "scenario",
+            "roadmap",
+            "this_week",
+            "questions",
+            "closing"
+          ],
+          "title": "LifeReportBody",
+          "type": "object"
+        },
+        "LifeReportExpert": {
+          "additionalProperties": false,
+          "properties": {
+            "avoid": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Avoid",
+              "type": "array"
+            },
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "title": "Expert",
+              "type": "string"
+            },
+            "line": {
+              "title": "Line",
+              "type": "string"
+            },
+            "prescriptions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Prescriptions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "expert",
+            "line",
+            "prescriptions",
+            "avoid"
+          ],
+          "title": "LifeReportExpert",
+          "type": "object"
+        },
+        "LifeReportLever": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect"
+              ],
+              "title": "Axis",
+              "type": "string"
+            },
+            "strength": {
+              "enum": [
+                "weak",
+                "mid",
+                "strong"
+              ],
+              "title": "Strength",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "axis",
+            "strength"
+          ],
+          "title": "LifeReportLever",
+          "type": "object"
+        },
+        "LifeReportScenario": {
+          "additionalProperties": false,
+          "properties": {
+            "do": {
+              "title": "Do",
+              "type": "string"
+            },
+            "dont": {
+              "title": "Dont",
+              "type": "string"
+            },
+            "estimate": {
+              "const": true,
+              "title": "Estimate",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "do",
+            "dont",
+            "estimate"
+          ],
+          "title": "LifeReportScenario",
+          "type": "object"
+        },
+        "LifeReportScore": {
+          "additionalProperties": false,
+          "description": "저장 시점 점수의 사본(SP13 값). 신뢰도·추정은 전국 점수, 없으면 또래.",
+          "properties": {
+            "estimate": {
+              "title": "Estimate",
+              "type": "boolean"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "National"
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peer"
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reliability"
+            }
+          },
+          "required": [
+            "national",
+            "peer",
+            "reliability",
+            "estimate"
+          ],
+          "title": "LifeReportScore",
+          "type": "object"
+        },
+        "LifeReportSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "line": {
+              "title": "Line",
+              "type": "string"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Paths",
+              "type": "array"
+            }
+          },
+          "required": [
+            "line",
+            "paths"
+          ],
+          "title": "LifeReportSummary",
+          "type": "object"
+        },
+        "LifeReportTrack": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "kpi": {
+              "title": "Kpi",
+              "type": "string"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "track": {
+              "title": "Track",
+              "type": "string"
+            }
+          },
+          "required": [
+            "track",
+            "kpi",
+            "start",
+            "end"
+          ],
+          "title": "LifeReportTrack",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /life-reports/{id}`.",
+      "properties": {
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "report": {
+          "$ref": "#/$defs/LifeReportBody"
+        }
+      },
+      "required": [
+        "id",
+        "created_at",
+        "report"
+      ],
+      "title": "LifeReportOut",
+      "type": "object"
+    },
+    "LifeReports": {
+      "$defs": {
+        "LifeReportItem": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "created_at"
+          ],
+          "title": "LifeReportItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록).",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/LifeReportItem"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "LifeReports",
+      "type": "object"
+    },
     "Memo": {
       "$defs": {
         "PhotoRef": {

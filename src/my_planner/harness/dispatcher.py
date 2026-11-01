@@ -83,8 +83,10 @@ from my_planner.panel.experts import (
 )
 from my_planner.panel.report import (
     FULL_BLOCK_REPLIES,
+    FULL_CHIP_KEY,
     FULL_FAILED_REPLY,
     FullBlock,
+    full_chip_due,
     full_diagnosis_block,
 )
 from my_planner.status.snapshot import status_snapshot
@@ -213,6 +215,9 @@ class Outbound:
     # 라이프 매니저 답의 전문가 소견 `{"expert", "text"}`(SP15 1장 2, 부른 순서). 마지막 두뇌 결과가 ok일 때만.
     # 앱 답 스트림의 `data-expert-notes`(finish-step 뒤, data-activity 앞)
     expert_notes: list[dict[str, str]] = field(default_factory=list)
+    # 분기 회고 뒤 "전체 진단 해 볼까요?" 칩의 분기(SP15 10장, D3). 비서 앱 정상 답에서만. 앱 `harness_cards`가
+    # 맨 뒤에 `h_fullchip`으로 붙인다(두뇌는 부르지 않는다)
+    full_chip: str | None = None
 
 
 class Sender(Protocol):
@@ -1416,6 +1421,8 @@ class Dispatcher:
                 _outbound(sent_text, run_ctx), confirmations, run_ctx.activity_ids, run_ctx.undo_ids, chip_cards=cards
             )
             out.streamed = streamed
+            if result.status == "ok" and app is not None:
+                out.full_chip = self._full_chip(conv, run_ctx)
             notes = list(result.expert_notes) if result.status == "ok" else []
             out.expert_notes = [{"expert": n.expert, "text": n.text} for n in notes]
             if step is not None:
@@ -1631,6 +1638,19 @@ class Dispatcher:
         today = self._today()
         left = self.settings.limits.daily_brain_calls - self.state.usage(today).brain_calls
         return full_diagnosis_block(self.state, today, min(moments_job.MOMENTS_RESERVE_CALLS, left))
+
+    def _full_chip(self, conv: Conversation, run_ctx: RunContext) -> str | None:
+        """분기 회고 뒤 칩의 분기(`panel.report.full_chip_due`). 붙이면 그 분기 키를 적는다(한 분기 한 번)."""
+        if self.tools is None:
+            return None
+        conn = self.tools.tasks.conn
+        period = full_chip_due(conn, self.state, run_ctx, conv.opened_at, today=self._today())
+        if period is None:
+            return None
+        with transaction(conn):
+            self.state.set(FULL_CHIP_KEY.format(period=period), to_iso(self.clock.now()))
+        log.info("full_chip_offered", extra={"conversation_id": conv.id, "period": period})
+        return period
 
     def _agent_of(self, conversation_id: int | None) -> Agent:
         """그 대화의 상대. 대화가 없으면 비서."""

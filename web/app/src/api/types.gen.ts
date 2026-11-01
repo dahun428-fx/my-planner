@@ -49,6 +49,8 @@ export interface ApiModels {
   HabitsList: HabitsList;
   Health: Health;
   InboxCount: InboxCount;
+  LifeReportOut: LifeReportOut;
+  LifeReports: LifeReports;
   Memo: Memo;
   MemoItem: MemoItem;
   MemoList: MemoList;
@@ -1109,6 +1111,112 @@ export interface HealthVersion {
  */
 export interface InboxCount {
   unseen: number;
+}
+/**
+ * `GET /life-reports/{id}`.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportOut".
+ */
+export interface LifeReportOut {
+  created_at: string;
+  id: number;
+  report: LifeReportBody;
+}
+/**
+ * 저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportBody".
+ */
+export interface LifeReportBody {
+  closing: string;
+  experts: LifeReportExpert[];
+  levers: LifeReportLever[];
+  questions: string[];
+  roadmap: LifeReportTrack[];
+  scenario: LifeReportScenario;
+  scores: {
+    [k: string]: LifeReportScore;
+  };
+  summary: LifeReportSummary;
+  this_week: number[];
+  version: 1;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportExpert".
+ */
+export interface LifeReportExpert {
+  avoid: string[];
+  expert: "career" | "finance" | "health" | "image" | "relationship" | "psych";
+  line: string;
+  prescriptions: string[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportLever".
+ */
+export interface LifeReportLever {
+  action: string;
+  axis: "career" | "money" | "health" | "looks" | "relations" | "intellect";
+  strength: "weak" | "mid" | "strong";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportTrack".
+ */
+export interface LifeReportTrack {
+  end: string;
+  kpi: string;
+  start: string;
+  track: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportScenario".
+ */
+export interface LifeReportScenario {
+  do: string;
+  dont: string;
+  estimate: true;
+}
+/**
+ * 저장 시점 점수의 사본(SP13 값). 신뢰도·추정은 전국 점수, 없으면 또래.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportScore".
+ */
+export interface LifeReportScore {
+  estimate: boolean;
+  national: number | null;
+  peer: number | null;
+  reliability: ("high" | "mid" | "low") | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportSummary".
+ */
+export interface LifeReportSummary {
+  line: string;
+  paths: string[];
+}
+/**
+ * `GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReports".
+ */
+export interface LifeReports {
+  items: LifeReportItem[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportItem".
+ */
+export interface LifeReportItem {
+  created_at: string;
+  id: number;
 }
 /**
  * `GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).

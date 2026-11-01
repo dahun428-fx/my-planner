@@ -967,8 +967,12 @@ _SPECS.update({
         _schema({}, []),
     ),
 })
-# 패널 쓰기 도구(SP15 5.4, 7장, 9장, 10장). 값의 범위·근거·주간 수는 도구가 다시 본다(`tools/panel.py`).
-# `save_life_report`는 아직 뼈대다: 계획 Task 13이 설명과 입력을 채운다
+# 패널 쓰기 도구(SP15 5.4, 7장, 9장, 10장). 값의 범위·근거·주간 수는 도구가 다시 본다(`tools/panel.py`,
+# 리포트는 `panel/report.py`의 `LifeReport`)
+def _line(hi: int, what: str) -> dict[str, Any]:
+    return {"type": "string", "description": f"{what}({hi}자 이하)"}
+
+
 _EVIDENCE = {
     "type": "array",
     "minItems": 1,
@@ -1051,7 +1055,68 @@ _SPECS.update({
             ["metric", "predicted", "due"],
         ),
     ),
-    "save_life_report": ("전체 진단의 인생 리포트를 저장합니다. 아직 준비 중입니다.", _schema({}, [])),
+    "save_life_report": (
+        (
+            "전체 진단의 인생 리포트를 저장합니다(전체 진단에서만, 한 번). 점수(scores)와 맺음말은 서버가 저장 시점 "
+            "값으로 채우니 넣지 않습니다. this_week에는 이번 주에 낸 패널 제안 id만 넣습니다. 거절되면 error 한 줄을 "
+            "보고 그 칸만 고쳐 다시 부릅니다."
+        ),
+        _schema({"report": _schema(
+            {
+                "summary": _schema(
+                    {
+                        "line": _line(120, "한 줄 진단"),
+                        "paths": {"type": "array", "items": _line(80, "통로 한 줄"), "minItems": 3, "maxItems": 3},
+                    },
+                    ["line", "paths"],
+                ),
+                "levers": {
+                    "type": "array", "minItems": 1, "maxItems": 12, "description": "행동 → 축 연결",
+                    "items": _schema(
+                        {
+                            "action": _line(60, "행동"),
+                            "axis": {"enum": ["career", "money", "health", "looks", "relations", "intellect"]},
+                            "strength": {"enum": ["weak", "mid", "strong"]},
+                        },
+                        ["action", "axis", "strength"],
+                    ),
+                },
+                "experts": {
+                    "type": "array", "minItems": 6, "maxItems": 6, "description": "전문가 6명이 하나씩",
+                    "items": _schema(
+                        {
+                            "expert": {"enum": list(EXPERT_KEYS)},
+                            "line": _line(120, "한 줄 진단"),
+                            "prescriptions": {"type": "array", "items": _line(120, "처방"), "minItems": 3, "maxItems": 4},
+                            "avoid": {"type": "array", "items": _line(120, "하지 말 것"), "minItems": 1, "maxItems": 3},
+                        },
+                        ["expert", "line", "prescriptions", "avoid"],
+                    ),
+                },
+                "scenario": _schema(
+                    {"do": _line(400, "3년 동안 하면(추정)"), "dont": _line(400, "3년 동안 안 하면(추정)")},
+                    ["do", "dont"],
+                ),
+                "roadmap": {
+                    "type": "array", "minItems": 1, "maxItems": 6, "description": "90일 트랙과 KPI",
+                    "items": _schema(
+                        {
+                            "track": _line(40, "트랙 이름"), "kpi": _line(80, "KPI"),
+                            "start": {"type": "string", "description": "YYYY-MM-DD"},
+                            "end": {"type": "string", "description": "YYYY-MM-DD(start부터 90일 안)"},
+                        },
+                        ["track", "kpi", "start", "end"],
+                    ),
+                },
+                "this_week": {
+                    "type": "array", "items": {"type": "integer"}, "maxItems": 5, "uniqueItems": True,
+                    "description": "이번 주 패널 제안 id",
+                },
+                "questions": {"type": "array", "items": _line(120, "남은 질문"), "maxItems": 5},
+            },
+            ["summary", "levers", "experts", "scenario", "roadmap", "this_week", "questions"],
+        )}, ["report"]),
+    ),
 })
 
 

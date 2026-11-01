@@ -1051,6 +1051,80 @@ class PanelBudget(_Model):
     full_diagnosis_ok: bool
 
 
+class LifeReportItem(_Model):
+    id: int
+    created_at: str
+
+
+class LifeReports(_Model):
+    """`GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록)."""
+
+    items: list[LifeReportItem]
+
+
+class LifeReportSummary(_Model):
+    line: str
+    paths: list[str]
+
+
+class LifeReportScore(_Model):
+    """저장 시점 점수의 사본(SP13 값). 신뢰도·추정은 전국 점수, 없으면 또래."""
+
+    national: int | None
+    peer: int | None
+    reliability: ReliabilityName | None
+    estimate: bool
+
+
+class LifeReportLever(_Model):
+    action: str
+    axis: Literal["career", "money", "health", "looks", "relations", "intellect"]
+    strength: Literal["weak", "mid", "strong"]
+
+
+class LifeReportExpert(_Model):
+    expert: Literal["career", "finance", "health", "image", "relationship", "psych"]
+    line: str
+    prescriptions: list[str]
+    avoid: list[str]
+
+
+class LifeReportScenario(_Model):
+    do: str
+    dont: str
+    estimate: Literal[True]
+
+
+class LifeReportTrack(_Model):
+    track: str
+    kpi: str
+    start: str  # YYYY-MM-DD
+    end: str
+
+
+class LifeReportBody(_Model):
+    """저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1)."""
+
+    version: Literal[1]
+    summary: LifeReportSummary
+    scores: dict[StandingAxisName, LifeReportScore]
+    levers: list[LifeReportLever]
+    experts: list[LifeReportExpert]
+    scenario: LifeReportScenario
+    roadmap: list[LifeReportTrack]
+    this_week: list[int]
+    questions: list[str]
+    closing: str
+
+
+class LifeReportOut(_Model):
+    """`GET /life-reports/{id}`."""
+
+    id: int
+    created_at: str
+    report: LifeReportBody
+
+
 class OwnerStatementOut(_Model):
     id: int
     kind: Literal["fact", "preference", "decision"]
@@ -1621,6 +1695,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "PanelBudget": PanelBudget,
     "OwnerStatementOut": OwnerStatementOut,
     "OwnerStatements": OwnerStatements,
+    "LifeReports": LifeReports,
+    "LifeReportOut": LifeReportOut,
     "Moment": Moment,
     "MomentsList": MomentsList,
     "BodyPostBody": BodyPostBody,

@@ -38,7 +38,7 @@ EXPECTED_MODELS = {
     "Standing", "StandingMeasures",  # SP13 12장
     "InboxCount", "AgentNotes", "AgentNoteOut",  # SP14 스펙 9장
     "PanelEvidenceOut", "PanelSuggestionOut", "PanelSuggestions", "PanelBudget",  # SP15 12장
-    "OwnerStatementOut", "OwnerStatements",
+    "OwnerStatementOut", "OwnerStatements", "LifeReports", "LifeReportOut",
 }
 
 
@@ -151,14 +151,15 @@ async def test_ui_catalog_version_and_components(tmp_path):
     async with BeEnv.start(tmp_path, start=MON_EVENING) as env:
         body = await get_json(env, "/ui/catalog")
         health = await get_json(env, "/health")
-    assert body["version"] == UI_CATALOG_VERSION == "2026-11-01.2"
+    assert body["version"] == UI_CATALOG_VERSION == "2026-11-01.3"
     assert health["version"]["ui_catalog"] == body["version"]
     assert list(body["components"]) == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
         "ui_events", "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
         "ui_chapter_draft", "ui_confirm", "ui_measure_confirm", "ui_panel_suggestion",
+        "ui_full_diagnosis_chip",
     ]
-    assert len(body["components"]) == 18 == len(UI_COMPONENTS)
+    assert len(body["components"]) == 19 == len(UI_COMPONENTS)
     origins = {name: c["origin"] for name, c in body["components"].items()}
     assert [n for n, o in origins.items() if o == "brain"] == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
