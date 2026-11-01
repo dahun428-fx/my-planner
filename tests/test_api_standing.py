@@ -209,6 +209,10 @@ async def test_dashboard_device_forbidden(tmp_path):
             assert (await env.get(path, token=None)).status == 401
 
 
+# 시각·번호 칸은 값과 우연히 같은 숫자를 담을 수 있다(예: msecs 1992)
+_TIMING = {"created", "msecs", "relativeCreated", "duration_ms", "thread", "process", "taskName"}
+
+
 async def test_logs_have_no_values(tmp_path, caplog):
     caplog.set_level(logging.DEBUG)
     async with BeEnv.start(tmp_path, start=START) as env:
@@ -217,7 +221,7 @@ async def test_logs_have_no_values(tmp_path, caplog):
         for path in ("/standing", "/standing/measures", "/status"):
             await get_json(env, path)
     text = "\n".join(
-        f"{r.getMessage()} {json.dumps({k: str(v) for k, v in r.__dict__.items()}, ensure_ascii=False)}"
+        f"{r.getMessage()} {json.dumps({k: str(v) for k, v in r.__dict__.items() if k not in _TIMING}, ensure_ascii=False)}"
         for r in caplog.records
     )
     assert "api_request" in text
