@@ -41,6 +41,7 @@ class ActivityRows:
     tasks: list[DoneTask]
     checks: list[HabitCheckRow]
     body: list[BodyDayRow]
+    workout_days: frozenset[date] = frozenset()
 
 
 class StatusRepo:
@@ -88,7 +89,8 @@ class StatusRepo:
 
     def activity_rows(self, from_utc: datetime, from_day: date, to_day: date) -> ActivityRows:
         """끝낸 할 일(`completed_at >= from_utc`, 지운 것 빼고)과 영역, 습관 체크(`from_day..to_day`, 소프트 삭제한 습관
-        빼고 쉬는·그만둔 습관은 넣고)와 습관 영역, 몸 기록(`body_days`, `from_day..to_day`, SP8 7.4). 할 일 쪽은 넉넉히
+        빼고 쉬는·그만둔 습관은 넣고)와 습관 영역, 몸 기록(`body_days`, `from_day..to_day`, SP8 7.4),
+        운동 기록 날(지우지 않은 `workout_logs`, 같은 기간, SP12 10장; `WorkoutRepo.log_days`와 같은 질의). 할 일 쪽은 넉넉히
         읽고 창은 `status.activity`가 거른다.
         """
         task_rows = self.conn.execute(
@@ -117,7 +119,14 @@ class StatusRepo:
                 (from_day.isoformat(), to_day.isoformat()),
             ).fetchall()
         ]
-        return ActivityRows(tasks=tasks, checks=checks, body=body)
+        workout_days = frozenset(
+            date.fromisoformat(r["date"])
+            for r in self.conn.execute(
+                "SELECT DISTINCT date FROM workout_logs WHERE deleted_at IS NULL AND date >= ? AND date <= ?",
+                (from_day.isoformat(), to_day.isoformat()),
+            ).fetchall()
+        )
+        return ActivityRows(tasks=tasks, checks=checks, body=body, workout_days=workout_days)
 
     def titles(self, *, include_sensitive: bool) -> list[TitleRow]:
         """확정한 높은 때·전환점 사건의 칭호, 받은 순서. 민감 사건은 `include_sensitive`일 때만."""

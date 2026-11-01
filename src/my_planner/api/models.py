@@ -753,11 +753,12 @@ class StatusHp(_Model):
 
 
 class StatActivity(_Model):
-    """지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0."""
+    """지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`·`workout_days`는 건강만, 다른 영역은 0."""
 
     tasks: int
     habit_checks: int
     body_days: int
+    workout_days: int
 
 
 class StatusStat(_Model):

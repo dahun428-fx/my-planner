@@ -2609,7 +2609,7 @@ class Dispatcher:
         s = self.settings
         inp = moments_job.build_moments_input(
             d, tasks=tools.tasks, habits=tools.habits, conditions=tools.conditions, transcripts=self.transcripts,
-            tz=s.timezone, boundary=s.day_boundary,
+            tz=s.timezone, boundary=s.day_boundary, workout=getattr(tools, "workout", None),
         )
         if not inp.has_data:
             moments_job.mark_empty(repo, d, self.clock.now())

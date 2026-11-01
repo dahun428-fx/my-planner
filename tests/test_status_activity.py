@@ -177,3 +177,48 @@ def test_body_counts_health_only_with_thresholds():
     assert all(not points[a.value] for a in Area if a is not Area.health)
     counts = activity_counts([], [], body, T, tz=TZ, boundary=BOUNDARY)
     assert counts["health"].body_days == 2 and counts["career"].body_days == 0
+
+
+# --- 운동 기록 날 (SP12 10장) ---
+
+
+def test_workout_day_adds_half_to_health():
+    one = frozenset({T})  # 같은 날 기록이 둘이어도 날짜 하나라 0.5
+    points = area_points([], [], [], T, tz=TZ, boundary=BOUNDARY, workout_days=one)
+    assert points["health"] == {T: Fraction(1, 2)}
+    assert all(not points[a.value] for a in Area if a is not Area.health)
+
+    def checks(n):
+        return [HabitCheckRow(habit_id=i, area="health", date=T) for i in range(n)]
+
+    p4 = area_points([], checks(4), [], T, tz=TZ, boundary=BOUNDARY, workout_days=one)
+    assert p4["health"] == {T: Fraction(5, 2)}
+    p6 = area_points([], checks(6), [], T, tz=TZ, boundary=BOUNDARY, workout_days=one)
+    assert p6["health"] == {T: Fraction(3)}  # 하루 상한
+    out = area_points([], [], [], T, tz=TZ, boundary=BOUNDARY, workout_days=frozenset({T - timedelta(days=28)}))
+    assert not out["health"]  # 창 밖
+
+
+def test_activity_rows_skip_deleted_workouts(conn):
+    from my_planner.clock import FakeClock
+    from my_planner.store.repos.status import StatusRepo
+    from my_planner.store.repos.workout import WorkoutRepo
+
+    clock = FakeClock(kst(2026, 10, 25, 12, 0))
+    w = WorkoutRepo(conn, clock)
+    gone = w.add_log(T - timedelta(days=1), "삭제", None, None, None, [], clock.now())
+    w.add_log(T, "하체", None, None, None, [], clock.now())
+    w.delete_log(gone.id, clock.now())
+    from_utc = kst(2026, 9, 1, 0, 0)
+    rows = StatusRepo(conn, clock).activity_rows(from_utc, T - timedelta(days=27), T)
+    assert rows.workout_days == frozenset({T})
+    counts = activity_counts([], [], [], T, tz=TZ, boundary=BOUNDARY, workout_days=rows.workout_days)
+    assert counts["health"].workout_days == 1
+    assert all(counts[a.value].workout_days == 0 for a in Area if a is not Area.health)
+
+
+def test_workout_days_count():
+    days = frozenset({T, T - timedelta(days=5), T - timedelta(days=27), T - timedelta(days=28)})
+    counts = activity_counts([], [], [], T, tz=TZ, boundary=BOUNDARY, workout_days=days)
+    assert counts["health"].workout_days == 3  # 28일 밖은 세지 않는다
+    assert activity_counts([], [], [], T, tz=TZ, boundary=BOUNDARY)["health"].workout_days == 0

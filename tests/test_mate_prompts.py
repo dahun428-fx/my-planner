@@ -111,7 +111,7 @@ async def test_mate_prompt_parts(tmp_path):
     assert "## 기록된 컨디션" in mate1["prompt"] and "2/5" in mate1["prompt"]
     assert "## 기록된 컨디션" in mate2["prompt"]
     assert "## 지금\n" in sec1["prompt"] and "## 지금\n" not in mate1["prompt"]  # 비서 앞머리 대신 메이트 앞머리(5.5)
-    assert "## 오늘\n2026-10-31 (토), 논리적 날짜" in mate1["prompt"] and "## 지금 플랜\n아직 없음" in mate1["prompt"]
+    assert "## 오늘\n2026-10-31 (토) 19:00, 논리적 날짜" in mate1["prompt"] and "## 지금 플랜\n아직 없음" in mate1["prompt"]
     assert "- 컨디션: 2" in mate1["prompt"] and "## 몸 메모" not in mate2["prompt"]  # 이어진 세션에는 앞머리 없음
     assert "## 다른 곳에서 바뀐 것" in sec2["prompt"]  # 비서는 그대로
     assert "## 다른 곳에서 바뀐 것" not in mate2["prompt"]

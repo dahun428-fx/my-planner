@@ -111,7 +111,7 @@ class RunContext:
     # 두뇌 호출의 종류(SP8 6.3). `moments`면 도구는 `save_moments` 하나뿐이다(`mcp_adapter.tool_names_for`)
     kind: RunKind = "chat"
     moments_date: date | None = None  # 하루 끝 작업이 정리하는 그 날(M1)
-    moments_refs: frozenset[str] = frozenset()  # 그 입력에 나온 참조(`task:<id>`, `habit:<id>`, `condition`, `chat`, M2)
+    moments_refs: frozenset[str] = frozenset()  # 그 입력에 나온 참조(`task:<id>`, `habit:<id>`, `workout:<id>`, `condition`, `chat`, M2)
     # 두뇌가 호출 중에 처음 본 세션 id(두뇌 구현이 적는다). 시간 초과·취소로 결과가 없어도 순간 호출 뒤
     # 세션 파일을 지울 수 있게(SP8 6.3, 계획 결정 18)
     brain_session_id: str | None = None

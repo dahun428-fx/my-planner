@@ -14,7 +14,7 @@ import { Today } from "./Today";
 
 const status = statusJson as StatusData;
 
-const act = (tasks: number, habit_checks: number, body_days: number) => ({ tasks, habit_checks, body_days });
+const act = (tasks: number, habit_checks: number, body_days: number) => ({ tasks, habit_checks, body_days, workout_days: 0 });
 /** The fixture with its areas set the way spec 10.2 shows them. */
 const body: StatusData = {
   ...status,

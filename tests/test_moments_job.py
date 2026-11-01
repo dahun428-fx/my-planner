@@ -688,3 +688,46 @@ async def test_settled_days_are_not_picked(tmp_path, state):
         say(env, kst(2026, 10, 25, 14, 0), "꾸민 말")
         await tick_at(env)
         assert env.brain.calls == [] and day_row(env, D[25]).state == state
+
+
+# --- 운동 기록 (SP12 5.6) ---
+
+
+def workout_log(env, day, title):
+    w = env.parts.tools.workout
+    return w.add_log(day, title, None, None, None, [], env.clock.now())
+
+
+def build_input_w(env, d):
+    p = env.parts
+    return build_moments_input(
+        d, tasks=p.tasks, habits=p.habits, conditions=p.conditions, transcripts=p.transcripts,
+        tz=env.settings.timezone, boundary=env.settings.day_boundary, workout=p.tools.workout,
+    )
+
+
+async def test_workout_section_and_source(tmp_path):
+    turn = FakeTurn([save(D[25], "하체 운동을 했어요", sources=("workout:1",))], "")
+    async with started(tmp_path, [turn]) as env:
+        mine = workout_log(env, D[25], "하체")
+        other = workout_log(env, D[24], "상체")
+        assert (mine.id, other.id) == (1, 2)
+        inp = build_input_w(env, D[25])
+        assert "## 운동 기록\n- [workout:1] 하체" in inp.text and "상체" not in inp.text
+        assert inp.refs == frozenset({"workout:1"}) and inp.has_data  # 기록만 있는 날도 돈다
+        await tick_at(env)  # 기록만 있는 날도 두뇌를 부른다
+        assert prompt_days(env) == ["2026-10-25"]
+        row = day_row(env, D[25])
+        assert (row.state, row.saved) == ("done", 1)
+        (m,) = env.parts.moments.between(D[25], D[25], include_hidden=True)
+        assert m.sources == ["workout:1"]
+
+
+async def test_workout_source_of_other_day_rejected(tmp_path):
+    turn = FakeTurn([save(D[25], "상체 운동을 했어요", sources=("workout:2",))], "")
+    async with started(tmp_path, [turn]) as env:
+        workout_log(env, D[25], "하체")
+        workout_log(env, D[24], "상체")
+        await tick_at(env)
+        row = day_row(env, D[25])
+        assert (row.state, row.attempts) == ("pending", 1)  # M2: 입력에 없는 참조

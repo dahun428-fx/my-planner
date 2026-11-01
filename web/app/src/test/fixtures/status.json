@@ -22,7 +22,8 @@
       "activity": {
         "tasks": 6,
         "habit_checks": 0,
-        "body_days": 0
+        "body_days": 0,
+        "workout_days": 0
       }
     },
     {
@@ -39,7 +40,8 @@
       "activity": {
         "tasks": 0,
         "habit_checks": 0,
-        "body_days": 0
+        "body_days": 0,
+        "workout_days": 0
       }
     },
     {
@@ -56,7 +58,8 @@
       "activity": {
         "tasks": 0,
         "habit_checks": 21,
-        "body_days": 0
+        "body_days": 0,
+        "workout_days": 0
       }
     },
     {
@@ -73,7 +76,8 @@
       "activity": {
         "tasks": 1,
         "habit_checks": 0,
-        "body_days": 0
+        "body_days": 0,
+        "workout_days": 0
       }
     },
     {
@@ -90,7 +94,8 @@
       "activity": {
         "tasks": 2,
         "habit_checks": 0,
-        "body_days": 0
+        "body_days": 0,
+        "workout_days": 0
       }
     },
     {
@@ -107,7 +112,8 @@
       "activity": {
         "tasks": 1,
         "habit_checks": 0,
-        "body_days": 0
+        "body_days": 0,
+        "workout_days": 0
       }
     }
   ],

@@ -5754,7 +5754,7 @@
         },
         "StatActivity": {
           "additionalProperties": false,
-          "description": "지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.",
+          "description": "지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`·`workout_days`는 건강만, 다른 영역은 0.",
           "properties": {
             "body_days": {
               "title": "Body Days",
@@ -5767,12 +5767,17 @@
             "tasks": {
               "title": "Tasks",
               "type": "integer"
+            },
+            "workout_days": {
+              "title": "Workout Days",
+              "type": "integer"
             }
           },
           "required": [
             "tasks",
             "habit_checks",
-            "body_days"
+            "body_days",
+            "workout_days"
           ],
           "title": "StatActivity",
           "type": "object"

@@ -1472,7 +1472,7 @@ export interface StatusStat {
   score: number | null;
 }
 /**
- * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`는 건강만, 다른 영역은 0.
+ * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`·`workout_days`는 건강만, 다른 영역은 0.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
  * via the `definition` "StatActivity".
@@ -1481,6 +1481,7 @@ export interface StatActivity {
   body_days: number;
   habit_checks: number;
   tasks: number;
+  workout_days: number;
 }
 /**
  * This interface was referenced by `ApiModels`'s JSON-Schema

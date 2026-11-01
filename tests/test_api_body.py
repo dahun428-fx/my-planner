@@ -355,7 +355,7 @@ async def test_health_bonus_from_body(env):
     h = health(await status(env))
     assert {k: h[k] for k in ("score", "bonus", "effective_score", "activity")} == {
         "score": 4, "bonus": 2.0, "effective_score": 6.0,
-        "activity": {"tasks": 0, "habit_checks": 28, "body_days": 28},
+        "activity": {"tasks": 0, "habit_checks": 28, "body_days": 28, "workout_days": 0},
     }
     others = [s for s in (await status(env))["stats"] if s["area"] != "health"]
     assert all(s["activity"]["body_days"] == 0 for s in others)

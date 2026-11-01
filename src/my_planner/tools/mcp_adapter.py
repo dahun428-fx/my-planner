@@ -638,7 +638,7 @@ _SPECS["save_moments"] = (
     (
         "그날의 이룬 순간 0~3개를 저장하고 그날을 정리한 날로 적습니다. date는 입력의 날짜(YYYY-MM-DD)입니다. "
         "text는 앞뒤 공백을 뺀 60자 안의 한 줄(줄바꿈 없음), area는 영역 하나 또는 null, sources는 입력에 나온 참조"
-        "(task:<번호>, habit:<번호>, condition, chat) 1~5개입니다. 쓸 거리가 없으면 moments를 빈 배열로 부릅니다."
+        "(task:<번호>, habit:<번호>, workout:<번호>, condition, chat) 1~5개입니다. 쓸 거리가 없으면 moments를 빈 배열로 부릅니다."
     ),
     _schema(
         {

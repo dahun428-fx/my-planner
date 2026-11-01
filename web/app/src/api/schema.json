@@ -5038,12 +5038,16 @@
             },
             "tasks": {
               "type": "integer"
+            },
+            "workout_days": {
+              "type": "integer"
             }
           },
           "required": [
             "tasks",
             "habit_checks",
-            "body_days"
+            "body_days",
+            "workout_days"
           ],
           "type": "object"
         },
