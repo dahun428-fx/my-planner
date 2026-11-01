@@ -579,6 +579,53 @@ def test_build_options_with_agents(tmp_path):
     assert opts.disallowed_tools == []  # 스파이크 disallow_main_ok=False: 기본은 막지 않는다
 
 
+def _patch_query_with_gate(monkeypatch, tmp_path, messages, seen_options=None):
+    """`_patch_query`처럼 메시지를 내되, 본 스레드의 서브에이전트 호출마다 CLI처럼 `PreToolUse` 훅을 먼저 부른다."""
+    from claude_agent_sdk import ToolUseBlock
+
+    from my_planner.harness import brain as brain_mod
+
+    brain = _patch_query(monkeypatch, tmp_path, messages)
+
+    async def fake_query(*, prompt, options):
+        if seen_options is not None:
+            seen_options.append(options)
+        gates = [h for m in (options.hooks or {}).get("PreToolUse", []) for h in m.hooks]
+        for m in messages:
+            if isinstance(m, AssistantMessage) and m.parent_tool_use_id is None:
+                for block in m.content:
+                    if isinstance(block, ToolUseBlock):
+                        data = {"hook_event_name": "PreToolUse", "tool_name": block.name, "tool_input": block.input}
+                        for g in gates:
+                            await g(data, block.id, {"signal": None})
+            yield m
+
+    monkeypatch.setattr(brain_mod, "query", fake_query)
+    return brain
+
+
+async def test_claude_brain_notes_only_for_calls_the_gate_allowed(tmp_path, monkeypatch):
+    from claude_agent_sdk import ToolResultBlock, ToolUseBlock, UserMessage
+
+    from my_planner.panel.experts import SUBAGENT_TOOL, ExpertNote, expert_definitions
+
+    def use(tid, st):
+        return ToolUseBlock(id=tid, name=SUBAGENT_TOOL, input={"subagent_type": st, "prompt": "물음"})
+
+    msgs = [
+        AssistantMessage(content=[use("t1", "career"), use("t2", "health"), use("t3", "psych")], model="claude"),
+        UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="하나")]),
+        UserMessage(content=[ToolResultBlock(tool_use_id="t2", content="둘")]),
+        # 상한을 넘어 거절된 호출의 결과가 is_error 없이 와도 소견이 아니다
+        UserMessage(content=[ToolResultBlock(tool_use_id="t3", content="전문가는 한 메시지에 2명까지예요.")]),
+        _result(result="답"),
+    ]
+    brain = _patch_query_with_gate(monkeypatch, tmp_path, msgs)
+    ctx = RunContext(conversation_id=1, run_id=None, events=[])
+    result = await brain.run("hi", session_id=None, run_ctx=ctx, agents=expert_definitions(), subagent_cap=2)
+    assert result.expert_notes == (ExpertNote("career", "하나"), ExpertNote("health", "둘"))
+
+
 async def test_claude_brain_wires_experts_and_collects_notes(tmp_path, monkeypatch):
     from claude_agent_sdk import ToolResultBlock, ToolUseBlock, UserMessage
 
@@ -596,7 +643,7 @@ async def test_claude_brain_wires_experts_and_collects_notes(tmp_path, monkeypat
         _result(result="정리한 답"),
     ]
     seen: list = []
-    brain = _patch_query(monkeypatch, tmp_path, msgs, seen)
+    brain = _patch_query_with_gate(monkeypatch, tmp_path, msgs, seen)
     ctx = RunContext(conversation_id=1, run_id=None, events=[])
     agents = expert_definitions()
     result = await brain.run("hi", session_id=None, run_ctx=ctx, agents=agents, subagent_cap=6)

@@ -326,7 +326,7 @@ class ClaudeBrain:
             # CLI가 뜨지 않은 것은 세션이 깨진 것이 아니다: 새 세션 대체 경로로 또 부르거나 세션 id를 지우지 않게
             resume_failed=error != "start_timeout" and detect_resume_failed(session_id, messages, status),
             retry_at=retry_at,
-            expert_notes=collect_expert_notes(messages) if status == "ok" and agents else (),
+            expert_notes=collect_expert_notes(messages, gate.allowed_ids) if status == "ok" and gate else (),
         )
 
 
