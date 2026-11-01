@@ -75,6 +75,15 @@
   overflow-wrap: anywhere;
 }
 
+/* 근거 측정값: 한 줄, 넘치면 말줄임 (SP13 10.3) */
+.evidence {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The radar: rings --rule, national 1.5px --text, peer 1px dashed --muted, no fill under them. */
 .radarBox {
   padding: 0.5rem var(--pad) 0.75rem;

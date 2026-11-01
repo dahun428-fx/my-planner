@@ -11,6 +11,7 @@ import { ConditionPicker } from "./ConditionPicker";
 import { Confirm } from "./Confirm";
 import { HabitCheck } from "./HabitList";
 import { LadderPicker } from "./LadderPicker";
+import { MeasureConfirm } from "./MeasureConfirm";
 import { MilestoneDraft } from "./MilestoneDraft";
 import { TodoDraft } from "./TodoDraft";
 import { TodoList } from "./TodoList";
@@ -28,6 +29,7 @@ const cases: [string, ReactElement][] = [
   ["ChapterDraft", <ChapterDraft key="h" props={{ chapter_ids: [1] }} data={{ chapters: [{ id: 1, title: "챕터", start_month: "2020-01", end_month: null }] }} ctx={ctx} />],
   ["Confirm", <Confirm key="i" props={{ summary: "s", confirm_token: "t", action: "drop_task", args: { id: 1 } }} ctx={ctx} />],
   ["HabitCheck", <HabitCheck key="j" props={{ date: "2026-10-24" }} data={{ habits: [makeHabit(1, "물 마시기"), makeHabit(2, "운동", { checked: true })] }} ctx={ctx} />],
+  ["MeasureConfirm", <MeasureConfirm key="k" props={{ rows: [{ metric: "weight_kg", label: "몸무게", value: 70, unit: "kg", measured_on: "2026-10-01" }, { metric: "cert", label: "자격", value: "toeic:900", unit: null, measured_on: "2026-10-01" }], source_kind: "manual", source_ref: null }} ctx={ctx} />],
 ];
 
 describe("read only", () => {

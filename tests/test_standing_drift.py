@@ -235,3 +235,96 @@ def test_derived_exercise_old_logs_only_is_zero(conn):
         w.add_log(date(2026, 9, 25), "달리기", None, None, None, [], NOW)  # 37일 전
         w.add_log(date(2026, 9, 8), "달리기", None, None, None, [], NOW)  # 54일 전
     assert with_derived({"exercise_days_week": 0.5}, w, TODAY)["exercise_days_week"] == 0.0
+
+
+def test_deleting_one_cert_is_not_my_drop(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+    toeic = next(m for m in repo.latest()["cert"] if (m.value_text or "").startswith("toeic"))
+    with transaction(conn):
+        repo.delete(toeic.id, NOW)
+    d = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["learning"]
+    assert d is not None and d.me == 0
+    assert debuff(d) is False
+
+
+def test_new_cert_after_baseline_counts(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        toeic = next(m for m in repo.latest()["cert"] if (m.value_text or "").startswith("toeic"))
+        repo.delete(toeic.id, NOW)
+        repo.add("cert", "toeic:500", TODAY, "import", None, "mid", NOW)
+    d = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["learning"]
+    assert d is not None and d.me < 0
+
+
+def test_deleting_newer_value_brings_back_older_is_not_me(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock, drop=("salary_krw",))
+    with transaction(conn):
+        repo.add("salary_krw", 30_000_000, date(2026, 9, 1), "import", None, "mid", NOW)
+        repo.add("salary_krw", 62_000_000, date(2026, 10, 1), "import", None, "mid", NOW)
+        snapshot_if_first(conn, clock, TODAY)
+        repo.delete(repo.latest()["salary_krw"].id, NOW)
+    drifts = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))
+    for area in ("career", "finance"):
+        assert drifts[area] is not None and drifts[area].me == 0
+        assert debuff(drifts[area]) is False
+
+
+def test_add_newer_then_delete_is_not_me(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        new = repo.add("salary_krw", 30_000_000, TODAY, "import", None, "mid", NOW)
+    assert area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["finance"].me < 0
+    with transaction(conn):
+        repo.delete(new, NOW)
+    assert area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["finance"].me == 0
+
+
+def test_newer_value_after_baseline_counts(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        repo.add("salary_krw", 30_000_000, TODAY, "import", None, "mid", NOW)
+    d = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["finance"]
+    assert d is not None and d.me <= -5 and debuff(d)
+
+
+def test_birth_year_fix_is_world():
+    v = _vals(shuttle_run_laps=46)
+    d = split(v, BENCH, TODAY, {**v, "profile_birth_year": 1990}, BENCH, TODAY, "health")
+    assert d is not None
+    assert d.me == 0
+    assert d.world != 0
+
+
+def test_old_snapshot_without_cert_ids_keeps_union():
+    v = {**_vals(), "cert": ["toeic:900", "jlpt_n2"]}
+    d = split(v, BENCH, TODAY, {**v, "cert": ["jlpt_n2"]}, BENCH, TODAY, "learning", before_ids={}, now_ids={})
+    assert d is not None and d.me == 0
+
+
+def test_write_snapshot_honours_bench_dir(conn, tmp_path):
+    clock = FakeClock(datetime(2027, 6, 1, 3, 0, tzinfo=UTC))
+    repo = _load(conn, clock)
+    d = _bench_dir(tmp_path, 6000)
+    with transaction(conn):
+        assert write_snapshot(conn, clock, "2027-Q2", today=date(2027, 6, 1), bench_dir=d) > 0
+    assert {r.bench_version for r in repo.snapshots_for("2027-Q2")} == {"2027"}
+
+
+def test_snapshot_stores_cert_ids(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+    ids = repo.snapshots_for("2026-Q4")[0].inputs["ids"]
+    assert {"cert:toeic", "cert:jlpt_n2"} <= set(ids)

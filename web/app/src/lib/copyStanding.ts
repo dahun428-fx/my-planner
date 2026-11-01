@@ -31,6 +31,7 @@ export const standingCopy = {
   noScore: "아직 점수가 없어요",
   missing: (labels: string) => `미입력: ${labels}`,
   assumedNote: "빈 항목은 가정값으로 계산했어요.",
+  evidence: (labels: string) => `근거: ${labels}`,
   measuredOn: (date: string) => `측정일 ${Number(String(date).slice(5, 7))}/${Number(String(date).slice(8, 10))}`,
   measuresHeading: "측정값",
   measuresEmpty: "아직 측정값이 없어요. 채팅에 결과지 사진을 올리면 확인 카드가 나와요.",

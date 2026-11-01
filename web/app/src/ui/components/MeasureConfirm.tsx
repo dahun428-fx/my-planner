@@ -30,14 +30,16 @@ const valid = (d: Draft) => DATE.test(d.measured_on) && (d.num ? Number.isFinite
 
 // ui_measure_confirm (SP13 6.5): the rows a photo, a PDF or a sentence gave. Each value can be fixed
 // and each row left out; "저장" sends what is left as save_measures. Once saved, the card shows the
-// confirmation and is read-only, as ui_confirm is once done.
+// confirmation and is read-only, as ui_confirm is once done. A card restored after a reload (4.6) shows
+// its rows only, without "빼기" or "저장": they may have been saved since.
 export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
   const act = usePartAction();
   const [rows, setRows] = useState<Draft[]>(() => props.rows.map(toDraft));
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false); // one save at a time, even before `busy` has re-rendered the button
   const [done, setDone] = useState<string | null>(null);
-  const off = ctx.readOnly || busy || done !== null;
+  const restored = ctx.restored === true;
+  const off = ctx.readOnly || restored || busy || done !== null;
   const face = props.rows.some((r) => r.metric === "face_rating");
 
   const patch = (key: number, p: Partial<Draft>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
@@ -64,7 +66,7 @@ export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
   };
 
   return (
-    <Part title={S.card.title} variant="confirm" readOnly={ctx.readOnly}>
+    <Part title={S.card.title} variant="confirm" readOnly={ctx.readOnly} restored={ctx.restored}>
       <ul className={styles.rows}>
         {rows.map((r) => {
           const pick = r.num ? null : choices(r.metric);
@@ -73,9 +75,11 @@ export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
             <li key={r.key} className={styles.measureRow}>
               <div className={styles.measureHead}>
                 <span>{r.label}</span>
-                <button type="button" className={styles.more} disabled={off} aria-label={S.card.dropLabel(r.label)} onClick={() => drop(r.key)}>
-                  {S.card.drop}
-                </button>
+                {!restored && (
+                  <button type="button" className={styles.more} disabled={off} aria-label={S.card.dropLabel(r.label)} onClick={() => drop(r.key)}>
+                    {S.card.drop}
+                  </button>
+                )}
               </div>
               <div className={styles.measureFields}>
                 {pick ? (
@@ -115,11 +119,13 @@ export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
         })}
       </ul>
       {done !== null && <p className={styles.text}>{done}</p>}
-      <div className={styles.buttons}>
-        <button type="button" className={`${styles.button} ${styles.primary}`} disabled={off || rows.length === 0 || !rows.every(valid)} onClick={() => void save()}>
-          {copy.parts.save}
-        </button>
-      </div>
+      {!restored && (
+        <div className={styles.buttons}>
+          <button type="button" className={`${styles.button} ${styles.primary}`} disabled={off || rows.length === 0 || !rows.every(valid)} onClick={() => void save()}>
+            {copy.parts.save}
+          </button>
+        </div>
+      )}
       {face && <p className={styles.reason}>{S.card.faceNote}</p>}
     </Part>
   );

@@ -3,11 +3,12 @@
 - 점수는 읽을 때마다 계산한다(`standing.service.current`). 읽기 전용 연결만 쓴다(`read_handler`).
 - 대시보드 기기(`devices.client = 'dashboard'`)는 `/standing*`에 403, `/status`에는 `standing`·`innate` 키가 없다.
   API 토큰과 `client = 'app'` 기기는 통과한다(API 토큰에는 기기 종류가 없다, 스펙 v1.3 ⑮).
-- 측정값은 로그에 남기지 않는다(스펙 12장). 이 파일은 로그를 쓰지 않는다.
+- 측정값은 로그에 남기지 않는다(스펙 12장). 이 파일의 로그는 `/status` 계산 실패의 예외 종류 하나뿐이다.
 """
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from datetime import date
 from typing import TYPE_CHECKING, Any
@@ -35,6 +36,8 @@ from my_planner.store.repos.standing import Measure, StandingRepo
 
 if TYPE_CHECKING:
     from my_planner.api.server import ApiDeps
+
+log = logging.getLogger(__name__)
 
 FORBIDDEN_MESSAGE = "이 화면에서는 볼 수 없어요."
 HINT_QOL = "삶의 질은 객관적 기준표가 없어요. 만족 점수와 생활 지표(잠, 걸음, 쉬는 저녁)로 봐요."
@@ -200,8 +203,12 @@ def get_standing_measures(conn: sqlite3.Connection, deps: ApiDeps, request: web.
 
 
 def status_standing(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) -> dict[str, Any] | None:
-    """`/status`에 더할 `{"areas", "innate"}`. 대시보드 기기면 None(키를 넣지 않는다)."""
+    """`/status`에 더할 `{"areas", "innate"}`. 대시보드 기기이거나 계산이 실패하면 None(키를 넣지 않는다)."""
     if dashboard_device(request):
         return None
-    body = standing_body(conn, deps.clock, _today(deps))
+    try:
+        body = standing_body(conn, deps.clock, _today(deps))
+    except Exception as e:  # noqa: BLE001 - 위치가 깨져도 `/status`는 보낸다. 메시지에 값이 있을 수 있어 종류만
+        log.warning("status_standing_failed", extra={"error_type": type(e).__name__})
+        return None
     return {"areas": body["areas"], "innate": body["innate"]}

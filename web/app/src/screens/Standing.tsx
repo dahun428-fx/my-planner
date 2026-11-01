@@ -139,7 +139,10 @@ function Axes({ axes }: { axes: StandingAxis[] }) {
         {axes.map((a) => {
           const s = a.national;
           const peer = a.peer?.score ?? null;
-          const meta = s ? [T.band(s.low, s.high), T.reliability[s.reliability], s.estimate ? T.estimate : "", s.measured_on ? T.measuredOn(s.measured_on) : ""].filter(Boolean).join(" · ") : T.noScore;
+          const date = s?.measured_on ? T.measuredOn(s.measured_on) : "";
+          // The measures the score stands on, with their date, on one line (10.3); a long list is cut by CSS.
+          const evidence = s && s.inputs.length > 0 ? [T.evidence(s.inputs.map(metricLabel).join(", ")), date].filter(Boolean).join(" · ") : null;
+          const meta = s ? [T.band(s.low, s.high), T.reliability[s.reliability], s.estimate ? T.estimate : "", evidence ? "" : date].filter(Boolean).join(" · ") : T.noScore;
           return (
             <li key={a.axis} className={styles.row} data-axis={a.axis}>
               <div className={styles.head}>
@@ -153,12 +156,13 @@ function Axes({ axes }: { axes: StandingAxis[] }) {
               </div>
               {s && <AxisBar s={s} />}
               <span className={styles.meta}>{meta}</span>
-              {s && s.missing.length > 0 && (
-                <>
-                  <span className={styles.meta}>{T.missing(s.missing.map(metricLabel).join(", "))}</span>
-                  <span className={styles.meta}>{T.assumedNote}</span>
-                </>
+              {evidence && (
+                <span className={`${styles.meta} ${styles.evidence}`} title={evidence}>
+                  {evidence}
+                </span>
               )}
+              {s && s.missing.length > 0 && <span className={styles.meta}>{T.missing(s.missing.map(metricLabel).join(", "))}</span>}
+              {s && s.assumed.length > 0 && <span className={styles.meta}>{T.assumedNote}</span>}
             </li>
           );
         })}

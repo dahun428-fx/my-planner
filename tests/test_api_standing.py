@@ -233,3 +233,23 @@ async def test_standing_routes_are_read_only(tmp_path, path):
         before = env.conn.execute("SELECT COUNT(*) FROM standing_snapshots").fetchone()[0]
         await get_json(env, path)
         assert env.conn.execute("SELECT COUNT(*) FROM standing_snapshots").fetchone()[0] == before == 0
+
+
+async def test_status_survives_standing_error(tmp_path, caplog, monkeypatch):
+    import my_planner.api.standing as api_standing
+
+    def boom(*_a, **_k):
+        raise ValueError("62000000")
+
+    caplog.set_level(logging.DEBUG)
+    async with BeEnv.start(tmp_path, start=START) as env:
+        seed_sample(env)
+        monkeypatch.setattr(api_standing, "standing_body", boom)
+        caplog.clear()
+        status = await get_json(env, "/status")
+    assert "innate" not in status
+    assert all("standing" not in s for s in status["stats"])
+    failed = [r for r in caplog.records if r.getMessage() == "status_standing_failed"]
+    assert [getattr(r, "error_type", None) for r in failed] == ["ValueError"]
+    assert "62000000" not in caplog.text
+    assert all("62000000" not in str(r.__dict__) for r in caplog.records)

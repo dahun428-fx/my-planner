@@ -1,6 +1,8 @@
 """하락 이유 나누기 (SP13-04, 스펙 9.2): 영역 위치 변화 Δ를 세상이 바뀐 몫(Δw)과 내가 바뀐 몫(Δm)으로 가른다.
 
 Δw = (앞 값, 지금 기준표·나이) − (앞 값, 앞 기준표·나이), Δm = (지금 값, 지금 기준표) − (앞 값, 지금 기준표).
+`profile_*`(태어난 해·성별·권역·직군) 고침은 세상 몫에 넣는다. 지우기는 내 변화가 아니다(ADR 0006): 기준선보다
+새 측정값(id가 큰 것)이 낸 값 변화만 내 몫이다.
 """
 
 from __future__ import annotations
@@ -27,6 +29,35 @@ def _fill(a: Values, b: Values) -> tuple[Values, Values]:
     return {**b, **a}, {**a, **b}
 
 
+def _cert_key(text: str) -> str:
+    return text.split(":")[0]
+
+
+def _certs_mine(before: list[str], now: list[str], before_ids: dict[str, int], now_ids: dict[str, int]) -> list[str]:
+    """기준선 자격 목록에 그보다 새 자격만 얹는다. 지운 자격은 기준선 값으로 남는다."""
+    out = {_cert_key(c): c for c in before}
+    for c in now:
+        k = _cert_key(c)
+        b, n = before_ids.get(f"cert:{k}"), now_ids.get(f"cert:{k}")
+        if k not in out or b is None or n is None or n > b:
+            out[k] = c
+    return list(out.values())
+
+
+def _mine(before: Values, now: Values, before_ids: dict[str, int], now_ids: dict[str, int]) -> Values:
+    """지금 쪽에서 기준선보다 새 측정값이 아닌 값(기준선 값을 지워 되살아난 옛 값)은 기준선 값으로 둔다."""
+    out = dict(now)
+    for k, v in now.items():
+        old = before.get(k)
+        if k == "cert" and isinstance(v, list) and isinstance(old, list):
+            out[k] = _certs_mine(old, v, before_ids, now_ids)
+            continue
+        b, n = before_ids.get(k), now_ids.get(k)
+        if b is not None and n is not None and n < b:
+            out[k] = before[k]
+    return out
+
+
 def _pos(values: Values, bench: Bench, today: date, area: str) -> float | None:
     return area_positions(score_all(values, bench, "national", today)).get(area)
 
@@ -39,10 +70,14 @@ def split(
     now_bench: Bench,
     today: date,
     area: str,
+    before_ids: dict[str, int] | None = None,
+    now_ids: dict[str, int] | None = None,
 ) -> Drift | None:
     before, now = _fill(before_values, now_values)
+    now = _mine(before, now, before_ids or {}, now_ids or {})
+    world_values = {**before, **{k: v for k, v in now.items() if k.startswith("profile_")}}
     start = _pos(before, before_bench, before_day, area)
-    same_values_new_bench = _pos(before, now_bench, today, area)
+    same_values_new_bench = _pos(world_values, now_bench, today, area)
     end = _pos(now, now_bench, today, area)
     if start is None or end is None or same_values_new_bench is None:
         return None

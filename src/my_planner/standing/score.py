@@ -74,11 +74,13 @@ class AxisScore:
 
 
 def values_from(latest: dict[str, Measure | list[Measure]]) -> tuple[Values, dict[str, int]]:
+    """(값, 측정값 id). 목록 지표(`cert`)의 id는 `"cert:<':' 앞 키>"`마다 하나."""
     values: dict[str, float | str | list[str]] = {}
     ids: dict[str, int] = {}
     for metric, m in latest.items():
         if isinstance(m, list):
             values[metric] = [x.value_text for x in m if x.value_text]
+            ids.update({f"{metric}:{x.value_text.split(':')[0]}": x.id for x in m if x.value_text})
             continue
         values[metric] = m.value_num if m.value_num is not None else (m.value_text or "")
         ids[metric] = m.id

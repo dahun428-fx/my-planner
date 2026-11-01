@@ -102,6 +102,27 @@ describe("Standing detail (SP13 10.3)", () => {
     expect(career.textContent).not.toContain("미입력");
   });
 
+  it("each axis names its evidence measures on one line with the date (10.3)", async () => {
+    serve();
+    renderWithProviders(<Standing />, { route: "/status/standing/" });
+    await screen.findByRole("heading", { level: 2, name: "축별 점수" });
+    const rows = within(sectionOf("축별 점수")).getAllByRole("listitem");
+    const money = rows.find((r) => r.dataset.axis === "money")!;
+    expect(within(money).getByText(/^근거:/).textContent).toBe("근거: 연봉(세전), 순자산, 월 저축, 월 실수령 · 측정일 10/1");
+    const relations = rows.find((r) => r.dataset.axis === "relations")!;
+    expect(within(relations).queryByText(/^근거:/)).toBeNull();
+  });
+
+  it("the assumed note shows only when a value was assumed", async () => {
+    serve();
+    renderWithProviders(<Standing />, { route: "/status/standing/" });
+    await screen.findByRole("heading", { level: 2, name: "축별 점수" });
+    const rows = within(sectionOf("축별 점수")).getAllByRole("listitem");
+    const relations = rows.find((r) => r.dataset.axis === "relations")!;
+    expect(relations.textContent).toContain("미입력:");
+    expect(relations.textContent).not.toContain(standingCopy.assumedNote);
+  });
+
   it("measures list shows label, value, date and source", async () => {
     serve();
     renderWithProviders(<Standing />, { route: "/status/standing/" });
