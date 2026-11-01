@@ -19,6 +19,7 @@ import anyio
 
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import (
+    INBOX_AGENTS,
     Agent,
     Cadence,
     Channel,
@@ -44,6 +45,7 @@ from my_planner.harness.context import (
     moments_week_block,
     recent_areas_block,
 )
+from my_planner.harness.inbox import inbox_block
 from my_planner.harness.mate_context import build_mate_preamble
 from my_planner.harness.photo_reader import (
     PhotoGone,
@@ -1184,10 +1186,16 @@ class Dispatcher:
         review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
         run_ctx = self._message_ctx(conv.id, lead, chip_of)
+        # 즉시 판단(SP14 7장): 메이트 대화의 메시지마다 안 읽은 사건 블록. 비서에는 붙이지 않는다
+        block = (
+            inbox_block(self.tools.agents, conv.agent, self._today())
+            if conv.agent in INBOX_AGENTS and self.tools is not None and self.tools.agents is not None else None
+        )
         # `_recorded_condition()`은 메이트에도 붙인다(SP12 5.4: 이어진 세션에서도 오늘 컨디션 기록 여부를 본다)
         body = _join(
             self._recorded_condition(),
             chip_block(chip_of.chip) if chip_of.chip is not None else "",
+            block.text if block is not None else "",
             f"## 메시지\n{text}",
             step_note(review_step, where="답"),
         )
@@ -1333,6 +1341,10 @@ class Dispatcher:
                 ):
                     log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
                 return
+            if block is not None and result.status == "ok":
+                # 두뇌가 제대로 답했을 때만 읽음 표시(오류·멈추기·상한 길은 위에서 나갔거나 여기 오지 않는다)
+                assert self.tools is not None and self.tools.agents is not None
+                self.tools.agents.mark_seen(conv.agent, block.event_ids, self.clock.now())
             streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
             body_text = app.writer.streamed_reply if streamed else _reply_for(result)
