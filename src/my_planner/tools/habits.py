@@ -356,6 +356,7 @@ class HabitTools:
                     ctx, "habit_checked", target, habit_line("habit_checked", h.title, day=d, today=self.today()),
                     {"habit_id": h.id, "date": d.isoformat()},
                 )
+                # ref는 `habit:<id>`(날짜 없음): 같은 습관의 두 날짜를 60초 안에 체크하면 사건 하나로 합쳐진다(SP14 5.2 중복 거르기)
                 self._agent_event(ctx, "habit_checked", habit_target(h.id), h.area.value)
                 self._grant_habit(ctx, h, d)
         if new:

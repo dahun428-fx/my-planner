@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from be_env import BeEnv
+from fakes import FakeTurn
 from test_dispatcher_messages import kst
 
 from my_planner.domain import RunContext
@@ -299,3 +300,28 @@ async def test_undo_keeps_event(tmp_path):
         assert env.conn.execute("SELECT status FROM tasks WHERE id = 1").fetchone()[0] == "open"
         assert len(_events(env)) == n
         assert _events(env)[-1] == ("task_done", "task:1", "career")
+
+
+async def test_brain_chat_origin_scoped_to_call(tmp_path):
+    """두뇌가 앱 대화에서 부른 쓰기는 `brain`. 같은 ctx로 호출이 끝난 뒤 한 쓰기는 `brain`이 아니다."""
+    turn = FakeTurn([("add_task", {"title": "가짜 두뇌 할 일", "areas": ["career"]})], "넣었어요.")
+    async with BeEnv.start(tmp_path, start=MON, script=[turn]) as env:
+        resp, _ = await env.chat("가짜 할 일 넣어 줘")
+        assert resp.status == 200
+        assert _origins(env) == ["brain"]
+        ctx = env.brain.calls[0]["run_ctx"]
+        assert ctx.in_brain is False
+        _ok(env.parts.tools.add_task(ctx, title="가짜 뒤 할 일", areas=["career"]))
+        assert _origins(env) == ["brain", "app"]
+
+
+async def test_two_dates_same_habit_within_60s_one_event(tmp_path):
+    """ref `habit:<id>`에 날짜가 없어 같은 습관의 두 날짜 체크는 60초 안이면 사건 하나(SP14 5.2 중복 거르기)."""
+    async with BeEnv.start(tmp_path, start=MON) as env:
+        t = env.parts.tools
+        _habit(t)
+        _ok(t.check_habit(_user(), id=1, date="2026-11-01"))
+        env.clock.advance(timedelta(seconds=30))
+        _ok(t.check_habit(_user(), id=1, date=TODAY))
+        assert _events(env) == [("habit_checked", "habit:1", "health")]
+        assert env.conn.execute("SELECT COUNT(*) FROM habit_checks WHERE habit_id = 1").fetchone()[0] == 2

@@ -2335,8 +2335,12 @@ class Dispatcher:
                     extra["max_turns"] = max_turns
                 if not persist_session:
                     extra["persist_session"] = False
-                run_ctx.in_brain = True  # 이 호출 안의 도구 쓰기는 사건 출처 `brain`(SP14 5.1)
-                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **extra)
+                # 이 호출 안의 도구 쓰기만 사건 출처 `brain`(SP14 5.1). 끝나면 앞 값으로 되돌린다(같은 ctx의 뒤 쓰기는 아님)
+                was_in_brain, run_ctx.in_brain = run_ctx.in_brain, True
+                try:
+                    result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **extra)
+                finally:
+                    run_ctx.in_brain = was_in_brain
         except TimeoutError:
             result = BrainResult(text="", session_id=session_id, turns=0, status="error", error="timeout")
         finally:
