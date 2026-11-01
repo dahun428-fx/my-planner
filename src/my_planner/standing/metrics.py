@@ -120,3 +120,26 @@ def validate(metric: str, value: float | str, measured_on: date, today: date) ->
     if measured_on > today:
         return "측정일이 오늘보다 늦어요."
     return None
+
+
+# SP14 스펙 5.3: 운동메이트도 받는 건강·외모 지표(측정값 저장 사건의 영역 `health`)
+HEALTH_LOOKS_METRICS: frozenset[str] = frozenset({
+    "weight_kg", "body_fat_pct", "fat_free_mass_kg", "skeletal_muscle_kg", "waist_cm", "face_rating",
+    "grooming_rating", "bp_sys", "bp_dia", "fasting_glucose", "ldl", "alt", "checkup_flag", "shuttle_run_laps",
+    "grip_rel_pct", "situp_per_min", "run_6k_min", "squat_1rm_kg", "bench_1rm_kg", "deadlift_1rm_kg", "smoking",
+    "drinking", "exercise_days_week",
+})
+_AREA_BY_METRIC: dict[str, str] = {
+    **dict.fromkeys(HEALTH_LOOKS_METRICS, "health"),
+    **dict.fromkeys(
+        ("salary_krw", "company_tier", "role_points", "years_exp", "level_points", "outside_activity_count",
+         "recruiter_contacts_6m", "offer_ratio"), "career"),
+    **dict.fromkeys(("net_worth_krw", "monthly_saving_krw", "monthly_net_income_krw", "savings_rate_pct"), "finance"),
+    **dict.fromkeys(("support_people", "monthly_meetups", "dating_status", "lonely_often"), "relationships"),
+    "cert": "learning",
+}
+
+
+def metric_area(metric: str) -> str | None:
+    """측정값 지표의 영역(사건 기록용). 프로필·키·학벌·복수전공·집안은 `None`."""
+    return _AREA_BY_METRIC.get(metric)
