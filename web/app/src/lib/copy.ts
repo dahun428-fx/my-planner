@@ -14,6 +14,9 @@ const FROM_TODAY = "오늘부터 적용돼요";
 const FROM_TOMORROW = "내일부터 적용돼요";
 const WAKE_STALE = "노트북을 깨우는 시각은 아직 그대로예요. register_task.ps1을 다시 실행해 주세요.";
 
+// SP12: the BE's plan weekdays are 0(월)~6(일).
+const WORKOUT_DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+
 export const copy = {
   appName: "비서",
 
@@ -35,6 +38,7 @@ export const copy = {
     status: "상태창",
     connect: "기기 연결",
     devices: "연결된 기기", // device pairing spec 5.1, under "기기 연결"
+    workout: "운동", // SP12 부록 A 더보기 줄 (the BE has the mate)
     back: BACK_MORE,
   },
 
@@ -738,6 +742,29 @@ export const copy = {
 
   // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,
   // nothing about what is left.
+  // SP12 11.2 운동 화면. 부록 A 그대로가 아닌 줄은 (new)로 표시한다(PR "새 문구").
+  workout: {
+    title: "운동",
+    back: BACK_MORE,
+    planHeading: "지금 플랜",
+    logsHeading: "최근 기록",
+    notesHeading: "몸 메모",
+    planEmpty: "운동메이트와 이야기하면서 플랜을 짜요",
+    talk: "운동메이트와 이야기하기",
+    logsEmpty: "아직 기록이 없어요",
+    notesHint: "운동메이트가 대화에서 알게 된 것을 적어 둬요. 지우면 다음 대화부터 잊어요.",
+    noteKinds: { equipment: "장비", injury: "부상·통증", preference: "선호", availability: "가능한 때", other: "기타" },
+    delete: "지우기", // same word as the memo's
+    keep: "그대로 두기", // (new) the log-delete sheet's other button
+    weekdays: WORKOUT_DAYS, // (new) the plan's days by BE number 0(월)~6(일); the screen joins them "월·목"
+    sessionItems: (n: number) => `운동 ${n}개`, // (new) the plan session's and the log row's count of lines
+    sets: (n: number) => `${n}세트`, // (new)
+    kg: (n: number) => `${n}kg`, // (new)
+    minutes: (n: number) => `${n}분`, // (new)
+    km: (n: number) => `${n}km`, // (new)
+    expandLabel: (title: string) => `${title} 펼치기`, // (new)
+  },
+
   habits: {
     heading: "습관",
     manage: "관리",

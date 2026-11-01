@@ -89,7 +89,72 @@ function week(): Record<string, unknown> {
   return { ...w, days: w.days.map((d) => (d.is_today ? { ...d, todos: [...d.todos, long] } : d)) };
 }
 
+/** SP12 11.3: the workout screen's plan, the same one the mate's `ui_block` card in workout-mate.spec shows. */
+export const WORKOUT_PLAN_TITLE = "주 2번 집 운동";
+const WORKOUT = {
+  plan: {
+    id: 4,
+    title: WORKOUT_PLAN_TITLE,
+    note: null,
+    created_at: "2026-10-24T01:00:00Z",
+    sessions: [
+      {
+        id: 1,
+        position: 1,
+        label: "하체",
+        weekdays: [0, 3],
+        items: [
+          { name: "고블릿 스쿼트", sets: 3, reps: "8-10", weight_kg: 16, minutes: null, note: "무릎 안 아픈 깊이까지" },
+          { name: "런지", sets: 3, reps: "10", weight_kg: null, minutes: null, note: null },
+        ],
+      },
+      { id: 2, position: 2, label: "상체", weekdays: [1, 4], items: [{ name: "푸시업", sets: 3, reps: "최대", weight_kg: null, minutes: null, note: null }] },
+    ],
+  },
+  logs: [
+    {
+      id: 11,
+      date: "2026-10-23",
+      title: "하체",
+      effort: 3,
+      note: null,
+      session_id: 1,
+      items: [{ name: "스쿼트", sets: 5, reps: 5, weight_kg: 60, minutes: null, distance_km: null }],
+    },
+  ],
+  notes: [
+    { id: 21, kind: "equipment", text: "집에 덤벨 20kg까지", updated_at: "2026-10-23T01:00:00Z" },
+    { id: 22, kind: "injury", text: "왼쪽 무릎이 가끔 아파요", updated_at: "2026-10-23T01:00:00Z" },
+  ],
+};
+
+/** The mate's answer: a plan card (`ui_block`) and a line of text, as the BE streams it (spec 6장). */
+export function matePlanSse(): string {
+  const ev = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  const input = {
+    title: WORKOUT_PLAN_TITLE,
+    children: [
+      { type: "bullets", items: ["하체 · 월·목 · 운동 2개", "상체 · 화·금 · 운동 1개"] },
+      { type: "text", md: "무릎이 아프면 깊이는 편한 만큼만 해요." },
+    ],
+  };
+  return [
+    ev({ type: "start", messageId: "m-mate", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat", checkin_id: null } }),
+    ev({ type: "start-step" }),
+    ev({ type: "tool-input-available", toolCallId: "tc_mate_1", toolName: "ui_block", input }),
+    ev({ type: "tool-output-available", toolCallId: "tc_mate_1", output: { ok: true, data: { today: "2026-10-24", todos: [] } } }),
+    ev({ type: "text-start", id: "t1" }),
+    ev({ type: "text-delta", id: "t1", delta: "이렇게 짜 봤어요." }),
+    ev({ type: "text-end", id: "t1" }),
+    ev({ type: "finish-step" }),
+    ev({ type: "finish", messageMetadata: { conversation_id: 1, channel: "app", kind: "chat" } }),
+    "data: [DONE]\n\n",
+  ].join("");
+}
+
 export type MockOptions = {
+  /** The BE has the workout mate: /health lists the `mate` feature (SP12 11.3). */
+  mate?: boolean;
   /** SSE bodies for POST /chat, in turn (the last repeats): a golden's file name, or `{ body }`. */
   chat?: (string | { body: string })[];
   /** POST /chat gets no answer at all (an answer that is slow to come): for the stop button. */
@@ -148,7 +213,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     const q = url.searchParams;
     const get = req.method() === "GET";
 
-    if (get && path === "/health") return json(route, fixture("health"));
+    if (get && path === "/health") return json(route, opts.mate ? { ...(fixture("health") as object), features: ["mate"] } : fixture("health"));
+    if (get && path === "/workout") return json(route, WORKOUT);
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") return json(route, today());
     if (get && path === "/status") return json(route, fixture("status"));

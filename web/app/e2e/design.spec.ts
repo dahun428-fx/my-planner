@@ -48,6 +48,16 @@ const SHOTS: Shot[] = [
     },
   },
   {
+    // SP12 11.2: the plan, a record and the body notes: a list on paper, no calendar.
+    name: "workout",
+    full: true,
+    open: async (page) => {
+      await page.goto("/workout/");
+      await expect(heading(page, copy.workout.title)).toBeVisible();
+      await expect(page.getByText(copy.workout.notesHint)).toBeVisible();
+    },
+  },
+  {
     name: "settings",
     full: true,
     open: async (page) => {
