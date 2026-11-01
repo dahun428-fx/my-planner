@@ -1,6 +1,6 @@
 # SP14 마스터 구조 — 사건 기록과 받은편지함 상세 설계 (추가 기능)
 
-- 상태: 초안 v1.1 (문서 리뷰 반영, Dahun 검토 전)
+- 상태: 승인 (2026-11-01) v1.1 (문서 리뷰 반영. 15장 D1~D3은 추천값)
 - 작성일: 2026-11-01
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP8 상태창 기록](2026-10-25-sp8-status-records-history-design.md) (하루 끝 작업), [SP9 앱 탭·대화](2026-10-25-sp9-app-tabs-memo-schedule-design.md) (대화 = 세션, 요약), [SP12 운동메이트](2026-10-31-sp12-workout-mate-design.md)
 - 함께 읽기: [SP13 객관적 위치](2026-11-01-sp13-objective-standing-design.md) (먼저 만든다), [SP15 라이프 매니저](2026-11-01-sp15-life-manager-panel-design.md) (이 구조 위에 얹는다)
