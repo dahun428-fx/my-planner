@@ -123,6 +123,8 @@ from my_planner.tools.events import (
 from my_planner.tools.habits import HabitTools
 from my_planner.tools.memos import MemoTools
 from my_planner.tools.moments import MomentTools
+from my_planner.tools.panel import PanelTools
+from my_planner.tools.panel_read import PanelReadTools
 from my_planner.tools.photos import PhotoTools
 from my_planner.tools.standing import StandingTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
@@ -138,6 +140,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.events import EventsRepo
     from my_planner.store.repos.memos import MemosRepo
     from my_planner.store.repos.moments import MomentsRepo
+    from my_planner.store.repos.panel import PanelRepo
     from my_planner.store.repos.photos import PhotosRepo
     from my_planner.store.repos.runs import RunsRepo
     from my_planner.store.repos.standing import StandingRepo
@@ -235,7 +238,7 @@ def _result_before(a: Activity) -> dict[str, Any]:
 
 class Tools(
     MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, PhotoTools, BodyTools, EventTools,
-    ConversationTools, WorkoutTools, StandingTools, AgentTools,
+    ConversationTools, WorkoutTools, StandingTools, AgentTools, PanelReadTools, PanelTools,
 ):
     def __init__(
         self,
@@ -269,6 +272,7 @@ class Tools(
         workout: WorkoutRepo | None = None,
         standing: StandingRepo | None = None,
         agents: AgentsRepo | None = None,
+        panel: PanelRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -316,6 +320,8 @@ class Tools(
         self.standing = standing
         # 사건 기록·받은편지함(SP14 5.1~5.3). 쓰기 경로마다 같은 트랜잭션에 한 줄. None이면 남기지 않는다(SP1 시험)
         self.agents = agents
+        # 라이프 매니저(SP15): 내가 한 말·패널 제안·예측·리포트. None이면 패널 읽기 도구가 빈 목록을 돌려준다
+        self.panel = panel
 
     # --- 공통 ---
 

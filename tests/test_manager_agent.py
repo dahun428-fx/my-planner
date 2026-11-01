@@ -142,8 +142,11 @@ async def test_manager_transcript_tag_and_secretary_cannot_read(tmp_path):
 
 
 def test_manager_tools_are_not_secretary_tools():
-    """라이프 매니저 대화는 비서 도구를 받지 않는다. Task 7까지는 같은 상대의 지난 대화 찾기 하나뿐."""
-    from my_planner.tools.mcp_adapter import tool_names_for
+    """라이프 매니저 대화는 비서 도구를 받지 않는다(전체 목록은 `test_panel_read_tools.test_manager_tool_list`)."""
+    from my_planner.tools.mcp_adapter import manager_tool_names, tool_names_for
 
     ctx = RunContext(conversation_id=1, run_id=None, events=[], channel="app", agent="manager")
-    assert tool_names_for(ctx) == ["find_conversations"]
+    names = tool_names_for(ctx)
+    assert names == manager_tool_names(ctx)
+    assert "find_conversations" in names
+    assert not {"add_task", "create_event", "create_memo", "pin_card", "write_note", "hand_off"} & set(names)

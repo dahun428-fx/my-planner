@@ -861,9 +861,6 @@ DAYEND_READ_TOOLS: dict[InboxAgent, list[str]] = {
     "mate": ["get_mate_context", "list_workouts", "get_measures", "list_events", "find_conversations"],
 }
 DAYEND_TOOLS: list[str] = ["write_note", "hand_off"]
-# 라이프 매니저 대화(`RunContext.agent == "manager"`, SP15)에 주는 도구. 비서 도구로 새지 않게 따로 둔다.
-# 지금은 같은 상대의 지난 대화 찾기 하나뿐이다(SP15 계획 Task 7이 읽기·제안 도구로 바꾼다)
-MANAGER_TOOLS: list[str] = ["find_conversations"]
 _NOTE_REFS = {
     "type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5,
     "description": "근거로 본 참조(workout:12, event:7 같은 것) 1~5개",
@@ -894,10 +891,128 @@ _SPECS.update({
 })
 
 
+def _days(lo: int, hi: int, default: int) -> dict[str, Any]:
+    return {"type": "integer", "minimum": lo, "maximum": hi, "description": f"오늘 포함 일수(기본 {default})"}
+
+
+# 라이프 매니저·전문가 읽기 도구(SP15 6.1). 결과는 id(근거 참조 ref)·날짜·값이다
+_SPECS.update({
+    "read_conditions": (
+        "최근 컨디션 점수(1~5)를 날짜마다 읽습니다(메모 없음). 읽기만 합니다.",
+        _schema({"days": _days(1, 56, 28)}, []),
+    ),
+    "read_body_days": (
+        "최근 날짜마다 걸음 수와 잠잔 시간(분)을 읽습니다. 읽기만 합니다.",
+        _schema({"days": _days(1, 56, 28)}, []),
+    ),
+    "read_moments": (
+        "최근 이룬 순간(숨긴 것 뺌)의 id, 날짜, 글, 영역을 읽습니다. 읽기만 합니다.",
+        _schema({"days": _days(1, 180, 90)}, []),
+    ),
+    "read_reviews": (
+        "분기 회고의 영역 점수와 메모를 ref(review:<분기>:<영역>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_all": (
+        "프로필을 뺀 모든 측정값의 지표마다 가장 최근 값을 ref(measure:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_career": (
+        "직업 측정값(연봉, 회사, 직무, 경력 같은 것)의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_finance": (
+        "경제 측정값(순자산, 저축, 실수령)과 연봉의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_looks": (
+        "외모 측정값(키, 몸무게, 체성분, 허리둘레, 얼굴·관리 평가)의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_relationships": (
+        "관계 측정값(기댈 사람, 모임, 연애 상태, 외로움)의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_tasks_career": (
+        "커리어 영역의 열린 할 일과 지난 56일에 끝내거나 버린 할 일(50개까지)을 ref(task:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_tasks_finance": (
+        "경제 영역의 열린 할 일과 지난 56일에 끝내거나 버린 할 일(50개까지)을 ref(task:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_tasks_relationships": (
+        "관계 영역의 열린 할 일과 지난 56일에 끝내거나 버린 할 일(50개까지)을 ref(task:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_schedule_shape": (
+        "오늘부터 며칠의 일정을 제목·메모 없이 날짜, 시작 시각, 길이(분), 영역만 ref(event:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({"days": {"type": "integer", "minimum": 1, "maximum": 28, "description": "오늘부터 일수(기본 14)"}}, []),
+    ),
+    "list_statements": (
+        "지우지 않은 내가 한 말(사실, 선호, 결정)을 ref(statement:<id>, 결정은 decision:<key>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_benchmark": (
+        "외부 기준표(SP13)의 표 하나를 출처, 연도, 추정 여부와 함께 ref(bench:<key>)로 읽습니다(key를 빼면 키 목록). 읽기만 합니다.",
+        _schema({"key": {"type": ["string", "null"], "description": "기준표 맨 위 키(height, looks, income 같은 것)"}}, []),
+    ),
+    "read_panel_results": (
+        "최근 몇 주 패널 제안의 제목, 영역, 결과(받음·버림·지남)와 버린 이유를 ref(suggestion:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({"weeks": {"type": "integer", "minimum": 1, "maximum": 12, "description": "이번 주 포함 주 수(기본 8)"}}, []),
+    ),
+    "list_chat_photos": (
+        "이 라이프 매니저 대화에 올린 사진의 번호, 날짜, 사진에서 읽은 글을 읽습니다(이미지는 없음). 읽기만 합니다.",
+        _schema({}, []),
+    ),
+})
+# 패널 쓰기 도구(SP15 5.4, 7장, 9장, 10장). 지금은 뼈대다: 계획 Task 8·13이 설명과 입력을 채운다
+_SPECS.update({
+    "propose_suggestion": ("패널 제안 카드를 냅니다. 아직 준비 중입니다.", _schema({}, [])),
+    "save_statement": ("내가 한 말 한 줄을 저장합니다. 아직 준비 중입니다.", _schema({}, [])),
+    "record_prediction": ("측정값 예측 하나를 남깁니다. 아직 준비 중입니다.", _schema({}, [])),
+    "save_life_report": ("전체 진단의 인생 리포트를 저장합니다. 아직 준비 중입니다.", _schema({}, [])),
+})
+
+
+# 라이프 매니저 대화(`RunContext.agent == "manager"`, SP15 6.1)의 도구. 비서 도구로 새지 않게 따로 둔다.
+# 읽기 도구(본 스레드), 쓰기는 패널 초안·내가 한 말·예측·측정값 확인 카드뿐이다. 리포트 저장은 "전체 진단" 칩에만
+MANAGER_READ_TOOLS: list[str] = [
+    "list_tasks", "list_events", "list_habits", "read_conditions", "read_body_days", "list_workouts", "read_moments",
+    "get_curve", "read_reviews", "read_measures_all", "list_statements", "read_benchmark", "read_panel_results",
+    "find_conversations",
+]
+PANEL_WRITE_TOOLS: list[str] = ["propose_suggestion", "save_statement", "record_prediction", "propose_measures"]
+REPORT_TOOLS: list[str] = ["save_life_report"]
+# 전문가 서브에이전트마다 주는 읽기 도구(스펙 6.1 표 그대로). 쓰기 도구는 없다
+EXPERT_TOOLS: dict[str, list[str]] = {
+    "career": ["read_tasks_career", "read_measures_career", "search_memos", "read_memo", "list_statements",
+               "read_benchmark"],
+    "finance": ["read_measures_finance", "read_tasks_finance", "list_statements", "read_benchmark"],
+    "health": ["get_measures", "read_body_days", "list_workouts", "read_conditions", "read_benchmark"],
+    "image": ["read_measures_looks", "list_chat_photos", "read_benchmark"],
+    "relationship": ["read_schedule_shape", "read_measures_relationships", "list_statements",
+                     "read_tasks_relationships", "read_benchmark"],
+    "psych": ["read_conditions", "read_moments", "get_curve", "read_reviews", "read_panel_results", "read_benchmark"],
+}
+_MANAGER_OWN = [*MANAGER_READ_TOOLS, *PANEL_WRITE_TOOLS, *REPORT_TOOLS]
+# 전문가만 쓰는 도구(전문가 순서, 중복 없이). 서브에이전트가 받으려면 같은 서버에 있어야 하므로 매니저 호출에 함께
+# 싣는다. 본 스레드에서 막을 후보다(계획 Task 11이 스파이크 결과대로 쓴다)
+MANAGER_HIDDEN_TOOLS: list[str] = list(dict.fromkeys(
+    n for names in EXPERT_TOOLS.values() for n in names if n not in _MANAGER_OWN
+))
+
+
+def manager_tool_names(ctx: RunContext) -> list[str]:
+    """라이프 매니저 대화의 도구: 읽기 + 패널 쓰기 + ("전체 진단"이면) 리포트 저장 + 전문가 전용 읽기."""
+    report = REPORT_TOOLS if ctx.chip == "manager_full" else []
+    return [*MANAGER_READ_TOOLS, *PANEL_WRITE_TOOLS, *report, *MANAGER_HIDDEN_TOOLS]
+
+
 def tool_names_for(ctx: RunContext) -> list[str]:
     """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
-    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만, 라이프 매니저 대화(SP15)는 `MANAGER_TOOLS`만. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
+    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만, 라이프 매니저 대화(SP15)는 `manager_tool_names`. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
@@ -910,7 +1025,7 @@ def tool_names_for(ctx: RunContext) -> list[str]:
     if ctx.agent == "mate":
         return list(MATE_TOOLS)
     if ctx.agent == "manager":
-        return list(MANAGER_TOOLS)
+        return manager_tool_names(ctx)
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 

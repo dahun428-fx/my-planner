@@ -204,9 +204,12 @@ async def test_get_measures_health_looks_only(tmp_path):
             {"metric": "salary_krw", "value": 50_000_000, "measured_on": "2026-10-20"},
         ]))
         out = _ok(t.get_measures(_dayend()))
+        latest = env.conn.execute(
+            "SELECT id FROM standing_measures WHERE metric = 'body_fat_pct' AND measured_on = '2026-10-20'"
+        ).fetchone()["id"]
     assert out == {"measures": [{
         "metric": "body_fat_pct", "label": "체지방률", "value": 20.0, "unit": "%", "measured_on": "2026-10-20",
-        "reliability": "mid",
+        "reliability": "mid", "ref": f"measure:{latest}",
     }]}
     assert MATE_TOOLS.index("get_measures") == MATE_TOOLS.index("list_workouts") + 1 == 8
 
