@@ -47,6 +47,8 @@ function Level({ data }: { data: StatusData }) {
  */
 function Position({ st, open, onToggle }: { st: StandingArea; open: boolean; onToggle(): void }) {
   if (st.score === null) {
+    // No hint to open: the dash is plain text, not a button that does nothing.
+    if (!st.hint) return <span className={styles.pos}>{T.posNone}</span>;
     return (
       <button type="button" className={styles.posNone} aria-expanded={open} onClick={onToggle}>
         {T.posNone}
@@ -59,8 +61,8 @@ function Position({ st, open, onToggle }: { st: StandingArea; open: boolean; onT
 function StandingLines({ st, open }: { st: StandingArea; open: boolean }) {
   return (
     <>
-      {st.drift.map((d) => (
-        <span key={`${d.kind}${d.delta}`} className={`${styles.meta} ${d.kind === "world" ? styles.world : styles.mine}`}>
+      {st.drift.map((d, i) => (
+        <span key={i} className={`${styles.meta} ${d.kind === "world" ? styles.world : styles.mine}`}>
           {T.drift(d)}
         </span>
       ))}

@@ -2,7 +2,7 @@
 .main {
   padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
 }
-.bar {
+.nav {
   display: flex;
   align-items: center;
   padding: 0 var(--pad);
@@ -95,12 +95,14 @@
 }
 .nationalLine {
   fill: none;
+  stroke-linecap: round;
   stroke: var(--text);
   stroke-width: 1.5;
   stroke-linejoin: round;
 }
 .peerLine {
   fill: none;
+  stroke-linecap: round;
   stroke: var(--muted);
   stroke-width: 1;
   stroke-dasharray: 4 3;
@@ -119,19 +121,20 @@
   font-size: var(--size-meta);
   color: var(--muted);
 }
-.keyNational,
-.keyPeer {
+.keyNational {
   display: inline-block;
   width: 16px;
   border-top: 1.5px solid var(--text);
 }
 .keyPeer {
+  display: inline-block;
+  width: 16px;
   margin-left: 0.75rem;
   border-top: 1px dashed var(--muted);
 }
 
 /* An axis bar (DESIGN.md 목표 대비 막대): --raised track, --primary score, the error band outlined. */
-.bar {
+.axisBar {
   display: block;
   width: 100%;
   height: 10px;

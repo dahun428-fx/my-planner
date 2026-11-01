@@ -63,6 +63,26 @@ const at = (i: number, n: number, r: number): [number, number] => {
   const a = (Math.PI * 2 * i) / n - Math.PI / 2;
   return [C + r * Math.cos(a), C + r * Math.sin(a)];
 };
+/**
+ * A cohort's outline as a path: an edge is drawn only between two neighbouring axes that both have a
+ * score, so an axis with none is a gap in the line (never a point pulled to the centre as 0).
+ */
+export function cohortPath(values: (number | null)[]): string {
+  const n = values.length;
+  const p = (i: number) => at(i, n, (Math.max(0, Math.min(100, values[i] as number)) / 100) * R).map((x) => x.toFixed(1)).join(" ");
+  const all = values.every((v) => v !== null);
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    if (values[i] === null || values[j] === null) continue;
+    parts.push(`M${p(i)} L${p(j)}`);
+  }
+  // A lone scored axis between two gaps still gets a mark: a zero-length segment with round caps.
+  values.forEach((v, i) => {
+    if (v !== null && values[(i + n - 1) % n] === null && values[(i + 1) % n] === null) parts.push(`M${p(i)} L${p(i)}`);
+  });
+  return all ? `M${values.map((_, i) => p(i)).join(" L")} Z` : parts.join(" ");
+}
 const pts = (values: number[]) => values.map((v, i) => at(i, values.length, (Math.max(0, Math.min(100, v)) / 100) * R).map((x) => x.toFixed(1)).join(",")).join(" ");
 
 function Radar({ axes }: { axes: StandingAxis[] }) {
@@ -79,8 +99,8 @@ function Radar({ axes }: { axes: StandingAxis[] }) {
             const [x, y] = at(i, n, R);
             return <line key={a.axis} data-axis={a.axis} className={styles.spoke} x1={C} y1={C} x2={x.toFixed(1)} y2={y.toFixed(1)} />;
           })}
-          <polygon data-cohort="peer" className={styles.peerLine} points={pts(axes.map((a) => a.peer?.score ?? 0))} />
-          <polygon data-cohort="national" className={styles.nationalLine} points={pts(axes.map((a) => a.national?.score ?? 0))} />
+          <path data-cohort="peer" className={styles.peerLine} d={cohortPath(axes.map((a) => a.peer?.score ?? null))} />
+          <path data-cohort="national" className={styles.nationalLine} d={cohortPath(axes.map((a) => a.national?.score ?? null))} />
           {axes.map((a, i) => {
             const [x, y] = at(i, n, R + 16);
             const anchor = Math.abs(x - C) < 4 ? "middle" : x > C ? "start" : "end";
@@ -104,7 +124,7 @@ function Radar({ axes }: { axes: StandingAxis[] }) {
 
 function AxisBar({ s }: { s: AxisScoreOut }) {
   return (
-    <svg className={styles.bar} viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+    <svg className={styles.axisBar} viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
       <rect className={styles.track} x="0" y="3" width="100" height="4" rx="2" />
       {s.score > 0 && <rect data-part="fill" className={styles.fill} x="0" y="3" width={s.score} height="4" rx="2" />}
       <rect data-part="band" className={styles.band} x={s.low} y="1" width={Math.max(0, s.high - s.low)} height="8" rx="1" />
@@ -228,7 +248,7 @@ export function Standing() {
 
   return (
     <main className={`${page.main} ${styles.main}`}>
-      <nav className={styles.bar}>
+      <nav className={styles.nav}>
         <Link href="/status/" className={styles.back}>
           {T.back}
         </Link>

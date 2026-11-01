@@ -52,6 +52,23 @@ describe("MeasureConfirm (SP13 6.5)", () => {
     expect(screen.getByRole("button", { name: "몸무게 빼기" })).toBeDisabled();
   });
 
+  it("a second press while saving sends nothing more", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const bodies = serveActions(async () => {
+      await gate;
+      return HttpResponse.json({ status: "applied", activity_id: 41, undo_id: 41, result: {}, confirmation: saved });
+    });
+    renderWithProviders(<MeasureConfirm props={props} ctx={makeCtx()} />);
+    const save = screen.getByRole("button", { name: copy.parts.save });
+    save.click();
+    save.click();
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    release();
+    expect(await screen.findAllByText(saved)).not.toHaveLength(0);
+    expect(bodies).toHaveLength(1);
+  });
+
   it("the date can be changed", async () => {
     const bodies = serveActions();
     renderWithProviders(<MeasureConfirm props={{ ...props, rows: props.rows.slice(0, 1) }} ctx={makeCtx()} />);

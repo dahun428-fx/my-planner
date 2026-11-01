@@ -232,7 +232,6 @@ export const copy = {
     pos: (n: number, peer: number | null, reliability: string | null) =>
       `위치 ${n}${peer !== null && peer !== n ? ` (IT ${peer})` : ""}${reliability === "low" ? " · 낮음" : ""}`,
     posNone: "위치 —",
-    posHint: "위치가 비어 있는 까닭 보기",
     drift: (d: { kind: "me" | "world"; delta: number }) => `${d.delta > 0 ? "▲" : "▼"}${Math.abs(d.delta)} ${d.kind === "me" ? "내 변화" : "세상 변화"}`,
     posDebuff: (quest: string | null) => (quest ? `위치 하락 · 회복 퀘스트: ${quest}` : "위치 하락"),
     // 10.2: the innate stats group, and the line to the detail screen under it.

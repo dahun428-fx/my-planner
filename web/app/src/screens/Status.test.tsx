@@ -249,6 +249,15 @@ describe("Status standing (SP13 10장)", () => {
     expect(button).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("no position and no hint: the dash is plain text", async () => {
+    serve({ ...standing, stats: standing.stats.map((s) => (s.area === "quality_of_life" ? { ...s, standing: { ...s.standing!, hint: null } } : s)) });
+    renderWithProviders(<Status />, { route: "/status/" });
+    await screen.findByRole("heading", { level: 2, name: copy.statusScreen.statsHeading });
+    const qol = rowOf("quality_of_life");
+    expect(within(qol).getByText("위치 —")).toBeInTheDocument();
+    expect(within(qol).queryByRole("button")).toBeNull();
+  });
+
   it("a position debuff says so with its recovery quest", async () => {
     const down = { ...standing.stats[2].standing!, drift: [{ kind: "me" as const, delta: -6 }], debuff: true, recovery_quest: "저녁에 20분 걷기" };
     serve({ ...standing, stats: standing.stats.map((s) => (s.area === "health" ? { ...s, standing: down } : s)) });

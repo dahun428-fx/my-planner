@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { copy } from "../../lib/copy";
 import { standingCopy as S } from "../../lib/copyStanding";
 import type { PartProps } from "../types";
@@ -35,6 +35,7 @@ export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
   const act = usePartAction();
   const [rows, setRows] = useState<Draft[]>(() => props.rows.map(toDraft));
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false); // one save at a time, even before `busy` has re-rendered the button
   const [done, setDone] = useState<string | null>(null);
   const off = ctx.readOnly || busy || done !== null;
   const face = props.rows.some((r) => r.metric === "face_rating");
@@ -43,7 +44,8 @@ export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
   const drop = (key: number) => setRows((rs) => rs.filter((r) => r.key !== key));
 
   const save = async () => {
-    if (off) return;
+    if (off || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       const out = await act("save_measures", {
@@ -56,6 +58,7 @@ export function MeasureConfirm({ props, ctx }: PartProps<MeasureConfirmProps>) {
         ctx.onAfterAction();
       }
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

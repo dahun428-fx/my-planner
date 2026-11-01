@@ -12,7 +12,7 @@ import standingJson from "../test/fixtures/standing.json";
 import { serveActions } from "../test/parts";
 import { renderWithProviders } from "../test/render";
 import { BASE, server } from "../test/server";
-import { Standing } from "./Standing";
+import { cohortPath, Standing } from "./Standing";
 
 const standing = standingJson as StandingData;
 const measures = measuresJson as StandingMeasures;
@@ -55,8 +55,29 @@ describe("Standing detail (SP13 10.3)", () => {
     const radar = await screen.findByRole("img", { name: standingCopy.radarLabel });
     expect(radar.tagName.toLowerCase()).toBe("svg");
     expect(radar.querySelectorAll("line[data-axis]")).toHaveLength(9);
-    expect(radar.querySelectorAll("polygon[data-cohort]")).toHaveLength(2);
+    expect(radar.querySelectorAll("path[data-cohort]")).toHaveLength(2);
+    expect(radar.querySelector("path[data-cohort=national]")!.getAttribute("d")).toMatch(/Z$/); // all nine scored: closed
     expect(document.querySelector("[style]")).toBeNull();
+  });
+
+  it("an axis with no score is a gap in the radar line, not a point at the centre", () => {
+    const d = cohortPath([50, 50, null, 50]);
+    expect(d).not.toMatch(/Z/);
+    expect(d.match(/M/g)).toHaveLength(2); // edges 3→0 and 0→1 only
+    expect(d).not.toContain("160.0 160.0"); // never the centre
+    expect(cohortPath([null, 50, null, null])).toMatch(/^M(\S+ \S+) L\1$/); // a lone axis keeps a dot
+  });
+
+  it("the nav row and the axis bars use different classes (review: one `.bar` was both)", async () => {
+    serve();
+    renderWithProviders(<Standing />, { route: "/status/standing/" });
+    const back = await screen.findByRole("link", { name: "‹ 상태창" });
+    await screen.findByRole("heading", { level: 2, name: "축별 점수" });
+    const bar = sectionOf("축별 점수").querySelector("svg")!;
+    expect(back.closest("nav")!.className).not.toBe(bar.getAttribute("class"));
+    const css = readFileSync(join(__dirname, "Standing.module.css"), "utf8");
+    const selectors = [...css.matchAll(/^(\.[A-Za-z]+) \{/gm)].map((m) => m[1]);
+    expect(selectors.filter((s, i) => selectors.indexOf(s) !== i)).toEqual([]);
   });
 
   it("nine axis bars with band, reliability, missing and date", async () => {
