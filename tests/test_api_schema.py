@@ -37,6 +37,8 @@ EXPECTED_MODELS = {
     "CalendarSettings", "CalendarPutBody",  # SP9 5.7
     "Standing", "StandingMeasures",  # SP13 12장
     "InboxCount", "AgentNotes", "AgentNoteOut",  # SP14 스펙 9장
+    "PanelEvidenceOut", "PanelSuggestionOut", "PanelSuggestions", "PanelBudget",  # SP15 12장
+    "OwnerStatementOut", "OwnerStatements",
 }
 
 
@@ -82,6 +84,7 @@ async def test_every_read_response_validates_against_schema(tmp_path):
             "/health", "/today", "/week", "/conditions", "/priorities?cadence=week", "/priorities?cadence=quarter",
             "/drafts", "/checkins", f"/checkins/{checkin['id']}", "/conversations", f"/conversations/{cid}/messages",
             "/ui/catalog", "/schema", "/standing", "/standing/measures",
+            "/panel/suggestions", "/panel/budget", "/owner-statements",
         ]
         bodies = {p: await get_json(env, p) for p in paths}
         err = await (await env.get("/checkins/abc")).json()
@@ -93,6 +96,7 @@ async def test_every_read_response_validates_against_schema(tmp_path):
         "/checkins": "CheckinList", f"/checkins/{checkin['id']}": "CheckinDetail", "/conversations": "Conversations",
         f"/conversations/{cid}/messages": "Messages", "/ui/catalog": "UiCatalog", "/schema": "SchemaBundle",
         "/standing": "Standing", "/standing/measures": "StandingMeasures",
+        "/panel/suggestions": "PanelSuggestions", "/panel/budget": "PanelBudget", "/owner-statements": "OwnerStatements",
     }
     for path, model in by_path.items():
         jsonschema.Draft202012Validator(schemas[model]).validate(bodies[path])

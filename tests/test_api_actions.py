@@ -50,7 +50,8 @@ CARD = {"title": "꾸민 요약", "lines": ["한 줄"]}
 
 
 def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None), memos=(None, None, None), moments=(None, None, None),
-                  events=(None, None), photos=(None, None), workout=(None, None), measure=None):
+                  events=(None, None), photos=(None, None), workout=(None, None), measure=None,
+                  panel=(None, None, None)):
     """공개 동작마다 적용되는 args 한 벌. `ids`는 미리 만든 할 일 번호(열림 a, b, 완료 c, 초안 d), `card`는 고정 카드,
     `curve`는 사건 초안 둘과 챕터 초안 둘(확정용, 빼기용)."""
     a, b, c, d = ids
@@ -114,6 +115,10 @@ def _public_cases(ids, card, curve=(None, None, None, None), habits=(None, None)
         "save_measures": {"rows": [{"metric": "weight_kg", "value": 72.0, "measured_on": "2026-10-24"}],
                           "source_kind": "manual", "source_ref": None},
         "delete_measure": {"id": measure},
+        # 라이프 매니저(SP15 7.1, 5.4): 제안 둘(받기, 버리기)과 내가 한 말 하나
+        "accept_suggestion": {"id": panel[0]},
+        "dismiss_suggestion": {"id": panel[1], "reason": "too_big"},
+        "retire_statement": {"id": panel[2]},
     }
 
 
@@ -163,8 +168,15 @@ async def test_every_public_action_applies(tmp_path, action):
             wn = wk.add_note("equipment", "꾸민 장비", now).id
             wl = wk.add_log(env.parts.tools.today(), "꾸민 운동", None, None, None, [], now).id
             measure = env.parts.tools.standing.add("waist_cm", 82.0, date(2026, 10, 24), "manual", None, "mid", now)
+            pn = env.parts.panel
+            sa, sd = (pn.add_suggestion(
+                conversation_id=None, kind="task", title=t, area="career", size_min=30, per_week=None, due_hint=None,
+                experts=["career"], evidence=[{"type": "record", "ref": f"task:{a}", "note": "꾸민 근거"}],
+                week="2026-W43", now=now,
+            ) for t in ("꾸민 제안", "꾸민 제안 둘"))
+            st = pn.add_statement("fact", "career", "꾸민 사실", now=now)
         cases = _public_cases((a, b, c, d), card, curve, (hb, hc), (mo.id, mp.id, mo.updated_at.isoformat()),
-                              (mv, mh, md), (ev, er), (pf, pa), (wn, wl), measure)
+                              (mv, mh, md), (ev, er), (pf, pa), (wn, wl), measure, (sa, sd, st))
         assert set(cases) == {n for n, s in ACTIONS.items() if s.public}
         args = cases[action]
         token = None

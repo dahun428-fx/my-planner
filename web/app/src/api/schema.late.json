@@ -315,6 +315,454 @@
         "items"
       ],
       "type": "object"
+    },
+    "OwnerStatementOut": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "preference",
+            "decision"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "area",
+        "text",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "OwnerStatements": {
+      "$defs": {
+        "OwnerStatementOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "area",
+            "text",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OwnerStatementOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "PanelBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "full_diagnosis_ok": {
+          "type": "boolean"
+        },
+        "remaining": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "remaining",
+        "full_diagnosis_ok"
+      ],
+      "type": "object"
+    },
+    "PanelEvidenceOut": {
+      "additionalProperties": false,
+      "properties": {
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "record",
+            "statement",
+            "external"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ref",
+        "note",
+        "href"
+      ],
+      "type": "object"
+    },
+    "PanelSuggestionOut": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "enum": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "due_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/PanelEvidenceOut"
+          },
+          "type": "array"
+        },
+        "experts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "task",
+            "habit"
+          ],
+          "type": "string"
+        },
+        "per_week": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_min": {
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "done",
+            "postponed",
+            "dismissed",
+            "expired"
+          ],
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "week": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "area",
+        "size_min",
+        "per_week",
+        "due_hint",
+        "experts",
+        "evidence",
+        "state",
+        "week",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "PanelSuggestions": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "type": "object"
+        },
+        "PanelSuggestionOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "due_hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/PanelEvidenceOut"
+              },
+              "type": "array"
+            },
+            "experts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "task",
+                "habit"
+              ],
+              "type": "string"
+            },
+            "per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "size_min": {
+              "type": "integer"
+            },
+            "state": {
+              "enum": [
+                "proposed",
+                "accepted",
+                "done",
+                "postponed",
+                "dismissed",
+                "expired"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "week": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "area",
+            "size_min",
+            "per_week",
+            "due_hint",
+            "experts",
+            "evidence",
+            "state",
+            "week",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/PanelSuggestionOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
     }
   }
 }

@@ -1,1 +1,1 @@
-{"models": ["ChatRequestBody", "Conversations", "Messages"]}
+{"models": ["ChatRequestBody", "Conversations", "Messages", "OwnerStatementOut", "OwnerStatements", "PanelBudget", "PanelEvidenceOut", "PanelSuggestionOut", "PanelSuggestions"]}

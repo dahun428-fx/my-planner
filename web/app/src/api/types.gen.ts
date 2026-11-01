@@ -58,10 +58,16 @@ export interface ApiModels {
   MomentsList: MomentsList;
   NotifyPutBody: NotifyPutBody;
   NotifySettings: NotifySettings;
+  OwnerStatementOut: OwnerStatementOut;
+  OwnerStatements: OwnerStatements;
   PairBody: PairBody;
   PairCreated: PairCreated;
   PairResult: PairResult;
   PairStatus: PairStatus;
+  PanelBudget: PanelBudget;
+  PanelEvidenceOut: PanelEvidenceOut;
+  PanelSuggestionOut: PanelSuggestionOut;
+  PanelSuggestions: PanelSuggestions;
   PhotoRead: PhotoRead;
   PhotoRef: PhotoRef;
   PhotoUploaded: PhotoUploaded;
@@ -1243,6 +1249,26 @@ export interface NotifySettings {
   push_subscriptions: number;
 }
 /**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "OwnerStatementOut".
+ */
+export interface OwnerStatementOut {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  created_at: string;
+  id: number;
+  kind: "fact" | "preference" | "decision";
+  text: string;
+}
+/**
+ * `GET /owner-statements`: 지우지 않은 말, 최신 먼저.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "OwnerStatements".
+ */
+export interface OwnerStatements {
+  items: OwnerStatementOut[];
+}
+/**
  * `POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -1299,6 +1325,53 @@ export interface PairStatus {
 export interface DeviceRef {
   id: number;
   label: string;
+}
+/**
+ * `GET /panel/budget`: 이번 주 남은 제안 수만(상한 숫자는 보이지 않는다, 7.3).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelBudget".
+ */
+export interface PanelBudget {
+  full_diagnosis_ok: boolean;
+  remaining: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelEvidenceOut".
+ */
+export interface PanelEvidenceOut {
+  href: string | null;
+  note: string;
+  ref: string;
+  type: "record" | "statement" | "external";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelSuggestionOut".
+ */
+export interface PanelSuggestionOut {
+  area: "career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life";
+  created_at: string;
+  due_hint: string | null;
+  evidence: PanelEvidenceOut[];
+  experts: string[];
+  id: number;
+  kind: "task" | "habit";
+  per_week: number | null;
+  size_min: number;
+  state: "proposed" | "accepted" | "done" | "postponed" | "dismissed" | "expired";
+  title: string;
+  week: string;
+}
+/**
+ * `GET /panel/suggestions`: 최신 먼저. `state`가 없으면 지난 28일 전부.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelSuggestions".
+ */
+export interface PanelSuggestions {
+  items: PanelSuggestionOut[];
 }
 /**
  * `POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `""`.

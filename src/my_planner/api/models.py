@@ -1001,6 +1001,60 @@ class AgentNotes(_Model):
     notes: list[AgentNoteOut]
 
 
+# --- 라이프 매니저 패널 (SP15 12장) ---
+
+SuggestionStateName = Literal["proposed", "accepted", "done", "postponed", "dismissed", "expired"]
+
+
+class PanelEvidenceOut(_Model):
+    type: Literal["record", "statement", "external"]
+    ref: str
+    note: str
+    href: str | None  # 앱 안 링크, 없으면 null
+
+
+class PanelSuggestionOut(_Model):
+    id: int
+    kind: Literal["task", "habit"]
+    title: str
+    area: AreaName
+    size_min: int
+    per_week: int | None
+    due_hint: str | None
+    experts: list[str]
+    evidence: list[PanelEvidenceOut]
+    state: SuggestionStateName
+    week: str
+    created_at: str
+
+
+class PanelSuggestions(_Model):
+    """`GET /panel/suggestions`: 최신 먼저. `state`가 없으면 지난 28일 전부."""
+
+    items: list[PanelSuggestionOut]
+
+
+class PanelBudget(_Model):
+    """`GET /panel/budget`: 이번 주 남은 제안 수만(상한 숫자는 보이지 않는다, 7.3)."""
+
+    remaining: int
+    full_diagnosis_ok: bool
+
+
+class OwnerStatementOut(_Model):
+    id: int
+    kind: Literal["fact", "preference", "decision"]
+    area: AreaName | None
+    text: str
+    created_at: str
+
+
+class OwnerStatements(_Model):
+    """`GET /owner-statements`: 지우지 않은 말, 최신 먼저."""
+
+    items: list[OwnerStatementOut]
+
+
 class UiComponent(_Model):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -1551,6 +1605,12 @@ MODELS: dict[str, type[BaseModel]] = {
     "InboxCount": InboxCount,
     "AgentNotes": AgentNotes,
     "AgentNoteOut": AgentNoteOut,
+    "PanelEvidenceOut": PanelEvidenceOut,
+    "PanelSuggestionOut": PanelSuggestionOut,
+    "PanelSuggestions": PanelSuggestions,
+    "PanelBudget": PanelBudget,
+    "OwnerStatementOut": OwnerStatementOut,
+    "OwnerStatements": OwnerStatements,
     "Moment": Moment,
     "MomentsList": MomentsList,
     "BodyPostBody": BodyPostBody,

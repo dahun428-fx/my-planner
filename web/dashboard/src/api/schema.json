@@ -5093,6 +5093,134 @@
       "title": "NotifySettings",
       "type": "object"
     },
+    "OwnerStatementOut": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "preference",
+            "decision"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "area",
+        "text",
+        "created_at"
+      ],
+      "title": "OwnerStatementOut",
+      "type": "object"
+    },
+    "OwnerStatements": {
+      "$defs": {
+        "OwnerStatementOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "area",
+            "text",
+            "created_at"
+          ],
+          "title": "OwnerStatementOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /owner-statements`: 지우지 않은 말, 최신 먼저.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OwnerStatementOut"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "OwnerStatements",
+      "type": "object"
+    },
     "PairBody": {
       "additionalProperties": false,
       "description": "`POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).",
@@ -5246,6 +5374,389 @@
         "state"
       ],
       "title": "PairStatus",
+      "type": "object"
+    },
+    "PanelBudget": {
+      "additionalProperties": false,
+      "description": "`GET /panel/budget`: 이번 주 남은 제안 수만(상한 숫자는 보이지 않는다, 7.3).",
+      "properties": {
+        "full_diagnosis_ok": {
+          "title": "Full Diagnosis Ok",
+          "type": "boolean"
+        },
+        "remaining": {
+          "title": "Remaining",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "remaining",
+        "full_diagnosis_ok"
+      ],
+      "title": "PanelBudget",
+      "type": "object"
+    },
+    "PanelEvidenceOut": {
+      "additionalProperties": false,
+      "properties": {
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Href"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "record",
+            "statement",
+            "external"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ref",
+        "note",
+        "href"
+      ],
+      "title": "PanelEvidenceOut",
+      "type": "object"
+    },
+    "PanelSuggestionOut": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Href"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "ref": {
+              "title": "Ref",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "title": "PanelEvidenceOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "enum": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "title": "Area",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "due_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Due Hint"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/PanelEvidenceOut"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "experts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Experts",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "task",
+            "habit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "per_week": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Per Week"
+        },
+        "size_min": {
+          "title": "Size Min",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "done",
+            "postponed",
+            "dismissed",
+            "expired"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "week": {
+          "title": "Week",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "area",
+        "size_min",
+        "per_week",
+        "due_hint",
+        "experts",
+        "evidence",
+        "state",
+        "week",
+        "created_at"
+      ],
+      "title": "PanelSuggestionOut",
+      "type": "object"
+    },
+    "PanelSuggestions": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Href"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "ref": {
+              "title": "Ref",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "title": "PanelEvidenceOut",
+          "type": "object"
+        },
+        "PanelSuggestionOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "title": "Area",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "due_hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due Hint"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/PanelEvidenceOut"
+              },
+              "title": "Evidence",
+              "type": "array"
+            },
+            "experts": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Experts",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "task",
+                "habit"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Per Week"
+            },
+            "size_min": {
+              "title": "Size Min",
+              "type": "integer"
+            },
+            "state": {
+              "enum": [
+                "proposed",
+                "accepted",
+                "done",
+                "postponed",
+                "dismissed",
+                "expired"
+              ],
+              "title": "State",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "week": {
+              "title": "Week",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "area",
+            "size_min",
+            "per_week",
+            "due_hint",
+            "experts",
+            "evidence",
+            "state",
+            "week",
+            "created_at"
+          ],
+          "title": "PanelSuggestionOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /panel/suggestions`: 최신 먼저. `state`가 없으면 지난 28일 전부.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/PanelSuggestionOut"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "PanelSuggestions",
       "type": "object"
     },
     "PhotoRead": {

@@ -727,6 +727,10 @@ ACTIONS: dict[str, ActionSpec] = {
     "update_event": ActionSpec("update_event", target=_event_target),
     "delete_event": ActionSpec("delete_event", target=_event_target),
     "dismiss_missed_reminder": ActionSpec("dismiss_missed_reminder"),
+    # 라이프 매니저 제안 카드와 "내가 한 말"(SP15 7.1, 5.4). 모두 low, 확인 없음, 되돌리기 24시간
+    "accept_suggestion": ActionSpec("accept_suggestion"),
+    "dismiss_suggestion": ActionSpec("dismiss_suggestion"),
+    "retire_statement": ActionSpec("retire_statement"),
     "decline_confirm": ActionSpec(_decline_confirm, accepts=frozenset({"confirm_token"})),
     # 내부(하루 한 번 작업, `secretary`/`scheduler`)
     "expire_drafts": ActionSpec(_expire_drafts, public=False, accepts=frozenset({"older_than"})),

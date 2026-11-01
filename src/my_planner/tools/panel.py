@@ -21,7 +21,7 @@ import unicodedata
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
-from my_planner.domain import RunContext, ToolEvent
+from my_planner.domain import Area, RunContext, TaskStatus, ToolEvent
 from my_planner.harness.redact import redact
 from my_planner.panel.budget import remaining, week_key
 from my_planner.panel.evidence import (
@@ -32,19 +32,34 @@ from my_planner.panel.evidence import (
 )
 from my_planner.standing.metrics import METRICS
 from my_planner.standing.score import AREAS, AXES
+from my_planner.status.xp import AREA_LABELS
 from my_planner.store.db import transaction
 from my_planner.tools._base import _err, _tool
+from my_planner.tools.activity import (
+    SUPERSEDED,
+    habit_target,
+    record_activity,
+    register_undo,
+    task_target,
+)
+from my_planner.tools.confirmations import habit_kind_label
+from my_planner.tools.habits import HABIT_ACTIVE_MAX, MSG_CAP, MSG_DUPLICATE
 from my_planner.tools.moments import _bad_char
 from my_planner.tools.ui import banned_words
 
 if TYPE_CHECKING:
     from my_planner.clock import Clock
+    from my_planner.domain import EventKind
+    from my_planner.store.repos.activity import ActivityRepo
+    from my_planner.store.repos.habits import Habit, HabitsRepo
     from my_planner.store.repos.panel import PanelRepo, Suggestion
     from my_planner.store.repos.state import StateRepo
+    from my_planner.store.repos.tasks import Task, TasksRepo
+    from my_planner.tools.core import Tools
 
 log = logging.getLogger(__name__)
 
-__all__ = ["PANEL_EXTRA_BANNED", "PanelTools", "normalize_title", "suggestion_view"]
+__all__ = ["DISMISS_REASONS", "PANEL_EXTRA_BANNED", "PanelTools", "normalize_title", "suggestion_view"]
 
 SUGGESTION_TITLE_MAX = 60
 SUGGESTION_DUE_MAX_DAYS = 60
@@ -89,6 +104,24 @@ MSG_PR_METRIC = "metric은 숫자 측정값 이름이나 axis:<축>이에요."
 MSG_PR_VALUE = "predicted가 그 지표 범위의 숫자가 아니에요."
 MSG_PR_DUE = f"due는 내일부터 {PREDICTION_MAX_AHEAD_DAYS}일 안의 YYYY-MM-DD예요."
 MSG_PR_CAP = f"예측은 한 대화에 {PREDICTIONS_PER_CONVERSATION}개까지예요."
+
+# 받기·버리기·말 지우기(계획 Task 9, `/actions`)
+DISMISS_REASONS = ("no_time", "not_interested", "already", "too_big", "none")
+DISMISS_STATEMENT_COUNT = 2  # 같은 영역·같은 이유 버림이 이 수가 되면 말 한 줄(7.4)
+DISMISS_STATEMENTS = {
+    "too_big": "{area} 제안이 너무 크다고 두 번 버렸어요.",
+    "no_time": "{area} 제안을 시간이 없다고 두 번 버렸어요.",
+    "not_interested": "{area} 제안에 관심 없다고 두 번 버렸어요.",
+    "already": "{area} 제안을 이미 하고 있다고 두 번 버렸어요.",
+}
+MSG_DECIDED = "이미 정한 제안이에요."
+MSG_NO_SUGGESTION = "없는 제안이에요."
+MSG_REASON = f"reason은 {', '.join(DISMISS_REASONS)} 가운데 하나예요."
+MSG_NO_STATEMENT = "없는 말이에요."
+MSG_RETIRED = "이미 지운 말이에요."
+SUMMARY_ACCEPTED = "✓ 제안 받음 · {title}"
+SUMMARY_DISMISSED = "✓ 제안 버림 · {title}"
+SUMMARY_RETIRED = "✓ 내가 한 말 지움"
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DECISION_KEY = re.compile(r"^[a-z_]{3,30}$")
@@ -152,8 +185,19 @@ class PanelTools:
     if TYPE_CHECKING:
         clock: Clock
         state: StateRepo | None
+        tasks: TasksRepo
+        habits: HabitsRepo | None
+        activity: ActivityRepo | None
 
         def today(self) -> date: ...
+        def _export(self) -> None: ...
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None) -> None: ...
+        def _duplicate(self, title: str, own: int | None = None) -> bool: ...
+        def _event_data(self, t: Task) -> dict[str, Any]: ...
+        @staticmethod
+        def _habit_data(h: Habit, label: str | None = None, day: date | None = None) -> dict[str, Any]: ...
+        @staticmethod
+        def _habit_title(v: Any) -> str: ...
 
     panel: PanelRepo | None
 
@@ -321,6 +365,127 @@ class PanelTools:
         log.info("panel_prediction", extra={"metric": metric})
         return {"ok": True, "id": pid}
 
+    # --- 받기·버리기·말 지우기 (계획 Task 9, `/actions`) ---
+
+    def _open_suggestion(self, id: Any) -> Suggestion | dict[str, Any]:
+        """트랜잭션 안에서: `proposed`인 제안, 아니면 오류(없으면 404 `not_found`, 정했으면 `rejected`)."""
+        s = self.panel.suggestion(id) if self.panel is not None and _int(id) else None
+        if s is None:
+            return {"error": MSG_NO_SUGGESTION, "error_code": "not_found"}
+        if s.state != "proposed":
+            return _err(MSG_DECIDED)
+        return s
+
+    @_tool
+    def accept_suggestion(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
+        """받기(7.1): 할 일(`planned_for = due_hint` 또는 오늘) 또는 습관을 만들고 제안을 `accepted`로. 경험치는 없다
+        (할 일 완료 때 X1만). 상태 확인과 쓰기가 한 트랜잭션이라 두 번 눌러도 한 번만 만든다."""
+        if self.panel is None:
+            return _err(MSG_NO_PANEL)
+        panel = self.panel
+        now = self.clock.now()
+        with transaction(panel.conn):
+            s = self._open_suggestion(id)
+            if isinstance(s, dict):
+                return s
+            if s.kind == "task":
+                t = self.tasks.create(
+                    title=s.title, areas=[Area(s.area)], status=TaskStatus.open,
+                    planned_for=s.due_hint if s.due_hint is not None else self.today(),
+                )
+                self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, t.id, "task_added",
+                                          inbound_id=ctx.inbound_id, data=self._event_data(t))
+                self._agent_event(ctx, "task_added", task_target(t.id), s.area)
+                made = task_target(t.id)
+            else:
+                out = self._accept_habit(ctx, s)
+                if isinstance(out, dict):
+                    return out
+                made = out
+            if not panel.set_state(s.id, "accepted", now=now, result_ref=made, only_from="proposed"):
+                raise RuntimeError("suggestion state changed inside the transaction")
+            self._agent_event(ctx, "suggestion_accepted", _suggestion_ref(s.id), s.area)
+            record_activity(
+                self.activity, ctx, kind="suggestion_accepted", target=_suggestion_ref(s.id),
+                summary=SUMMARY_ACCEPTED.format(title=s.title), risk="low",
+                undo={"suggestion_id": s.id, "result_ref": made}, targets=[_suggestion_ref(s.id), made],
+            )
+        log.info("panel_decided", extra={"result": "accepted", "id": s.id, "kind": s.kind})
+        self._export()
+        return {"ok": True, "result_ref": made}
+
+    def _accept_habit(self, ctx: RunContext, s: Suggestion) -> str | dict[str, Any]:
+        """트랜잭션 안에서: 습관 하나(`per_week == 7`이면 매일). 습관 규칙(제목 길이, 같은 제목, 10개)은 그대로 본다."""
+        if self.habits is None:
+            return _err(MSG_NO_PANEL)
+        try:
+            title = self._habit_title(s.title)
+        except ValueError as e:
+            return _err(str(e))
+        if self._duplicate(title):
+            return _err(MSG_DUPLICATE)
+        if self.habits.count_active() >= HABIT_ACTIVE_MAX:
+            return _err(MSG_CAP)
+        kind, target = ("daily", None) if s.per_week == 7 else ("weekly", s.per_week)
+        h = self.habits.add(title, s.area, kind, target, self.clock.now())
+        self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, "habit_added", inbound_id=ctx.inbound_id,
+                                  data=self._habit_data(h, habit_kind_label(kind, target)))
+        return habit_target(h.id)
+
+    @_tool
+    def dismiss_suggestion(self, ctx: RunContext, id: Any = None, reason: Any = "none") -> dict[str, Any]:
+        """버리기(7.4): 이유와 함께 `dismissed`. 같은 영역·같은 이유가 (이것 포함) 2회가 되면 말 한 줄(`preference`)."""
+        if self.panel is None:
+            return _err(MSG_NO_PANEL)
+        if reason not in DISMISS_REASONS:
+            return _err(MSG_REASON)
+        panel = self.panel
+        now = self.clock.now()
+        statement_id: int | None = None
+        with transaction(panel.conn):
+            s = self._open_suggestion(id)
+            if isinstance(s, dict):
+                return s
+            if not panel.set_state(s.id, "dismissed", now=now, dismiss_reason=reason, only_from="proposed"):
+                raise RuntimeError("suggestion state changed inside the transaction")
+            self._agent_event(ctx, "suggestion_dismissed", _suggestion_ref(s.id), s.area)
+            if reason != "none" and panel.count_dismissed(s.area, reason) == DISMISS_STATEMENT_COUNT:
+                text = DISMISS_STATEMENTS[reason].format(area=AREA_LABELS[s.area])
+                if panel.find_active("preference", s.area, text) is None:
+                    statement_id = panel.add_statement(
+                        "preference", s.area, text, source_ref=_suggestion_ref(s.id), now=now
+                    )
+            targets = [_suggestion_ref(s.id)]
+            if statement_id is not None:
+                targets.append(_statement_target(statement_id))
+            record_activity(
+                self.activity, ctx, kind="suggestion_dismissed", target=_suggestion_ref(s.id),
+                summary=SUMMARY_DISMISSED.format(title=s.title), risk="low",
+                undo={"suggestion_id": s.id, "statement_id": statement_id}, targets=targets,
+            )
+        log.info("panel_decided", extra={"result": "dismissed", "id": s.id, "reason": reason,
+                                         "statement": statement_id is not None})
+        return {"ok": True, "statement_id": statement_id}
+
+    @_tool
+    def retire_statement(self, ctx: RunContext, id: Any = None) -> dict[str, Any]:
+        """내가 한 말 지우기(5.4): `retired_at`만 채운다. 결정도 지울 수 있다. 지운 말은 근거로 쓰지 못한다."""
+        if self.panel is None:
+            return _err(MSG_NO_PANEL)
+        panel = self.panel
+        with transaction(panel.conn):
+            st = panel.statement(id) if _int(id) else None
+            if st is None:
+                return {"error": MSG_NO_STATEMENT, "error_code": "not_found"}
+            if not panel.retire(st.id, self.clock.now()):
+                return _err(MSG_RETIRED)
+            record_activity(
+                self.activity, ctx, kind="statement_retired", target=_statement_target(st.id),
+                summary=SUMMARY_RETIRED, risk="low", undo={"statement_id": st.id},
+            )
+        log.info("panel_statement_retired", extra={"id": st.id, "kind": st.kind})
+        return {"ok": True}
+
     # --- 인생 리포트 (10장) ---
 
     @_tool
@@ -330,3 +495,58 @@ class PanelTools:
 
 def _statement_ref(kind: str, sid: int, key: str | None) -> str:
     return f"decision:{key}" if kind == "decision" and key else f"statement:{sid}"
+
+
+def _suggestion_ref(sid: int) -> str:
+    return f"suggestion:{sid}"
+
+
+def _statement_target(sid: int) -> str:
+    return f"statement:{sid}"
+
+
+# --- 되돌리기 (계획 Task 9). 사건(`agent_events`)은 지우지 않는다(SP14 5.2) ---
+
+
+def _undo_suggestion_accepted(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """만든 할 일(또는 습관)을 소프트 삭제하고 제안을 `proposed`로. 할 일이 끝났거나 습관에 체크가 있으면 superseded."""
+    assert tools.panel is not None
+    ref: str = undo["result_ref"]
+    kind, _, raw = ref.partition(":")
+    if kind == "task":
+        t = tools.tasks.get(int(raw))
+        if t is None or t.status is TaskStatus.done:
+            return SUPERSEDED
+        tools.tasks.restore(t.id, status=t.status, completed_at=t.completed_at, deleted_at=tools.clock.now())
+    else:
+        assert tools.habits is not None
+        hid = int(raw)
+        if tools.habits.get(hid) is None or tools.habits.has_checks(hid):
+            return SUPERSEDED
+        tools.habits.soft_delete(hid, tools.clock.now())
+    if not tools.panel.reopen(undo["suggestion_id"], only_from="accepted"):
+        return SUPERSEDED  # 하루 끝 단계가 이미 `done`·`postponed`로 옮겼다
+    return None
+
+
+def _undo_suggestion_dismissed(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    """제안을 `proposed`로, 그때 만든 말은 지운다(`retired_at`)."""
+    assert tools.panel is not None
+    if not tools.panel.reopen(undo["suggestion_id"], only_from="dismissed"):
+        return SUPERSEDED
+    if undo.get("statement_id") is not None:
+        tools.panel.retire(undo["statement_id"], tools.clock.now())
+    return None
+
+
+def _undo_statement_retired(tools: Tools, undo: dict[str, Any], ctx: RunContext) -> str | None:
+    assert tools.panel is not None
+    return None if tools.panel.unretire(undo["statement_id"]) else SUPERSEDED
+
+
+for _kind, _handler in (
+    ("suggestion_accepted", _undo_suggestion_accepted),
+    ("suggestion_dismissed", _undo_suggestion_dismissed),
+    ("statement_retired", _undo_statement_retired),
+):
+    register_undo(_kind, _handler)

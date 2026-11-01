@@ -238,9 +238,12 @@ class PanelRepo:
 
     def set_state(
         self, suggestion_id: int, state: str, *, now: datetime, result_ref: str | None = _KEEP,
-        dismiss_reason: str | None = _KEEP, decided: bool = True,
+        dismiss_reason: str | None = _KEEP, decided: bool = True, only_from: str | None = None,
     ) -> bool:
-        """상태를 바꾼다. 주지 않은 `result_ref`·`dismiss_reason`은 그대로 둔다. `decided`면 `decided_at = now`."""
+        """상태를 바꾼다. 주지 않은 `result_ref`·`dismiss_reason`은 그대로 둔다. `decided`면 `decided_at = now`.
+
+        `only_from`을 주면 지금 상태가 그것일 때만 바꾼다(받기·버리기를 두 번 눌러도 한 번만, 바꿨으면 `True`).
+        """
         sets = ["state = ?"]
         args: list[Any] = [state]
         if result_ref is not _KEEP:
@@ -252,8 +255,29 @@ class PanelRepo:
         if decided:
             sets.append("decided_at = ?")
             args.append(to_iso(now))
-        cur = self.conn.execute(f"UPDATE panel_suggestions SET {', '.join(sets)} WHERE id = ?", (*args, suggestion_id))
+        where = "id = ?"
+        args.append(suggestion_id)
+        if only_from is not None:
+            where += " AND state = ?"
+            args.append(only_from)
+        cur = self.conn.execute(f"UPDATE panel_suggestions SET {', '.join(sets)} WHERE {where}", args)
         return cur.rowcount > 0
+
+    def reopen(self, suggestion_id: int, *, only_from: str) -> bool:
+        """받기·버리기 되돌리기: `proposed`로, `result_ref`·`dismiss_reason`·`decided_at`은 NULL로."""
+        cur = self.conn.execute(
+            "UPDATE panel_suggestions SET state = 'proposed', result_ref = NULL, dismiss_reason = NULL, "
+            "decided_at = NULL WHERE id = ? AND state = ?",
+            (suggestion_id, only_from),
+        )
+        return cur.rowcount > 0
+
+    def count_dismissed(self, area: str, reason: str) -> int:
+        """그 영역에서 그 이유로 버린 제안 수(기간 없이, 7.4 "같은 이유가 2회")."""
+        return int(self.conn.execute(
+            "SELECT COUNT(*) FROM panel_suggestions WHERE area = ? AND state = 'dismissed' AND dismiss_reason = ?",
+            (area, reason),
+        ).fetchone()[0])
 
     # --- 예측 (9.1) ---
 
