@@ -145,17 +145,15 @@ async def test_predictions_check(tmp_path):
         _measure(env, "profile_sex", "m", date(2026, 1, 1))
         filled = _predict(env, "waist_cm", 80.0, y)
         _measure(env, "waist_cm", 90.0, y - timedelta(days=30))  # 창 밖
-        _measure(env, "waist_cm", 82.5, y - timedelta(days=10))
+        _measure(env, "waist_cm", 82.5, y - timedelta(days=10))  # 창 안에서 가장 늦은 값이 이긴다
+        _measure(env, "waist_cm", 84.0, y - timedelta(days=12))
         waiting = _predict(env, "grip_rel_pct", 50.0, y)
         _measure(env, "grip_rel_pct", 40.0, y - timedelta(days=20))
         closed = _predict(env, "ldl", 100.0, TODAY - timedelta(days=PREDICTION_WINDOW_DAYS + 1))
         future = _predict(env, "bp_sys", 120.0, TODAY + timedelta(days=1))
-        axis = _predict(env, "axis:health", 60.0, y)
-        _measure(env, "body_fat_pct", 21.5, y - timedelta(days=3))
-        expect_health = standing_service.current(env.conn, env.clock, TODAY).scores["national"]["health"].score
         _steps(env)
         got = {k: _pred(env, p) for k, p in
-               {"filled": filled, "waiting": waiting, "closed": closed, "future": future, "axis": axis}.items()}
+               {"filled": filled, "waiting": waiting, "closed": closed, "future": future}.items()}
         closed_at = got["closed"].checked_at
         env.clock.advance(days=1)
         _steps(env, TODAY + timedelta(days=1))  # 닫힌 줄은 다시 보지 않는다
@@ -168,10 +166,51 @@ async def test_predictions_check(tmp_path):
     assert got["closed"].actual is None and closed_at is not None
     assert again.checked_at == closed_at
     assert (got["future"].actual, got["future"].checked_at) == (None, None)
-    assert got["axis"].actual == float(expect_health)
     block = preamble.split("## 예측\n", 1)[1].split("\n\n", 1)[0]
     assert "ldl" not in block
     assert "grip_rel_pct 예측 50 · 기한" in block and "측정 필요" in block
+
+
+def _profile(env) -> None:
+    _measure(env, "profile_birth_year", 1992, date(2026, 1, 1))
+    _measure(env, "profile_sex", "m", date(2026, 1, 1))
+
+
+async def test_axis_prediction_filled_by_axis_input(tmp_path):
+    """건강 축 예측: 창 안에 건강 점수가 읽는 지표(`grip_rel_pct`)가 있으면 그때 계산한 건강 점수."""
+    async with BeEnv.start(tmp_path, start=WED) as env:
+        y = TODAY - timedelta(days=1)
+        _profile(env)
+        _measure(env, "grip_rel_pct", 55.0, y - timedelta(days=3))  # 다른 건강·외모 지표 없음
+        pid = _predict(env, "axis:health", 60.0, y)
+        expect = standing_service.current(env.conn, env.clock, TODAY).scores["national"]["health"]
+        _steps(env)
+        got = _pred(env, pid)
+    assert "grip_rel_pct" in expect.inputs
+    assert got.actual == float(expect.score) and got.checked_at is not None
+
+
+async def test_axis_prediction_ignores_other_axis_metrics(tmp_path):
+    """외모 지표(`body_fat_pct`)는 건강 축을 채우지 않는다. 건강 입력이 창 밖뿐이면 기다리다가 기한+14 뒤 닫는다.
+    같은 측정값으로 외모 축 예측은 채운다."""
+    async with BeEnv.start(tmp_path, start=WED) as env:
+        y = TODAY - timedelta(days=1)
+        _profile(env)
+        _measure(env, "grip_rel_pct", 55.0, y - timedelta(days=20))  # 건강 입력, 창 밖
+        _measure(env, "body_fat_pct", 21.5, y - timedelta(days=3))  # 외모 입력, 창 안
+        health = _predict(env, "axis:health", 60.0, y)
+        looks = _predict(env, "axis:looks", 60.0, y)
+        now = standing_service.current(env.conn, env.clock, TODAY).scores["national"]
+        _steps(env)
+        waiting, filled = _pred(env, health), _pred(env, looks)
+        later = y + timedelta(days=PREDICTION_WINDOW_DAYS + 1)
+        env.clock.advance(days=PREDICTION_WINDOW_DAYS)
+        _steps(env, later)
+        closed = _pred(env, health)
+    assert "health" in now and "body_fat_pct" not in (*now["health"].inputs, *now["health"].missing)
+    assert (waiting.actual, waiting.checked_at) == (None, None)
+    assert filled.actual == float(now["looks"].score)
+    assert closed.actual is None and closed.checked_at is not None
 
 
 async def test_predictions_log_counts_only(tmp_path, caplog):

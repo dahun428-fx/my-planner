@@ -40,8 +40,8 @@ def update_suggestions(conn: sqlite3.Connection, clock: Clock, today: date) -> N
     counts: Counter[str] = Counter()
 
     for s in panel.suggestions(state="proposed"):
-        if s.created_at <= now - timedelta(days=SUGGESTION_EXPIRE_DAYS):
-            panel.set_state(s.id, "expired", now=now, only_from="proposed")
+        expired = s.created_at <= now - timedelta(days=SUGGESTION_EXPIRE_DAYS)
+        if expired and panel.set_state(s.id, "expired", now=now, only_from="proposed"):
             counts["expired"] += 1
 
     open_ = [
@@ -63,11 +63,9 @@ def update_suggestions(conn: sqlite3.Connection, clock: Clock, today: date) -> N
                 new = "done" if _last_by_ref(habit_events, s) is not None else None
             if new is None or new == s.state:
                 continue
-            if new == "dismissed":
-                panel.set_state(s.id, new, now=now, dismiss_reason="none", decided=False, only_from=s.state)
-            else:
-                panel.set_state(s.id, new, now=now, decided=False, only_from=s.state)
-            counts[new] += 1
+            extra = {"dismiss_reason": "none"} if new == "dismissed" else {}
+            if panel.set_state(s.id, new, now=now, decided=False, only_from=s.state, **extra):
+                counts[new] += 1
 
     log.info("panel_suggestions_updated", extra={
         k: counts[k] for k in ("expired", "done", "postponed", "dismissed")

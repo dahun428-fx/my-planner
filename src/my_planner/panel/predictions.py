@@ -3,8 +3,8 @@
 기한이 지난 예측마다 기한 ±`PREDICTION_WINDOW_DAYS`일 안의 측정값으로 `actual`을 채운다.
 - 지표: 그 지표의 지우지 않은 측정값 가운데 창 안에서 가장 늦은 것의 값.
 - `axis:<축>`: 창 안에 그 축의 입력 지표 측정값이 하나라도 있으면 지금 계산한 그 축의 `national` 점수. 입력 지표는
-  점수 계산이 읽은 지표(`inputs`·`missing`, 프로필 빼고)와 그 축 영역(`AXIS_AREA`)의 지표(`metric_area`)다
-  (계획 Task 14: 건강 축 예측은 창 안의 `body_fat_pct`로도 맞춰 본다).
+  그 축 점수 계산이 실제로 읽는 지표(`inputs`·`missing`, 프로필 빼고)뿐이다(영역이 같은 다른 축 지표는 세지 않는다:
+  건강 축 예측을 외모 측정값으로 맞춰 보지 않게).
 값이 없으면 창이 열려 있는 동안(`today <= due + 창`) 그대로 둔다(앞머리 "측정 필요"). 창이 닫히면 `actual` 없이
 `checked_at`만 채워 닫는다(다시 보지 않고 앞머리에서도 빠진다).
 
@@ -19,8 +19,7 @@ from datetime import date, timedelta
 
 from my_planner.clock import Clock
 from my_planner.standing import service as standing_service
-from my_planner.standing.metrics import metric_area
-from my_planner.standing.score import AXIS_AREA
+from my_planner.standing.score import AXES
 from my_planner.store.repos.panel import PanelRepo, Prediction
 from my_planner.store.repos.standing import Measure, StandingRepo
 
@@ -46,19 +45,16 @@ def _axis_actual(
     conn: sqlite3.Connection, clock: Clock, today: date, measures: list[Measure], p: Prediction,
     cache: dict[str, standing_service.StandingNow],
 ) -> float | None:
+    axis = next((a for a in AXES if a == p.metric.removeprefix(AXIS_PREFIX)), None)
+    if axis is None:
+        return None
     if "now" not in cache:
         cache["now"] = standing_service.current(conn, clock, today)
-    axis = p.metric.removeprefix(AXIS_PREFIX)
-    score = cache["now"].scores["national"].get(axis)  # type: ignore[call-overload]
+    score = cache["now"].scores["national"].get(axis)
     if score is None:
         return None
     inputs = {k for k in (*score.inputs, *score.missing) if not k.startswith("profile_")}
-    area = AXIS_AREA.get(axis)
-
-    def feeds(metric: str) -> bool:
-        return metric in inputs or (area is not None and metric_area(metric) == area)
-
-    if not any(feeds(m.metric) and _in_window(m, p) for m in measures):
+    if not any(m.metric in inputs and _in_window(m, p) for m in measures):
         return None
     return float(score.score)
 
