@@ -161,5 +161,6 @@ def test_cli_standing_import_routes(monkeypatch, tmp_path, capsys):
     f.write_text(json.dumps({"version": 1, "measures": [
         {"metric": "height_cm", "value": 999, "measured_on": "2020-01-01"}]}), encoding="utf-8")
     assert cli.main(["standing", "import", str(f), "--dry-run"]) == 5
-    assert "invalid: 0 height_cm" in capsys.readouterr().out
-    assert "999" not in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert out.strip() == "invalid: 0 height_cm"
+    assert "999" not in out

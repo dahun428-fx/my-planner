@@ -74,7 +74,7 @@ def test_import_grants_x14_and_snapshot(tmp_path):
 def test_import_dry_run(tmp_path):
     code, out = run(tmp_path, write(tmp_path, fixture()), dry_run=True)
     assert (code, out) == (0, "imported: 43, skipped: 0\n")
-    assert not (tmp_path / "state" / "planner.db").exists() or count(tmp_path, "standing_measures") == 0
+    assert not (tmp_path / "state" / "planner.db").exists()
 
 
 def test_import_bad_file_code_6(tmp_path):
@@ -89,3 +89,31 @@ def test_import_running_code_3(tmp_path):
 
 def test_cli_usage_mentions_standing():
     assert "standing import" in cli.USAGE
+
+
+def test_import_dry_run_after_import(tmp_path):
+    f = write(tmp_path, fixture())
+    run(tmp_path, f)
+    assert run(tmp_path, f, dry_run=True) == (0, "imported: 0, skipped: 43\n")
+
+
+def test_import_dry_run_db_without_standing_tables(tmp_path):
+    (tmp_path / "state").mkdir()
+    open_db(tmp_path / "state" / "planner.db").close()  # 마이그레이션 전 빈 DB
+    assert run(tmp_path, write(tmp_path, fixture()), dry_run=True) == (0, "imported: 43, skipped: 0\n")
+
+
+def test_import_nothing_new_grants_nothing(tmp_path):
+    f = write(tmp_path, fixture())
+    run(tmp_path, f)
+    xp, snaps = count(tmp_path, "status_xp_ledger"), count(tmp_path, "standing_snapshots")
+    empty = write(tmp_path, {"version": 1, "measures": []})
+    assert run(tmp_path, empty) == (0, "imported: 0, skipped: 0\n")
+    run(tmp_path, f)  # 모두 중복
+    assert (count(tmp_path, "status_xp_ledger"), count(tmp_path, "standing_snapshots")) == (xp, snaps)
+
+
+def test_import_empty_on_fresh_db_grants_nothing(tmp_path):
+    assert run(tmp_path, write(tmp_path, {"version": 1, "measures": []}))[0] == 0
+    assert count(tmp_path, "status_xp_ledger", "source_kind = 'standing'") == 0
+    assert count(tmp_path, "standing_snapshots") == 0

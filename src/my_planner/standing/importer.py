@@ -135,6 +135,8 @@ def run_import(
                 ro = open_ro(db_path)
                 try:
                     todo, skipped = _plan(rows, StandingRepo(ro, clock))
+                except sqlite3.Error:  # 아직 표가 없는 DB: 가져온 줄이 없는 것으로 본다
+                    todo, skipped = _plan(rows, None)
                 finally:
                     ro.close()
             else:
@@ -151,12 +153,13 @@ def run_import(
                 with transaction(conn):
                     for metric, value, on, rel in todo:
                         repo.add(metric, value, on, "import", None, rel, now)
-                    snapshot_if_first(conn, clock, today)
-                    StatusRepo(conn, clock).grant(
-                        at=now, logical_date=today, source_kind="standing",
-                        source_ref=f"standing:{period_of('quarter', today)}", amount=XP_STANDING,
-                        label=LABEL_STANDING,
-                    )
+                    if todo:  # 가져온 줄이 없으면(빈 파일, 모두 중복) 기준선도 경험치도 없다
+                        snapshot_if_first(conn, clock, today)
+                        StatusRepo(conn, clock).grant(
+                            at=now, logical_date=today, source_kind="standing",
+                            source_ref=f"standing:{period_of('quarter', today)}", amount=XP_STANDING,
+                            label=LABEL_STANDING,
+                        )
             except (sqlite3.Error, ValueError):
                 say(DB_REJECTED_MESSAGE)
                 return EXIT_BAD_FILE
@@ -164,4 +167,3 @@ def run_import(
             return EXIT_OK
         finally:
             conn.close()
-    return EXIT_BAD_FILE  # pragma: no cover
