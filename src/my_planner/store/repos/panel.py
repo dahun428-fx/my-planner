@@ -310,6 +310,12 @@ class PanelRepo:
             (actual, to_iso(now), prediction_id),
         )
 
+    def close_unmeasured(self, prediction_id: int, now: datetime) -> None:
+        """창이 닫혀 값 없이 맞춰 본 것으로 둔다(`checked_at`만, `actual` NULL). 다시 보지 않는다."""
+        self.conn.execute(
+            "UPDATE panel_predictions SET actual = NULL, checked_at = ? WHERE id = ?", (to_iso(now), prediction_id)
+        )
+
     def recent_predictions(self, limit: int = 5) -> list[Prediction]:
         return [
             _prediction(r) for r in self.conn.execute(

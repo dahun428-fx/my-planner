@@ -857,9 +857,14 @@ _SPECS.update({
 
 
 # 하루 끝 판단(`RunContext.kind == "dayend"`, SP14 6.2)에 주는 도구: 그 상대의 읽기 도구 + 관찰 도구 둘. 쓰기 도구는 없다.
-# `write_note`·`hand_off`는 여기에만 있다(`TOOL_NAMES`·`APP_ONLY_TOOLS`·`MATE_TOOLS`에 없다). SP15가 "manager" 줄을 더한다
+# `write_note`·`hand_off`는 여기에만 있다(`TOOL_NAMES`·`APP_ONLY_TOOLS`·`MATE_TOOLS`에 없다). 라이프 매니저(SP15)는
+# 제안·예측·리포트 도구 없이 읽기만
 DAYEND_READ_TOOLS: dict[InboxAgent, list[str]] = {
     "mate": ["get_mate_context", "list_workouts", "get_measures", "list_events", "find_conversations"],
+    "manager": [
+        "list_tasks", "list_events", "list_habits", "read_conditions", "read_body_days", "list_workouts",
+        "read_measures_all", "list_statements", "read_panel_results", "find_conversations",
+    ],
 }
 DAYEND_TOOLS: list[str] = ["write_note", "hand_off"]
 _NOTE_REFS = {

@@ -184,6 +184,13 @@ class AgentsRepo:
             args.append(limit)
         return [_note(r) for r in self.conn.execute(sql, args).fetchall()]
 
+    def notes_by_ids(self, ids: Iterable[int]) -> dict[int, AgentNote]:
+        xs = list(dict.fromkeys(ids))
+        if not xs:
+            return {}
+        rows = self.conn.execute(f"SELECT {_NOTE_COLS} FROM agent_notes WHERE id IN ({_qs(len(xs))})", xs).fetchall()
+        return {n.id: n for n in map(_note, rows)}
+
     def handoffs_on(self, agent: str, day: date) -> int:
         return self.conn.execute(
             "SELECT COUNT(*) FROM agent_notes WHERE agent = ? AND day = ? AND priority = 3", (agent, day.isoformat())

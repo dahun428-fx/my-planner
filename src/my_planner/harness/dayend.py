@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
@@ -19,7 +19,8 @@ from typing import TYPE_CHECKING, Literal
 from my_planner.clock import Clock
 from my_planner.domain import InboxAgent
 from my_planner.harness import prompts
-from my_planner.harness.inbox import event_line
+from my_planner.harness.inbox import event_line, handoff_texts
+from my_planner.panel import budget, lifecycle, predictions
 from my_planner.store.db import transaction
 
 if TYPE_CHECKING:
@@ -35,15 +36,17 @@ DAYEND_MAX_ATTEMPTS = 2  # 두 번 해도 안 되면 본 것으로(6.2, SP8 순�
 DAYEND_EVENTS_MAX = 100
 DAYEND_PAST_NOTES = 3
 
-DAYEND_AGENTS: tuple[InboxAgent, ...] = ("mate",)  # SP15가 "manager"를 더한다
-DAYEND_PROMPTS: dict[InboxAgent, str] = {"mate": "mate.md"}
+DAYEND_AGENTS: tuple[InboxAgent, ...] = ("mate", "manager")  # 이 순서로(SP15: 하루 두뇌 호출 2회까지)
+DAYEND_PROMPTS: dict[InboxAgent, str] = {"mate": "mate.md", "manager": "manager.md"}
 
 DAYEND_DAY_KEY = "agent_dayend_day:{agent}"  # 마지막으로 두뇌를 부른 논리적 날짜
 DAYEND_ATTEMPTS_KEY = "agent_dayend_attempts:{agent}"
 
-# 두뇌 없는 코드 단계(SP15: 패널 제안 상태 갱신, 예측 맞춰 보기). 판단 전에 늘 돈다. 단계마다 따로 트랜잭션
+# 두뇌 없는 코드 단계(SP15). 판단 전에 늘 돈다. 단계마다 따로 트랜잭션. 제안·예측 상태를 닫은 뒤 주간 수를 정한다
 CodeStep = Callable[[sqlite3.Connection, Clock, date], None]
-DAYEND_CODE_STEPS: list[CodeStep] = []
+DAYEND_CODE_STEPS: list[CodeStep] = [
+    lifecycle.update_suggestions, predictions.check_predictions, budget.settle_week,
+]
 
 _WEEKDAY = "월화수목금토일"
 _NONE = "- 없음"
@@ -59,15 +62,20 @@ class DayendInput:
 # --- 입력 (6.2) ---
 
 
-def build_dayend_input(today: date, events: list[AgentEvent], past: list[AgentNote]) -> str:
-    """판단하는 날(어제), 새로 생긴 것(오래된 것부터), 지난 관찰(최신 먼저). 빈 섹션은 `- 없음`."""
+def build_dayend_input(
+    today: date, events: list[AgentEvent], past: list[AgentNote], handoffs: Mapping[str, str] | None = None,
+) -> str:
+    """판단하는 날(어제), 새로 생긴 것(오래된 것부터), 지난 관찰(최신 먼저). 빈 섹션은 `- 없음`.
+
+    `handoffs`는 받은 넘김의 `ref`(`note:<id>`) → 관찰 글. 그 줄 끝에 붙는다(`event_line`)."""
+    texts = handoffs or {}
     day = today - timedelta(days=1)
     return "\n".join([
         "## 판단하는 날",
         f"{day.isoformat()} ({_WEEKDAY[day.weekday()]})",
         "",
         "## 새로 생긴 것",
-        *([event_line(e) for e in events] or [_NONE]),
+        *([event_line(e, texts.get(e.ref)) for e in events] or [_NONE]),
         "",
         "## 지난 관찰",
         *([f"- {n.day.isoformat()} {n.text}" for n in past] or [_NONE]),
@@ -88,8 +96,9 @@ def prepare(
             return "empty"
         shown = list(reversed(unseen[:DAYEND_EVENTS_MAX]))
         past = repo.notes(agent, date.min, limit=DAYEND_PAST_NOTES)
+        texts = handoff_texts(repo, shown)
     return DayendInput(
-        text=build_dayend_input(today, shown, past), event_ids=tuple(e.id for e in unseen), events=len(shown),
+        text=build_dayend_input(today, shown, past, texts), event_ids=tuple(e.id for e in unseen), events=len(shown),
     )
 
 

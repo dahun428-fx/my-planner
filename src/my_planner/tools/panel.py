@@ -71,6 +71,7 @@ __all__ = ["DISMISS_REASONS", "PANEL_EXTRA_BANNED", "PanelTools", "normalize_tit
 
 SUGGESTION_TITLE_MAX = 60
 SUGGESTION_DUE_MAX_DAYS = 60
+SUGGESTION_EXPIRE_DAYS = 7  # `proposed`로 이만큼 지나면 하루 끝 코드 단계가 `expired`로(`panel.lifecycle`)
 SUGGESTION_SIZE_MIN, SUGGESTION_SIZE_MAX = 5, 120
 NOT_INTERESTED_DAYS = 30
 STATEMENT_TEXT_MAX = 200

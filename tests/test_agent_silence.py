@@ -19,7 +19,13 @@ SEND_CALLS = frozenset({
 SILENT = frozenset({
     "my_planner.harness.dayend", "my_planner.harness.inbox", "my_planner.harness.brief_notes",
     "my_planner.tools.agents", "my_planner.store.repos.agents",
+    # SP15 1장 13(T18): 라이프 매니저와 전문가도 먼저 말하지 않는다
+    "my_planner.panel.evidence", "my_planner.panel.budget", "my_planner.panel.pace", "my_planner.panel.experts",
+    "my_planner.panel.lifecycle", "my_planner.panel.predictions", "my_planner.panel.report",
+    "my_planner.harness.manager_context", "my_planner.tools.panel", "my_planner.tools.panel_read",
+    "my_planner.store.repos.panel", "my_planner.api.panel",
 })
+SEND_MODULES = ("my_planner.harness.delivery", "my_planner.bot", "my_planner.api.push")
 DAYEND_FORBIDDEN = frozenset({
     "send_notice", "_run_notice_auth", "_run_notice_rate_limit", "_send_reply", "_send_run", "_fixed_reply",
 })
@@ -66,10 +72,12 @@ def test_lower_agents_have_no_send_path():
     assert "my_planner.harness.dispatcher" in senders  # 검사가 실제로 보고 있다
     assert senders & SILENT == set()
 
-    for rel in ("harness/dayend.py", "tools/agents.py"):
-        imported = _imports(_parse(SRC / rel))
-        bad = {m for m in imported if m.startswith(("my_planner.harness.delivery", "my_planner.bot"))}
-        assert bad == set(), rel
+    modules = {_module(p): p for p in SRC.rglob("*.py")}
+    assert SILENT <= set(modules)  # 이름이 틀려 검사가 비지 않게
+    for name in sorted(SILENT):
+        imported = _imports(_parse(modules[name]))
+        bad = {m for m in imported if m.startswith(SEND_MODULES)}
+        assert bad == set(), name
 
     tree = _parse(SRC / "harness" / "dispatcher.py")
     (cls,) = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Dispatcher"]

@@ -1,6 +1,6 @@
 """API 수용 시험 (가짜 두뇌 + 가짜 시계, `BeEnv`)."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from be_env import BeEnv
@@ -730,6 +730,7 @@ async def test_sp14_master_story(tmp_path):
     script = [
         FakeTurn([("log_workout", {"title": "스쿼트 5x5"})], "기록했어요."),
         FakeTurn([("write_note", note)], ""),
+        FakeTurn([], ""),  # SP15: 라이프 매니저 하루 끝 판단(할 일 사건), 관찰 없음
         FakeTurn([], "좋은 아침이에요."),
     ]
     async with BeEnv.start(tmp_path, start=kst(2026, 11, 1, 13, 0), script=script, dayend=True) as env:
@@ -746,7 +747,7 @@ async def test_sp14_master_story(tmp_path):
         env.clock.set(kst(2026, 11, 2, 9, 0) + timedelta(seconds=30))
         await env.tick()
         kinds = [c["run_ctx"].kind for c in env.brain.calls]
-        (dayend,) = [c["prompt"] for c in env.brain.calls if c["run_ctx"].kind == "dayend"]
+        dayend, _manager = [c["prompt"] for c in env.brain.calls if c["run_ctx"].kind == "dayend"]
         brief = env.sender.sent[-1].text
         (shown,) = env.conn.execute("SELECT shown_at FROM agent_notes").fetchall()
         events = {r["kind"] for r in env.conn.execute("SELECT kind FROM agent_events")}
@@ -754,9 +755,73 @@ async def test_sp14_master_story(tmp_path):
             "SELECT COUNT(*) FROM agent_inbox WHERE agent = 'mate' AND seen_at IS NULL"
         ).fetchone()[0]
 
-    assert kinds == ["chat", "dayend", "run"]
+    assert kinds == ["chat", "dayend", "dayend", "run"]
     assert brief.endswith("\n\n운동메이트: 가짜 관찰 한 줄이에요.")
     assert shown["shown_at"] is not None
     assert {"task_added", "task_done", "workout_logged", "event_added"} <= events
     assert "event_added" in dayend and "workout_logged" not in dayend
     assert unseen == 0
+
+
+async def test_sp15_manager_story(tmp_path):
+    """SP15 1장 2·3·6·11·13: 커리어 할 일 완료 → 라이프 매니저에게 질문(전문가 둘, 제안 하나) → 받기 → 받은 할 일 완료 →
+    다음 날 04:01 하루 끝 판단(메이트, 매니저 순) → 제안 `done`. 매니저는 관찰만 남기고 먼저 말하지 않는다.
+    글과 값은 모두 꾸며 낸 것이다."""
+    from fakes import FakePushSender
+    from ui_stream import parse_sse
+
+    from my_planner.panel.experts import ExpertNote
+
+    notes = (ExpertNote("career", "가짜 커리어 소견"), ExpertNote("relationship", "가짜 관계 소견"))
+    propose = ("propose_suggestion", {
+        "kind": "task", "title": "가짜 제안 할 일", "area": "career", "size_min": 30,
+        "experts": ["career", "relationship"],
+        "evidence": [
+            {"type": "record", "ref": "task:1", "note": "가짜 근거"},
+            {"type": "statement", "ref": "decision:career_first", "note": "가짜 결정 근거"},
+        ],
+    })
+    statement = ("save_statement", {"kind": "fact", "area": "career", "text": "가짜 사실 한 줄이에요."})
+    manager_note = ("write_note", {"text": "가짜 매니저 관찰이에요.", "priority": 2, "refs": ["task:2"]})
+    script = [
+        FakeTurn([statement, propose], "두 분 의견을 모았어요.", expert_notes=notes),
+        FakeTurn([], ""),  # 메이트 하루 끝 판단
+        FakeTurn([manager_note], ""),  # 매니저 하루 끝 판단
+    ]
+    push = FakePushSender()
+    async with BeEnv.start(tmp_path, start=kst(2026, 11, 2, 13, 0), script=script, dayend=True, push=push) as env:
+        env.parts.runner.checkins = False  # 저녁 회차 없이 04:01 하루 한 번 작업만
+        await env.subscribe("https://push.example.invalid/1")
+        _, added = await env.action("add_task", {"title": "꾸민 커리어 할 일", "areas": ["career"]})
+        assert added["result"]["id"] == 1
+        status, _ = await env.action("complete_task", {"id": 1})
+        assert status == 200
+        status, _ = await env.action("record_condition", {"score": 4})  # 메이트 받은편지함에도 한 줄
+        assert status == 200
+        _, raw = await env.chat("연봉이 오르면 결혼 시장 점수는 어떻게 돼?", agent="manager")
+        chunks = parse_sse(raw)
+        (row,) = env.conn.execute("SELECT id FROM panel_suggestions").fetchall()
+        status, body = await env.action("accept_suggestion", {"id": row["id"]})
+        assert status == 200 and body["status"] == "applied", body
+        made = int(body["result"]["result_ref"].split(":")[1])
+        status, _ = await env.action("complete_task", {"id": made})
+        assert status == 200
+        env.clock.set(kst(2026, 11, 3, 4, 1))
+        await env.tick()
+        suggestion = env.parts.panel.suggestion(row["id"])
+        accepted = env.conn.execute("SELECT COUNT(*) FROM agent_events WHERE kind = 'suggestion_accepted'").fetchone()[0]
+        dayend = [c["run_ctx"].agent for c in env.brain.calls if c["run_ctx"].kind == "dayend"]
+        manager_notes = env.parts.agents.notes("manager", date.min)
+        budget = env.parts.state.get("panel_budget:2026-W45")
+        runs = env.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+
+    (expert_part,) = [c for c in chunks if c["type"] == "data-expert-notes"]
+    assert [n["expert"] for n in expert_part["data"]["notes"]] == ["career", "relationship"]
+    cards = [c for c in chunks if c.get("type") == "tool-input-available" and c.get("toolName") == "ui_panel_suggestion"]
+    assert [c["input"] for c in cards] == [{"suggestion_id": row["id"]}]
+    assert suggestion.state == "done"
+    assert accepted == 1
+    assert dayend == ["mate", "manager"]
+    assert [(n.text, n.priority) for n in manager_notes] == [("가짜 매니저 관찰이에요.", 2)]
+    assert budget is not None
+    assert env.sender.sent == [] and push.sent == [] and runs == 0

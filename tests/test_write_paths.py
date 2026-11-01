@@ -272,6 +272,12 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     assert ("agent_notes", "my_planner.tools.agents", DISPATCHER, True) in rec.tool_calls
     assert ("agent_notes", DISPATCHER) in rec.seen
     assert ("agent_inbox", DAYEND_JOB) in rec.seen and ("app_state", DAYEND_JOB) in rec.seen
+    # SP15 이야기(`test_sp15_manager_story`): 받기는 `/actions`의 즉시 갈래, 받은 할 일 완료는 하루 끝 갱신이 `done`으로,
+    # 내가 한 말은 두뇌 갈래의 패널 도구, 주간 제안 수는 하루 끝 코드 단계의 `panel.budget`
+    assert ("panel_suggestions", "my_planner.panel.lifecycle") in rec.seen
+    assert ("panel_suggestions", "my_planner.tools.panel", "my_planner.api.actions", True) in rec.tool_calls
+    assert ("owner_statements", "my_planner.tools.panel") in rec.seen
+    assert ("app_state", "my_planner.panel.budget") in rec.seen
 
 
 async def test_sp8_write_paths(tmp_path, monkeypatch):
@@ -308,13 +314,16 @@ async def test_sp14_dayend_write_paths(tmp_path, monkeypatch):
         ("write_note", {"text": "토요일 저녁만 비어 있어요", "priority": 2, "refs": ["checkin:2026-11-01"]}),
         ("hand_off", {"to": "manager", "text": "저녁 일정이 많아요", "refs": ["checkin:2026-11-01"]}),
     ], "")
-    async with BeEnv.start(tmp_path, script=[turn], start=kst(2026, 11, 2, 3, 0), dayend=True) as env:
+    # 넘김을 받은 라이프 매니저 판단도 같은 tick에 돈다(SP15, 메이트 다음)
+    async with BeEnv.start(tmp_path, script=[turn, FakeTurn([], "")], start=kst(2026, 11, 2, 3, 0), dayend=True) as env:
         env.parts.runner.checkins = False
         status, _ = await env.action("record_condition", {"score": 4})  # `condition_logged` → 메이트에게도
         assert status == 200
         env.clock.set(kst(2026, 11, 2, 4, 1))
         await env.tick()
-        assert [c["run_ctx"].kind for c in env.brain.calls] == ["dayend"]
+        assert [(c["run_ctx"].kind, c["run_ctx"].agent) for c in env.brain.calls] == [
+            ("dayend", "mate"), ("dayend", "manager"),
+        ]
 
     assert rec.unparsed == []
     assert sorted((t, m) for t, m in rec.seen if not _allowed(t, m)) == []
