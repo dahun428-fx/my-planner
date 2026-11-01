@@ -205,3 +205,15 @@ def test_chip_common_rule_only_on_saving_chips():
         assert chip_block(key) == f"## 버튼\n{prompts.load(f'chip_{key}.md')}\n\n{common}", key
     for key in ("today", "next"):
         assert chip_block(key) == f"## 버튼\n{prompts.load(f'chip_{key}.md')}", key
+
+
+def test_agent_dayend_prompt_has_no_banned_words():
+    """SP14 T11: 하루 끝 판단 덧붙임 블록(`agent_dayend.md`)에 금지어가 없다."""
+    from my_planner.tools.ui import banned_words
+
+    text = prompts.load("agent_dayend.md")
+    assert text.splitlines()[0] == "## 하루 끝 판단"
+    for word in banned_words():
+        assert word not in text, word
+    for phrase in ("write_note", "hand_off", "120자", "많아야 2개", "하루 2번까지"):
+        assert phrase in text, phrase

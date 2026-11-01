@@ -1,5 +1,5 @@
 import { type Conn, loadConn, reportResult } from "../lib/connection";
-import type { DeviceList, Health, PairBody, PairCreated, PairResult, PairStatus } from "./types.gen";
+import type { AgentNotes, DeviceList, Health, InboxCount, PairBody, PairCreated, PairResult, PairStatus } from "./types.gen";
 import { type ModelName, validateModel } from "./validate";
 
 export type ApiResult<T> =
@@ -147,4 +147,16 @@ export function createPairCode(): Promise<ApiResult<PairCreated>> {
 
 export function getPairStatus(signal?: AbortSignal): Promise<ApiResult<PairStatus>> {
   return apiFetch<PairStatus>("GET", "/devices/pair", { model: "PairStatus", signal });
+}
+
+// ---- the partners (SP14 10장, 11장) ---------------------------------------------------------------
+
+// "새로 본 것 n개": what the partner has not yet seen. Reading it calls no brain.
+export function getInboxCount(agent: "mate" | "manager"): Promise<ApiResult<InboxCount>> {
+  return apiGet<InboxCount>(`/agents/${agent}/inbox/count`, "InboxCount");
+}
+
+// More › "비서 메모": the partners' notes of the last `days` days (403 for a dashboard device).
+export function getAgentNotes(days = 7): Promise<ApiResult<AgentNotes>> {
+  return apiGet<AgentNotes>(`/agents/notes?days=${days}`, "AgentNotes");
 }

@@ -120,12 +120,16 @@ class BeEnv:
         api_sleep: Any = None,
         push: Any = None,
         moments: bool = False,
+        dayend: bool = False,
         body_token: str | None = None,
     ) -> AsyncIterator[BeEnv]:
         """`push`: 가짜 푸시 전송(`FakePushSender`). 주면 꾸며 낸 VAPID 값으로 푸시를 켠다.
 
         `moments`: 하루 끝 이룬 순간 작업(SP8 6.2)을 켠다. 기본은 끔(`moments_paused = "1"`): 하루 tick이 두뇌
         시나리오를 쓰지 않게. 순간 시험만 켠다.
+
+        `dayend`: 하루 끝 판단(SP14 6.1)의 하루 한 번 작업 `queue_dayend`를 둔다. 기본은 끔: 러너의 하루 작업 목록에서
+        뺀다(받은편지함에 줄이 있는 시험의 하루 tick이 두뇌 시나리오를 쓰지 않게). 하루 끝 판단 시험만 켠다.
 
         `body_token`: `.env`의 `BODY_TOKEN` 자리(꾸며 낸 값). 주면 `app._body_token`의 규칙(43자 이상, `API_TOKEN`과
         다름)대로 `POST /body`를 연다. 기본은 None(경로 없음, 경고 없음)."""
@@ -157,6 +161,8 @@ class BeEnv:
         parts.state.set("last_seen_at", before)
         if not moments:
             parts.state.set(MOMENTS_PAUSED_KEY, "1")
+        if not dayend:
+            parts.runner._daily = [j for j in parts.runner._daily if j.__name__ != "queue_dayend"]
         deps = ApiDeps(
             settings=settings, clock=clock, token=TEST_TOKEN, read_conn=lambda: open_ro(db_path),
             dispatcher=parts.dispatcher, errors=ErrorCounter(clock),

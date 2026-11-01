@@ -27,4 +27,6 @@
   <symbol id="p-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" stroke-width="2"/></symbol>
   <symbol id="p-estimate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="2.5 3"/><path d="M9.8 9.5a2.3 2.3 0 0 1 4.4 1c0 1.5-2.2 1.9-2.2 3.2M12 17h.01"/></symbol>
   <symbol id="p-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="p-dumbbell" viewBox="0 0 24 24"><rect x="5" y="6" width="3" height="12" rx="1"/><rect x="16" y="6" width="3" height="12" rx="1"/><path d="M2.5 12h2.5M8 12h8M19 12h2.5M2.5 9.5v5M21.5 9.5v5"/></symbol>
+  <symbol id="p-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
 </svg>

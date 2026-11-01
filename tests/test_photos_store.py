@@ -91,7 +91,7 @@ def test_020_tables_checks_and_photo_reads(tmp_path):
     assert migrate(conn, upto=19) == 19
     conn.execute("INSERT INTO usage_state (date) VALUES ('2026-10-25')")
     conn.commit()
-    assert migrate(conn) == 22
+    assert migrate(conn) == 23
     assert conn.execute("SELECT photo_reads FROM usage_state").fetchone()[0] == 0  # 019까지 있던 행도 0
     names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
     assert {"photos", "memo_photos", "message_photos", "idx_message_photos_conv"} <= names
@@ -134,7 +134,7 @@ def test_020_rebuilds_api_idempotency_with_photos(tmp_path):
         conn.execute(ins, ("p-0", "photos", 201, None, None, "a"))
     conn.rollback()
     cols_before = [tuple(r) for r in conn.execute("PRAGMA table_info(api_idempotency)")]
-    assert migrate(conn) == 22
+    assert migrate(conn) == 23
     rows = [tuple(r) for r in conn.execute("SELECT * FROM api_idempotency ORDER BY at")]
     cols_after = [tuple(r) for r in conn.execute("PRAGMA table_info(api_idempotency)")]
     conn.execute(ins, ("p-1", "photos", 201, '{"id": 1}', None, "b"))

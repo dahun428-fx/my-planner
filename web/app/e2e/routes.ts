@@ -161,6 +161,18 @@ export type MockOptions = {
   chatHangs?: boolean;
   /** SP13 10장: /status as an app device gets it, with `standing` and `innate` (default: the dashboard shape). */
   standing?: boolean;
+  /** SP14 10장: /health lists `mate` and `agent_notes`; the brief ends with an observation line, the mate's
+   * inbox count is 3, and /agents/notes has two fake notes. */
+  agentNotes?: boolean;
+};
+
+/** SP14 10장: fake partner notes (no real values). */
+export const AGENT_NOTE_LINE = "토요일 오전이 몇 주째 비어 있어요. 가볍게 걷기를 넣어 볼까요?";
+const AGENT_NOTES = {
+  notes: [
+    { id: 2, agent: "mate", text: AGENT_NOTE_LINE, day: "2026-10-24", priority: 2, created_at: "2026-10-23T14:00:00Z", shown_at: "2026-10-24T01:00:00Z" },
+    { id: 1, agent: "mate", text: "이번 주는 하체 운동이 두 번 들어갔어요.", day: "2026-10-22", priority: 3, created_at: "2026-10-21T14:00:00Z", shown_at: null },
+  ],
 };
 
 /** An answer in Markdown, streamed in small pieces: emphasis, a list, a table, a code block, a link. */
@@ -215,10 +227,19 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     const q = url.searchParams;
     const get = req.method() === "GET";
 
-    if (get && path === "/health") return json(route, opts.mate ? { ...(fixture("health") as object), features: ["mate"] } : fixture("health"));
+    if (get && path === "/health") {
+      const features = opts.agentNotes ? ["mate", "agent_notes"] : opts.mate ? ["mate"] : null;
+      return json(route, features ? { ...(fixture("health") as object), features } : fixture("health"));
+    }
+    if (get && opts.agentNotes && path === "/agents/mate/inbox/count") return json(route, { unseen: 3 });
+    if (get && opts.agentNotes && path === "/agents/notes") return json(route, AGENT_NOTES);
     if (get && path === "/workout") return json(route, WORKOUT);
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
-    if (get && path === "/today") return json(route, today());
+    if (get && path === "/today") {
+      const t = today() as { brief: { text: string } | null };
+      if (opts.agentNotes && t.brief) t.brief = { ...t.brief, text: `${t.brief.text}\n\n운동메이트: ${AGENT_NOTE_LINE}` };
+      return json(route, t);
+    }
     if (get && path === "/status") return json(route, fixture(opts.standing ? "status-standing" : "status"));
     if (get && path === "/standing") return json(route, fixture("standing")); // SP13 10.3
     if (get && path === "/standing/measures") return json(route, fixture("standing-measures"));

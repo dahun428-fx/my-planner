@@ -7,7 +7,7 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server
 
-from my_planner.domain import RunContext
+from my_planner.domain import InboxAgent, RunContext
 from my_planner.standing.metrics import METRICS
 from my_planner.timefmt import to_api_times
 from my_planner.tools.events import ui_event_items
@@ -700,10 +700,11 @@ _SPECS["save_moments"] = (
 NO_TOOL_KINDS = frozenset({"summary", "photo_read"})  # 도구를 주지 않는 실행 종류
 
 # 메이트 대화(`RunContext.agent == "mate"`, SP12 5.3)에 주는 도구. 이 목록에 있는 것만 쓴다(할 일·습관·메모·일정·
-# 카드 도구는 비서 몫이다). 운동 도구 여덟은 메이트에만 있다(`TOOL_NAMES`, `APP_ONLY_TOOLS`에 없다)
+# 카드 도구는 비서 몫이다). 운동 도구 여덟과 측정값 읽기(SP14, ADR 0019 덧붙임)는 메이트에만 있다(`TOOL_NAMES`,
+# `APP_ONLY_TOOLS`에 없다)
 MATE_TOOLS: list[str] = [
     "get_mate_context", "save_body_note", "drop_body_note", "set_workout_plan", "log_workout", "update_workout_log",
-    "delete_workout_log", "list_workouts",
+    "delete_workout_log", "list_workouts", "get_measures",
     "record_condition", "find_conversations", "ui_block", "ui_choice", "ui_summary_card",
 ]
 
@@ -854,14 +855,52 @@ _SPECS.update({
 })
 
 
+# 하루 끝 판단(`RunContext.kind == "dayend"`, SP14 6.2)에 주는 도구: 그 상대의 읽기 도구 + 관찰 도구 둘. 쓰기 도구는 없다.
+# `write_note`·`hand_off`는 여기에만 있다(`TOOL_NAMES`·`APP_ONLY_TOOLS`·`MATE_TOOLS`에 없다). SP15가 "manager" 줄을 더한다
+DAYEND_READ_TOOLS: dict[InboxAgent, list[str]] = {
+    "mate": ["get_mate_context", "list_workouts", "get_measures", "list_events", "find_conversations"],
+}
+DAYEND_TOOLS: list[str] = ["write_note", "hand_off"]
+_NOTE_REFS = {
+    "type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 5,
+    "description": "근거로 본 참조(workout:12, event:7 같은 것) 1~5개",
+}
+_NOTE_TEXT = {"type": "string", "maxLength": 120, "description": "1~120자 한 줄(줄바꿈 없음). 판단과 근거를 함께"}
+_SPECS.update({
+    "get_measures": (
+        "건강·외모 측정값(체성분, 혈압·혈당 같은 검진 수치, 체력 기록)의 지표마다 가장 최근 값을 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "write_note": (
+        (
+            "하루 끝 판단의 관찰 한 줄을 남깁니다. 한 번에 2개까지이고, 관찰이 없으면 부르지 않습니다. text는 120자 안의 "
+            "한 줄로 판단과 근거를 함께 씁니다. priority는 건강이나 돈의 위험처럼 꼭 알려야 할 때만 1, 그 밖은 2입니다. "
+            "refs에는 근거로 본 참조(workout:12, event:7 같은 것)를 1~5개 넣습니다."
+        ),
+        _schema({"text": _NOTE_TEXT, "priority": {"enum": [1, 2]}, "refs": _NOTE_REFS}, ["text", "priority", "refs"]),
+    ),
+    "hand_off": (
+        (
+            "다른 상대가 알아야 할 것을 한 줄로 넘깁니다. 받는 상대가 다음 판단 때 읽습니다(아침 브리핑에는 붙지 않습니다). "
+            "하루 2번까지이고 자기 자신에게는 넘기지 않습니다. text와 refs는 write_note와 같습니다."
+        ),
+        _schema(
+            {"to": {"enum": ["mate", "manager"]}, "text": _NOTE_TEXT, "refs": _NOTE_REFS}, ["to", "text", "refs"],
+        ),
+    ),
+})
+
+
 def tool_names_for(ctx: RunContext) -> list[str]:
     """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
-    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만. 호출 종류(순간·요약·사진 읽기)가 상대보다 먼저다.
+    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
         return list(MOMENTS_TOOLS)
+    if ctx.kind == "dayend":  # SP14 6.2: 읽기 도구 + 관찰 도구. 상대보다 먼저
+        return [*DAYEND_READ_TOOLS[ctx.agent], *DAYEND_TOOLS]  # type: ignore[index]
     # 대화 요약(SP9 7.2), 사진 읽기(SP10 5.4): 도구 없음. 사진 속 글이 지시처럼 보여도 쓸 도구가 없다
     if ctx.kind in NO_TOOL_KINDS:
         return []

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from my_planner.status.xp import XpGain
 
@@ -74,7 +74,19 @@ Agent = Literal["secretary", "mate"]
 Risk = Literal["low", "confirm"]  # 활동 위험 (5.2, 6.4.2)
 # 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음),
 # 사진 읽기는 `photo_read`(SP10 5.4, 도구 없음)
-RunKind = Literal["chat", "run", "moments", "summary", "photo_read"]
+RunKind = Literal["chat", "run", "moments", "summary", "photo_read", "dayend"]
+
+# 사건 기록(SP14 스펙 5.1~5.3). 종류 18개, 출처 5개, 받은편지함이 있는 아래층 상대 둘
+EventKind = Literal[
+    "task_done", "task_postponed", "task_added", "task_dropped", "event_added", "event_changed", "event_removed",
+    "memo_saved", "habit_checked", "condition_logged", "body_logged", "workout_logged", "measure_saved",
+    "moment_saved", "review_answered", "suggestion_accepted", "suggestion_dismissed", "handoff",
+]
+EVENT_KINDS: tuple[str, ...] = get_args(EventKind)
+EventOrigin = Literal["app", "telegram", "scheduler", "brain", "import"]
+EVENT_ORIGINS: tuple[str, ...] = get_args(EventOrigin)
+InboxAgent = Literal["mate", "manager"]
+INBOX_AGENTS: tuple[InboxAgent, ...] = ("mate", "manager")
 
 
 @dataclass
@@ -119,6 +131,9 @@ class RunContext:
     chip: str | None = None
     chip_text: str | None = None
     agent: Agent = "secretary"  # 대화 상대(SP12 5.1). `mate`면 `mate.md`와 `MATE_TOOLS`
+    in_brain: bool = False  # 두뇌 호출 안의 도구 호출(SP14 Task 2)
+    dayend_day: date | None = None  # 하루 끝 판단이 판단하는 날(Task 3)
+    notes_written: int = 0  # 이 호출에서 저장한 관찰 수(Task 3)
 
     @property
     def run_turn(self) -> bool:

@@ -304,3 +304,11 @@ async def test_health_inbound_pending_oldest_at(tmp_path):
         env.conn.commit()
         body = await _health(env)
     assert body["inbound_pending_oldest_at"] == "2026-10-24T01:00:00Z"
+
+
+async def test_health_features_include_agent_notes(tmp_path):
+    from test_api_read import get_json
+
+    async with BeEnv.start(tmp_path, start=kst(2026, 11, 1, 14, 0)) as env:
+        body = await get_json(env, "/health")
+    assert body["features"] == ["mate", "agent_notes"]

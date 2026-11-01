@@ -32,6 +32,10 @@
   font-size: var(--size-body);
   line-height: 1.5;
 }
+/* SP14 10장: the partners' lines under the brief text. */
+.notes {
+  padding: 0 var(--pad) 0.75rem;
+}
 .card {
   margin: 0 var(--gutter) var(--gap);
 }
@@ -138,4 +142,7 @@
   min-height: var(--control-h);
   font-weight: 600;
   color: var(--notice-ink);
+}
+.notes:first-child {
+  padding-top: 0.75rem;
 }

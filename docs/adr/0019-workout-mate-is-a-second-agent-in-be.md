@@ -14,3 +14,4 @@ Dahun은 목표를 관리받기보다 지금 몸 상태를 같이 보고 운동 
 ## 덧붙임 (SP14, 2026-11-01)
 
 "두 상대는 대등하다"는 [ADR 0021](0021-master-secretary-routes-events-down-and-speaks-alone.md)로 대체된다: 비서가 마스터, 메이트는 그 아래. `MATE_TOOLS`에 측정값 읽기(`get_measures`, 건강·외모 지표만)가 더해지고, 하루 끝 판단 때만 `write_note`·`hand_off`를 받는다. 메이트는 여전히 먼저 말하지 않는다.
+하루 끝 판단 때는 일정 읽기(`list_events`, 읽기만)도 받는다. `get_mate_context`의 오늘 일정만으로는 이번 주 운동할 시간을 판단할 수 없어서다.

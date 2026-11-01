@@ -43,6 +43,10 @@
   font-size: var(--size-body);
   line-height: var(--lh-body);
 }
+/* SP14 10장: the partners' lines under the brief body (and under its fold button). */
+.briefNotes {
+  padding: 0.75rem 0;
+}
 /* The brief is Markdown (several blocks): the clamp counts lines across them, and the height cap
    keeps three lines where a browser clamps only one block. */
 .folded {

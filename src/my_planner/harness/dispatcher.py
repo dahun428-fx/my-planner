@@ -19,19 +19,23 @@ import anyio
 
 from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
 from my_planner.domain import (
+    INBOX_AGENTS,
     Agent,
     Cadence,
     Channel,
     ConversationKind,
+    InboxAgent,
     LoopKey,
     RunContext,
     SkipReason,
     TaskStatus,
     ToolEvent,
 )
+from my_planner.harness import dayend as dayend_job
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.brief_notes import brief_block, settle_brief
 from my_planner.harness.chat_photos import message_text, photo_body, photo_content
 from my_planner.harness.chip_cards import chip_cards
 from my_planner.harness.context import (
@@ -42,6 +46,7 @@ from my_planner.harness.context import (
     moments_week_block,
     recent_areas_block,
 )
+from my_planner.harness.inbox import inbox_block
 from my_planner.harness.mate_context import build_mate_preamble
 from my_planner.harness.photo_reader import (
     PhotoGone,
@@ -111,6 +116,7 @@ if TYPE_CHECKING:
         ConfirmsRepo,
         IdempotencyRepo,
     )
+    from my_planner.store.repos.agents import AgentsRepo
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import Conversation, ConversationsRepo
@@ -280,6 +286,13 @@ class _MomentsJob:
 
 
 @dataclass
+class _DayendJob:
+    """하루 끝 판단(SP14 6.1): 코드 단계 → 상대마다 판단 → 정리. 순간 정리 다음 차례다. `date`는 논리적 오늘."""
+
+    date: date
+
+
+@dataclass
 class _SummaryJob:
     """닫힌 앱 대화 하나의 제목·요약(SP9 7.2). 메시지와 회차 다음 차례다."""
 
@@ -315,6 +328,7 @@ class _ResendJob:
 _PRIORITY_MESSAGE = 0  # 사용자 메시지가 회차보다 먼저
 _PRIORITY_RUN = 1
 _PRIORITY_MOMENTS = 2  # 하루 끝 순간: 기다리는 메시지와 회차가 먼저(SP8 6.2-4)
+_PRIORITY_DAYEND = 3  # 하루 끝 판단(SP14 6.1): 이룬 순간 다음
 _PRIORITY_SUMMARY = 2  # 대화 요약(SP9 7.2): 같은 차례의 순간 정리와는 들어온 순서
 _PRIORITY_PHOTO_READ = _PRIORITY_MESSAGE  # 사진 읽기(SP10 5.4): 사용자가 기다린다. 메시지와는 들어온 순서
 _PRIORITY_STOP = 1_000_000
@@ -461,6 +475,9 @@ class Dispatcher:
         self._stopping = False
         self._busy = False  # 작업자가 꺼낸 항목을 처리하는 중
         self._run_questions: dict[int, int] = {}  # 회차 id → 그 회고에 실은 열린 시드 질문 id(보내면 `asked`)
+        # 회차 id → 아침 브리핑에 실은 관찰 id(보내면 `shown_at`, SP14 8장). 메모리에만: 보내기 전에 다시 켜지면
+        # 표시되지 않고 다음 브리핑 후보로 남는다
+        self._brief_shown: dict[int, tuple[int, ...]] = {}
         # 요약 큐(SP9 7.2): 큐에 든 대화, 이 프로세스에서 이미 해 본 대화(tick마다 다시 넣지 않는다. 하루 한 번 작업이
         # 비우고 최근 7일을 다시 넣는다). 메모리에만 둔다: 재시작 뒤 첫 tick이 남은 것을 다시 넣는다
         self._summary_queued: set[int] = set()
@@ -938,6 +955,10 @@ class Dispatcher:
         """그날의 이룬 순간 정리를 넣는다(하루 한 번 작업 `queue_moments`, SP8 6.2). 대기열은 메모리에만 있다."""
         self._queue.put_nowait((_PRIORITY_MOMENTS, next(self._seq), _MomentsJob(day)))
 
+    def submit_dayend(self, today: date) -> None:
+        """하루 끝 판단을 넣는다(하루 한 번 작업 `queue_dayend`, SP14 6.1). `today`는 논리적 오늘."""
+        self._queue.put_nowait((_PRIORITY_DAYEND, next(self._seq), _DayendJob(today)))
+
     def submit_resend(self, run: Run) -> None:
         """시작 시 복구: 전송이 끝내 안 된 회차(`failed`, `outbound_text` 있음)를 전송만 한 번 다시 한다.
 
@@ -1018,6 +1039,12 @@ class Dispatcher:
                 await self._handle_moments(item)
             except Exception:
                 log.exception("moments_handling_error", extra={"date": item.date.isoformat()})
+            return
+        if isinstance(item, _DayendJob):
+            try:
+                await self._handle_dayend(item)
+            except Exception:
+                log.exception("agent_dayend_handling_error", extra={"date": item.date.isoformat()})
             return
         if isinstance(item, _SummaryJob):
             try:
@@ -1163,10 +1190,16 @@ class Dispatcher:
         review_step = flow.reply_step(review_run) if flow is not None and review_run is not None else None
 
         run_ctx = self._message_ctx(conv.id, lead, chip_of)
+        # 즉시 판단(SP14 7장): 메이트 대화의 메시지마다 안 읽은 사건 블록. 비서에는 붙이지 않는다
+        block = (
+            inbox_block(self.tools.agents, conv.agent, self._today())
+            if conv.agent in INBOX_AGENTS and self.tools is not None and self.tools.agents is not None else None
+        )
         # `_recorded_condition()`은 메이트에도 붙인다(SP12 5.4: 이어진 세션에서도 오늘 컨디션 기록 여부를 본다)
         body = _join(
             self._recorded_condition(),
             chip_block(chip_of.chip) if chip_of.chip is not None else "",
+            block.text if block is not None else "",
             f"## 메시지\n{text}",
             step_note(review_step, where="답"),
         )
@@ -1312,6 +1345,11 @@ class Dispatcher:
                 ):
                     log.info("message_daily_cap_during_backoff", extra={"conversation_id": conv.id})
                 return
+            if block is not None and result.status == "ok":
+                # 두뇌가 제대로 답했을 때만 읽음 표시(오류·멈추기·상한 길은 위에서 나갔거나 여기 오지 않는다)
+                assert self.tools is not None and self.tools.agents is not None
+                with transaction(self.tools.agents.conn):
+                    self.tools.agents.mark_seen(conv.agent, block.event_ids, self.clock.now())
             streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
             body_text = app.writer.streamed_reply if streamed else _reply_for(result)
@@ -1922,6 +1960,11 @@ class Dispatcher:
         if result.session_id:
             self.convs.set_session(conv.id, result.session_id)
         text = MAX_TURNS_REPLY if partial else result.text
+        if (repo := self._brief_repo(run, merged)) is not None:
+            # 관찰 줄 정리(8장): 확인 문구를 붙이기 전에. 표시는 보낸 뒤(`_run_delivered`)
+            settled = settle_brief(text, repo.brief_candidates(self._today()))
+            text = settled.text
+            self._brief_shown[run.id] = settled.shown_ids
         confirmations = self._confirmations(run_ctx)
         if confirmations:
             text = f"{text}\n\n{confirmations}"
@@ -2006,6 +2049,7 @@ class Dispatcher:
                 include_habits=any(r.loop is LoopKey.evening_checkin for r in (run, *merged)),  # 오늘 블록(5.7). 주간 블록은 아래
                 habit_day=habit_date,
             ),
+            self._brief_block(run, merged),
             self._habit_week_block(run, merged),
             self._review_records_blocks(run, merged),
             _condition_buttons_note(ask),
@@ -2015,6 +2059,17 @@ class Dispatcher:
             f"## 이번에 물을 질문\n{question[1]}" if question is not None else "",
         )
         return await self._call_brain(prompt, session_id=None, run_ctx=run_ctx), run_ctx
+
+    def _brief_repo(self, run: Run, merged: list[Run]) -> AgentsRepo | None:
+        """아침 브리핑 회차(합친 회차 포함)이고 관찰 저장소가 있으면 그 저장소(SP14 8장). 다른 회차에는 관찰이 없다."""
+        if not any(r.loop is LoopKey.morning_brief for r in (run, *merged)):
+            return None
+        return self.tools.agents if self.tools is not None else None
+
+    def _brief_block(self, run: Run, merged: list[Run]) -> str:
+        """아침 브리핑에만 `## 아래층 관찰`(후보가 없으면 빈 글)."""
+        repo = self._brief_repo(run, merged)
+        return brief_block(repo.brief_candidates(self._today())) if repo is not None else ""
 
     def _habit_week_block(self, run: Run, merged: list[Run]) -> str:
         """주간 회고 회차에만 `## 이번 주 습관`(SP7 5.7)."""
@@ -2158,6 +2213,14 @@ class Dispatcher:
         t.add_done_callback(self._timers.discard)
 
     async def _resend_run(self, job: _ResendJob) -> None:
+        try:
+            await self._resend_once(job)
+        finally:
+            # 재전송은 한 번뿐이다: 어떻게 끝나든(보냄, 못 보냄, 건너뜀) 실은 관찰 id를 메모리에서 지운다. 보냈으면
+            # 그 전에 표시했다. 못 보낸 관찰은 다음 브리핑 후보로 남는다(SP14 8장)
+            self._brief_shown.pop(job.run.id, None)
+
+    async def _resend_once(self, job: _ResendJob) -> None:
         assert self.runs is not None
         run = self.runs.get(job.run.id)
         if run is None or run.status != "failed" or not run.outbound_text or run.resent:
@@ -2188,7 +2251,9 @@ class Dispatcher:
             outcome = await self._send_run(out, run, attempts=1)
             if outcome.sent and conv is not None:
                 self._run_delivered(run, job.merged, conv, run.outbound_text, job.tool_names, outcome=outcome)
-            elif not outcome.sent:
+            elif outcome.sent:
+                self._mark_brief_shown(run)  # 대화가 없어도 사용자는 받았다: 실은 관찰은 보인 것
+            else:
                 self._record_not_sent(run, outcome)
 
     def _release_carry(self, runs: Iterable[Run]) -> None:
@@ -2234,6 +2299,7 @@ class Dispatcher:
         except Exception:
             log.exception("run_touch_error", extra={"run_id": run.id})
         self._save_review(run, merged, text)
+        self._mark_brief_shown(run)
         question = self._run_questions.pop(run.id, None)
         if question is not None and self.tools is not None:
             try:
@@ -2241,6 +2307,18 @@ class Dispatcher:
             except Exception as e:  # noqa: BLE001 - 질문 표시가 안 되면 다음 월말 회고가 다시 싣는다
                 log.warning("curve_question_mark_error", extra={"error_type": type(e).__name__})
         log.info("run_done", extra={"run_id": run.id, "loop": run.loop.value, "conversation_id": conv.id})
+
+    def _mark_brief_shown(self, run: Run) -> None:
+        """보낸 아침 브리핑에 실은 관찰을 보인 것으로(8장). 안 되면 다음 브리핑 후보로 남는다."""
+        ids = self._brief_shown.pop(run.id, ())
+        if not ids or self.tools is None or self.tools.agents is None:
+            return
+        repo = self.tools.agents
+        try:
+            with transaction(repo.conn):
+                repo.mark_shown(ids, self.clock.now())
+        except Exception as e:  # noqa: BLE001 - 종류만 남긴다
+            log.warning("brief_notes_mark_error", extra={"run_id": run.id, "error_type": type(e).__name__})
 
     def _save_review(self, run: Run, merged: list[Run], text: str) -> None:
         """회고가 primary이거나 merged에 있으면 보낸 답(가린 뒤)을 그 주의 파일에 쓴다.
@@ -2335,7 +2413,12 @@ class Dispatcher:
                     extra["max_turns"] = max_turns
                 if not persist_session:
                     extra["persist_session"] = False
-                result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **extra)
+                # 이 호출 안의 도구 쓰기만 사건 출처 `brain`(SP14 5.1). 끝나면 앞 값으로 되돌린다(같은 ctx의 뒤 쓰기는 아님)
+                was_in_brain, run_ctx.in_brain = run_ctx.in_brain, True
+                try:
+                    result = await self.brain.run(prompt, session_id=session_id, run_ctx=run_ctx, **extra)
+                finally:
+                    run_ctx.in_brain = was_in_brain
         except TimeoutError:
             result = BrainResult(text="", session_id=session_id, turns=0, status="error", error="timeout")
         finally:
@@ -2653,6 +2736,83 @@ class Dispatcher:
     def _log_moments(d: date, state: str, saved: int, rejected: int, started: float) -> None:
         log.info("moments_job", extra={
             "date": d.isoformat(), "state": state, "saved": saved, "rejected": rejected,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+        })
+
+    # --- 하루 끝 판단 (SP14 6.1~6.3) ---
+
+    async def _handle_dayend(self, job: _DayendJob) -> None:
+        """코드 단계(늘, 멈추는 중이어도) → 상대마다 판단 → 정리. 아무에게도 보내지 않는다(1장 4)."""
+        today = job.date
+        dayend_job.run_code_steps(self.state.conn, self.clock, today)
+        if self._stopping:  # 멈추는 중: 두뇌를 부르지 않는다(받은편지함 그대로, 다음 날 따라잡기)
+            return
+        repo = self.tools.agents if self.tools is not None else None
+        if repo is None:
+            return
+        for agent in dayend_job.DAYEND_AGENTS:
+            try:
+                await self._dayend_one(repo, agent, today)
+            except Exception:
+                log.exception("agent_dayend_error", extra={"agent": agent})
+        dayend_job.prune(repo, today, self.clock.now())
+
+    async def _dayend_one(self, repo: AgentsRepo, agent: InboxAgent, today: date) -> None:
+        started = time.monotonic()
+        inp = dayend_job.prepare(repo, self.state, agent, today, self.clock.now())
+        if isinstance(inp, str):  # "already" | "empty"
+            self._log_dayend(agent, 0, 0, 0, inp, started)
+            return
+        if self._moments_blocked():  # 사용자 몫·로그인·사용 한도(6.3): 그날 키도 쓰지 않는다
+            self._log_dayend(agent, inp.events, 0, 0, "waiting", started)
+            return
+        dayend_job.mark_called(self.state, agent, today)
+        day = today - timedelta(days=1)
+        handoffs_before = repo.handoffs_on(agent, day)
+        run_ctx = RunContext(
+            None, None, kind="dayend", actor="secretary", activity_channel="scheduler", channel="app", agent=agent,
+            dayend_day=day,
+        )
+        result: BrainResult | None = None
+        raised = False
+        try:
+            result = await self._call_brain(
+                inp.text, session_id=None, run_ctx=run_ctx, system_prompt=dayend_job.dayend_system_prompt(agent),
+                max_turns=dayend_job.DAYEND_MAX_TURNS, persist_session=False,
+            )
+        except _Stopped:
+            raise
+        except Exception as e:  # noqa: BLE001 - 두뇌 구현의 예외도 실패 한 번으로 센다(글 없이 종류만)
+            log.warning("agent_dayend_brain_error", extra={"agent": agent, "error_type": type(e).__name__})
+            raised = True
+            result = BrainResult(
+                text="", session_id=run_ctx.brain_session_id, turns=0, status="error", error=type(e).__name__,
+            )
+        finally:
+            # 순간 호출과 같은 방식(SP8 6.3, 결정 18): 결과가 무엇이든 그 세션 파일을 지운다
+            if self.claude_config_dir is not None:
+                sid = (result.session_id if result is not None else None) or run_ctx.brain_session_id
+                if sid is None:
+                    log.info("agent_dayend_session_cleanup", extra={"removed": False, "reason": "no_session_id"})
+                else:
+                    moments_job.remove_session_file(
+                        sid, config_dir=self.claude_config_dir, event="agent_dayend_session_cleanup",
+                    )
+        if result.status == "rate_limited":
+            self._set_limited(result.retry_at)
+        handoffs = repo.handoffs_on(agent, day) - handoffs_before
+        # 넘긴 것도 쓴 것이다: 넘긴 뒤 오류가 나도 다음 날 같은 사건을 다시 넘기지 않게
+        outcome = dayend_job.settle(
+            repo, self.state, agent, today, inp, result, run_ctx.notes_written + handoffs, self.clock.now(),
+        )
+        shown = "error" if raised and outcome != "ok" else outcome  # 예외로 끝난 시도(`settle`은 retry·failed로 셌다)
+        self._log_dayend(agent, inp.events, run_ctx.notes_written, handoffs, shown, started)
+
+    @staticmethod
+    def _log_dayend(agent: str, events: int, notes: int, handoffs: int, result: str, started: float) -> None:
+        """상대·개수·결과만(글·`ref` 없음, 12장)."""
+        log.info("agent_dayend", extra={
+            "agent": agent, "events": events, "notes": notes, "handoffs": handoffs, "result": result,
             "duration_ms": round((time.monotonic() - started) * 1000),
         })
 

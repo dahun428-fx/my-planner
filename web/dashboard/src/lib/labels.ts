@@ -312,6 +312,8 @@ export const PICTOGRAM_LABELS: Record<PictogramName, string> = {
   list: "목록",
   estimate: "추정",
   settings: "설정",
+  dumbbell: "운동메이트", // SP14 (the app's partners; the dashboard does not draw them)
+  compass: "라이프 매니저",
 };
 
 // SP1 area order and names (the same as `/status` stat labels).

@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from my_planner.clock import from_iso, to_iso
-from my_planner.domain import Area, RunContext, ToolEvent
+from my_planner.domain import Area, EventKind, InboxAgent, RunContext, ToolEvent
 from my_planner.harness.redact import redact
 from my_planner.store.db import transaction
 from my_planner.store.repos.memos import (
@@ -178,6 +178,9 @@ class MemoTools:
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
 
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
+
         def check_photo_ids(self, photo_ids: Any) -> list[int] | dict[str, Any]: ...
 
         def check_chat_photo_ids(self, ctx: RunContext, photo_ids: Any) -> list[int] | dict[str, Any]: ...
@@ -206,6 +209,8 @@ class MemoTools:
             # 되돌림 문구는 사진 수 없는 확인 문구에서 만든다(`_undo`가 `undo["summary"]`를 먼저 본다). 제목은 그대로
             undo = {**undo, "summary": memo_line(kind, data["title"])}
         self._record(ctx, kind, memo_target(m.id), memo_line(kind, data["title"], photos), undo)
+        if kind in ("memo_created", "memo_updated"):  # 고정·지우기는 사건 없음(SP14 5.2)
+            self._agent_event(ctx, "memo_saved", f"memo:{m.id}")
         ctx.events.append(ToolEvent(kind, None, data))
 
     # --- 두뇌 도구 ---

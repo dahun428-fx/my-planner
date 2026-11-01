@@ -266,7 +266,7 @@ Gentler Streak(숫자 대신 말로 풀어 주는 상태, 죄책감 없는 동�
 알약, `label` 크기, 영역 태그는 영역색 점 + 영역 이름(`--text-2`). 바탕을 칠하지 않는다.
 
 ### Pictograms
-작은 선 그림 28개. 원본은 `web/shared/pictograms.svg` 하나이고, 앱과 대시보드의 `npm run sync:design`이
+작은 선 그림 30개. 원본은 `web/shared/pictograms.svg` 하나이고, 앱과 대시보드의 `npm run sync:design`이
 `src/components/pictograms.gen.tsx`(`<PictogramSprite />`, `<Pictogram name size label? />`)를 만든다. 스프라이트는
 `_document`의 `<body>` 첫 요소로 한 번 그린다(`check:csp`가 본다). 바꿀 때는 원본 SVG, 이 표, 두 앱의 생성 파일을
 같은 커밋에서 고친다.
@@ -277,7 +277,7 @@ Gentler Streak(숫자 대신 말로 풀어 주는 상태, 죄책감 없는 동�
 3. 혼자 뜻을 전하지 않는다: 늘 옆에 이름 글자가 있다(영역 이름, 종류 이름). 글자가 있으면 픽토그램은 `aria-hidden`.
    글자 없이 쓰는 곳(한눈에 띠의 사건 표식)은 `role="img"`와 `aria-label`, 그리고 같은 내용의 표.
 4. 이모지 아이콘을 쓰지 않는다. 조작 아이콘(더하기, 체크, 닫기, 보내기, 펼침)은 `icons.tsx`가 맡고 픽토그램과 섞지 않는다.
-   앱 탭 막대 아이콘은 SP8에서는 그대로이고, SP9가 탭을 바꿀 때 스프라이트로 옮긴다(그때 id가 31개가 되고 아래 표도 함께 고친다).
+   앱 탭 막대 아이콘은 SP8에서는 그대로이고, SP9가 탭을 바꿀 때 스프라이트로 옮긴다(그때 id가 세 개 늘고 아래 표도 함께 고친다).
 5. 원(36px, `--raised`) 안에 넣는 것은 사건 줄과 홈 머리처럼 "줄의 얼굴"일 때만. 카드 안에 카드처럼 겹치지 않는다.
 
 | id | 이름 | 쓰는 자리 |
@@ -310,6 +310,8 @@ Gentler Streak(숫자 대신 말로 풀어 주는 상태, 죄책감 없는 동�
 | `list` | 목록 | 대시보드 내비게이션, 탭, 거르기 "전체" |
 | `estimate` | 추정 | 추정 태그 |
 | `settings` | 설정 | 대시보드 설정 링크 |
+| `dumbbell` | 운동메이트 | 브리핑 관찰 줄, 비서 메모 |
+| `compass` | 라이프 매니저 | 브리핑 관찰 줄, 비서 메모(SP15 상대 고르기) |
 
 ### 대시보드
 - 패널: `--surface` + 16px 둥글기 + 20px 여백, 제목 `title`, 부제 `caption`.

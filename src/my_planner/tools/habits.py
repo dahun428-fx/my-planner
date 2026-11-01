@@ -11,7 +11,7 @@ import re
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
-from my_planner.domain import Area, RunContext, ToolEvent
+from my_planner.domain import Area, EventKind, InboxAgent, RunContext, ToolEvent
 from my_planner.status.xp import LABEL_HABIT_CHECK, XP_HABIT_CHECK
 from my_planner.store.db import transaction
 from my_planner.store.exports import export_habits
@@ -102,6 +102,8 @@ class HabitTools:
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
         def _confirm_first(self, ctx: RunContext) -> bool: ...
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
         def _request_confirm(self, ctx: RunContext, action: str, args: dict[str, Any], summary: str,
                              button: str) -> dict[str, Any]: ...
         def _export(self) -> None: ...
@@ -354,6 +356,8 @@ class HabitTools:
                     ctx, "habit_checked", target, habit_line("habit_checked", h.title, day=d, today=self.today()),
                     {"habit_id": h.id, "date": d.isoformat()},
                 )
+                # ref는 `habit:<id>`(날짜 없음): 같은 습관의 두 날짜를 60초 안에 체크하면 사건 하나로 합쳐진다(SP14 5.2 중복 거르기)
+                self._agent_event(ctx, "habit_checked", habit_target(h.id), h.area.value)
                 self._grant_habit(ctx, h, d)
         if new:
             ctx.events.append(ToolEvent("habit_checked", None, self._habit_data(h, day=d)))

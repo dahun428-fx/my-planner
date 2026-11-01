@@ -17,7 +17,7 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
-from my_planner.domain import RunContext, ToolEvent
+from my_planner.domain import EventKind, InboxAgent, RunContext, ToolEvent
 from my_planner.harness.mate_context import build_mate_preamble
 from my_planner.harness.redact import redact
 from my_planner.status.xp import LABEL_WORKOUT_LOG, XP_WORKOUT_LOG
@@ -287,6 +287,8 @@ class WorkoutTools:
         def today(self) -> date: ...
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
         def _request_confirm(self, ctx: RunContext, action: str, args: dict[str, Any], summary: str,
                              button: str) -> dict[str, Any]: ...
         def _chat_confirm(self, ctx: RunContext, args: dict[str, Any], summary: str, button: str,
@@ -478,6 +480,7 @@ class WorkoutTools:
         with transaction(self.workout.conn):
             g = self.workout.add_log(d, t, sid, eff, n, rows, now)
             self._record(ctx, "workout_logged", workout_log_target(g.id), f"운동 기록: {t}", {"log_id": g.id})
+            self._agent_event(ctx, "workout_logged", f"workout:{g.id}", "health")
             if self.status is not None:  # 상태창 저장소가 없으면(시험) 쌓지 않는다
                 self.status.grant(
                     at=now, logical_date=d, source_kind="workout_log", source_ref=workout_day_ref(d),
@@ -532,6 +535,7 @@ class WorkoutTools:
                 ctx, "workout_log_updated", workout_log_target(g.id), f"운동 기록 고침: {title}",
                 {"log_id": g.id, "before": before},
             )
+            self._agent_event(ctx, "workout_logged", f"workout:{g.id}", "health")
             if "date" in changes and self.status is not None:  # 옮긴 날도 그날의 첫 기록이면 X13. 옛 날짜의 경험치는 그대로
                 self.status.grant(
                     at=self.clock.now(), logical_date=changes["date"], source_kind="workout_log",

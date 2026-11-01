@@ -369,6 +369,146 @@
       "title": "ActivityResponse",
       "type": "object"
     },
+    "AgentNoteOut": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "enum": [
+            "mate",
+            "manager"
+          ],
+          "title": "Agent",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "day": {
+          "title": "Day",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "priority": {
+          "enum": [
+            1,
+            2,
+            3
+          ],
+          "title": "Priority",
+          "type": "integer"
+        },
+        "shown_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Shown At"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "agent",
+        "day",
+        "text",
+        "priority",
+        "shown_at",
+        "created_at"
+      ],
+      "title": "AgentNoteOut",
+      "type": "object"
+    },
+    "AgentNotes": {
+      "$defs": {
+        "AgentNoteOut": {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "enum": [
+                "mate",
+                "manager"
+              ],
+              "title": "Agent",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "day": {
+              "title": "Day",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "priority": {
+              "enum": [
+                1,
+                2,
+                3
+              ],
+              "title": "Priority",
+              "type": "integer"
+            },
+            "shown_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shown At"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "agent",
+            "day",
+            "text",
+            "priority",
+            "shown_at",
+            "created_at"
+          ],
+          "title": "AgentNoteOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /agents/notes`: 관찰 목록(최신 먼저).",
+      "properties": {
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/AgentNoteOut"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "notes"
+      ],
+      "title": "AgentNotes",
+      "type": "object"
+    },
     "BodyPostBody": {
       "$defs": {
         "BodyDayIn": {
@@ -4240,6 +4380,21 @@
         "push"
       ],
       "title": "Health",
+      "type": "object"
+    },
+    "InboxCount": {
+      "additionalProperties": false,
+      "description": "`GET /agents/{agent}/inbox/count`: 오늘 −7일부터의 안 읽은 사건 수.",
+      "properties": {
+        "unseen": {
+          "title": "Unseen",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unseen"
+      ],
+      "title": "InboxCount",
       "type": "object"
     },
     "Memo": {

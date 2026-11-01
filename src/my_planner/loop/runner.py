@@ -149,6 +149,21 @@ def queue_moments_daily(target: MomentsSubmitter, moments: MomentsRepo, state: S
     return job
 
 
+class DayendSubmitter(Protocol):
+    def submit_dayend(self, today: date) -> None: ...
+
+
+def queue_dayend_daily(target: DayendSubmitter) -> Callable[[date], None]:
+    """하루 한 번 작업(SP14 6.1): 하루 끝 판단을 디스패처에 넣는다(순간 정리 다음 차례). 두뇌는 디스패처가 부른다."""
+
+    def job(today: date) -> None:
+        target.submit_dayend(today)
+        log.info("dayend_queued", extra={"date": today.isoformat()})
+
+    job.__name__ = "queue_dayend"
+    return job
+
+
 class SummaryQueue(Protocol):
     def queue_summaries(self, *, retry: bool = False) -> int: ...
 

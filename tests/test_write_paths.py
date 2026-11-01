@@ -23,14 +23,16 @@ import test_api_e2e
 from my_planner.store.db import is_write, open_db
 
 # 도구 함수(`tools/core.py`, 습관 `tools/habits.py`, 이룬 순간 `tools/moments.py`, 메모 `tools/memos.py`, 몸 기록
-# `tools/body.py`, 스케줄 `tools/events.py`), 즉시 갈래(`tools/actions.py`),
+# `tools/body.py`, 스케줄 `tools/events.py`, 운동 `tools/workout.py`, 관찰 `tools/agents.py`), 즉시 갈래(`tools/actions.py`),
 # 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
     "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body", "my_planner.tools.events",
-    "my_planner.tools.standing",
+    "my_planner.tools.standing", "my_planner.tools.workout", "my_planner.tools.agents",
 })
 MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
+DAYEND_JOB = "my_planner.harness.dayend"  # SP14 하루 끝 판단: 읽음 표시, 90일 정리, `agent_dayend_*` 상태
+IMPORTER = "my_planner.standing.importer"
 DISPATCHER = "my_planner.harness.dispatcher"
 LOOP = "my_planner.loop.*"
 SEED = "my_planner.curve.seed"  # 잠금을 잡은 별도 프로세스(4.3, 12장)
@@ -81,6 +83,15 @@ ALLOWED: dict[str, set[str]] = {
     # 스냅숏은 그 저장·영역 점수 기록·하루 한 번 따라잡기가 부르는 `standing.service`도
     "standing_measures": {*TOOLS, "my_planner.standing.importer"},
     "standing_snapshots": {*TOOLS, "my_planner.standing.service", "my_planner.standing.importer"},
+    # SP12 운동 기록·계획(도구 함수), SP14 사건 기록·받은편지함·관찰(스펙 5.1)
+    "body_notes": set(TOOLS),
+    "workout_plans": set(TOOLS),
+    "workout_plan_sessions": set(TOOLS),
+    "workout_logs": set(TOOLS),
+    "workout_log_items": set(TOOLS),
+    "agent_events": {*TOOLS, IMPORTER, DAYEND_JOB},  # 90일 정리는 하루 끝 작업
+    "agent_inbox": {*TOOLS, DISPATCHER, DAYEND_JOB, IMPORTER},  # 읽음 표시는 디스패처·하루 끝 작업
+    "agent_notes": {*TOOLS, DISPATCHER, DAYEND_JOB},  # 쓰기는 `tools.agents`, `shown_at`은 디스패처
     # 4.3 2행: 변경과 같은 트랜잭션(`tools/activity.py`), 되돌리기 표시(`apply_action`, U5)
     "activity": set(TOOLS),
     "activity_targets": set(TOOLS),
@@ -117,6 +128,8 @@ ALLOWED: dict[str, set[str]] = {
         SEED,
         # SP8 6.2: `moments_since`(처음 작업이 돈 날의 전날)
         MOMENTS_JOB,
+        # SP14: `agent_dayend_day:*`, `agent_dayend_attempts:*`
+        DAYEND_JOB,
     },
 }
 
@@ -243,6 +256,14 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     # SP13: 측정값은 `/actions`의 즉시 갈래로만, 스냅숏은 `standing.service`가(첫 기준선)
     assert ("standing_measures", "my_planner.tools.standing", "my_planner.api.actions", True) in rec.tool_calls
     assert ("standing_snapshots", "my_planner.standing.service") in rec.seen
+    # SP14: 사건은 쓰기 경로마다 같은 트랜잭션에서 `tools.activity.record_agent_event`가
+    assert ("agent_events", "my_planner.tools.activity", "my_planner.api.actions", True) in rec.tool_calls
+    assert ("agent_inbox", "my_planner.tools.activity") in rec.seen
+    # SP14 이야기(`test_sp14_master_story`): 관찰은 두뇌 갈래의 `tools.agents`, 보인 표시(`shown_at`)는 디스패처,
+    # 읽음 표시와 그날 키는 하루 끝 작업
+    assert ("agent_notes", "my_planner.tools.agents", DISPATCHER, True) in rec.tool_calls
+    assert ("agent_notes", DISPATCHER) in rec.seen
+    assert ("agent_inbox", DAYEND_JOB) in rec.seen and ("app_state", DAYEND_JOB) in rec.seen
 
 
 async def test_sp8_write_paths(tmp_path, monkeypatch):
@@ -264,6 +285,35 @@ async def test_sp8_write_paths(tmp_path, monkeypatch):
     assert ("status_moment_days", "my_planner.tools.moments", DISPATCHER, True) in rec.tool_calls
     assert ("body_days", "my_planner.tools.body", "my_planner.api.body", True) in rec.tool_calls
     assert ("habit_checks", "my_planner.tools.habits", "my_planner.api.actions", True) in rec.tool_calls
+
+
+async def test_sp14_dayend_write_paths(tmp_path, monkeypatch):
+    """SP14 하루 끝 판단의 쓰기: 그날 키·시도 수·읽음 표시·90일 정리는 `harness/dayend.py`, 관찰과 넘기기는 두뇌 갈래의
+    `tools.agents`(입구는 디스패처). 사건은 `/actions`의 즉시 갈래로 받은편지함에 든다."""
+    from be_env import BeEnv
+    from fakes import FakeTurn
+    from test_dispatcher_messages import kst
+
+    rec = Recorder()
+    monkeypatch.setattr(be_env, "ON_WRITE", rec)
+    turn = FakeTurn([
+        ("write_note", {"text": "토요일 저녁만 비어 있어요", "priority": 2, "refs": ["checkin:2026-11-01"]}),
+        ("hand_off", {"to": "manager", "text": "저녁 일정이 많아요", "refs": ["checkin:2026-11-01"]}),
+    ], "")
+    async with BeEnv.start(tmp_path, script=[turn], start=kst(2026, 11, 2, 3, 0), dayend=True) as env:
+        env.parts.runner.checkins = False
+        status, _ = await env.action("record_condition", {"score": 4})  # `condition_logged` → 메이트에게도
+        assert status == 200
+        env.clock.set(kst(2026, 11, 2, 4, 1))
+        await env.tick()
+        assert [c["run_ctx"].kind for c in env.brain.calls] == ["dayend"]
+
+    assert rec.unparsed == []
+    assert sorted((t, m) for t, m in rec.seen if not _allowed(t, m)) == []
+    assert rec.bypasses() == []
+    assert {("app_state", DAYEND_JOB), ("agent_inbox", DAYEND_JOB), ("agent_events", DAYEND_JOB)} <= rec.seen
+    assert ("agent_notes", "my_planner.tools.agents", DISPATCHER, True) in rec.tool_calls
+    assert {t for t, m in rec.seen if m == DAYEND_JOB} <= {"app_state", "agent_inbox", "agent_events", "agent_notes"}
 
 
 @pytest.mark.parametrize("table", sorted(ALLOWED))

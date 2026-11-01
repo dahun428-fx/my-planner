@@ -26,6 +26,12 @@ describe("Pictogram", () => {
     expect(svg.getAttribute("width")).toBe("16");
   });
 
+  it("has the partners' pictograms (SP14), 30 in all", () => {
+    expect(PICTOGRAM_NAMES).toContain("dumbbell");
+    expect(PICTOGRAM_NAMES).toContain("compass");
+    expect(PICTOGRAM_NAMES).toHaveLength(30);
+  });
+
   it("the sprite holds one symbol per name", () => {
     const { container } = render(<PictogramSprite />);
     expect(container.querySelector("svg.pictogram-sprite")!.getAttribute("aria-hidden")).toBe("true");

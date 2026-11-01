@@ -36,6 +36,7 @@ EXPECTED_MODELS = {
     "EventItem", "EventList", "EventDetail", "MissedReminder",  # SP9 5.6
     "CalendarSettings", "CalendarPutBody",  # SP9 5.7
     "Standing", "StandingMeasures",  # SP13 12장
+    "InboxCount", "AgentNotes", "AgentNoteOut",  # SP14 스펙 9장
 }
 
 

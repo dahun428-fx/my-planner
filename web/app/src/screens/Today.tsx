@@ -10,6 +10,7 @@ import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
 import { MoreButton } from "../components/MoreButton";
+import { AgentNoteLines } from "../components/AgentNoteLines";
 import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Row } from "../components/Row";
@@ -18,6 +19,7 @@ import { StatusDot } from "../components/StatusDot";
 import { TodoRow } from "../components/TodoRow";
 import { useToast } from "../components/Toast";
 import { useConnection, useWritable } from "../lib/ConnectionProvider";
+import { splitAgentNotes } from "../lib/agentNotes";
 import { copy } from "../lib/copy";
 import { onTodayRefresh } from "../lib/push";
 import { useSnapshotted } from "../lib/snapshot";
@@ -158,7 +160,10 @@ export function Today() {
     const t = view.data;
     const pending = t.checkins.filter((c) => c.state === "pending");
     const brief = t.brief;
-    const longBrief = brief !== null && (brief.text.split("\n").length > FOLD_LINES || brief.text.length > FOLD_CHARS);
+    // SP14 10장: the partners' observation lines are drawn under the Markdown with their pictograms; the fold counts the body only.
+    const briefParts = brief !== null ? splitAgentNotes(brief.text) : null;
+    const briefBody = briefParts?.body ?? "";
+    const longBrief = brief !== null && (briefBody.split("\n").length > FOLD_LINES || briefBody.length > FOLD_CHARS);
     const folded = longBrief && !briefOpen;
     const score = t.condition?.score ?? null;
     const showPills = score === null || changing;
@@ -216,11 +221,16 @@ export function Today() {
             }
           >
             <div className={styles.brief}>
-              <Markdown text={brief.text} className={`${styles.briefText} ${folded ? styles.folded : ""}`} />
+              {briefBody !== "" && <Markdown text={briefBody} className={`${styles.briefText} ${folded ? styles.folded : ""}`} />}
               {longBrief && (
                 <button type="button" className={styles.more} aria-expanded={briefOpen} onClick={() => setBriefOpen((o) => !o)}>
                   {briefOpen ? copy.today.lessPlain : copy.today.morePlain}
                 </button>
+              )}
+              {briefParts !== null && briefParts.notes.length > 0 && (
+                <div className={styles.briefNotes}>
+                  <AgentNoteLines notes={briefParts.notes} />
+                </div>
               )}
             </div>
           </Group>

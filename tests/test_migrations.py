@@ -298,7 +298,7 @@ def test_curve_valid_rows_and_cascade(tmp_path):
 
 def test_latest_version_no_chat_migration():
     """`POST /chat`(SP3-4 티켓 06)은 마이그레이션을 더하지 않는다: `inbound_pending.conversation_id`는 005부터 있다."""
-    assert dbmod.LATEST_VERSION == 22 == _migration_count()
+    assert dbmod.LATEST_VERSION == 23 == _migration_count()
 
 
 async def test_resubmitted_app_row_keeps_conversation(tmp_path):
@@ -407,8 +407,8 @@ def test_habits_daily_target_check(tmp_path):
 
 def test_schema_version_latest(tmp_path):
     conn = open_db(tmp_path / "state" / "planner.db")
-    assert migrate(conn) == 22 == dbmod.LATEST_VERSION
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 22
+    assert migrate(conn) == 23 == dbmod.LATEST_VERSION
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 23
 
 
 # --- 013: 이룬 순간 (SP8 스펙 6.1) ---
@@ -668,7 +668,7 @@ def test_hook_failure_rolls_back_version(tmp_path, monkeypatch):
     assert "events" not in tables
     assert conn.execute("SELECT deleted_at FROM tasks").fetchone()[0] is None
     monkeypatch.setitem(hooks.HOOKS, 17, hooks.after_017)
-    assert migrate(conn) == 22 and len(_events(conn)) == 1
+    assert migrate(conn) == 23 and len(_events(conn)) == 1
 
 
 def test_017_tz_argument_used(tmp_path):
@@ -779,3 +779,30 @@ def test_022_ledger_moved_intact(tmp_path):
     )
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(_LEDGER_INS, (21, "2026-10-30T01:00:00+00:00", "2026-10-30", "bogus", "x", 5, None, "x"))
+
+
+# --- 023: 사건 기록·받은편지함·관찰 (SP14 스펙 5.1) ---
+
+
+def test_023_agent_tables(tmp_path):
+    conn = open_db(tmp_path / "state" / "planner.db")
+    assert migrate(conn) == dbmod.LATEST_VERSION
+    tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"agent_events", "agent_inbox", "agent_notes"} <= tables
+    ev = "INSERT INTO agent_events (occurred_at, day, kind, ref, area, origin) VALUES (?, '2026-11-01', 'task_done', 'task:1', NULL, ?)"
+    at = "2026-11-01T00:00:00+00:00"
+    eid = conn.execute(ev, (at, "app")).lastrowid
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(ev, (at, "bogus"))
+    conn.execute("INSERT INTO agent_inbox (agent, event_id) VALUES ('mate', ?)", (eid,))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO agent_inbox (agent, event_id) VALUES ('secretary', ?)", (eid,))
+    note = "INSERT INTO agent_notes (agent, day, text, priority, refs_json, created_at) VALUES ('mate', '2026-11-01', ?, ?, '[]', ?)"
+    conn.execute(note, ("가" * 120, 1, at))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(note, ("가" * 121, 1, at))
+    for p in (0, 4):
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(note, ("x", p, at))
+    conn.execute("DELETE FROM agent_events WHERE id = ?", (eid,))
+    assert conn.execute("SELECT COUNT(*) FROM agent_inbox").fetchone()[0] == 0

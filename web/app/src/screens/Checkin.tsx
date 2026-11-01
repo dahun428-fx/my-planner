@@ -9,10 +9,12 @@ import { chatSheetChunk } from "../chat/loadChatSheet";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
 import { LargeTitle } from "../components/LargeTitle";
+import { AgentNoteLines } from "../components/AgentNoteLines";
 import { Markdown } from "../components/Markdown";
 import { OfflineNotice } from "../components/OfflineNotice";
 import { Skeleton } from "../components/Skeleton";
 import { useConnection } from "../lib/ConnectionProvider";
+import { splitAgentNotes } from "../lib/agentNotes";
 import { copy } from "../lib/copy";
 import { usePolling } from "../lib/polling";
 import { addDays, formatKst } from "../lib/time";
@@ -264,10 +266,16 @@ function CheckinBody({ id }: { id: number }) {
   let body: ReactNode = null;
   if (data) {
     const cards = data.cards;
+    const parts = splitAgentNotes(data.text); // SP14 10장: the observation lines under the Markdown
     body = (
       <>
         <Group>
-          <Markdown text={data.text} className={styles.text} />
+          {parts.body !== "" && <Markdown text={parts.body} className={styles.text} />}
+          {parts.notes.length > 0 && (
+            <div className={styles.notes}>
+              <AgentNoteLines notes={parts.notes} />
+            </div>
+          )}
         </Group>
         {cards.map((card) => (
           <section key={card.toolCallId} className={styles.card}>

@@ -324,6 +324,127 @@
       ],
       "type": "object"
     },
+    "AgentNoteOut": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "enum": [
+            "mate",
+            "manager"
+          ],
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "day": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "priority": {
+          "enum": [
+            1,
+            2,
+            3
+          ],
+          "type": "integer"
+        },
+        "shown_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "agent",
+        "day",
+        "text",
+        "priority",
+        "shown_at",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "AgentNotes": {
+      "$defs": {
+        "AgentNoteOut": {
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "enum": [
+                "mate",
+                "manager"
+              ],
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "day": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "priority": {
+              "enum": [
+                1,
+                2,
+                3
+              ],
+              "type": "integer"
+            },
+            "shown_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "agent",
+            "day",
+            "text",
+            "priority",
+            "shown_at",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/AgentNoteOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "notes"
+      ],
+      "type": "object"
+    },
     "BodyPostBody": {
       "$defs": {
         "BodyDayIn": {
@@ -3733,6 +3854,18 @@
         "runs_today",
         "errors",
         "push"
+      ],
+      "type": "object"
+    },
+    "InboxCount": {
+      "additionalProperties": false,
+      "properties": {
+        "unseen": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unseen"
       ],
       "type": "object"
     },

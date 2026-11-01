@@ -29,7 +29,15 @@ from my_planner.clock import (
     to_iso,
 )
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
-from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
+from my_planner.domain import (
+    Area,
+    Cadence,
+    EventKind,
+    InboxAgent,
+    RunContext,
+    TaskStatus,
+    ToolEvent,
+)
 from my_planner.status.snapshot import status_snapshot
 from my_planner.status.xp import (
     LABEL_CONDITION,
@@ -76,11 +84,13 @@ from my_planner.tools.activity import (
     milestone_target,
     priorities_target,
     record_activity,
+    record_agent_event,
     register_undo,
     task_target,
     tasks_target,
     undoable_now,
 )
+from my_planner.tools.agents import AgentTools
 from my_planner.tools.body import BodyTools
 from my_planner.tools.checkin_times import CheckinTimeTools
 from my_planner.tools.confirmations import (
@@ -122,6 +132,7 @@ if TYPE_CHECKING:
     from my_planner.config import Settings
     from my_planner.store.photos import PhotoFiles
     from my_planner.store.repos.activity import Activity, ConfirmsRepo
+    from my_planner.store.repos.agents import AgentsRepo
     from my_planner.store.repos.body import BodyRepo
     from my_planner.store.repos.conversations import ConversationsRepo
     from my_planner.store.repos.events import EventsRepo
@@ -224,7 +235,7 @@ def _result_before(a: Activity) -> dict[str, Any]:
 
 class Tools(
     MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, PhotoTools, BodyTools, EventTools,
-    ConversationTools, WorkoutTools, StandingTools,
+    ConversationTools, WorkoutTools, StandingTools, AgentTools,
 ):
     def __init__(
         self,
@@ -257,6 +268,7 @@ class Tools(
         photo_files: PhotoFiles | None = None,
         workout: WorkoutRepo | None = None,
         standing: StandingRepo | None = None,
+        agents: AgentsRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -302,6 +314,8 @@ class Tools(
         self.workout = workout
         # 객관적 위치(SP13 6장): 측정값 확인 카드·저장·지우기, 영역 점수 기록 때의 스냅숏. None이면 거절한다
         self.standing = standing
+        # 사건 기록·받은편지함(SP14 5.1~5.3). 쓰기 경로마다 같은 트랜잭션에 한 줄. None이면 남기지 않는다(SP1 시험)
+        self.agents = agents
 
     # --- 공통 ---
 
@@ -381,6 +395,14 @@ class Tools(
         record_activity(
             self.activity, ctx, kind=kind, target=target, summary=summary or kind, undo=undo, targets=targets
         )
+
+    def _agent_event(
+        self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+        handoff_to: InboxAgent | None = None,
+    ) -> None:
+        """트랜잭션 안에서: 사건 한 줄(SP14 5.1). 제목·본문·값은 넣지 않는다."""
+        record_agent_event(self.agents, ctx, kind, ref, area, day=self.today(), now=self.clock.now(),
+                           handoff_to=handoff_to)
 
     @staticmethod
     def _before(t: Task) -> dict[str, Any]:
@@ -511,6 +533,7 @@ class Tools(
         with self.tasks.transaction():
             t = self.tasks.create(status=TaskStatus.open, **new)
             out = self._finish(ctx, "task_added", t, undo={"task_id": t.id})
+            self._agent_event(ctx, "task_added", task_target(t.id), _first_area(t))
         self._after(ctx, "task_added", t)
         return out
 
@@ -569,6 +592,7 @@ class Tools(
                     ctx.run_id, ctx.conversation_id, t.id, "tasks_confirmed",
                     inbound_id=ctx.inbound_id, data=self._event_data(t),
                 )
+                self._agent_event(ctx, "task_added", task_target(t.id), _first_area(t))
                 confirmed.append(t)
             if confirmed:
                 one = len(confirmed) == 1
@@ -642,9 +666,12 @@ class Tools(
             changes["scheduled_at"] = datetime.combine(day, at.timetz().replace(tzinfo=None), tzinfo=self.tz)
         prior = self._before(t)
         undo = {"task_id": t.id, "planned_for": prior["planned_for"], "scheduled_at": prior["scheduled_at"]}
+        later = t.planned_for is not None and pf is not None and pf > t.planned_for  # 앞당김·날짜 지움은 사건 없음
         with self.tasks.transaction():
             t = self.tasks.update(t.id, event_kind="moved", **changes)
             out = self._finish(ctx, "task_moved", t, undo=undo)
+            if later:
+                self._agent_event(ctx, "task_postponed", task_target(t.id), _first_area(t))
         self._after(ctx, "task_moved", t)
         return out
 
@@ -657,6 +684,7 @@ class Tools(
         if t.status not in allowed:
             return _err(why)
         undo = self._before(t)
+        was_open = t.status is TaskStatus.open
         # X1/X2: 완료 순간 그 할 일이 든 지금 기간 우선순위 가운데 가장 큰 주기(9.1)
         prio = self.tasks.current_priority(t.id, self.today()) if new is TaskStatus.done else None
         extra: list[str] = []
@@ -668,6 +696,10 @@ class Tools(
             t = self.tasks.set_status(t.id, new)
             t = _clear_time_if_open(self.tasks, t)  # 다시 열면 옛 시각은 버린다(SP9 5.4)
             out = self._finish(ctx, kind, t, undo=undo, extra=extra)
+            if new is TaskStatus.done:
+                self._agent_event(ctx, "task_done", task_target(t.id), _first_area(t))
+            elif new is TaskStatus.dropped and was_open:  # 초안 빼기는 사건 없음
+                self._agent_event(ctx, "task_dropped", task_target(t.id), _first_area(t))
             if new is TaskStatus.done:  # 다시 완료해도 한 번만(`task:<id>`, U6)
                 self._grant(ctx, source_kind="task_done", source_ref=f"task:{t.id}",
                             amount=task_xp(prio[0].value if prio is not None else None), label=LABEL_TASK)
@@ -825,6 +857,7 @@ class Tools(
                 ctx, "condition_recorded", condition_target(day), condition_summary(c.score),
                 {"date": day.isoformat(), "before": before},
             )
+            self._agent_event(ctx, "condition_logged", f"checkin:{day.isoformat()}")
             self._grant(ctx, source_kind="condition", source_ref=f"date:{day.isoformat()}", amount=XP_CONDITION,
                         label=LABEL_CONDITION)  # X4: 날마다 한 번
         # 메모는 남기지 않는다. 날짜와 점수만.
@@ -936,6 +969,8 @@ class Tools(
             event = self._curve_event(ctx, "area_scores_recorded", data)
             self._record(ctx, "area_scores_recorded", areas_target(period), area_scores_line(period, data["scores"]),
                          {"period": period, "before": before})
+            for r in rows:
+                self._agent_event(ctx, "review_answered", f"review:{period}:{r.area}", r.area)
             self._grant(ctx, source_kind="wheel", source_ref=f"areas:{period}", amount=XP_WHEEL,
                         label=LABEL_WHEEL)  # X7: 그 분기 처음(한 영역이라도)
             self._standing_review_snapshot(period)
@@ -1656,6 +1691,11 @@ class Tools(
 def _prev_quarter(period: str) -> str:
     year, q = int(period[:4]), int(period[-1])
     return f"{year}-Q{q - 1}" if q > 1 else f"{year - 1}-Q4"
+
+
+def _first_area(t: Task) -> str | None:
+    """사건의 영역: 할 일의 첫 영역(SP14 5.2)."""
+    return t.areas[0].value if t.areas else None
 
 
 def _ladder_dict(x: Ladder | None) -> dict[str, Any] | None:

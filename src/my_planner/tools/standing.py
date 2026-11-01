@@ -15,8 +15,13 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from my_planner.clock import local, period_of
-from my_planner.domain import RunContext, ToolEvent
-from my_planner.standing.metrics import METRICS, validate
+from my_planner.domain import EventKind, InboxAgent, RunContext, ToolEvent
+from my_planner.standing.metrics import (
+    HEALTH_LOOKS_METRICS,
+    METRICS,
+    metric_area,
+    validate,
+)
 from my_planner.standing.score import AREAS, round_half_up
 from my_planner.status.xp import AREA_LABELS, LABEL_STANDING, XP_STANDING
 from my_planner.store.db import transaction
@@ -79,6 +84,8 @@ class StandingTools:
         def _grant(self, ctx: RunContext, *, source_kind: str, source_ref: str, amount: int, label: str) -> bool: ...
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
 
     # --- 검사 ---
 
@@ -144,6 +151,23 @@ class StandingTools:
         log.info("measures_proposed", extra={"rows": len(card), "metrics": sorted({m for m, _, _ in good})})
         return {"ok": True, "card": True}
 
+    @_tool
+    def get_measures(self, ctx: RunContext) -> dict[str, Any]:
+        """건강·외모 지표(`HEALTH_LOOKS_METRICS`)마다 가장 최근 값(SP14 6.2, 운동메이트). 읽기만. 로그 없음(값)."""
+        if self.standing is None:
+            return {"measures": []}
+        latest = self.standing.latest()
+        out: list[dict[str, Any]] = []
+        for name, d in METRICS.items():
+            m = latest.get(name)
+            if name not in HEALTH_LOOKS_METRICS or m is None or isinstance(m, list):
+                continue
+            out.append({
+                "metric": name, "label": d.label, "value": m.value_num if m.value_num is not None else m.value_text,
+                "unit": d.unit, "measured_on": m.measured_on.isoformat(), "reliability": m.reliability,
+            })
+        return {"measures": out}
+
     # --- /actions ---
 
     def _areas_now(self) -> dict[str, float | None]:
@@ -202,6 +226,8 @@ class StandingTools:
                 ctx, "measures_saved", None, SAVED_SUMMARY.format(n=len(ids)), undo,
                 targets=[measure_target(i) for i in ids],
             )
+            for i, (m, _, _) in zip(ids, good, strict=True):
+                self._agent_event(ctx, "measure_saved", measure_target(i), metric_area(m))
             line = measures_saved_line(len(ids), self._most_moved(before, self._areas_now()))
         ctx.events.append(ToolEvent("measures_saved", None, {"line": line}))
         log.info("measures_saved", extra={"rows": len(ids), "metrics": sorted({m for m, _, _ in good})})
