@@ -67,7 +67,15 @@ export function serveChat(...answers: (() => Response | Promise<Response>)[]) {
   return bodies;
 }
 
-export type HistoryItem = { id?: string; at: string; speaker: "user" | "secretary" | "mate"; text: string; photos?: { id: number; width: number; height: number }[] };
+export type HistoryItem = {
+  id?: string;
+  at: string;
+  speaker: "user" | "secretary" | "mate" | "manager";
+  text: string;
+  photos?: { id: number; width: number; height: number }[];
+  /** SP15: a life manager line's expert notes (redacted text). */
+  expert_notes?: { expert: string; text: string }[];
+};
 
 /** GET /conversations (newest first) and GET /conversations/{id}/messages, and GET /activity. */
 export function serveHistory(opts: {
@@ -76,6 +84,8 @@ export function serveHistory(opts: {
   activity?: { id: number; at: string; channel: "app" | "telegram" | "scheduler"; summary: string }[];
   /** SP12: what `?agent=mate` sees (the other lists are the secretary's). */
   mate?: { conversations?: { id: number; last_message_at: string }[]; messages?: Record<number, HistoryItem[]> };
+  /** SP15: what `?agent=manager` sees. */
+  manager?: { conversations?: { id: number; last_message_at: string }[]; messages?: Record<number, HistoryItem[]> };
 } = {}) {
   const seen = { agents: [] as (string | null)[], conversations: 0, messages: [] as number[], activitySince: [] as string[], activityOrder: [] as string[] };
   server.use(
@@ -85,7 +95,7 @@ export function serveHistory(opts: {
       seen.agents.push(q.get("agent"));
       if (q.get("channel") !== "app" || q.get("limit") !== "3") return HttpResponse.json({ error: { code: "invalid_request", message: "x" } }, { status: 400 });
       return HttpResponse.json({
-        items: ((q.get("agent") === "mate" ? opts.mate?.conversations : opts.conversations) ?? []).map((c) => ({
+        items: ((q.get("agent") === "mate" ? opts.mate?.conversations : q.get("agent") === "manager" ? opts.manager?.conversations : opts.conversations) ?? []).map((c) => ({
           id: c.id,
           kind: "chat",
           channel: "app",
@@ -99,7 +109,7 @@ export function serveHistory(opts: {
     http.get(`${BASE}/conversations/:id/messages`, ({ params }) => {
       const id = Number(params.id);
       seen.messages.push(id);
-      const items = opts.messages?.[id] ?? opts.mate?.messages?.[id];
+      const items = opts.messages?.[id] ?? opts.mate?.messages?.[id] ?? opts.manager?.messages?.[id];
       if (!items) return HttpResponse.json({ error: { code: "not_found", message: "x" } }, { status: 404 });
       return HttpResponse.json({ items: items.map((m) => ({ ...m, tools: [], channel: "app" })) });
     }),

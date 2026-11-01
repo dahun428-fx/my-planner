@@ -1,4 +1,6 @@
-import type { Habit, TodoRef } from "../api/types.gen";
+import type { Habit, PanelSuggestionOut, TodoRef } from "../api/types.gen";
+import type { Agent } from "../chat/agent";
+import type { WireChip } from "../chat/quickChips";
 import type { OpenScreen } from "./primitives/types";
 
 export type Milestone = { id: number; title: string; date: string; area?: string; sensitive?: boolean };
@@ -33,6 +35,8 @@ export type PartData = {
   end?: string;
   days?: DayTodos[];
   outside?: OutsideItem[];
+  /** SP15 7장 ui_panel_suggestion: the suggestion as it was when the card was sent. */
+  suggestion?: PanelSuggestionOut;
 };
 
 export type PartContext = {
@@ -49,6 +53,11 @@ export type PartContext = {
   onOpen?(screen: OpenScreen): void;
   /** SP9 9.8 `ui_events`: open an app address the app made (`/schedule/?date=`); the chat sheet moves there and closes. */
   onOpenPath?(path: string): void;
+  /**
+   * SP15 10장 ui_full_diagnosis_chip: the chat sheet turns to that partner and sends that chip (only
+   * on a press). Only ChatSheet gives it; without it the card is text only (the check-in screen).
+   */
+  switchAgent?(agent: Agent, chip: WireChip): void;
 };
 
 export type PartProps<P> = { props: P; data?: PartData; ctx: PartContext };

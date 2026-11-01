@@ -1,9 +1,13 @@
 import type { UIMessage } from "ai";
 import type { PartData } from "../ui/types";
 
-/** What a message shows, in order (spec F4). */
+/** SP15 1장 2: one expert's note under a life manager answer (`expert` is the BE's key). */
+export type ExpertNote = { expert: string; text: string };
+
+/** What a message shows, in order (spec F4). `notes`: SP15, drawn as one folded line under the answer. */
 export type ViewPart =
   | { kind: "text"; text: string }
+  | { kind: "notes"; notes: ExpertNote[] }
   | { kind: "ui"; toolCallId: string; name: string; props: unknown; data?: PartData; restored?: boolean }
   | { kind: "activity"; confirmation: string | null; undoIds: number[]; activityIds: number[] };
 
@@ -38,8 +42,15 @@ function activityPart(data: unknown): ViewPart {
   };
 }
 
+/** The notes of a `data-expert-notes` part (`{notes}`) or a history line's `expert_notes`, read leniently. */
+export function readExpertNotes(v: unknown): ExpertNote[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((n): n is ExpertNote => isObj(n) && typeof n.expert === "string" && typeof n.text === "string" && n.text !== "").map((n) => ({ expert: n.expert, text: n.text }));
+}
+
 // text -> text, ui_* tools -> parts, other tools -> nothing (the confirmation stands for them),
-// data-activity -> the grey box. data-status is transient and never lands in `parts`.
+// data-activity -> the grey box, data-expert-notes -> the folded notes line (SP15). data-status is
+// transient and never lands in `parts`.
 export function toViewParts(m: UIMessage): ViewPart[] {
   const out: ViewPart[] = [];
   for (const part of m.parts as AnyPart[]) {
@@ -53,6 +64,10 @@ export function toViewParts(m: UIMessage): ViewPart[] {
       if (ui) out.push(ui);
     } else if (part.type === "data-activity") {
       out.push(activityPart((part as { data?: unknown }).data));
+    } else if (part.type === "data-expert-notes") {
+      const d = (part as { data?: unknown }).data;
+      const notes = readExpertNotes(isObj(d) ? d.notes : null);
+      if (notes.length > 0) out.push({ kind: "notes", notes });
     }
   }
   return out;

@@ -27,9 +27,10 @@ export interface AgentSheetState {
 export const sheetState: Record<Agent, AgentSheetState> = {
   secretary: { pickedConversationId: null, freshSince: null },
   mate: { pickedConversationId: null, freshSince: null },
+  manager: { pickedConversationId: null, freshSince: null },
 };
 export const resetSheetState = (): void => {
-  for (const a of ["secretary", "mate"] as const) sheetState[a] = { pickedConversationId: null, freshSince: null };
+  for (const a in sheetState) sheetState[a as Agent] = { pickedConversationId: null, freshSince: null };
 };
 // `freshSince` (review round 1): when "새 대화" (or deleting the conversation on screen) left an empty
 // chat. Until something is said or a row is opened, a reopened sheet stays empty: the latest

@@ -4,10 +4,11 @@ import type { Conversations } from "../api/types.gen";
 import { apiGetLate } from "../api/validateLate";
 import { loadParts } from "./localParts";
 import type { Agent } from "./agent";
-import type { ViewPart } from "./parts";
+import { type ExpertNote, readExpertNotes, type ViewPart } from "./parts";
 import type { WireChip } from "./quickChips";
 
 const ELSEWHERE_MAX = 3;
+const SPEAKERS = new Set(["user", "secretary", "mate", "manager"]);
 
 /**
  * `checkin_id`: a message sent to a run from the check-in chip (SP9 9.5); the transport sends it as the request's.
@@ -15,7 +16,8 @@ const ELSEWHERE_MAX = 3;
  */
 export type Meta = { conversation_id?: number | null; at?: string; checkin_id?: number; chip?: WireChip };
 /** `photos`: SP10 5.3, the ids of an app user line's photos in send order (its text has the marks already taken off by the BE). */
-type Line = { id?: string; at: string; speaker: "user" | "secretary" | "mate"; text: string; photos: number[] };
+/** `notes`: SP15 1장 2, a life manager answer's expert notes (`expert_notes`, the redacted text). */
+type Line = { id?: string; at: string; speaker: "user" | Agent; text: string; photos: number[]; notes: ExpertNote[] };
 
 // A BE before SP10 has no `photos`: none. Read leniently, like the ids.
 const photoIdsOf = (v: unknown): number[] =>
@@ -40,13 +42,14 @@ export function readLines(data: unknown): Line[] | null {
   if (!isObj(data) || !Array.isArray(data.items)) return null;
   const out: Line[] = [];
   for (const m of data.items) {
-    if (!isObj(m) || typeof m.at !== "string" || typeof m.text !== "string" || (m.speaker !== "user" && m.speaker !== "secretary" && m.speaker !== "mate")) return null;
+    if (!isObj(m) || typeof m.at !== "string" || typeof m.text !== "string" || !SPEAKERS.has(m.speaker as string)) return null;
     out.push({
       id: typeof m.id === "string" && m.id !== "" ? m.id : undefined,
       at: m.at,
-      speaker: m.speaker,
+      speaker: m.speaker as Line["speaker"],
       text: m.text,
       photos: m.speaker === "user" ? photoIdsOf(m.photos) : [],
+      notes: m.speaker === "manager" ? readExpertNotes(m.expert_notes) : [],
     });
   }
   return out;
@@ -72,7 +75,9 @@ export async function loadHistory(given: number | null | undefined, opts: { notB
   if (given !== undefined) {
     id = given;
   } else {
-    const r = await apiGetLate<Conversations>(`/conversations?channel=app&limit=3${opts.agent === "mate" ? "&agent=mate" : ""}`, "Conversations");
+    // The secretary's request stays as it was (no `agent`); the mate's and the life manager's name theirs.
+    const agentQuery = opts.agent && opts.agent !== "secretary" ? `&agent=${opts.agent}` : "";
+    const r = await apiGetLate<Conversations>(`/conversations?channel=app&limit=3${agentQuery}`, "Conversations");
     if (r.kind !== "ok") return failure(r);
     const latest = [...r.data.items].sort((a, b) => (a.last_message_at < b.last_message_at ? 1 : -1))[0];
     id = latest?.id ?? null;
@@ -97,15 +102,17 @@ export async function loadHistory(given: number | null | undefined, opts: { notB
       id: mid,
       role: l.speaker === "user" ? "user" : "assistant",
       // SP10 7.5: my photos come back as the data-photo parts they were sent as (a photo-only line has no text).
+      // SP15: a life manager answer's notes come back as the stream's data-expert-notes part.
       parts: [
         ...(l.text === "" && l.photos.length > 0 ? [] : [{ type: "text" as const, text: l.text }]),
         ...l.photos.map((photo_id) => ({ type: "data-photo" as const, data: { photo_id } })),
+        ...(l.notes.length > 0 ? [{ type: "data-expert-notes" as const, data: { notes: l.notes } }] : []),
       ],
       metadata: { conversation_id: id, at: l.at } satisfies Meta,
     });
   }
   const last = lines[lines.length - 1];
-  // SP12: "elsewhere" lines (telegram, scheduler) are the secretary's world; the mate view has none.
-  const elsewhere = given === undefined && last && opts.agent !== "mate" ? await readElsewhere(last.at) : [];
+  // SP12: "elsewhere" lines (telegram, scheduler) are the secretary's world; the mate's and the life manager's views have none.
+  const elsewhere = given === undefined && last && (opts.agent ?? "secretary") === "secretary" ? await readElsewhere(last.at) : [];
   return { kind: "ok", history: { conversationId: id, messages, restored, elsewhere } };
 }

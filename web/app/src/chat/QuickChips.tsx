@@ -1,4 +1,5 @@
 import { Icon } from "../components/icons";
+import { Pictogram } from "../components/pictograms.gen";
 import { copy } from "../lib/copy";
 import { type Chip, isWriteKey } from "./quickChips";
 import styles from "./QuickChips.module.css";
@@ -38,9 +39,9 @@ export function QuickChips({
   return (
     <div className={styles.row} role="group" aria-label={copy.chat.chipsLabel}>
       {chips.map((c) => (
-        <button key={c.key} type="button" className={`${styles.chip} pressable`} disabled={disabled} onClick={() => onPress(c)}>
+        <button key={c.key} type="button" className={`${styles.chip} pressable`} disabled={disabled || c.disabled === true} onClick={() => onPress(c)}>
           <span className={styles.mark} aria-hidden="true">
-            <Icon name={c.icon} />
+            {c.pictogram ? <Pictogram name={c.pictogram} size={16} /> : <Icon name={c.icon} />}
           </span>
           {c.label}
         </button>

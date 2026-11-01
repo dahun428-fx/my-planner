@@ -61,6 +61,14 @@
   flex: none;
   padding: var(--space-2) var(--gutter) 0;
 }
+/* SP15 11장: the life manager's budget line under the head, a quiet meta line. */
+.budget {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--gutter) 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
 .speaker {
   margin: 0;
   color: var(--muted);

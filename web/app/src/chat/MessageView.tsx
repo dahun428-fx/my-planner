@@ -4,11 +4,13 @@ import { Markdown } from "../components/Markdown";
 import { PhotoImage } from "../components/PhotoImage";
 import { copy } from "../lib/copy";
 import type { OpenScreen } from "../ui/primitives/types";
+import type { PartContext } from "../ui/types";
 import { useCatalog } from "../ui/CatalogProvider";
 import { registryNames, UiPart } from "../ui/registry";
 import { hideCoveredActivity } from "./hideCoveredActivity";
 import type { ViewPart } from "./parts";
 import { CopyHold } from "./CopyHold";
+import { ExpertNotes } from "./ExpertNotes";
 import { isWriteKey } from "./quickChips";
 import styles from "./ChatSheet.module.css";
 
@@ -62,6 +64,7 @@ export function MessageView({
   onOpenPath,
   onOpenPhoto,
   speakerName,
+  switchAgent,
 }: {
   message: UIMessage;
   parts: ViewPart[];
@@ -75,6 +78,8 @@ export function MessageView({
   onOpenPhoto?(ids: number[], index: number): void;
   /** SP12 11.1: the head line over the partner's answer ("운동메이트"). The secretary has none. */
   speakerName?: string;
+  /** SP15 10장: the chat sheet's partner switch (ui_full_diagnosis_chip). Left out off the sheet. */
+  switchAgent?: PartContext["switchAgent"];
 }) {
   const { check, settled } = useCatalog();
   if (message.role === "user") {
@@ -107,7 +112,10 @@ export function MessageView({
   // 11.4 (SP9 9.6): a line that ui_result already shows is left out, but never in a restored message.
   // A ui_result hides the line only when it really draws (UiPart's own test: known name, props the catalog takes).
   const restored = parts.some((p) => p.kind === "ui" && p.restored === true);
-  const shown = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
+  const drawn = restored ? parts : hideCoveredActivity(parts, (p) => settled && registryNames().includes(p.name) && check(p.name, p.props));
+  // SP15: the expert notes are one folded line under the whole answer, wherever their part came.
+  const notes = drawn.flatMap((p) => (p.kind === "notes" ? p.notes : []));
+  const shown = drawn.filter((p) => p.kind !== "notes");
   return (
     <CopyHold side="theirs" className={styles.theirs} data-message={message.id}>
       {speakerName && <p className={styles.speaker}>{speakerName}</p>}
@@ -122,12 +130,14 @@ export function MessageView({
         if (p.kind === "ui") {
           return (
             <div key={p.toolCallId} className={styles.part}>
-              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose, onOpen, onOpenPath }} />
+              <UiPart name={p.name} props={p.props} data={p.data} ctx={{ where: "chat", readOnly, restored: p.restored, onAfterAction: () => {}, onChoose, onOpen, onOpenPath, switchAgent }} />
             </div>
           );
         }
-        return <ActivityLine key={i} confirmation={p.confirmation} undoable={p.undoIds.length > 0} />;
+        if (p.kind === "activity") return <ActivityLine key={i} confirmation={p.confirmation} undoable={p.undoIds.length > 0} />;
+        return null;
       })}
+      <ExpertNotes notes={notes} />
     </CopyHold>
   );
 }

@@ -62,6 +62,10 @@ import "../chat/ConversationList.module.css";
 import "../chat/QuickChips.module.css";
 // The hold-to-copy menu of a chat message, for the same reason.
 import "../chat/CopyHold.module.css";
+// SP15 11장: ExpertNotes.module.css and PanelSuggestion.module.css are not imported here. Only the chat
+// sheet's chunk uses them, so they ship in that chunk's own stylesheet, which the chunk loader adds as a
+// <link> (style-src 'self' allows it, as for ChatSheet.module.css); a CSS module imported here also puts
+// its class-name map into _app's JS (the first-load budget). e2e/life-manager.spec.ts checks them under the CSP.
 // SP6 11.3: the parts' stylesheet goes out with _app too (the chat sheet's parts load late, their CSS does not).
 import "../ui/primitives/primitives.module.css";
 import "../ui/chat/cards.module.css";

@@ -54,7 +54,10 @@ export type ActionName =
   | "delete_workout_log"
   // SP13 6.5: the measure confirm card's "저장" and the detail screen's delete (both with undo).
   | "save_measures"
-  | "delete_measure";
+  | "delete_measure"
+  // SP15 12장: the panel suggestion card's "받기" (undo 24 h, removes what it made) and "버리기" (with a reason).
+  | "accept_suggestion"
+  | "dismiss_suggestion";
 
 // SP9 6.4: the memo limits answer 422 with their own code (rejected shape, the 10장 sentence as the
 // message), and two devices editing one memo answer 409 memo_conflict (conflict shape). SP9 5.1: the

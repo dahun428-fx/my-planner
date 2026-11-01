@@ -1,10 +1,13 @@
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 import styles from "./Segmented.module.css";
 import { useRadioKeys } from "./useRadioKeys";
 
 export interface SegmentedProps<T extends string> {
-  /** `hint`: a small line under the label (SP14 "새로 본 것 n개"); the radio's name stays the label, the hint describes it. */
-  options: { value: T; label: string; hint?: string }[];
+  /**
+   * `hint`: a small line under the label (SP14 "새로 본 것 n개"); the radio's name stays the label, the hint describes it.
+   * `label` may hold a pictogram before the words (SP15: the life manager's compass), aria-hidden so the name is the words.
+   */
+  options: { value: T; label: ReactNode; hint?: string }[];
   value: T;
   onChange(v: T): void;
   ariaLabel: string;

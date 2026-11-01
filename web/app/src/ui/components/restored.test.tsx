@@ -1,10 +1,14 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { copy } from "../../lib/copy";
+import { SUGGESTION } from "../../test/panel";
 import { makeCtx, makeHabit, makeTodo, serveActions } from "../../test/parts";
 import { renderWithProviders } from "../../test/render";
+import { BASE, server } from "../../test/server";
+import { forgetProposed, PanelSuggestion } from "./PanelSuggestion";
 import { ChapterDraft } from "./ChapterDraft";
 import { Choice } from "./Choice";
 import { HabitCheck } from "./HabitList";
@@ -54,5 +58,44 @@ describe("restored parts", () => {
     expect(bodies).toHaveLength(0);
     // Online: no "연결되면" reason under a restored card.
     expect(screen.queryByText(copy.offline.writeLater)).toBeNull();
+  });
+
+  // Review Focus 2 (SP15): a restored suggestion keeps its buttons while the BE still has it proposed.
+  describe("PanelSuggestion", () => {
+    const serveProposed = (ids: number[]) => {
+      const hits: (string | null)[] = [];
+      server.use(
+        http.get(`${BASE}/panel/suggestions`, ({ request }) => {
+          hits.push(new URL(request.url).searchParams.get("state"));
+          return HttpResponse.json({ items: ids.map((id) => ({ ...SUGGESTION, id })) });
+        }),
+      );
+      return hits;
+    };
+
+    it("restored suggestion keeps buttons while proposed; two cards share one request", async () => {
+      forgetProposed();
+      const hits = serveProposed([31]);
+      renderWithProviders(
+        <>
+          <PanelSuggestion props={{ suggestion_id: 31 }} data={{ suggestion: SUGGESTION }} ctx={ctx} />
+          <PanelSuggestion props={{ suggestion_id: 32 }} data={{ suggestion: { ...SUGGESTION, id: 32, title: "가짜 둘째" } }} ctx={ctx} />
+        </>,
+      );
+      expect(await screen.findByRole("button", { name: "받기" })).toBeEnabled();
+      expect(screen.getAllByRole("button", { name: "받기" })).toHaveLength(1); // 32 is not proposed any more
+      expect(screen.getByText("가짜 둘째")).toBeInTheDocument();
+      expect(hits).toEqual(["proposed"]);
+    });
+
+    it("a restored suggestion no longer proposed is read-only", async () => {
+      forgetProposed();
+      const hits = serveProposed([]);
+      renderWithProviders(<PanelSuggestion props={{ suggestion_id: 31 }} data={{ suggestion: SUGGESTION }} ctx={ctx} />);
+      await waitFor(() => expect(hits).toEqual(["proposed"]));
+      expect(screen.getByText("가짜 산책 습관")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "받기" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "버리기" })).toBeNull();
+    });
   });
 });

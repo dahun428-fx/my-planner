@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
-import { FIXED_CHIPS, type Chip } from "./quickChips";
+import { FIXED_CHIPS, type Chip, quickChips } from "./quickChips";
 import { QuickChips } from "./QuickChips";
 
 const checkin: Chip = { key: "checkin", label: copy.chat.chips.checkin.label, text: copy.chat.chips.checkin.text, icon: "check", mode: "send", checkinId: 341 };
@@ -52,5 +52,20 @@ describe("QuickChips", () => {
     expect(buttons.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     await user.click(buttons[0]);
     expect(onPress).not.toHaveBeenCalled();
+  });
+});
+
+// SP15 11장: a chip that cannot be pressed now (the full diagnosis already done today) stays in the row, off.
+describe("QuickChips, life manager", () => {
+  it("a blocked chip shows its own label and cannot be pressed", async () => {
+    const onPress = vi.fn();
+    const user = userEvent.setup();
+    render(<QuickChips chips={quickChips(null, new Date(), "manager", { fullDiagnosisOk: false })} disabled={false} onPress={onPress} />);
+    const blocked = screen.getByRole("button", { name: "오늘은 이미 했어요" });
+    expect(blocked).toBeDisabled();
+    await user.click(blocked);
+    expect(onPress).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "자료 올리기" }));
+    expect(onPress).toHaveBeenLastCalledWith(expect.objectContaining({ key: "manager_upload", mode: "attach" }));
   });
 });

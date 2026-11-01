@@ -20,7 +20,7 @@ const PAGE = 30;
 
 const listPath = (agent: Agent, q: string, before?: string) => {
   const p = new URLSearchParams({ channel: "app", limit: String(PAGE) });
-  if (agent === "mate") p.set("agent", agent); // SP12: the secretary's request stays as it was
+  if (agent !== "secretary") p.set("agent", agent); // SP12 / SP15: the secretary's request stays as it was
   if (q) p.set("q", q);
   if (before) p.set("before", before);
   return `/conversations?${p.toString()}`;

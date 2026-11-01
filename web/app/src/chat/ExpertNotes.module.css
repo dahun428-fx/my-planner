@@ -1,0 +1,56 @@
+/* SP15 11장: the folded "전문가 소견 n개" line under a life manager answer. A quiet caption line in
+   --muted (as DoneFold's), the notes under it as body text with the expert's name in bold. No card:
+   a rule above the list keeps it part of the answer (DESIGN.md: list, not cards).
+   One class only: _app imports this sheet for the CSP, and each class name costs first-load bytes. */
+.fold {
+  margin: 0;
+}
+.fold > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.fold > summary::after {
+  content: "›";
+  margin-left: 0.25rem;
+  transition: transform var(--dur-press) var(--ease);
+}
+.fold[open] > summary::after {
+  transform: rotate(90deg);
+}
+.fold > summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.fold > ul {
+  margin: 0;
+  padding: 0.75rem 0 0;
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.fold li {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.fold li > strong {
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.fold li > div {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text);
+}

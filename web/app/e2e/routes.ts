@@ -164,7 +164,55 @@ export type MockOptions = {
   /** SP14 10장: /health lists `mate` and `agent_notes`; the brief ends with an observation line, the mate's
    * inbox count is 3, and /agents/notes has two fake notes. */
   agentNotes?: boolean;
+  /** SP15 11장: /health lists `mate`, `agent_notes` and `manager`; the life manager's budget, inbox count and proposed suggestions answer. */
+  manager?: boolean;
 };
+
+/** SP15: a fake panel suggestion (no real values), as `data.suggestion` and GET /panel/suggestions give it. */
+export const PANEL_SUGGESTION = {
+  id: 31,
+  kind: "habit",
+  title: "점심 뒤 15분 걷기",
+  area: "health",
+  size_min: 15,
+  per_week: 3,
+  due_hint: null,
+  experts: ["health", "psych"],
+  evidence: [
+    { type: "record", ref: "task:7", note: "지난 4주 점심 뒤 산책을 두 번 했어요", href: "/todos/" },
+    { type: "statement", ref: "statement:2", note: "오후에 머리가 무겁다고 했어요", href: "/more/" },
+    { type: "external", ref: "bench:health.steps", note: "하루 걸음 수 기준표", href: null },
+  ],
+  state: "proposed",
+  week: "2026-W43",
+  created_at: "2026-10-24T01:00:00Z",
+};
+
+/** SP15: the life manager's answer: text, a panel suggestion card, then the expert notes (after finish-step). */
+export function managerSse(): string {
+  const ev = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  return [
+    ev({ type: "start", messageId: "m-mgr", messageMetadata: { conversation_id: 21, channel: "app", kind: "chat", checkin_id: null } }),
+    ev({ type: "start-step" }),
+    ev({ type: "text-start", id: "t1" }),
+    ev({ type: "text-delta", id: "t1", delta: "건강 전문의와 심리 코치에게 물어봤어요. 이번 주는 **작게** 시작해요." }),
+    ev({ type: "text-end", id: "t1" }),
+    ev({ type: "tool-input-available", toolCallId: "h_suggest", toolName: "ui_panel_suggestion", input: { suggestion_id: 31 } }),
+    ev({ type: "tool-output-available", toolCallId: "h_suggest", output: { ok: true, data: { suggestion: PANEL_SUGGESTION } } }),
+    ev({ type: "finish-step" }),
+    ev({
+      type: "data-expert-notes",
+      data: {
+        notes: [
+          { expert: "health", text: "식후 가벼운 걷기는 오후 졸림을 줄이는 데 도움이 돼요." },
+          { expert: "psych", text: "새 습관은 **이미 하는 일** 뒤에 붙이면 오래가요." },
+        ],
+      },
+    }),
+    ev({ type: "finish", messageMetadata: { conversation_id: 21, channel: "app", kind: "chat" } }),
+    "data: [DONE]\n\n",
+  ].join("");
+}
 
 /** SP14 10장: fake partner notes (no real values). */
 export const AGENT_NOTE_LINE = "토요일 오전이 몇 주째 비어 있어요. 가볍게 걷기를 넣어 볼까요?";
@@ -228,11 +276,15 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     const get = req.method() === "GET";
 
     if (get && path === "/health") {
-      const features = opts.agentNotes ? ["mate", "agent_notes"] : opts.mate ? ["mate"] : null;
+      const features = opts.manager ? ["mate", "agent_notes", "manager"] : opts.agentNotes ? ["mate", "agent_notes"] : opts.mate ? ["mate"] : null;
       return json(route, features ? { ...(fixture("health") as object), features } : fixture("health"));
     }
     if (get && opts.agentNotes && path === "/agents/mate/inbox/count") return json(route, { unseen: 3 });
     if (get && opts.agentNotes && path === "/agents/notes") return json(route, AGENT_NOTES);
+    if (get && opts.manager && path === "/agents/mate/inbox/count") return json(route, { unseen: 0 });
+    if (get && opts.manager && path === "/agents/manager/inbox/count") return json(route, { unseen: 2 });
+    if (get && opts.manager && path === "/panel/budget") return json(route, { remaining: 1, full_diagnosis_ok: true });
+    if (get && opts.manager && path === "/panel/suggestions") return json(route, { items: [PANEL_SUGGESTION] });
     if (get && path === "/workout") return json(route, WORKOUT);
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") {
