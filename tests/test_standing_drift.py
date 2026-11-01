@@ -103,7 +103,7 @@ def test_age_band_move_is_world():
     v = _vals(shuttle_run_laps=46)
     d = split(v, BENCH, date(2027, 6, 1), v, BENCH, date(2028, 6, 1), "health")
     assert d is not None
-    assert abs(d.world - 0.6 * 0.20 * 15) < 1e-9 * 100
+    assert abs(d.world - 0.6 * 0.20 * 15) < 1e-7
     assert d.me == 0
 
 
@@ -119,7 +119,9 @@ def test_marks_thresholds():
 
 def test_innate_not_in_area_drift():
     # 키는 몸 계측(FFMI)에도 쓰이므로, 몸무게·체지방이 없는 자료에서 키만 바꾼다
-    v = {"profile_birth_year": 1992, "profile_sex": "m", "height_cm": 176}
+    v = {"profile_birth_year": 1992, "profile_sex": "m", "height_cm": 176, "shuttle_run_laps": 46}
+    h = split(v, BENCH, TODAY, {**v, "height_cm": 185}, BENCH, TODAY, "health")
+    assert h is not None and h.delta == 0
     for area in AREAS:
         d = split(v, BENCH, TODAY, {**v, "height_cm": 185}, BENCH, TODAY, area)
         assert d is None or (d.delta == 0 and d.me == 0 and d.world == 0)
@@ -183,10 +185,11 @@ def test_catch_up_replaces_mid_quarter_first(conn):
     clock.set(datetime(2026, 10, 2, 0, 0, tzinfo=UTC))
     with transaction(conn):
         repo.add("salary_krw", 70_000_000, date(2026, 9, 15), "import", None, "mid", clock.now())
+        repo.add("salary_krw", 99_000_000, date(2026, 10, 1), "import", None, "mid", clock.now())
         assert catch_up_snapshots(conn, clock, date(2026, 10, 2)) > 0
     rows = repo.snapshots_for("2026-Q3")
     assert local(rows[0].taken_at, "Asia/Seoul").date() == date(2026, 9, 30)
-    assert rows[0].inputs["values"]["salary_krw"] == 70_000_000
+    assert rows[0].inputs["values"]["salary_krw"] == 70_000_000  # 10월 값(9.9천만)은 들어가지 않는다
     assert rows[0].inputs["source"] == "catch_up"
     with transaction(conn):
         assert write_snapshot(conn, clock, "2026-Q3", as_of=date(2026, 9, 30)) > 0
@@ -202,3 +205,33 @@ def test_derived_exercise_from_workout_logs(conn):
     out = with_derived({"exercise_days_week": 0.5}, w, TODAY)
     assert out["exercise_days_week"] == 2.0
     assert with_derived({"exercise_days_week": 0.5}, None, TODAY)["exercise_days_week"] == 0.5
+
+
+def test_review_snapshot_not_replaced_by_catch_up(conn):
+    clock = FakeClock(datetime(2026, 8, 10, 3, 0, tzinfo=UTC))
+    repo = _load(conn, clock, measured_on="2026-08-01")
+    with transaction(conn):
+        assert write_snapshot(conn, clock, "2026-Q3") > 0
+    assert repo.snapshots_for("2026-Q3")[0].inputs["source"] == "review"
+    clock.set(datetime(2026, 10, 2, 0, 0, tzinfo=UTC))
+    with transaction(conn):
+        assert catch_up_snapshots(conn, clock, date(2026, 10, 2)) == 0
+
+
+def test_derived_exercise_windows(conn):
+    clock = FakeClock(NOW)
+    w = WorkoutRepo(conn, clock)
+    with transaction(conn):
+        w.add_log(date(2026, 9, 22), "달리기", None, None, None, [], NOW)  # 40일 전
+        for i in range(8):
+            w.add_log(date(2026, 10, 5 + i * 3), "달리기", None, None, None, [], NOW)
+    assert with_derived({"exercise_days_week": 0.5}, w, TODAY)["exercise_days_week"] == 2.0
+
+
+def test_derived_exercise_old_logs_only_is_zero(conn):
+    clock = FakeClock(NOW)
+    w = WorkoutRepo(conn, clock)
+    with transaction(conn):
+        w.add_log(date(2026, 9, 25), "달리기", None, None, None, [], NOW)  # 37일 전
+        w.add_log(date(2026, 9, 8), "달리기", None, None, None, [], NOW)  # 54일 전
+    assert with_derived({"exercise_days_week": 0.5}, w, TODAY)["exercise_days_week"] == 0.0

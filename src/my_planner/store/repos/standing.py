@@ -163,6 +163,9 @@ class StandingRepo:
         r = self._conn.execute("SELECT MAX(period) FROM standing_snapshots WHERE period < ?", (period,)).fetchone()
         return r[0]
 
+    def delete_snapshots(self, period: str) -> None:
+        self._conn.execute("DELETE FROM standing_snapshots WHERE period = ?", (period,))
+
     def put_snapshot(
         self,
         period: str,

@@ -76,12 +76,14 @@ def base_snapshot(repo: StandingRepo, period: str) -> tuple[Values, str, date] |
     return None
 
 
-def area_drifts(conn: sqlite3.Connection, clock: Clock, today: date, now: StandingNow) -> dict[str, Drift | None]:
+def area_drifts(
+    conn: sqlite3.Connection, clock: Clock, today: date, now: StandingNow, bench_dir: Path | None = None
+) -> dict[str, Drift | None]:
     base = base_snapshot(StandingRepo(conn, clock), period_of("quarter", today))
     if base is None:
         return {a: None for a in AREAS}
     before_values, version, before_day = base
-    before_bench = load_bench_version(version) or load_bench(before_day)
+    before_bench = load_bench_version(version, bench_dir) or load_bench(before_day, bench_dir)
     return {
         a: drift_mod.split(before_values, before_bench, before_day, now.values, now.bench, today, a) for a in AREAS
     }
@@ -114,7 +116,7 @@ def write_snapshot(
     rows = [(axis, cohort, s.score) for cohort in COHORTS for axis, s in score_all(values, bench, cohort, day).items()]
     if not rows:
         return 0
-    conn.execute("DELETE FROM standing_snapshots WHERE period = ?", (period,))
+    repo.delete_snapshots(period)
     for axis, cohort, score in rows:
         repo.put_snapshot(period, axis, cohort, score, bench.version, inputs, taken_at)
     return len(rows)
