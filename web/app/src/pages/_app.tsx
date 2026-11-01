@@ -45,6 +45,8 @@ import "../screens/EventSheet.module.css";
 // _app (its own and the palette picker's, which no other screen uses); its code is /settings/'s chunk.
 import "../components/PalettePicker.module.css";
 import "../screens/Settings.module.css";
+// SP12 11.2: the workout screen's stylesheet only, for the same reason (its code stays in /workout/'s chunk).
+import "../screens/Workout.module.css";
 // Device pairing spec 5.1: the devices screen's and its QR's stylesheets only (CSP, as above); their
 // code (and the QR library) stays in /devices/'s chunk.
 import "../screens/Devices.module.css";

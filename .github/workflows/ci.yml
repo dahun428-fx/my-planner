@@ -148,6 +148,8 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      # A page whose CSS is not imported from _app loses its styles on a client move (CSP style-src 'self').
+      - run: npm run check:csp
 
   web-dashboard:
     name: web-dashboard
