@@ -125,7 +125,7 @@ export function PictogramSprite() {
         <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>
       </symbol>
       <symbol id="p-dumbbell" viewBox="0 0 24 24">
-        <rect x="5" y="6" width="3" height="12" rx="1"/><rect x="16" y="6" width="3" height="12" rx="1"/><path d="M8 12h8M2.5 9.5v5M21.5 9.5v5"/>
+        <rect x="5" y="6" width="3" height="12" rx="1"/><rect x="16" y="6" width="3" height="12" rx="1"/><path d="M2.5 12h2.5M8 12h8M19 12h2.5M2.5 9.5v5M21.5 9.5v5"/>
       </symbol>
       <symbol id="p-compass" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/>
