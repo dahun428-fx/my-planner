@@ -163,3 +163,9 @@ async def test_preamble_numbers_not_logged(tmp_path, caplog):
         prompt = env.brain.prompts[0]
     assert "salary_krw 예측 1234" in prompt  # 프롬프트에는 들어간다
     assert "1234" not in caplog.text
+
+
+def test_now_block_shows_logical_date_before_boundary(conn):
+    """Task 10 검토: 00:00~04:00에는 시계 날짜와 함께 주 계산이 쓰는 논리적 날짜를 적는다."""
+    text = _build(conn, FakeClock(kst(2026, 11, 2, 2, 0)))
+    assert _section(text, "## 지금") == ["2026-11-02 (월) 02:00, 오늘(논리적 날짜)은 2026-11-01 (일)"]

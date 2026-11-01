@@ -49,9 +49,13 @@ def _block(title: str, lines: list[str]) -> str:
     return "\n".join([title, *(lines or [NONE_LINE])])
 
 
-def _now_block(now: datetime, tz: str) -> str:
+def _now_block(now: datetime, tz: str, today: date) -> str:
+    """시계 날짜가 논리적 날짜와 다를 때(00:00~하루 경계)는 논리적 날짜도 적는다: 주 계산이 그 날짜를 쓴다."""
     t = local(now, tz)
-    return f"## 지금\n{t:%Y-%m-%d} ({WEEKDAY[t.weekday()]}) {t:%H:%M}"
+    line = f"{t:%Y-%m-%d} ({WEEKDAY[t.weekday()]}) {t:%H:%M}"
+    if t.date() != today:
+        line += f", 오늘(논리적 날짜)은 {today.isoformat()} ({WEEKDAY[today.weekday()]})"
+    return f"## 지금\n{line}"
 
 
 def _status_block(conn: sqlite3.Connection, clock: Clock, today: date) -> str:
@@ -92,12 +96,12 @@ def budget_block(conn: sqlite3.Connection, clock: Clock, today: date) -> str:
 def _decisions_block(repo: PanelRepo) -> str:
     """오래된 것부터(`created_at`, `id`). 3장 결정(`career_first`)은 늘 맨 위다(T17, 1장 10 충돌 순서)."""
     rows = repo.active_statements(["decision"])
-    rows.sort(key=lambda s: s.key != SEED_DECISION_KEY)  # 안정 정렬: 나머지는 오래된 순서 그대로
+    rows.sort(key=lambda s: (s.key != SEED_DECISION_KEY, s.created_at, s.id))  # career_first 맨 위, 나머지는 오래된 순
     return _block("## 결정", [f"- decision:{s.key} {s.text}" for s in rows])
 
 
 def _statements_block(repo: PanelRepo) -> str:
-    rows = repo.active_statements(["fact", "preference"])[::-1][:STATEMENTS_MAX]
+    rows = sorted(repo.active_statements(["fact", "preference"]), key=lambda s: (s.created_at, s.id), reverse=True)[:STATEMENTS_MAX]
     return _block("## 내가 한 말", [f"- statement:{s.id} {_area(s.area)} {s.text}" for s in rows])
 
 
@@ -142,7 +146,7 @@ def build_manager_preamble(
     today = logical_date(now, tz, boundary)
     panel = PanelRepo(conn, clock)
     return "\n\n".join([
-        _now_block(now, tz),
+        _now_block(now, tz, today),
         _status_block(conn, clock, today),
         pace_text(load_pace(conn, clock, today, tz=tz, boundary=boundary)),
         budget_block(conn, clock, today),
