@@ -158,7 +158,7 @@ def _label(area: str) -> str:
 
 
 def pace_text(p: Pace) -> str:
-    """앞머리 표. 값이 없는 줄은 `기록 없음`."""
+    """앞머리 표. 값이 없는 줄은 `기록 없음`(빈 저녁·주말 줄은 늘 숫자)."""
     done = " · ".join(f"{_label(a)} {v:.1f}" for a, v in p.done_per_week.items()) or NO_RECORD
     if p.postponed:
         postponed = " · ".join(f"{_label(a)} {n}" for a, n in p.postponed.items())
@@ -167,10 +167,8 @@ def pace_text(p: Pace) -> str:
     else:
         postponed = NO_RECORD
     workout = f"{p.workout_days_per_week:.1f}" if p.workout_days_per_week > 0 else NO_RECORD
-    free = (
-        f"평일 저녁 {p.free_evenings} · 주말 반나절 {p.free_weekend_halves}"
-        if p.free_evenings or p.free_weekend_halves else NO_RECORD
-    )
+    # 빈 시간은 앞으로의 달력에서 센 값이라 늘 있다: 0 · 0은 "꽉 찼다"는 뜻이지 기록 없음이 아니다(스펙 7.4 `no_time`)
+    free = f"평일 저녁 {p.free_evenings} · 주말 반나절 {p.free_weekend_halves}"
     cond = (
         f"평균 {p.condition_avg:.1f} · 3 이하 날 {p.low_condition_days}" if p.condition_avg is not None else NO_RECORD
     )
@@ -205,7 +203,7 @@ def _occ(o_start: datetime | None, o_end: datetime | None, day: date, all_day: b
 
 
 def load_pace(
-    conn: sqlite3.Connection, clock: Clock, today: date, *, tz: str = "Asia/Seoul", boundary: time = time(4, 0)
+    conn: sqlite3.Connection, clock: Clock, today: date, *, tz: str, boundary: time
 ) -> Pace:
     """저장소에서 `PaceInputs`를 모아 `compute_pace`. 읽기만 한다. `tz`·`boundary`는 설정의 시간대·하루 경계."""
     zone = ZoneInfo(tz)

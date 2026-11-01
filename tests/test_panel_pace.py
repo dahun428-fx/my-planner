@@ -112,7 +112,7 @@ EMPTY_TEXT = """## 내 속도 표
 - 한 주에 끝낸 할 일(지난 8주 평균): 기록 없음
 - 미룬 할 일(지난 4주): 기록 없음
 - 운동한 날(지난 8주 주 평균): 기록 없음
-- 빈 저녁·주말(다음 2주): 기록 없음
+- 빈 저녁·주말(다음 2주): 평일 저녁 0 · 주말 반나절 0
 - 컨디션(지난 4주): 기록 없음
 - 잠·걸음(지난 4주 평균): 기록 없음
 - 패널 제안(지난 4주): 기록 없음"""
@@ -166,7 +166,7 @@ def test_load_pace_reads_db(conn):
                 due_hint=None, experts=["career"], evidence=[], week="2026-W44", now=at,
             )
             panel.set_state(sid, state, now=at)
-    p = load_pace(conn, clock, TODAY)
+    p = load_pace(conn, clock, TODAY, tz="Asia/Seoul", boundary=time(4, 0))
     assert p.done_per_week == {"career": 0.1}  # 1 / 8
     assert p.postponed == {"health": 1} and p.postponed_weekday == 0
     assert p.workout_days_per_week == 0.2  # 운동 10-31 ∪ 건강 습관 10-31·10-29(배움 습관은 뺀다)
