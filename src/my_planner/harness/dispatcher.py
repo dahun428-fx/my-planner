@@ -1344,7 +1344,8 @@ class Dispatcher:
             if block is not None and result.status == "ok":
                 # 두뇌가 제대로 답했을 때만 읽음 표시(오류·멈추기·상한 길은 위에서 나갔거나 여기 오지 않는다)
                 assert self.tools is not None and self.tools.agents is not None
-                self.tools.agents.mark_seen(conv.agent, block.event_ids, self.clock.now())
+                with transaction(self.tools.agents.conn):
+                    self.tools.agents.mark_seen(conv.agent, block.event_ids, self.clock.now())
             streamed = result.status == "ok" and app is not None and app.writer.attempt_streamed
             # 조각으로 나간 글이 있으면 저장·재생의 글도 클라이언트가 본 글 블록 전부(6.4.1)
             body_text = app.writer.streamed_reply if streamed else _reply_for(result)
