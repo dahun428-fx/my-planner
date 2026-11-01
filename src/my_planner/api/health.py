@@ -151,5 +151,6 @@ def health_view(conn: sqlite3.Connection, deps: ApiDeps) -> dict[str, Any]:
         "errors": deps.errors.snapshot(),
         "push": {"subscriptions": push.count_active(), "last_success_at": last_success},
         "disk_low": disk_low(deps),  # SP10 5.6 4번: 경고만(`status`는 그대로)
+        "features": ["mate"],  # SP12: 앱이 운동메이트 칸·운동 화면을 보일지 정한다
     }
     return to_api_times(body)

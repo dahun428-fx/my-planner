@@ -97,6 +97,7 @@ from my_planner.api.read import (
     get_week,
 )
 from my_planner.api.recovery import post_client_error, post_internal_notify
+from my_planner.api.workout import get_workout
 from my_planner.probe import health_probe_fails
 
 if TYPE_CHECKING:
@@ -286,6 +287,7 @@ READ_ROUTES: tuple[tuple[str, Callable[[sqlite3.Connection, ApiDeps, web.Request
     ("/checkins/{id}", get_checkin),
     ("/habits", get_habits),
     ("/habits/{id}", get_habit),
+    ("/workout", get_workout),
     ("/events", get_events),
     ("/events/{id}", get_event),
     ("/memos", get_memos),

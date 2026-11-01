@@ -510,6 +510,15 @@
       "additionalProperties": false,
       "description": "`POST /chat` 요청 (6.4.1). `client_msg_id`는 필수다(6.1 중복 방지).\n\n`chip`(SP9c 4.1)이 있으면 명령 해석을 하지 않는다. 회차 답(`checkin_id`)과 같이 오면 거절한다(400).",
       "properties": {
+        "agent": {
+          "default": "secretary",
+          "enum": [
+            "secretary",
+            "mate"
+          ],
+          "title": "Agent",
+          "type": "string"
+        },
         "checkin_id": {
           "anyOf": [
             {
@@ -4114,6 +4123,21 @@
         "errors": {
           "$ref": "#/$defs/HealthErrors"
         },
+        "features": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Features"
+        },
         "inbound_pending_oldest_at": {
           "anyOf": [
             {
@@ -4581,7 +4605,8 @@
             "speaker": {
               "enum": [
                 "user",
-                "secretary"
+                "secretary",
+                "mate"
               ],
               "title": "Speaker",
               "type": "string"
@@ -7577,6 +7602,388 @@
         "days"
       ],
       "title": "Week",
+      "type": "object"
+    },
+    "Workout": {
+      "$defs": {
+        "BodyNoteOut": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "equipment",
+                "injury",
+                "preference",
+                "availability",
+                "other"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            },
+            "updated_at": {
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "text",
+            "updated_at"
+          ],
+          "title": "BodyNoteOut",
+          "type": "object"
+        },
+        "WorkoutLogItemOut": {
+          "additionalProperties": false,
+          "properties": {
+            "distance_km": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Distance Km"
+            },
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Minutes"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "reps": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reps"
+            },
+            "sets": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sets"
+            },
+            "weight_kg": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight Kg"
+            }
+          },
+          "required": [
+            "name",
+            "sets",
+            "reps",
+            "weight_kg",
+            "minutes",
+            "distance_km"
+          ],
+          "title": "WorkoutLogItemOut",
+          "type": "object"
+        },
+        "WorkoutLogOut": {
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "title": "Date",
+              "type": "string"
+            },
+            "effort": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Effort"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/WorkoutLogItemOut"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "title",
+            "session_id",
+            "effort",
+            "note",
+            "items"
+          ],
+          "title": "WorkoutLogOut",
+          "type": "object"
+        },
+        "WorkoutPlan": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "sessions": {
+              "items": {
+                "$ref": "#/$defs/WorkoutPlanSession"
+              },
+              "title": "Sessions",
+              "type": "array"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "note",
+            "created_at",
+            "sessions"
+          ],
+          "title": "WorkoutPlan",
+          "type": "object"
+        },
+        "WorkoutPlanItem": {
+          "additionalProperties": false,
+          "properties": {
+            "minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Minutes"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "reps": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reps"
+            },
+            "sets": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sets"
+            },
+            "weight_kg": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight Kg"
+            }
+          },
+          "required": [
+            "name",
+            "sets",
+            "reps",
+            "weight_kg",
+            "minutes",
+            "note"
+          ],
+          "title": "WorkoutPlanItem",
+          "type": "object"
+        },
+        "WorkoutPlanSession": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/WorkoutPlanItem"
+              },
+              "title": "Items",
+              "type": "array"
+            },
+            "label": {
+              "title": "Label",
+              "type": "string"
+            },
+            "position": {
+              "title": "Position",
+              "type": "integer"
+            },
+            "weekdays": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekdays"
+            }
+          },
+          "required": [
+            "id",
+            "position",
+            "label",
+            "weekdays",
+            "items"
+          ],
+          "title": "WorkoutPlanSession",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /workout`: 지금 플랜(없으면 null), 최근 28일 기록(날짜 내림차순), 몸 메모.",
+      "properties": {
+        "logs": {
+          "items": {
+            "$ref": "#/$defs/WorkoutLogOut"
+          },
+          "title": "Logs",
+          "type": "array"
+        },
+        "notes": {
+          "items": {
+            "$ref": "#/$defs/BodyNoteOut"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkoutPlan"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "plan",
+        "logs",
+        "notes"
+      ],
+      "title": "Workout",
       "type": "object"
     }
   }
