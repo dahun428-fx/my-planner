@@ -338,7 +338,8 @@ class ConversationRouter:
         `chat`은 통로 × 상대마다 본다(SP12 5.2): 메이트 대화가 더 최근이어도 30분 지난 비서 대화는 닫힌다."""
         now = self.clock.now()
         for ch in CHANNELS:
-            for agent in AGENTS:
+            # 메이트 대화는 늘 앱 통로다(SP12 5.1)
+            for agent in AGENTS if ch == "app" else ("secretary",):
                 cur = self.convs.latest_open(ConversationKind.chat, ch, agent)
                 if cur is not None and now - cur.last_message_at > self._idle():
                     self.convs.close(cur.id)
