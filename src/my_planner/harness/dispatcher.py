@@ -23,12 +23,14 @@ from my_planner.domain import (
     Cadence,
     Channel,
     ConversationKind,
+    InboxAgent,
     LoopKey,
     RunContext,
     SkipReason,
     TaskStatus,
     ToolEvent,
 )
+from my_planner.harness import dayend as dayend_job
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
 from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
@@ -111,6 +113,7 @@ if TYPE_CHECKING:
         ConfirmsRepo,
         IdempotencyRepo,
     )
+    from my_planner.store.repos.agents import AgentsRepo
     from my_planner.store.repos.channels import DeliveriesRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.conversations import Conversation, ConversationsRepo
@@ -280,6 +283,13 @@ class _MomentsJob:
 
 
 @dataclass
+class _DayendJob:
+    """하루 끝 판단(SP14 6.1): 코드 단계 → 상대마다 판단 → 정리. 순간 정리 다음 차례다. `date`는 논리적 오늘."""
+
+    date: date
+
+
+@dataclass
 class _SummaryJob:
     """닫힌 앱 대화 하나의 제목·요약(SP9 7.2). 메시지와 회차 다음 차례다."""
 
@@ -315,6 +325,7 @@ class _ResendJob:
 _PRIORITY_MESSAGE = 0  # 사용자 메시지가 회차보다 먼저
 _PRIORITY_RUN = 1
 _PRIORITY_MOMENTS = 2  # 하루 끝 순간: 기다리는 메시지와 회차가 먼저(SP8 6.2-4)
+_PRIORITY_DAYEND = 3  # 하루 끝 판단(SP14 6.1): 이룬 순간 다음
 _PRIORITY_SUMMARY = 2  # 대화 요약(SP9 7.2): 같은 차례의 순간 정리와는 들어온 순서
 _PRIORITY_PHOTO_READ = _PRIORITY_MESSAGE  # 사진 읽기(SP10 5.4): 사용자가 기다린다. 메시지와는 들어온 순서
 _PRIORITY_STOP = 1_000_000
@@ -938,6 +949,10 @@ class Dispatcher:
         """그날의 이룬 순간 정리를 넣는다(하루 한 번 작업 `queue_moments`, SP8 6.2). 대기열은 메모리에만 있다."""
         self._queue.put_nowait((_PRIORITY_MOMENTS, next(self._seq), _MomentsJob(day)))
 
+    def submit_dayend(self, today: date) -> None:
+        """하루 끝 판단을 넣는다(하루 한 번 작업 `queue_dayend`, SP14 6.1). `today`는 논리적 오늘."""
+        self._queue.put_nowait((_PRIORITY_DAYEND, next(self._seq), _DayendJob(today)))
+
     def submit_resend(self, run: Run) -> None:
         """시작 시 복구: 전송이 끝내 안 된 회차(`failed`, `outbound_text` 있음)를 전송만 한 번 다시 한다.
 
@@ -1018,6 +1033,12 @@ class Dispatcher:
                 await self._handle_moments(item)
             except Exception:
                 log.exception("moments_handling_error", extra={"date": item.date.isoformat()})
+            return
+        if isinstance(item, _DayendJob):
+            try:
+                await self._handle_dayend(item)
+            except Exception:
+                log.exception("agent_dayend_handling_error", extra={"date": item.date.isoformat()})
             return
         if isinstance(item, _SummaryJob):
             try:
@@ -2658,6 +2679,72 @@ class Dispatcher:
     def _log_moments(d: date, state: str, saved: int, rejected: int, started: float) -> None:
         log.info("moments_job", extra={
             "date": d.isoformat(), "state": state, "saved": saved, "rejected": rejected,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+        })
+
+    # --- 하루 끝 판단 (SP14 6.1~6.3) ---
+
+    async def _handle_dayend(self, job: _DayendJob) -> None:
+        """코드 단계(늘, 멈추는 중이어도) → 상대마다 판단 → 정리. 아무에게도 보내지 않는다(1장 4)."""
+        today = job.date
+        dayend_job.run_code_steps(self.state.conn, self.clock, today)
+        if self._stopping:  # 멈추는 중: 두뇌를 부르지 않는다(받은편지함 그대로, 다음 날 따라잡기)
+            return
+        repo = self.tools.agents if self.tools is not None else None
+        if repo is None:
+            return
+        for agent in dayend_job.DAYEND_AGENTS:
+            try:
+                await self._dayend_one(repo, agent, today)
+            except Exception:
+                log.exception("agent_dayend_error", extra={"agent": agent})
+        dayend_job.prune(repo, today, self.clock.now())
+
+    async def _dayend_one(self, repo: AgentsRepo, agent: InboxAgent, today: date) -> None:
+        started = time.monotonic()
+        inp = dayend_job.prepare(repo, self.state, agent, today, self.clock.now())
+        if isinstance(inp, str):  # "already" | "empty"
+            self._log_dayend(agent, 0, 0, 0, inp, started)
+            return
+        if self._moments_blocked():  # 사용자 몫·로그인·사용 한도(6.3): 그날 키도 쓰지 않는다
+            self._log_dayend(agent, inp.events, 0, 0, "waiting", started)
+            return
+        dayend_job.mark_called(self.state, agent, today)
+        day = today - timedelta(days=1)
+        handoffs_before = repo.handoffs_on(agent, day)
+        run_ctx = RunContext(
+            None, None, kind="dayend", actor="secretary", activity_channel="scheduler", channel="app", agent=agent,
+            dayend_day=day,
+        )
+        result: BrainResult | None = None
+        try:
+            result = await self._call_brain(
+                inp.text, session_id=None, run_ctx=run_ctx, system_prompt=dayend_job.dayend_system_prompt(agent),
+                max_turns=dayend_job.DAYEND_MAX_TURNS, persist_session=False,
+            )
+        finally:
+            # 순간 호출과 같은 방식(SP8 6.3, 결정 18): 결과가 무엇이든 그 세션 파일을 지운다
+            if self.claude_config_dir is not None:
+                sid = (result.session_id if result is not None else None) or run_ctx.brain_session_id
+                if sid is None:
+                    log.info("agent_dayend_session_cleanup", extra={"removed": False, "reason": "no_session_id"})
+                else:
+                    moments_job.remove_session_file(
+                        sid, config_dir=self.claude_config_dir, event="agent_dayend_session_cleanup",
+                    )
+        if result.status == "rate_limited":
+            self._set_limited(result.retry_at)
+        outcome = dayend_job.settle(
+            repo, self.state, agent, today, inp, result, run_ctx.notes_written, self.clock.now(),
+        )
+        handoffs = repo.handoffs_on(agent, day) - handoffs_before
+        self._log_dayend(agent, inp.events, run_ctx.notes_written, handoffs, outcome, started)
+
+    @staticmethod
+    def _log_dayend(agent: str, events: int, notes: int, handoffs: int, result: str, started: float) -> None:
+        """상대·개수·결과만(글·`ref` 없음, 12장)."""
+        log.info("agent_dayend", extra={
+            "agent": agent, "events": events, "notes": notes, "handoffs": handoffs, "result": result,
             "duration_ms": round((time.monotonic() - started) * 1000),
         })
 

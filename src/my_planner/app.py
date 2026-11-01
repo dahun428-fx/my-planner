@@ -59,6 +59,7 @@ from my_planner.loop.runner import (
     prune_api_state_daily,
     prune_records_daily,
     prune_updates_daily,
+    queue_dayend_daily,
     queue_moments_daily,
     recover_on_start,
     reerase_deleted_daily,
@@ -356,6 +357,7 @@ def build_be(
     runner.register_daily(standing_daily(dispatcher))  # 지난 분기 위치 스냅숏 따라잡기(SP13)
     # 하루 끝 이룬 순간: 정리할 날을 골라 디스패처에 가장 낮은 차례로(SP8 6.2). 두뇌는 디스패처가 부른다
     runner.register_daily(queue_moments_daily(dispatcher, moments, state))
+    runner.register_daily(queue_dayend_daily(dispatcher))  # 하루 끝 판단: 순간 다음, 정리까지(SP14 6.1)
     runner.register_daily(retry_summaries_daily(dispatcher))  # 요약이 안 된 최근 7일의 앱 대화(SP9 7.2)
     runner.register_daily(reerase_deleted_daily(dispatcher))  # 최근 30일 안에 지운 대화의 원문 다시 지우기(SP9 7.7)
     runner.register_daily(backup_daily(conn, paths.state_dir / BACKUPS_DIR, keep=settings.retention.backup_count))

@@ -282,6 +282,35 @@ async def test_sp8_write_paths(tmp_path, monkeypatch):
     assert ("habit_checks", "my_planner.tools.habits", "my_planner.api.actions", True) in rec.tool_calls
 
 
+async def test_sp14_dayend_write_paths(tmp_path, monkeypatch):
+    """SP14 하루 끝 판단의 쓰기: 그날 키·시도 수·읽음 표시·90일 정리는 `harness/dayend.py`, 관찰과 넘기기는 두뇌 갈래의
+    `tools.agents`(입구는 디스패처). 사건은 `/actions`의 즉시 갈래로 받은편지함에 든다."""
+    from be_env import BeEnv
+    from fakes import FakeTurn
+    from test_dispatcher_messages import kst
+
+    rec = Recorder()
+    monkeypatch.setattr(be_env, "ON_WRITE", rec)
+    turn = FakeTurn([
+        ("write_note", {"text": "토요일 저녁만 비어 있어요", "priority": 2, "refs": ["checkin:2026-11-01"]}),
+        ("hand_off", {"to": "manager", "text": "저녁 일정이 많아요", "refs": ["checkin:2026-11-01"]}),
+    ], "")
+    async with BeEnv.start(tmp_path, script=[turn], start=kst(2026, 11, 2, 3, 0), dayend=True) as env:
+        env.parts.runner.checkins = False
+        status, _ = await env.action("record_condition", {"score": 4})  # `condition_logged` → 메이트에게도
+        assert status == 200
+        env.clock.set(kst(2026, 11, 2, 4, 1))
+        await env.tick()
+        assert [c["run_ctx"].kind for c in env.brain.calls] == ["dayend"]
+
+    assert rec.unparsed == []
+    assert sorted((t, m) for t, m in rec.seen if not _allowed(t, m)) == []
+    assert rec.bypasses() == []
+    assert {("app_state", DAYEND_JOB), ("agent_inbox", DAYEND_JOB), ("agent_events", DAYEND_JOB)} <= rec.seen
+    assert ("agent_notes", "my_planner.tools.agents", DISPATCHER, True) in rec.tool_calls
+    assert {t for t, m in rec.seen if m == DAYEND_JOB} <= {"app_state", "agent_inbox", "agent_events", "agent_notes"}
+
+
 @pytest.mark.parametrize("table", sorted(ALLOWED))
 def test_allowed_tables_exist(conn, table):
     """`ALLOWED`의 표 이름이 실제 표다(오타로 감시가 비지 않게)."""
