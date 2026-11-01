@@ -200,3 +200,37 @@ async def test_curve_history_route_and_schema(tmp_path):
     assert [e["title"] for e in on["chapters"][0]["events"]] == ["꾸민 일", "꾸민 비밀 일"]
     assert [e["title"] for e in body["unassigned"]["events"]] == ["시기 없는 일"]
     assert bad.status == 400 and unauth.status == 401
+
+
+# --- SP13-06: `stats[*].standing`과 `innate`는 대시보드 기기에 없다(T7) ---
+
+
+async def test_status_standing_only_for_app(tmp_path):
+    from test_api_devices import _device
+    from test_api_standing import START, seed_sample
+
+    async with BeEnv.start(tmp_path, start=START) as env:
+        seed_sample(env)
+        dash, _ = await _device(env, client="dashboard", label="Windows · 대시보드")
+        app, _ = await _device(env, client="app", label="iPhone · 앱")
+        bodies = {}
+        for name, token in (("dash", dash), ("app", app), ("api", None)):
+            resp = await (env.get("/status", token=token) if token else env.get("/status"))
+            assert resp.status == 200
+            bodies[name] = await resp.json()
+        standing = await get_json(env, "/standing")
+    schema = schema_bundle()["models"]["Status"]
+    for body in bodies.values():
+        jsonschema.Draft202012Validator(schema).validate(body)
+    dash_body = bodies["dash"]
+    assert all("standing" not in s for s in dash_body["stats"])
+    assert "innate" not in dash_body
+    for name in ("app", "api"):
+        body = bodies[name]
+        assert body["innate"] == standing["innate"]
+        for s in body["stats"]:
+            assert s["standing"] == standing["areas"][s["area"]], (name, s["area"])
+    # 대시보드 본문은 나머지가 같다
+    strip = {k: v for k, v in bodies["app"].items() if k != "innate"}
+    strip["stats"] = [{k: v for k, v in s.items() if k != "standing"} for s in strip["stats"]]
+    assert strip == dash_body

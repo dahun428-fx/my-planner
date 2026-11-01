@@ -70,6 +70,8 @@ export interface ApiModels {
   RecoveryNoticeSent: RecoveryNoticeSent;
   SafeModeHealth: SafeModeHealth;
   SchemaBundle: SchemaBundle;
+  Standing: Standing;
+  StandingMeasures: StandingMeasures;
   Status: Status;
   Today: Today;
   Todo: Todo;
@@ -168,7 +170,8 @@ export interface ErrorDetail {
     | "photo_unreadable"
     | "photo_limit"
     | "disk_full"
-    | "photo_read_limit";
+    | "photo_read_limit"
+    | "forbidden";
   message: string;
 }
 /**
@@ -1376,6 +1379,172 @@ export interface SchemaBundle {
   };
 }
 /**
+ * `GET /standing` (SP13 12장, 모양의 정본은 구현 계획 Task 6). 축은 AXES 순서.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "Standing".
+ */
+export interface Standing {
+  areas: StandingAreas;
+  axes: StandingAxis[];
+  bench: StandingBench;
+  innate: InnateItem[];
+  markets: StandingMarkets;
+  measures_count: number;
+  profile_missing: boolean;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingAreas".
+ */
+export interface StandingAreas {
+  career: StandingArea;
+  finance: StandingArea;
+  health: StandingArea;
+  learning: StandingArea;
+  quality_of_life: StandingArea;
+  relationships: StandingArea;
+}
+/**
+ * 영역 위치(SP13 5.1, 10.1). `hint`는 위치가 없을 때만.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingArea".
+ */
+export interface StandingArea {
+  debuff: boolean;
+  drift: StandingDrift[];
+  hint: string | null;
+  peer_score: number | null;
+  recovery_quest: string | null;
+  reliability: ("high" | "mid" | "low") | null;
+  score: number | null;
+}
+/**
+ * 하락 이유(SP13 9.2): `me`는 |Δm| ≥ 5, `world`는 Δw ≤ −5일 때만.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingDrift".
+ */
+export interface StandingDrift {
+  delta: number;
+  kind: "me" | "world";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingAxis".
+ */
+export interface StandingAxis {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  axis:
+    | "career"
+    | "money"
+    | "health"
+    | "looks"
+    | "relations"
+    | "intellect"
+    | "height"
+    | "education"
+    | "family";
+  innate: boolean;
+  label: string;
+  national: AxisScoreOut | null;
+  peer: AxisScoreOut | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "AxisScoreOut".
+ */
+export interface AxisScoreOut {
+  assumed: string[];
+  estimate: boolean;
+  high: number;
+  inputs: string[];
+  low: number;
+  measured_on: string | null;
+  missing: string[];
+  reliability: "high" | "mid" | "low";
+  score: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingBench".
+ */
+export interface StandingBench {
+  effective_from: string;
+  version: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "InnateItem".
+ */
+export interface InnateItem {
+  axis:
+    | "career"
+    | "money"
+    | "health"
+    | "looks"
+    | "relations"
+    | "intellect"
+    | "height"
+    | "education"
+    | "family";
+  label: string;
+  score: number | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingMarkets".
+ */
+export interface StandingMarkets {
+  career: StandingMarket;
+  marriage: StandingMarket;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingMarket".
+ */
+export interface StandingMarket {
+  excluded: (
+    | "career"
+    | "money"
+    | "health"
+    | "looks"
+    | "relations"
+    | "intellect"
+    | "height"
+    | "education"
+    | "family"
+  )[];
+  national: number | null;
+  peer: number | null;
+}
+/**
+ * `GET /standing/measures`: 지우지 않은 측정값 전부(`StandingRepo.active()` 순서).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingMeasures".
+ */
+export interface StandingMeasures {
+  measures: StandingMeasure[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "StandingMeasure".
+ */
+export interface StandingMeasure {
+  created_at: string;
+  id: number;
+  label: string;
+  measured_on: string;
+  metric: string;
+  reliability: "high" | "mid" | "low";
+  source_kind: "photo" | "pdf" | "manual" | "shortcut" | "import" | "derived";
+  unit: string | null;
+  value_num: number | null;
+  value_text: string | null;
+}
+/**
  * `GET /status` (6.3.6). `moments`·`moments_hidden`은 SP8 6.5, `body`는 SP8 7.5.
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -1385,6 +1554,7 @@ export interface Status {
   body: StatusBody | null;
   daily_quests: DailyQuest[];
   hp: StatusHp;
+  innate?: InnateItem[] | null;
   level: number;
   main_quests: MainQuest[];
   moments: Moment[];
@@ -1473,6 +1643,7 @@ export interface StatusStat {
   prev_score: number | null;
   recovery_quest: string | null;
   score: number | null;
+  standing?: StandingArea | null;
 }
 /**
  * 지난 28일 그 영역의 가중하지 않은 개수(SP8 5.6). `body_days`·`workout_days`는 건강만, 다른 영역은 0.

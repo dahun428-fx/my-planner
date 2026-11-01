@@ -35,6 +35,7 @@ EXPECTED_MODELS = {
     "PairCreated", "PairStatus", "PairBody", "PairResult", "DeviceList",  # 기기 연결 스펙 4.5
     "EventItem", "EventList", "EventDetail", "MissedReminder",  # SP9 5.6
     "CalendarSettings", "CalendarPutBody",  # SP9 5.7
+    "Standing", "StandingMeasures",  # SP13 12장
 }
 
 
@@ -79,7 +80,7 @@ async def test_every_read_response_validates_against_schema(tmp_path):
         paths = [
             "/health", "/today", "/week", "/conditions", "/priorities?cadence=week", "/priorities?cadence=quarter",
             "/drafts", "/checkins", f"/checkins/{checkin['id']}", "/conversations", f"/conversations/{cid}/messages",
-            "/ui/catalog", "/schema",
+            "/ui/catalog", "/schema", "/standing", "/standing/measures",
         ]
         bodies = {p: await get_json(env, p) for p in paths}
         err = await (await env.get("/checkins/abc")).json()
@@ -90,6 +91,7 @@ async def test_every_read_response_validates_against_schema(tmp_path):
         "/priorities?cadence=week": "Priorities", "/priorities?cadence=quarter": "Priorities", "/drafts": "Drafts",
         "/checkins": "CheckinList", f"/checkins/{checkin['id']}": "CheckinDetail", "/conversations": "Conversations",
         f"/conversations/{cid}/messages": "Messages", "/ui/catalog": "UiCatalog", "/schema": "SchemaBundle",
+        "/standing": "Standing", "/standing/measures": "StandingMeasures",
     }
     for path, model in by_path.items():
         jsonschema.Draft202012Validator(schemas[model]).validate(bodies[path])

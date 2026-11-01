@@ -136,17 +136,23 @@ def _quests(
 def status_snapshot(
     *, now: datetime, tz: str | tzinfo, boundary: time, status: StatusRepo, curve: CurveRepo, tasks: TasksRepo,
     conditions: ConditionsRepo, include_sensitive: bool = False, moments: MomentsRepo | None = None,
-    body: BodyRepo | None = None,
+    body: BodyRepo | None = None, standing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """`standing`(SP13 10장): `{"areas": {영역: 위치}, "innate": [...]}`. 주면 `stats[*].standing`과 최상위
+    `innate`를 더하고, None(대시보드 기기)이면 두 키를 넣지 않는다."""
     today = logical_date(now, tz, boundary)
     xp_total = status.total()
     level, into, for_next = progress(xp_total)
     todays = conditions.get(today)
     main_quests, daily_quests = _quests(tasks, status, today)
-    return {
+    stats = _stats(curve, today, _bonuses(status, today, tz, boundary))
+    if standing is not None:
+        for stat in stats:
+            stat["standing"] = standing["areas"][stat["area"]]
+    out = {
         "level": level, "xp_total": xp_total, "xp_into_level": into, "xp_for_next": for_next,
         "hp": {"date": today.isoformat(), "score": todays.score if todays else None},
-        "stats": _stats(curve, today, _bonuses(status, today, tz, boundary)),
+        "stats": stats,
         "main_quests": main_quests,
         "daily_quests": daily_quests,
         "titles": [
@@ -158,6 +164,9 @@ def status_snapshot(
         **_moments(moments, today),
         "body": body.summary(today) if body is not None else None,  # 지난 7일 몸 기록(SP8 7.5). 56일에 행이 없으면 None
     }
+    if standing is not None:
+        out["innate"] = standing["innate"]
+    return out
 
 
 def _moments(repo: MomentsRepo | None, today: date) -> dict[str, Any]:

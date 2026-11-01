@@ -24,6 +24,15 @@
         "habit_checks": 0,
         "body_days": 0,
         "workout_days": 0
+      },
+      "standing": {
+        "score": null,
+        "peer_score": null,
+        "reliability": null,
+        "drift": [],
+        "debuff": false,
+        "recovery_quest": null,
+        "hint": "태어난 해를 넣으면 생겨요."
       }
     },
     {
@@ -42,6 +51,15 @@
         "habit_checks": 0,
         "body_days": 0,
         "workout_days": 0
+      },
+      "standing": {
+        "score": null,
+        "peer_score": null,
+        "reliability": null,
+        "drift": [],
+        "debuff": false,
+        "recovery_quest": null,
+        "hint": "태어난 해를 넣으면 생겨요."
       }
     },
     {
@@ -60,6 +78,15 @@
         "habit_checks": 21,
         "body_days": 0,
         "workout_days": 0
+      },
+      "standing": {
+        "score": null,
+        "peer_score": null,
+        "reliability": null,
+        "drift": [],
+        "debuff": false,
+        "recovery_quest": null,
+        "hint": "태어난 해를 넣으면 생겨요."
       }
     },
     {
@@ -78,6 +105,15 @@
         "habit_checks": 0,
         "body_days": 0,
         "workout_days": 0
+      },
+      "standing": {
+        "score": null,
+        "peer_score": null,
+        "reliability": null,
+        "drift": [],
+        "debuff": false,
+        "recovery_quest": null,
+        "hint": "태어난 해를 넣으면 생겨요."
       }
     },
     {
@@ -96,6 +132,15 @@
         "habit_checks": 0,
         "body_days": 0,
         "workout_days": 0
+      },
+      "standing": {
+        "score": null,
+        "peer_score": null,
+        "reliability": null,
+        "drift": [],
+        "debuff": false,
+        "recovery_quest": null,
+        "hint": "태어난 해를 넣으면 생겨요."
       }
     },
     {
@@ -114,6 +159,15 @@
         "habit_checks": 0,
         "body_days": 0,
         "workout_days": 0
+      },
+      "standing": {
+        "score": null,
+        "peer_score": null,
+        "reliability": null,
+        "drift": [],
+        "debuff": false,
+        "recovery_quest": null,
+        "hint": "삶의 질은 객관적 기준표가 없어요. 만족 점수와 생활 지표(잠, 걸음, 쉬는 저녁)로 봐요."
       }
     }
   ],
@@ -183,5 +237,22 @@
   ],
   "moments": [],
   "moments_hidden": 0,
-  "body": null
+  "body": null,
+  "innate": [
+    {
+      "axis": "height",
+      "label": "키",
+      "score": null
+    },
+    {
+      "axis": "education",
+      "label": "학벌",
+      "score": null
+    },
+    {
+      "axis": "family",
+      "label": "집안",
+      "score": null
+    }
+  ]
 }

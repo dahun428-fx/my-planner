@@ -39,6 +39,7 @@ from my_planner.api.models import (
     dump,
     schema_bundle,
 )
+from my_planner.api.standing import status_standing
 from my_planner.clock import logical_date, period_bounds, period_of, to_iso
 from my_planner.curve.history import curve_history
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
@@ -484,7 +485,7 @@ def get_status(conn: sqlite3.Connection, deps: ApiDeps, request: web.Request) ->
         now=deps.clock.now(), tz=s.timezone, boundary=s.day_boundary, status=StatusRepo(conn, deps.clock),
         curve=CurveRepo(conn, deps.clock), tasks=_tasks(conn, deps), conditions=ConditionsRepo(conn, deps.clock),
         include_sensitive=_include_sensitive(request), moments=MomentsRepo(conn, deps.clock),
-        body=BodyRepo(conn, deps.clock),
+        body=BodyRepo(conn, deps.clock), standing=status_standing(conn, deps, request),
     )
     return dump(Status, body)
 

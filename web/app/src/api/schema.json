@@ -144,7 +144,8 @@
                 "photo_unreadable",
                 "photo_limit",
                 "disk_full",
-                "photo_read_limit"
+                "photo_read_limit",
+                "forbidden"
               ],
               "type": "string"
             },
@@ -2674,7 +2675,8 @@
                 "photo_unreadable",
                 "photo_limit",
                 "disk_full",
-                "photo_read_limit"
+                "photo_read_limit",
+                "forbidden"
               ],
               "type": "string"
             },
@@ -4886,6 +4888,535 @@
       ],
       "type": "object"
     },
+    "Standing": {
+      "$defs": {
+        "AxisScoreOut": {
+          "additionalProperties": false,
+          "properties": {
+            "assumed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "estimate": {
+              "type": "boolean"
+            },
+            "high": {
+              "type": "integer"
+            },
+            "inputs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "low": {
+              "type": "integer"
+            },
+            "measured_on": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "missing": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "reliability": {
+              "enum": [
+                "high",
+                "mid",
+                "low"
+              ],
+              "type": "string"
+            },
+            "score": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "score",
+            "low",
+            "high",
+            "reliability",
+            "estimate",
+            "inputs",
+            "missing",
+            "assumed",
+            "measured_on"
+          ],
+          "type": "object"
+        },
+        "InnateItem": {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect",
+                "height",
+                "education",
+                "family"
+              ],
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "axis",
+            "label",
+            "score"
+          ],
+          "type": "object"
+        },
+        "StandingArea": {
+          "additionalProperties": false,
+          "properties": {
+            "debuff": {
+              "type": "boolean"
+            },
+            "drift": {
+              "items": {
+                "$ref": "#/$defs/StandingDrift"
+              },
+              "type": "array"
+            },
+            "hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peer_score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "recovery_quest": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "score",
+            "peer_score",
+            "reliability",
+            "drift",
+            "debuff",
+            "recovery_quest",
+            "hint"
+          ],
+          "type": "object"
+        },
+        "StandingAreas": {
+          "additionalProperties": false,
+          "properties": {
+            "career": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "finance": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "health": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "learning": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "quality_of_life": {
+              "$ref": "#/$defs/StandingArea"
+            },
+            "relationships": {
+              "$ref": "#/$defs/StandingArea"
+            }
+          },
+          "required": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "type": "object"
+        },
+        "StandingAxis": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect",
+                "height",
+                "education",
+                "family"
+              ],
+              "type": "string"
+            },
+            "innate": {
+              "type": "boolean"
+            },
+            "label": {
+              "type": "string"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AxisScoreOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AxisScoreOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "axis",
+            "label",
+            "area",
+            "innate",
+            "national",
+            "peer"
+          ],
+          "type": "object"
+        },
+        "StandingBench": {
+          "additionalProperties": false,
+          "properties": {
+            "effective_from": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "version",
+            "effective_from"
+          ],
+          "type": "object"
+        },
+        "StandingDrift": {
+          "additionalProperties": false,
+          "properties": {
+            "delta": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "me",
+                "world"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "delta"
+          ],
+          "type": "object"
+        },
+        "StandingMarket": {
+          "additionalProperties": false,
+          "properties": {
+            "excluded": {
+              "items": {
+                "enum": [
+                  "career",
+                  "money",
+                  "health",
+                  "looks",
+                  "relations",
+                  "intellect",
+                  "height",
+                  "education",
+                  "family"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "national",
+            "peer",
+            "excluded"
+          ],
+          "type": "object"
+        },
+        "StandingMarkets": {
+          "additionalProperties": false,
+          "properties": {
+            "career": {
+              "$ref": "#/$defs/StandingMarket"
+            },
+            "marriage": {
+              "$ref": "#/$defs/StandingMarket"
+            }
+          },
+          "required": [
+            "marriage",
+            "career"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "areas": {
+          "$ref": "#/$defs/StandingAreas"
+        },
+        "axes": {
+          "items": {
+            "$ref": "#/$defs/StandingAxis"
+          },
+          "type": "array"
+        },
+        "bench": {
+          "$ref": "#/$defs/StandingBench"
+        },
+        "innate": {
+          "items": {
+            "$ref": "#/$defs/InnateItem"
+          },
+          "type": "array"
+        },
+        "markets": {
+          "$ref": "#/$defs/StandingMarkets"
+        },
+        "measures_count": {
+          "type": "integer"
+        },
+        "profile_missing": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "profile_missing",
+        "bench",
+        "axes",
+        "areas",
+        "innate",
+        "markets",
+        "measures_count"
+      ],
+      "type": "object"
+    },
+    "StandingMeasures": {
+      "$defs": {
+        "StandingMeasure": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "label": {
+              "type": "string"
+            },
+            "measured_on": {
+              "type": "string"
+            },
+            "metric": {
+              "type": "string"
+            },
+            "reliability": {
+              "enum": [
+                "high",
+                "mid",
+                "low"
+              ],
+              "type": "string"
+            },
+            "source_kind": {
+              "enum": [
+                "photo",
+                "pdf",
+                "manual",
+                "shortcut",
+                "import",
+                "derived"
+              ],
+              "type": "string"
+            },
+            "unit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "value_num": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "value_text": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "metric",
+            "label",
+            "value_num",
+            "value_text",
+            "unit",
+            "measured_on",
+            "source_kind",
+            "reliability",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "measures": {
+          "items": {
+            "$ref": "#/$defs/StandingMeasure"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "measures"
+      ],
+      "type": "object"
+    },
     "Status": {
       "$defs": {
         "DailyQuest": {
@@ -4943,6 +5474,44 @@
           "required": [
             "open",
             "done"
+          ],
+          "type": "object"
+        },
+        "InnateItem": {
+          "additionalProperties": false,
+          "properties": {
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect",
+                "height",
+                "education",
+                "family"
+              ],
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "axis",
+            "label",
+            "score"
           ],
           "type": "object"
         },
@@ -5047,6 +5616,105 @@
             "at",
             "label",
             "amount"
+          ],
+          "type": "object"
+        },
+        "StandingArea": {
+          "additionalProperties": false,
+          "properties": {
+            "debuff": {
+              "type": "boolean"
+            },
+            "drift": {
+              "items": {
+                "$ref": "#/$defs/StandingDrift"
+              },
+              "type": "array"
+            },
+            "hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peer_score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "recovery_quest": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "score",
+            "peer_score",
+            "reliability",
+            "drift",
+            "debuff",
+            "recovery_quest",
+            "hint"
+          ],
+          "type": "object"
+        },
+        "StandingDrift": {
+          "additionalProperties": false,
+          "properties": {
+            "delta": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "me",
+                "world"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "delta"
           ],
           "type": "object"
         },
@@ -5220,6 +5888,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "standing": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StandingArea"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             }
           },
           "required": [
@@ -5290,6 +5969,20 @@
         },
         "hp": {
           "$ref": "#/$defs/StatusHp"
+        },
+        "innate": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/InnateItem"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "level": {
           "type": "integer"

@@ -39,6 +39,7 @@ ErrorCode = Literal[
     "too_many_photos", "photo_not_found", "photo_in_use",  # SP10 5.3
     "photo_too_large", "photo_not_jpeg", "photo_unreadable", "photo_limit", "disk_full",  # SP10 5.3 `POST /photos`
     "photo_read_limit",  # SP10 5.4 `POST /photos/{id}/read`
+    "forbidden",  # SP13 12장: 대시보드 기기의 `/standing*`
 ]
 
 
@@ -769,6 +770,37 @@ class StatActivity(_Model):
     workout_days: int
 
 
+StandingAxisName = Literal[
+    "career", "money", "health", "looks", "relations", "intellect", "height", "education", "family",
+]
+ReliabilityName = Literal["high", "mid", "low"]
+
+
+class StandingDrift(_Model):
+    """하락 이유(SP13 9.2): `me`는 |Δm| ≥ 5, `world`는 Δw ≤ −5일 때만."""
+
+    kind: Literal["me", "world"]
+    delta: int
+
+
+class StandingArea(_Model):
+    """영역 위치(SP13 5.1, 10.1). `hint`는 위치가 없을 때만."""
+
+    score: int | None
+    peer_score: int | None
+    reliability: ReliabilityName | None
+    drift: list[StandingDrift]
+    debuff: bool
+    recovery_quest: str | None
+    hint: str | None
+
+
+class InnateItem(_Model):
+    axis: StandingAxisName
+    label: str
+    score: int | None
+
+
 class StatusStat(_Model):
     area: AreaName
     label: str
@@ -781,6 +813,7 @@ class StatusStat(_Model):
     bonus: float  # 0.0~2.0, 소수 한 자리. 바탕(`score`) 위에 따로 얹는다(SP8 5.3)
     effective_score: float | None  # min(10, score + bonus). `score`가 없으면 null
     activity: StatActivity
+    standing: StandingArea | None = None  # SP13 10.1. 대시보드 기기에는 키가 없다
 
 
 class FirstSteps(_Model):
@@ -866,6 +899,84 @@ class Status(_Model):
     moments: list[Moment]
     moments_hidden: int
     body: StatusBody | None
+    innate: list[InnateItem] | None = None  # SP13 10.2. 대시보드 기기에는 키가 없다
+
+
+class StandingBench(_Model):
+    version: str
+    effective_from: str
+
+
+class AxisScoreOut(_Model):
+    score: int
+    low: int
+    high: int
+    reliability: ReliabilityName
+    estimate: bool
+    inputs: list[str]
+    missing: list[str]
+    assumed: list[str]
+    measured_on: str | None  # 쓴 측정값 가운데 가장 이른 측정일
+
+
+class StandingAxis(_Model):
+    axis: StandingAxisName
+    label: str
+    area: AreaName | None
+    innate: bool
+    national: AxisScoreOut | None
+    peer: AxisScoreOut | None
+
+
+class StandingAreas(_Model):
+    career: StandingArea
+    finance: StandingArea
+    health: StandingArea
+    relationships: StandingArea
+    learning: StandingArea
+    quality_of_life: StandingArea
+
+
+class StandingMarket(_Model):
+    national: int | None
+    peer: int | None
+    excluded: list[StandingAxisName]
+
+
+class StandingMarkets(_Model):
+    marriage: StandingMarket
+    career: StandingMarket
+
+
+class Standing(_Model):
+    """`GET /standing` (SP13 12장, 모양의 정본은 구현 계획 Task 6). 축은 AXES 순서."""
+
+    profile_missing: bool
+    bench: StandingBench
+    axes: list[StandingAxis]
+    areas: StandingAreas
+    innate: list[InnateItem]
+    markets: StandingMarkets
+    measures_count: int
+
+
+class StandingMeasure(_Model):
+    id: int
+    metric: str
+    label: str
+    value_num: float | None
+    value_text: str | None
+    unit: str | None
+    measured_on: str
+    source_kind: Literal["photo", "pdf", "manual", "shortcut", "import", "derived"]
+    reliability: ReliabilityName
+    created_at: str
+
+
+class StandingMeasures(_Model):
+    """`GET /standing/measures`: 지우지 않은 측정값 전부(`StandingRepo.active()` 순서)."""
+
+    measures: list[StandingMeasure]
 
 
 class UiComponent(_Model):
@@ -1399,6 +1510,8 @@ MODELS: dict[str, type[BaseModel]] = {
     "Curve": Curve,
     "CurveHistory": CurveHistory,
     "Status": Status,
+    "Standing": Standing,
+    "StandingMeasures": StandingMeasures,
     "Moment": Moment,
     "MomentsList": MomentsList,
     "BodyPostBody": BodyPostBody,
