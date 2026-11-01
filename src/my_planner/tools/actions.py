@@ -715,6 +715,9 @@ ACTIONS: dict[str, ActionSpec] = {
     "delete_moment": ActionSpec("delete_moment", needs_confirm=moment_delete_needs_confirm, target=_moment_target),
     # 운동 화면(SP12 6.3, 8.2): 몸 메모 지우기는 바로(되돌리기 토스트), 기록 지우기는 확인
     "drop_body_note": ActionSpec("drop_body_note", target=_body_note_target),
+    # 객관적 위치(SP13 6.5): 확인 카드의 "저장", 상세 화면의 지우기. 카드 누름이 확인이라 바로 적용(되돌리기 있음)
+    "save_measures": ActionSpec("save_measures"),
+    "delete_measure": ActionSpec("delete_measure"),
     "delete_workout_log": ActionSpec(
         "delete_workout_log", needs_confirm=workout_log_delete_needs_confirm, target=_workout_log_target
     ),
@@ -732,6 +735,7 @@ ACTIONS: dict[str, ActionSpec] = {
     "prune_records": ActionSpec(_prune_records, public=False),  # SP8 6.4 순간 날 행 60일, 7.1 몸 기록 56일
     "grant_rest_days": ActionSpec(_grant_rest_days, public=False),  # X9
     "memos_daily": ActionSpec(_memos_daily, public=False),  # SP9 6.1: 30일 지난 지운 메모, memos.md
+    "standing_daily": ActionSpec("standing_daily", public=False),  # SP13: 지난 분기 스냅숏 따라잡기
     # 내부(`POST /activity/{id}/undo`)
     "undo": ActionSpec(_undo_stub, public=False, accepts=frozenset({"activity_id"}), endpoint="undo"),
     # 내부(상태를 바꾸는 명령 `/pause`, `/unpause`, `/done`: `bot.commands.run_command`, 6.4.1). 중복 방지는

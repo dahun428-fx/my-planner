@@ -74,6 +74,11 @@ class StandingRepo:
         self._conn = conn
         self._clock = clock
 
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """부르는 쪽 `transaction(repo.conn)`용(다른 저장소와 같은 이름)."""
+        return self._conn
+
     def add(
         self,
         metric: str,

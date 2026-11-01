@@ -213,7 +213,7 @@ def test_tools_app_only_and_no_edit_tools():
     telegram = tool_names_for(RunContext(None, None, channel="telegram"))
     new = {"search_memos", "read_memo", "create_memo"}
     assert new <= set(APP_ONLY_TOOLS) and new <= set(app) and not new & set(TOOL_NAMES)
-    assert len(app) == 49 == len(set(app)) and len(telegram) == 28  # 텔레그램 목록은 그대로(Q14)
+    assert len(app) == 50 == len(set(app)) and len(telegram) == 28  # 텔레그램 목록은 그대로(Q14). SP13-05 앱 +1
     for edit in ("update_memo", "delete_memo", "pin_memo", "unpin_memo"):  # Q5: 고치기·지우기 도구는 없다
         assert edit not in app and edit not in _SPECS
     assert all(n in _SPECS for n in new)

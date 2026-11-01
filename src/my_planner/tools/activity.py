@@ -2,7 +2,7 @@
 
 대상 문자열(5.2): `task:12`, `condition:2026-10-24`, `priorities:week:2026-W43`, `ladder:2026-10`, `areas:2026-Q4`,
 `milestone:7`, `chapter:3`, `card:2`, `cards:order`,
-`habit:3`, `habit:3:2026-10-24`(SP7 5.5), `moment:41`, `moments:2026-10-24`(SP8 6.4). `summary`는 확인 문구 한 줄이고 메시지 본문(메모 포함)은 넣지 않는다.
+`habit:3`, `habit:3:2026-10-24`(SP7 5.5), `moment:41`, `moments:2026-10-24`(SP8 6.4), `measure:5`(SP13 6.5). `summary`는 확인 문구 한 줄이고 메시지 본문(메모 포함)은 넣지 않는다.
 """
 
 from __future__ import annotations
@@ -71,6 +71,11 @@ def habit_day_target(habit_id: int, d: date) -> str:
 def moment_target(moment_id: int) -> str:
     """이룬 순간 숨기기·다시 보이기·지우기(SP8 6.4). 같은 순간끼리 U3로 서로 막는다."""
     return f"moment:{moment_id}"
+
+
+def measure_target(measure_id: int) -> str:
+    """측정값 저장·지우기(SP13 6.5). 저장은 줄마다 이 대상을 `targets`에 적는다."""
+    return f"measure:{measure_id}"
 
 
 def many_target(every: list[str]) -> tuple[str | None, list[str]]:

@@ -19,7 +19,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from my_planner.clock import Clock, from_iso, local, logical_date, period_of, to_iso
+from my_planner.clock import (
+    Clock,
+    from_iso,
+    local,
+    logical_date,
+    period_bounds,
+    period_of,
+    to_iso,
+)
 from my_planner.curve.model import ZOOMS, TooManyBuckets, curve_view, default_range
 from my_planner.domain import Area, Cadence, RunContext, TaskStatus, ToolEvent
 from my_planner.status.snapshot import status_snapshot
@@ -106,6 +114,7 @@ from my_planner.tools.habits import HabitTools
 from my_planner.tools.memos import MemoTools
 from my_planner.tools.moments import MomentTools
 from my_planner.tools.photos import PhotoTools
+from my_planner.tools.standing import StandingTools
 from my_planner.tools.ui import PINNABLE_COMPONENTS, validate_props
 from my_planner.tools.workout import WorkoutTools
 
@@ -120,6 +129,7 @@ if TYPE_CHECKING:
     from my_planner.store.repos.moments import MomentsRepo
     from my_planner.store.repos.photos import PhotosRepo
     from my_planner.store.repos.runs import RunsRepo
+    from my_planner.store.repos.standing import StandingRepo
     from my_planner.store.repos.state import StateRepo
     from my_planner.store.repos.workout import WorkoutRepo
 
@@ -214,7 +224,7 @@ def _result_before(a: Activity) -> dict[str, Any]:
 
 class Tools(
     MomentTools, HabitTools, CheckinTimeTools, DigestSettingTools, MemoTools, PhotoTools, BodyTools, EventTools,
-    ConversationTools, WorkoutTools,
+    ConversationTools, WorkoutTools, StandingTools,
 ):
     def __init__(
         self,
@@ -246,6 +256,7 @@ class Tools(
         photos: PhotosRepo | None = None,
         photo_files: PhotoFiles | None = None,
         workout: WorkoutRepo | None = None,
+        standing: StandingRepo | None = None,
     ) -> None:
         self.tasks = tasks
         self.transcripts = transcripts
@@ -289,6 +300,8 @@ class Tools(
         self.photo_files = photo_files
         # 운동메이트(SP12 6~8장): 몸 메모, 플랜, 기록. None이면 운동 도구·동작이 거절한다. 내보내기는 없다
         self.workout = workout
+        # 객관적 위치(SP13 6장): 측정값 확인 카드·저장·지우기, 영역 점수 기록 때의 스냅숏. None이면 거절한다
+        self.standing = standing
 
     # --- 공통 ---
 
@@ -925,10 +938,25 @@ class Tools(
                          {"period": period, "before": before})
             self._grant(ctx, source_kind="wheel", source_ref=f"areas:{period}", amount=XP_WHEEL,
                         label=LABEL_WHEEL)  # X7: 그 분기 처음(한 영역이라도)
+            self._standing_review_snapshot(period)
         ctx.events.append(event)
         self._export_curve()
         log.info("area_scores_recorded", extra={"period": period, "areas": len(rows)})
         return {"period": period, "scores": data["scores"]}
+
+    def _standing_review_snapshot(self, period: str) -> None:
+        """SP13 9.3: 영역 점수를 기록한 분기의 위치 스냅숏(`source=review`). 지금 분기는 지금 값, 지난 분기는 그 분기 끝
+        값. 측정값이 없으면 0줄. 바깥 트랜잭션 안에서 부른다."""
+        if self.standing is None:
+            return
+        from my_planner.standing.service import write_snapshot
+
+        today = self.today()
+        if period == period_of(Cadence.quarter, today):
+            write_snapshot(self.standing.conn, self.clock, period, today=today, source="review")
+        else:
+            write_snapshot(self.standing.conn, self.clock, period, as_of=period_bounds(Cadence.quarter, period)[1],
+                           source="review")
 
     @_tool
     def grant_xp(self, ctx: RunContext, amount: Any = None, reason: Any = None) -> dict[str, Any]:

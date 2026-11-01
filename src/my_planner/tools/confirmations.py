@@ -37,6 +37,8 @@ def confirmation_line(e: ToolEvent, today: date) -> str | None:
         return event_line(e.kind, e.data)
     if e.kind in WORKOUT_KINDS:
         return workout_line(e.kind, e.data)
+    if e.kind == "measures_saved":  # SP13 6.5: 위치는 영역 점수뿐, 측정값은 넣지 않는다(`tools/standing.py`)
+        return str(e.data.get("line", ""))
     if e.kind in HABIT_KINDS:
         day = e.data.get("date")
         return habit_line(

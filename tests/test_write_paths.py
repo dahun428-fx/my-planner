@@ -28,6 +28,7 @@ from my_planner.store.db import is_write, open_db
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
     "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body", "my_planner.tools.events",
+    "my_planner.tools.standing",
 })
 MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
 DISPATCHER = "my_planner.harness.dispatcher"
@@ -76,13 +77,17 @@ ALLOWED: dict[str, set[str]] = {
     "status_moment_days": {*TOOLS, MOMENTS_JOB},
     # SP8 7.2: 몸 기록은 `record_body_days`(즉시 갈래, `/body`)와 56일 정리(`prune_records`, 즉시 갈래)만
     "body_days": set(TOOLS),
+    # SP13 6.5: 측정값은 도구 함수(`save_measures`·`delete_measure`, 즉시 갈래)와 가져오기 명령(SP13-07)만.
+    # 스냅숏은 그 저장·영역 점수 기록·하루 한 번 따라잡기가 부르는 `standing.service`도
+    "standing_measures": {*TOOLS, "my_planner.standing.importer"},
+    "standing_snapshots": {*TOOLS, "my_planner.standing.service", "my_planner.standing.importer"},
     # 4.3 2행: 변경과 같은 트랜잭션(`tools/activity.py`), 되돌리기 표시(`apply_action`, U5)
     "activity": set(TOOLS),
     "activity_targets": set(TOOLS),
     # 4.3 3행: 만들기는 도구 함수·`/actions`, 확인·거절·만료는 `apply_action`
     "pending_confirms": set(TOOLS),
     # 4.3 4~6행: X1/X2/X4/X6/X7/X10 도구 함수, X3/X5/X8 디스패처의 `mark_answered`, X9 하루 한 번 작업(`apply_action`)
-    "status_xp_ledger": {*TOOLS, DISPATCHER},
+    "status_xp_ledger": {*TOOLS, DISPATCHER, "my_planner.standing.importer"},  # X14 가져오기(SP13-07)
     "runs": {LOOP, DISPATCHER},  # 4.3 5행 `answered_at`(`mark_answered`)과 마지막 행(SP1 운영 상태)
     # 4.3 7·8행: 구독 추가·삭제는 `apply_action`, 결과는 `harness/delivery.py`. `run_deliveries`도 delivery.py
     "push_subscriptions": {*TOOLS, "my_planner.harness.delivery"},
@@ -235,6 +240,9 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     # SP8 7.2: 몸 기록은 `/body` 입구에서 즉시 갈래를 지나 쓰고, 정리는 하루 한 번 작업이 즉시 갈래로
     assert ("body_days", "my_planner.tools.body", "my_planner.api.body", True) in rec.tool_calls
     assert ("body_days", "my_planner.tools.actions", "my_planner.loop.runner", True) in rec.tool_calls
+    # SP13: 측정값은 `/actions`의 즉시 갈래로만, 스냅숏은 `standing.service`가(첫 기준선)
+    assert ("standing_measures", "my_planner.tools.standing", "my_planner.api.actions", True) in rec.tool_calls
+    assert ("standing_snapshots", "my_planner.standing.service") in rec.seen
 
 
 async def test_sp8_write_paths(tmp_path, monkeypatch):
