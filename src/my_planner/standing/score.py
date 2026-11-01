@@ -118,16 +118,27 @@ class _R:
         if key not in bucket:
             bucket.append(key)
 
-    def num(self, key: str) -> float | None:
+    def num(self, key: str, note: bool = True) -> float | None:
+        """note=False는 대체 경로용: 쓰였을 때 `use`, 하위 항목이 빈 채로 끝났을 때 `lack`을 부른다."""
         v = self._v.get(key)
         ok = isinstance(v, int | float) and not isinstance(v, bool)
-        self._note(key, ok)
+        if note:
+            self._note(key, ok)
         return float(v) if ok else None  # type: ignore[arg-type]
 
-    def txt(self, key: str) -> str | None:
+    def use(self, *keys: str) -> None:
+        for k in keys:
+            self._note(k, True)
+
+    def lack(self, *keys: str) -> None:
+        for k in keys:
+            self._note(k, False)
+
+    def txt(self, key: str, note: bool = True) -> str | None:
         v = self._v.get(key)
         ok = isinstance(v, str) and v != ""
-        self._note(key, ok)
+        if note:
+            self._note(key, ok)
         return v if ok else None  # type: ignore[return-value]
 
     def certs(self) -> list[str]:
@@ -153,6 +164,7 @@ class _Calc:
     lower: int = 0  # 신뢰도를 내리는 단계
     force_low: bool = False
     widen: tuple[int, int] | None = None  # (low, high)
+    estimate: bool = False  # 표 표시와 별개로, 추정 경로를 탔을 때
 
 
 _Fn = Callable[[Values, Bench, _Ctx, "float | None"], "_Calc | None"]
@@ -234,9 +246,13 @@ def _body_parts(r: _R, t: Mapping[str, Any]) -> dict[str, float]:
     hm = height / 100 if height else None
     weight = r.num("weight_kg")
     fat = r.num("body_fat_pct")
-    ffm = r.num("fat_free_mass_kg")
+    ffm = r.num("fat_free_mass_kg", note=False)
     if ffm is None and weight is not None and fat is not None:
         ffm = weight * (1 - fat / 100)
+    elif ffm is not None:
+        r.use("fat_free_mass_kg")
+    if ffm is None:
+        r.lack("fat_free_mass_kg")
     parts: dict[str, float] = {}
     waist = r.num("waist_cm")
     if waist is not None:
@@ -263,10 +279,12 @@ def _looks(v: Values, b: Bench, c: _Ctx, fill: float | None) -> _Calc | None:
     body = sum(w * parts.get(k, default) for k, w in t["body_weights"].items()) / 100
     face = r.num("face_rating")
     grooming = r.num("grooming_rating")
+    if face is None:
+        assumed.append("face")
     if grooming is None:
         assumed.append("grooming")
     raw = (
-        t["body_share"] * body + t["face"] * (50.0 if face is None else face) + t["grooming"] * (default if grooming is None else grooming)
+        t["body_share"] * body + t["face"] * (default if face is None else face) + t["grooming"] * (default if grooming is None else grooming)
     ) / 100
     return _Calc(raw, r, ("looks",), tuple(assumed), lower=1 if face is not None else 0)
 
@@ -281,21 +299,31 @@ def _health(v: Values, b: Bench, c: _Ctx, fill: float | None) -> _Calc | None:
     gs = t["grade_scores"]
     sub: dict[str, float] = {}
 
-    laps = r.num("shuttle_run_laps")
+    estimate = False
+    laps = r.num("shuttle_run_laps", note=False)
+    run = r.num("run_6k_min", note=False)
     if laps is not None:
         sub["cardio"] = _grade(laps, nfa["shuttle"], nfa["shuttle_risk"], gs)
+        r.use("shuttle_run_laps")
+    elif run is not None:
+        sub["cardio"] = next((s for up, s in t["run_6k"] if run <= up), 10)
+        r.use("run_6k_min")
+        estimate = True
     else:
-        run = r.num("run_6k_min")
-        if run is not None:
-            sub["cardio"] = next((s for up, s in t["run_6k"] if run <= up), 10)
-    grip = r.num("grip_rel_pct")
+        r.lack("shuttle_run_laps", "run_6k_min")
+    grip = r.num("grip_rel_pct", note=False)
+    lift_keys = ("squat_1rm_kg", "bench_1rm_kg", "deadlift_1rm_kg")
     if grip is not None:
         sub["strength"] = _grade(grip, nfa["grip"], nfa["grip_risk"], gs)
+        r.use("grip_rel_pct")
     else:
-        lifts = [r.num(k) for k in ("squat_1rm_kg", "bench_1rm_kg", "deadlift_1rm_kg")]
+        lifts = [r.num(k, note=False) for k in lift_keys]
         weight = r.num("weight_kg")
         if None not in lifts and weight:
             sub["strength"] = _at_least(sum(lifts) / weight, t["lift_ratio"], 10)  # type: ignore[arg-type]
+            r.use(*lift_keys)
+        else:
+            r.lack("grip_rel_pct", *lift_keys)
     situp = r.num("situp_per_min")
     if situp is not None:
         sub["endurance"] = _grade(situp, nfa["situp"], None, gs)
@@ -312,12 +340,16 @@ def _health(v: Values, b: Bench, c: _Ctx, fill: float | None) -> _Calc | None:
         sub["alt"] = 100 if alt <= 30 else 70 if alt <= 40 else 30 if alt <= 80 else 5
 
     lower = 0
-    flag = r.txt("checkup_flag")
-    if flag in t["checkup_fill"]:
-        for k in ("bp", "glucose", "ldl", "alt"):
-            if k not in sub:
-                sub[k] = t["checkup_fill"][flag]
-                lower = 1
+    flag = r.txt("checkup_flag", note=False)
+    for k in ("bp", "glucose", "ldl", "alt"):
+        if k in sub:
+            continue
+        if flag in t["checkup_fill"]:
+            sub[k] = t["checkup_fill"][flag]
+            lower = 1
+            r.use("checkup_flag")
+        else:
+            r.lack("checkup_flag")
 
     smoking, drinking = r.txt("smoking"), r.txt("drinking")
     if smoking in t["smoking"]:
@@ -333,7 +365,7 @@ def _health(v: Values, b: Bench, c: _Ctx, fill: float | None) -> _Calc | None:
     default = 50.0 if fill is None else fill
     assumed = tuple(k for k in t["weights"] if k not in sub)
     raw = sum(w * sub.get(k, default) for k, w in t["weights"].items()) / 100
-    return _Calc(raw, r, ("health",), assumed, lower=lower)
+    return _Calc(raw, r, ("health",), assumed, lower=lower, estimate=estimate)
 
 
 # ---------------------------------------------------------------- 직업·경제력
@@ -347,7 +379,7 @@ def _career(v: Values, b: Bench, c: _Ctx, fill: float | None) -> _Calc | None:
     if inc is None or tier is None:
         return None
     y = t["years"]
-    years = min(20.0, min(r.num("years_exp") or 0, y["cap_years"]) * y["per_year"] + (r.num("level_points") or 0))
+    years = min(float(y["cap"]), min(r.num("years_exp") or 0, y["cap_years"]) * y["per_year"] + (r.num("level_points") or 0))
     recruiter = _at_least(r.num("recruiter_contacts_6m") or 0, t["recruiter"], 0)
     offer = _at_least(r.num("offer_ratio") or 0, t["offer"], 0)
     outside = t["outside_per"] * (r.num("outside_activity_count") or 0)
@@ -364,11 +396,15 @@ def _money(v: Values, b: Bench, c: _Ctx, fill: float | None) -> _Calc | None:
     if inc is None or worth is None:
         return None
     nw = 5.0 if worth <= 0 else interp(worth / 10_000, b.points("networth", c.cohort))
-    rate = r.num("savings_rate_pct")
-    if rate is None:
+    rate = r.num("savings_rate_pct", note=False)
+    if rate is not None:
+        r.use("savings_rate_pct")
+    else:
         saved, net = r.num("monthly_saving_krw"), r.num("monthly_net_income_krw")
         if saved is not None and net:
             rate = saved / net * 100
+        else:
+            r.lack("savings_rate_pct")
     assumed: tuple[str, ...] = ()
     if rate is None:
         sav = float(b.table("saving")["missing"]) if fill is None else fill
@@ -438,7 +474,7 @@ def _score_axis(axis: Axis, values: Values, bench: Bench, ctx: _Ctx) -> AxisScor
     calc = fn(values, bench, ctx, None)
     if calc is None:
         return None
-    estimate = any(bench.estimate(t) for t in calc.tables)
+    estimate = calc.estimate or any(bench.estimate(t) for t in calc.tables)
     score = _score_of(calc)
     err = ERR_ESTIMATE if estimate else ERR_BASE
     low, high = _clamp(score - err), _clamp(score + err)

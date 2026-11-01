@@ -57,11 +57,11 @@ def test_sample_matches_expected(conn):
         for axis, want in exp[cohort].items():
             if axis == "markets":
                 continue
-            assert abs(scores[axis].score - want) <= 1, (cohort, axis, scores[axis].score, want)
+            assert scores[axis].score == want, (cohort, axis, scores[axis].score, want)
         mk = market_scores(scores, BENCH)
         for name, want in exp[cohort]["markets"].items():
             got = mk[name].score
-            assert got is not None and abs(got - want) <= 1, (cohort, name, got, want)
+            assert got == want, (cohort, name, got, want)
             assert mk[name].excluded == ()
 
 
@@ -141,8 +141,47 @@ def test_checkup_flag_fills_and_lowers_reliability(conn):
     assert "checkup_flag" in h.inputs
     order = ("high", "mid", "low")
     assert order.index(h.reliability) == order.index(plain.reliability) + 1
-    # 혈압·혈당·LDL·ALT 모두 100: 샘플은 LDL 142(55)였으므로 점수가 오른다
-    assert h.raw > plain.raw
+    # 혈압·혈당·LDL·ALT 모두 100으로 채워진 값과 같아야 한다
+    all100 = {**base, "bp_sys": 110, "bp_dia": 70, "fasting_glucose": 90, "ldl": 100, "alt": 20}
+    assert h.raw == pytest.approx(score_all(all100, BENCH, "national", TODAY)["health"].raw)
+    assert "bp_sys" in h.missing and "checkup_flag" not in h.missing
+
+
+def test_missing_lists_only_unsatisfied_alternates(conn):
+    base = _values(conn)
+    s = score_all(base, BENCH, "national", TODAY)
+    for k in ("run_6k_min", "squat_1rm_kg", "checkup_flag"):
+        assert k not in s["health"].missing
+    assert "fat_free_mass_kg" not in s["looks"].missing
+    assert "savings_rate_pct" not in s["money"].missing
+    no_weight = score_all(_without(base, "weight_kg"), BENCH, "national", TODAY)
+    assert "fat_free_mass_kg" in no_weight["looks"].missing
+
+
+def test_run_6k_fallback_is_estimate():
+    s = score_all({"profile_birth_year": 1992, "run_6k_min": 29}, BENCH, "national", TODAY)["health"]
+    assert s.estimate and "run_6k_min" in s.inputs and "shuttle_run_laps" not in s.missing
+
+
+def test_bp_alt_networth_boundaries():
+    def health(**kw):
+        return score_all({"profile_birth_year": 1992, **kw}, BENCH, "national", TODAY)["health"].raw
+
+    # 항목 하나만 있으면 나머지는 50: 차이는 가중치 × 점수 차이
+    assert health(bp_sys=130, bp_dia=70) - health(bp_sys=129, bp_dia=79) == pytest.approx(0.15 * (45 - 75))
+    assert health(bp_sys=110, bp_dia=80) == pytest.approx(health(bp_sys=130, bp_dia=70))
+    assert health(alt=30) - health(alt=31) == pytest.approx(0.05 * (100 - 70))
+    base = {"profile_birth_year": 1992, "salary_krw": 62_000_000, "savings_rate_pct": 20}
+    inc = interp(6200, BENCH.points("income", "national", "30_34"))
+    m = score_all({**base, "net_worth_krw": 0}, BENCH, "national", TODAY)["money"]
+    assert m.raw == pytest.approx(0.40 * inc + 0.45 * 5 + 0.15 * 40)
+
+
+def test_face_missing_is_assumed():
+    s = score_all({"profile_birth_year": 1992, "waist_cm": 80, "grooming_rating": 60}, BENCH, "national", TODAY)["looks"]
+    assert "face" in s.assumed and "grooming" not in s.assumed
+    withface = score_all({"profile_birth_year": 1992, "waist_cm": 80, "grooming_rating": 60, "face_rating": 50}, BENCH, "national", TODAY)["looks"]
+    assert "face" not in withface.assumed
 
 
 def test_profile_missing_scores_only_innate(conn):
