@@ -22,7 +22,7 @@ from datetime import time as _time
 from typing import TYPE_CHECKING, Any
 
 from my_planner.clock import local, to_iso
-from my_planner.domain import Area, RunContext, ToolEvent
+from my_planner.domain import Area, EventKind, InboxAgent, RunContext, ToolEvent
 from my_planner.store.db import transaction
 from my_planner.store.repos.events import (
     ALL_DAY_REMIND_CHOICES,
@@ -106,6 +106,11 @@ def timed_task_message(ctx: RunContext) -> str:
 _HHMM = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _REPEATS = ("none", "daily", "weekly", "monthly")
+# 활동 종류 → 사건 종류(SP14 5.2)
+_AGENT_KINDS: dict[str, EventKind] = {
+    "event_created": "event_added", "event_updated": "event_changed", "event_skipped": "event_changed",
+    "event_repeat_ended": "event_changed", "event_deleted": "event_removed",
+}
 _KEEP: Any = object()  # 고치기에서 뺀 칸(그대로), 만들기에서 뺀 `remind_min`(기본값)
 # API·도구 칸 이름 → 017 칸 이름
 _API_TO_FIELD = {"date": "start_date", "time": "start_time"}
@@ -306,6 +311,9 @@ class EventTools:
 
         def _confirm_first(self, ctx: RunContext) -> bool: ...
 
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
+
         def _request_confirm(self, ctx: RunContext, action: str, args: dict[str, Any], summary: str,
                              button: str) -> dict[str, Any]: ...
 
@@ -331,6 +339,7 @@ class EventTools:
             data["date"] = day.isoformat()
         self.tasks.log_tool_event(ctx.run_id, ctx.conversation_id, None, kind, inbound_id=ctx.inbound_id, data=data)
         self._record(ctx, kind, target or event_target(e.id), event_line(kind, data), undo)
+        self._agent_event(ctx, _AGENT_KINDS[kind], event_target(e.id))
         ctx.events.append(ToolEvent(kind, None, data))
 
     def _confirm(self, ctx: RunContext, action: str, args: dict[str, Any], summary: str, button: str) -> dict[str, Any]:

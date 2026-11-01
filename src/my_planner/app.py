@@ -75,6 +75,7 @@ from my_planner.platform.windows import (
 from my_planner.store.db import integrity_ok, migrate, open_db, open_ro
 from my_planner.store.photos import PhotoFiles
 from my_planner.store.repos.activity import ActivityRepo, ConfirmsRepo, IdempotencyRepo
+from my_planner.store.repos.agents import AgentsRepo
 from my_planner.store.repos.body import BodyRepo
 from my_planner.store.repos.cards import CardsRepo
 from my_planner.store.repos.channels import DeliveriesRepo
@@ -232,6 +233,7 @@ class BeParts:
     body: BodyRepo | None = None  # 몸 기록(SP8 7장)
     memos: MemosRepo | None = None  # 메모(SP9 6장)
     events: EventsRepo | None = None  # 스케줄(SP9 5장)
+    agents: AgentsRepo | None = None  # 사건 기록·받은편지함·관찰(SP14 5장)
 
 
 def build_be(
@@ -274,6 +276,7 @@ def build_be(
     body = BodyRepo(conn, clock)
     events = EventsRepo(conn, clock, settings.timezone)
     workout = WorkoutRepo(conn, clock)
+    agents = AgentsRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -308,6 +311,7 @@ def build_be(
         photos=photos, photo_files=PhotoFiles(paths.data_dir / "photos"),
         workout=workout,  # 운동메이트 도구·동작(SP12 6~8장), 메이트 앞머리(5.5)
         standing=StandingRepo(conn, clock),  # 측정값 확인 카드·저장(SP13 6.5), 영역 점수 기록의 스냅숏
+        agents=agents,  # 쓰기 경로마다 사건 한 줄(SP14 5.1~5.3)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -377,7 +381,7 @@ def build_be(
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
         pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos, body=body,
-        events=events,
+        events=events, agents=agents,
     )
 
 

@@ -15,7 +15,7 @@ import unicodedata
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from my_planner.domain import Area, RunContext, ToolEvent
+from my_planner.domain import Area, EventKind, InboxAgent, RunContext, ToolEvent
 from my_planner.store.db import transaction
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.activity import SUPERSEDED, moment_target, register_undo
@@ -106,6 +106,8 @@ class MomentTools:
 
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
 
     @_tool
     def save_moments(self, ctx: RunContext, date: Any = None, moments: Any = None) -> dict[str, Any]:
@@ -133,7 +135,9 @@ class MomentTools:
         rejected = len(checked) - len(kept)
         now = self.clock.now()
         with transaction(self.moments.conn):  # M5
-            self.moments.save_day(day, kept, now)
+            saved = self.moments.save_day(day, kept, now)
+            for m in saved:
+                self._agent_event(ctx, "moment_saved", moment_target(m.id), m.area)
             if kept:
                 self._record(ctx, "moments_saved", moments_target(day), moments_summary(len(kept), day), None)
         data = {"date": day.isoformat(), "saved": len(kept), "rejected": rejected}

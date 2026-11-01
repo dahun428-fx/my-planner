@@ -10,7 +10,8 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from my_planner.domain import RunContext
+from my_planner.domain import EventKind, InboxAgent, RunContext
+from my_planner.store.db import transaction
 from my_planner.store.repos.body import BodyDay
 from my_planner.tools._base import _err, _tool
 
@@ -53,12 +54,26 @@ class BodyTools:
     if TYPE_CHECKING:
         clock: Clock
 
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
+
     @_tool
     def record_body_days(self, ctx: RunContext, days: Any = None) -> dict[str, Any]:
-        """날짜마다 보낸 값만 넣거나 바꾼다(`BodyRepo.upsert`, 한 트랜잭션). 결과는 저장한 날 수만."""
+        """날짜마다 보낸 값만 넣거나 바꾼다(`BodyRepo.upsert`, 한 트랜잭션). 결과는 저장한 날 수만.
+
+        사건 `body_logged`는 그날 행이 새로 생겼거나 값이 바뀐 날만(단축어는 매번 지난 며칠을 다시 보낸다, SP14 5.2).
+        """
         if self.body is None:
             return _err(MSG_NO_BODY)
         parsed = _days(days)
         if isinstance(parsed, str):
             return _err(parsed)
-        return {"saved": self.body.upsert(parsed, self.clock.now())}
+        lo, hi = min(d.date for d in parsed), max(d.date for d in parsed)
+        with transaction(self.body.conn):
+            before = {d.date: d for d in self.body.between(lo, hi)}
+            saved = self.body.upsert(parsed, self.clock.now())
+            after = {d.date: d for d in self.body.between(lo, hi)}
+            for day in sorted({d.date for d in parsed}):
+                if before.get(day) != after.get(day):
+                    self._agent_event(ctx, "body_logged", f"body_day:{day.isoformat()}", "health")
+        return {"saved": saved}

@@ -15,8 +15,8 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from my_planner.clock import local, period_of
-from my_planner.domain import RunContext, ToolEvent
-from my_planner.standing.metrics import METRICS, validate
+from my_planner.domain import EventKind, InboxAgent, RunContext, ToolEvent
+from my_planner.standing.metrics import METRICS, metric_area, validate
 from my_planner.standing.score import AREAS, round_half_up
 from my_planner.status.xp import AREA_LABELS, LABEL_STANDING, XP_STANDING
 from my_planner.store.db import transaction
@@ -79,6 +79,8 @@ class StandingTools:
         def _grant(self, ctx: RunContext, *, source_kind: str, source_ref: str, amount: int, label: str) -> bool: ...
         def _record(self, ctx: RunContext, kind: str, target: str | None, summary: str | None,
                     undo: dict[str, Any] | None, *, targets: list[str] | None = None) -> None: ...
+        def _agent_event(self, ctx: RunContext, kind: EventKind, ref: str, area: str | None = None, *,
+                         handoff_to: InboxAgent | None = None) -> None: ...
 
     # --- 검사 ---
 
@@ -202,6 +204,8 @@ class StandingTools:
                 ctx, "measures_saved", None, SAVED_SUMMARY.format(n=len(ids)), undo,
                 targets=[measure_target(i) for i in ids],
             )
+            for i, (m, _, _) in zip(ids, good, strict=True):
+                self._agent_event(ctx, "measure_saved", measure_target(i), metric_area(m))
             line = measures_saved_line(len(ids), self._most_moved(before, self._areas_now()))
         ctx.events.append(ToolEvent("measures_saved", None, {"line": line}))
         log.info("measures_saved", extra={"rows": len(ids), "metrics": sorted({m for m, _, _ in good})})

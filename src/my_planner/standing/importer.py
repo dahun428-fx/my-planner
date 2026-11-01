@@ -18,11 +18,13 @@ from typing import Any, TextIO
 
 from my_planner.clock import Clock, SystemClock, local, logical_date, period_of
 from my_planner.config import PathsConfig
+from my_planner.harness.routing import route
 from my_planner.platform.windows import AlreadyRunning, SingleInstanceLock
-from my_planner.standing.metrics import METRICS, validate
+from my_planner.standing.metrics import METRICS, metric_area, validate
 from my_planner.standing.service import BOUNDARY, TZ, snapshot_if_first
 from my_planner.status.xp import LABEL_STANDING, XP_STANDING
 from my_planner.store.db import migrate, open_db, open_ro, transaction
+from my_planner.store.repos.agents import AgentsRepo
 from my_planner.store.repos.standing import StandingRepo
 from my_planner.store.repos.status import StatusRepo
 
@@ -147,12 +149,16 @@ def run_import(
         try:
             migrate(conn)
             repo = StandingRepo(conn, clock)
+            agents = AgentsRepo(conn, clock)
             todo, skipped = _plan(rows, repo)
             today = logical_date(now, TZ, BOUNDARY)
             try:
                 with transaction(conn):
                     for metric, value, on, rel in todo:
-                        repo.add(metric, value, on, "import", None, rel, now)
+                        mid = repo.add(metric, value, on, "import", None, rel, now)
+                        area = metric_area(metric)  # 사건에는 id·영역만(값 없음, SP14 5.1)
+                        agents.add_event("measure_saved", f"measure:{mid}", area, "import", today, now=now,
+                                         to=route("measure_saved", area))
                     if todo:  # 가져온 줄이 없으면(빈 파일, 모두 중복) 기준선도 경험치도 없다
                         snapshot_if_first(conn, clock, today)
                         StatusRepo(conn, clock).grant(

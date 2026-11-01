@@ -11,16 +11,58 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal
 
-from my_planner.domain import ActivityChannel, Actor, Risk, RunContext
+from my_planner.domain import (
+    INBOX_AGENTS,
+    ActivityChannel,
+    Actor,
+    EventKind,
+    EventOrigin,
+    InboxAgent,
+    Risk,
+    RunContext,
+)
+from my_planner.harness.routing import route
 
 if TYPE_CHECKING:
     from my_planner.store.repos.activity import Activity, ActivityRepo
+    from my_planner.store.repos.agents import AgentsRepo
     from my_planner.tools.core import Tools
 
 
 def activity_origin(ctx: RunContext) -> tuple[Actor, ActivityChannel]:
     """(행위자, 활동 통로). 통로는 `activity_channel`이 있으면 그것(회차 첫 호출, 하루 한 번 작업), 없으면 대화 통로."""
     return ctx.actor, ctx.activity_channel if ctx.activity_channel is not None else ctx.channel
+
+
+def event_origin(ctx: RunContext) -> EventOrigin:
+    """사건의 출처(SP14 5.1): 두뇌 호출 안이면 `brain`, 아니면 활동 통로(`app`·`telegram`·`scheduler`)."""
+    if ctx.in_brain:
+        return "brain"
+    return activity_origin(ctx)[1]
+
+
+def record_agent_event(
+    repo: AgentsRepo | None,
+    ctx: RunContext,
+    kind: EventKind,
+    ref: str,
+    area: str | None,
+    *,
+    day: date,
+    now: datetime,
+    handoff_to: InboxAgent | None = None,
+) -> int | None:
+    """사건 한 줄과 받은편지함(SP14 5.1~5.3). 변경과 같은 트랜잭션 안에서 부른다. 저장소가 없으면(SP1 시험) None.
+
+    종류·`ref`(id)·영역·날짜·출처만 쓴다(제목·본문·값 없음). 받은편지함 상대가 자기 대화에서 쓴 사건은 그 상대에게는
+    이미 본 것이다(`seen_by`). 같은 종류·`ref`가 60초 안에 또 오면 저장소가 버린다(None).
+    """
+    if repo is None:
+        return None
+    seen_by = ctx.agent if ctx.kind == "chat" and ctx.agent in INBOX_AGENTS else None
+    return repo.add_event(
+        kind, ref, area, event_origin(ctx), day, to=route(kind, area, handoff_to=handoff_to), now=now, seen_by=seen_by,
+    )
 
 
 def task_target(task_id: int) -> str:

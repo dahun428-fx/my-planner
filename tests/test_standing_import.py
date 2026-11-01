@@ -117,3 +117,15 @@ def test_import_empty_on_fresh_db_grants_nothing(tmp_path):
     assert run(tmp_path, write(tmp_path, {"version": 1, "measures": []}))[0] == 0
     assert count(tmp_path, "status_xp_ledger", "source_kind = 'standing'") == 0
     assert count(tmp_path, "standing_snapshots") == 0
+
+
+def test_import_leaves_measure_events(tmp_path):
+    f = write(tmp_path, fixture())
+    assert run(tmp_path, f, dry_run=True)[0] == 0
+    assert count(tmp_path, "agent_events") == 0
+    assert run(tmp_path, f) == (0, "imported: 43, skipped: 0\n")
+    assert count(tmp_path, "agent_events") == 43
+    assert count(tmp_path, "agent_events", "kind = 'measure_saved' AND origin = 'import' AND ref LIKE 'measure:%'") == 43
+    assert count(tmp_path, "agent_inbox", "agent = 'manager'") == 43
+    assert run(tmp_path, f)[1] == "imported: 0, skipped: 43\n"
+    assert count(tmp_path, "agent_events") == 43

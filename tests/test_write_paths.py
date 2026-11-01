@@ -256,6 +256,9 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     # SP13: 측정값은 `/actions`의 즉시 갈래로만, 스냅숏은 `standing.service`가(첫 기준선)
     assert ("standing_measures", "my_planner.tools.standing", "my_planner.api.actions", True) in rec.tool_calls
     assert ("standing_snapshots", "my_planner.standing.service") in rec.seen
+    # SP14: 사건은 쓰기 경로마다 같은 트랜잭션에서 `tools.activity.record_agent_event`가
+    assert ("agent_events", "my_planner.tools.activity", "my_planner.api.actions", True) in rec.tool_calls
+    assert ("agent_inbox", "my_planner.tools.activity") in rec.seen
 
 
 async def test_sp8_write_paths(tmp_path, monkeypatch):
