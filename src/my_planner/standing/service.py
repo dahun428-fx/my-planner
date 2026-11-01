@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from my_planner.clock import Clock, local, logical_date, period_bounds, period_of
 from my_planner.standing import drift as drift_mod
 from my_planner.standing.bench import Bench, load_bench, load_bench_version
-from my_planner.standing.drift import Drift
+from my_planner.standing.drift import Drift, Order
 from my_planner.standing.markets import Market, market_scores
 from my_planner.standing.score import (
     AREAS,
@@ -21,6 +21,7 @@ from my_planner.standing.score import (
     Cohort,
     Values,
     area_positions,
+    dates_from,
     score_all,
     values_from,
 )
@@ -36,6 +37,7 @@ COHORTS: tuple[Cohort, ...] = ("national", "peer")
 class StandingNow:
     values: Values
     ids: dict[str, int]
+    dates: dict[str, str]
     bench: Bench
     scores: dict[Cohort, dict[Axis, AxisScore]]
     areas: dict[Cohort, dict[str, float | None]]
@@ -54,6 +56,7 @@ def with_derived(values: Values, workout: WorkoutRepo | None, today: date) -> Va
 def current(conn: sqlite3.Connection, clock: Clock, today: date, bench_dir: Path | None = None) -> StandingNow:
     latest = StandingRepo(conn, clock).latest()
     values, ids = values_from(latest)
+    dates = dates_from(latest)
     values = with_derived(values, WorkoutRepo(conn, clock), today)
     bench = load_bench(today, bench_dir)
     scores: dict[Cohort, dict[Axis, AxisScore]] = {}
@@ -63,19 +66,33 @@ def current(conn: sqlite3.Connection, clock: Clock, today: date, bench_dir: Path
         scores[cohort] = score_all(values, bench, cohort, today)
         areas[cohort] = area_positions(scores[cohort])
         markets[cohort] = market_scores(scores[cohort], bench)
-    return StandingNow(values, ids, bench, scores, areas, markets, "profile_birth_year" not in values)
+    return StandingNow(values, ids, dates, bench, scores, areas, markets, "profile_birth_year" not in values)
 
 
-def base_snapshot(repo: StandingRepo, period: str) -> tuple[Values, dict[str, int], str, date] | None:
-    """비교 기준: 직전 스냅숏 분기, 없으면 이 분기 스냅숏. `national` 줄의 입력값·측정값 id·기준표 버전·찍은 현지 날짜.
+def order_of(ids: dict[str, int], dates: dict[str, str], repo: StandingRepo | None = None) -> Order:
+    """열쇠마다 (측정일, id). 측정일이 없으면(옛 스냅숏) 지운 줄까지 `repo.get`으로 찾고, 그래도 없으면 뺀다."""
+    out: Order = {}
+    for k, i in ids.items():
+        day = dates.get(k)
+        if day is None and repo is not None:
+            m = repo.get(i)
+            day = m.measured_on.isoformat() if m else None
+        if day is not None:
+            out[k] = (day, i)
+    return out
 
-    `ids`가 없는 옛 스냅숏은 빈 사전(하락 나누기가 id 비교 없이 합집합 채우기만 한다)."""
+
+def base_snapshot(repo: StandingRepo, period: str) -> tuple[Values, Order, str, date] | None:
+    """비교 기준: 직전 스냅숏 분기, 없으면 이 분기 스냅숏. `national` 줄의 입력값·순서 열쇠·기준표 버전·찍은 현지 날짜.
+
+    `ids`가 없는 옛 스냅숏은 빈 사전(하락 나누기가 순서 비교 없이 합집합 채우기만 한다)."""
     base = repo.latest_period_before(period) or period
     for row in repo.snapshots_for(base):
         if row.cohort == "national":
             values: Values = row.inputs.get("values", {})
             ids: dict[str, int] = row.inputs.get("ids", {})
-            return values, ids, row.bench_version, local(row.taken_at, TZ).date()
+            order = order_of(ids, row.inputs.get("dates", {}), repo)
+            return values, order, row.bench_version, local(row.taken_at, TZ).date()
     return None
 
 
@@ -85,11 +102,12 @@ def area_drifts(
     base = base_snapshot(StandingRepo(conn, clock), period_of("quarter", today))
     if base is None:
         return {a: None for a in AREAS}
-    before_values, before_ids, version, before_day = base
+    before_values, before_order, version, before_day = base
     before_bench = load_bench_version(version, bench_dir) or load_bench(before_day, bench_dir)
+    now_order = order_of(now.ids, now.dates)
     return {
         a: drift_mod.split(
-            before_values, before_bench, before_day, now.values, now.bench, today, a, before_ids, now.ids
+            before_values, before_bench, before_day, now.values, now.bench, today, a, before_order, now_order
         )
         for a in AREAS
     }
@@ -113,13 +131,14 @@ def write_snapshot(
     repo = StandingRepo(conn, clock)
     now = clock.now()
     day = as_of or today or logical_date(now, TZ, BOUNDARY)
-    values, ids = values_from(repo.latest(as_of))
+    latest = repo.latest(as_of)
+    values, ids = values_from(latest)
     if "profile_birth_year" not in values:
         return 0
     values = with_derived(values, WorkoutRepo(conn, clock), day)
     bench = load_bench(day, bench_dir)
     taken_at = _end_of_day(as_of) if as_of else now
-    inputs = json.dumps({"values": values, "ids": ids, "source": source}, ensure_ascii=False, sort_keys=True)
+    inputs = json.dumps({"values": values, "ids": ids, "dates": dates_from(latest), "source": source}, ensure_ascii=False, sort_keys=True)
     rows = [(axis, cohort, s.score) for cohort in COHORTS for axis, s in score_all(values, bench, cohort, day).items()]
     if not rows:
         return 0

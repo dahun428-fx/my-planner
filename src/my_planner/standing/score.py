@@ -87,6 +87,17 @@ def values_from(latest: dict[str, Measure | list[Measure]]) -> tuple[Values, dic
     return values, ids
 
 
+def dates_from(latest: dict[str, Measure | list[Measure]]) -> dict[str, str]:
+    """`values_from`의 id와 같은 열쇠마다 측정일(ISO). 하락 나누기가 (측정일, id) 순서로 새 값을 가른다."""
+    out: dict[str, str] = {}
+    for metric, m in latest.items():
+        if isinstance(m, list):
+            out.update({f"{metric}:{x.value_text.split(':')[0]}": x.measured_on.isoformat() for x in m if x.value_text})
+        else:
+            out[metric] = m.measured_on.isoformat()
+    return out
+
+
 def _birth_year(values: Values) -> float | None:
     y = values.get("profile_birth_year")
     return float(y) if isinstance(y, int | float) and not isinstance(y, bool) else None

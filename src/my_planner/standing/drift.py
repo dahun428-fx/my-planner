@@ -2,7 +2,7 @@
 
 Δw = (앞 값, 지금 기준표·나이) − (앞 값, 앞 기준표·나이), Δm = (지금 값, 지금 기준표) − (앞 값, 지금 기준표).
 `profile_*`(태어난 해·성별·권역·직군) 고침은 세상 몫에 넣는다. 지우기는 내 변화가 아니다(ADR 0006): 기준선보다
-새 측정값(id가 큰 것)이 낸 값 변화만 내 몫이다.
+새 측정값이 낸 값 변화만 내 몫이다. "새"는 `StandingRepo.latest`와 같은 순서 (측정일, id)로 가른다.
 """
 
 from __future__ import annotations
@@ -10,6 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
+
+# 지표(목록 지표는 "cert:<키>")마다 고른 측정값의 순서 열쇠 (측정일 ISO, id). `StandingRepo.latest`와 같은 순서다
+Order = dict[str, tuple[str, int]]
 
 from my_planner.standing.bench import Bench
 from my_planner.standing.score import Values, area_positions, round_half_up, score_all
@@ -33,26 +36,26 @@ def _cert_key(text: str) -> str:
     return text.split(":")[0]
 
 
-def _certs_mine(before: list[str], now: list[str], before_ids: dict[str, int], now_ids: dict[str, int]) -> list[str]:
+def _certs_mine(before: list[str], now: list[str], before_order: Order, now_order: Order) -> list[str]:
     """기준선 자격 목록에 그보다 새 자격만 얹는다. 지운 자격은 기준선 값으로 남는다."""
     out = {_cert_key(c): c for c in before}
     for c in now:
         k = _cert_key(c)
-        b, n = before_ids.get(f"cert:{k}"), now_ids.get(f"cert:{k}")
+        b, n = before_order.get(f"cert:{k}"), now_order.get(f"cert:{k}")
         if k not in out or b is None or n is None or n > b:
             out[k] = c
     return list(out.values())
 
 
-def _mine(before: Values, now: Values, before_ids: dict[str, int], now_ids: dict[str, int]) -> Values:
+def _mine(before: Values, now: Values, before_order: Order, now_order: Order) -> Values:
     """지금 쪽에서 기준선보다 새 측정값이 아닌 값(기준선 값을 지워 되살아난 옛 값)은 기준선 값으로 둔다."""
     out = dict(now)
     for k, v in now.items():
         old = before.get(k)
         if k == "cert" and isinstance(v, list) and isinstance(old, list):
-            out[k] = _certs_mine(old, v, before_ids, now_ids)
+            out[k] = _certs_mine(old, v, before_order, now_order)
             continue
-        b, n = before_ids.get(k), now_ids.get(k)
+        b, n = before_order.get(k), now_order.get(k)
         if b is not None and n is not None and n < b:
             out[k] = before[k]
     return out
@@ -70,11 +73,11 @@ def split(
     now_bench: Bench,
     today: date,
     area: str,
-    before_ids: dict[str, int] | None = None,
-    now_ids: dict[str, int] | None = None,
+    before_order: Order | None = None,
+    now_order: Order | None = None,
 ) -> Drift | None:
     before, now = _fill(before_values, now_values)
-    now = _mine(before, now, before_ids or {}, now_ids or {})
+    now = _mine(before, now, before_order or {}, now_order or {})
     world_values = {**before, **{k: v for k, v in now.items() if k.startswith("profile_")}}
     start = _pos(before, before_bench, before_day, area)
     same_values_new_bench = _pos(world_values, now_bench, today, area)

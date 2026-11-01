@@ -308,7 +308,7 @@ def test_birth_year_fix_is_world():
 
 def test_old_snapshot_without_cert_ids_keeps_union():
     v = {**_vals(), "cert": ["toeic:900", "jlpt_n2"]}
-    d = split(v, BENCH, TODAY, {**v, "cert": ["jlpt_n2"]}, BENCH, TODAY, "learning", before_ids={}, now_ids={})
+    d = split(v, BENCH, TODAY, {**v, "cert": ["jlpt_n2"]}, BENCH, TODAY, "learning", before_order={}, now_order={})
     assert d is not None and d.me == 0
 
 
@@ -328,3 +328,58 @@ def test_snapshot_stores_cert_ids(conn):
         snapshot_if_first(conn, clock, TODAY)
     ids = repo.snapshots_for("2026-Q4")[0].inputs["ids"]
     assert {"cert:toeic", "cert:jlpt_n2"} <= set(ids)
+
+
+def test_backfilled_older_value_after_deleting_baseline_is_not_me(conn):
+    # 기준선 뒤에 더 옛 측정일 값을 넣고(id는 더 크다) 기준선 값을 지우면, 되살아난 옛 값은 내 변화가 아니다
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        base = repo.latest()["salary_krw"].id
+        repo.add("salary_krw", 30_000_000, date(2025, 10, 1), "import", None, "mid", NOW)
+        repo.delete(base, NOW)
+    drifts = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))
+    for area in ("career", "finance"):
+        assert drifts[area] is not None and drifts[area].me == 0
+        assert debuff(drifts[area]) is False
+
+
+def test_later_dated_new_value_counts(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        base = repo.latest()["salary_krw"].id
+        repo.add("salary_krw", 30_000_000, date(2026, 10, 20), "import", None, "mid", NOW)
+        repo.delete(base, NOW)
+    d = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["finance"]
+    assert d is not None and d.me <= -5 and debuff(d)
+
+
+def test_backfilled_older_cert_after_deleting_baseline_is_not_me(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        toeic = next(m for m in repo.latest()["cert"] if (m.value_text or "").startswith("toeic"))
+        repo.add("cert", "toeic:500", date(2025, 10, 1), "import", None, "mid", NOW)
+        repo.delete(toeic.id, NOW)
+    d = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["learning"]
+    assert d is not None and d.me == 0
+
+
+def test_old_snapshot_without_dates_looks_up_deleted_baseline(conn):
+    clock = FakeClock(NOW)
+    repo = _load(conn, clock)
+    with transaction(conn):
+        snapshot_if_first(conn, clock, TODAY)
+        rows = repo.snapshots_for("2026-Q4")
+        inputs = {k: v for k, v in rows[0].inputs.items() if k != "dates"}
+        conn.execute("UPDATE standing_snapshots SET inputs_json = ?", (json.dumps(inputs),))
+        base = repo.latest()["salary_krw"].id
+        repo.add("salary_krw", 30_000_000, date(2025, 10, 1), "import", None, "mid", NOW)
+        repo.delete(base, NOW)
+    assert "dates" not in repo.snapshots_for("2026-Q4")[0].inputs
+    d = area_drifts(conn, clock, TODAY, current(conn, clock, TODAY))["finance"]
+    assert d is not None and d.me == 0
