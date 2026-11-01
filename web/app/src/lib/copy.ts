@@ -740,8 +740,6 @@ export const copy = {
     periodFailed: "할 일을 불러오지 못했어요",
   },
 
-  // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,
-  // nothing about what is left.
   // SP12 11.2 운동 화면. 부록 A 그대로가 아닌 줄은 (new)로 표시한다(PR "새 문구").
   workout: {
     title: "운동",
@@ -765,6 +763,8 @@ export const copy = {
     expandLabel: (title: string) => `${title} 펼치기`, // (new)
   },
 
+  // SP7 6.1, 6.2, appendix A (Dahun confirmed). Counts of what was done only: no ratio, no bar,
+  // nothing about what is left.
   habits: {
     heading: "습관",
     manage: "관리",

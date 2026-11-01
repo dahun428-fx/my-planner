@@ -153,6 +153,29 @@ describe("Workout (SP12 11.2)", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: copy.workout.expandLabel("하체 10-30") })).toBeNull());
   });
 
+  it("a log that changed before the confirm shows the BE's sentence and reads again", async () => {
+    let reads = 0;
+    server.use(http.get(`${BASE}/workout`, () => (reads++, HttpResponse.json(DATA))));
+    server.use(
+      http.post(`${BASE}/actions`, async ({ request }) => {
+        const b = (await request.json()) as Record<string, unknown>;
+        return b.confirm_token
+          ? HttpResponse.json({ status: "rejected", activity_id: null, error: { code: "rejected", message: "그 기록은 이미 없어요." } }, { status: 422 })
+          : HttpResponse.json({ status: "needs_confirm", confirm_token: "tok-1", summary: "운동 기록 '하체'(10-30)를 지울까요?", expires_at: "x" });
+      }),
+    );
+    renderWithProviders(<Workout />, { route: "/workout/" });
+    await screen.findByRole("button", { name: copy.workout.expandLabel("하체 10-30") });
+    await userEvent.click(screen.getByRole("button", { name: copy.today.moreActions("하체") }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: copy.workout.delete }));
+    const sheet = (await screen.findByText("운동 기록 '하체'(10-30)를 지울까요?")).closest("[role=dialog]") as HTMLElement;
+    const before = reads;
+    await userEvent.click(within(sheet).getByRole("button", { name: copy.workout.delete }));
+    expect(await screen.findByText("그 기록은 이미 없어요.")).toBeInTheDocument();
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+    await waitFor(() => expect(screen.queryByText("운동 기록 '하체'(10-30)를 지울까요?")).toBeNull());
+  });
+
   it("keeping the log in the sheet sends nothing more", async () => {
     serve();
     const bodies = actions(() => ({ status: "needs_confirm", confirm_token: "tok-1", summary: "지울까요?", expires_at: "x" }));

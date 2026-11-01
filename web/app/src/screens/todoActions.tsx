@@ -94,7 +94,7 @@ interface PendingConfirm {
 }
 
 /** The row writes the BE may answer with a confirm question: dropping, and moving a to-do that has a time (SP6 8, BE-2). */
-export type ConfirmableAction = "drop_task" | "move_task";
+export type ConfirmableAction = "drop_task" | "move_task" | "delete_workout_log";
 
 /**
  * A write that may come back `needs_confirm` (spec 5.5.5): the BE's sheet, and "바꾸기" sends the
@@ -102,7 +102,7 @@ export type ConfirmableAction = "drop_task" | "move_task";
  * conflict and the rest go to `useNotAllowed`. `run` resolves once the first answer is in
  * (with the sheet open, if it asked).
  */
-export function useConfirmedAction(refresh: () => Promise<void>) {
+export function useConfirmedAction(refresh: () => Promise<void>, labels?: { keep: string; change: string }) {
   const { run: send } = useAction();
   const toast = useToast();
   const notAllowed = useNotAllowed(refresh);
@@ -145,7 +145,7 @@ export function useConfirmedAction(refresh: () => Promise<void>) {
   };
 
   const sheet = confirm ? (
-    <ConfirmSheet summary={confirm.summary} busy={busy} onKeep={() => setConfirm(null)} onChange={() => void confirmIt()} />
+    <ConfirmSheet summary={confirm.summary} busy={busy} keepLabel={labels?.keep} changeLabel={labels?.change} onKeep={() => setConfirm(null)} onChange={() => void confirmIt()} />
   ) : null;
   return { run, sheet };
 }

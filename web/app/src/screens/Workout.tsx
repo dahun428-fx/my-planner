@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useAction } from "../api/actions";
-import type { BodyNoteOut, Workout as WorkoutData, WorkoutLogItemOut, WorkoutLogOut, WorkoutPlanItem, WorkoutPlanSession } from "../api/types.gen";
+import type { BodyNoteOut, Workout as WorkoutData, WorkoutLogOut, WorkoutPlanSession } from "../api/types.gen";
 import { useChatSheet } from "../chat/sheetContext";
 import { BlockError } from "../components/BlockError";
-import { ConfirmSheet } from "../components/ConfirmSheet";
 import { Group } from "../components/Group";
 import { Icon } from "../components/icons";
 import { LargeTitle } from "../components/LargeTitle";
@@ -16,37 +15,22 @@ import { useConnection, useWritable } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
 import { useSnapshotted } from "../lib/snapshot";
 import page from "../styles/page.module.css";
-import { useNotAllowed } from "./todoActions";
+import { useConfirmedAction, useNotAllowed } from "./todoActions";
 import styles from "./Workout.module.css";
 
 /** "10-30" out of "2026-10-30" (the confirm question's own form, spec 8장). */
 const monthDay = (date: string) => date.slice(5);
 
-const planLine = (i: WorkoutPlanItem) =>
-  [
-    i.sets !== null && i.reps !== null ? `${i.sets}×${i.reps}` : i.sets !== null ? copy.workout.sets(i.sets) : i.reps,
-    i.weight_kg !== null ? copy.workout.kg(i.weight_kg) : null,
-    i.minutes !== null ? copy.workout.minutes(i.minutes) : null,
-    i.note,
-  ]
-    .filter((p): p is string => !!p)
-    .join(" · ");
-
-const logLine = (i: WorkoutLogItemOut) =>
+const itemLine = (i: { sets: number | null; reps: string | number | null; weight_kg: number | null; minutes: number | null; distance_km?: number | null; note?: string | null }) =>
   [
     i.sets !== null && i.reps !== null ? `${i.sets}×${i.reps}` : i.sets !== null ? copy.workout.sets(i.sets) : i.reps !== null ? String(i.reps) : null,
     i.weight_kg !== null ? copy.workout.kg(i.weight_kg) : null,
     i.minutes !== null ? copy.workout.minutes(i.minutes) : null,
-    i.distance_km !== null ? copy.workout.km(i.distance_km) : null,
+    i.distance_km != null ? copy.workout.km(i.distance_km) : null,
+    i.note,
   ]
     .filter((p): p is string => !!p)
     .join(" · ");
-
-interface PendingConfirm {
-  id: number;
-  token: string;
-  summary: string;
-}
 
 // SP12 11.2: the plan, the last 28 days of records and the body notes the mate keeps. A list, never a
 // calendar or a count of days (ADR 0006). Off the tabs, "‹ 더보기" back. Offline the last answer shows,
@@ -76,36 +60,9 @@ export function Workout() {
       return next;
     });
 
-  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
-  const [confirmBusy, setConfirmBusy] = useState(false);
-  const confirmLock = useRef(false);
-
-  const deleteLog = async (id: number) => {
-    const out = await run("delete_workout_log", { id });
-    if (out?.kind === "applied") await refresh();
-    else if (out?.kind === "needs_confirm") setConfirm({ id, token: out.confirmToken, summary: out.summary });
-    else await notAllowed(out);
-  };
-
-  const confirmDelete = async () => {
-    if (!confirm || confirmLock.current) return;
-    confirmLock.current = true;
-    setConfirmBusy(true);
-    try {
-      const out = await run("delete_workout_log", { id: confirm.id }, { confirmToken: confirm.token });
-      if (out === null) return;
-      if (out.kind === "needs_confirm") {
-        setConfirm({ id: confirm.id, token: out.confirmToken, summary: out.summary });
-        return;
-      }
-      if (out.kind === "conflict") toast.show({ text: copy.todos.confirmExpired });
-      setConfirm(null);
-      if (out.kind === "applied") await refresh();
-    } finally {
-      confirmLock.current = false;
-      setConfirmBusy(false);
-    }
-  };
+  // Deleting a log asks first (spec 8장); the shared hook owns the token, the lock and the rejected case.
+  const { run: confirmed, sheet: confirmSheet } = useConfirmedAction(refresh, { keep: copy.workout.keep, change: copy.workout.delete });
+  const deleteLog = (id: number) => void confirmed("delete_workout_log", { id });
 
   const dropNote = async (id: number) => {
     const out = await run("drop_body_note", { id });
@@ -132,7 +89,7 @@ export function Workout() {
   };
 
   const sessionRow = (s: WorkoutPlanSession) => {
-    const meta = [s.weekdays && s.weekdays.length > 0 ? s.weekdays.map((d) => copy.workout.weekdays[d]).join("·") : "", copy.workout.sessionItems(s.items.length)].filter(Boolean).join(" · ");
+    const meta = [s.weekdays ? s.weekdays.map((d) => copy.workout.weekdays[d]).filter(Boolean).join("·") : "", copy.workout.sessionItems(s.items.length)].filter(Boolean).join(" · ");
     return (
       <div key={s.id}>
         {expandRow(
@@ -144,7 +101,7 @@ export function Workout() {
             {s.items.map((i, n) => (
               <li key={n} className={styles.line}>
                 <span>{i.name}</span>
-                {planLine(i) && <span className={styles.lineMeta}>{planLine(i)}</span>}
+                {itemLine(i) && <span className={styles.lineMeta}>{itemLine(i)}</span>}
               </li>
             ))}
           </ul>,
@@ -159,7 +116,7 @@ export function Workout() {
       disabled={!writable}
       menuTitle={l.title}
       moreLabel={copy.today.moreActions(l.title)}
-      actions={[{ label: copy.workout.delete, tone: "negative", onPress: () => void deleteLog(l.id) }]}
+      actions={[{ label: copy.workout.delete, tone: "negative", onPress: () => deleteLog(l.id) }]}
     >
       {expandRow(
         `l${l.id}`,
@@ -170,7 +127,7 @@ export function Workout() {
           {l.items.map((i, n) => (
             <li key={n} className={styles.line}>
               <span>{i.name}</span>
-              {logLine(i) && <span className={styles.lineMeta}>{logLine(i)}</span>}
+              {itemLine(i) && <span className={styles.lineMeta}>{itemLine(i)}</span>}
             </li>
           ))}
           {l.note && <li className={styles.line}>{l.note}</li>}
@@ -252,16 +209,7 @@ export function Workout() {
       <LargeTitle title={copy.workout.title} />
       {offline && <OfflineNotice savedAt={view.kind === "snapshot" ? view.savedAt : null} onRetry={() => void recheck()} />}
       {body}
-      {confirm && (
-        <ConfirmSheet
-          summary={confirm.summary}
-          busy={confirmBusy}
-          keepLabel={copy.workout.keep}
-          changeLabel={copy.workout.delete}
-          onKeep={() => setConfirm(null)}
-          onChange={() => void confirmDelete()}
-        />
-      )}
+      {confirmSheet}
     </main>
   );
 }
