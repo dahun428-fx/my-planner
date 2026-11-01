@@ -38,6 +38,7 @@ SCHEDULE_DAYS_DEFAULT, SCHEDULE_DAYS_MAX = 14, 28
 RESULT_WEEKS_DEFAULT, RESULT_WEEKS_MAX = 8, 12
 TASK_ENDED_DAYS = 56  # 영역별 할 일: 열린 것 + 이 기간에 끝내거나 버린 것
 TASK_LIMIT = 50
+REVIEW_QUARTERS = 8  # read_reviews: 최근 분기 수(글이 해마다 늘지 않게)
 
 # 외모 지표(SP15 6.1 이미지 컨설턴트, 계획 Task 7 그대로)
 LOOKS_METRICS: frozenset[str] = frozenset({
@@ -122,11 +123,13 @@ class PanelReadTools:
 
     @_tool
     def read_reviews(self, ctx: RunContext) -> dict[str, Any]:
-        """분기 회고의 영역 점수, 최근 분기부터."""
+        """분기 회고의 영역 점수, 최근 `REVIEW_QUARTERS`분기만, 최근 분기부터."""
         if self.curve is None:
             return {"items": []}
         rows = self.curve.conn.execute(
-            "SELECT period, area, score, note FROM curve_area_scores ORDER BY period DESC, area"
+            "SELECT period, area, score, note FROM curve_area_scores WHERE period IN"
+            " (SELECT DISTINCT period FROM curve_area_scores ORDER BY period DESC LIMIT ?) ORDER BY period DESC, area",
+            (REVIEW_QUARTERS,),
         ).fetchall()
         return {"items": [
             {"ref": f"review:{r['period']}:{r['area']}", "period": r["period"], "area": r["area"],
@@ -173,7 +176,8 @@ class PanelReadTools:
             "FROM tasks t WHERE t.deleted_at IS NULL AND t.status IN ('open', 'done', 'dropped') "
             "AND EXISTS (SELECT 1 FROM task_areas a WHERE a.task_id = t.id AND a.area = ?)) "
             "WHERE status = 'open' OR ended_at >= ? "
-            "ORDER BY status <> 'open', planned_for IS NULL, CASE WHEN status = 'open' THEN planned_for END, "
+            "ORDER BY status <> 'open', CASE WHEN status = 'open' THEN planned_for IS NULL END, "
+            "CASE WHEN status = 'open' THEN planned_for END, "
             "ended_at DESC, id LIMIT ?",
             (area, since, TASK_LIMIT),
         ).fetchall()
@@ -280,5 +284,5 @@ class PanelReadTools:
         return {"items": [
             {"photo_id": p.id, "date": logical_date(p.created_at, self.tz, self.boundary).isoformat(),
              "read_text": p.read_text}
-            for photos in by_message.values() for p in photos
+            for p in {p.id: p for photos in by_message.values() for p in photos}.values()  # 두 메시지에 붙은 사진은 한 번
         ]}

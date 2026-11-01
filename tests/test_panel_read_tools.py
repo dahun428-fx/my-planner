@@ -301,3 +301,32 @@ async def test_other_reads_shape(tmp_path):
     ]}
     assert results == {"items": [{"ref": f"suggestion:{now_id}", "title": "가짜 이번 주", "area": "career",
                                   "state": "proposed", "dismiss_reason": None, "week": "2026-W45"}]}
+
+
+async def test_ended_tasks_newest_first_even_unplanned(tmp_path):
+    """Task 7 검토: 끝난 것은 하려는 날이 없어도 최근 것부터."""
+    async with BeEnv.start(tmp_path, start=MON) as env:
+        t = env.parts.tools
+        u = _user()
+        planned = _ok(t.add_task(u, title="가짜 날 있음", areas=["career"], planned_for="2026-10-20"))["id"]
+        unplanned = _ok(t.add_task(u, title="가짜 날 없음", areas=["career"]))["id"]
+        for tid, days in ((planned, 20), (unplanned, 1)):
+            _ok(t.complete_task(u, id=tid))
+            env.conn.execute("UPDATE tasks SET completed_at = ? WHERE id = ?",
+                             (to_iso(MON - timedelta(days=days)), tid))
+        env.conn.commit()
+        out = _ok(t.read_tasks_career(_manager(1)))
+    assert [i["ref"] for i in out["items"]] == [f"task:{unplanned}", f"task:{planned}"]
+
+
+async def test_reviews_last_8_quarters(tmp_path):
+    async with BeEnv.start(tmp_path, start=MON) as env:
+        for y in (2023, 2024, 2025):
+            for q in (1, 2, 3, 4):
+                env.conn.execute(
+                    "INSERT INTO curve_area_scores (period, area, score, note, recorded_at) VALUES (?, 'career', 5, NULL, ?)",
+                    (f"{y}-Q{q}", to_iso(MON)),
+                )
+        env.conn.commit()
+        out = _ok(env.parts.tools.read_reviews(_manager(1)))
+    assert [i["period"] for i in out["items"]] == [f"{y}-Q{q}" for y in (2025, 2024) for q in (4, 3, 2, 1)]
