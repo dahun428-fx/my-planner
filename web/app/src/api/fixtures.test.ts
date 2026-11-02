@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type ModelName, validateModel } from "./validate";
+import { type LateModelName, validateLateModel } from "./validateLate";
 
 // [fixture file, model]. Tickets that add fixtures add rows here.
 const table: [string, ModelName][] = [
@@ -37,6 +38,12 @@ const table: [string, ModelName][] = [
   ["standing-measures.json", "StandingMeasures"],
 ];
 
+// [fixture file, late model]: the models kept out of the first screen's schema (scripts/late-models.json).
+const lateTable: [string, LateModelName][] = [
+  // SP15 10장: the life report screen's made-up report.
+  ["life_report.json", "LifeReportOut"],
+];
+
 // The BE before R4a has no `next_before` key at all, so that fixture is checked as the client reads it (key absent -> null).
 const OLD_BE = new Set(["activity-asc.json"]);
 
@@ -67,8 +74,13 @@ describe("fixtures match schema.json", () => {
     expect(validateModel("Health", { ...health, errors: { ...health.errors, by_event: { x: "str" } } })).toBe(false);
   });
 
-  it("every fixture file is in the table", () => {
+  it.each(lateTable)("%s is a valid %s (schema.late.json)", (file, model) => {
+    const value: unknown = JSON.parse(readFileSync(join(dir, file), "utf8"));
+    expect(validateLateModel(model, value)).toBe(true);
+  });
+
+  it("every fixture file is in a table", () => {
     const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
-    expect(files).toEqual(table.map(([f]) => f).sort());
+    expect(files).toEqual([...table, ...lateTable].map(([f]) => f).sort());
   });
 });

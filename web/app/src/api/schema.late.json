@@ -1,0 +1,1149 @@
+{
+  "api": "v1",
+  "models": {
+    "ChatRequestBody": {
+      "$defs": {
+        "ChatMessage": {
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "parts": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "maxItems": 100,
+              "type": "array"
+            },
+            "role": {
+              "const": "user",
+              "type": "string"
+            }
+          },
+          "required": [
+            "role"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "default": "secretary",
+          "enum": [
+            "secretary",
+            "mate",
+            "manager"
+          ],
+          "type": "string"
+        },
+        "checkin_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "chip": {
+          "anyOf": [
+            {
+              "enum": [
+                "todo",
+                "event",
+                "memo",
+                "today",
+                "next",
+                "mate_today",
+                "mate_log",
+                "mate_plan",
+                "manager_full",
+                "manager_week"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "client_msg_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "message": {
+          "$ref": "#/$defs/ChatMessage"
+        },
+        "resume_conversation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "client_msg_id",
+        "message"
+      ],
+      "type": "object"
+    },
+    "Conversations": {
+      "$defs": {
+        "ConversationItem": {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "type": "string"
+            },
+            "closed_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "run",
+                "chat",
+                "plan"
+              ],
+              "type": "string"
+            },
+            "last_message_at": {
+              "type": "string"
+            },
+            "opened_at": {
+              "type": "string"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "channel",
+            "run_id",
+            "opened_at",
+            "last_message_at",
+            "closed_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ConversationItem"
+          },
+          "type": "array"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "LifeReportOut": {
+      "$defs": {
+        "LifeReportBody": {
+          "additionalProperties": false,
+          "properties": {
+            "closing": {
+              "type": "string"
+            },
+            "experts": {
+              "items": {
+                "$ref": "#/$defs/LifeReportExpert"
+              },
+              "type": "array"
+            },
+            "levers": {
+              "items": {
+                "$ref": "#/$defs/LifeReportLever"
+              },
+              "type": "array"
+            },
+            "questions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "roadmap": {
+              "items": {
+                "$ref": "#/$defs/LifeReportTrack"
+              },
+              "type": "array"
+            },
+            "scenario": {
+              "$ref": "#/$defs/LifeReportScenario"
+            },
+            "scores": {
+              "additionalProperties": {
+                "$ref": "#/$defs/LifeReportScore"
+              },
+              "propertyNames": {
+                "enum": [
+                  "career",
+                  "money",
+                  "health",
+                  "looks",
+                  "relations",
+                  "intellect",
+                  "height",
+                  "education",
+                  "family"
+                ]
+              },
+              "type": "object"
+            },
+            "summary": {
+              "$ref": "#/$defs/LifeReportSummary"
+            },
+            "this_week": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "this_week_items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/LifeReportWeekItem"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "version": {
+              "const": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "version",
+            "summary",
+            "scores",
+            "levers",
+            "experts",
+            "scenario",
+            "roadmap",
+            "this_week",
+            "questions",
+            "closing"
+          ],
+          "type": "object"
+        },
+        "LifeReportExpert": {
+          "additionalProperties": false,
+          "properties": {
+            "avoid": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "type": "string"
+            },
+            "line": {
+              "type": "string"
+            },
+            "prescriptions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "expert",
+            "line",
+            "prescriptions",
+            "avoid"
+          ],
+          "type": "object"
+        },
+        "LifeReportLever": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect"
+              ],
+              "type": "string"
+            },
+            "strength": {
+              "enum": [
+                "weak",
+                "mid",
+                "strong"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "axis",
+            "strength"
+          ],
+          "type": "object"
+        },
+        "LifeReportScenario": {
+          "additionalProperties": false,
+          "properties": {
+            "do": {
+              "type": "string"
+            },
+            "dont": {
+              "type": "string"
+            },
+            "estimate": {
+              "const": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "do",
+            "dont",
+            "estimate"
+          ],
+          "type": "object"
+        },
+        "LifeReportScore": {
+          "additionalProperties": false,
+          "properties": {
+            "estimate": {
+              "type": "boolean"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "national",
+            "peer",
+            "reliability",
+            "estimate"
+          ],
+          "type": "object"
+        },
+        "LifeReportSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "line": {
+              "type": "string"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "line",
+            "paths"
+          ],
+          "type": "object"
+        },
+        "LifeReportTrack": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "type": "string"
+            },
+            "kpi": {
+              "type": "string"
+            },
+            "start": {
+              "type": "string"
+            },
+            "track": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "track",
+            "kpi",
+            "start",
+            "end"
+          ],
+          "type": "object"
+        },
+        "LifeReportWeekItem": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "report": {
+          "$ref": "#/$defs/LifeReportBody"
+        }
+      },
+      "required": [
+        "id",
+        "created_at",
+        "report"
+      ],
+      "type": "object"
+    },
+    "LifeReports": {
+      "$defs": {
+        "LifeReportItem": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/LifeReportItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "Messages": {
+      "$defs": {
+        "ExpertNoteOut": {
+          "additionalProperties": false,
+          "properties": {
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "expert",
+            "text"
+          ],
+          "type": "object"
+        },
+        "MessageItem": {
+          "additionalProperties": false,
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "channel": {
+              "enum": [
+                "telegram",
+                "app"
+              ],
+              "type": "string"
+            },
+            "expert_notes": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ExpertNoteOut"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "photos": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/PhotoRef"
+              },
+              "type": "array"
+            },
+            "speaker": {
+              "enum": [
+                "user",
+                "secretary",
+                "mate",
+                "manager"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "speaker",
+            "text",
+            "tools",
+            "channel"
+          ],
+          "type": "object"
+        },
+        "PhotoRef": {
+          "additionalProperties": false,
+          "properties": {
+            "height": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "width": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "width",
+            "height"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MessageItem"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "OwnerStatementOut": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "preference",
+            "decision"
+          ],
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "area",
+        "text",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "OwnerStatements": {
+      "$defs": {
+        "OwnerStatementOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision"
+              ],
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "area",
+            "text",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OwnerStatementOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "PanelBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "full_diagnosis_ok": {
+          "type": "boolean"
+        },
+        "remaining": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "remaining",
+        "full_diagnosis_ok"
+      ],
+      "type": "object"
+    },
+    "PanelEvidenceOut": {
+      "additionalProperties": false,
+      "properties": {
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "record",
+            "statement",
+            "external"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ref",
+        "note",
+        "href"
+      ],
+      "type": "object"
+    },
+    "PanelSuggestionOut": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "enum": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "due_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/PanelEvidenceOut"
+          },
+          "type": "array"
+        },
+        "experts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "task",
+            "habit"
+          ],
+          "type": "string"
+        },
+        "per_week": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_min": {
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "done",
+            "postponed",
+            "dismissed",
+            "expired"
+          ],
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "week": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "area",
+        "size_min",
+        "per_week",
+        "due_hint",
+        "experts",
+        "evidence",
+        "state",
+        "week",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "PanelSuggestions": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "type": "object"
+        },
+        "PanelSuggestionOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "due_hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/PanelEvidenceOut"
+              },
+              "type": "array"
+            },
+            "experts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "task",
+                "habit"
+              ],
+              "type": "string"
+            },
+            "per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "size_min": {
+              "type": "integer"
+            },
+            "state": {
+              "enum": [
+                "proposed",
+                "accepted",
+                "done",
+                "postponed",
+                "dismissed",
+                "expired"
+              ],
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "week": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "area",
+            "size_min",
+            "per_week",
+            "due_hint",
+            "experts",
+            "evidence",
+            "state",
+            "week",
+            "created_at"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/PanelSuggestionOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    }
+  }
+}

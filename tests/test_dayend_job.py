@@ -52,8 +52,9 @@ async def tick_at(env, when=TICK):
 _seq = iter(range(1, 1_000_000))
 
 
-def ev(env, kind, ref, day, area=None, to=("mate", "manager")):
-    """받은편지함 줄 하나(시험 고정 자료: 저장소에 바로). 시각은 1초씩 늘려 순서를 정한다."""
+def ev(env, kind, ref, day, area=None, to=("mate",)):
+    """받은편지함 줄 하나(시험 고정 자료: 저장소에 바로). 시각은 1초씩 늘려 순서를 정한다. 받는 쪽 기본은 메이트만
+    (SP14 시험은 메이트 한 상대를 본다. SP15 매니저 판단은 `to`로 더한다)."""
     when = kst(2026, 10, 1, 0, 0) + timedelta(seconds=next(_seq))
     with transaction(env.conn):
         return env.parts.agents.add_event(kind, ref, area, "app", day, to=to, now=when)
@@ -74,6 +75,11 @@ def records(caplog, msg):
     return [r for r in caplog.records if r.getMessage() == msg]
 
 
+def mate_dayend(caplog):
+    """메이트의 `agent_dayend` 줄(SP15부터 매니저 줄도 같은 tick에 남는다)."""
+    return [r for r in records(caplog, "agent_dayend") if r.agent == "mate"]
+
+
 def note(text=NOTE, priority=2, refs=("workout:3",)):
     return ("write_note", {"text": text, "priority": priority, "refs": list(refs)})
 
@@ -81,9 +87,10 @@ def note(text=NOTE, priority=2, refs=("workout:3",)):
 # --- 하루 한 번 (T5, AC7) ---
 
 
-async def test_dayend_one_call_per_day_sp14(tmp_path, caplog):
+async def test_dayend_one_call_per_agent_per_day(tmp_path, caplog):
+    """SP15: 두 상대 모두 안 읽은 줄 → `kind == "dayend"` 호출 2회(메이트 다음 매니저), 같은 날 둘째는 둘 다 `already`."""
     caplog.set_level(logging.INFO)
-    async with started(tmp_path, [FakeTurn([], "")]) as env:
+    async with started(tmp_path, [FakeTurn([], ""), FakeTurn([], "")]) as env:
         ev(env, "workout_logged", "workout:1", date(2026, 11, 1), "health")
         ev(env, "task_done", "task:1", date(2026, 11, 1), "career", to=("manager",))
         before = env.parts.state.usage(TODAY).brain_calls
@@ -91,30 +98,51 @@ async def test_dayend_one_call_per_day_sp14(tmp_path, caplog):
         d.submit_dayend(TODAY)
         d.submit_dayend(TODAY)
         await env.drain()
-        (call,) = dayend_calls(env)
-        assert call["run_ctx"].agent == "mate"
-        assert env.parts.state.usage(TODAY).brain_calls == before + 1
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["ok", "already"]
-        assert unseen_ids(env, "mate") == [] and len(unseen_ids(env, "manager")) == 2
-        assert env.parts.state.get(DAYEND_DAY_KEY.format(agent="mate")) == "2026-11-02"
+        calls = dayend_calls(env)
+        assert [c["run_ctx"].agent for c in calls] == ["mate", "manager"]
+        assert env.parts.state.usage(TODAY).brain_calls == before + 2
+        got = [(r.agent, r.result) for r in records(caplog, "agent_dayend")]
+        assert got == [("mate", "ok"), ("manager", "ok"), ("mate", "already"), ("manager", "already")]
+        assert unseen_ids(env, "mate") == [] and unseen_ids(env, "manager") == []
+        assert "task:1" in calls[1]["prompt"] and "workout:1" not in calls[1]["prompt"]  # 그 상대 받은편지함만
+        for agent in ("mate", "manager"):
+            assert env.parts.state.get(DAYEND_DAY_KEY.format(agent=agent)) == "2026-11-02"
+
+
+async def test_dayend_skips_empty_agent(tmp_path, caplog):
+    """빈 상대는 부르지 않는다: 매니저 받은편지함만 있으면 매니저 한 번."""
+    caplog.set_level(logging.INFO)
+    async with started(tmp_path, [FakeTurn([], "")]) as env:
+        ev(env, "task_done", "task:1", date(2026, 11, 1), "career", to=("manager",))
+        env.parts.dispatcher.submit_dayend(TODAY)
+        await env.drain()
+        assert [c["run_ctx"].agent for c in dayend_calls(env)] == ["manager"]
+        assert [(r.agent, r.result) for r in records(caplog, "agent_dayend")] == [("mate", "empty"), ("manager", "ok")]
 
 
 async def test_dayend_skips_when_reserve_short(tmp_path, caplog):
+    """사용자 몫이 모자라면 두 상대 모두 기다린다(그날 키도 쓰지 않는다). 다음 날 둘 다 한 번씩."""
     caplog.set_level(logging.INFO)
-    async with started(tmp_path, [FakeTurn([], "")]) as env:
+    async with started(tmp_path, [FakeTurn([], ""), FakeTurn([], "")]) as env:
         ev(env, "workout_logged", "workout:1", date(2026, 11, 1), "health")
+        ev(env, "task_done", "task:1", date(2026, 11, 1), "career", to=("manager",))
         for _ in range(env.settings.limits.daily_brain_calls - 10):
             env.parts.state.incr_usage(TODAY, "brain_calls")
         await tick_at(env)
         assert env.brain.calls == []
-        assert len(unseen_ids(env)) == 1
-        assert env.parts.state.get(DAYEND_DAY_KEY.format(agent="mate")) is None
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["waiting"]
+        assert len(unseen_ids(env)) == 1 and len(unseen_ids(env, "manager")) == 1
+        for agent in ("mate", "manager"):
+            assert env.parts.state.get(DAYEND_DAY_KEY.format(agent=agent)) is None
+        assert [(r.agent, r.result) for r in records(caplog, "agent_dayend")] == [
+            ("mate", "waiting"), ("manager", "waiting"),
+        ]
         ev(env, "workout_logged", "workout:2", date(2026, 11, 2), "health")
         await tick_at(env, NEXT)
-        (call,) = dayend_calls(env)
+        call, manager = dayend_calls(env)
+        assert (call["run_ctx"].agent, manager["run_ctx"].agent) == ("mate", "manager")
         assert "workout:1" in call["prompt"] and "workout:2" in call["prompt"]
-        assert unseen_ids(env) == []
+        assert "task:1" in manager["prompt"]
+        assert unseen_ids(env) == [] and unseen_ids(env, "manager") == []
 
 
 async def test_catch_up_one_call_older_than_7_seen(tmp_path):
@@ -140,10 +168,12 @@ async def test_catch_up_one_call_older_than_7_seen(tmp_path):
 async def test_empty_inbox_no_call(tmp_path, caplog):
     caplog.set_level(logging.INFO)
     async with started(tmp_path) as env:
-        ev(env, "task_done", "task:1", date(2026, 11, 1), "career", to=("manager",))
+        ev(env, "task_done", "task:1", date(2026, 10, 20), "career", to=("mate", "manager"))  # 7일보다 이르다
         await tick_at(env)
         assert env.brain.calls == []
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["empty"]
+        assert [(r.agent, r.result) for r in records(caplog, "agent_dayend")] == [
+            ("mate", "empty"), ("manager", "empty"),
+        ]
 
 
 async def test_code_steps_run_always(tmp_path, monkeypatch, caplog):
@@ -239,7 +269,7 @@ async def test_zero_notes_ok(tmp_path, caplog):
     async with started(tmp_path, [FakeTurn([], "남길 게 없어요")]) as env:
         ev(env, "workout_logged", "workout:1", date(2026, 11, 1), "health")
         await tick_at(env)
-        (rec,) = records(caplog, "agent_dayend")
+        (rec,) = mate_dayend(caplog)
         assert (rec.result, rec.notes, rec.events) == ("ok", 0, 1)
         assert unseen_ids(env) == []
         assert env.parts.agents.notes("mate", date.min) == []
@@ -260,17 +290,17 @@ async def test_failure_retries_next_day_then_marks_seen(tmp_path, caplog):
         ev(env, "workout_logged", "workout:1", date(2026, 11, 1), "health")
         await tick_at(env)
         assert len(unseen_ids(env)) == 1 and state.get(key) == "1"
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["retry"]
+        assert [r.result for r in mate_dayend(caplog)] == ["retry"]
         await tick_at(env, NEXT)
         assert unseen_ids(env) == [] and state.get(key) == "0"
         (failed,) = records(caplog, "agent_dayend_failed")
         assert (failed.agent, failed.events) == ("mate", 1)
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["retry", "failed"]
+        assert [r.result for r in mate_dayend(caplog)] == ["retry", "failed"]
         # 사용 한도: 시도 수 그대로, 줄 그대로, `limited_until`
         ev(env, "workout_logged", "workout:2", date(2026, 11, 3), "health")
         await tick_at(env, kst(2026, 11, 4, 4, 1))
         assert len(unseen_ids(env)) == 1 and state.get(key) == "0"
-        assert records(caplog, "agent_dayend")[-1].result == "limited"
+        assert mate_dayend(caplog)[-1].result == "limited"
         assert state.get(LIMITED_UNTIL_KEY) is not None
         assert len(dayend_calls(env)) == 3
 
@@ -291,12 +321,12 @@ async def test_brain_exception_counts_as_attempt(tmp_path, caplog):
         assert not mine.exists() and other.exists()  # 예외 때도 세션 파일을 지운다
         await tick_at(env, NEXT)
         assert unseen_ids(env) == [] and state.get(key) == "0"
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["error", "error"]
+        assert [r.result for r in mate_dayend(caplog)] == ["error", "error"]
         assert len(records(caplog, "agent_dayend_failed")) == 1
         errs = records(caplog, "agent_dayend_brain_error")
         assert [(r.agent, r.error_type) for r in errs] == [("mate", "RuntimeError")] * 2
         assert records(caplog, "agent_dayend_error") == []
-        for r in records(caplog, "agent_dayend") + errs:
+        for r in mate_dayend(caplog) + errs:
             assert "꾸민 두뇌 오류" not in str(r.__dict__) and "workout:1" not in str(r.__dict__)
 
 
@@ -311,7 +341,7 @@ async def test_auth_error_limited_keeps_attempts(tmp_path, caplog):
         assert state.get(key) == "1"
         await tick_at(env, NEXT)
         assert state.get(key) == "1" and len(unseen_ids(env)) == 1
-        assert [r.result for r in records(caplog, "agent_dayend")] == ["retry", "limited"]
+        assert [r.result for r in mate_dayend(caplog)] == ["retry", "limited"]
         assert records(caplog, "agent_dayend_failed") == []
 
 
@@ -382,7 +412,7 @@ async def test_dayend_log_has_counts_only(tmp_path):
         note(),
         ("hand_off", {"to": "manager", "text": "저녁 일정이 많아 운동 날이 줄었어요", "refs": ["workout:3"]}),
     ], "", session_id=SID)
-    async with started(tmp_path, [turn], claude=True) as env:
+    async with started(tmp_path, [turn, FakeTurn([], "")], claude=True) as env:  # 넘김을 받은 매니저 판단도 같은 tick
         state_dir = env.settings.paths.state_dir
         setup_logging(state_dir, 30)
         ev(env, "workout_logged", "workout:3", date(2026, 11, 1), "health")
@@ -395,7 +425,8 @@ async def test_dayend_log_has_counts_only(tmp_path):
             text = path.read_text(encoding="utf-8")
             assert NOTE not in text and "저녁 일정" not in text and "workout:3" not in text, path
         entries = [json.loads(line) for p in logs for line in p.read_text(encoding="utf-8").splitlines() if line]
-        (job,) = [e for e in entries if e.get("msg") == "agent_dayend"]
+        (job, manager) = [e for e in entries if e.get("msg") == "agent_dayend"]
+        assert (manager["agent"], manager["events"], manager["result"]) == ("manager", 1, "ok")
         assert set(job) - {"ts", "level", "logger", "msg"} == {
             "agent", "events", "notes", "handoffs", "result", "duration_ms",
         }

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { copy, habitMeta, momentDay } from "./copy";
+import { copyPanel } from "./copyPanel";
 import { standingCopy } from "./copyStanding";
 
 const repoRoot = join(__dirname, "../../../..");
@@ -46,7 +47,7 @@ describe("copy", () => {
   });
 
   it("no banned words", () => {
-    const values = [...texts(copy), ...texts(standingCopy)];
+    const values = [...texts(copy), ...texts(standingCopy), ...texts(copyPanel)];
     expect(values.length).toBeGreaterThan(20);
     const inCopy = values.filter((t) => banned.some((w) => t.includes(w)));
     expect(inCopy).toEqual([]);
@@ -223,5 +224,16 @@ describe("copy", () => {
   it("templates fill values", () => {
     expect(copy.errors.block("shape")).toBe("이 부분을 불러오지 못했어요 (shape)");
     expect(copy.status.limited("21:30")).toBe("비서가 21:30까지 답을 쉬어요");
+  });
+
+  it("panel copy is SP15 verbatim, without banned words or the card's extra ones", () => {
+    expect(copyPanel.budget(1)).toBe("이번 주 제안 1개 더 받을 수 있어요");
+    expect(copyPanel.expertNotes(2)).toBe("전문가 소견 2개");
+    expect([copyPanel.card.perWeek(7), copyPanel.card.perWeek(3), copyPanel.card.minutes(30)]).toEqual(["매일", "주 3번", "약 30분"]);
+    expect(Object.values(copyPanel.experts)).toEqual(["커리어 전략가", "재무설계사", "건강 전문의", "이미지 컨설턴트", "관계 코치", "심리 코치"]);
+    expect(Object.values(copyPanel.reasons)).toEqual(["시간 없음", "관심 없음", "이미 하는 중", "너무 큼", "그냥"]);
+    // The spec's "…개 남음" says 남음, a banned word; the plan's sentence has none. PANEL_EXTRA_BANNED (BE tools/panel.py).
+    const extra = ["%", "못 했", "못했", "뒤처졌", "남음"];
+    for (const t of texts(copyPanel)) expect([...banned, ...extra].filter((w) => t.includes(w))).toEqual([]);
   });
 });

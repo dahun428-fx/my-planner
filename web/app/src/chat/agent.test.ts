@@ -38,4 +38,12 @@ describe("agent", () => {
     localStorage.setItem("chat.agent", "other");
     expect(loadAgent()).toBe("secretary");
   });
+
+  // SP15 11장: the life manager is kept like the mate; ChatSheet falls back to the secretary on a BE without it.
+  it("keeps the life manager and reads anything else as the secretary", () => {
+    localStorage.setItem("chat.agent", "manager");
+    expect(loadAgent()).toBe("manager");
+    localStorage.setItem("chat.agent", "bogus");
+    expect(loadAgent()).toBe("secretary");
+  });
 });

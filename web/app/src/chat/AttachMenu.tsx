@@ -19,7 +19,8 @@ export interface AttachItem {
 // the arrows (and Home/End) move between the items. The focus goes into the menu only when it was
 // opened from the keyboard: a tap leaves it in the field, so a phone's keyboard stays up. Closing
 // gives it back to the (+), never to the page behind the sheet.
-export function AttachMenu({ items, disabled }: { items: AttachItem[]; disabled?: boolean }) {
+// `openKey` (SP15 "자료 올리기"): each new value opens the menu from outside, as a tap on the (+) does.
+export function AttachMenu({ items, disabled, openKey = 0 }: { items: AttachItem[]; disabled?: boolean; openKey?: number }) {
   const [open, setOpen] = useState(false);
   const [fromKeys, setFromKeys] = useState(false);
   const id = useId();
@@ -46,6 +47,14 @@ export function AttachMenu({ items, disabled }: { items: AttachItem[]; disabled?
   useEffect(() => {
     if (disabled) setOpen(false);
   }, [disabled]);
+  const seenKey = useRef(openKey);
+  useEffect(() => {
+    if (openKey === seenKey.current) return; // only a new value opens it (not `disabled` going off again)
+    seenKey.current = openKey;
+    if (disabled) return;
+    setFromKeys(false);
+    setOpen(true);
+  }, [openKey, disabled]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!open) return;

@@ -267,7 +267,7 @@ def test_catalog_has_ui_habit_check_brain_origin():
     assert UI_COMPONENTS["ui_habit_check"]["origin"] == "brain"
     assert "ui_habit_check" in BRAIN_COMPONENTS
     assert "ui_habit_check" not in PINNABLE_COMPONENTS
-    assert UI_CATALOG_VERSION == "2026-11-01.1"
+    assert UI_CATALOG_VERSION == "2026-11-01.3"
     schema = UI_COMPONENTS["ui_habit_check"]["schema"]
     assert schema["required"] == ["date"] and schema["additionalProperties"] is False
 

@@ -70,7 +70,7 @@ Channel = Literal["telegram", "app"]  # 대화 통로 (SP3-4 스펙 5.1)
 ActivityChannel = Literal["app", "telegram", "scheduler"]  # 활동 통로 (5.2)
 Actor = Literal["secretary", "user"]  # 활동 행위자 (5.2)
 # 대화 상대 (SP12 스펙 5.1). 도구 목록·지시문·앞머리를 고르는 열쇠. 메이트 대화는 늘 앱 통로의 `chat`이다
-Agent = Literal["secretary", "mate"]
+Agent = Literal["secretary", "mate", "manager"]
 Risk = Literal["low", "confirm"]  # 활동 위험 (5.2, 6.4.2)
 # 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음),
 # 사진 읽기는 `photo_read`(SP10 5.4, 도구 없음)
@@ -134,6 +134,8 @@ class RunContext:
     in_brain: bool = False  # 두뇌 호출 안의 도구 호출(SP14 Task 2)
     dayend_day: date | None = None  # 하루 끝 판단이 판단하는 날(Task 3)
     notes_written: int = 0  # 이 호출에서 저장한 관찰 수(Task 3)
+    panel_rejects: int = 0  # 이 호출에서 거절된 패널 제안 수(SP15 Task 8)
+    full_diagnosis: bool = False  # "전체 진단" 호출(SP15 Task 12)
 
     @property
     def run_turn(self) -> bool:

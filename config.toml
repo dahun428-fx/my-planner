@@ -54,6 +54,16 @@ morning_brief_until = "12:00"   # 당일
 evening_checkin_until = "04:00" # 다음 날
 review_days = 3
 
+# 라이프 매니저 보통 메시지(전문가 2명까지, SP15). 스파이크 S1 full2 판정(9초, 5턴)의 여유
+[limits.manager_message]
+max_turns = 12
+brain_timeout_s = 300
+
+# 서브에이전트(전문가) 6개가 도는 "전체 진단"(SP15). 스파이크 S1에서 잼(full6: 12초, 7턴, 가짜 도구)
+[limits.full_diagnosis]
+max_turns = 30
+brain_timeout_s = 900
+
 [retention]
 log_days = 30       # 로그 보관 일수
 backup_count = 14   # DB 백업 보관 개수

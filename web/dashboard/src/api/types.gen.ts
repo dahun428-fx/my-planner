@@ -49,6 +49,8 @@ export interface ApiModels {
   HabitsList: HabitsList;
   Health: Health;
   InboxCount: InboxCount;
+  LifeReportOut: LifeReportOut;
+  LifeReports: LifeReports;
   Memo: Memo;
   MemoItem: MemoItem;
   MemoList: MemoList;
@@ -58,10 +60,16 @@ export interface ApiModels {
   MomentsList: MomentsList;
   NotifyPutBody: NotifyPutBody;
   NotifySettings: NotifySettings;
+  OwnerStatementOut: OwnerStatementOut;
+  OwnerStatements: OwnerStatements;
   PairBody: PairBody;
   PairCreated: PairCreated;
   PairResult: PairResult;
   PairStatus: PairStatus;
+  PanelBudget: PanelBudget;
+  PanelEvidenceOut: PanelEvidenceOut;
+  PanelSuggestionOut: PanelSuggestionOut;
+  PanelSuggestions: PanelSuggestions;
   PhotoRead: PhotoRead;
   PhotoRef: PhotoRef;
   PhotoUploaded: PhotoUploaded;
@@ -305,10 +313,22 @@ export interface CalendarSettings {
  * via the `definition` "ChatRequestBody".
  */
 export interface ChatRequestBody {
-  agent?: "secretary" | "mate";
+  agent?: "secretary" | "mate" | "manager";
   checkin_id?: number | null;
   chip?:
-    ("todo" | "event" | "memo" | "today" | "next" | "mate_today" | "mate_log" | "mate_plan") | null;
+    | (
+        | "todo"
+        | "event"
+        | "memo"
+        | "today"
+        | "next"
+        | "mate_today"
+        | "mate_log"
+        | "mate_plan"
+        | "manager_full"
+        | "manager_week"
+      )
+    | null;
   client_msg_id: string;
   conversation_id?: number | null;
   message: ChatMessage;
@@ -1093,6 +1113,123 @@ export interface InboxCount {
   unseen: number;
 }
 /**
+ * `GET /life-reports/{id}`.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportOut".
+ */
+export interface LifeReportOut {
+  created_at: string;
+  id: number;
+  report: LifeReportBody;
+}
+/**
+ * 저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportBody".
+ */
+export interface LifeReportBody {
+  closing: string;
+  experts: LifeReportExpert[];
+  levers: LifeReportLever[];
+  questions: string[];
+  roadmap: LifeReportTrack[];
+  scenario: LifeReportScenario;
+  scores: {
+    [k: string]: LifeReportScore;
+  };
+  summary: LifeReportSummary;
+  this_week: number[];
+  this_week_items?: LifeReportWeekItem[] | null;
+  version: 1;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportExpert".
+ */
+export interface LifeReportExpert {
+  avoid: string[];
+  expert: "career" | "finance" | "health" | "image" | "relationship" | "psych";
+  line: string;
+  prescriptions: string[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportLever".
+ */
+export interface LifeReportLever {
+  action: string;
+  axis: "career" | "money" | "health" | "looks" | "relations" | "intellect";
+  strength: "weak" | "mid" | "strong";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportTrack".
+ */
+export interface LifeReportTrack {
+  end: string;
+  kpi: string;
+  start: string;
+  track: string;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportScenario".
+ */
+export interface LifeReportScenario {
+  do: string;
+  dont: string;
+  estimate: true;
+}
+/**
+ * 저장 시점 점수의 사본(SP13 값). 신뢰도·추정은 전국 점수, 없으면 또래.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportScore".
+ */
+export interface LifeReportScore {
+  estimate: boolean;
+  national: number | null;
+  peer: number | null;
+  reliability: ("high" | "mid" | "low") | null;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportSummary".
+ */
+export interface LifeReportSummary {
+  line: string;
+  paths: string[];
+}
+/**
+ * "이번 주" 제안 하나의 저장 시점 사본(제안 목록의 28일 창과 상관없이 남는다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportWeekItem".
+ */
+export interface LifeReportWeekItem {
+  id: number;
+  title: string;
+}
+/**
+ * `GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReports".
+ */
+export interface LifeReports {
+  items: LifeReportItem[];
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportItem".
+ */
+export interface LifeReportItem {
+  created_at: string;
+  id: number;
+}
+/**
  * `GET /memos/{id}`와 메모 동작 결과 (SP9 6.4). `updated_at`은 `update_memo`에 그대로 돌려보낸다(다르면 409 `memo_conflict`).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -1167,11 +1304,22 @@ export interface Messages {
 export interface MessageItem {
   at: string;
   channel: "telegram" | "app";
+  expert_notes?: ExpertNoteOut[];
   id: string;
   photos?: PhotoRef[];
-  speaker: "user" | "secretary" | "mate";
+  speaker: "user" | "secretary" | "mate" | "manager";
   text: string;
   tools: string[];
+}
+/**
+ * 라이프 매니저 답에 붙은 전문가 소견 하나(SP15 1장 2). `text`는 소견 원문(가린 글).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "ExpertNoteOut".
+ */
+export interface ExpertNoteOut {
+  expert: "career" | "finance" | "health" | "image" | "relationship" | "psych";
+  text: string;
 }
 /**
  * 오늘 화면의 놓친 알림 줄 (SP9 5.3, 9.3): 오늘(논리적 날짜) 일정 가운데 `missed`(놓친 알림), `failed`·`skipped`
@@ -1231,6 +1379,26 @@ export interface NotifySettings {
   push_subscriptions: number;
 }
 /**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "OwnerStatementOut".
+ */
+export interface OwnerStatementOut {
+  area: ("career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life") | null;
+  created_at: string;
+  id: number;
+  kind: "fact" | "preference" | "decision";
+  text: string;
+}
+/**
+ * `GET /owner-statements`: 지우지 않은 말, 최신 먼저.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "OwnerStatements".
+ */
+export interface OwnerStatements {
+  items: OwnerStatementOut[];
+}
+/**
  * `POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).
  *
  * This interface was referenced by `ApiModels`'s JSON-Schema
@@ -1287,6 +1455,53 @@ export interface PairStatus {
 export interface DeviceRef {
   id: number;
   label: string;
+}
+/**
+ * `GET /panel/budget`: 이번 주 남은 제안 수만(상한 숫자는 보이지 않는다, 7.3).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelBudget".
+ */
+export interface PanelBudget {
+  full_diagnosis_ok: boolean;
+  remaining: number;
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelEvidenceOut".
+ */
+export interface PanelEvidenceOut {
+  href: string | null;
+  note: string;
+  ref: string;
+  type: "record" | "statement" | "external";
+}
+/**
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelSuggestionOut".
+ */
+export interface PanelSuggestionOut {
+  area: "career" | "finance" | "health" | "relationships" | "learning" | "quality_of_life";
+  created_at: string;
+  due_hint: string | null;
+  evidence: PanelEvidenceOut[];
+  experts: string[];
+  id: number;
+  kind: "task" | "habit";
+  per_week: number | null;
+  size_min: number;
+  state: "proposed" | "accepted" | "done" | "postponed" | "dismissed" | "expired";
+  title: string;
+  week: string;
+}
+/**
+ * `GET /panel/suggestions`: 최신 먼저. `state`가 없으면 지난 28일 전부.
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "PanelSuggestions".
+ */
+export interface PanelSuggestions {
+  items: PanelSuggestionOut[];
 }
 /**
  * `POST /photos/{id}/read` 200 (SP10 5.3, 5.4). `unreadable`이면 `text`는 `""`.

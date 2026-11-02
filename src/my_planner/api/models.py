@@ -562,13 +562,20 @@ class Conversations(_Model):
 class NewConversationBody(_Model):
     """`POST /conversations/new` 요청(SP12 11.3). 본문이 없거나 `{}`이면 비서."""
 
-    agent: Literal["secretary", "mate"] = "secretary"
+    agent: Literal["secretary", "mate", "manager"] = "secretary"
 
 
 class ConversationsClosed(_Model):
     """`POST /conversations/new`(SP9 7.3): 닫은 앱 `chat`·`plan` 대화 id."""
 
     closed: list[int]
+
+
+class ExpertNoteOut(_Model):
+    """라이프 매니저 답에 붙은 전문가 소견 하나(SP15 1장 2). `text`는 소견 원문(가린 글)."""
+
+    expert: Literal["career", "finance", "health", "image", "relationship", "psych"]
+    text: str
 
 
 class MessageItem(_Model):
@@ -578,13 +585,16 @@ class MessageItem(_Model):
 
     id: str
     at: str
-    speaker: Literal["user", "secretary", "mate"]  # `mate`: 운동메이트(SP12)
+    speaker: Literal["user", "secretary", "mate", "manager"]  # `mate`: 운동메이트(SP12), `manager`: 라이프 매니저(SP15)
     text: str
     tools: list[str]
     channel: ChannelName
     # 앱 사용자 메시지에 붙은 사진(SP10 5.3, 보낸 순서). 사진이 있는 줄은 `text`에서 앞의 `[사진 #id]` 표시를 뗀다
     # (사진만이면 ""). 다른 줄은 빈 목록. 배포 순서가 엇갈려도 모양 검사를 넘게 required가 아니다(BE는 늘 싣는다)
     photos: list[PhotoRef] = []
+    # 라이프 매니저 줄의 전문가 소견(SP15, 부른 순서). 원문 기록의 `전문가` 항목은 따로 줄이 되지 않고 여기 붙는다.
+    # 다른 줄은 빈 목록. `photos`처럼 required가 아니다(BE는 늘 싣는다)
+    expert_notes: list[ExpertNoteOut] = []
 
 
 class Messages(_Model):
@@ -1001,6 +1011,143 @@ class AgentNotes(_Model):
     notes: list[AgentNoteOut]
 
 
+# --- 라이프 매니저 패널 (SP15 12장) ---
+
+SuggestionStateName = Literal["proposed", "accepted", "done", "postponed", "dismissed", "expired"]
+
+
+class PanelEvidenceOut(_Model):
+    type: Literal["record", "statement", "external"]
+    ref: str
+    note: str
+    href: str | None  # 앱 안 링크, 없으면 null
+
+
+class PanelSuggestionOut(_Model):
+    id: int
+    kind: Literal["task", "habit"]
+    title: str
+    area: AreaName
+    size_min: int
+    per_week: int | None
+    due_hint: str | None
+    experts: list[str]
+    evidence: list[PanelEvidenceOut]
+    state: SuggestionStateName
+    week: str
+    created_at: str
+
+
+class PanelSuggestions(_Model):
+    """`GET /panel/suggestions`: 최신 먼저. `state`가 없으면 지난 28일 전부."""
+
+    items: list[PanelSuggestionOut]
+
+
+class PanelBudget(_Model):
+    """`GET /panel/budget`: 이번 주 남은 제안 수만(상한 숫자는 보이지 않는다, 7.3)."""
+
+    remaining: int
+    full_diagnosis_ok: bool
+
+
+class LifeReportItem(_Model):
+    id: int
+    created_at: str
+
+
+class LifeReports(_Model):
+    """`GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록)."""
+
+    items: list[LifeReportItem]
+
+
+class LifeReportSummary(_Model):
+    line: str
+    paths: list[str]
+
+
+class LifeReportScore(_Model):
+    """저장 시점 점수의 사본(SP13 값). 신뢰도·추정은 전국 점수, 없으면 또래."""
+
+    national: int | None
+    peer: int | None
+    reliability: ReliabilityName | None
+    estimate: bool
+
+
+class LifeReportLever(_Model):
+    action: str
+    axis: Literal["career", "money", "health", "looks", "relations", "intellect"]
+    strength: Literal["weak", "mid", "strong"]
+
+
+class LifeReportExpert(_Model):
+    expert: Literal["career", "finance", "health", "image", "relationship", "psych"]
+    line: str
+    prescriptions: list[str]
+    avoid: list[str]
+
+
+class LifeReportScenario(_Model):
+    do: str
+    dont: str
+    estimate: Literal[True]
+
+
+class LifeReportTrack(_Model):
+    track: str
+    kpi: str
+    start: str  # YYYY-MM-DD
+    end: str
+
+
+class LifeReportWeekItem(_Model):
+    """"이번 주" 제안 하나의 저장 시점 사본(제안 목록의 28일 창과 상관없이 남는다)."""
+
+    id: int
+    title: str
+
+
+class LifeReportBody(_Model):
+    """저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1)."""
+
+    version: Literal[1]
+    summary: LifeReportSummary
+    scores: dict[StandingAxisName, LifeReportScore]
+    levers: list[LifeReportLever]
+    experts: list[LifeReportExpert]
+    scenario: LifeReportScenario
+    roadmap: list[LifeReportTrack]
+    this_week: list[int]
+    # `this_week` 순서의 제목 사본. 이 칸이 생기기 전에 저장한 리포트에는 없다
+    this_week_items: list[LifeReportWeekItem] | None = None
+    questions: list[str]
+    closing: str
+
+
+class LifeReportOut(_Model):
+    """`GET /life-reports/{id}`."""
+
+    id: int
+    created_at: str
+    report: LifeReportBody
+
+
+class OwnerStatementOut(_Model):
+    id: int
+    kind: Literal["fact", "preference", "decision"]
+    area: AreaName | None
+    text: str
+    created_at: str
+
+
+class OwnerStatements(_Model):
+    """`GET /owner-statements`: 지우지 않은 말, 최신 먼저."""
+
+    items: list[OwnerStatementOut]
+
+
 class UiComponent(_Model):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -1070,7 +1217,20 @@ class ChatMessage(BaseModel):
 
 
 # 입력창의 퀵 칩(SP9c 4.1). 두뇌 차례 본문에 `## 버튼` 블록(`harness/prompts/chip_<키>.md`)을 붙인다
-ChipKey = Literal["todo", "event", "memo", "today", "next", "mate_today", "mate_log", "mate_plan"]  # 메이트 셋(SP12 5.7)
+ChipKey = Literal[
+    "todo", "event", "memo", "today", "next",
+    "mate_today", "mate_log", "mate_plan",  # 메이트 셋(SP12 5.7)
+    "manager_full", "manager_week",  # 라이프 매니저 둘(SP15)
+]
+
+
+def _chip_agent(chip: str) -> str:
+    """칩 키의 상대: `mate_`로 시작하면 메이트, `manager_`로 시작하면 라이프 매니저, 그 밖은 비서."""
+    if chip.startswith("mate_"):
+        return "mate"
+    if chip.startswith("manager_"):
+        return "manager"
+    return "secretary"
 
 
 class ChatRequestBody(_Model):
@@ -1086,8 +1246,8 @@ class ChatRequestBody(_Model):
     resume_conversation_id: int | None = None
     message: ChatMessage
     chip: ChipKey | None = None
-    # 대화 상대(SP12 5.1). 없으면 비서라 지금 호출은 그대로다
-    agent: Literal["secretary", "mate"] = "secretary"
+    # 대화 상대(SP12 5.1, SP15). 없으면 비서라 지금 호출은 그대로다
+    agent: Literal["secretary", "mate", "manager"] = "secretary"
 
     @model_validator(mode="after")
     def _chip_not_with_checkin(self) -> ChatRequestBody:
@@ -1097,10 +1257,11 @@ class ChatRequestBody(_Model):
 
     @model_validator(mode="after")
     def _agent_rules(self) -> ChatRequestBody:
-        """메이트는 회차가 없고(SP12 5.1), 칩 키는 상대에 맞아야 한다(메이트 칩은 메이트에게만, 비서 칩은 비서에게만)."""
-        if self.agent == "mate" and self.checkin_id is not None:
-            raise ValueError("메이트에는 회차가 없다")
-        if self.chip is not None and self.chip.startswith("mate_") != (self.agent == "mate"):
+        """메이트·라이프 매니저는 회차가 없고(SP12 5.1, SP15), 칩 키는 상대에 맞아야 한다(`mate_` 칩은 메이트에게만,
+        `manager_` 칩은 라이프 매니저에게만, 그 밖 칩은 비서에게만)."""
+        if self.agent != "secretary" and self.checkin_id is not None:
+            raise ValueError("비서가 아닌 상대에는 회차가 없다")
+        if self.chip is not None and _chip_agent(self.chip) != self.agent:
             raise ValueError("칩과 상대가 맞지 않는다")
         return self
 
@@ -1537,6 +1698,14 @@ MODELS: dict[str, type[BaseModel]] = {
     "InboxCount": InboxCount,
     "AgentNotes": AgentNotes,
     "AgentNoteOut": AgentNoteOut,
+    "PanelEvidenceOut": PanelEvidenceOut,
+    "PanelSuggestionOut": PanelSuggestionOut,
+    "PanelSuggestions": PanelSuggestions,
+    "PanelBudget": PanelBudget,
+    "OwnerStatementOut": OwnerStatementOut,
+    "OwnerStatements": OwnerStatements,
+    "LifeReports": LifeReports,
+    "LifeReportOut": LifeReportOut,
     "Moment": Moment,
     "MomentsList": MomentsList,
     "BodyPostBody": BodyPostBody,

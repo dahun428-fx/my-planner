@@ -5,10 +5,12 @@ import { useRouter } from "next/router";
 import { type ChangeEvent, type FormEvent, type KeyboardEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { failureText } from "../api/actions";
 import { type ApiResult, apiFetch, apiGet, getInboxCount } from "../api/client";
+import { getPanelBudget } from "../api/panel";
 import { dropLocalPhoto, keepLocalPhoto, uploadFailureText, uploadPhoto } from "../api/photos";
-import type { ConversationsClosed, Today } from "../api/types.gen";
+import type { ConversationsClosed, PanelBudget, Today } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Icon } from "../components/icons";
+import { Pictogram } from "../components/pictograms.gen";
 import { Segmented } from "../components/Segmented";
 import { PhotoViewer } from "../components/PhotoViewer";
 import { Sheet } from "../components/Sheet";
@@ -17,9 +19,11 @@ import { notifyDataChanged } from "../lib/push";
 import { loadConn } from "../lib/connection";
 import { useConnection } from "../lib/ConnectionProvider";
 import { copy } from "../lib/copy";
+import { copyPanel } from "../lib/copyPanel";
 import { newClientMsgId } from "../lib/ids";
 import { shrinkPhoto } from "../lib/shrinkPhoto";
 import { formatKst } from "../lib/time";
+import { forgetProposed } from "../ui/components/PanelSuggestion";
 import { screenHref } from "../ui/openScreen";
 import type { OpenScreen } from "../ui/primitives/types";
 import styles from "./ChatSheet.module.css";
@@ -70,6 +74,13 @@ function photoRefusal(e: Error | null): Failure | null {
   if (code === "too_many_photos") return "photoLimit";
   return null;
 }
+// The partner's own name in the sheet's lines (the secretary's are copy.chat's own).
+const WORDS: Record<Exclude<Agent, "secretary">, { title: string; inputLabel: string; queued: string; thinking: string; backToChat: string }> = {
+  mate: { title: copy.chat.agents.mate, ...copy.chat.mate },
+  manager: { title: copy.agentNames.manager, ...copyPanel.manager },
+};
+const wordsOf = (a: Agent) => (a === "secretary" ? { ...copy.chat, title: copy.chat.title } : WORDS[a]);
+
 const FAILURE_TEXT: Record<Failure, string> = {
   retry: copy.chat.notReceived,
   notReceived: copy.chat.notReceived,
@@ -123,29 +134,56 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const sawMate = useRef(false);
   if (state?.kind === "online") sawMate.current = state.health.features?.includes("mate") ?? false;
   const hasMate = !embedded && sawMate.current;
+  // SP15 11장: the life manager, the same way, from a BE with the `manager` feature.
+  const sawManager = useRef(false);
+  if (state?.kind === "online") sawManager.current = state.health.features?.includes("manager") ?? false;
+  const hasManager = !embedded && sawManager.current;
+  const has = (a: Agent) => a === "secretary" || (a === "mate" ? hasMate : hasManager);
+  const hasRef = useRef(has);
+  hasRef.current = has;
   // SP14 10장: "새로 본 것 n개" under the mate, only from a BE with `agent_notes` (read on opening, and
   // again when an answer of the mate ends). Information only: no brain call, nothing to press.
   const sawNotes = useRef(false);
   if (state?.kind === "online") sawNotes.current = state.health.features?.includes("agent_notes") ?? false;
-  const hasNotes = hasMate && sawNotes.current;
-  const [unseen, setUnseen] = useState(0);
-  const unseenSeq = useRef(0);
-  const readUnseen = useCallback(() => {
-    const mine = ++unseenSeq.current;
-    void getInboxCount("mate").then((r) => {
-      if (mine === unseenSeq.current && r.kind === "ok") setUnseen(r.data.unseen);
+  // SP15: the life manager's count the same way, under its own option.
+  const hasNotes = (hasMate || hasManager) && sawNotes.current;
+  const [unseen, setUnseen] = useState<Record<"mate" | "manager", number>>({ mate: 0, manager: 0 });
+  const unseenSeq = useRef({ mate: 0, manager: 0 });
+  const readUnseen = useCallback((who: "mate" | "manager") => {
+    const mine = ++unseenSeq.current[who];
+    void getInboxCount(who).then((r) => {
+      if (mine === unseenSeq.current[who] && r.kind === "ok") setUnseen((u) => ({ ...u, [who]: r.data.unseen }));
     });
   }, []);
-  const readUnseenRef = useRef<(() => void) | null>(null);
+  const readUnseenRef = useRef<((who: "mate" | "manager") => void) | null>(null);
   readUnseenRef.current = hasNotes ? readUnseen : null;
   useEffect(() => {
-    if (open && hasNotes) readUnseen();
-  }, [open, hasNotes, readUnseen]);
-  const agent: Agent = hasMate ? pref : "secretary";
+    if (!open || !hasNotes) return;
+    if (hasMate) readUnseen("mate");
+    if (hasManager) readUnseen("manager");
+  }, [open, hasNotes, hasMate, hasManager, readUnseen]);
+  const agent: Agent = has(pref) ? pref : "secretary";
   const agentRef = useRef(agent);
   agentRef.current = agent;
   ctx.current.agent = agent;
   const cur = () => sheetState[agentRef.current];
+  const words = wordsOf(agent);
+
+  // SP15 11장: "이번 주 제안 n개 더 받을 수 있어요" under the life manager's head, read on opening and
+  // again when its answer ends (GET /panel/budget). Its `full_diagnosis_ok` blocks the "전체 진단" chip.
+  const [budget, setBudget] = useState<PanelBudget | null>(null);
+  const budgetSeq = useRef(0);
+  const readBudget = useCallback(() => {
+    const mine = ++budgetSeq.current;
+    void getPanelBudget().then((r) => {
+      if (mine === budgetSeq.current && r.kind === "ok") setBudget(r.data);
+    });
+  }, []);
+  const readBudgetRef = useRef(readBudget);
+  readBudgetRef.current = readBudget;
+  useEffect(() => {
+    if (open && agent === "manager") readBudget();
+  }, [open, agent, readBudget]);
   const picked = () => (embeddedRef.current ? null : cur().pickedConversationId);
 
   const [phase, setPhase] = useState<"queued" | "thinking" | null>(null);
@@ -315,7 +353,9 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       }
       settle(null);
       onSentRef.current?.();
-      if (agentRef.current === "mate") readUnseenRef.current?.(); // SP14: the mate may have seen more now (the partner never flips mid-answer)
+      // SP14: the mate (SP15: or the life manager) may have seen more now (the partner never flips mid-answer).
+      if (agentRef.current !== "secretary") readUnseenRef.current?.(agentRef.current);
+      if (agentRef.current === "manager") readBudgetRef.current();
       readTodayRef.current(); // a check-in answered, an event made: the chips may change
       const conv = conversationIdOf(message);
       if (conv !== null) ctx.current.conversationId = conv;
@@ -323,7 +363,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
       // SP9 9.6: the answer's changes get one toast with "되돌리기" for 6 s; the chat keeps one line.
       const changed = chatActivityToast(parts);
       // An answer that wrote something (an activity line or a card) has the screens behind read again now.
-      if (parts.some((p) => p.kind !== "text")) notifyDataChanged();
+      if (parts.some((p) => p.kind === "ui" || p.kind === "activity")) notifyDataChanged();
       if (changed) toastRef.current.showFor(changed, CHAT_ACTIVITY_MS);
       void saveParts(message.id, parts, sentTo.current);
     },
@@ -369,8 +409,14 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // Opening shows the conversation as the BE has it (unless an answer is still coming): the one picked
   // from the list when there is one, else the given one (or the latest).
   const seq = useRef(0);
+  // SP15: the partner whose conversation is on screen now, and a chip waiting for a switch to its partner
+  // (ui_full_diagnosis_chip): it goes once that partner's conversation is read.
+  const loadedFor = useRef<Agent | null>(null);
+  const pendingChip = useRef<{ agent: Agent; chip: WireChip } | null>(null);
   const load = useCallback(() => {
     dropRefused(); // the history read now has no refused message to show
+    forgetProposed(); // the restored suggestion cards of this read ask the BE again (Review Focus 2)
+    loadedFor.current = null;
     const mine = ++seq.current;
     setLoading(true);
     setLoadError(null);
@@ -382,12 +428,14 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     }).then((r) => {
       if (mine !== seq.current) return;
       setLoading(false);
+      if (r.kind !== "ok") pendingChip.current = null; // a press is not sent later by a retry, detached from it
       if (r.kind === "offline") return; // the last view stays, read-only (F9)
       if (r.kind === "failed") {
         setLoadError(r.code);
         return;
       }
       const h = r.history;
+      loadedFor.current = agentRef.current;
       ctx.current.conversationId = h.conversationId;
       setMessages(h.messages);
       setHistoryCount(h.messages.length);
@@ -408,7 +456,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   useEffect(() => {
     if (embedded) return;
     if (!open) {
-      for (const a of ["secretary", "mate"] as const) sheetState[a].pickedConversationId = null;
+      for (const a of ["secretary", "mate", "manager"] as const) sheetState[a].pickedConversationId = null;
+      pendingChip.current = null; // a chip that never went (its conversation not read) is not sent later
       focusAfter.current = null;
       setView("chat");
       setWriting(null);
@@ -425,6 +474,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   const clearView = useCallback(
     (keepPick = false) => {
       seq.current += 1; // a history still coming is not shown
+      loadedFor.current = agentRef.current; // an empty chat is this partner's (a new conversation)
       dropRefused();
       if (!keepPick) sheetState[agentRef.current].pickedConversationId = null;
       ctx.current.conversationId = null;
@@ -462,6 +512,10 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
   // Read after the uploads (an await later): the render's own value may be old by then.
   const canSendRef = useRef(canSend);
   canSendRef.current = canSend;
+  // SP15: a chip waiting for a partner switch goes once that partner's conversation is read.
+  useEffect(() => {
+    flushChipRef.current();
+  }, [agent, loading, canSend]);
 
   // `checkinId`: the message goes to that run (the check-in chip, SP9 9.5), without the picked conversation.
   // `chip`: the quick chip it came from (SP9c 4.1), kept in the message's metadata for its label.
@@ -629,7 +683,11 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     [unpinAll, dropRefused],
   );
   // SP9c 3: an add chip opens a one-line write (nothing is sent); the others send their sentence at once.
+  // SP15 "자료 올리기": the attach menu opens (photos of a report or a document), nothing is sent.
+  const [attachKey, setAttachKey] = useState(0);
   const pressChip = (chip: Chip) => {
+    if (chip.disabled) return;
+    if (chip.mode === "attach") return void setAttachKey((k) => k + 1);
     if (chip.mode === "send")
       return void send(chip.text, {
         checkinId: chip.checkinId,
@@ -662,7 +720,26 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setPref(next);
     agentRef.current = next;
     clearView(true);
+    loadedFor.current = null; // its conversation is read by the effect above
+    if (pendingChip.current?.agent !== next) pendingChip.current = null; // the person went elsewhere
     setWriting(null);
+  };
+  // SP15 10장 (ui_full_diagnosis_chip): a card's press turns the sheet to that partner and sends that
+  // chip, once its conversation is read (the chip goes into it, as a chip pressed there would).
+  const flushChipRef = useRef<() => void>(() => {});
+  flushChipRef.current = () => {
+    const p = pendingChip.current;
+    if (!p || p.agent !== agentRef.current || loadedFor.current !== p.agent || !canSendRef.current) return;
+    pendingChip.current = null;
+    const c = quickChips(null, new Date(), p.agent).find((x) => x.wire === p.chip);
+    if (c) send(c.text, { chip: p.chip });
+  };
+  const switchAgent = (next: Agent, chip: WireChip): boolean => {
+    if (sending.current || busy || !hasRef.current(next)) return false;
+    pendingChip.current = { agent: next, chip };
+    if (next !== agent) changeAgent(next);
+    else flushChipRef.current();
+    return true;
   };
   // Opening reads the kept pick again (the workout screen opens the sheet on the mate). Same path as the
   // picker; while a message is still being answered the pick waits for the next opening (the partner never flips mid-answer).
@@ -671,10 +748,11 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     const next = loadAgent();
     if (next === prefRef.current) return;
     setPref(next);
-    agentRef.current = hasMate ? next : agentRef.current;
+    agentRef.current = hasRef.current(next) ? next : agentRef.current;
     clearView(true);
+    loadedFor.current = null;
     setWriting(null);
-  }, [open, embedded, hasMate, clearView]);
+  }, [open, embedded, hasMate, hasManager, clearView]);
   const openList = () => {
     setWriting(null);
     setView("list");
@@ -696,7 +774,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     setStarting(true);
     const r = await apiFetch<ConversationsClosed>("POST", "/conversations/new", {
       model: "ConversationsClosed",
-      ...(agent === "mate" ? { body: { agent } } : {}), // no body = the secretary's (SP12 5.2)
+      ...(agent !== "secretary" ? { body: { agent } } : {}), // no body = the secretary's (SP12 5.2)
     });
     setStarting(false);
     if (r.kind !== "ok") {
@@ -831,7 +909,8 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         onOpen={openScreen}
         onOpenPath={openPath}
         onOpenPhoto={(ids, index) => setViewing({ ids, index })}
-        speakerName={agent === "mate" ? copy.chat.agents.mate : undefined}
+        speakerName={agent === "secretary" ? undefined : words.title}
+        switchAgent={embedded ? undefined : switchAgent}
       />,
     );
     if (i === historyCount - 1) rows.push(elsewhereLines);
@@ -842,7 +921,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     if (at !== null) prevAt = at;
   });
 
-  const chips = quickChips(today, new Date(now), agent);
+  const chips = quickChips(today, new Date(now), agent, { fullDiagnosisOk: budget?.full_diagnosis_ok });
 
   const last = messages[messages.length - 1];
   const answering = busy && last?.role === "assistant" && toViewParts(last).length > 0;
@@ -865,7 +944,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         <Icon name="list" />
       </button>
       <div className={styles.heading}>
-        <h2 className={styles.title}>{agent === "mate" ? copy.chat.agents.mate : copy.chat.title}</h2>
+        <h2 className={styles.title}>{words.title}</h2>
         <p className={styles.subtitle}>{copy.chat.subtitle}</p>
       </div>
       <div className={styles.headEnd}>
@@ -883,7 +962,15 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     </header>
   );
   // SP12 11.1: the partner pick under the head, the app's own Segmented, only when the BE has the mate.
-  const agentPick = hasMate && (
+  // SP15 11장: the life manager as a third option (its compass before the name) on a BE that has it.
+  const hint = (who: "mate" | "manager") => (hasNotes && unseen[who] > 0 ? { hint: copy.chat.agents.unseen(unseen[who]) } : {});
+  const managerLabel = (
+    <>
+      <Pictogram name="compass" size={16} />
+      {copy.agentNames.manager}
+    </>
+  );
+  const agentPick = (hasMate || hasManager) && (
     <div className={styles.agents}>
       <Segmented
         ariaLabel={copy.chat.agents.label}
@@ -892,15 +979,18 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
         onChange={changeAgent}
         options={[
           { value: "secretary", label: copy.chat.agents.secretary },
-          { value: "mate", label: copy.chat.agents.mate, ...(hasNotes && unseen > 0 ? { hint: copy.chat.agents.unseen(unseen) } : {}) },
+          ...(hasMate ? [{ value: "mate" as const, label: copy.chat.agents.mate, ...hint("mate") }] : []),
+          ...(hasManager ? [{ value: "manager" as const, label: managerLabel, ...hint("manager") }] : []),
         ]}
       />
     </div>
   );
+  // No number of the cap anywhere: only what is still to come this week.
+  const budgetLine = agent === "manager" && budget !== null && <p className={styles.budget}>{copyPanel.budget(budget.remaining)}</p>;
   const listHead = (
     <header className={styles.header}>
       <button type="button" className={styles.back} onClick={() => setView("chat")}>
-        {agent === "mate" ? copy.chat.mate.backToChat : copy.chat.backToChat}
+        {words.backToChat}
       </button>
       <h2 className={styles.title}>{copy.chat.pastConversations}</h2>
       <div className={styles.headEnd}>{closeButton}</div>
@@ -928,15 +1018,16 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     <div className={embedded ? styles.embedded : styles.frame}>
       {!embedded && chatHead}
       {!embedded && agentPick}
+      {!embedded && budgetLine}
       <div ref={list} className={styles.list} role="log" aria-label={copy.chat.messages}>
         {rows}
         {busy && !answering && phase === "queued" && (
           <p className={styles.status} role="status">
-            {agent === "mate" ? copy.chat.mate.queued : copy.chat.queued}
+            {words.queued}
           </p>
         )}
         {busy && !answering && phase === "thinking" && (
-          <p className={styles.dots} role="status" aria-label={agent === "mate" ? copy.chat.mate.thinking : copy.chat.thinking}>
+          <p className={styles.dots} role="status" aria-label={words.thinking}>
             <span className={styles.dot} />
             <span className={styles.dot} />
             <span className={styles.dot} />
@@ -965,6 +1056,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
             <>
               <AttachMenu
                 disabled={readOnly || loading}
+                openKey={attachKey}
                 items={[
                   {
                     key: "camera",
@@ -991,7 +1083,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
             ref={field}
             className={styles.input}
             rows={fieldRows}
-            aria-label={agent === "mate" ? copy.chat.mate.inputLabel : copy.chat.inputLabel}
+            aria-label={words.inputLabel}
             placeholder={writing && isWriteKey(writing.key) ? copy.chat.write[writing.key] : undefined}
             aria-describedby={writing ? WRITING_ID : undefined}
             value={text}

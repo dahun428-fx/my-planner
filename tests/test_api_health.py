@@ -311,4 +311,4 @@ async def test_health_features_include_agent_notes(tmp_path):
 
     async with BeEnv.start(tmp_path, start=kst(2026, 11, 1, 14, 0)) as env:
         body = await get_json(env, "/health")
-    assert body["features"] == ["mate", "agent_notes"]
+    assert body["features"] == ["mate", "agent_notes", "manager"]

@@ -37,6 +37,8 @@ EXPECTED_MODELS = {
     "CalendarSettings", "CalendarPutBody",  # SP9 5.7
     "Standing", "StandingMeasures",  # SP13 12장
     "InboxCount", "AgentNotes", "AgentNoteOut",  # SP14 스펙 9장
+    "PanelEvidenceOut", "PanelSuggestionOut", "PanelSuggestions", "PanelBudget",  # SP15 12장
+    "OwnerStatementOut", "OwnerStatements", "LifeReports", "LifeReportOut",
 }
 
 
@@ -82,6 +84,7 @@ async def test_every_read_response_validates_against_schema(tmp_path):
             "/health", "/today", "/week", "/conditions", "/priorities?cadence=week", "/priorities?cadence=quarter",
             "/drafts", "/checkins", f"/checkins/{checkin['id']}", "/conversations", f"/conversations/{cid}/messages",
             "/ui/catalog", "/schema", "/standing", "/standing/measures",
+            "/panel/suggestions", "/panel/budget", "/owner-statements",
         ]
         bodies = {p: await get_json(env, p) for p in paths}
         err = await (await env.get("/checkins/abc")).json()
@@ -93,6 +96,7 @@ async def test_every_read_response_validates_against_schema(tmp_path):
         "/checkins": "CheckinList", f"/checkins/{checkin['id']}": "CheckinDetail", "/conversations": "Conversations",
         f"/conversations/{cid}/messages": "Messages", "/ui/catalog": "UiCatalog", "/schema": "SchemaBundle",
         "/standing": "Standing", "/standing/measures": "StandingMeasures",
+        "/panel/suggestions": "PanelSuggestions", "/panel/budget": "PanelBudget", "/owner-statements": "OwnerStatements",
     }
     for path, model in by_path.items():
         jsonschema.Draft202012Validator(schemas[model]).validate(bodies[path])
@@ -147,14 +151,15 @@ async def test_ui_catalog_version_and_components(tmp_path):
     async with BeEnv.start(tmp_path, start=MON_EVENING) as env:
         body = await get_json(env, "/ui/catalog")
         health = await get_json(env, "/health")
-    assert body["version"] == UI_CATALOG_VERSION == "2026-11-01.1"
+    assert body["version"] == UI_CATALOG_VERSION == "2026-11-01.3"
     assert health["version"]["ui_catalog"] == body["version"]
     assert list(body["components"]) == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",
         "ui_events", "ui_todo_draft", "ui_condition_picker", "ui_ladder_picker", "ui_area_scores", "ui_milestone_draft",
-        "ui_chapter_draft", "ui_confirm", "ui_measure_confirm",
+        "ui_chapter_draft", "ui_confirm", "ui_measure_confirm", "ui_panel_suggestion",
+        "ui_full_diagnosis_chip",
     ]
-    assert len(body["components"]) == 17 == len(UI_COMPONENTS)
+    assert len(body["components"]) == 19 == len(UI_COMPONENTS)
     origins = {name: c["origin"] for name, c in body["components"].items()}
     assert [n for n, o in origins.items() if o == "brain"] == [
         "ui_todo_list", "ui_choice", "ui_summary_card", "ui_date_choice", "ui_result", "ui_period_list", "ui_block", "ui_habit_check",

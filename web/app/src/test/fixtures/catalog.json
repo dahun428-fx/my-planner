@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-01.1",
+  "version": "2026-11-01.3",
   "components": {
     "ui_todo_list": {
       "origin": "brain",
@@ -1327,6 +1327,44 @@
           "source_ref"
         ],
         "title": "MeasureConfirmProps",
+        "type": "object"
+      }
+    },
+    "ui_panel_suggestion": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "description": "패널 제안 카드(SP15 7장, 11장). 제안 내용은 조각 출력 `data.suggestion`(`tools.panel.suggestion_view`)에 있다.",
+        "properties": {
+          "suggestion_id": {
+            "minimum": 1,
+            "title": "Suggestion Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "suggestion_id"
+        ],
+        "title": "PanelSuggestionProps",
+        "type": "object"
+      }
+    },
+    "ui_full_diagnosis_chip": {
+      "origin": "harness",
+      "schema": {
+        "additionalProperties": false,
+        "description": "분기 회고 뒤 \"전체 진단 해 볼까요?\" 칩(SP15 10장, D3). 누르면 앱이 라이프 매니저에게 `manager_full`을 보낸다.",
+        "properties": {
+          "period": {
+            "pattern": "^\\d{4}-Q[1-4]$",
+            "title": "Period",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period"
+        ],
+        "title": "FullDiagnosisChipProps",
         "type": "object"
       }
     }

@@ -13,6 +13,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from my_planner.domain import INBOX_AGENTS, EventKind, InboxAgent, RunContext, ToolEvent
+from my_planner.panel.evidence import ref_exists, ref_type
 from my_planner.store.db import transaction
 from my_planner.tools._base import _err, _tool
 from my_planner.tools.moments import _bad_char
@@ -38,6 +39,7 @@ MSG_TEXT = f"관찰은 {NOTE_TEXT_MAX}자 안의 한 줄이에요."
 MSG_BANNED = "관찰에 쓰지 않는 말이 있어요: {word}"
 MSG_PRIORITY = "priority는 1(꼭 알림) 또는 2예요."
 MSG_REFS = f"refs는 근거 참조(예: workout:12) 1~{NOTE_REFS_MAX}개예요."
+MSG_REF_MISSING = "refs에 없는 기록이 있어요: {ref}"
 MSG_TO = "넘길 상대는 mate 또는 manager이고, 자기 자신에게는 넘기지 않아요."
 MSG_HANDOFF_CAP = f"넘기기는 하루 {HANDOFFS_PER_DAY}번까지예요."
 
@@ -63,6 +65,18 @@ def _check_refs(refs: Any) -> list[str] | None:
     ):
         return None
     return list(dict.fromkeys(refs))
+
+
+def _missing_ref(repo: AgentsRepo, agent: InboxAgent, refs: list[str], today: date) -> str | None:
+    """가리키는 기록이 없는 첫 참조(모르는 접두어 포함). 행이 사라졌어도 이 상대 받은편지함 사건에 있으면 받는다."""
+    for ref in refs:
+        known = ref_type(ref) is not None or ref.startswith("note:")
+        if known and ref_exists(repo.conn, ref, today=today):
+            continue
+        if known and repo.ref_in_inbox(agent, ref):
+            continue
+        return ref
+    return None
 
 
 class AgentTools:
@@ -98,6 +112,9 @@ class AgentTools:
         good_refs = _check_refs(refs)
         if good_refs is None:
             return _err(MSG_REFS)
+        missing = _missing_ref(repo, agent, good_refs, day)
+        if missing is not None:
+            return _err(MSG_REF_MISSING.format(ref=missing))
         with transaction(repo.conn):
             note_id = repo.add_note(agent, day, checked[0], priority, good_refs, self.clock.now())
         ctx.notes_written += 1
@@ -120,6 +137,9 @@ class AgentTools:
         good_refs = _check_refs(refs)
         if good_refs is None:
             return _err(MSG_REFS)
+        missing = _missing_ref(repo, agent, good_refs, day)
+        if missing is not None:
+            return _err(MSG_REF_MISSING.format(ref=missing))
         if repo.handoffs_on(agent, day) >= HANDOFFS_PER_DAY:
             return _err(MSG_HANDOFF_CAP)
         with transaction(repo.conn):

@@ -17,8 +17,8 @@ export interface ChatBody {
   resume_conversation_id?: number;
   /** SP9c 4.1: the quick chip the message came from (`metadata.chip`). */
   chip?: WireChip;
-  /** SP12: left out for the secretary, so a BE from before the mate sees the same body as ever. */
-  agent?: "mate";
+  /** SP12: left out for the secretary, so a BE from before the mate sees the same body as ever (SP15: or the life manager). */
+  agent?: Exclude<Agent, "secretary">;
   message: UIMessage;
 }
 
@@ -77,7 +77,7 @@ export function buildChatBody(messages: UIMessage[], ctx: ChatCtx): ChatBody {
   if (checkinId === null && ctx.resumeConversationId != null) body.resume_conversation_id = ctx.resumeConversationId;
   const chip = ownChip(message);
   if (chip !== undefined) body.chip = chip;
-  if (ctx.agent === "mate") body.agent = "mate";
+  if (ctx.agent && ctx.agent !== "secretary") body.agent = ctx.agent;
   return body;
 }
 

@@ -21,7 +21,10 @@ from my_planner.domain import Agent
 
 log = logging.getLogger(__name__)
 
-Speaker = Literal["사용자", "비서", "운동메이트"]
+Speaker = Literal["사용자", "비서", "운동메이트", "라이프 매니저", "전문가"]
+
+# 대화 상대 → 원문 기록의 화자 이름(SP15 3장). 꼬리표는 ` @mate`·` @manager`(비서는 없음)
+AGENT_SPEAKERS: dict[Agent, str] = {"secretary": "비서", "mate": "운동메이트", "manager": "라이프 매니저"}
 Channel = Literal["telegram", "app"]
 
 # 클라이언트가 준 `message.id`로 쓸 수 있는 모양(스펙 6.4.6). 아니면 `u-<대화>-<|inbound_id|>`
@@ -50,6 +53,8 @@ class TranscriptMessage:
     tools: list[str] = field(default_factory=list)
     channel: Channel = "telegram"
     id: str = ""
+    # 화자 `전문가`의 항목(SP15): 머리글 `(<키>)` 자리의 전문가 키. 다른 화자는 None
+    expert: str | None = None
 
 
 class TranscriptStore:
@@ -79,6 +84,8 @@ class TranscriptStore:
 
         `message_id`는 `inbound_id`가 있는 앱 줄에만 준다(`app_user_message_id`, `app_secretary_message_id`).
         `agent="mate"`: 메이트 대화의 줄(사용자 줄도)이면 그 뒤에 ` @mate`(SP12 14장).
+        `agent="manager"`: 라이프 매니저 대화의 줄이면 ` @manager`(SP15 13장).
+        `speaker="전문가"`: 매니저 답에 붙은 전문가 소견(SP15). `run_key` 자리에 전문가 키를 준다(`(<키>)`).
         """
         conv = f"[{conversation_id}]" if conversation_id is not None else "[-]"
         header = f"### {local(at, self.tz):%H:%M} {speaker} {conv}"
@@ -90,6 +97,8 @@ class TranscriptStore:
             header += " @app"
         if agent == "mate":
             header += " @mate"
+        elif agent == "manager":
+            header += " @manager"
         lines = [header]
         lines += [f"> 도구: {name}" for name in tools or []]
         lines += ["", _escape_headers(text.rstrip("\n")), "", ""]
@@ -108,8 +117,9 @@ class TranscriptStore:
         쓴다: 앱 대화의 비서는 `get_status`로 받은 이룬 순간의 글을 옮겨 말했을 수 있다(SP8 1장 조건 7, 11장).
         `only_conversation`: 그 대화의 항목만 남긴다. 앱 통로 두뇌의 `read_transcript`가 쓴다: 다른 대화의 원문은
         주지 않는다(SP9 7.5, ADR 0014). 그날 그 대화의 항목이 없으면 그날 머리말도 넣지 않는다.
-        `drop_mate`: 메이트 대화의 항목(머리글 끝 ` @mate`, 사용자 줄 포함)을 뺀다. 비서의 `read_transcript`가 늘 쓴다:
-        비서가 메이트 대화의 원문(부상 글 등)을 읽지 않는다(SP12 14장, ADR 0014).
+        `drop_mate`: 메이트·라이프 매니저 대화의 항목(머리글 끝 ` @mate`·` @manager`, 사용자 줄 포함)을 뺀다.
+        비서의 `read_transcript`가 늘 쓴다: 비서가 메이트 대화의 원문(부상 글 등)도, 라이프 매니저 대화의 원문(돈·건강
+        글 등)도 읽지 않는다(SP12 14장, SP15 13장, ADR 0014).
         """
         parts: list[str] = []
         d = start
@@ -177,6 +187,7 @@ class TranscriptStore:
                         tools=e.tools,
                         channel="app" if e.app else "telegram",
                         id=e.message_id or f"l-{conversation_id}-{len(out) + 1}",
+                        expert=e.key if e.speaker == EXPERT_SPEAKER else None,
                     )
                 )
         return out
@@ -189,7 +200,9 @@ class TranscriptStore:
         return "\n".join(self.recent_entries(conversation_id, n, skip_last=skip_last))
 
     def recent_entries(self, conversation_id: int, n: int = 20, *, skip_last: int = 0) -> list[str]:
-        """`recent`의 메시지 목록(시간순, 메시지마다 한 항목). `n`이 0 이하면 빈 목록."""
+        """`recent`의 메시지 목록(시간순, 메시지마다 한 항목). `n`이 0 이하면 빈 목록.
+
+        전문가 소견 항목(SP15)은 넣지 않는다: 새 세션의 지난 내용에 소견 원문을 채우지 않는다(스파이크 S1)."""
         if n <= 0:
             return []
         want = n + skip_last
@@ -198,12 +211,15 @@ class TranscriptStore:
             if len(found) >= want:
                 break
             for hhmm, speaker, body in reversed(_entries(path, conversation_id)):
+                if speaker == EXPERT_SPEAKER:
+                    continue
                 found.append(f"[{hhmm}] {speaker}: {body}")
                 if len(found) >= want:
                     break
         return list(reversed(found[skip_last:]))
 
 
+EXPERT_SPEAKER = "전문가"
 ERASED_LINE = "[지운 대화]"  # 지운 대화의 줄 자리(SP9 7.7). 이어진 줄은 한 줄로 합친다. 읽을 때는 항목의 끝이다
 
 
@@ -299,10 +315,11 @@ def _escape_headers(text: str) -> str:
 
 
 # `### 21:05 사용자 [44] (evening_checkin) #msg-abc @app`. 회차 표시, `#<id>`, ` @app`은 없을 수 있다.
-# 메이트 대화는 ` @app @mate`(SP12 14장)
+# 메이트 대화는 ` @app @mate`(SP12 14장), 라이프 매니저 대화는 ` @app @manager`(SP15 13장).
+# 전문가 소견은 `### 14:00 전문가 [7] (career) @app @manager`: `(<키>)` 자리가 회차 키가 아니라 전문가 키다(SP15)
 _HEADER = re.compile(
-    r"^### (?P<hhmm>\d{2}:\d{2}) (?P<speaker>사용자|비서|운동메이트) \[(?P<conv>\d+|-)\]"
-    r"(?: \((?P<run>[^)]*)\))?(?: #(?P<id>[A-Za-z0-9_-]{1,64}))?(?P<app> @app)?(?P<mate> @mate)?$"
+    r"^### (?P<hhmm>\d{2}:\d{2}) (?P<speaker>사용자|비서|운동메이트|라이프 매니저|전문가) \[(?P<conv>\d+|-)\]"
+    r"(?: \((?P<run>[^)]*)\))?(?: #(?P<id>[A-Za-z0-9_-]{1,64}))?(?P<app> @app)?(?P<mate> @mate)?(?P<manager> @manager)?$"
 )
 _TOOL_PREFIX = "> 도구: "
 
@@ -314,6 +331,7 @@ class _Entry:
     conversation: str
     message_id: str | None
     app: bool
+    key: str | None  # 머리글 `(<키>)`: 회차 키, 화자가 `전문가`면 전문가 키
     body_lines: list[str]  # 도구 줄은 뺀 본문 줄
     tools: list[str]
 
@@ -334,13 +352,13 @@ def _without_app_secretary(text: str) -> str:
 
 
 def _without_mate(text: str) -> str:
-    """머리글 끝이 ` @mate`인 항목(메이트 대화의 사용자·메이트 줄, 다음 머리글 전까지)을 뺀 원문."""
+    """머리글 끝이 ` @mate`·` @manager`인 항목(메이트·라이프 매니저 대화의 줄, 다음 머리글 전까지)을 뺀 원문."""
     out: list[str] = []
     skip = False
     for line in text.splitlines(keepends=True):
         m = _HEADER.match(line.rstrip("\n"))
         if m:
-            skip = m["mate"] is not None
+            skip = m["mate"] is not None or m["manager"] is not None
         elif line.rstrip("\n") == ERASED_LINE:
             skip = False
         if not skip:
@@ -370,7 +388,7 @@ def _parse(path: Path) -> list[_Entry]:
     for line in path.read_text(encoding="utf-8").splitlines():
         m = _HEADER.match(line)
         if m:
-            cur = _Entry(m["hhmm"], m["speaker"], m["conv"], m["id"], m["app"] is not None, [], [])
+            cur = _Entry(m["hhmm"], m["speaker"], m["conv"], m["id"], m["app"] is not None, m["run"], [], [])
             out.append(cur)
         elif line == ERASED_LINE:
             cur = None  # 지운 대화 자리: 앞 항목의 본문에 붙지 않는다(SP9 7.7)

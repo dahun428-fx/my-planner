@@ -1,0 +1,344 @@
+/* SP15 10장 the life report screen: theme tokens only (DESIGN.md "차분한 종이"), so dark mode and the
+   colour presets come for free. Charts are plain SVG with drawing attributes (no inline style: CSP).
+   It ships with the report's own chunk (a <link>, style-src 'self'), never with _app. */
+.main {
+  padding-bottom: calc(var(--gap) + env(safe-area-inset-bottom));
+}
+.nav {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pad);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-h);
+  font-size: var(--size-body);
+  color: var(--hue);
+  text-decoration: none;
+}
+.back:focus-visible,
+.date:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+.empty {
+  margin: 0 var(--gutter) var(--gap);
+  padding: 0.75rem 0.25rem;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.block {
+  padding: 0.75rem var(--pad);
+}
+.lead {
+  margin: 0;
+  font-size: var(--size-body);
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bullets {
+  margin: 0;
+  padding: 0 0 0 1.25rem;
+  display: grid;
+  gap: 0.375rem;
+  font-size: var(--size-body);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.lead + .bullets {
+  margin-top: 0.5rem;
+}
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem var(--pad);
+}
+.row + .row {
+  border-top: 1px solid var(--rule);
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.name {
+  font-size: var(--size-body);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.meta {
+  font-size: var(--size-meta);
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.tag {
+  display: inline-block;
+  padding: 0 0.375rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: var(--size-meta);
+  color: var(--text-2);
+}
+
+/* The score board: a dumbbell per axis (national filled --text, peer hollow --muted). Low reliability fades
+   the dumbbell only: the numbers keep their text contrast (4.5:1 or more). */
+.faded .bell {
+  opacity: 0.45;
+}
+.numbers {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: var(--size-meta);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.bell {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.bellTrack {
+  stroke: var(--raised);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.bellBar {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.dotNational {
+  fill: var(--text);
+}
+.dotPeer {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+/* The radar (DESIGN.md 레이더): rings --rule, national 1.5px --text, no fill. */
+.chartBox {
+  padding: 0.5rem var(--pad) 0.75rem;
+}
+.radar {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  margin: 0 auto;
+  overflow: visible;
+}
+.ring,
+.spoke {
+  fill: none;
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.nationalLine {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.radarDot {
+  fill: var(--text);
+}
+.axisText {
+  fill: var(--muted);
+  font-size: 12px;
+}
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  margin: 0.25rem 0 0;
+  font-size: var(--size-meta);
+  color: var(--muted);
+}
+.keyNational,
+.keyPeer {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.keyNational {
+  background: var(--text);
+}
+.keyPeer {
+  margin-left: 0.75rem;
+  border: 1.5px solid var(--muted);
+}
+
+/* The lever map: numbered actions at the left, the six axes at the right, the line's weight is its strength. */
+.map {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  margin: 0 auto;
+}
+.lever {
+  stroke: var(--text-2);
+  stroke-linecap: round;
+}
+.node {
+  fill: var(--surface);
+  stroke: var(--text);
+  stroke-width: 1;
+}
+.nodeText {
+  fill: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.axisNode {
+  fill: var(--text);
+}
+.mapText {
+  fill: var(--text);
+  font-size: 13px;
+}
+.actions {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.375rem;
+  font-size: var(--size-body);
+  line-height: 1.4;
+}
+.actions li {
+  display: flex;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.num {
+  flex: none;
+  min-width: 1.25rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The experts: one <details> each, folded. */
+.expert {
+  padding: 0 var(--pad);
+}
+.expert + .expert {
+  border-top: 1px solid var(--rule);
+}
+.expert summary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.125rem;
+  min-height: var(--row);
+  padding: 0.5rem 0;
+  cursor: pointer;
+  list-style: none;
+}
+.expert summary::-webkit-details-marker {
+  display: none;
+}
+.expert summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+.expertName {
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.expertBody {
+  padding: 0 0 0.75rem;
+}
+.sub {
+  margin: 0.75rem 0 0.25rem;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* 3년 하면 / 안 하면. */
+.scenario {
+  display: grid;
+  gap: 0.75rem;
+}
+.scenario h3 {
+  margin: 0 0 0.125rem;
+  font-size: var(--size-meta);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.scenario p {
+  margin: 0;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* The roadmap: a bar per track over the whole span (--raised behind, --primary bar), today a 1px --hue line. */
+.gantt {
+  display: block;
+  width: 100%;
+  height: 12px;
+}
+.ganttTrack {
+  fill: var(--raised);
+}
+.ganttBar {
+  fill: var(--primary);
+}
+.today {
+  stroke: var(--hue);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.closing {
+  margin: 0 var(--gutter) var(--gap);
+  padding: 0.5rem 0.25rem;
+  font-size: var(--size-body);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* 지난 리포트: a date per line, the open one marked. */
+.date {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--pad);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--size-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--hue);
+  text-align: left;
+  cursor: pointer;
+}
+.date[aria-current="true"] {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+}
+li + li > .date {
+  border-top: 1px solid var(--rule);
+}

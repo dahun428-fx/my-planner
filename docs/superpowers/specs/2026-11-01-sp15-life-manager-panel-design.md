@@ -1,6 +1,7 @@
 # SP15 라이프 매니저와 전문가 패널 상세 설계 (추가 기능)
 
-- 상태: 초안 v1.1 (문서 리뷰 반영, Dahun 검토 전)
+- 상태: 승인 (2026-11-01, v1.1)
+- v1.2 정정 (2026-11-01, 구현 계획에서 정한 것): 패널 제안 표에 `per_week`·`conversation_id` 칸을 둔다. 남은 수 문구는 "이번 주 제안 n개 더 받을 수 있어요"("남음"은 금지어). 전체 진단은 오류·시간 초과에 다시 시도하지 않고 고정 답으로 끝나며, 리포트를 저장한 뒤 실패하면 저장됐다는 고정 답을 준다. 받은 할 일을 버리면 제안은 `dismissed`, 받은 습관은 첫 체크에 `done`, 예측 창(기한+14일)이 값 없이 닫히면 `checked_at`만 채운다. 축 예측은 그 축 점수가 읽는 지표로만 맞춰 본다. 이미지 전문가는 사진 바이트 없이 글만 받고, 내장 서브에이전트(`general-purpose` 등)는 훅이 거절한다. 패널 API는 대시보드에 403이고, `/panel/budget` 응답에 `full_diagnosis_ok`가 있으며, 새 경로 `GET /owner-statements`와 `/actions retire_statement`를 둔다. 전체 진단 횟수는 리포트를 저장한 진단만 센다. 보통 매니저 메시지 한도는 `limits.manager_message`. 받은편지함 사건의 ref는 행이 지워져도 근거·관찰 참조로 받는다.
 - 작성일: 2026-11-01
 - 상위 문서: [마스터 설계](2026-10-23-my-planner-master-design.md), [SP12 운동메이트](2026-10-31-sp12-workout-mate-design.md) (대화 상대 구조), [SP9c 퀵 칩 카드](2026-10-26-sp9c-quick-chip-cards-design.md) (초안 카드)
 - 함께 읽기: [SP13 객관적 위치](2026-11-01-sp13-objective-standing-design.md) (점수와 측정값), [SP14 마스터 구조](2026-11-01-sp14-master-hierarchy-design.md) (사건 기록, 받은편지함, 하루 끝 판단)

@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import PydanticCustomError
 
-UI_CATALOG_VERSION = "2026-11-01.1"  # SP13-05: ui_measure_confirm
+UI_CATALOG_VERSION = "2026-11-01.3"  # SP15-13: ui_full_diagnosis_chip
 
 AreaName = Literal["career", "finance", "health", "relationships", "learning", "quality_of_life"]
 
@@ -357,6 +357,18 @@ class MeasureConfirmProps(_Props):
     source_ref: str | None = Field(pattern=PHOTO_REF_PATTERN)
 
 
+class PanelSuggestionProps(_Props):
+    """패널 제안 카드(SP15 7장, 11장). 제안 내용은 조각 출력 `data.suggestion`(`tools.panel.suggestion_view`)에 있다."""
+
+    suggestion_id: int = Field(ge=1)
+
+
+class FullDiagnosisChipProps(_Props):
+    """분기 회고 뒤 "전체 진단 해 볼까요?" 칩(SP15 10장, D3). 누르면 앱이 라이프 매니저에게 `manager_full`을 보낸다."""
+
+    period: str = Field(pattern=r"^\d{4}-Q[1-4]$")
+
+
 Origin = Literal["brain", "harness"]
 
 # 스펙 6.4.7 표의 순서. 두뇌가 부르는 것이 먼저(기존 셋, SP6 넷), 하네스가 뒤
@@ -378,6 +390,8 @@ _COMPONENTS: dict[str, tuple[Origin, type[_Props]]] = {
     "ui_chapter_draft": ("harness", ChapterDraftProps),
     "ui_confirm": ("harness", ConfirmProps),
     "ui_measure_confirm": ("harness", MeasureConfirmProps),  # SP13 6.5
+    "ui_panel_suggestion": ("harness", PanelSuggestionProps),  # SP15 7장
+    "ui_full_diagnosis_chip": ("harness", FullDiagnosisChipProps),  # SP15 10장
 }
 
 UI_COMPONENTS: dict[str, dict[str, Any]] = {

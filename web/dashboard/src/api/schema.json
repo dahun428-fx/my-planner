@@ -655,7 +655,8 @@
           "default": "secretary",
           "enum": [
             "secretary",
-            "mate"
+            "mate",
+            "manager"
           ],
           "title": "Agent",
           "type": "string"
@@ -683,7 +684,9 @@
                 "next",
                 "mate_today",
                 "mate_log",
-                "mate_plan"
+                "mate_plan",
+                "manager_full",
+                "manager_week"
               ],
               "type": "string"
             },
@@ -4397,6 +4400,408 @@
       "title": "InboxCount",
       "type": "object"
     },
+    "LifeReportOut": {
+      "$defs": {
+        "LifeReportBody": {
+          "additionalProperties": false,
+          "description": "저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1).",
+          "properties": {
+            "closing": {
+              "title": "Closing",
+              "type": "string"
+            },
+            "experts": {
+              "items": {
+                "$ref": "#/$defs/LifeReportExpert"
+              },
+              "title": "Experts",
+              "type": "array"
+            },
+            "levers": {
+              "items": {
+                "$ref": "#/$defs/LifeReportLever"
+              },
+              "title": "Levers",
+              "type": "array"
+            },
+            "questions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Questions",
+              "type": "array"
+            },
+            "roadmap": {
+              "items": {
+                "$ref": "#/$defs/LifeReportTrack"
+              },
+              "title": "Roadmap",
+              "type": "array"
+            },
+            "scenario": {
+              "$ref": "#/$defs/LifeReportScenario"
+            },
+            "scores": {
+              "additionalProperties": {
+                "$ref": "#/$defs/LifeReportScore"
+              },
+              "propertyNames": {
+                "enum": [
+                  "career",
+                  "money",
+                  "health",
+                  "looks",
+                  "relations",
+                  "intellect",
+                  "height",
+                  "education",
+                  "family"
+                ]
+              },
+              "title": "Scores",
+              "type": "object"
+            },
+            "summary": {
+              "$ref": "#/$defs/LifeReportSummary"
+            },
+            "this_week": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "This Week",
+              "type": "array"
+            },
+            "this_week_items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/LifeReportWeekItem"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "This Week Items"
+            },
+            "version": {
+              "const": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "version",
+            "summary",
+            "scores",
+            "levers",
+            "experts",
+            "scenario",
+            "roadmap",
+            "this_week",
+            "questions",
+            "closing"
+          ],
+          "title": "LifeReportBody",
+          "type": "object"
+        },
+        "LifeReportExpert": {
+          "additionalProperties": false,
+          "properties": {
+            "avoid": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Avoid",
+              "type": "array"
+            },
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "title": "Expert",
+              "type": "string"
+            },
+            "line": {
+              "title": "Line",
+              "type": "string"
+            },
+            "prescriptions": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Prescriptions",
+              "type": "array"
+            }
+          },
+          "required": [
+            "expert",
+            "line",
+            "prescriptions",
+            "avoid"
+          ],
+          "title": "LifeReportExpert",
+          "type": "object"
+        },
+        "LifeReportLever": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "title": "Action",
+              "type": "string"
+            },
+            "axis": {
+              "enum": [
+                "career",
+                "money",
+                "health",
+                "looks",
+                "relations",
+                "intellect"
+              ],
+              "title": "Axis",
+              "type": "string"
+            },
+            "strength": {
+              "enum": [
+                "weak",
+                "mid",
+                "strong"
+              ],
+              "title": "Strength",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "axis",
+            "strength"
+          ],
+          "title": "LifeReportLever",
+          "type": "object"
+        },
+        "LifeReportScenario": {
+          "additionalProperties": false,
+          "properties": {
+            "do": {
+              "title": "Do",
+              "type": "string"
+            },
+            "dont": {
+              "title": "Dont",
+              "type": "string"
+            },
+            "estimate": {
+              "const": true,
+              "title": "Estimate",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "do",
+            "dont",
+            "estimate"
+          ],
+          "title": "LifeReportScenario",
+          "type": "object"
+        },
+        "LifeReportScore": {
+          "additionalProperties": false,
+          "description": "저장 시점 점수의 사본(SP13 값). 신뢰도·추정은 전국 점수, 없으면 또래.",
+          "properties": {
+            "estimate": {
+              "title": "Estimate",
+              "type": "boolean"
+            },
+            "national": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "National"
+            },
+            "peer": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peer"
+            },
+            "reliability": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "high",
+                    "mid",
+                    "low"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reliability"
+            }
+          },
+          "required": [
+            "national",
+            "peer",
+            "reliability",
+            "estimate"
+          ],
+          "title": "LifeReportScore",
+          "type": "object"
+        },
+        "LifeReportSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "line": {
+              "title": "Line",
+              "type": "string"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Paths",
+              "type": "array"
+            }
+          },
+          "required": [
+            "line",
+            "paths"
+          ],
+          "title": "LifeReportSummary",
+          "type": "object"
+        },
+        "LifeReportTrack": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "title": "End",
+              "type": "string"
+            },
+            "kpi": {
+              "title": "Kpi",
+              "type": "string"
+            },
+            "start": {
+              "title": "Start",
+              "type": "string"
+            },
+            "track": {
+              "title": "Track",
+              "type": "string"
+            }
+          },
+          "required": [
+            "track",
+            "kpi",
+            "start",
+            "end"
+          ],
+          "title": "LifeReportTrack",
+          "type": "object"
+        },
+        "LifeReportWeekItem": {
+          "additionalProperties": false,
+          "description": "\"이번 주\" 제안 하나의 저장 시점 사본(제안 목록의 28일 창과 상관없이 남는다).",
+          "properties": {
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title"
+          ],
+          "title": "LifeReportWeekItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /life-reports/{id}`.",
+      "properties": {
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "report": {
+          "$ref": "#/$defs/LifeReportBody"
+        }
+      },
+      "required": [
+        "id",
+        "created_at",
+        "report"
+      ],
+      "title": "LifeReportOut",
+      "type": "object"
+    },
+    "LifeReports": {
+      "$defs": {
+        "LifeReportItem": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "created_at"
+          ],
+          "title": "LifeReportItem",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록).",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/LifeReportItem"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "LifeReports",
+      "type": "object"
+    },
     "Memo": {
       "$defs": {
         "PhotoRef": {
@@ -4731,6 +5136,34 @@
     },
     "Messages": {
       "$defs": {
+        "ExpertNoteOut": {
+          "additionalProperties": false,
+          "description": "라이프 매니저 답에 붙은 전문가 소견 하나(SP15 1장 2). `text`는 소견 원문(가린 글).",
+          "properties": {
+            "expert": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "image",
+                "relationship",
+                "psych"
+              ],
+              "title": "Expert",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "expert",
+            "text"
+          ],
+          "title": "ExpertNoteOut",
+          "type": "object"
+        },
         "MessageItem": {
           "additionalProperties": false,
           "description": "대화 줄 (6.4.6). `id`는 바뀌지 않는다: `m-/u-<대화>-<n>`(앱 `inbound_id` 줄) 또는 `l-<대화>-<n>`.\n`photos`(SP10 5.3): 앱 사용자 메시지에 붙은 사진(보낸 순서). 사진이 있는 줄의 `text`는 앞의 `[사진 #id]` 표시를\n뗀 글이다(사진만이면 빈 문자열).",
@@ -4746,6 +5179,14 @@
               ],
               "title": "Channel",
               "type": "string"
+            },
+            "expert_notes": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ExpertNoteOut"
+              },
+              "title": "Expert Notes",
+              "type": "array"
             },
             "id": {
               "title": "Id",
@@ -4763,7 +5204,8 @@
               "enum": [
                 "user",
                 "secretary",
-                "mate"
+                "mate",
+                "manager"
               ],
               "title": "Speaker",
               "type": "string"
@@ -5089,6 +5531,134 @@
       "title": "NotifySettings",
       "type": "object"
     },
+    "OwnerStatementOut": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "anyOf": [
+            {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Area"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "preference",
+            "decision"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "area",
+        "text",
+        "created_at"
+      ],
+      "title": "OwnerStatementOut",
+      "type": "object"
+    },
+    "OwnerStatements": {
+      "$defs": {
+        "OwnerStatementOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "career",
+                    "finance",
+                    "health",
+                    "relationships",
+                    "learning",
+                    "quality_of_life"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "text": {
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "area",
+            "text",
+            "created_at"
+          ],
+          "title": "OwnerStatementOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /owner-statements`: 지우지 않은 말, 최신 먼저.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OwnerStatementOut"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "OwnerStatements",
+      "type": "object"
+    },
     "PairBody": {
       "additionalProperties": false,
       "description": "`POST /pair` 요청. 모르는 필드는 거절한다. 검증 오류에 입력값을 넣지 않는다(코드가 들어 있다).",
@@ -5242,6 +5812,389 @@
         "state"
       ],
       "title": "PairStatus",
+      "type": "object"
+    },
+    "PanelBudget": {
+      "additionalProperties": false,
+      "description": "`GET /panel/budget`: 이번 주 남은 제안 수만(상한 숫자는 보이지 않는다, 7.3).",
+      "properties": {
+        "full_diagnosis_ok": {
+          "title": "Full Diagnosis Ok",
+          "type": "boolean"
+        },
+        "remaining": {
+          "title": "Remaining",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "remaining",
+        "full_diagnosis_ok"
+      ],
+      "title": "PanelBudget",
+      "type": "object"
+    },
+    "PanelEvidenceOut": {
+      "additionalProperties": false,
+      "properties": {
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Href"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "record",
+            "statement",
+            "external"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "ref",
+        "note",
+        "href"
+      ],
+      "title": "PanelEvidenceOut",
+      "type": "object"
+    },
+    "PanelSuggestionOut": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Href"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "ref": {
+              "title": "Ref",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "title": "PanelEvidenceOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "enum": [
+            "career",
+            "finance",
+            "health",
+            "relationships",
+            "learning",
+            "quality_of_life"
+          ],
+          "title": "Area",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "due_hint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Due Hint"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/PanelEvidenceOut"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "experts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Experts",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "task",
+            "habit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "per_week": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Per Week"
+        },
+        "size_min": {
+          "title": "Size Min",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "done",
+            "postponed",
+            "dismissed",
+            "expired"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "week": {
+          "title": "Week",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "area",
+        "size_min",
+        "per_week",
+        "due_hint",
+        "experts",
+        "evidence",
+        "state",
+        "week",
+        "created_at"
+      ],
+      "title": "PanelSuggestionOut",
+      "type": "object"
+    },
+    "PanelSuggestions": {
+      "$defs": {
+        "PanelEvidenceOut": {
+          "additionalProperties": false,
+          "properties": {
+            "href": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Href"
+            },
+            "note": {
+              "title": "Note",
+              "type": "string"
+            },
+            "ref": {
+              "title": "Ref",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "record",
+                "statement",
+                "external"
+              ],
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "ref",
+            "note",
+            "href"
+          ],
+          "title": "PanelEvidenceOut",
+          "type": "object"
+        },
+        "PanelSuggestionOut": {
+          "additionalProperties": false,
+          "properties": {
+            "area": {
+              "enum": [
+                "career",
+                "finance",
+                "health",
+                "relationships",
+                "learning",
+                "quality_of_life"
+              ],
+              "title": "Area",
+              "type": "string"
+            },
+            "created_at": {
+              "title": "Created At",
+              "type": "string"
+            },
+            "due_hint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due Hint"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/PanelEvidenceOut"
+              },
+              "title": "Evidence",
+              "type": "array"
+            },
+            "experts": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Experts",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "task",
+                "habit"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "per_week": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Per Week"
+            },
+            "size_min": {
+              "title": "Size Min",
+              "type": "integer"
+            },
+            "state": {
+              "enum": [
+                "proposed",
+                "accepted",
+                "done",
+                "postponed",
+                "dismissed",
+                "expired"
+              ],
+              "title": "State",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            },
+            "week": {
+              "title": "Week",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "area",
+            "size_min",
+            "per_week",
+            "due_hint",
+            "experts",
+            "evidence",
+            "state",
+            "week",
+            "created_at"
+          ],
+          "title": "PanelSuggestionOut",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`GET /panel/suggestions`: 최신 먼저. `state`가 없으면 지난 28일 전부.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/PanelSuggestionOut"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "PanelSuggestions",
       "type": "object"
     },
     "PhotoRead": {

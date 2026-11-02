@@ -1,10 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import health from "../test/fixtures/health.json";
 import { BASE, server } from "../test/server";
 import { copy } from "../lib/copy";
+import { copyPanel } from "../lib/copyPanel";
+import { serveStatements, STATEMENTS } from "../test/panel";
+import { serveActions } from "../test/parts";
 import { HAS_STATUS_PAGE } from "../lib/nav";
 import { renderWithProviders } from "../test/render";
 import MorePage from "../pages/more";
@@ -118,6 +121,66 @@ describe("More (spec 9.1)", () => {
       renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
       await screen.findByRole("link", { name: copy.more.workout });
       expect(screen.queryByRole("button", { name: copy.more.agentNotes })).toBeNull();
+    });
+  });
+
+  // SP15 5.4: "내가 한 말" opens in place after "비서 메모"; /more/#statements comes in open.
+  describe("statements row", () => {
+    const withManager = (features = ["mate", "agent_notes", "manager"]) => {
+      server.use(
+        http.get(`${BASE}/health`, () => HttpResponse.json({ ...health, features })),
+        http.get(`${BASE}/agents/notes`, () => HttpResponse.json({ notes: [] })),
+      );
+      return serveStatements();
+    };
+    afterEach(() => {
+      window.location.hash = "";
+    });
+
+    it("comes after the notes row and lists what I said when pressed", async () => {
+      const be = withManager();
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
+      const row = await screen.findByRole("button", { name: copyPanel.statements.title });
+      expect(row).toHaveAttribute("aria-expanded", "false");
+      const notes = screen.getByRole("button", { name: copy.more.agentNotes });
+      expect(Boolean(notes.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+      expect(document.getElementById("statements")?.closest("button")).toBe(row);
+      expect(be.reads).toEqual([]);
+      await userEvent.setup().click(row);
+      expect(row).toHaveAttribute("aria-expanded", "true");
+      expect(await screen.findByText(STATEMENTS[0].text)).toBeInTheDocument();
+      expect(screen.getByText(STATEMENTS[1].text)).toBeInTheDocument();
+    });
+
+    it("지우기 retires the line and it goes", async () => {
+      const be = withManager();
+      const bodies = serveActions(() => {
+        be.drop(4);
+        return HttpResponse.json({ status: "applied", activity_id: 82, undo_id: 82, result: { ok: true }, confirmation: "내가 한 말 지움" });
+      });
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
+      await userEvent.setup().click(await screen.findByRole("button", { name: copyPanel.statements.title }));
+      const line = (await screen.findByText(STATEMENTS[1].text)).closest("li")!;
+      await userEvent.click(within(line).getByRole("button", { name: copyPanel.statements.retire }));
+      await waitFor(() => expect(bodies.map((b) => [b.action, b.args])).toEqual([["retire_statement", { id: 4 }]]));
+      await waitFor(() => expect(screen.queryByText(STATEMENTS[1].text)).toBeNull());
+      expect(screen.getByText(STATEMENTS[0].text)).toBeInTheDocument();
+    });
+
+    it("opens by itself on /more/#statements", async () => {
+      withManager();
+      window.location.hash = "#statements";
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/#statements" });
+      const row = await screen.findByRole("button", { name: copyPanel.statements.title });
+      expect(row).toHaveAttribute("aria-expanded", "true");
+      expect(await screen.findByText(STATEMENTS[0].text)).toBeInTheDocument();
+    });
+
+    it("no row without the manager feature", async () => {
+      withManager(["mate", "agent_notes"]);
+      renderWithProviders(<More hasStatus={false} />, { route: "/more/" });
+      await screen.findByRole("button", { name: copy.more.agentNotes });
+      expect(screen.queryByRole("button", { name: copyPanel.statements.title })).toBeNull();
     });
   });
 

@@ -9,7 +9,7 @@ import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 const HANGUL = /[가-힣]/;
-const COPY_FILES = new Set(["lib/copy.ts", "lib/copyStanding.ts"]);
+const COPY_FILES = new Set(["lib/copy.ts", "lib/copyStanding.ts", "lib/copyPanel.ts"]);
 // The app's banned words (the system.md `banned-words` block is the canonical list; copy.test.ts reads both).
 const BANNED = ["연속", "스트릭", "달성률", "등수", "패배", "뒤처짐", "실패"];
 const root = resolve(process.argv[2] ?? "src");

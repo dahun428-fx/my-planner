@@ -87,4 +87,4 @@ async def test_actions_drop_note_and_delete_log(tmp_path):
 async def test_health_features_has_mate(tmp_path):
     async with BeEnv.start(tmp_path, start=SAT) as env:
         body = await get_json(env, "/health")
-    assert body["features"] == ["mate", "agent_notes"]
+    assert body["features"] == ["mate", "agent_notes", "manager"]

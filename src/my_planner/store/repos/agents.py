@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from my_planner.clock import Clock, from_iso, to_iso
-from my_planner.domain import EVENT_KINDS, EVENT_ORIGINS, INBOX_AGENTS
+from my_planner.domain import EVENT_KINDS, EVENT_ORIGINS, INBOX_AGENTS, InboxAgent
 
 EVENT_DEDUPE_S = 60
 EVENTS_KEEP_DAYS = 90
@@ -136,6 +136,14 @@ class AgentsRepo:
             (agent, since.isoformat()),
         ).fetchone()[0]
 
+    def ref_in_inbox(self, agent: InboxAgent, ref: str) -> bool:
+        """그 상대 받은편지함(본 것 포함)에 `ref`를 가리키는 사건이 있는가. 행이 사라진 사건(`event_removed`)의 참조용."""
+        return self.conn.execute(
+            "SELECT 1 FROM agent_inbox i JOIN agent_events e ON e.id = i.event_id WHERE i.agent = ? AND e.ref = ? "
+            "LIMIT 1",
+            (agent, ref),
+        ).fetchone() is not None
+
     def mark_seen(self, agent: str, event_ids: Iterable[int], now: datetime) -> int:
         ids = list(event_ids)
         if not ids:
@@ -175,6 +183,13 @@ class AgentsRepo:
             sql += " LIMIT ?"
             args.append(limit)
         return [_note(r) for r in self.conn.execute(sql, args).fetchall()]
+
+    def notes_by_ids(self, ids: Iterable[int]) -> dict[int, AgentNote]:
+        xs = list(dict.fromkeys(ids))
+        if not xs:
+            return {}
+        rows = self.conn.execute(f"SELECT {_NOTE_COLS} FROM agent_notes WHERE id IN ({_qs(len(xs))})", xs).fetchall()
+        return {n.id: n for n in map(_note, rows)}
 
     def handoffs_on(self, agent: str, day: date) -> int:
         return self.conn.execute(

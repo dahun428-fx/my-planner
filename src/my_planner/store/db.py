@@ -169,8 +169,16 @@ def migrate(conn: sqlite3.Connection, *, upto: int | None = None, tz: str = "Asi
     `hook(conn, tz)`) → `PRAGMA user_version = N` → `COMMIT`. 하나라도 실패하면 `ROLLBACK`(SQL, 훅의 쓰기,
     `user_version` 모두 그대로). `tz`는 훅이 UTC를 현지 날짜·시각으로 바꿀 때 쓴다(앱은 `settings.timezone`).
     `upto`를 주면 그 번호까지만 적용한다(옛 판 DB를 만드는 시험용).
+
+    표를 새로 만들어 옮기는 번호(`REBUILD_MIGRATIONS`, SP15 024): 트랜잭션 안에서는 `foreign_keys`를 바꿀 수 없어
+    `BEGIN` 전에 지금 값을 읽어 두고 끈다. 훅 뒤 `COMMIT` 전에 `REBUILD_FK_TABLES`의 표마다 `foreign_key_check`를
+    돌려 한 줄이라도 나오면 `RuntimeError("foreign_key_check")`(→ `ROLLBACK`). 끝나면(실패해도) 읽어 둔 값으로 되돌린다.
     """
-    from my_planner.store.migrations.hooks import HOOKS
+    from my_planner.store.migrations.hooks import (
+        HOOKS,
+        REBUILD_FK_TABLES,
+        REBUILD_MIGRATIONS,
+    )
 
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     migrations = _migrations()
@@ -183,6 +191,12 @@ def migrate(conn: sqlite3.Connection, *, upto: int | None = None, tz: str = "Asi
         if number <= current or (upto is not None and number > upto):
             continue
         sql = path.read_text(encoding="utf-8")
+        fk_before: int | None = None
+        if number in REBUILD_MIGRATIONS:
+            if conn.in_transaction:
+                conn.commit()  # executescript도 먼저 커밋한다. 열린 트랜잭션 안에서는 PRAGMA가 먹지 않는다
+            fk_before = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+            conn.execute("PRAGMA foreign_keys=OFF")
         try:
             # executescript는 열린 트랜잭션을 먼저 커밋하고, 그 밖의 트랜잭션 제어는 하지 않는다: 스크립트의 BEGIN이
             # 연 트랜잭션은 끝난 뒤에도 열려 있고, 훅과 user_version이 그 안에서 돈다
@@ -190,12 +204,18 @@ def migrate(conn: sqlite3.Connection, *, upto: int | None = None, tz: str = "Asi
             hook = HOOKS.get(number)
             if hook is not None:
                 hook(conn, tz)
+            for table in REBUILD_FK_TABLES.get(number, ()):
+                if conn.execute(f'PRAGMA foreign_key_check("{table}")').fetchone() is not None:
+                    raise RuntimeError("foreign_key_check")
             conn.execute(f"PRAGMA user_version = {number}")
             conn.execute("COMMIT")
         except Exception:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
             raise
+        finally:
+            if fk_before is not None:
+                conn.execute(f"PRAGMA foreign_keys={'ON' if fk_before else 'OFF'}")
         current = number
     return current
 

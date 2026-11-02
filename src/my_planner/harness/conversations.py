@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 CHANNELS: tuple[Channel, ...] = ("telegram", "app")
-AGENTS: tuple[Agent, ...] = ("secretary", "mate")
+AGENTS: tuple[Agent, ...] = ("secretary", "mate", "manager")
 
 
 class ConversationRouter:
@@ -129,7 +129,8 @@ class ConversationRouter:
         답장 창은 보낸 시각 `sent_at`으로 본다(노트북이 잠든 동안 보낸 답도 그 회차에 잇는다). 2·4·5는 받은 시각
         `at`으로 본다. 텔레그램만 쓰면 SP1과 같다.
 
-        메이트(`agent="mate"`, SP12 5.2-2)는 1~3번을 건너뛰고 4·5번을 메이트 대화끼리만 본다.
+        메이트(`agent="mate"`, SP12 5.2-2)와 라이프 매니저(`agent="manager"`, SP15)는 1~3번을 건너뛰고 4·5번을
+        그 상대의 대화끼리만 본다.
         """
         when = sent_at if sent_at is not None else at
         if agent == "secretary":

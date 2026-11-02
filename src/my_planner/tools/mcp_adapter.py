@@ -11,6 +11,7 @@ from my_planner.domain import InboxAgent, RunContext
 from my_planner.standing.metrics import METRICS
 from my_planner.timefmt import to_api_times
 from my_planner.tools.events import ui_event_items
+from my_planner.tools.panel import EXPERT_KEYS
 from my_planner.tools.ui import BRAIN_COMPONENTS, PINNABLE_COMPONENTS, UI_COMPONENTS
 
 SERVER_NAME = "planner"
@@ -856,9 +857,14 @@ _SPECS.update({
 
 
 # 하루 끝 판단(`RunContext.kind == "dayend"`, SP14 6.2)에 주는 도구: 그 상대의 읽기 도구 + 관찰 도구 둘. 쓰기 도구는 없다.
-# `write_note`·`hand_off`는 여기에만 있다(`TOOL_NAMES`·`APP_ONLY_TOOLS`·`MATE_TOOLS`에 없다). SP15가 "manager" 줄을 더한다
+# `write_note`·`hand_off`는 여기에만 있다(`TOOL_NAMES`·`APP_ONLY_TOOLS`·`MATE_TOOLS`에 없다). 라이프 매니저(SP15)는
+# 제안·예측·리포트 도구 없이 읽기만
 DAYEND_READ_TOOLS: dict[InboxAgent, list[str]] = {
     "mate": ["get_mate_context", "list_workouts", "get_measures", "list_events", "find_conversations"],
+    "manager": [
+        "list_tasks", "list_events", "list_habits", "read_conditions", "read_body_days", "list_workouts",
+        "read_measures_all", "list_statements", "read_panel_results", "find_conversations",
+    ],
 }
 DAYEND_TOOLS: list[str] = ["write_note", "hand_off"]
 _NOTE_REFS = {
@@ -891,10 +897,272 @@ _SPECS.update({
 })
 
 
+def _days(lo: int, hi: int, default: int) -> dict[str, Any]:
+    return {"type": "integer", "minimum": lo, "maximum": hi, "description": f"오늘 포함 일수(기본 {default})"}
+
+
+# 라이프 매니저·전문가 읽기 도구(SP15 6.1). 결과는 id(근거 참조 ref)·날짜·값이다
+_SPECS.update({
+    "read_conditions": (
+        "최근 컨디션 점수(1~5)를 날짜마다 읽습니다(메모 없음). 근거 참조는 checkin:<날짜>. 읽기만 합니다.",
+        _schema({"days": _days(1, 56, 28)}, []),
+    ),
+    "read_body_days": (
+        "최근 날짜마다 걸음 수와 잠잔 시간(분)을 읽습니다. 근거 참조는 body_day:<날짜>. 읽기만 합니다.",
+        _schema({"days": _days(1, 56, 28)}, []),
+    ),
+    "read_moments": (
+        "최근 이룬 순간(숨긴 것 뺌)의 id, 날짜, 글, 영역을 읽습니다. 근거 참조는 moment:<id>. 읽기만 합니다.",
+        _schema({"days": _days(1, 180, 90)}, []),
+    ),
+    "read_reviews": (
+        "분기 회고의 영역 점수와 메모를 ref(review:<분기>:<영역>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_all": (
+        "프로필을 뺀 모든 측정값의 지표마다 가장 최근 값을 ref(measure:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_career": (
+        "직업 측정값(연봉, 회사, 직무, 경력 같은 것)의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_finance": (
+        "경제 측정값(순자산, 저축, 실수령)과 연봉의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_looks": (
+        "외모 측정값(키, 몸무게, 체성분, 허리둘레, 얼굴·관리 평가)의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_measures_relationships": (
+        "관계 측정값(기댈 사람, 모임, 연애 상태, 외로움)의 가장 최근 값을 ref와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_tasks_career": (
+        "커리어 영역의 열린 할 일과 지난 56일에 끝내거나 버린 할 일(50개까지)을 ref(task:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_tasks_finance": (
+        "경제 영역의 열린 할 일과 지난 56일에 끝내거나 버린 할 일(50개까지)을 ref(task:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_tasks_relationships": (
+        "관계 영역의 열린 할 일과 지난 56일에 끝내거나 버린 할 일(50개까지)을 ref(task:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_schedule_shape": (
+        "오늘부터 며칠의 일정을 제목·메모 없이 날짜, 시작 시각, 길이(분), 영역만 ref(event:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({"days": {"type": "integer", "minimum": 1, "maximum": 28, "description": "오늘부터 일수(기본 14)"}}, []),
+    ),
+    "list_statements": (
+        "지우지 않은 내가 한 말(사실, 선호, 결정)을 ref(statement:<id>, 결정은 decision:<key>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({}, []),
+    ),
+    "read_benchmark": (
+        "외부 기준표(SP13)의 표 하나를 출처, 연도, 추정 여부와 함께 ref(bench:<key>)로 읽습니다(key를 빼면 키 목록). 읽기만 합니다.",
+        _schema({"key": {"type": ["string", "null"], "description": "기준표 맨 위 키(height, looks, income 같은 것)"}}, []),
+    ),
+    "read_panel_results": (
+        "최근 몇 주 패널 제안의 제목, 영역, 결과(받음·버림·지남)와 버린 이유를 ref(suggestion:<id>)와 함께 읽습니다. 읽기만 합니다.",
+        _schema({"weeks": {"type": "integer", "minimum": 1, "maximum": 12, "description": "이번 주 포함 주 수(기본 8)"}}, []),
+    ),
+    "list_chat_photos": (
+        "이 라이프 매니저 대화에 올린 사진의 번호, 날짜, 사진에서 읽은 글을 읽습니다(이미지는 없음). 읽기만 합니다.",
+        _schema({}, []),
+    ),
+})
+# 패널 쓰기 도구(SP15 5.4, 7장, 9장, 10장). 값의 범위·근거·주간 수는 도구가 다시 본다(`tools/panel.py`,
+# 리포트는 `panel/report.py`의 `LifeReport`)
+def _line(hi: int, what: str) -> dict[str, Any]:
+    return {"type": "string", "description": f"{what}({hi}자 이하)"}
+
+
+_EVIDENCE = {
+    "type": "array",
+    "minItems": 1,
+    "maxItems": 8,
+    "description": "근거 1~8개. 내 기록(record)이나 내가 한 말(statement)이 하나는 있어야 합니다",
+    "items": _schema(
+        {
+            "type": {"enum": ["record", "statement", "external"]},
+            "ref": {
+                "type": "string",
+                "description": (
+                    "record: task:<id>, event:<id>, habit:<id>, checkin:<날짜>, body_day:<날짜>, workout:<id>, "
+                    "measure:<id>, moment:<id>, suggestion:<id> / statement: statement:<id>, memo:<id>, "
+                    "review:<분기>:<영역>, decision:<key> / external: bench:<기준표 키>"
+                ),
+            },
+            "note": {"type": "string", "description": "카드의 \"근거 보기\"에 보일 한 줄(120자 이하)"},
+        },
+        ["type", "ref", "note"],
+    ),
+}
+_SPECS.update({
+    "propose_suggestion": (
+        (
+            "패널 제안 카드 하나를 냅니다(할 일 또는 습관). 사용자가 카드에서 \"받기\"를 눌러야 할 일·습관이 생깁니다. "
+            "근거는 읽기 도구가 준 ref만 씁니다. 거절되면 error와 rejected(이유 코드)가 옵니다: unknown_ref·"
+            "no_personal_evidence면 근거를 고치거나 질문으로 바꾸고, budget_exhausted면 이번 주는 더 내지 않고, "
+            "too_big_again이면 더 작게, not_interested_recent면 다른 것을 냅니다. 한 메시지에 다시 내기는 1번입니다."
+        ),
+        _schema(
+            {
+                "kind": {"enum": ["task", "habit"]},
+                "title": {"type": "string", "description": "카드 제목 한 줄(60자 이하)"},
+                "area": {"enum": _AREAS},
+                "size_min": {"type": "integer", "minimum": 5, "maximum": 120, "description": "예상 소요(분)"},
+                "per_week": {
+                    "type": ["integer", "null"], "minimum": 1, "maximum": 7,
+                    "description": "습관이면 주 몇 번(1~7), 할 일이면 null",
+                },
+                "due_hint": {"type": ["string", "null"], "description": "논리적 날짜 YYYY-MM-DD(오늘~60일 뒤) 또는 null"},
+                "experts": {
+                    "type": "array", "items": {"enum": list(EXPERT_KEYS)}, "minItems": 1, "maxItems": 6,
+                    "uniqueItems": True, "description": "이 제안을 낸 전문가 키",
+                },
+                "evidence": _EVIDENCE,
+            },
+            ["kind", "title", "area", "size_min", "experts", "evidence"],
+        ),
+    ),
+    "save_statement": (
+        (
+            "사용자가 직접 한 말(사실, 선호, 결정) 한 줄을 확인 카드 없이 저장하고 ref를 돌려받습니다. 질문에 대한 "
+            "답이나 \"나는 ~하고 싶어\" 같은 말만, 사용자의 말 그대로에 가깝게 씁니다. 결정(decision)에는 짧은 영문 "
+            "key가 있어야 합니다. 비밀번호·주민번호·전화번호 같은 식별 정보는 저장하지 않습니다."
+        ),
+        _schema(
+            {
+                "kind": {"enum": ["fact", "preference", "decision"]},
+                "area": {"type": ["string", "null"], "enum": [*_AREAS, None], "description": "영역 또는 null"},
+                "text": {"type": "string", "description": "한 줄(200자 이하)"},
+                "key": {"type": ["string", "null"], "description": "결정만: 영문 소문자와 _ 3~30자(예: career_first)"},
+            },
+            ["kind", "text"],
+        ),
+    ),
+    "record_prediction": (
+        (
+            "숫자 목표에 기한을 붙여 말했을 때 그 예측 하나를 남깁니다(한 대화 2개까지). 기한이 지나면 실제 값과 "
+            "맞춰 봅니다. metric은 숫자 측정값 이름이나 axis:<축>입니다."
+        ),
+        _schema(
+            {
+                "metric": {
+                    "type": "string",
+                    "description": "숫자 측정값 이름(예: body_fat_pct, weight_kg) 또는 axis:career 같은 축",
+                },
+                "predicted": {"type": "number", "description": "예측 값(측정값이면 그 범위 안)"},
+                "due": {"type": "string", "description": "기한 YYYY-MM-DD(내일~365일 뒤)"},
+            },
+            ["metric", "predicted", "due"],
+        ),
+    ),
+    "save_life_report": (
+        (
+            "전체 진단의 인생 리포트를 저장합니다(전체 진단에서만, 한 번). 점수(scores)와 맺음말은 서버가 저장 시점 "
+            "값으로 채우니 넣지 않습니다. this_week에는 이번 주에 낸 패널 제안 id만 넣습니다. 거절되면 error 한 줄을 "
+            "보고 그 칸만 고쳐 다시 부릅니다."
+        ),
+        _schema({"report": _schema(
+            {
+                "summary": _schema(
+                    {
+                        "line": _line(120, "한 줄 진단"),
+                        "paths": {"type": "array", "items": _line(80, "통로 한 줄"), "minItems": 3, "maxItems": 3},
+                    },
+                    ["line", "paths"],
+                ),
+                "levers": {
+                    "type": "array", "minItems": 1, "maxItems": 12, "description": "행동 → 축 연결",
+                    "items": _schema(
+                        {
+                            "action": _line(60, "행동"),
+                            "axis": {"enum": ["career", "money", "health", "looks", "relations", "intellect"]},
+                            "strength": {"enum": ["weak", "mid", "strong"]},
+                        },
+                        ["action", "axis", "strength"],
+                    ),
+                },
+                "experts": {
+                    "type": "array", "minItems": 6, "maxItems": 6, "description": "전문가 6명이 하나씩",
+                    "items": _schema(
+                        {
+                            "expert": {"enum": list(EXPERT_KEYS)},
+                            "line": _line(120, "한 줄 진단"),
+                            "prescriptions": {"type": "array", "items": _line(120, "처방"), "minItems": 3, "maxItems": 4},
+                            "avoid": {"type": "array", "items": _line(120, "하지 말 것"), "minItems": 1, "maxItems": 3},
+                        },
+                        ["expert", "line", "prescriptions", "avoid"],
+                    ),
+                },
+                "scenario": _schema(
+                    {"do": _line(400, "3년 동안 하면(추정)"), "dont": _line(400, "3년 동안 안 하면(추정)")},
+                    ["do", "dont"],
+                ),
+                "roadmap": {
+                    "type": "array", "minItems": 1, "maxItems": 6, "description": "90일 트랙과 KPI",
+                    "items": _schema(
+                        {
+                            "track": _line(40, "트랙 이름"), "kpi": _line(80, "KPI"),
+                            "start": {"type": "string", "description": "YYYY-MM-DD"},
+                            "end": {"type": "string", "description": "YYYY-MM-DD(start부터 90일 안)"},
+                        },
+                        ["track", "kpi", "start", "end"],
+                    ),
+                },
+                "this_week": {
+                    "type": "array", "items": {"type": "integer"}, "maxItems": 5, "uniqueItems": True,
+                    "description": "이번 주 패널 제안 id",
+                },
+                "questions": {"type": "array", "items": _line(120, "남은 질문"), "maxItems": 5},
+            },
+            ["summary", "levers", "experts", "scenario", "roadmap", "this_week", "questions"],
+        )}, ["report"]),
+    ),
+})
+
+
+# 라이프 매니저 대화(`RunContext.agent == "manager"`, SP15 6.1)의 도구. 비서 도구로 새지 않게 따로 둔다.
+# 읽기 도구(본 스레드), 쓰기는 패널 초안·내가 한 말·예측·측정값 확인 카드뿐이다. 리포트 저장은 "전체 진단" 칩에만
+MANAGER_READ_TOOLS: list[str] = [
+    "list_tasks", "list_events", "list_habits", "read_conditions", "read_body_days", "list_workouts", "read_moments",
+    "get_curve", "read_reviews", "read_measures_all", "list_statements", "read_benchmark", "read_panel_results",
+    "find_conversations",
+]
+PANEL_WRITE_TOOLS: list[str] = ["propose_suggestion", "save_statement", "record_prediction", "propose_measures"]
+REPORT_TOOLS: list[str] = ["save_life_report"]
+# 전문가 서브에이전트마다 주는 읽기 도구(스펙 6.1 표 그대로). 쓰기 도구는 없다
+EXPERT_TOOLS: dict[str, list[str]] = {
+    "career": ["read_tasks_career", "read_measures_career", "search_memos", "read_memo", "list_statements",
+               "read_benchmark"],
+    "finance": ["read_measures_finance", "read_tasks_finance", "list_statements", "read_benchmark"],
+    "health": ["get_measures", "read_body_days", "list_workouts", "read_conditions", "read_benchmark"],
+    "image": ["read_measures_looks", "list_chat_photos", "read_benchmark"],
+    "relationship": ["read_schedule_shape", "read_measures_relationships", "list_statements",
+                     "read_tasks_relationships", "read_benchmark"],
+    "psych": ["read_conditions", "read_moments", "get_curve", "read_reviews", "read_panel_results", "read_benchmark"],
+}
+_MANAGER_OWN = [*MANAGER_READ_TOOLS, *PANEL_WRITE_TOOLS, *REPORT_TOOLS]
+# 전문가만 쓰는 도구(전문가 순서, 중복 없이). 서브에이전트가 받으려면 같은 서버에 있어야 하므로 매니저 호출에 함께
+# 싣는다. 본 스레드에서 막을 후보다(계획 Task 11이 스파이크 결과대로 쓴다)
+MANAGER_HIDDEN_TOOLS: list[str] = list(dict.fromkeys(
+    n for names in EXPERT_TOOLS.values() for n in names if n not in _MANAGER_OWN
+))
+
+
+def manager_tool_names(ctx: RunContext) -> list[str]:
+    """라이프 매니저 대화의 도구: 읽기 + 패널 쓰기 + ("전체 진단"이면) 리포트 저장 + 전문가 전용 읽기."""
+    report = REPORT_TOOLS if ctx.chip == "manager_full" else []
+    return [*MANAGER_READ_TOOLS, *PANEL_WRITE_TOOLS, *report, *MANAGER_HIDDEN_TOOLS]
+
+
 def tool_names_for(ctx: RunContext) -> list[str]:
     """그 호출에 주는 도구(SP3-4 10장, SP8 6.3). 하루 끝 순간 호출은 `save_moments` 하나뿐, 대화 요약(SP9 7.2)·사진 읽기(SP10 5.4)는 없음.
 
-    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
+    메이트 대화(SP12 5.3)는 `MATE_TOOLS`만, 라이프 매니저 대화(SP15)는 `manager_tool_names`. 호출 종류(순간·하루 끝 판단·요약·사진 읽기)가 상대보다 먼저다.
     그 밖에는 통로 규칙: 화면 도구(`ui_*`)와 카드 도구는 앱 대화에만 준다(6.4.7).
     """
     if ctx.kind == "moments":
@@ -906,6 +1174,8 @@ def tool_names_for(ctx: RunContext) -> list[str]:
         return []
     if ctx.agent == "mate":
         return list(MATE_TOOLS)
+    if ctx.agent == "manager":
+        return manager_tool_names(ctx)
     return [*TOOL_NAMES, *APP_ONLY_TOOLS] if ctx.channel == "app" else list(TOOL_NAMES)
 
 

@@ -117,6 +117,13 @@ describe("Checkin", () => {
     expect(screen.queryByText(/운동메이트: 가짜/)).toBeNull();
   });
 
+  it("an evening check-in keeps a partner-like line in its Markdown (SP14 carry: only the brief splits)", async () => {
+    serve({ ...pending, text: "오늘 어땠어요?\n운동메이트: 가짜" });
+    renderWithProviders(<Checkin id={341} />);
+    expect(await screen.findByText(/운동메이트: 가짜/)).toBeInTheDocument();
+    expect(document.querySelector('use[href="#p-dumbbell"]')).toBeNull();
+  });
+
   it("cards render as parts", async () => {
     serve();
     renderWithProviders(<Checkin id={341} />);

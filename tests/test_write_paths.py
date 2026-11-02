@@ -23,12 +23,12 @@ import test_api_e2e
 from my_planner.store.db import is_write, open_db
 
 # 도구 함수(`tools/core.py`, 습관 `tools/habits.py`, 이룬 순간 `tools/moments.py`, 메모 `tools/memos.py`, 몸 기록
-# `tools/body.py`, 스케줄 `tools/events.py`, 운동 `tools/workout.py`, 관찰 `tools/agents.py`), 즉시 갈래(`tools/actions.py`),
-# 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
+# `tools/body.py`, 스케줄 `tools/events.py`, 운동 `tools/workout.py`, 관찰 `tools/agents.py`, 패널 `tools/panel.py`),
+# 즉시 갈래(`tools/actions.py`), 활동(`tools/activity.py`). 그 밖의 `tools.*`(어댑터, 문구, UI)는 쓰지 않는다
 TOOLS = frozenset({
     "my_planner.tools.core", "my_planner.tools.habits", "my_planner.tools.actions", "my_planner.tools.activity",
     "my_planner.tools.moments", "my_planner.tools.memos", "my_planner.tools.body", "my_planner.tools.events",
-    "my_planner.tools.standing", "my_planner.tools.workout", "my_planner.tools.agents",
+    "my_planner.tools.standing", "my_planner.tools.workout", "my_planner.tools.agents", "my_planner.tools.panel",
 })
 MOMENTS_JOB = "my_planner.harness.moments"  # 하루 끝 작업의 날 행과 `moments_since`(SP8 6.2, 계획 결정 19)
 DAYEND_JOB = "my_planner.harness.dayend"  # SP14 하루 끝 판단: 읽음 표시, 90일 정리, `agent_dayend_*` 상태
@@ -92,6 +92,12 @@ ALLOWED: dict[str, set[str]] = {
     "agent_events": {*TOOLS, IMPORTER, DAYEND_JOB},  # 90일 정리는 하루 끝 작업
     "agent_inbox": {*TOOLS, DISPATCHER, DAYEND_JOB, IMPORTER},  # 읽음 표시는 디스패처·하루 끝 작업
     "agent_notes": {*TOOLS, DISPATCHER, DAYEND_JOB},  # 쓰기는 `tools.agents`, `shown_at`은 디스패처
+    # SP15: 내가 한 말·리포트는 패널 도구만. 제안 상태는 하루 끝 갱신(`panel.lifecycle`), 예측 실제 값은
+    # `panel.predictions`도(스펙 7.1, 9.1)
+    "owner_statements": {"my_planner.tools.panel"},
+    "panel_suggestions": {"my_planner.tools.panel", "my_planner.panel.lifecycle"},
+    "panel_predictions": {"my_planner.tools.panel", "my_planner.panel.predictions"},
+    "life_reports": {"my_planner.tools.panel"},
     # 4.3 2행: 변경과 같은 트랜잭션(`tools/activity.py`), 되돌리기 표시(`apply_action`, U5)
     "activity": set(TOOLS),
     "activity_targets": set(TOOLS),
@@ -130,6 +136,8 @@ ALLOWED: dict[str, set[str]] = {
         MOMENTS_JOB,
         # SP14: `agent_dayend_day:*`, `agent_dayend_attempts:*`
         DAYEND_JOB,
+        # SP15: 전체 진단 횟수·주간 제안 수 상태(`panel.budget`, `tools.panel`)
+        "my_planner.panel.budget", "my_planner.tools.panel",
     },
 }
 
@@ -264,6 +272,12 @@ async def test_each_table_written_only_by_its_path(tmp_path, monkeypatch):
     assert ("agent_notes", "my_planner.tools.agents", DISPATCHER, True) in rec.tool_calls
     assert ("agent_notes", DISPATCHER) in rec.seen
     assert ("agent_inbox", DAYEND_JOB) in rec.seen and ("app_state", DAYEND_JOB) in rec.seen
+    # SP15 이야기(`test_sp15_manager_story`): 받기는 `/actions`의 즉시 갈래, 받은 할 일 완료는 하루 끝 갱신이 `done`으로,
+    # 내가 한 말은 두뇌 갈래의 패널 도구, 주간 제안 수는 하루 끝 코드 단계의 `panel.budget`
+    assert ("panel_suggestions", "my_planner.panel.lifecycle") in rec.seen
+    assert ("panel_suggestions", "my_planner.tools.panel", "my_planner.api.actions", True) in rec.tool_calls
+    assert ("owner_statements", "my_planner.tools.panel") in rec.seen
+    assert ("app_state", "my_planner.panel.budget") in rec.seen
 
 
 async def test_sp8_write_paths(tmp_path, monkeypatch):
@@ -300,13 +314,16 @@ async def test_sp14_dayend_write_paths(tmp_path, monkeypatch):
         ("write_note", {"text": "토요일 저녁만 비어 있어요", "priority": 2, "refs": ["checkin:2026-11-01"]}),
         ("hand_off", {"to": "manager", "text": "저녁 일정이 많아요", "refs": ["checkin:2026-11-01"]}),
     ], "")
-    async with BeEnv.start(tmp_path, script=[turn], start=kst(2026, 11, 2, 3, 0), dayend=True) as env:
+    # 넘김을 받은 라이프 매니저 판단도 같은 tick에 돈다(SP15, 메이트 다음)
+    async with BeEnv.start(tmp_path, script=[turn, FakeTurn([], "")], start=kst(2026, 11, 2, 3, 0), dayend=True) as env:
         env.parts.runner.checkins = False
         status, _ = await env.action("record_condition", {"score": 4})  # `condition_logged` → 메이트에게도
         assert status == 200
         env.clock.set(kst(2026, 11, 2, 4, 1))
         await env.tick()
-        assert [c["run_ctx"].kind for c in env.brain.calls] == ["dayend"]
+        assert [(c["run_ctx"].kind, c["run_ctx"].agent) for c in env.brain.calls] == [
+            ("dayend", "mate"), ("dayend", "manager"),
+        ]
 
     assert rec.unparsed == []
     assert sorted((t, m) for t, m in rec.seen if not _allowed(t, m)) == []

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
@@ -69,6 +70,27 @@ def _measured_on(v: Any) -> date | None:
 
 
 Row = tuple[str, float | str, date]
+
+
+def latest_measure_rows(standing: StandingRepo | None, keep: Callable[[str], bool]) -> list[dict[str, Any]]:
+    """`keep(지표)`가 참인 지표마다 가장 최근 값(`METRICS` 순서, `cert`는 키마다 한 줄). 읽기 도구가 함께 쓴다.
+
+    줄은 `metric`, `label`, `value`, `unit`, `measured_on`, `reliability`, `ref`(`measure:<id>`, 패널 근거 참조)."""
+    if standing is None:
+        return []
+    latest = standing.latest()
+    out: list[dict[str, Any]] = []
+    for name, d in METRICS.items():
+        got = latest.get(name)
+        if got is None or not keep(name):
+            continue
+        for m in got if isinstance(got, list) else [got]:
+            out.append({
+                "metric": name, "label": d.label, "value": m.value_num if m.value_num is not None else m.value_text,
+                "unit": d.unit, "measured_on": m.measured_on.isoformat(), "reliability": m.reliability,
+                "ref": f"measure:{m.id}",
+            })
+    return out
 
 
 class StandingTools:
@@ -154,19 +176,7 @@ class StandingTools:
     @_tool
     def get_measures(self, ctx: RunContext) -> dict[str, Any]:
         """건강·외모 지표(`HEALTH_LOOKS_METRICS`)마다 가장 최근 값(SP14 6.2, 운동메이트). 읽기만. 로그 없음(값)."""
-        if self.standing is None:
-            return {"measures": []}
-        latest = self.standing.latest()
-        out: list[dict[str, Any]] = []
-        for name, d in METRICS.items():
-            m = latest.get(name)
-            if name not in HEALTH_LOOKS_METRICS or m is None or isinstance(m, list):
-                continue
-            out.append({
-                "metric": name, "label": d.label, "value": m.value_num if m.value_num is not None else m.value_text,
-                "unit": d.unit, "measured_on": m.measured_on.isoformat(), "reliability": m.reliability,
-            })
-        return {"measures": out}
+        return {"measures": latest_measure_rows(self.standing, HEALTH_LOOKS_METRICS.__contains__)}
 
     # --- /actions ---
 

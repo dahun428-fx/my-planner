@@ -164,7 +164,76 @@ export type MockOptions = {
   /** SP14 10장: /health lists `mate` and `agent_notes`; the brief ends with an observation line, the mate's
    * inbox count is 3, and /agents/notes has two fake notes. */
   agentNotes?: boolean;
+  /** SP15 11장: /health lists `mate`, `agent_notes` and `manager`; the life manager's budget, inbox count and proposed suggestions answer. */
+  manager?: boolean;
 };
+
+/** SP15: a fake panel suggestion (no real values), as `data.suggestion` and GET /panel/suggestions give it. */
+export const PANEL_SUGGESTION = {
+  id: 31,
+  kind: "habit",
+  title: "점심 뒤 15분 걷기",
+  area: "health",
+  size_min: 15,
+  per_week: 3,
+  due_hint: null,
+  experts: ["health", "psych"],
+  evidence: [
+    { type: "record", ref: "task:7", note: "지난 4주 점심 뒤 산책을 두 번 했어요", href: "/todos/" },
+    { type: "statement", ref: "statement:2", note: "오후에 머리가 무겁다고 했어요", href: "/more/" },
+    { type: "external", ref: "bench:health.steps", note: "하루 걸음 수 기준표", href: null },
+  ],
+  state: "proposed",
+  week: "2026-W43",
+  created_at: "2026-10-24T01:00:00Z",
+};
+
+/** SP15: the life manager's answer: text, a panel suggestion card, then the expert notes (after finish-step). */
+export function managerSse(): string {
+  const ev = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  return [
+    ev({ type: "start", messageId: "m-mgr", messageMetadata: { conversation_id: 21, channel: "app", kind: "chat", checkin_id: null } }),
+    ev({ type: "start-step" }),
+    ev({ type: "text-start", id: "t1" }),
+    ev({ type: "text-delta", id: "t1", delta: "건강 전문의와 심리 코치에게 물어봤어요. 이번 주는 **작게** 시작해요." }),
+    ev({ type: "text-end", id: "t1" }),
+    ev({ type: "tool-input-available", toolCallId: "h_suggest", toolName: "ui_panel_suggestion", input: { suggestion_id: 31 } }),
+    ev({ type: "tool-output-available", toolCallId: "h_suggest", output: { ok: true, data: { suggestion: PANEL_SUGGESTION } } }),
+    ev({ type: "finish-step" }),
+    ev({
+      type: "data-expert-notes",
+      data: {
+        notes: [
+          { expert: "health", text: "식후 가벼운 걷기는 오후 졸림을 줄이는 데 도움이 돼요." },
+          { expert: "psych", text: "새 습관은 **이미 하는 일** 뒤에 붙이면 오래가요." },
+        ],
+      },
+    }),
+    ev({ type: "finish", messageMetadata: { conversation_id: 21, channel: "app", kind: "chat" } }),
+    "data: [DONE]\n\n",
+  ].join("");
+}
+
+/** SP15 10장: two saved life reports (newest first); the body is the app's fake fixture, the older one a changed copy. */
+const LIFE_REPORTS = [
+  { id: 2, created_at: "2026-10-31T11:00:00Z" },
+  { id: 1, created_at: "2026-08-02T11:00:00Z" },
+];
+export const OLD_REPORT_LINE = "가짜 지난 진단 한 줄이에요.";
+/** The first "이번 주" title saved with the newest report (the fixture's `this_week_items`). */
+export const REPORT_WEEK_TITLE = (fixture("life_report") as { report: { this_week_items: { title: string }[] } }).report.this_week_items[0].title;
+function lifeReport(id: number): unknown {
+  const r = fixture("life_report") as { report: { summary: { line: string } } };
+  if (id !== 1) return r;
+  return { ...r, id: 1, created_at: LIFE_REPORTS[1].created_at, report: { ...r.report, summary: { ...r.report.summary, line: OLD_REPORT_LINE } } };
+}
+
+/** SP15 5.4: what I said (fake). */
+export const OWNER_STATEMENTS = [
+  { id: 5, kind: "decision", area: "career", text: "가짜 결정: 올해는 이직보다 지금 팀이 먼저예요", created_at: "2026-10-30T03:00:00Z" },
+  { id: 4, kind: "preference", area: null, text: "가짜 성향: 아침보다 저녁이 편해요", created_at: "2026-10-12T03:00:00Z" },
+];
+const ACTION_CONFIRMATIONS: Record<string, string> = { accept_suggestion: "제안을 받았어요", retire_statement: "내가 한 말을 지웠어요" };
 
 /** SP14 10장: fake partner notes (no real values). */
 export const AGENT_NOTE_LINE = "토요일 오전이 몇 주째 비어 있어요. 가볍게 걷기를 넣어 볼까요?";
@@ -215,6 +284,8 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
   const sseHeaders = JSON.parse(golden("headers.json")) as Record<string, string>;
   const chatBodies: unknown[] = [];
   const stopBodies: unknown[] = [];
+  const actionBodies: unknown[] = [];
+  let statements = OWNER_STATEMENTS;
 
   const json = (route: Route, body: unknown, status = 200) =>
     route.fulfill({ status, headers: { ...CORS, "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -228,11 +299,26 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     const get = req.method() === "GET";
 
     if (get && path === "/health") {
-      const features = opts.agentNotes ? ["mate", "agent_notes"] : opts.mate ? ["mate"] : null;
+      const features = opts.manager ? ["mate", "agent_notes", "manager"] : opts.agentNotes ? ["mate", "agent_notes"] : opts.mate ? ["mate"] : null;
       return json(route, features ? { ...(fixture("health") as object), features } : fixture("health"));
     }
     if (get && opts.agentNotes && path === "/agents/mate/inbox/count") return json(route, { unseen: 3 });
     if (get && opts.agentNotes && path === "/agents/notes") return json(route, AGENT_NOTES);
+    if (get && opts.manager && path === "/agents/mate/inbox/count") return json(route, { unseen: 0 });
+    if (get && opts.manager && path === "/agents/manager/inbox/count") return json(route, { unseen: 2 });
+    if (get && opts.manager && path === "/panel/budget") return json(route, { remaining: 1, full_diagnosis_ok: true });
+    if (get && opts.manager && path === "/panel/suggestions") return json(route, { items: [PANEL_SUGGESTION] });
+    // SP15 10장, 5.4: the life report list and body (the app's fake fixture) and what I said.
+    if (get && opts.manager && path === "/life-reports") return json(route, { items: LIFE_REPORTS });
+    const reportPath = /^\/life-reports\/(\d+)$/.exec(path);
+    if (get && opts.manager && reportPath) return json(route, lifeReport(Number(reportPath[1])));
+    if (get && opts.manager && path === "/owner-statements") return json(route, { items: statements });
+    if (req.method() === "POST" && opts.manager && path === "/actions") {
+      const body = req.postDataJSON() as { action: string; args: { id: number } };
+      actionBodies.push(body);
+      if (body.action === "retire_statement") statements = statements.filter((st) => st.id !== body.args.id);
+      return json(route, { status: "applied", activity_id: 90 + actionBodies.length, undo_id: 90 + actionBodies.length, result: { ok: true }, confirmation: ACTION_CONFIRMATIONS[body.action] ?? "" });
+    }
     if (get && path === "/workout") return json(route, WORKOUT);
     if (get && path === "/ui/catalog") return json(route, fixture("catalog"));
     if (get && path === "/today") {
@@ -279,7 +365,7 @@ export async function mockBe(page: Page, opts: MockOptions = {}) {
     }
     return json(route, { error: { code: "not_found", message: `no fixture for ${req.method()} ${path}` } }, 404);
   });
-  return { chatBodies, stopBodies };
+  return { chatBodies, stopBodies, actionBodies };
 }
 
 /** The BE stops answering (network error), as when the laptop sleeps (spec 5.5.4). */

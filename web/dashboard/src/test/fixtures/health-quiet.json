@@ -3,8 +3,8 @@
   "version": {
     "app": "0.2.0",
     "api": "v1",
-    "schema": 23,
-    "ui_catalog": "2026-11-01.1"
+    "schema": 24,
+    "ui_catalog": "2026-11-01.3"
   },
   "now": "2026-10-24T08:00:05Z",
   "started_at": "2026-10-24T08:00:05Z",
@@ -42,6 +42,7 @@
   "disk_low": false,
   "features": [
     "mate",
-    "agent_notes"
+    "agent_notes",
+    "manager"
   ]
 }

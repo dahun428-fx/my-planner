@@ -6,6 +6,15 @@ const msg = (parts: UIMessage["parts"], metadata?: unknown): UIMessage => ({ id:
 const todo = { id: 7, title: "장보기", status: "draft", planned_for: "2026-10-25", scheduled_at: null, parent_id: null, areas: [], note: "", priority: null, completed_at: null };
 
 describe("toViewParts", () => {
+  it("data-expert-notes is one notes part; an empty or broken one is nothing (SP15)", () => {
+    const notes = [{ expert: "career", text: "가짜 소견" }];
+    expect(toViewParts(msg([{ type: "text", text: "답" }, { type: "data-expert-notes", data: { notes } }] as UIMessage["parts"]))).toEqual([
+      { kind: "text", text: "답" },
+      { kind: "notes", notes },
+    ]);
+    expect(toViewParts(msg([{ type: "data-expert-notes", data: { notes: [] } }, { type: "data-expert-notes", data: { notes: "x" } }] as UIMessage["parts"]))).toEqual([]);
+  });
+
   it("text parts", () => {
     expect(toViewParts(msg([{ type: "step-start" }, { type: "text", text: "네, 추가할게요." }]))).toEqual([{ kind: "text", text: "네, 추가할게요." }]);
   });

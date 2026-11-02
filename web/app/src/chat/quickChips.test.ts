@@ -158,3 +158,21 @@ describe("mate chips (SP12 5.7)", () => {
     }
   });
 });
+
+describe("life manager chips (SP15 11장)", () => {
+  it("are the three of the spec; the upload chip opens the attach menu and is never sent", () => {
+    const chips = quickChips(null, new Date("2026-10-27T00:00:00Z"), "manager");
+    expect(chips.map((c) => c.key)).toEqual(["manager_full", "manager_week", "manager_upload"]);
+    expect(chips.map((c) => c.label)).toEqual(["전체 진단", "이번 주 뭐부터?", "자료 올리기"]);
+    expect(chips.map((c) => c.mode)).toEqual(["send", "send", "attach"]);
+    expect(chips.map((c) => c.wire)).toEqual(["manager_full", "manager_week", undefined]);
+    expect(chips.map((c) => c.pictogram ?? c.icon)).toEqual(["status", "today", "memo"]); // status: the status tab's pictogram
+    expect(chips.some((c) => c.disabled)).toBe(false);
+  });
+
+  it("the full diagnosis chip is off once today's is done", () => {
+    const chips = quickChips(null, new Date("2026-10-27T00:00:00Z"), "manager", { fullDiagnosisOk: false });
+    expect(chips[0]).toMatchObject({ key: "manager_full", label: "오늘은 이미 했어요", disabled: true });
+    expect(chips.slice(1).some((c) => c.disabled)).toBe(false);
+  });
+});

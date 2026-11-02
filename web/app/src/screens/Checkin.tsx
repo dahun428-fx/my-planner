@@ -266,7 +266,8 @@ function CheckinBody({ id }: { id: number }) {
   let body: ReactNode = null;
   if (data) {
     const cards = data.cards;
-    const parts = splitAgentNotes(data.text); // SP14 10장: the observation lines under the Markdown
+    // SP14 10장: the observation lines under the Markdown, only in the morning brief (the one place they come).
+    const parts = data.loop === "morning_brief" ? splitAgentNotes(data.text) : { body: data.text, notes: [] };
     body = (
       <>
         <Group>

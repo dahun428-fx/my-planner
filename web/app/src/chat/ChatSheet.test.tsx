@@ -1745,3 +1745,228 @@ describe("ChatSheet partner pick, fix round 1 (SP12)", () => {
     gate.release();
   });
 });
+
+// SP15 11장: the life manager as a third partner, only from a BE whose /health says `manager`.
+describe("ChatSheet life manager (SP15)", () => {
+  const withFeatures = (features: string[]) => server.use(http.get(`${BASE}/health`, () => HttpResponse.json({ ...healthJson, features })));
+  const serveBudget = (remaining = 1, ok = true) => {
+    const reads = { n: 0 };
+    server.use(
+      http.get(`${BASE}/panel/budget`, () => {
+        reads.n += 1;
+        return HttpResponse.json({ remaining, full_diagnosis_ok: ok });
+      }),
+    );
+    return reads;
+  };
+  const serveCounts = (counts: Record<string, number>) => {
+    const reads: string[] = [];
+    server.use(
+      http.get(`${BASE}/agents/:agent/inbox/count`, ({ params }) => {
+        reads.push(String(params.agent));
+        return HttpResponse.json({ unseen: counts[String(params.agent)] ?? 0 });
+      }),
+    );
+    return reads;
+  };
+  const pick = async (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(await screen.findByRole("radio", { name }));
+  const managerAnswer = (messageId: string, conv: number, text: string, extra: object[] = []) =>
+    sse([
+      start(messageId, conv),
+      { type: "start-step" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: text },
+      { type: "text-end", id: "t1" },
+      { type: "finish-step" },
+      ...extra,
+      { type: "finish", messageMetadata: { conversation_id: conv, channel: "app", kind: "chat" } },
+      "[DONE]",
+    ]);
+
+  it("three partners with the manager feature; the life manager has the compass", async () => {
+    withFeatures(["mate", "agent_notes", "manager"]);
+    serveBudget();
+    serveCounts({});
+    serveHistory();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    const manager = await screen.findByRole("radio", { name: "라이프 매니저" });
+    expect(screen.getAllByRole("radio").map((r) => r.textContent)).toEqual(["비서", "운동메이트", "라이프 매니저"]);
+    expect(manager.querySelector('use[href="#p-compass"]')).not.toBeNull();
+    await ready();
+  });
+
+  it("two partners without the manager feature", async () => {
+    withFeatures(["mate", "agent_notes"]);
+    serveCounts({});
+    serveHistory();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await screen.findByRole("radio", { name: "운동메이트" });
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.queryByRole("radio", { name: "라이프 매니저" })).toBeNull();
+  });
+
+  it("the life manager's chat: its list, head, budget line, chips and request agent", async () => {
+    withFeatures(["mate", "agent_notes", "manager"]);
+    serveCounts({});
+    const budget = serveBudget(1);
+    const seen = serveHistory({
+      manager: {
+        conversations: [{ id: 12, last_message_at: "2026-10-24T02:00:00Z" }],
+        messages: { 12: [{ id: "m-12-1", at: "2026-10-24T02:00:00Z", speaker: "manager", text: "매니저 대화" }] },
+      },
+    });
+    const bodies = serveChat(() =>
+      sseResponse(managerAnswer("m-12-3", 12, "가짜 매니저 답", [{ type: "data-expert-notes", data: { notes: [{ expert: "career", text: "가짜 소견" }] } }])),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    expect(screen.queryByText(/이번 주 제안/)).toBeNull(); // the secretary's chat has no budget line
+    await pick(user, "라이프 매니저");
+    expect(await screen.findByText("매니저 대화")).toBeInTheDocument();
+    expect(seen.agents.at(-1)).toBe("manager");
+    expect(screen.getByRole("heading", { level: 2, name: "라이프 매니저" })).toBeInTheDocument();
+    expect(await screen.findByText("이번 주 제안 1개 더 받을 수 있어요")).toBeInTheDocument();
+    expect(screen.getByText("라이프 매니저", { selector: "p" })).toBeInTheDocument(); // the head line of its answer
+    const chips = within(screen.getByRole("group", { name: copy.chat.chipsLabel })).getAllByRole("button");
+    expect(chips.map((c) => c.textContent)).toEqual(["전체 진단", "이번 주 뭐부터?", "자료 올리기"]);
+    const reads = budget.n;
+    const input = await screen.findByRole("textbox", { name: "라이프 매니저에게 보낼 말" });
+    await waitFor(() => expect(input).toBeEnabled());
+    await user.type(input, "연봉이 오르면?");
+    await user.click(screen.getByRole("button", { name: copy.chat.send }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ agent: "manager", conversation_id: 12 });
+    expect(await screen.findByText("가짜 매니저 답")).toBeInTheDocument();
+    expect(await screen.findByText("전문가 소견 1개")).toBeInTheDocument();
+    await waitFor(() => expect(budget.n).toBe(reads + 1)); // read again when the answer ends
+    // The list is the life manager's too.
+    const listed: (string | null)[] = [];
+    server.use(
+      http.get(`${BASE}/conversations`, ({ request }) => {
+        listed.push(new URL(request.url).searchParams.get("agent"));
+        return HttpResponse.json({ items: [], next_before: null });
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: copy.chat.pastConversations }));
+    await waitFor(() => expect(listed).toEqual(["manager"]));
+  });
+
+  it("the manager's unseen count is under its option", async () => {
+    withFeatures(["mate", "agent_notes", "manager"]);
+    serveBudget();
+    const reads = serveCounts({ mate: 0, manager: 2 });
+    serveHistory();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("새로 본 것 2개")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "라이프 매니저" })).toHaveAccessibleDescription("새로 본 것 2개");
+    expect(reads.sort()).toEqual(["manager", "mate"]);
+  });
+
+  it("a full diagnosis done today blocks its chip", async () => {
+    withFeatures(["manager"]);
+    serveBudget(0, false);
+    localStorage.setItem("chat.agent", "manager");
+    serveHistory({ manager: { conversations: [], messages: {} } });
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    expect(await screen.findByRole("button", { name: "오늘은 이미 했어요" })).toBeDisabled();
+    expect(screen.getByText("이번 주 제안은 다 받았어요")).toBeInTheDocument();
+  });
+
+  it("자료 올리기 opens the attach menu and sends nothing", async () => {
+    withFeatures(["manager"]);
+    serveBudget();
+    localStorage.setItem("chat.agent", "manager");
+    serveHistory({ manager: { conversations: [], messages: {} } });
+    const bodies = serveChat(() => sseResponse(managerAnswer("m-1", 1, "x")));
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await ready();
+    expect(screen.queryByRole("menu")).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "자료 올리기" }));
+    const menu = await screen.findByRole("menu", { name: copy.chat.attach });
+    expect(within(menu).getByRole("menuitem", { name: copy.photos.button })).toBeInTheDocument();
+    expect(bodies).toHaveLength(0);
+  });
+
+  it("the full diagnosis chip in a secretary answer turns the sheet to the life manager and sends its chip", async () => {
+    withFeatures(["mate", "manager"]);
+    serveBudget();
+    serveHistory({
+      conversations: [{ id: 5, last_message_at: "2026-10-24T01:00:00Z" }],
+      messages: { 5: [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "비서 대화" }] },
+      manager: { conversations: [{ id: 12, last_message_at: "2026-10-24T02:00:00Z" }], messages: { 12: [{ id: "m-12-1", at: "2026-10-24T02:00:00Z", speaker: "manager", text: "매니저 대화" }] } },
+    });
+    const bodies = serveChat(
+      () =>
+        sseResponse(
+          textAnswer("m-5-2", 5, "분기 회고를 마쳤어요", [
+            { type: "tool-input-available", toolCallId: "h_fullchip", toolName: "ui_full_diagnosis_chip", input: { period: "2026-Q3" } },
+            { type: "tool-output-available", toolCallId: "h_fullchip", output: { ok: true, data: {} } },
+          ]),
+        ),
+      () => sseResponse(managerAnswer("m-12-2", 12, "가짜 진단")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await sendText(user, "회고 끝");
+    const ask = await screen.findByRole("button", { name: "전체 진단 해 볼까요?" });
+    expect(bodies).toHaveLength(1); // the chip runs nothing by itself
+    await waitFor(() => expect(ask).toBeEnabled());
+    await user.click(ask);
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toMatchObject({ agent: "manager", chip: "manager_full", conversation_id: 12 });
+    expect(screen.getByRole("radio", { name: "라이프 매니저" })).toBeChecked();
+    expect(await screen.findByText("가짜 진단")).toBeInTheDocument();
+  });
+
+  it("a full diagnosis press whose manager history read fails is dropped: a later retry sends nothing", async () => {
+    withFeatures(["mate", "manager"]);
+    serveBudget();
+    serveHistory({
+      conversations: [{ id: 5, last_message_at: "2026-10-24T01:00:00Z" }],
+      messages: { 5: [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "비서 대화" }] },
+      manager: { conversations: [{ id: 12, last_message_at: "2026-10-24T02:00:00Z" }], messages: { 12: [{ id: "m-12-1", at: "2026-10-24T02:00:00Z", speaker: "manager", text: "매니저 대화" }] } },
+    });
+    let fail = true;
+    server.use(
+      http.get(`${BASE}/conversations`, ({ request }) =>
+        fail && new URL(request.url).searchParams.get("agent") === "manager"
+          ? HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })
+          : undefined,
+      ),
+    );
+    const bodies = serveChat(
+      () =>
+        sseResponse(
+          textAnswer("m-5-2", 5, "분기 회고를 마쳤어요", [
+            { type: "tool-input-available", toolCallId: "h_fullchip", toolName: "ui_full_diagnosis_chip", input: { period: "2026-Q3" } },
+            { type: "tool-output-available", toolCallId: "h_fullchip", output: { ok: true, data: {} } },
+          ]),
+        ),
+      () => sseResponse(managerAnswer("m-12-2", 12, "가짜 진단")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await sendText(user, "회고 끝");
+    const ask = await screen.findByRole("button", { name: "전체 진단 해 볼까요?" });
+    await waitFor(() => expect(ask).toBeEnabled());
+    await user.click(ask);
+    const retry = await screen.findByRole("button", { name: copy.errors.retry });
+    fail = false;
+    await user.click(retry);
+    expect(await screen.findByText("매니저 대화")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(bodies).toHaveLength(1); // the press is not sent long after, detached from it
+  });
+
+  it("a kept life manager pick on a BE without it is the secretary's chat", async () => {
+    withFeatures(["mate"]);
+    localStorage.setItem("chat.agent", "manager");
+    history(5, [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "비서 대화" }]);
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    expect(await screen.findByText("비서 대화")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("radio", { name: "비서" })).toBeChecked());
+  });
+});

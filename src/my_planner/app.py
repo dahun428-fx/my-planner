@@ -87,6 +87,7 @@ from my_planner.store.repos.events import EventsRepo
 from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.memos import MemosRepo
 from my_planner.store.repos.moments import MomentsRepo
+from my_planner.store.repos.panel import PanelRepo
 from my_planner.store.repos.photos import PhotosRepo
 from my_planner.store.repos.push import PushRepo
 from my_planner.store.repos.runs import RunsRepo
@@ -235,6 +236,7 @@ class BeParts:
     memos: MemosRepo | None = None  # 메모(SP9 6장)
     events: EventsRepo | None = None  # 스케줄(SP9 5장)
     agents: AgentsRepo | None = None  # 사건 기록·받은편지함·관찰(SP14 5장)
+    panel: PanelRepo | None = None  # 내가 한 말·패널 제안·예측·리포트(SP15)
 
 
 def build_be(
@@ -278,6 +280,7 @@ def build_be(
     events = EventsRepo(conn, clock, settings.timezone)
     workout = WorkoutRepo(conn, clock)
     agents = AgentsRepo(conn, clock)
+    panel = PanelRepo(conn, clock)
     if push_sender is None and settings.vapid is not None:
         push_sender = WebPushSender(settings.vapid)
     # 회차·고정 안내의 통로(7.3 D1~D8). 보내기는 `asyncio.to_thread`, 기록은 이 루프 스레드
@@ -313,6 +316,7 @@ def build_be(
         workout=workout,  # 운동메이트 도구·동작(SP12 6~8장), 메이트 앞머리(5.5)
         standing=StandingRepo(conn, clock),  # 측정값 확인 카드·저장(SP13 6.5), 영역 점수 기록의 스냅숏
         agents=agents,  # 쓰기 경로마다 사건 한 줄(SP14 5.1~5.3)
+        panel=panel,  # 라이프 매니저 읽기·패널 도구(SP15)
     )
     brain = brain_factory(tools)
     # 디스패처, 러너(계획 모드 대기, 만료된 대화 닫기), /plan /done이 같은 대화 규칙을 쓴다
@@ -383,7 +387,7 @@ def build_be(
         tools=tools, router=router, dispatcher=dispatcher, runner=runner, sender=sender, deliveries=deliveries,
         callbacks=callbacks, activity=activity, idempotency=idempotency, confirms=confirms, delivery=delivery,
         pushes=pushes, curve=curve, status=status, habits=habits, moments=moments, memos=memos, body=body,
-        events=events, agents=agents,
+        events=events, agents=agents, panel=panel,
     )
 
 

@@ -111,6 +111,20 @@ class CatchupLimitConfig(_Model):
     review_days: int = 3
 
 
+class FullDiagnosisLimits(_Model):
+    """"전체 진단"(전문가 6명이 도는 라이프 매니저 호출, SP15 6.2). 스파이크 S1에서 잰 값의 여유."""
+
+    max_turns: int = 30
+    brain_timeout_s: float = 900
+
+
+class ManagerMessageLimits(_Model):
+    """라이프 매니저의 보통 메시지(전문가 2명까지, SP15 6.2). 스파이크 S1 `full2` 판정."""
+
+    max_turns: int = 12
+    brain_timeout_s: float = 300
+
+
 class LimitsConfig(_Model):
     daily_brain_calls: int = 60
     max_turns: int = 10
@@ -129,6 +143,8 @@ class LimitsConfig(_Model):
     daily_photo_reads: int = 30  # 하루 사진 읽기 상한(SP10 5.4, `usage_state.photo_reads`)
     reply_window: ReplyWindowConfig = ReplyWindowConfig()
     catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
+    full_diagnosis: FullDiagnosisLimits = FullDiagnosisLimits()
+    manager_message: ManagerMessageLimits = ManagerMessageLimits()
 
 
 class PathsConfig(_Model):
@@ -290,6 +306,12 @@ def load_settings(root: Path) -> Settings:
         **data,
     )
     # 시작 대기가 호출 상한보다 길면 상한(error="timeout", 재시도 대상)이 먼저 터져 시작 실패를 알아보지 못한다
-    if settings.brain.start_timeout_s >= settings.limits.brain_timeout_s:
-        raise ValueError("brain.start_timeout_s는 limits.brain_timeout_s보다 작아야 한다")
+    limits = settings.limits
+    for name, timeout in (
+        ("limits.brain_timeout_s", limits.brain_timeout_s),
+        ("limits.full_diagnosis.brain_timeout_s", limits.full_diagnosis.brain_timeout_s),
+        ("limits.manager_message.brain_timeout_s", limits.manager_message.brain_timeout_s),
+    ):
+        if settings.brain.start_timeout_s >= timeout:
+            raise ValueError(f"brain.start_timeout_s는 {name}보다 작아야 한다")
     return settings
