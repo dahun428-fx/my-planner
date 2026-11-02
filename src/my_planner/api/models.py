@@ -1102,6 +1102,13 @@ class LifeReportTrack(_Model):
     end: str
 
 
+class LifeReportWeekItem(_Model):
+    """"이번 주" 제안 하나의 저장 시점 사본(제안 목록의 28일 창과 상관없이 남는다)."""
+
+    id: int
+    title: str
+
+
 class LifeReportBody(_Model):
     """저장한 리포트 JSON 그대로(`panel.report.build_report`, `version` 1)."""
 
@@ -1113,6 +1120,8 @@ class LifeReportBody(_Model):
     scenario: LifeReportScenario
     roadmap: list[LifeReportTrack]
     this_week: list[int]
+    # `this_week` 순서의 제목 사본. 이 칸이 생기기 전에 저장한 리포트에는 없다
+    this_week_items: list[LifeReportWeekItem] | None = None
     questions: list[str]
     closing: str
 

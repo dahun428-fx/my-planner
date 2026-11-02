@@ -1,7 +1,7 @@
-/* SP15 11장: the panel suggestion card and the full diagnosis chip (chat chunk; imported CSS-only in
-   _app so the CSP keeps it on client navigation). The frame is Part's; the area colour is only its
-   8px dot (DESIGN.md), the evidence a quiet fold of plain rows, not cards.
-   Three classes only: _app carries this sheet's class names, and each one costs first-load bytes. */
+/* SP15 11장: the panel suggestion card and the full diagnosis chip. Loads with the chat sheet's chunk
+   (its own stylesheet, not _app's; see the note in pages/_app.tsx). The frame is Part's; the area colour
+   is only its 8px dot (DESIGN.md), the evidence a quiet fold of plain rows, not cards.
+   Kept to three classes so the chunk stays small. */
 .panel > p[data-meta] {
   display: flex;
   align-items: center;

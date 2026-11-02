@@ -88,7 +88,7 @@ from my_planner.panel.report import (
     FULL_SAVED_REPLY,
     FullBlock,
     full_chip_due,
-    full_diagnosis_block,
+    full_diagnosis_check,
 )
 from my_planner.status.snapshot import status_snapshot
 from my_planner.status.xp import (
@@ -1640,9 +1640,7 @@ class Dispatcher:
     def _full_diagnosis_block(self) -> FullBlock | None:
         """전체 진단을 막는 이유(`day`·`week`·`calls`) 또는 None. 남은 호출은 사용자 몫(하루 마지막
         `MOMENTS_RESERVE_CALLS`회 창) 안에서 센다(스펙 6.2)."""
-        today = self._today()
-        left = self.settings.limits.daily_brain_calls - self.state.usage(today).brain_calls
-        return full_diagnosis_block(self.state, today, min(moments_job.MOMENTS_RESERVE_CALLS, left))
+        return full_diagnosis_check(self.state, self._today(), self.settings.limits.daily_brain_calls)
 
     def _full_chip(self, conv: Conversation, run_ctx: RunContext) -> str | None:
         """분기 회고 뒤 칩의 분기(`panel.report.full_chip_due`). 붙이면 그 분기 키를 적는다(한 분기 한 번)."""

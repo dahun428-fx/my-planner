@@ -1141,6 +1141,7 @@ export interface LifeReportBody {
   };
   summary: LifeReportSummary;
   this_week: number[];
+  this_week_items?: LifeReportWeekItem[] | null;
   version: 1;
 }
 /**
@@ -1200,6 +1201,16 @@ export interface LifeReportScore {
 export interface LifeReportSummary {
   line: string;
   paths: string[];
+}
+/**
+ * "이번 주" 제안 하나의 저장 시점 사본(제안 목록의 28일 창과 상관없이 남는다).
+ *
+ * This interface was referenced by `ApiModels`'s JSON-Schema
+ * via the `definition` "LifeReportWeekItem".
+ */
+export interface LifeReportWeekItem {
+  id: number;
+  title: string;
 }
 /**
  * `GET /life-reports`: 최신 먼저(SP15 10장, 비교용 목록).

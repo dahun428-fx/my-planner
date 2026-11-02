@@ -35,7 +35,7 @@ const props = { period: "2026-Q3" };
 describe("FullDiagnosisChip (SP15 10장)", () => {
   it("a press turns the sheet to the life manager with the full diagnosis chip, once", async () => {
     const seen = serve();
-    const switchAgent = vi.fn();
+    const switchAgent = vi.fn(() => true);
     const user = userEvent.setup();
     renderWithProviders(
       <FullDiagnosisChip props={props} ctx={makeCtx({ switchAgent })} />,
@@ -51,6 +51,24 @@ describe("FullDiagnosisChip (SP15 10장)", () => {
     expect(switchAgent).toHaveBeenCalledTimes(1);
     expect(switchAgent).toHaveBeenCalledWith("manager", "manager_full");
     expect(seen.chat).toBe(0); // the sheet sends it, not the card
+  });
+
+  it("a press the sheet does not take (an answer still coming) leaves the card pressable", async () => {
+    serve();
+    const switchAgent = vi.fn(() => false);
+    const user = userEvent.setup();
+    renderWithProviders(
+      <FullDiagnosisChip props={props} ctx={makeCtx({ switchAgent })} />,
+    );
+    const button = await screen.findByRole("button", {
+      name: "전체 진단 해 볼까요?",
+    });
+    await user.click(button);
+    expect(button).toBeEnabled();
+    switchAgent.mockReturnValue(true);
+    await user.click(button);
+    expect(button).toBeDisabled();
+    expect(switchAgent).toHaveBeenCalledTimes(2);
   });
 
   it("already done today: says so and cannot be pressed", async () => {

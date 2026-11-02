@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { copy } from "../src/lib/copy";
 import { copyPanel } from "../src/lib/copyPanel";
-import { managerSse, mockBe, OLD_REPORT_LINE, OWNER_STATEMENTS, PANEL_SUGGESTION, seedConn } from "./routes";
+import { managerSse, mockBe, OLD_REPORT_LINE, OWNER_STATEMENTS, PANEL_SUGGESTION, REPORT_WEEK_TITLE, seedConn } from "./routes";
 
 // SP15 11장: the life manager in the partner pick (compass), its budget line and chips, an answer with
 // a panel suggestion card and the folded expert notes, under the real CSP. The card's and the notes'
@@ -124,7 +124,7 @@ for (const scheme of ["light", "dark"] as const) {
       await expect(page.getByRole("button", { name: "2026.08.02" })).toHaveCSS("min-height", "44px");
       await expect(page.locator('li[data-axis] circle[data-cohort="national"]')).toHaveCount(6);
       await expect(page.getByRole("img", { name: T.radarLabel })).toBeVisible();
-      await expect(page.getByText(PANEL_SUGGESTION.title)).toBeVisible(); // 이번 주
+      await expect(page.getByText(REPORT_WEEK_TITLE)).toBeVisible(); // 이번 주, the titles saved with the report
       const health = page.locator('details[data-expert="health"]');
       await health.getByText(copyPanel.experts.health, { exact: true }).click();
       await expect(health.getByText(T.avoid)).toBeVisible();

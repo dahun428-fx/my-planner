@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { ApiResult } from "../api/client";
-import { getLifeReport, getLifeReports, getPanelSuggestions } from "../api/panel";
+import { getLifeReport, getLifeReports } from "../api/panel";
 import type { LifeReportBody, LifeReportOut, LifeReports } from "../api/types.gen";
 import { BlockError } from "../components/BlockError";
 import { Group } from "../components/Group";
@@ -27,12 +27,10 @@ const S = T.sections;
 const dateOf = (iso: string) => formatKst(iso, "date").replaceAll("-", ".");
 const errCode = (r: ApiResult<unknown>) => (r.kind === "error" ? r.code : r.kind);
 
-function Body({ r, titles, today }: { r: LifeReportBody; titles: ReadonlyMap<number, string>; today: string }) {
-  // "이번 주": the suggestions' titles, in the report's order; an id the BE no longer lists drops its line.
-  const week = r.this_week.flatMap((id) => {
-    const t = titles.get(id);
-    return t === undefined ? [] : [{ id, t }];
-  });
+function Body({ r, today }: { r: LifeReportBody; today: string }) {
+  // "이번 주": the suggestions' titles as saved with the report, in its order. A report saved before
+  // the titles were copied in has none: its section is left out.
+  const week = r.this_week_items ?? [];
   return (
     <>
       <Group heading={S.summary}>
@@ -110,7 +108,7 @@ function Body({ r, titles, today }: { r: LifeReportBody; titles: ReadonlyMap<num
           <ul className={styles.list}>
             {week.map((w) => (
               <li key={w.id} className={styles.row}>
-                <span className={styles.name}>{w.t}</span>
+                <span className={styles.name}>{w.title}</span>
               </li>
             ))}
           </ul>
@@ -161,7 +159,6 @@ export function LifeReport() {
   const [list, setList] = useState<ApiResult<LifeReports> | null>(null);
   const [current, setCurrent] = useState<number | null>(null);
   const [report, setReport] = useState<ApiResult<LifeReportOut> | null>(null);
-  const [titles, setTitles] = useState<ReadonlyMap<number, string> | null>(null);
 
   const readList = useCallback(() => {
     setList(null);
@@ -172,20 +169,18 @@ export function LifeReport() {
   }, []);
   useEffect(readList, [readList]);
 
+  // Latest read wins: a slower answer for a date picked before is dropped (the list marks the newer pick).
+  const reportSeq = useRef(0);
   const readReport = useCallback((id: number) => {
+    const mine = ++reportSeq.current;
     setReport(null);
-    void getLifeReport(id).then(setReport);
+    void getLifeReport(id).then((r) => {
+      if (mine === reportSeq.current) setReport(r);
+    });
   }, []);
   useEffect(() => {
     if (current !== null) readReport(current);
   }, [current, readReport]);
-
-  // The "이번 주" titles: GET /panel/suggestions once, the first time a report names any.
-  const needsTitles = report?.kind === "ok" && report.data.report.this_week.length > 0 && titles === null;
-  useEffect(() => {
-    if (!needsTitles) return;
-    void getPanelSuggestions().then((r) => setTitles(new Map(r.kind === "ok" ? r.data.items.map((s) => [s.id, s.title]) : [])));
-  }, [needsTitles]);
 
   const offline = state?.kind === "offline" || list?.kind === "offline";
   let body: ReactNode;
@@ -195,9 +190,9 @@ export function LifeReport() {
   else if (list.data.items.length === 0) body = <p className={styles.empty}>{T.empty}</p>;
   else {
     let main: ReactNode;
-    if (report === null || needsTitles) main = <Skeleton size="row" />;
+    if (report === null) main = <Skeleton size="row" />;
     else if (report.kind !== "ok") main = <Group><BlockError code={errCode(report)} onRetry={() => current !== null && readReport(current)} /></Group>;
-    else main = <Body r={report.data.report} titles={titles ?? new Map()} today={formatKst(new Date().toISOString(), "date")} />;
+    else main = <Body r={report.data.report} today={formatKst(new Date().toISOString(), "date")} />;
     body = (
       <>
         {main}

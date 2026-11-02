@@ -11,7 +11,7 @@ export const copyPanel = {
     fullDone: "오늘은 이미 했어요",
     fullAsk: "전체 진단 해 볼까요?",
   },
-  budget: (n: number) => `이번 주 제안 ${n}개 더 받을 수 있어요`,
+  budget: (n: number) => (n > 0 ? `이번 주 제안 ${n}개 더 받을 수 있어요` : "이번 주 제안은 다 받았어요"),
   expertNotes: (n: number) => `전문가 소견 ${n}개`,
   experts: {
     career: "커리어 전략가",

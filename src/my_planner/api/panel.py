@@ -25,9 +25,8 @@ from my_planner.api.models import (
 )
 from my_planner.api.standing import FORBIDDEN_MESSAGE, dashboard_device
 from my_planner.clock import logical_date, to_iso
-from my_planner.harness.moments import MOMENTS_RESERVE_CALLS
 from my_planner.panel.budget import remaining
-from my_planner.panel.report import full_diagnosis_block
+from my_planner.panel.report import full_diagnosis_check
 from my_planner.store.repos.panel import PanelRepo
 from my_planner.store.repos.state import StateRepo
 from my_planner.tools.panel import suggestion_view
@@ -75,9 +74,7 @@ def get_panel_budget(conn: sqlite3.Connection, deps: ApiDeps, request: web.Reque
     today = _today(deps)
     state = StateRepo(conn, deps.clock)
     left = remaining(PanelRepo(conn, deps.clock), state, today)
-    # 디스패처 `_full_diagnosis_block`과 같은 판정(사용자 몫 창 안의 남은 두뇌 호출)
-    calls_left = deps.settings.limits.daily_brain_calls - state.usage(today).brain_calls
-    ok = full_diagnosis_block(state, today, min(MOMENTS_RESERVE_CALLS, calls_left)) is None
+    ok = full_diagnosis_check(state, today, deps.settings.limits.daily_brain_calls) is None  # 디스패처와 같은 도우미
     return dump(PanelBudget, {"remaining": left, "full_diagnosis_ok": ok})
 
 

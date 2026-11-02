@@ -1871,7 +1871,7 @@ describe("ChatSheet life manager (SP15)", () => {
     renderWithProviders(<ChatSheet open onClose={() => {}} />);
     await ready();
     expect(await screen.findByRole("button", { name: "오늘은 이미 했어요" })).toBeDisabled();
-    expect(screen.getByText("이번 주 제안 0개 더 받을 수 있어요")).toBeInTheDocument();
+    expect(screen.getByText("이번 주 제안은 다 받았어요")).toBeInTheDocument();
   });
 
   it("자료 올리기 opens the attach menu and sends nothing", async () => {
@@ -1919,6 +1919,46 @@ describe("ChatSheet life manager (SP15)", () => {
     expect(bodies[1]).toMatchObject({ agent: "manager", chip: "manager_full", conversation_id: 12 });
     expect(screen.getByRole("radio", { name: "라이프 매니저" })).toBeChecked();
     expect(await screen.findByText("가짜 진단")).toBeInTheDocument();
+  });
+
+  it("a full diagnosis press whose manager history read fails is dropped: a later retry sends nothing", async () => {
+    withFeatures(["mate", "manager"]);
+    serveBudget();
+    serveHistory({
+      conversations: [{ id: 5, last_message_at: "2026-10-24T01:00:00Z" }],
+      messages: { 5: [{ id: "m-5-1", at: "2026-10-24T01:00:00Z", speaker: "secretary", text: "비서 대화" }] },
+      manager: { conversations: [{ id: 12, last_message_at: "2026-10-24T02:00:00Z" }], messages: { 12: [{ id: "m-12-1", at: "2026-10-24T02:00:00Z", speaker: "manager", text: "매니저 대화" }] } },
+    });
+    let fail = true;
+    server.use(
+      http.get(`${BASE}/conversations`, ({ request }) =>
+        fail && new URL(request.url).searchParams.get("agent") === "manager"
+          ? HttpResponse.json({ error: { code: "internal", message: "x" } }, { status: 500 })
+          : undefined,
+      ),
+    );
+    const bodies = serveChat(
+      () =>
+        sseResponse(
+          textAnswer("m-5-2", 5, "분기 회고를 마쳤어요", [
+            { type: "tool-input-available", toolCallId: "h_fullchip", toolName: "ui_full_diagnosis_chip", input: { period: "2026-Q3" } },
+            { type: "tool-output-available", toolCallId: "h_fullchip", output: { ok: true, data: {} } },
+          ]),
+        ),
+      () => sseResponse(managerAnswer("m-12-2", 12, "가짜 진단")),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ChatSheet open onClose={() => {}} />);
+    await sendText(user, "회고 끝");
+    const ask = await screen.findByRole("button", { name: "전체 진단 해 볼까요?" });
+    await waitFor(() => expect(ask).toBeEnabled());
+    await user.click(ask);
+    const retry = await screen.findByRole("button", { name: copy.errors.retry });
+    fail = false;
+    await user.click(retry);
+    expect(await screen.findByText("매니저 대화")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(bodies).toHaveLength(1); // the press is not sent long after, detached from it
   });
 
   it("a kept life manager pick on a BE without it is the secretary's chat", async () => {

@@ -220,6 +220,8 @@ const LIFE_REPORTS = [
   { id: 1, created_at: "2026-08-02T11:00:00Z" },
 ];
 export const OLD_REPORT_LINE = "가짜 지난 진단 한 줄이에요.";
+/** The first "이번 주" title saved with the newest report (the fixture's `this_week_items`). */
+export const REPORT_WEEK_TITLE = (fixture("life_report") as { report: { this_week_items: { title: string }[] } }).report.this_week_items[0].title;
 function lifeReport(id: number): unknown {
   const r = fixture("life_report") as { report: { summary: { line: string } } };
   if (id !== 1) return r;
@@ -228,8 +230,8 @@ function lifeReport(id: number): unknown {
 
 /** SP15 5.4: what I said (fake). */
 export const OWNER_STATEMENTS = [
-  { id: 5, kind: "decision", area: "career", text: "올해는 이직보다 지금 팀이 먼저예요", created_at: "2026-10-30T03:00:00Z" },
-  { id: 4, kind: "preference", area: null, text: "아침보다 저녁이 편해요", created_at: "2026-10-12T03:00:00Z" },
+  { id: 5, kind: "decision", area: "career", text: "가짜 결정: 올해는 이직보다 지금 팀이 먼저예요", created_at: "2026-10-30T03:00:00Z" },
+  { id: 4, kind: "preference", area: null, text: "가짜 성향: 아침보다 저녁이 편해요", created_at: "2026-10-12T03:00:00Z" },
 ];
 const ACTION_CONFIRMATIONS: Record<string, string> = { accept_suggestion: "제안을 받았어요", retire_statement: "내가 한 말을 지웠어요" };
 

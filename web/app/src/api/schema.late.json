@@ -290,6 +290,20 @@
               },
               "type": "array"
             },
+            "this_week_items": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/LifeReportWeekItem"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "version": {
               "const": 1,
               "type": "integer"
@@ -491,6 +505,22 @@
             "kpi",
             "start",
             "end"
+          ],
+          "type": "object"
+        },
+        "LifeReportWeekItem": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title"
           ],
           "type": "object"
         }

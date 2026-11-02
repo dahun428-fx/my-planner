@@ -326,3 +326,27 @@ async def test_expert_notes_skipped_when_reply_not_transcribed(tmp_path):
         text = tr.path_for(env.clock.now()).read_text(encoding="utf-8")
     assert any(c["type"] == "data-expert-notes" for c in parse_sse(raw))  # 스트림에는 그대로
     assert "전문가 [" not in text and "가짜 커리어 소견" not in text
+
+
+async def test_budget_and_dispatcher_share_full_diagnosis_check(tmp_path):
+    """`GET /panel/budget`의 `full_diagnosis_ok`와 디스패처 판정은 한 도우미(`full_diagnosis_check`)다(최종 리뷰 H1)."""
+    from my_planner.panel.report import full_diagnosis_check
+
+    day = START.date()
+    seen = []
+    async with BeEnv.start(tmp_path, start=START) as env:
+        state = env.parts.state
+        for used, days in ((0, []), (LIMITS.daily_brain_calls - 3, []), (LIMITS.daily_brain_calls - 2, []),
+                           (0, [day.isoformat()]), (0, ["2026-10-27", "2026-10-29"])):
+            state.set(FULL_DAYS_KEY, json.dumps(days))
+            env.conn.execute(
+                "INSERT INTO usage_state (date, brain_calls) VALUES (?, ?) "
+                "ON CONFLICT (date) DO UPDATE SET brain_calls = excluded.brain_calls",
+                (day.isoformat(), used),
+            )
+            env.conn.commit()
+            shared = full_diagnosis_check(state, day, LIMITS.daily_brain_calls)
+            ok = (await get_json(env, "/panel/budget"))["full_diagnosis_ok"]
+            seen.append((shared, env.parts.dispatcher._full_diagnosis_block(), ok))
+    assert seen == [(None, None, True), (None, None, True), ("calls", "calls", False), ("day", "day", False),
+                    ("week", "week", False)]

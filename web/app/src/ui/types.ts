@@ -56,8 +56,9 @@ export type PartContext = {
   /**
    * SP15 10장 ui_full_diagnosis_chip: the chat sheet turns to that partner and sends that chip (only
    * on a press). Only ChatSheet gives it; without it the card is text only (the check-in screen).
+   * False when the sheet did not take the press (an answer is still coming): the card stays pressable.
    */
-  switchAgent?(agent: Agent, chip: WireChip): void;
+  switchAgent?(agent: Agent, chip: WireChip): boolean;
 };
 
 export type PartProps<P> = { props: P; data?: PartData; ctx: PartContext };

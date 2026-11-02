@@ -1,7 +1,8 @@
 /* SP15 11장: the folded "전문가 소견 n개" line under a life manager answer. A quiet caption line in
    --muted (as DoneFold's), the notes under it as body text with the expert's name in bold. No card:
    a rule above the list keeps it part of the answer (DESIGN.md: list, not cards).
-   One class only: _app imports this sheet for the CSP, and each class name costs first-load bytes. */
+   Loads with the chat sheet's chunk (its own stylesheet, not _app's; see the note in pages/_app.tsx).
+   Kept to one class so the chunk stays small. */
 .fold {
   margin: 0;
 }

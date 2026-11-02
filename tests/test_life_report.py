@@ -250,6 +250,36 @@ async def test_report_scores_are_snapshot(tmp_path):
     assert later == saved
 
 
+async def test_report_keeps_this_week_titles(tmp_path):
+    """"이번 주" 제안 제목은 저장할 때 리포트에 복사한다(28일 창이 지나도 남는다, 최종 리뷰 2)."""
+    async with BeEnv.start(tmp_path, start=WED) as env:
+        a = _suggest(env)
+        b = _suggest(env)
+        env.conn.execute("UPDATE panel_suggestions SET title = '가짜 둘째 제안' WHERE id = ?", (b,))
+        env.conn.commit()
+        rid = env.parts.tools.save_life_report(_manager_ctx(env), report=_report([b, a]))["id"]
+        env.conn.execute("UPDATE panel_suggestions SET title = '가짜 바뀐 제목'")
+        env.conn.commit()
+        body = await get_json(env, f"/life-reports/{rid}")
+    rep = body["report"]
+    assert rep["this_week"] == [b, a]
+    assert rep["this_week_items"] == [{"id": b, "title": "가짜 둘째 제안"}, {"id": a, "title": "가짜 제안"}]
+    jsonschema.Draft202012Validator(schema_bundle()["models"]["LifeReportOut"]).validate(body)
+
+
+async def test_old_report_without_titles_still_reads(tmp_path):
+    async with BeEnv.start(tmp_path, start=WED) as env:
+        rid = env.parts.tools.save_life_report(_manager_ctx(env), report=_report())["id"]
+        (text,) = env.conn.execute("SELECT json FROM life_reports WHERE id = ?", (rid,)).fetchone()
+        old = json.loads(text)
+        old.pop("this_week_items")
+        env.conn.execute("UPDATE life_reports SET json = ? WHERE id = ?", (json.dumps(old), rid))
+        env.conn.commit()
+        body = await get_json(env, f"/life-reports/{rid}")
+    assert "this_week_items" not in body["report"]
+    jsonschema.Draft202012Validator(schema_bundle()["models"]["LifeReportOut"]).validate(body)
+
+
 # --- 분기 회고 뒤 칩 ---
 
 

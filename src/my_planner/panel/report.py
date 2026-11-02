@@ -3,7 +3,8 @@
 - 전체 진단 상한(계획 Task 12): 하루 1회, 같은 ISO 주 2회, 사용자 몫 안의 남은 두뇌 호출. 진단한 날은 `app_state`의
   `FULL_DAYS_KEY`(ISO 날짜 JSON 목록, 지난 14일만)에 둔다. 리포트를 저장한 진단만 센다: `mark_full_diagnosis`는 리포트
   저장(`tools.panel.save_life_report`)이 그 트랜잭션 안에서 부른다.
-- 리포트 검사(계획 Task 13): 두뇌가 넘긴 칸(`LifeReport`)을 검사하고 서버 칸(`scores` 사본, 추정 표시, 맺음말)을 더한다.
+- 리포트 검사(계획 Task 13): 두뇌가 넘긴 칸(`LifeReport`)을 검사하고 서버 칸(`scores` 사본, "이번 주" 제목 사본
+  `this_week_items`, 추정 표시, 맺음말)을 더한다.
 - 분기 회고 뒤 칩(10장, D3): 비서 앱 답에 "전체 진단 해 볼까요?" 칩을 한 분기 한 번 붙인다(자동 실행은 없다).
 """
 
@@ -25,6 +26,7 @@ from pydantic import (
 )
 
 from my_planner.clock import period_of, to_iso
+from my_planner.harness.moments import MOMENTS_RESERVE_CALLS
 from my_planner.panel.budget import week_key
 from my_planner.panel.evidence import PANEL_EXTRA_BANNED
 from my_planner.standing.score import AXES
@@ -81,6 +83,13 @@ def full_diagnosis_block(state: StateRepo, today: date, calls_left: int) -> Full
     if calls_left < FULL_MIN_CALLS_LEFT:
         return "calls"
     return None
+
+
+def full_diagnosis_check(state: StateRepo, today: date, daily_brain_calls: int) -> FullBlock | None:
+    """`full_diagnosis_block`을 오늘 두뇌 호출 사용량으로 판정한다. 디스패처와 `GET /panel/budget`이 함께 쓴다(둘이 어긋나면
+    앱이 켜 둔 칩을 BE가 막는다). 남은 호출은 사용자 몫(하루 마지막 `MOMENTS_RESERVE_CALLS`회 창) 안에서 센다(스펙 6.2)."""
+    left = daily_brain_calls - state.usage(today).brain_calls
+    return full_diagnosis_block(state, today, min(MOMENTS_RESERVE_CALLS, left))
 
 
 def mark_full_diagnosis(state: StateRepo, today: date) -> None:
@@ -242,10 +251,12 @@ def build_report(conn: sqlite3.Connection, clock: Clock, today: date, raw: Any) 
                 return MSG_REPORT_BANNED.format(word=word)
     week = week_key(today)
     repo = PanelRepo(conn, clock)
+    items: list[dict[str, Any]] = []
     for sid in rep.this_week:
         s = repo.suggestion(sid)
         if s is None or s.week != week:
             return MSG_REPORT_THIS_WEEK
+        items.append({"id": s.id, "title": s.title})  # 제목 사본: 제안 목록의 28일 창이 지나도 리포트에 남는다
     return {
         "version": REPORT_VERSION,
         "summary": body["summary"],
@@ -255,6 +266,7 @@ def build_report(conn: sqlite3.Connection, clock: Clock, today: date, raw: Any) 
         "scenario": {**body["scenario"], "estimate": True},
         "roadmap": body["roadmap"],
         "this_week": body["this_week"],
+        "this_week_items": items,
         "questions": body["questions"],
         "closing": PSYCH_CLOSING,
     }

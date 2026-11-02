@@ -428,6 +428,7 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     }).then((r) => {
       if (mine !== seq.current) return;
       setLoading(false);
+      if (r.kind !== "ok") pendingChip.current = null; // a press is not sent later by a retry, detached from it
       if (r.kind === "offline") return; // the last view stays, read-only (F9)
       if (r.kind === "failed") {
         setLoadError(r.code);
@@ -733,11 +734,12 @@ export function ChatSheet({ open, onClose, checkinId, conversationId, embedded =
     const c = quickChips(null, new Date(), p.agent).find((x) => x.wire === p.chip);
     if (c) send(c.text, { chip: p.chip });
   };
-  const switchAgent = (next: Agent, chip: WireChip) => {
-    if (sending.current || busy || !hasRef.current(next)) return;
+  const switchAgent = (next: Agent, chip: WireChip): boolean => {
+    if (sending.current || busy || !hasRef.current(next)) return false;
     pendingChip.current = { agent: next, chip };
     if (next !== agent) changeAgent(next);
     else flushChipRef.current();
+    return true;
   };
   // Opening reads the kept pick again (the workout screen opens the sheet on the mate). Same path as the
   // picker; while a message is still being answered the pick waits for the next opening (the partner never flips mid-answer).

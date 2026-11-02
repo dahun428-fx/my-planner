@@ -92,9 +92,9 @@
   color: var(--text-2);
 }
 
-/* The score board: a dumbbell per axis (national filled --text, peer hollow --muted). Low reliability is faded. */
-.faded .bell,
-.faded .numbers {
+/* The score board: a dumbbell per axis (national filled --text, peer hollow --muted). Low reliability fades
+   the dumbbell only: the numbers keep their text contrast (4.5:1 or more). */
+.faded .bell {
   opacity: 0.45;
 }
 .numbers {

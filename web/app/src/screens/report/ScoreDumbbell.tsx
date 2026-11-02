@@ -10,7 +10,7 @@ const W = 184;
 const xOf = (v: number) => (X0 + (Math.max(0, Math.min(100, v)) / 100) * W).toFixed(1);
 
 // The score board: per axis the national and the peer score as two dots on one line (a dumbbell), the
-// stored copy of the numbers beside the name. A low-reliability axis is faded; an estimate says so.
+// stored copy of the numbers beside the name. A low-reliability axis fades its dumbbell (not the numbers); an estimate says so.
 export function ScoreDumbbell({ scores }: { scores: Record<string, LifeReportScore> }) {
   return (
     <ul className={styles.list}>

@@ -37,8 +37,7 @@ export function FullDiagnosisChip({ ctx }: PartProps<FullDiagnosisChipProps>) {
   const done = fullOk === false;
   const press = () => {
     if (pressed || done || ctx.readOnly) return;
-    setPressed(true);
-    ctx.switchAgent?.("manager", "manager_full");
+    if (ctx.switchAgent?.("manager", "manager_full")) setPressed(true);
   };
   return (
     <button
