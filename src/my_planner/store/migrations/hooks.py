@@ -83,7 +83,8 @@ def after_017(conn: sqlite3.Connection, tz: str) -> int:
 # SP15 3장 결정의 첫 줄(024가 넣는다). Task 10과 시험이 이 이름으로 찾는다
 SEED_DECISION_KEY = "career_first"
 SEED_DECISION_TEXT = "3년 방향: 커리어 먼저, 연애 병행"
-# 고정 시각(2026-11-01 00:00 UTC): 설치 시각을 쓰면 그 뒤에 넣은 문장보다 늦게 정렬된다
+# 고정 시각(2026-11-01 00:00 UTC): 시험은 고정 NOW(2026-11-02~)에 문장을 넣으므로 seed는 그보다 일러야 한다.
+# 실제 시계를 쓰면 그 날짜가 지난 뒤 seed가 그 문장들보다 늦게 정렬돼 시험이 깨진다
 SEED_DECISION_CREATED_AT = to_iso(datetime(2026, 11, 1, tzinfo=UTC))
 
 _OLD_AGENT_CHECK = "CHECK (agent IN ('secretary', 'mate'))"
@@ -132,7 +133,7 @@ def after_024(conn: sqlite3.Connection, tz: str) -> int:
     옮긴 행 수를 돌려준다(로그에는 그 수만). `tz`는 쓰지 않는다(시각은 UTC로만 저장한다).
     """
     moved = sum(_rebuild_agent_check(conn, t) for t in _AGENT_TABLES)
-    # 시각은 고정값이다(SEED_DECISION_CREATED_AT)
+    # 이미 024가 돈 DB는 설치 시각을 그대로 가진다(훅은 다시 돌지 않는다. 동작 차이는 없다)
     conn.execute(
         "INSERT INTO owner_statements (kind, area, key, text, source_ref, created_at) "
         "VALUES ('decision', 'career', ?, ?, NULL, ?)",

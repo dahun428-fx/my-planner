@@ -907,12 +907,20 @@ def test_024_ignores_unrelated_fk_violation(tmp_path):
 
 
 def test_024_seed_decision_and_checks(tmp_path):
-    from my_planner.store.migrations.hooks import SEED_DECISION_KEY, SEED_DECISION_TEXT
+    from my_planner.store.migrations.hooks import (
+        SEED_DECISION_CREATED_AT,
+        SEED_DECISION_KEY,
+        SEED_DECISION_TEXT,
+    )
 
     conn = open_db(tmp_path / "state" / "planner.db")
     migrate(conn)
-    rows = conn.execute("SELECT kind, area, key, text, retired_at FROM owner_statements").fetchall()
-    assert [tuple(r) for r in rows] == [("decision", "career", SEED_DECISION_KEY, SEED_DECISION_TEXT, None)]
+    rows = conn.execute("SELECT kind, area, key, text, retired_at, created_at FROM owner_statements").fetchall()
+    assert [tuple(r) for r in rows] == [
+        ("decision", "career", SEED_DECISION_KEY, SEED_DECISION_TEXT, None, SEED_DECISION_CREATED_AT)
+    ]
+    # 고정 시각이어야 한다: 실제 시계면 날짜가 지나며 패널 시험의 정렬이 깨진다
+    assert SEED_DECISION_CREATED_AT == "2026-11-01T00:00:00.000000+00:00"
 
     st = "INSERT INTO owner_statements (kind, area, key, text, created_at) VALUES (?, ?, ?, ?, ?)"
     conn.execute(st, ("fact", "health", None, "가" * 200, _T1))
