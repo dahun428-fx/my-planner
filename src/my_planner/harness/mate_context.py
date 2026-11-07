@@ -2,12 +2,16 @@
 
 비서 앞머리(`context.build_preamble`) 대신 이 섹션들만 받는다. 섹션마다 줄 수 상한을 둔다: 일정 8, 몸 메모 30, 최근 기록
 14일·8개. 빈 섹션은 빼지 않고 빈 문구("기록 없음", "없음", "아직 없음")를 쓴다. `get_mate_context` 도구도 이 글을 준다.
+
+운동 흔적(`workout_traces`): 메이트 대화로 남긴 운동 기록 말고, 비서 쪽에 남은 운동의 흔적(건강 영역이거나 운동 낱말이
+든 습관 체크와 끝낸 할 일)이다. 메이트는 이것을 읽기만 한다(할 일·습관은 비서 몫). 최근 14일·10줄.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, time, timedelta, tzinfo
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, tzinfo
+from typing import TYPE_CHECKING, Literal
 
 from my_planner.clock import local, logical_date
 
@@ -15,6 +19,8 @@ if TYPE_CHECKING:
     from my_planner.store.repos.body import BodyRepo
     from my_planner.store.repos.conditions import ConditionsRepo
     from my_planner.store.repos.events import EventsRepo
+    from my_planner.store.repos.habits import HabitsRepo
+    from my_planner.store.repos.tasks import TasksRepo
     from my_planner.store.repos.workout import (
         LogItem,
         PlanItem,
@@ -27,6 +33,20 @@ BODY_NOTES_LINES = 30
 RECENT_LOG_DAYS = 14  # 오늘 포함
 RECENT_LOGS_MAX = 8
 STEPS_DAYS = 7  # 오늘 포함, 기록한 날만 평균
+TRACE_DAYS = 14  # 오늘 포함
+TRACES_MAX = 10
+TRACE_KIND_LABELS = {"habit": "습관 체크", "task": "할 일 끝냄"}
+# 건강 영역이 아니어도 제목에 이 낱말이 있으면 운동 흔적으로 본다
+WORKOUT_WORDS = (
+    "운동", "헬스", "러닝", "런닝", "달리기", "조깅", "걷기", "산책", "수영", "요가", "필라테스", "스쿼트", "자전거",
+    "사이클", "등산", "홈트", "스트레칭", "클라이밍", "크로스핏", "축구", "농구", "테니스", "배드민턴", "골프",
+    "풋살", "줄넘기", "플랭크", "푸시업", "턱걸이", "workout", "gym", "running",
+)
+# 운동을 한 일이 아닌 것(산 것, 본 것, 예약·등록한 것)과 건강 영역의 운동 아닌 습관. 이 낱말이 있으면 흔적이 아니다
+NOT_WORKOUT_WORDS = (
+    "운동화", "경기", "중계", "관람", "예약", "등록", "신청", "수리", "환불", "구매", "주문", "결제", "보기", "알아보",
+    "약", "영양제", "비타민", "물 ", "물마시", "물 마시", "수면", "잠", "병원", "진료", "치과", "검진", "체중", "식단",
+)
 
 NO_RECORD = "기록 없음"
 NO_EVENTS = "없음"
@@ -86,6 +106,52 @@ def _log_line(g: WorkoutLog) -> str:
     return f"{line} (#{g.id})"
 
 
+@dataclass(frozen=True)
+class Trace:
+    """비서 쪽에 남은 운동 흔적 하나. `ref`는 `habit:<번호>` 또는 `task:<번호>`."""
+
+    date: date
+    kind: Literal["habit", "task"]
+    title: str
+    ref: str
+
+
+def is_workout_like(title: str, area_values: tuple[str, ...]) -> bool:
+    """제목에 운동 아닌 낱말이 없고, 건강 영역이거나 제목에 운동 낱말이 있다."""
+    low = title.lower() + " "
+    if any(w in low for w in NOT_WORKOUT_WORDS):
+        return False
+    return "health" in area_values or any(w in low for w in WORKOUT_WORDS)
+
+
+def workout_traces(
+    *,
+    tasks: TasksRepo | None,
+    habits: HabitsRepo | None,
+    since: date,
+    until: date,
+    tz: str | tzinfo,
+    boundary: time,
+) -> list[Trace]:
+    """`since..until`(논리적 날짜, 양끝 포함)의 운동 흔적, 최근 날짜부터. 같은 날은 끝낸 할 일이 먼저."""
+    out: list[Trace] = []
+    if habits is not None:
+        for h, d in habits.checks_in(since, until):
+            if is_workout_like(h.title, (h.area.value,)):
+                out.append(Trace(d, "habit", h.title, f"habit:{h.id}"))
+    if tasks is not None:
+        for t in tasks.list(status="done", from_=since, to=until):
+            if t.completed_at is None or not is_workout_like(t.title, tuple(a.value for a in t.areas)):
+                continue
+            out.append(Trace(logical_date(t.completed_at, tz, boundary), "task", t.title, f"task:{t.id}"))
+    out.sort(key=lambda x: (x.date, x.kind == "task"), reverse=True)  # 안정 정렬: 같은 날·종류는 원래 순서
+    return out
+
+
+def trace_dict(x: Trace) -> dict[str, str]:
+    return {"date": x.date.isoformat(), "kind": x.kind, "title": x.title, "ref": x.ref}
+
+
 def build_mate_preamble(
     *,
     now: datetime,
@@ -95,6 +161,8 @@ def build_mate_preamble(
     body: BodyRepo | None,
     events: EventsRepo | None,
     workout: WorkoutRepo | None,
+    tasks: TasksRepo | None = None,
+    habits: HabitsRepo | None = None,
 ) -> str:
     """스펙 5.5 형식 그대로. 저장소가 없으면 그 섹션은 빈 문구다."""
     today = logical_date(now, tz, boundary)
@@ -145,5 +213,16 @@ def build_mate_preamble(
     sections.append(
         f"## 최근 기록 ({RECENT_LOG_DAYS}일, 최대 {RECENT_LOGS_MAX}개)\n"
         + ("\n".join(_log_line(g) for g in logs) or NOT_YET)
+    )
+
+    traces = workout_traces(
+        tasks=tasks, habits=habits, since=today - timedelta(days=TRACE_DAYS - 1), until=today, tz=tz, boundary=boundary,
+    )[:TRACES_MAX]
+    sections.append(
+        f"## 비서 쪽 운동 흔적 ({TRACE_DAYS}일, 최대 {TRACES_MAX}개)\n"
+        + ("\n".join(
+            f"- {x.date:%m-%d} ({WEEKDAY[x.date.weekday()]}) {TRACE_KIND_LABELS[x.kind]}: {x.title} ({x.ref})"
+            for x in traces
+        ) or NO_EVENTS)
     )
     return "\n\n".join(sections)

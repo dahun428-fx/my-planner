@@ -2471,6 +2471,7 @@ class Dispatcher:
             now=now, tz=self.settings.timezone, boundary=self.settings.day_boundary,
             conditions=self.tools.conditions, body=getattr(self.tools, "body", None),
             events=getattr(self.tools, "events", None), workout=getattr(self.tools, "workout", None),
+            tasks=self.tools.tasks, habits=getattr(self.tools, "habits", None),
         )
 
     def _manager_preamble(self, now: datetime) -> str:
