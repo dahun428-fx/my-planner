@@ -474,7 +474,9 @@ def _traces_seed(env):
     env.tasks.set_status(run.id, "done")  # 오늘 끝냄
     mail = env.tasks.create("메일 보내기", ["career"])
     env.tasks.set_status(mail.id, "done")
-    env.tasks.create("수영 등록", ["health"])  # 아직 안 끝냄
+    env.tasks.create("수영 하기", ["health"])  # 아직 안 끝냄
+    for title, areas in (("운동화 사기", ["quality_of_life"]), ("영양제 먹기", ["health"]), ("헬스장 등록", ["health"])):
+        env.tasks.set_status(env.tasks.create(title, areas).id, "done")  # 운동 아닌 일
     return gym, walk, run
 
 
@@ -506,3 +508,25 @@ def test_traces_skip_deleted_habits(env):
     gym, _walk, _run = _traces_seed(env)
     env.conn.execute("UPDATE habits SET deleted_at = '2026-10-31T00:00:00+00:00' WHERE id = ?", (gym.id,))
     assert all(x["title"] != "헬스" for x in env.tools.list_workouts(env.mate())["traces"])
+
+
+def test_traces_same_day_task_first_and_logical_date(env):
+    """같은 날은 할 일 → 습관. 03:30에 끝낸 할 일은 전날(논리적 날짜)이다."""
+    gym = env.habits.add("헬스", "health", "weekly", 3, env.clock.now())
+    env.habits.check(gym.id, env.tools.today(), env.clock.now())
+    env.clock.set(kst(2026, 11, 1, 3, 30))  # 논리적 날짜는 아직 10-31
+    late = env.tasks.create("밤 산책", ["quality_of_life"])
+    env.tasks.set_status(late.id, "done")
+    assert [x["ref"] for x in env.tools.list_workouts(env.mate(), days=1)["traces"]] == [
+        f"task:{late.id}", f"habit:{gym.id}",
+    ]
+    env.clock.set(kst(2026, 11, 1, 10, 0))
+    assert env.tools.list_workouts(env.mate(), days=1)["traces"] == []
+
+
+def test_is_workout_like_words():
+    from my_planner.harness.mate_context import is_workout_like
+
+    assert is_workout_like("Gym 가기", ("career",)) and is_workout_like("하체", ("health",))
+    for title in ("운동화 사기", "축구 경기 보기", "자전거 수리", "약 먹기", "물 2L", "병원 예약"):
+        assert not is_workout_like(title, ("health",)), title

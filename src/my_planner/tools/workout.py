@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from my_planner.clock import Clock
     from my_planner.store.repos.activity import ConfirmsRepo
+    from my_planner.store.repos.habits import HabitsRepo
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.store.repos.workout import BodyNote, Plan, WorkoutLog, WorkoutRepo
     from my_planner.tools.core import Tools
@@ -280,6 +281,7 @@ class WorkoutTools:
 
     if TYPE_CHECKING:
         tasks: TasksRepo
+        habits: HabitsRepo | None
         status: Any
         clock: Clock
         tz: Any
@@ -362,7 +364,7 @@ class WorkoutTools:
             tasks=self.tasks, habits=self.habits, since=since, until=today, tz=self.tz, boundary=self.boundary,
         )
         if q is not None:
-            traces = [x for x in traces if q in x.title]
+            traces = [x for x in traces if q.lower() in x.title.lower()]
         traces = traces[:LIST_TRACES_MAX]
         log.info("workouts_listed", extra={"count": len(logs), "traces": len(traces)})
         return {"logs": [log_dict(g) for g in logs], "traces": [trace_dict(x) for x in traces]}

@@ -42,6 +42,11 @@ WORKOUT_WORDS = (
     "사이클", "등산", "홈트", "스트레칭", "클라이밍", "크로스핏", "축구", "농구", "테니스", "배드민턴", "골프",
     "풋살", "줄넘기", "플랭크", "푸시업", "턱걸이", "workout", "gym", "running",
 )
+# 운동을 한 일이 아닌 것(산 것, 본 것, 예약·등록한 것)과 건강 영역의 운동 아닌 습관. 이 낱말이 있으면 흔적이 아니다
+NOT_WORKOUT_WORDS = (
+    "운동화", "경기", "중계", "관람", "예약", "등록", "신청", "수리", "환불", "구매", "주문", "결제", "보기", "알아보",
+    "약", "영양제", "비타민", "물 ", "물마시", "물 마시", "수면", "잠", "병원", "진료", "치과", "검진", "체중", "식단",
+)
 
 NO_RECORD = "기록 없음"
 NO_EVENTS = "없음"
@@ -112,11 +117,11 @@ class Trace:
 
 
 def is_workout_like(title: str, area_values: tuple[str, ...]) -> bool:
-    """건강 영역이거나 제목에 운동 낱말이 있다."""
-    if "health" in area_values:
-        return True
-    low = title.lower()
-    return any(w in low for w in WORKOUT_WORDS)
+    """제목에 운동 아닌 낱말이 없고, 건강 영역이거나 제목에 운동 낱말이 있다."""
+    low = title.lower() + " "
+    if any(w in low for w in NOT_WORKOUT_WORDS):
+        return False
+    return "health" in area_values or any(w in low for w in WORKOUT_WORDS)
 
 
 def workout_traces(
@@ -128,7 +133,7 @@ def workout_traces(
     tz: str | tzinfo,
     boundary: time,
 ) -> list[Trace]:
-    """`since..until`(논리적 날짜, 양끝 포함)의 운동 흔적, 최근 날짜부터. 같은 날은 습관 체크가 먼저."""
+    """`since..until`(논리적 날짜, 양끝 포함)의 운동 흔적, 최근 날짜부터. 같은 날은 끝낸 할 일이 먼저."""
     out: list[Trace] = []
     if habits is not None:
         for h, d in habits.checks_in(since, until):
@@ -139,7 +144,7 @@ def workout_traces(
             if t.completed_at is None or not is_workout_like(t.title, tuple(a.value for a in t.areas)):
                 continue
             out.append(Trace(logical_date(t.completed_at, tz, boundary), "task", t.title, f"task:{t.id}"))
-    out.sort(key=lambda x: (x.date, x.kind == "habit"), reverse=True)  # 안정 정렬: 같은 날·종류는 원래 순서
+    out.sort(key=lambda x: (x.date, x.kind == "task"), reverse=True)  # 안정 정렬: 같은 날·종류는 원래 순서
     return out
 
 
