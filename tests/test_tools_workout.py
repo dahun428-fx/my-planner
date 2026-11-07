@@ -15,6 +15,7 @@ from my_planner.store.repos.body import BodyDay, BodyRepo
 from my_planner.store.repos.conditions import ConditionsRepo
 from my_planner.store.repos.conversations import ConversationsRepo
 from my_planner.store.repos.events import EventsRepo
+from my_planner.store.repos.habits import HabitsRepo
 from my_planner.store.repos.status import StatusRepo
 from my_planner.store.repos.tasks import TasksRepo
 from my_planner.store.repos.workout import WorkoutRepo
@@ -41,8 +42,10 @@ class WorkoutEnv:
         self.body = BodyRepo(conn, self.clock)
         self.events = EventsRepo(conn, self.clock, TZ)
         self.convs = ConversationsRepo(conn, self.clock)
+        self.tasks = TasksRepo(conn, self.clock, tz=TZ, boundary=BOUNDARY)
+        self.habits = HabitsRepo(conn, self.clock)
         self.tools = Tools(
-            tasks=TasksRepo(conn, self.clock, tz=TZ, boundary=BOUNDARY),
+            tasks=self.tasks, habits=self.habits,
             transcripts=TranscriptStore(tmp_path / "data", TZ, BOUNDARY),
             export_path=tmp_path / "data" / "exports" / "tasks.md", clock=self.clock, tz=TZ, boundary=BOUNDARY,
             conditions=self.conditions, activity=self.activity, confirms=self.confirms, status=self.status,
@@ -383,7 +386,7 @@ def test_find_conversations_scoped_by_agent(env):
 def _preamble(env):
     return build_mate_preamble(
         now=env.clock.now(), tz=TZ, boundary=BOUNDARY, conditions=env.conditions, body=env.body,
-        events=env.events, workout=env.workout,
+        events=env.events, workout=env.workout, tasks=env.tasks, habits=env.habits,
     )
 
 
@@ -401,6 +404,7 @@ def test_mate_preamble_sections(env):
     assert _section(empty, "몸 메모") == "아직 없음"
     assert _section(empty, "지금 플랜") == "아직 없음"
     assert _section(empty, "최근 기록 (14일, 최대 8개)") == "아직 없음"
+    assert _section(empty, "비서 쪽 운동 흔적 (14일, 최대 10개)") == "없음"
     assert env.tools.get_mate_context(env.mate()) == {"text": empty}
 
     env.conditions.upsert(env.tools.today(), 3, None)
@@ -450,3 +454,55 @@ def test_update_log_date_grants_xp_for_new_day(env):
     assert len(env.ledger()) == 2  # 이미 있는 날은 겹쳐 주지 않는다
     assert "error" not in env.tools.update_workout_log(env.mate(), id=other, note="좋았어요")
     assert len(env.ledger()) == 2
+
+
+# --- 비서 쪽 운동 흔적 ---
+
+
+def _traces_seed(env):
+    """건강 습관 체크 2번, 운동 낱말 습관(다른 영역) 1번, 운동과 무관한 습관·할 일, 끝낸 운동 할 일 1개."""
+    now = env.clock.now()
+    gym = env.habits.add("헬스", "health", "weekly", 3, now)
+    walk = env.habits.add("저녁 산책", "quality_of_life", "daily", None, now)
+    read = env.habits.add("책 읽기", "learning", "daily", None, now)
+    today = env.tools.today()
+    env.habits.check(gym.id, today - timedelta(days=1), now)
+    env.habits.check(gym.id, today - timedelta(days=20), now)  # 14일 밖
+    env.habits.check(walk.id, today - timedelta(days=2), now)
+    env.habits.check(read.id, today - timedelta(days=1), now)
+    run = env.tasks.create("러닝 5km", ["quality_of_life"])
+    env.tasks.set_status(run.id, "done")  # 오늘 끝냄
+    mail = env.tasks.create("메일 보내기", ["career"])
+    env.tasks.set_status(mail.id, "done")
+    env.tasks.create("수영 등록", ["health"])  # 아직 안 끝냄
+    return gym, walk, run
+
+
+def test_mate_preamble_shows_secretary_traces(env):
+    gym, walk, run = _traces_seed(env)
+    lines = _section(_preamble(env), "비서 쪽 운동 흔적 (14일, 최대 10개)").splitlines()
+    assert lines == [
+        f"- 10-31 (토) 할 일 끝냄: 러닝 5km (task:{run.id})",
+        f"- 10-30 (금) 습관 체크: 헬스 (habit:{gym.id})",
+        f"- 10-29 (목) 습관 체크: 저녁 산책 (habit:{walk.id})",
+    ]
+    assert env.tools.get_mate_context(env.mate())["text"] == _preamble(env)
+
+
+def test_list_workouts_returns_traces(env):
+    gym, walk, run = _traces_seed(env)
+    out = env.tools.list_workouts(env.mate(), days=14)
+    assert out["logs"] == []
+    assert [x["ref"] for x in out["traces"]] == [f"task:{run.id}", f"habit:{gym.id}", f"habit:{walk.id}"]
+    assert out["traces"][1] == {"date": "2026-10-30", "kind": "habit", "title": "헬스", "ref": f"habit:{gym.id}"}
+    assert len(env.tools.list_workouts(env.mate(), days=28)["traces"]) == 4  # 20일 전 헬스 체크까지
+    assert [x["title"] for x in env.tools.list_workouts(env.mate(), name="헬스")["traces"]] == ["헬스", "헬스"]
+    assert env.tools.list_workouts(env.mate(), days=1)["traces"] == [
+        {"date": "2026-10-31", "kind": "task", "title": "러닝 5km", "ref": f"task:{run.id}"}
+    ]
+
+
+def test_traces_skip_deleted_habits(env):
+    gym, _walk, _run = _traces_seed(env)
+    env.conn.execute("UPDATE habits SET deleted_at = '2026-10-31T00:00:00+00:00' WHERE id = ?", (gym.id,))
+    assert all(x["title"] != "헬스" for x in env.tools.list_workouts(env.mate())["traces"])
