@@ -100,7 +100,7 @@ CREATE INDEX idx_health_workouts_start ON health_workouts (activity, start_at);
 CREATE TABLE health_sync (
     id              INTEGER PRIMARY KEY CHECK (id = 1),   -- 한 줄뿐
     last_import_at   TEXT NULL,               -- 마지막 이력 가져오기를 끝낸 시각(UTC)
-    exported_on      TEXT NULL,               -- 가져온 파일 중 가장 늦은 <ExportDate>의 한국 달력 날짜("어디까지 가져왔나")
+    exported_on      TEXT NULL,               -- 가져온 파일 중 가장 늦은 <ExportDate>의 논리적 날짜(04:00 경계, "어디까지 가져왔나"). 그날 당일은 내보낸 시각까지만 있다
     last_workout_date TEXT NULL,              -- 지금까지 가져온 가장 최근 운동의 논리적 날짜(다음 가져오기 범위의 기준)
     activity_map_version INTEGER NOT NULL DEFAULT 0   -- 부록 B 매핑 버전(6.4)
 );
@@ -194,7 +194,7 @@ README "애플 건강앱" 절에 위 두 단계와 "얼마나 자주: 메이트�
 
 - "지난 운동을 물으면 앞머리만 보고 답하지 않고 `list_workouts`를 부릅니다. 물은 기간을 덮도록 `days`를 정합니다(지난달 → 62, 올해 → 오늘까지 날 수)."
 - "찾아본 기간에 운동 기록, 비서 쪽 운동 흔적, 건강앱 운동이 모두 없을 때만 기록이 없다고 말합니다. 앞머리에 '건강앱: 아직 가져온 적 없음'이 있으면 '건강앱 기록을 가져오면 워치 운동도 볼 수 있어요. 방법은 README의 애플 건강앱 절에 있어요.'를 한 번 덧붙입니다."
-- "건강앱 운동은 마지막으로 가져온 날까지만 있습니다. 그 뒤 날짜를 물었는데 기록이 없으면 '건강앱은 {MM-DD}까지 가져와 있어요'라고 말하고, 운동을 안 했다고 말하지 않습니다. 가져오라고 재촉하지 않습니다."
+- "건강앱 운동은 마지막으로 가져온 날까지만 있습니다. 그 날짜 당일과 그 뒤를 물었는데 기록이 없으면 '건강앱은 {MM-DD}까지 가져와 있어요'라고 말하고, 운동을 안 했다고 말하지 않습니다(그날 당일도 내보낸 뒤에 한 운동은 없을 수 있습니다). 가져오라고 재촉하지 않습니다."
 - "건강앱 운동에는 세트·무게가 없습니다. 같은 날 운동 기록과 건강앱 운동이 둘 다 있으면 같은 운동일 수 있으니 따로 세지 않습니다."
 - "건강앱 운동이 있어도 운동 기록을 대신 만들지 않습니다. 운동 기록은 지금처럼 Dahun이 말할 때만 남깁니다."
 - 금지어·숫자 규칙(SP12 9.4)은 그대로: 운동한 횟수를 셀 수는 있지만 빠진 날 수·연속·비율은 말하지 않는다. "지난달 몇 번 했어?"에는 날 수로 답한다.
@@ -203,8 +203,8 @@ README "애플 건강앱" 절에 위 두 단계와 "얼마나 자주: 메이트�
 
 - **운동한 날**: "운동 기록 **또는** 숨기지 않은 건강앱 운동이 있는 날"로 넓힌다. 지금 운동한 날을 따로 세는 곳이 셋이라, 한 함수 `exercise_days(conn, since, until) -> set[date]`(`store/repos/health.py`, 두 표 UNION)로 모으고 셋 다 이것을 쓴다:
   - `store/repos/status.py`의 운동한 날 쿼리(건강 활동 보너스 0.5, `ActivityCounts.workout_days`). 93행 docstring "log_days와 같은 질의"도 고친다.
-  - `panel/pace.py`(내 속도 표, 지금 `WorkoutRepo.log_days`).
-  - `standing/service.py:with_derived`의 `exercise_days_week`(지금 운동 기록으로 자동 계산한다. 건강앱 운동이 더 정확한 근거라 함께 센다).
+  - `panel/pace.py`(내 속도 표, 지금 `WorkoutRepo.log_days`). 건강 습관 체크를 함께 세는 지금 합침은 그대로 둔다.
+  - `standing/service.py:with_derived`의 `exercise_days_week`(지금 운동 기록으로 자동 계산한다. 건강앱 운동이 더 정확한 근거라 함께 센다). SP13 스펙의 `exercise_days_week` 정의("운동 기록으로 계산")를 이 문서가 바꾼다: SP13 변경 기록에 한 줄 더한다(SP16-03).
 - **건강 활동 보너스**: SP12 10장의 "운동 기록이 있는 날 0.5"가 위 "운동한 날"로 바뀐다. 같은 날 둘 다면 0.5 한 번.
 - **경험치 X13**: 운동 기록과 **같은 원장 키**를 쓴다: `source_kind = 'workout_log'`, `source_ref = 'workout_day:<date>'`, `logical_date` = 운동의 `date`, `area = 'health'`, `label` "운동 기록". 그래서 원장 표를 옮기는 마이그레이션이 필요 없고, 운동 기록과 건강앱 운동이 같은 날 있어도 하루 하나뿐이다.
 - X13은 **가져오기를 돌린 순간의 논리적 날짜 기준 지난 7일 안**(`date >= 오늘 − 6`)인 숨기지 않은 운동만 만든다. 그보다 옛 운동은 만들지 않는다. 까닭: 첫 가져오기로 몇 년치를 넣는 순간 경험치가 한꺼번에 쌓이면 "XP는 한 일에서만 오른다"는 감각이 깨진다(ADR 0006의 정신). 같은 날 X13이 이미 있으면 원장 UNIQUE가 막는다. 주말에 한 번 가져오면 그 주 운동한 날마다 5가 그때 쌓인다(SP7 지난 날 체크처럼 `logical_date`는 운동 날짜).
@@ -318,4 +318,4 @@ README "애플 건강앱" 절에 위 두 단계와 "얼마나 자주: 메이트�
 - v0.2 (2026-11-07): doc-reviewer 1차. 측정값 열쇠 (metric, source_ref)와 `source_kind='shortcut'`(has_import 충돌 피함), 지운 측정값 안 되살림. 2MB 본문은 스트림 읽기·미들웨어 갈래. 인증 `PHONE_PATHS`, `X-Body-Token` 비교·실패 세기, 등록 조건. 토큰 새었을 때 경험치 대가. X13 원장 키 명시와 `xp_eligible`. 같은 운동은 ±60초·±1분 범위로 찾기, 분 버림, 매핑 버전 다시 나누기(6.4). `list_workouts` 스키마 바꿀 곳. `--with-weight`, 종료 코드 5. hr CHECK. 사건·`exercise_days_week`는 v1 아님.
 - v0.3 (2026-11-07): develop에 들어온 #244(비서 쪽 운동 흔적)를 3장·9장에 반영. 건강앱 운동은 흔적과 따로 두고 `list_workouts`에 나란히.
 - v0.4 (2026-11-07): Dahun Q1 "과거 이력 가져오기만". 7장 매일 받기(새 경로, `BODY_TOKEN` 넓힘, 걸음·잠·몸무게)를 뺐다. 다시 가져오기 흐름(범위, `last_workout_date`, 노트북 스크립트 8.3), 메이트의 "어디까지 가져왔나" 말하기, 경험치는 가져온 날 기준 7일 안, 내보내기 파일 취급. `external_id`·`source`·`xp_eligible` 칸 뺌. 15장 다시 정리.
-- v0.5 (2026-11-07): v0.4 리뷰. 스크립트가 두 작업을 끄고(Disable) medic 자식까지 끝낸 뒤 가져오고 finally에서 켬, 작업 이름 매개변수, 코드 3 재시도, 정적 검사 테스트. "어디까지"는 `<ExportDate>`(`exported_on`), 날짜는 늦은 쪽만. 종료 코드 6으로 합침. 숨기기 되돌리기는 기존 undo. 운동한 날 세는 세 곳을 `exercise_days` 하나로. 앞머리 줄 위치·표기 통일.
+- v0.5 (2026-11-07): v0.4 리뷰. (재확인 반영: `exported_on`은 논리적 날짜, 당일도 내보낸 뒤는 없을 수 있음, SP13 정의 바꿈 명시, 용어 "마지막으로 내보낸 파일".) 스크립트가 두 작업을 끄고(Disable) medic 자식까지 끝낸 뒤 가져오고 finally에서 켬, 작업 이름 매개변수, 코드 3 재시도, 정적 검사 테스트. "어디까지"는 `<ExportDate>`(`exported_on`), 날짜는 늦은 쪽만. 종료 코드 6으로 합침. 숨기기 되돌리기는 기존 undo. 운동한 날 세는 세 곳을 `exercise_days` 하나로. 앞머리 줄 위치·표기 통일.
