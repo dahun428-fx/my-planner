@@ -148,11 +148,12 @@ Dahun Q1로 v1에서 뺐다. 걸음·잠은 지금처럼 SP8 단축어(`POST /bo
 
 ### 8.2 읽는 방법
 
-- zip 안의 `export.xml`을 **스트리밍으로** 읽는다(`zipfile` + `xml.etree.ElementTree.iterparse`, 끝난 요소는 `clear()`). 파일 전체를 메모리에 올리지 않는다. 노트북 RAM이 빠듯하다(채팅 지연 진단, 2026-10-28).
+- 어느 파일인가: 한국어 아이폰은 `apple_health_export/내보내기.xml`(그리고 `내보내기_cda.xml`), 영어는 `export.xml`(`export_cda.xml`)로 만든다. zip 안에서 이름이 `export.xml` 또는 `내보내기.xml`로 끝나는 항목을 고르고 `_cda`가 든 것은 뺀다. `.xml`을 바로 주면 그 파일을 쓴다. 뿌리 요소가 `HealthData`인지로 마지막 확인을 한다.
+- 고른 XML을 **스트리밍으로** 읽는다(`zipfile` + `xml.etree.ElementTree.iterparse`, 끝난 요소는 `clear()`). 파일 전체를 메모리에 올리지 않는다. 노트북 RAM이 빠듯하다(채팅 지연 진단, 2026-10-28).
 - `<Workout>` 요소만 운동으로 읽는다: `workoutActivityType`(→ 부록 B), `startDate`, `endDate`, `duration`+`durationUnit`, 자식 `<WorkoutStatistics type="HKQuantityTypeIdentifierActiveEnergyBurned" sum=…>`, `…DistanceWalkingRunning|DistanceCycling|DistanceSwimming sum=…`, `…HeartRate average=… maximum=…`, `<MetadataEntry key="HKIndoorWorkout" value="1">`. 옛 형식의 `totalEnergyBurned`, `totalDistance` 속성도 읽는다. 단위는 `unit`/`…Unit` 속성으로 바꾼다: 거리 `mi` → km(× 1.609344), `m` → km, 칼로리 `kJ`/`Cal` → kcal(`kJ` ÷ 4.184, `Cal` = kcal), 시간 `min`/`hr`/`s`. 모르는 단위면 그 값만 `null`. 6.1 범위를 벗어나거나 시작 ≥ 끝, 미래 운동은 그 운동만 건너뛰고 `건너뜀`에 센다.
 - `<WorkoutRoute>`, `<Record>`(걸음·심박·몸무게 원시값)는 읽지 않고 건너뛴다.
 - 저장은 6.2 규칙 그대로, 1,000개마다 한 트랜잭션. 경험치 원장(10장)도 같은 트랜잭션에서 쓴다.
-- 종료 코드 6(형식 아님) 판단: zip 안에 `export.xml`이 없거나, 뿌리 요소가 `HealthData`가 아니면.
+- 종료 코드 6(형식 아님) 판단: zip 안에 위 이름의 XML이 없거나, 뿌리 요소가 `HealthData`가 아니면.
 
 ### 8.3 노트북 스크립트 `scripts/health_import.ps1`
 
