@@ -18,7 +18,11 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
 from my_planner.domain import EventKind, InboxAgent, RunContext, ToolEvent
-from my_planner.harness.mate_context import build_mate_preamble
+from my_planner.harness.mate_context import (
+    build_mate_preamble,
+    trace_dict,
+    workout_traces,
+)
 from my_planner.harness.redact import redact
 from my_planner.status.xp import LABEL_WORKOUT_LOG, XP_WORKOUT_LOG
 from my_planner.store.db import transaction
@@ -32,6 +36,7 @@ if TYPE_CHECKING:
 
     from my_planner.clock import Clock
     from my_planner.store.repos.activity import ConfirmsRepo
+    from my_planner.store.repos.habits import HabitsRepo
     from my_planner.store.repos.tasks import TasksRepo
     from my_planner.store.repos.workout import BodyNote, Plan, WorkoutLog, WorkoutRepo
     from my_planner.tools.core import Tools
@@ -46,6 +51,7 @@ LOG_ITEMS_MAX = 20
 LOG_BACKDATE_DAYS = 6  # 오늘에서 뺄 수 있는 최대 날 수(오늘 포함 7일, 8.2)
 LIST_DAYS_MAX = 180
 LIST_DAYS_DEFAULT = 28
+LIST_TRACES_MAX = 60
 
 BODY_KINDS = ("equipment", "injury", "preference", "availability", "other")
 NOTE_TEXT_MAX = 120
@@ -275,6 +281,7 @@ class WorkoutTools:
 
     if TYPE_CHECKING:
         tasks: TasksRepo
+        habits: HabitsRepo | None
         status: Any
         clock: Clock
         tz: Any
@@ -331,13 +338,15 @@ class WorkoutTools:
         """앞머리(5.5)와 같은 글을 지금 값으로."""
         text = build_mate_preamble(
             now=self.clock.now(), tz=self.tz, boundary=self.boundary, conditions=self.conditions,
-            body=self.body, events=self.events, workout=self.workout,
+            body=self.body, events=self.events, workout=self.workout, tasks=self.tasks, habits=self.habits,
         )
         return {"text": text}
 
     @_tool
     def list_workouts(self, ctx: RunContext, days: Any = LIST_DAYS_DEFAULT, name: Any = None) -> dict[str, Any]:
-        """오늘 포함 `days`일(기본 28, 최대 180)의 지우지 않은 기록, 최근 것부터. `name`은 운동 이름 부분 일치."""
+        """오늘 포함 `days`일(기본 28, 최대 180)의 지우지 않은 기록, 최근 것부터. `name`은 운동 이름 부분 일치.
+
+        `traces`는 같은 기간의 비서 쪽 운동 흔적(습관 체크·끝낸 할 일, 최대 60개). `name`이 있으면 제목 부분 일치로 거른다."""
         if self.workout is None:
             return _err(MSG_NO_WORKOUT)
         n = LIST_DAYS_DEFAULT if days is None else days
@@ -349,9 +358,16 @@ class WorkoutTools:
             if q is None:
                 return _err(MSG_NAME)
         today = self.today()
-        logs = self.workout.logs(today - timedelta(days=n - 1), today, name=q)
-        log.info("workouts_listed", extra={"count": len(logs)})
-        return {"logs": [log_dict(g) for g in logs]}
+        since = today - timedelta(days=n - 1)
+        logs = self.workout.logs(since, today, name=q)
+        traces = workout_traces(
+            tasks=self.tasks, habits=self.habits, since=since, until=today, tz=self.tz, boundary=self.boundary,
+        )
+        if q is not None:
+            traces = [x for x in traces if q.lower() in x.title.lower()]
+        traces = traces[:LIST_TRACES_MAX]
+        log.info("workouts_listed", extra={"count": len(logs), "traces": len(traces)})
+        return {"logs": [log_dict(g) for g in logs], "traces": [trace_dict(x) for x in traces]}
 
     # --- 몸 메모 (6장) ---
 

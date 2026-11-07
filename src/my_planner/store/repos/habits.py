@@ -102,6 +102,15 @@ class HabitsRepo:
         ).fetchall()
         return [date.fromisoformat(r["date"]) for r in rows]
 
+    def checks_in(self, from_: date, to: date) -> list[tuple[Habit, date]]:
+        """`from_..to`(양끝 포함)의 모든 체크와 그 습관(지운 습관은 뺀다), 최근 날짜부터."""
+        rows = self.conn.execute(
+            "SELECT h.*, c.date AS check_date FROM habit_checks c JOIN habits h ON h.id = c.habit_id "
+            "WHERE h.deleted_at IS NULL AND c.date >= ? AND c.date <= ? ORDER BY c.date DESC, h.sort_order, h.id",
+            (from_.isoformat(), to.isoformat()),
+        ).fetchall()
+        return [(_habit(r), date.fromisoformat(r["check_date"])) for r in rows]
+
     # --- 쓰기 ---
 
     def add(self, title: str, area: Area | str, kind: str, target: int | None, now: datetime) -> Habit:
