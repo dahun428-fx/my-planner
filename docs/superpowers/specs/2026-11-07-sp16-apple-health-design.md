@@ -159,7 +159,7 @@ Dahun Q1로 v1에서 뺐다. 걸음·잠은 지금처럼 SP8 단축어(`POST /bo
 
 가끔 다시 가져올 때 Dahun이 하는 일을 "파일 넣고 스크립트 두 번 누르기"로 줄인다.
 
-1. 아이폰 건강앱 › 오른쪽 위 프로필 › "모든 건강 데이터 내보내기" → 만들어진 `export.zip`을 노트북으로 옮긴다(AirDrop이 없으니 iCloud Drive나 USB 케이블). 노트북의 `data\import\`에 둔다.
+1. 아이폰 건강앱 › 오른쪽 위 프로필 › "모든 건강 데이터 내보내기" → 만들어진 zip(영어 `export.zip`, 한국어 `내보내기.zip`일 수 있음)을 노트북으로 옮긴다(AirDrop이 없으니 iCloud Drive나 USB 케이블). 노트북의 `data\import\`에 둔다.
 2. `scripts\health_import.ps1`을 돌린다. 스크립트는(매개변수 `-TaskName`(기본 `my-planner`), `-MedicTaskName`(기본 `my-planner-medic`): 개발 체크아웃은 `-dev` 이름을 넘긴다):
    1. `data\import\`에서 `*.zip` 중 가장 최근(수정 시각) 것을 고른다(한국어 아이폰은 `내보내기.zip`일 수 있다). 없으면 안내하고 끝(작업을 건드리지 않는다).
    2. 두 작업 모두 `Disable-ScheduledTask` 뒤 `Stop-ScheduledTask`. 두 작업에 5분 반복 트리거가 있어 끄지 않으면 가져오는 동안 다시 뜬다(README seed-life 절, medic `DISABLE_STOP`과 같은 관례). 작업을 멈춰도 남는 medic 자식 python은 `register_task.ps1`의 `Stop-MedicProcesses`와 같은 방법으로 끝낸다(공통 함수는 `task_common.ps1`로 옮겨 함께 쓴다).
@@ -242,7 +242,7 @@ README "애플 건강앱" 절에 위 두 단계와 "얼마나 자주: 메이트�
 | 이력 | `python -m pytest tests/test_health_import.py -q` | 작은 export.xml 고정 파일(옛 형식·새 형식 운동 각각, Route·Record 섞임)에서 운동만, 경로·심박 원시값이 저장되지 않음, mi·kJ 단위 변환, `--dry-run` 쓰기 없음, 두 번 돌려도 그대로, 두 번째부터 기본 범위가 마지막 운동 − 14일, `exported_on`·`last_workout_date` 기록과 옛 파일로 뒤로 가지 않음, BE 실행 중 코드 3, 형식 아님(뿌리가 `HealthData` 아님, zip에 export.xml 없음)·못 읽는 파일 코드 6, `--dry-run`이 DB를 만들지 않음, 미래 운동 건너뜀. 큰 파일: 50MB 가짜 파일을 스트리밍으로 만들어 메모리 200MB 아래(`tracemalloc`), `@pytest.mark.slow`로 따로 |
 | 메이트 | `python -m pytest tests/test_tools_workout.py tests/test_mate_prompts.py -q` | 앞머리에 두 표가 날짜순으로 합쳐짐(14일·8개), `h#` 줄 형식, "건강앱: 아직 가져온 적 없음"과 "건강앱 마지막 가져옴" 줄, `health_imported_through`, `list_workouts` `days=730` 허용·731 거절, 도구 스키마 `maximum` 730, 60개 자름과 `health_total`, 숨긴 운동 빠짐 |
 | 보너스·경험치·운동한 날 | `python -m pytest tests/test_status_activity.py tests/test_status_xp.py tests/test_health_import.py tests/test_panel_pace.py tests/test_standing_drift.py -q` | `exercise_days`가 두 표 합침(숨김 제외), 내 속도 표와 `exercise_days_week`에 건강앱 운동이 셈, 운동 기록 + 건강앱 같은 날 0.5 한 번·X13 한 번, 건강앱만 있는 날 0.5, 가져온 날 기준 7일 안만 X13(7일 전 운동은 없음, 6일 전은 있음), 숨긴 운동은 X13 없음, 숨겨도 이미 생긴 경험치 그대로 |
-| 스크립트 | `python -m pytest tests/test_health_import_script.py -q` | `tests/test_task_templates.py`처럼 스크립트 본문을 정적으로 검사: 두 작업 이름 매개변수, `Disable-ScheduledTask`·`Stop-ScheduledTask`가 가져오기 앞, `try`/`finally` 안에 `Enable-ScheduledTask`·`Start-ScheduledTask` 둘 다, medic 자식 끝내기 호출, 코드 3 재시도. 기대: `n passed` |
+| 스크립트 | `python -m pytest tests/test_health_import_script.py -q` | `tests/test_task_templates.py`처럼 스크립트 본문을 정적으로 검사: 두 작업 이름 매개변수, `Disable-ScheduledTask`·`Stop-ScheduledTask`가 가져오기 앞, `try`/`finally` 안에 `Enable-ScheduledTask`·`Start-ScheduledTask` 둘 다, medic 자식 끝내기 호출, 코드 3 재시도, BOM 붙인 UTF-8, 아무 이름의 최근 `*.zip`, `-DryRun`이면 지우기 묻지 않음. 기대: `n passed` |
 | 앱 | `cd web/app && npm test -- Workout && npm run build && npm run size` | 건강앱 태그 줄, 숨기기·되돌리기, `features`에 없으면 안 보임, 첫 로드 크기(`npm run size`) 180KB 안 |
 | 노트북 수용 | `docs/sp16/laptop-checklist.md` | 실제 export.zip을 스크립트로 가져오기 한 번(S2), 메이트에게 "지난주 운동 뭐 했어?" → 건강앱 줄 근거로 답함, 마지막 가져옴 이후 날짜를 물으면 "…까지 가져와 있어요" |
 

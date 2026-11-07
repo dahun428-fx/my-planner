@@ -118,10 +118,10 @@
   - `test_bad_file_exit_6`: 뿌리 `<foo/>` 파일, 없는 파일 → 코드 6.
   - `test_reclassify_before_write`: 매핑 버전을 올린 상태에서 가져오면 기존 `other` 줄이 먼저 바뀌어 같은 운동을 찾음(새 줄 없음).
   - `test_log_counts_only`: `caplog`의 `health_import_done` 레코드의 `extra` 키가 `imported`, `existing`, `skipped`, `xp` 넷뿐이고 운동 종류·날짜 값이 없음.
-  - `test_bad_since_usage`: `--since 2026/10/01` → 코드 2.
+  - `test_bad_since_usage`: `cli.main(["health","import",str(f),"--since","2026/10/01"])` → 2.
   - `test_cli_dispatch`: `cli.main(["health","import",str(f),"--dry-run"])` → 0.
 - [ ] **Step 2: 실행해 실패 확인** — `python -m pytest tests/test_health_import.py -q` → 실패.
-- [ ] **Step 3: 구현** — `standing/importer.run_import`의 틀(잠금 → 파일 → dry-run이면 `open_ro`, 아니면 `open_db`+`migrate`)을 따른다. dry-run은 `HealthRepo.find_same`으로 "이미 있음"을 세고, DB가 없거나 025 이전이라 `sqlite3.Error`가 나면 모두 새 운동으로 센다(`standing/importer.py:137-142`와 같은 갈래). `--since` 형식이 틀리면 USAGE와 코드 2(`cli.EXIT_USAGE`). 쓰기는 1,000개마다 `transaction`. X13은 같은 트랜잭션에서 `StatusRepo.grant`(`gain=None`). 오늘 = `logical_date(now, TZ, BOUNDARY)`.
+- [ ] **Step 3: 구현** — `standing/importer.run_import`의 틀(잠금 → 파일 → dry-run이면 `open_ro`, 아니면 `open_db`+`migrate`)을 따른다. dry-run은 `HealthRepo.find_same`으로 "이미 있음"을 세고, DB가 없거나 025 이전이라 `sqlite3.Error`가 나면 모두 새 운동으로 센다(`standing/importer.py:137-142`와 같은 갈래). `--since` 파싱과 형식 오류(USAGE, 코드 2 `EXIT_USAGE`)는 `cli.py`의 `health import` 분기에서 한다. `run_import`는 `date | None`만 받는다. 쓰기는 1,000개마다 `transaction`. X13은 같은 트랜잭션에서 `StatusRepo.grant`(`gain=None`). 오늘 = `logical_date(now, TZ, BOUNDARY)`.
 - [ ] **Step 4: 통과 확인** — 같은 명령 → PASS.
 - [ ] **Step 5: 커밋** — `feat(sp16): health import CLI`
 
