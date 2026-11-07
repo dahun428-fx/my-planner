@@ -161,7 +161,7 @@ Dahun Q1로 v1에서 뺐다. 걸음·잠은 지금처럼 SP8 단축어(`POST /bo
 
 1. 아이폰 건강앱 › 오른쪽 위 프로필 › "모든 건강 데이터 내보내기" → 만들어진 `export.zip`을 노트북으로 옮긴다(AirDrop이 없으니 iCloud Drive나 USB 케이블). 노트북의 `data\import\`에 둔다.
 2. `scripts\health_import.ps1`을 돌린다. 스크립트는(매개변수 `-TaskName`(기본 `my-planner`), `-MedicTaskName`(기본 `my-planner-medic`): 개발 체크아웃은 `-dev` 이름을 넘긴다):
-   1. `data\import\`에서 가장 최근 `export*.zip`을 고른다. 없으면 안내하고 끝(작업을 건드리지 않는다).
+   1. `data\import\`에서 `*.zip` 중 가장 최근(수정 시각) 것을 고른다(한국어 아이폰은 `내보내기.zip`일 수 있다). 없으면 안내하고 끝(작업을 건드리지 않는다).
    2. 두 작업 모두 `Disable-ScheduledTask` 뒤 `Stop-ScheduledTask`. 두 작업에 5분 반복 트리거가 있어 끄지 않으면 가져오는 동안 다시 뜬다(README seed-life 절, medic `DISABLE_STOP`과 같은 관례). 작업을 멈춰도 남는 medic 자식 python은 `register_task.ps1`의 `Stop-MedicProcesses`와 같은 방법으로 끝낸다(공통 함수는 `task_common.ps1`로 옮겨 함께 쓴다).
    3. 가져오기를 돌린다: `.venv\Scripts\python.exe -m my_planner health import <파일>`. 코드 3(잠금)이면 BE가 아직 끝나는 중이므로 5초 간격으로 6번까지 다시 돌린다.
    4. 결과 줄을 그대로 보인다.
