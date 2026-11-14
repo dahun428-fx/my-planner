@@ -259,7 +259,7 @@ VAPID 키를 바꾸면 기존 푸시 구독이 모두 끊기므로, 키가 새�
 공부 앱(AI 듀오링고, 저장소 `ai-duo-lingo`)의 진도를 컴퓨터와 폰 사이에 맞춥니다. 진도는 `GET`·`PUT /api/v1/study/progress`로 오가고, 이 경로만 여는 **별도 토큰** `STUDY_TOKEN`을 씁니다. 이 토큰으로는 비서의 다른 데이터를 읽거나 바꿀 수 없습니다(ADR 0024).
 
 1. 노트북에서 `.venv\Scripts\python.exe -m my_planner gen-token`을 돌려 나온 값을 `.env`에 `STUDY_TOKEN=...`으로 넣습니다. `API_TOKEN`, `BODY_TOKEN`과 다른 값이어야 하고 43자 이상이어야 합니다.
-2. `config.toml`의 `[api] cors_origins`에 공부 앱 주소(예: `https://<공부 앱>.vercel.app`)를 정확한 문자열로 더합니다.
+2. `config.toml`의 `[api] cors_origins`에 공부 앱 주소가 있는지 봅니다(`https://ai-duo-lingo.vercel.app`은 들어 있습니다). 다른 주소로 배포했다면 그 주소를 정확한 문자열로 더합니다.
 3. 작업을 다시 켭니다.
 4. 공부 앱의 "앱 설치와 진도" 화면에서 BE 주소(`https://<기계>.<tailnet>.ts.net`)와 `STUDY_TOKEN`을 넣고 "연결"을 누릅니다. 다른 기기에는 그 화면의 "연결 정보 복사"로 한 줄을 복사해 붙여 넣습니다.
 
