@@ -453,6 +453,25 @@ def _body_token(settings: Settings, api_token: str) -> str | None:
     return token
 
 
+def _study_token(settings: Settings, api_token: str, body_token: str | None) -> str | None:
+    """`/study/progress`를 열 토큰(ADR 0024). 없으면 조용히 None(공부 앱을 쓰지 않는 설치). 43자 미만이거나 `API_TOKEN`·
+    `BODY_TOKEN`과 같으면 경고 한 줄을 남기고 None: 그 경로만 열지 않는다. 값은 남기지 않는다."""
+    token = settings.study_token.get_secret_value() if settings.study_token is not None else ""
+    if not token:
+        return None
+    reason = None
+    if len(token) < API_TOKEN_MIN_CHARS:
+        reason = "too_short"
+    elif hmac.compare_digest(token.encode("utf-8"), api_token.encode("utf-8")):
+        reason = "same_as_api"
+    elif body_token is not None and hmac.compare_digest(token.encode("utf-8"), body_token.encode("utf-8")):
+        reason = "same_as_body"
+    if reason is not None:
+        log.warning("study_token_invalid", extra={"reason": reason})
+        return None
+    return token
+
+
 async def _open_api(
     settings: Settings,
     clock: Clock,
@@ -468,10 +487,11 @@ async def _open_api(
     token = _api_token(settings)
     if token is None:
         return None
+    body_token = _body_token(settings, token)
     deps = ApiDeps(
         settings=settings, clock=clock, token=token, read_conn=read_conn, dispatcher=dispatcher, errors=errors,
         polling_state=polling_state, started_at=errors.started_at, transcripts=transcripts, safe_mode=safe_mode,
-        body_token=_body_token(settings, token),
+        body_token=body_token, study_token=_study_token(settings, token, body_token),
     )
     try:
         return await start_api(build_app(deps), settings.api.host, settings.api.port)
