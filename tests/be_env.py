@@ -38,7 +38,7 @@ from telegram import Update
 
 from my_planner.api.health import ErrorCounter
 from my_planner.api.server import API_PREFIX, ApiDeps, build_app
-from my_planner.app import BeParts, _body_token, build_be
+from my_planner.app import BeParts, _body_token, _study_token, build_be
 from my_planner.bot.telegram_io import handle_update
 from my_planner.clock import FakeClock, to_iso
 from my_planner.harness.moments import MOMENTS_PAUSED_KEY
@@ -122,6 +122,7 @@ class BeEnv:
         moments: bool = False,
         dayend: bool = False,
         body_token: str | None = None,
+        study_token: str | None = None,
     ) -> AsyncIterator[BeEnv]:
         """`push`: 가짜 푸시 전송(`FakePushSender`). 주면 꾸며 낸 VAPID 값으로 푸시를 켠다.
 
@@ -136,6 +137,8 @@ class BeEnv:
         base: dict[str, Any] = {"api_token": TEST_TOKEN}
         if body_token is not None:
             base["body_token"] = body_token
+        if study_token is not None:  # `.env`의 `STUDY_TOKEN` 자리(꾸며 낸 값): `/study/progress`를 연다(ADR 0024)
+            base["study_token"] = study_token
         if push is not None:
             base["vapid"] = FAKE_VAPID
         settings = make_settings(tmp_path, **{**base, **(overrides or {})})
@@ -169,6 +172,7 @@ class BeEnv:
             polling_state=lambda: "down" if parts.runner.polling_down else "running",
             started_at=start, transcripts=parts.transcripts,
             body_token=_body_token(settings, TEST_TOKEN) if body_token is not None else None,
+            study_token=_study_token(settings, TEST_TOKEN, body_token) if study_token is not None else None,
             disk_free=lambda _path: DISK_FREE,
             **({"sleep": api_sleep} if api_sleep is not None else {}),
         )

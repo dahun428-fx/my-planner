@@ -73,7 +73,7 @@ backup_count = 14   # DB 백업 보관 개수
 enabled = true
 host = "127.0.0.1"
 port = 8787
-cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner-dashboard-seven.vercel.app"]  # 정확한 출처만. 운영 앱(SP5), 대시보드(19b)
+cors_origins = ["https://my-planner-beige-eight.vercel.app", "https://my-planner-dashboard-seven.vercel.app", "https://ai-duo-lingo.vercel.app"]  # 정확한 출처만. 운영 앱(SP5), 대시보드(19b), 공부 앱(ADR 0024)
 max_body_kb = 64               # 다른 경로의 본문 상한. 사진 경로만 따로 5.5MiB(SP10 5.3)
 max_photo_bytes = 5000000      # POST /photos의 사진 한 장 상한(SP10 5.3)
 

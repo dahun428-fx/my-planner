@@ -46,6 +46,8 @@ CALENDAR_KEY_KEY = "calendar_key"
 DIGEST_SETTINGS_KEY = "digest_settings"
 # 종류마다 판정한 마지막 슬롯 날짜(JSON, 현지 달력 날짜 ISO). 판정할 때 보내기 전에 적는다
 DIGEST_LAST_KEY = "digest_last"
+# ADR 0024: 공부 앱(AI 듀오링고)의 기기들이 보낸 진도를 합친 한 벌(JSON, `my_planner.study.StudyProgress`)
+STUDY_PROGRESS_KEY = "study_progress"
 
 UsageField = Literal["brain_calls", "proactive_messages", "summaries", "photo_reads"]
 # `summaries`: 하루 요약 호출(SP9 7.2, 018). `photo_reads`: 하루 사진 읽기(SP10 5.4, 020)

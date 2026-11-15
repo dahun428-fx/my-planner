@@ -33,6 +33,9 @@ U1~U3에 걸리면 `422 not_undoable`·`409 undo_expired`·`409 superseded`. 되
 몸 기록 `record_body_days`(SP8 7.2)는 `POST /body`만 부르는 내부 동작이다(`endpoint="body"`, 계획 결정 1). 활동 기록,
 경험치, `api_idempotency`가 없다(단축어는 `client_msg_id`를 보내지 않는다).
 
+공부 진도 `study_merge`(ADR 0024)는 `PUT /study/progress`만 부르는 내부 동작이다(`endpoint="study"`). 보낸 진도를
+저장된 것과 합쳐 `app_state.study_progress`에 둔다. 활동 기록, 경험치, `api_idempotency`가 없다(합치기가 멱등이다).
+
 로그에는 동작 이름과 결과만 남긴다(제목, 인자, 토큰 없이).
 """
 
@@ -131,8 +134,10 @@ UNDO_ERRORS: dict[str, tuple[int, str]] = {  # 6.1 오류 코드 → (HTTP, 문�
 # `push`: `api/push.py`, `body`: `api/body.py`, `conversations`: 대화 지우기(SP9 7.7). 셋 다 중복 방지 기록 없음
 # `photos`: 사진 올리기(SP10 5.2 `store_photo`, PH-02 `POST /photos`). 020부터 `api_idempotency`에 기록한다: 같은
 # `client_msg_id`면 처음 응답을 그대로 돌려주고 도구는 부르지 않고 그 요청의 `.incoming/` tmp만 지운다(`on_replay`)
-RequestEndpoint = Literal["chat", "actions", "undo", "push", "body", "conversations", "devices", "photos"]
-NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices"})  # `api_idempotency.endpoint`에 없는 값
+RequestEndpoint = Literal[
+    "chat", "actions", "undo", "push", "body", "conversations", "devices", "photos", "study"
+]
+NO_IDEMPOTENCY: frozenset[str] = frozenset({"push", "conversations", "devices", "study"})  # `api_idempotency.endpoint`에 없는 값
 
 ActionStatus = Literal[
     "applied", "needs_confirm", "rejected", "invalid", "conflict",
@@ -596,6 +601,24 @@ def _wake_task_result(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -
     return {"wake_updated": ok}
 
 
+def _study_merge(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
+    """공부 앱의 진도(ADR 0024): 보낸 진도를 저장된 것과 합쳐 `app_state.study_progress`에 둔다. 결과는 합친 진도.
+
+    활동·경험치는 없다(비서의 XP와 공부 앱의 XP는 다른 것이다). 합친 결과가 상한을 넘으면 아무것도 바꾸지 않는다."""
+    from my_planner import study
+    from my_planner.store.repos.state import STUDY_PROGRESS_KEY
+
+    incoming = study.parse(args.get("progress"))
+    if incoming is None:
+        return {"error": BAD_ARGS}
+    assert deps.state is not None
+    merged = study.merge(study.load(deps.state.get(STUDY_PROGRESS_KEY)), incoming)
+    if merged is None:
+        return {"error": BAD_ARGS}
+    deps.state.set(STUDY_PROGRESS_KEY, study.dumps(merged))
+    return {"progress": study.dump(merged)}
+
+
 def _calendar_key_create(deps: ActionDeps, ctx: RunContext, args: dict[str, Any]) -> dict[str, Any]:
     """구독 키가 없으면 만든다(있으면 그대로). 키는 활동, 로그에 넣지 않는다: 활동을 남기지 않는다(5.7)."""
     from my_planner.api.calendar import new_key
@@ -776,6 +799,8 @@ ACTIONS: dict[str, ActionSpec] = {
     ),
     # 내부(`api/actions.refresh_wake`: 체크인 시간을 바꾼 뒤 깨우기 작업 결과, SP9 8장)
     "wake_task_result": ActionSpec(_wake_task_result, public=False, accepts=frozenset({"ok"}), endpoint="push"),
+    # 내부(`PUT /study/progress`, ADR 0024): 공부 앱의 진도 합치기. 활동·경험치·중복 방지 기록 없음. `/actions`에서는 `400`
+    "study_merge": ActionSpec(_study_merge, public=False, accepts=frozenset({"progress"}), endpoint="study"),
 }
 
 
