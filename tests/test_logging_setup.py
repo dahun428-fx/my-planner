@@ -52,3 +52,14 @@ def test_transient_polling_error_is_not_an_error_record(tmp_path):
     levels = {e["exc_type"]: e["level"] for e in _entries(path) if e["logger"] == "telegram.ext.Updater"}
     assert levels["NetworkError"] == "INFO" and levels["TimedOut"] == "INFO"
     assert levels["BadRequest"] == "ERROR"
+
+
+def test_polling_conflict_from_deploy_overlap_is_not_an_error_record(tmp_path):
+    """배포 중 옛 프로세스와 새 프로세스가 잠깐 함께 getUpdates를 부르면 Conflict가 난다. PTB가 재시도한다."""
+    from telegram.error import Conflict
+
+    path = setup_logging(tmp_path / "state", 30)
+    _poll_error(Conflict("terminated by other getUpdates request"))
+
+    levels = [e["level"] for e in _entries(path) if e["logger"] == "telegram.ext.Updater"]
+    assert levels == ["INFO"]

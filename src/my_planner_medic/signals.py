@@ -32,7 +32,7 @@ _NOT_BURST = frozenset({THIRD_PARTY_MSG, CLIENT_ERROR_MSG})
 _OWN = "my_planner"
 # PTB Updater가 폴링 중 스스로 재시도하는 일시적 네트워크 오류. 지속되면 polling down·무응답 신호가 잡는다.
 _TRANSIENT_POLL_LOGGER = "telegram.ext.Updater"
-_TRANSIENT_POLL_EXC = frozenset({"NetworkError", "TimedOut", "RetryAfter"})
+_TRANSIENT_POLL_EXC = frozenset({"NetworkError", "TimedOut", "RetryAfter", "Conflict"})
 _CLIENT_APPS = ("app", "dashboard")
 WARN_WINDOW = timedelta(hours=1)
 WARN_BURST = 20
