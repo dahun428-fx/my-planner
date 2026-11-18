@@ -35,10 +35,11 @@ _QUIET_LOGGERS = ("httpx", "httpcore", "telegram", "apscheduler")
 THIRD_PARTY_MSG = "third_party_log"
 _OWN_PREFIX = "my_planner"
 
+# (Conflict: 배포 중 옛·새 프로세스가 잠깐 함께 getUpdates를 부를 때. 옛 쪽이 곧 멈춘다.)
 # PTB Updater는 폴링 중 네트워크가 잠깐 끊기면 ERROR로 남기고 스스로 재시도한다. 이것이 장애 신호가 되어
 # 배포 확인이 롤백되지 않도록 INFO로 낮춘다(지속되면 polling down·무응답 신호가 잡는다).
 _POLL_LOGGER = "telegram.ext.Updater"
-_TRANSIENT_POLL_EXC = frozenset({"NetworkError", "TimedOut", "RetryAfter"})
+_TRANSIENT_POLL_EXC = frozenset({"NetworkError", "TimedOut", "RetryAfter", "Conflict"})
 
 
 class _TransientPollFilter(logging.Filter):

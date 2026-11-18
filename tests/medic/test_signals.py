@@ -251,7 +251,7 @@ def test_tick_stalled_ignores_normal_delay_reasons(kw: dict[str, Any]) -> None:
     assert health_signals(HealthProbe(200, b), now, streak=0, suppress=True, cfg=CFG)[0] == []
 
 
-@pytest.mark.parametrize("exc", ["NetworkError", "TimedOut", "RetryAfter"])
+@pytest.mark.parametrize("exc", ["NetworkError", "TimedOut", "RetryAfter", "Conflict"])
 def test_transient_telegram_polling_error_is_not_an_incident(exc: str) -> None:
     """PTB Updater가 스스로 재시도하는 일시적 네트워크 오류는 장애가 아니다(지속되면 헬스 신호가 잡는다)."""
     where = ["/x/site-packages/telegram/request/_httpxrequest.py:303 do_request"]
