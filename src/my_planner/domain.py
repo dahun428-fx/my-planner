@@ -74,7 +74,7 @@ Agent = Literal["secretary", "mate", "manager"]
 Risk = Literal["low", "confirm"]  # 활동 위험 (5.2, 6.4.2)
 # 두뇌 호출의 종류 (SP8 스펙 6.3). 회차 호출은 `run`, 하루 끝 순간은 `moments`, 대화 요약은 `summary`(SP9 7.2, 도구 없음),
 # 사진 읽기는 `photo_read`(SP10 5.4, 도구 없음)
-RunKind = Literal["chat", "run", "moments", "summary", "photo_read", "dayend"]
+RunKind = Literal["chat", "run", "moments", "summary", "photo_read", "dayend", "study_grade"]
 
 # 사건 기록(SP14 스펙 5.1~5.3). 종류 18개, 출처 5개, 받은편지함이 있는 아래층 상대 둘
 EventKind = Literal[

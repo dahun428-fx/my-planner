@@ -141,6 +141,8 @@ class LimitsConfig(_Model):
     rollup_tail_lines: int = 6  # 말아 넣은 새 세션·resume 실패에 붙이는 최근 원문 줄 수(SP9 7.3, 7.4)
     daily_photos: int = 100  # 하루(논리적 날짜) 사진 올리기 상한(SP10 5.1). 넘으면 `POST /photos` 429 `photo_limit`
     daily_photo_reads: int = 30  # 하루 사진 읽기 상한(SP10 5.4, `usage_state.photo_reads`)
+    # 공부 앱 단어 설명 채점(ADR 0025)은 `daily_brain_calls`에서 이만큼을 비서 몫으로 남기고 그 앞까지만 쓴다
+    study_grade_reserve_calls: int = 20
     reply_window: ReplyWindowConfig = ReplyWindowConfig()
     catchup_limit: CatchupLimitConfig = CatchupLimitConfig()
     full_diagnosis: FullDiagnosisLimits = FullDiagnosisLimits()

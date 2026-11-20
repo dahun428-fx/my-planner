@@ -5,7 +5,7 @@
   4KB, CORS 없음이다. `BODY_TOKEN`이 없으면 이 경로를 등록하지 않는다.
 - 사진 올리기 `POST /photos`(SP10 5.3)는 `Content-Length` 상한만 5.5MiB다. `client_max_size`(64KB)는 그대로라 다른
   경로는 길이 없는 본문도 64KB에서 413이고, 사진 처리기는 multipart 스트림을 세며 읽는다(`api/photos.py`).
-- 공부 진도 `GET`·`PUT /study/progress`(ADR 0024)는 기대 토큰이 `STUDY_TOKEN`이다. `API_TOKEN`·기기 토큰은 이 경로에서
+- 공부 진도 `GET`·`PUT /study/progress`(ADR 0024)와 단어 채점 `POST /study/grade`(ADR 0025)는 기대 토큰이 `STUDY_TOKEN`이다. `API_TOKEN`·기기 토큰은 이 경로에서
   401이고 `STUDY_TOKEN`은 다른 경로에서 401이다. CORS는 다른 경로와 같다(브라우저가 부른다). 토큰이 없으면 등록하지 않는다.
 - 접근 로그는 aiohttp 기본 것을 끄고(`access_log=None`) 요청마다 `method`, 경로 틀, 상태, 소요 시간만 남긴다.
   쿼리 문자열, 헤더, 본문, 토큰, 푸시 구독 주소는 남기지 않는다.
@@ -108,7 +108,13 @@ from my_planner.api.read import (
 )
 from my_planner.api.recovery import post_client_error, post_internal_notify
 from my_planner.api.standing import get_standing, get_standing_measures
-from my_planner.api.study import STUDY_PATH, get_study_progress, put_study_progress
+from my_planner.api.study import (
+    STUDY_GRADE_PATH,
+    STUDY_PATH,
+    get_study_progress,
+    post_study_grade,
+    put_study_progress,
+)
 from my_planner.api.workout import get_workout
 from my_planner.probe import health_probe_fails
 
@@ -226,7 +232,7 @@ async def auth(request: web.Request, handler: Handler) -> web.StreamResponse:
     # 경로 틀로 기대 토큰을 고른다(SP8 7.2): `/body`는 `BODY_TOKEN`만, 그 밖은 `API_TOKEN`만. 다른 쪽 토큰은 맞아도 401.
     # `/body`가 등록되지 않았으면(토큰 없음) 틀이 `(unmatched)`라 `API_TOKEN`을 기대하고, 지나면 라우팅이 404다
     # 공부 진도(ADR 0024)도 같다: `/study/progress`는 `STUDY_TOKEN`만
-    path_tokens = {BODY_PATH: deps.body_token, STUDY_PATH: deps.study_token}
+    path_tokens = {BODY_PATH: deps.body_token, STUDY_PATH: deps.study_token, STUDY_GRADE_PATH: deps.study_token}
     expected = (path_tokens[route] or "") if route in path_tokens else deps.token
     if bearer_ok(header, expected):
         return await handler(request)
@@ -414,6 +420,7 @@ def build_app(deps: ApiDeps) -> web.Application:
     if study_route_open(deps):  # 공부 앱(ADR 0024). 토큰이 없으면 경로도 없다
         app.router.add_get(STUDY_PATH, read_handler(get_study_progress))
         app.router.add_put(STUDY_PATH, write_handler(put_study_progress))
+        app.router.add_post(STUDY_GRADE_PATH, write_handler(post_study_grade))  # 단어 설명 채점(ADR 0025)
     return app
 
 
