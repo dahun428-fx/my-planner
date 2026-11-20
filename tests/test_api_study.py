@@ -17,7 +17,7 @@ from test_dispatcher_messages import kst
 from my_planner import study
 from my_planner.api.body import BODY_PATH
 from my_planner.api.server import LIMITER_KEY, PAIR_PATH
-from my_planner.api.study import STUDY_PATH
+from my_planner.api.study import STUDY_GRADE_PATH, STUDY_PATH
 from my_planner.app import _study_token
 from my_planner.study import StudyProgress
 from my_planner.tools.actions import ActionRequest
@@ -180,8 +180,9 @@ async def test_study_token_rejected_on_every_other_route(tmp_path):
             if r.resource is not None and r.method != "HEAD"
         })
         assert ("GET", STUDY_PATH) in routes and ("PUT", STUDY_PATH) in routes and ("POST", BODY_PATH) in routes
+        assert ("POST", STUDY_GRADE_PATH) in routes
         for method, path in routes:
-            if (method, path) == ("POST", PAIR_PATH) or path == STUDY_PATH:
+            if (method, path) == ("POST", PAIR_PATH) or path in (STUDY_PATH, STUDY_GRADE_PATH):
                 continue
             url = path.replace("{id}", "1").replace("{agent}", "secretary")
             resp = await env.request(method, url, token=STUDY, json={})

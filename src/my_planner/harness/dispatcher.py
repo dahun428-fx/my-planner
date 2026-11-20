@@ -73,6 +73,13 @@ from my_planner.harness.stream import (
     UiMessageWriter,
     write_reply,
 )
+from my_planner.harness.study_grade import (
+    GradeRequest,
+    GradeResult,
+    StudyGradeFailed,
+    StudyGradeLimit,
+)
+from my_planner.harness.study_grade import grade as study_grade_call
 from my_planner.loop.catchup import merge_order
 from my_planner.loop.schedule import Due, limit_for, reply_window_end
 from my_planner.panel.experts import (
@@ -337,6 +344,14 @@ class _PhotoReadJob:
 
 
 @dataclass
+class _StudyGradeJob:
+    """공부 앱 단어 설명 채점 하나(ADR 0025). 채팅과 같은 직렬 큐를 탄다. 요청은 `future`를 기다린다."""
+
+    req: GradeRequest = field(repr=False)
+    future: asyncio.Future[GradeResult] = field(repr=False)
+
+
+@dataclass
 class _ResendJob:
     """전송이 끝내 안 된 회차를 5분 뒤 전송만 한 번 더 한다. 두뇌는 다시 부르지 않는다."""
 
@@ -359,6 +374,7 @@ _PRIORITY_MOMENTS = 2  # 하루 끝 순간: 기다리는 메시지와 회차가 
 _PRIORITY_DAYEND = 3  # 하루 끝 판단(SP14 6.1): 이룬 순간 다음
 _PRIORITY_SUMMARY = 2  # 대화 요약(SP9 7.2): 같은 차례의 순간 정리와는 들어온 순서
 _PRIORITY_PHOTO_READ = _PRIORITY_MESSAGE  # 사진 읽기(SP10 5.4): 사용자가 기다린다. 메시지와는 들어온 순서
+_PRIORITY_STUDY_GRADE = _PRIORITY_MESSAGE  # 공부 채점(ADR 0025): 사용자가 기다린다. 메시지와는 들어온 순서
 _PRIORITY_STOP = 1_000_000
 
 # 루프별 지시문 파일 (스펙 5.3 "프롬프트 선택")
@@ -514,6 +530,7 @@ class Dispatcher:
         # 사진 읽기(SP10 5.4): `photos.reader` 설정이 고른 구현. 두뇌 호출은 `_PhotoReadCaller`(셈, 세션 파일 지우기)로
         self.photo_reader: PhotoReader = photo_reader or build_reader(settings.photos.reader, _PhotoReadCaller(self))
         self._photo_reads: dict[int, asyncio.Future[ReadResult]] = {}  # 사진 id → 큐에 든 읽기(같은 사진은 하나로)
+        self._study_grades: set[asyncio.Future[GradeResult]] = set()  # 큐에 든 공부 채점(ADR 0025)
         # 회고 단계(SP3-4 11.1): 곡선 저장소가 있을 때만. 텔레그램 버튼 처리기도 같은 것을 쓴다
         curve = tools.curve if tools is not None else None
         self.review_flow: ReviewFlow | None = (
@@ -561,6 +578,9 @@ class Dispatcher:
         for fut in self._photo_reads.values():
             _settle(fut, exc=PhotoReadFailed("stopping"))
         self._photo_reads.clear()
+        for grade_fut in self._study_grades:
+            _settle(grade_fut, exc=StudyGradeFailed("stopping"))
+        self._study_grades.clear()
         self._worker = None
 
     def _cancel_timers(self) -> None:
@@ -1082,6 +1102,9 @@ class Dispatcher:
             return
         if isinstance(item, _PhotoReadJob):
             await self._handle_photo_read(item)
+            return
+        if isinstance(item, _StudyGradeJob):
+            await self._handle_study_grade(item)
             return
         # 시작 때 다시 넣은 메시지는 하나씩 처리한다(저장해 둔 답과 도구 기록이 그 행에 묶여 있다).
         # 앱 메시지도 묶지 않는다(요청마다 스트림이 하나다, M2)
@@ -2523,7 +2546,7 @@ class Dispatcher:
             run_ctx.stream.begin_attempt()  # 앞 시도가 글을 보냈으면 새 단계로 나눈다(06b)
         self.state.incr_usage(self._today(), "brain_calls")  # 모든 호출이 하루 상한에 들어간다(스펙 7, 두 통로가 함께)
         # '입력 중'은 텔레그램에만. 앱은 `data-status`와 `: ping`이 대신한다(6.4.1). 순간 호출은 아무 데도 보내지 않는다
-        quiet = run_ctx.channel == "app" or run_ctx.kind in ("moments", "summary", "photo_read")
+        quiet = run_ctx.channel == "app" or run_ctx.kind in ("moments", "summary", "photo_read", "study_grade")
         typing = asyncio.create_task(self._typing_loop() if not quiet else _idle(), name="typing")
         started = time.monotonic()
         try:
@@ -2797,6 +2820,51 @@ class Dispatcher:
         })
         return got
 
+    # --- 공부 앱 단어 설명 채점 (ADR 0025) ---
+
+    async def grade_study(self, req: GradeRequest) -> GradeResult:
+        """`POST /study/grade`: 두뇌 큐에서 한 번 채점한다. 요청이 끊겨도 채점은 끝까지 간다(`shield`).
+        `StudyGradeLimit`(오늘 몫 없음), `StudyGradeFailed`(두뇌 실패·답 모양 틀림·멈춤)."""
+        if self._stopping:
+            raise StudyGradeFailed("stopping")
+        fut: asyncio.Future[GradeResult] = asyncio.get_running_loop().create_future()
+        fut.add_done_callback(_retrieve)
+        self._study_grades.add(fut)
+        self._queue.put_nowait((_PRIORITY_STUDY_GRADE, next(self._seq), _StudyGradeJob(req, fut)))
+        return await asyncio.shield(fut)
+
+    async def _handle_study_grade(self, job: _StudyGradeJob) -> None:
+        fut = job.future
+        try:
+            got = await self._grade_study(job.req)
+        except (StudyGradeLimit, StudyGradeFailed) as e:
+            _settle(fut, exc=e)
+        except Exception as e:  # noqa: BLE001 - 무엇이든 503으로. 예외 메시지는 남기지 않는다, 종류만
+            log.error("study_grade_handling_error", extra={"error_type": type(e).__name__})
+            _settle(fut, exc=StudyGradeFailed(type(e).__name__))
+        except BaseException:  # 멈출 때 취소: 기다리는 요청은 503
+            _settle(fut, exc=StudyGradeFailed("cancelled"))
+            raise
+        else:
+            _settle(fut, result=got)
+        finally:
+            self._study_grades.discard(fut)
+
+    async def _grade_study(self, req: GradeRequest) -> GradeResult:
+        """작업자 안에서(한 번에 하나): 상한 → 두뇌 → 세션 파일 지우기. 원문 기록·활동 기록·경험치는 남기지 않는다."""
+        if self._stopping:
+            raise StudyGradeFailed("stopping")
+        limits = self.settings.limits
+        # 하루 두뇌 호출에서 비서 몫(`study_grade_reserve_calls`)은 남긴다: 공부를 많이 해도 비서는 답할 수 있게
+        if self.state.usage(self._today()).brain_calls >= limits.daily_brain_calls - limits.study_grade_reserve_calls:
+            log.info("study_grade_limited")
+            raise StudyGradeLimit()
+        if self._photo_read_blocked():  # 로그인·결제 문제, 사용 한도 대기: 사진 읽기와 같은 규칙
+            raise StudyGradeFailed("blocked")
+        got = await study_grade_call(_StudyGradeCaller(self), req)
+        log.info("study_graded", extra={"score": got.score, "chars": len(req.answer)})
+        return got
+
     # --- 하루 끝 순간 (SP8 6.2~6.3) ---
 
     def _moments_blocked(self) -> bool:
@@ -3027,6 +3095,33 @@ class _PhotoReadCaller:
             if d.claude_config_dir is not None:  # 이어 쓰지 않는 세션이다(플래그와 두 겹)
                 sid = (result.session_id if result is not None else None) or run_ctx.brain_session_id
                 moments_job.remove_session_file(sid, config_dir=d.claude_config_dir, event="photo_read_session_cleanup")
+        if result.status == "rate_limited":
+            d._set_limited(result.retry_at)
+        return result
+
+
+class _StudyGradeCaller:
+    """공부 채점 호출(ADR 0025)을 디스패처의 두뇌 호출(시간 상한, `brain_calls` 셈)로 잇는다. 끝나면 세션 파일을
+    지운다(`_PhotoReadCaller`와 같은 틀: 학생 설명이 세션 파일로 남지 않게)."""
+
+    def __init__(self, d: Dispatcher) -> None:
+        self._d = d
+
+    async def run(
+        self, prompt: str, *, session_id: str | None, run_ctx: RunContext,
+        system_prompt: str | None = None, max_turns: int | None = None, persist_session: bool = True,
+    ) -> BrainResult:
+        d = self._d
+        result: BrainResult | None = None
+        try:
+            result = await d._call_brain(
+                prompt, session_id=session_id, run_ctx=run_ctx, system_prompt=system_prompt, max_turns=max_turns,
+                persist_session=persist_session,
+            )
+        finally:
+            if d.claude_config_dir is not None:
+                sid = (result.session_id if result is not None else None) or run_ctx.brain_session_id
+                moments_job.remove_session_file(sid, config_dir=d.claude_config_dir, event="study_grade_session_cleanup")
         if result.status == "rate_limited":
             d._set_limited(result.retry_at)
         return result

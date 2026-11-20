@@ -698,7 +698,7 @@ _SPECS["save_moments"] = (
 )
 
 
-NO_TOOL_KINDS = frozenset({"summary", "photo_read"})  # 도구를 주지 않는 실행 종류
+NO_TOOL_KINDS = frozenset({"summary", "photo_read", "study_grade"})  # 도구를 주지 않는 실행 종류(공부 채점, ADR 0025)
 
 # 메이트 대화(`RunContext.agent == "mate"`, SP12 5.3)에 주는 도구. 이 목록에 있는 것만 쓴다(할 일·습관·메모·일정·
 # 카드 도구는 비서 몫이다). 운동 도구 여덟과 측정값 읽기(SP14, ADR 0019 덧붙임)는 메이트에만 있다(`TOOL_NAMES`,

@@ -41,6 +41,7 @@ rollup_user_messages = 30       # 한 대화의 사용자 메시지가 이보다
 rollup_tail_lines = 6           # 말아 넣기·resume 실패 때 붙이는 최근 원문 줄 수
 daily_photos = 100              # 하루(논리적 날짜) 사진 올리기 상한(SP10 5.1)
 daily_photo_reads = 30          # 하루 사진 읽기 상한(SP10 5.4)
+study_grade_reserve_calls = 20  # 공부 앱 단어 채점(ADR 0025)은 하루 두뇌 호출에서 이만큼을 비서 몫으로 남긴다
 
 # 답장 창: 이 시각까지 답하면 같은 회차 대화로 잇는다
 [limits.reply_window]
