@@ -163,6 +163,8 @@ def user_message_stream(content: UserContent, session_id: str | None) -> AsyncIt
 # --- 오류 판별 (스펙 5.3 "오류 판별 규칙", S1 결과). 문자열 매칭은 쓰지 않는다. ---
 
 RATE_LIMIT_FALLBACK = timedelta(hours=1)
+# 거절 뒤 두뇌를 부르지 않는 가장 긴 구간. 재개 시각이 더 멀어도(주간 한도) 이만큼 뒤에 다시 불러 본다
+RATE_LIMIT_PROBE = timedelta(hours=1)
 _AUTH_ERRORS = {"authentication_failed": "login", "billing_error": "billing"}
 
 
@@ -184,6 +186,12 @@ def classify(
         if isinstance(m, RateLimitEvent) and m.rate_limit_info.status == "rejected"
     ]
     if rejected or "rate_limit" in assistant_errors:
+        log.warning("brain_rate_limit_rejected", extra={
+            "types": [str(i.rate_limit_type) for i in rejected],
+            "utilization": [i.utilization for i in rejected],
+            "overage": [str(i.overage_status) for i in rejected],
+            "resets_at": [i.resets_at for i in rejected],
+        })
         retry_at = now + RATE_LIMIT_FALLBACK
         for info in rejected:
             if info.resets_at is not None:
