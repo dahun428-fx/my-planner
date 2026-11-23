@@ -203,6 +203,7 @@ async def test_remove_permission_error_retried_next_day(env, monkeypatch):
     left = _exists(env, *paths)
     monkeypatch.setattr(Path, "unlink", real_unlink)
     env.clock.advance(timedelta(days=1))
+    _age(env, paths[0], 8)  # 고친 시각은 실제 시계라, 가짜 시계 기준 고아 대기(7일)를 넘겨 둔다
     _daily(env)
     assert day1["photos_purged"] == 1 and _row(env, pid) is None
     assert len(tries) == 3 and left == [True, False]  # 작은 사진은 지웠다
