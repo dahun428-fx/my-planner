@@ -116,7 +116,7 @@ export function HealthView({ health: h }: { health: Health }) {
                 {T.login} <Dot tone={authOk ? "positive" : h.brain.auth === "unknown" ? "neutral" : "negative"} />
                 {AUTH_LABELS[h.brain.auth] ?? h.brain.auth}
               </>,
-              limited ? T.limitedUntil(formatKst(limited, "HH:mm")) : T.noLimit,
+              limited ? T.limitedUntil(formatKst(limited, formatKst(limited, "M/D") === formatKst(h.now, "M/D") ? "HH:mm" : "M/D HH:mm")) : T.noLimit,
             ]}
           </Parts>
         </p>

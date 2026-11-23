@@ -181,7 +181,11 @@ export type ConnState =
 export function degradedNotice(health: Health): string | null {
   if (health.brain.auth === "login" || health.brain.auth === "billing") return copy.status.relogin;
   const until = health.brain.limited_until;
-  if (until && Date.parse(until) > Date.parse(health.now)) return copy.status.limited(formatKst(until, "HH:mm"));
+  if (until && Date.parse(until) > Date.parse(health.now)) {
+    // A later KST day (a weekly limit) names the day, like the BE notice; "09:00" alone reads as tomorrow morning.
+    const sameDay = formatKst(until, "date") === formatKst(health.now, "date");
+    return copy.status.limited(formatKst(until, sameDay ? "HH:mm" : copy.dateStyle.monthDayTime));
+  }
   return null;
 }
 

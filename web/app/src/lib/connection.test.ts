@@ -112,6 +112,12 @@ describe("deriveState", () => {
     expect(deriveState(ok(pollingOnly), lastOk)).toMatchObject({ kind: "online", degraded: null });
   });
 
+  it("names the day when the limit lifts on a later KST day", () => {
+    // weekly limit: health.now 2026-11-23 21:27 KST, lifts 2026-12-01 09:00 KST
+    const weekly = { ...degraded, now: "2026-11-23T12:27:00Z", brain: { ...degraded.brain, limited_until: "2026-12-01T00:00:00Z" } };
+    expect(deriveState(ok(weekly), lastOk)).toMatchObject({ degraded: "비서가 12월 1일 09:00까지 답을 쉬어요" });
+  });
+
   it("ignores a limited_until in the past", () => {
     const past = { ...degraded, brain: { ...degraded.brain, limited_until: "2026-10-24T07:00:00Z" } };
     expect(deriveState(ok(past), lastOk)).toMatchObject({ degraded: null });
