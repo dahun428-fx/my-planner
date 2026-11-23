@@ -250,7 +250,7 @@ export const copy = {
     connected: "비서 연결됨",
     offline: "비서 오프라인",
     relogin: "비서가 노트북에서 다시 로그인해야 해요",
-    limited: (hhmm: string) => `비서가 ${hhmm}까지 답을 쉬어요`,
+    limited: (when: string) => `비서가 ${when}까지 답을 쉬어요`,
     reconnected: "다시 연결됐어요",
     telegramDown: "텔레그램 연결 끊김",
     unauthorized: "열쇠가 맞지 않아요. 설정에서 다시 넣어 주세요.",
