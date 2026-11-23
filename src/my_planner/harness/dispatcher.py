@@ -34,7 +34,12 @@ from my_planner.domain import (
 from my_planner.harness import dayend as dayend_job
 from my_planner.harness import moments as moments_job
 from my_planner.harness import prompts, summaries
-from my_planner.harness.brain import RATE_LIMIT_FALLBACK, Brain, BrainResult
+from my_planner.harness.brain import (
+    RATE_LIMIT_FALLBACK,
+    RATE_LIMIT_PROBE,
+    Brain,
+    BrainResult,
+)
 from my_planner.harness.brief_notes import brief_block, settle_brief
 from my_planner.harness.chat_photos import message_text, photo_body, photo_content
 from my_planner.harness.chip_cards import chip_cards
@@ -114,6 +119,7 @@ from my_planner.store.repos.state import (
     CARRY_REVIEW_KEY,
     LAST_AUTH_NOTICE_KEY,
     LAST_RATE_LIMIT_NOTICE_KEY,
+    LIMITED_RESUME_KEY,
     LIMITED_UNTIL_KEY,
     PAUSE_UNTIL_KEY,
 )
@@ -1187,7 +1193,9 @@ class Dispatcher:
         if limited is not None and self.clock.now() < limited:
             # 사용 한도 구간 안: 두뇌를 부르지 않고 매번 답한다. 기록된 재개 시각을 쓰고,
             # 회차 안내의 구간 한 번 몫은 쓰지 않는다
-            if await self._fixed_reply(batch, rate_limit_notice(self._resume_text(limited)), update_ids):
+            resume = self._state_time(LIMITED_RESUME_KEY)
+            resume = resume if resume is not None and resume > limited else limited
+            if await self._fixed_reply(batch, rate_limit_notice(self._resume_text(resume)), update_ids):
                 log.info("message_rate_limited_window", extra={"update_ids": update_ids})
             return
         # 퀵 칩(SP9c 4.2): 앱 메시지는 묶이지 않으므로 첫 메시지의 칩. 메모 칩은 가리기·자르기 전 원문을 둔다(4.5)
@@ -1923,12 +1931,25 @@ class Dispatcher:
             self.state.set(LAST_AUTH_NOTICE_KEY, today)
 
     def _set_limited(self, retry_at: datetime | None) -> datetime:
-        """`limited_until`을 기록하고 돌려준다. 없거나 이미 지난 재개 시각은 지금 + 1시간."""
+        """사용 한도 거절을 기록하고 안내에 쓸 재개 시각을 돌려준다. 없거나 이미 지난 재개 시각은 지금 + 1시간.
+
+        `limited_until`(두뇌를 부르지 않는 구간)은 많아야 지금 + `RATE_LIMIT_PROBE`다. 주간 한도처럼 먼 재개 시각을
+        그대로 믿으면 거절이 잘못됐거나 한도가 먼저 풀려도 그때까지 멈춘다. 구간이 끝나면 다음 일이 다시 불러 본다.
+        """
         now = self.clock.now()
         if retry_at is None or retry_at <= now:
             retry_at = now + RATE_LIMIT_FALLBACK
-        self.state.set(LIMITED_UNTIL_KEY, to_iso(retry_at))
+        self.state.set(LIMITED_UNTIL_KEY, to_iso(min(retry_at, now + RATE_LIMIT_PROBE)))
+        self.state.set(LIMITED_RESUME_KEY, to_iso(retry_at))
         return retry_at
+
+    def clamp_limited(self) -> None:
+        """시작 시: 예전 판이 남긴 먼 `limited_until`(주간 한도의 재개 시각 그대로)을 지금 + `RATE_LIMIT_PROBE`로 줄인다."""
+        limited = self._state_time(LIMITED_UNTIL_KEY)
+        cap = self.clock.now() + RATE_LIMIT_PROBE
+        if limited is not None and limited > cap:
+            self.state.set(LIMITED_UNTIL_KEY, to_iso(cap))
+            log.info("limited_until_clamped", extra={"was": to_iso(limited)})
 
     async def _run_notice_rate_limit(self, until: datetime) -> None:
         """회차가 보내는 사용 한도 안내. 구간(`limited_until` 값)마다 한 번만."""

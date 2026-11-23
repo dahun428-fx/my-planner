@@ -264,7 +264,7 @@ async def test_rate_limited_sets_limited_and_keeps_attempts(tmp_path):
         say(env, kst(2026, 10, 25, 14, 0), "꾸민 말")
         await tick_at(env)
         assert prompt_days(env) == ["2026-10-24"]  # 그 패스의 남은 날은 멈춘다
-        assert env.parts.state.get(LIMITED_UNTIL_KEY) == to_iso(retry)
+        assert env.parts.state.get(LIMITED_UNTIL_KEY) == to_iso(env.clock.now() + timedelta(hours=1))  # 다시 불러 볼 시각
         for d in (D[24], D[25]):
             row = day_row(env, d)
             assert (row.state, row.attempts) == ("pending", 0)

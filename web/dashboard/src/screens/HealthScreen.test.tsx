@@ -38,6 +38,14 @@ describe("HealthScreen", () => {
     expect(document.querySelector("[style]")).toBeNull();
   });
 
+  it("names the day of a limit that lifts on a later KST day (weekly limit)", async () => {
+    const weekly = { ...degraded, now: "2026-11-23T12:27:00Z", brain: { ...degraded.brain, limited_until: "2026-12-01T00:00:00Z" } };
+    server.use(healthAnswers.ok(weekly));
+    renderScreen();
+    expect(await screen.findByText(/Claude 로그인/)).toBeInTheDocument();
+    expect(text()).toContain("사용 한도 12/1 09:00까지");
+  });
+
   it("draws login trouble, a limit, skipped and unsent runs", async () => {
     server.use(healthAnswers.ok(degraded));
     renderScreen();

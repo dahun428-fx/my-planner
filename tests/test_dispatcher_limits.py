@@ -123,46 +123,73 @@ def _rate_copy(when):
 
 
 async def test_rate_limited_notice_once_per_window(tmp_path, conn, state):
-    # 회차가 연 한도 구간: 안내는 구간마다 한 번. 사용자 메시지에는 구간 안에서도 매번 답한다
+    # 회차가 연 한도 구간: 안내는 (재개 시각) 구간마다 한 번. 두뇌를 쉬는 구간은 많아야 1시간이고, 그 뒤 다시 불러 본다
     from my_planner.clock import from_iso
     from my_planner.domain import LoopKey, RunStatus
 
     reset = kst(2026, 10, 26, 21, 30)
-    env = _env(tmp_path, conn, state, [_limited(reset), FakeTurn([], "다시 이야기해요.")])
-    await env.process_run(_queued(env))  # 아침 브리핑이 한도에 닿았다
+    env = _env(tmp_path, conn, state, [_limited(reset), _limited(reset), FakeTurn([], "다시 이야기해요.")])
+    await env.process_run(_queued(env))  # 아침 브리핑이 한도에 닿았다 (10:30)
     assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")]
-    assert from_iso(state.get("limited_until")) == reset
+    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 11, 30)  # 지금 + 1시간에 다시 불러 본다
+    assert from_iso(state.get("limited_resume_at")) == reset
     assert from_iso(state.get("last_rate_limit_notice_until")) == reset
 
-    # 같은 구간 안의 메시지: 두뇌를 부르지 않고, 기록된 재개 시각으로 매번 답한다
+    # 쉬는 구간 안의 메시지: 두뇌를 부르지 않고, 한도가 풀리는 시각으로 매번 답한다
     for i in (1, 2):
         await env.process(env.inbound("아직이야?", update_id=i))
     assert len(env.brain.calls) == 1
     assert [o.text for o in env.sender.sent] == [_rate_copy("21:30")] * 3
     assert state.is_seen_update(1) and state.is_seen_update(2)
 
-    # 같은 구간 안의 다음 회차: 두뇌 없이 skipped(rate_limit), 안내를 다시 보내지 않는다
+    # 구간이 지난 다음 회차: 다시 불러 보고, 또 거절이면 skipped(rate_limit). 같은 재개 시각이라 안내는 다시 보내지 않는다
     env.clock.set(kst(2026, 10, 26, 17, 31))
     evening = _queued(env, LoopKey.evening_checkin, kst(2026, 10, 26, 17, 30))
     await env.process_run(evening)
     after = env.runs.get(evening.id)
     assert after.status is RunStatus.skipped and after.skip_reason == "rate_limit"
-    assert len(env.sender.sent) == 3 and len(env.brain.calls) == 1
+    assert len(env.sender.sent) == 3 and len(env.brain.calls) == 2
+    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 18, 31)
     assert state.usage(MON).proactive_messages == 0
 
     # 풀린 뒤에는 다시 두뇌로 간다
-    env.clock.set(kst(2026, 10, 26, 21, 31))
+    env.clock.set(kst(2026, 10, 26, 18, 32))
     await env.process(env.inbound("이제 될까", update_id=3))
-    assert len(env.brain.calls) == 2
+    assert len(env.brain.calls) == 3
     assert env.sender.sent[-1].text == "다시 이야기해요."
+
+
+async def test_rate_limit_lifting_early_is_found_within_an_hour(tmp_path, conn, state):
+    # 주간 한도처럼 먼 재개 시각이어도 1시간 뒤 메시지는 두뇌로 간다(한도가 먼저 풀렸거나 거절이 잘못된 경우)
+    from my_planner.clock import from_iso
+
+    env = _env(tmp_path, conn, state, [_limited(kst(2026, 11, 2, 9, 0)), FakeTurn([], "돌아왔어요.")])
+    await env.process(env.inbound("안녕", update_id=1))
+    assert env.sender.sent[-1].text == _rate_copy("11월 2일 09:00")
+    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 11, 30)
+    env.clock.set(kst(2026, 10, 26, 11, 31))
+    await env.process(env.inbound("이제?", update_id=2))
+    assert env.sender.sent[-1].text == "돌아왔어요."
+
+
+def test_clamp_limited_shortens_a_far_window_from_an_older_version(tmp_path, conn, state):
+    from my_planner.clock import from_iso
+
+    env = _env(tmp_path, conn, state, [])
+    state.set("limited_until", to_iso(kst(2026, 11, 2, 9, 0)))
+    env.dispatcher.clamp_limited()
+    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 11, 30)
+    state.set("limited_until", to_iso(kst(2026, 10, 26, 11, 0)))  # 이미 1시간 안이면 그대로
+    env.dispatcher.clamp_limited()
+    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 11, 0)
 
 
 async def test_rate_limited_resume_text_formats(tmp_path, conn, state):
     from my_planner.clock import from_iso
 
     cases = [
-        (kst(2026, 10, 26, 21, 30), "21:30", kst(2026, 10, 26, 21, 30)),  # 오늘(논리적 날짜)
-        (kst(2026, 10, 30, 9, 0), "10월 30일 09:00", kst(2026, 10, 30, 9, 0)),  # 다른 날
+        (kst(2026, 10, 26, 21, 30), "21:30", kst(2026, 10, 26, 11, 30)),  # 오늘(논리적 날짜). 쉬는 구간은 1시간
+        (kst(2026, 10, 30, 9, 0), "10월 30일 09:00", kst(2026, 10, 26, 11, 30)),  # 다른 날
         (kst(2026, 10, 26, 10, 0), "11:30", kst(2026, 10, 26, 11, 30)),  # 이미 지났다: 지금 + 1시간
         (None, "11:30", kst(2026, 10, 26, 11, 30)),  # 재개 시각이 없다: 지금 + 1시간
     ]
@@ -287,7 +314,8 @@ async def test_run_auth_error_marked_skipped_not_rerun(tmp_path, conn, state):
     assert len(env.brain.calls) == 2
     after = env.runs.get(evening.id)
     assert after.status is RunStatus.skipped and after.skip_reason == "rate_limit"
-    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 21, 30)
+    assert from_iso(state.get("limited_until")) == kst(2026, 10, 26, 18, 31)  # 지금 + 1시간
+    assert from_iso(state.get("limited_resume_at")) == kst(2026, 10, 26, 21, 30)
     assert env.sender.sent[-1].text == _rate_copy("21:30")
     assert state.usage(MON).proactive_messages == 0  # 고정 안내는 하루 3회에 세지 않는다
     assert state.usage(MON).brain_calls == 2

@@ -120,7 +120,7 @@ export const HEALTH_TEXT = {
   polling: "텔레그램 폴링",
   login: "Claude 로그인",
   noLimit: "사용 한도 없음",
-  limitedUntil: (hhmm: string) => `사용 한도 ${hhmm}까지`,
+  limitedUntil: (when: string) => `사용 한도 ${when}까지`,
   noPause: "멈춤 없음",
   pausedUntil: (when: string) => `${when}까지 멈춤`,
   primary: (primary: string, effective: string) => `주 통로 ${primary} (지금 ${effective})`,
